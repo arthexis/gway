@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import time
 import inspect
@@ -26,7 +27,7 @@ def load_project(project_name: str, root: str = None) -> tuple:
     project_file = os.path.join(root, *project_parts) + ".py"
 
     if not os.path.isfile(project_file):
-        raise FileNotFoundError(f"Project file '{project_file}' does not exist.")
+        raise FileNotFoundError(f"Project file '{project_file}' not found.")
 
     module_name = project_name.replace(".", "_")
     spec = importlib.util.spec_from_file_location(module_name, project_file)
@@ -69,8 +70,6 @@ class Results(collections.ChainMap):
 
 
 class Gateway:
-    """Gateway to load and run project and built-in functions with safe execution."""
-
     _default_root = None
 
     def __init__(self, root=None):
@@ -87,19 +86,88 @@ class Gateway:
         self._cache = {}
         self.results = Results()
         self.builtin = type("builtin", (), {})()
+        self.context = {}  # Used to pass arguments between function calls
+        self.used_context = []  # To track which keys were used
         self._load_builtins()
 
+        # Add logging
+        self.logger = logging.getLogger(__name__)
+
+    def resolve(self, value: str, param_name: str = None) -> str:
+        """Resolve [key|fallback] sigils using context, results, environment variables."""
+        if not (isinstance(value, str) and value.startswith("[") and value.endswith("]")):
+            return value
+
+        inner = value[1:-1]
+        if '|' in inner:
+            key, fallback = inner.split('|', 1)
+        else:
+            key, fallback = inner, None
+
+        key = key.strip()
+        fallback = fallback.strip() if fallback else None
+
+        # If no key specified, fallback to param_name
+        if not key and param_name:
+            key = param_name
+
+        search_keys = [key, key.lower(), key.upper()]
+
+        for k in search_keys:
+            if k in self.context:
+                return self.context[k]
+            if k in self.results:
+                return self.results[k]
+            env_val = os.getenv(k.upper())
+            if env_val is not None:
+                return env_val
+
+        return fallback if fallback is not None else key
+
     def _wrap_callable(self, func_name, func_obj):
-        """Wrap a callable with try/except and result recording."""
-        @functools.wraps(func_obj)  # Preserve the original function's metadata
+        @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
             try:
-                result = func_obj(*args, **kwargs)
+                self.logger.debug(f"Calling {func_name} with args: {args} and kwargs: {kwargs}")
+
+                sig = inspect.signature(func_obj)
+                bound_args = sig.bind_partial(*args, **kwargs)
+                bound_args.apply_defaults()
+
+                self.logger.debug(f"Context before argument injection: {self.context}")
+
+                # First fill missing args from context
+                for param in sig.parameters.values():
+                    if param.name not in bound_args.arguments:
+                        default_value = param.default
+                        if isinstance(default_value, str) and default_value.startswith("[") and default_value.endswith("]"):
+                            resolved = self.resolve(default_value)
+                            bound_args.arguments[param.name] = resolved
+                            self.used_context.append(param.name)
+
+                # Then resolve all [|...] inside provided args as well
+                for key, value in bound_args.arguments.items():
+                    if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
+                        bound_args.arguments[key] = self.resolve(value, param_name=key)
+
+                    # Update context always
+                    self.context[key] = bound_args.arguments[key]
+
+                self.logger.debug(f"Final bound arguments for {func_name}: {bound_args.arguments}")
+
+                result = func_obj(**bound_args.arguments)
                 self.results.insert(func_name, result)
+
+                if isinstance(result, dict):
+                    self.context.update(result)
+                    self.logger.debug(f"Context updated with result from {func_name}: {self.context}")
+
+                self.logger.debug(f"Context after execution of {func_name}: {self.context}")
+
                 return result
             except Exception as e:
                 print(f"Error while executing '{func_name}': {e}")
-                raise  # re-raise after printing
+                raise
         return wrapped
 
     def _load_builtins(self):
@@ -125,10 +193,10 @@ class Gateway:
             raise AttributeError(f"Project '{project_name}' not found: {e}")
 
 
-def show_functions(project_functions: dict):
+def show_functions(functions: dict):
     """Display available functions in project."""
     print("Available functions:")
-    for name, func in project_functions.items():
+    for name, func in functions.items():
         # Build argument preview
         args_list = []
         for param in inspect.signature(func).parameters.values():
@@ -158,6 +226,7 @@ def show_functions(project_functions: dict):
 
 
 def add_function_args(subparser, func_obj):
+    """Add the function arguments to the subparser."""
     for arg_name, param in inspect.signature(func_obj).parameters.items():
         arg_opts = {}
         if param.annotation == bool:
@@ -172,17 +241,19 @@ def add_function_args(subparser, func_obj):
 
 
 def cli_main():
-    """Main CLI entry point."""
-    # TODO: Replace --project-root with --root
+    """Main CLI entry point with function chaining support."""
+
+    # This implementation correctly chains functions, but doesnt properly pass the context between them.
+    # It also does not support the use of context variables in the function arguments (we should handle it in the wrapper).
 
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("-r", "--root", type=str, help="Specify project directory")
     parser.add_argument("-t", "--timed", action="store_true", help="Enable timing")
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("project_name", type=str, nargs="?", help="Project to load")
+    parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
 
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     if args.verbose:
         verbose(True)
@@ -192,79 +263,97 @@ def cli_main():
 
     START_TIME = time.time() if args.timed else None
 
-    if not args.project_name:
+    if not args.commands:
         parser.print_help()
         sys.exit(1)
 
-    # Initialize Gateway
+    # Join the commands list back to a single string
+    command_line = " ".join(args.commands)
+
+    # Split based on " - " or ";"
+    if " - " in command_line:
+        command_chunks = command_line.split(" - ")
+    else:
+        command_chunks = command_line.split(";")
+
     gway = Gateway(root=args.root)
 
-    # Try to load from gateway first
-    project_obj = None
-    try:
-        project_obj = getattr(gway, args.project_name)
-    except AttributeError:
-        pass
+    current_project_obj = None
 
-    # If not found, try to load from builtins
-    if project_obj is None:
+    for chunk in command_chunks:
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+
+        tokens = chunk.split()
+        if not tokens:
+            continue
+
+        first_token = tokens[0]
+        remaining_tokens = tokens[1:]
+
+        # Determine if first token is a project, builtin, or function
         try:
-            project_obj = getattr(gway.builtin, args.project_name)
+            # Try loading project
+            current_project_obj = getattr(gway, first_token)
+            if callable(current_project_obj):
+                # It's a builtin function
+                func_obj = current_project_obj
+                func_tokens = [first_token] + remaining_tokens
+                project_functions = {first_token: func_obj}
+            else:
+                # It's a project object
+                project_functions = {
+                    name: func for name, func in vars(current_project_obj).items()
+                    if callable(func) and not name.startswith("_")
+                }
+                if not remaining_tokens:
+                    show_functions(project_functions)
+                    sys.exit(0)
+                func_tokens = remaining_tokens
         except AttributeError:
-            abort(f"Project or builtin '{args.project_name}' not found.")
+            # Maybe it's a builtin function
+            try:
+                func_obj = getattr(gway.builtin, first_token)
+                if callable(func_obj):
+                    project_functions = {first_token: func_obj}
+                    func_tokens = [first_token] + remaining_tokens
+                else:
+                    abort(f"Unknown command or project: {first_token}")
+            except AttributeError:
+                # Try treating it as function of current project
+                if current_project_obj:
+                    project_functions = {
+                        name: func for name, func in vars(current_project_obj).items()
+                        if callable(func) and not name.startswith("_")
+                    }
+                    func_tokens = [first_token] + remaining_tokens
+                else:
+                    abort(f"Unknown project, builtin, or function: {first_token}")
 
-    # Now check what we loaded
-    if callable(project_obj):
-        # It's a builtin function
-        func_parser = argparse.ArgumentParser(description=f"Builtin {args.project_name}")
-        add_function_args(func_parser, project_obj)
+        if not func_tokens:
+            abort(f"No function specified for project or builtin '{first_token}'")
 
-        func_args = func_parser.parse_args(unknown)
+        func_name = func_tokens[0]
+        func_args = func_tokens[1:]
 
-        try:
-            func_kwargs = {
-                k: v for k, v in vars(func_args).items()
-                if k in inspect.signature(project_obj).parameters
-            }
-            result = project_obj(**func_kwargs)
-        except Exception as e:
-            abort(f"Error executing builtin '{args.project_name}': {e}")
+        func_obj = project_functions.get(func_name)
+        if not func_obj:
+            abort(f"Function '{func_name}' not found.")
 
-    else:
-        # Otherwise it's a normal project
-        project_functions = {
-            name: func for name, func in vars(project_obj).items()
-            if callable(func) and not name.startswith("_")
+        func_parser = argparse.ArgumentParser(prog=func_name)
+        add_function_args(func_parser, func_obj)
+        parsed_args = func_parser.parse_args(func_args)
+
+        func_kwargs = {
+            k: v for k, v in vars(parsed_args).items()
+            if k in inspect.signature(func_obj).parameters
         }
 
-        if not project_functions:
-            abort(f"Project '{args.project_name}' does not contain any callable functions.")
-
-        func_parser = argparse.ArgumentParser(description=f"Functions for project {args.project_name}")
-        func_subparsers = func_parser.add_subparsers(dest="function_name", required=True)
-
-        for func_name, func_obj in project_functions.items():
-            sp = func_subparsers.add_parser(func_name, help=(func_obj.__doc__ or "No docstring").splitlines()[0])
-            add_function_args(sp, func_obj)
-
-        if not unknown:
-            show_functions(project_functions)
-            sys.exit(0)
-
-        func_args = func_parser.parse_args(unknown)
-
-        func_obj = project_functions.get(func_args.function_name)
-        if not func_obj:
-            abort(f"Function '{func_args.function_name}' not found.")
-
         try:
-            func_kwargs = {
-                k: v for k, v in vars(func_args).items()
-                if k in inspect.signature(func_obj).parameters
-            }
-            result = func_obj(**func_kwargs)
+            func_obj(**func_kwargs)
         except Exception as e:
-            abort(f"Error executing '{func_args.function_name}': {e}")
+            abort(f"Error executing '{func_name}': {e}")
 
     if START_TIME:
         elapsed_time = time.time() - START_TIME
