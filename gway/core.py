@@ -3,8 +3,10 @@ import sys
 import time
 import inspect
 import logging
-import importlib.util
 import argparse
+import functools
+import collections
+import importlib.util
 
 from .logging import setup_logging
 from .builtins import abort, print, verbose
@@ -13,15 +15,15 @@ from .builtins import abort, print, verbose
 logger = logging.getLogger(__name__)
 
 
-def load_project(project_name: str, project_root: str = None) -> tuple:
-    if project_root is None:
-        project_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "projects")
+def load_project(project_name: str, root: str = None) -> tuple:
+    if root is None:
+        root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "projects")
 
-    if not os.path.isdir(project_root):
-        raise FileNotFoundError(f"Invalid project root: {project_root}")
+    if not os.path.isdir(root):
+        raise FileNotFoundError(f"Invalid project root: {root}")
 
     project_parts = project_name.split(".")
-    project_file = os.path.join(project_root, *project_parts) + ".py"
+    project_file = os.path.join(root, *project_parts) + ".py"
 
     if not os.path.isfile(project_file):
         raise FileNotFoundError(f"Project file '{project_file}' does not exist.")
@@ -56,40 +58,71 @@ def load_builtins() -> dict:
     return builtins_functions
 
 
+class Results(collections.ChainMap):
+    """ChainMap-based result collector for Gateway function calls."""
+
+    def insert(self, func_name, value):
+        if isinstance(value, dict):
+            self.maps[0].update(value)
+        else:
+            self.maps[0][func_name] = value
+
+
 class Gateway:
-    def __init__(self, project_root=None):
-        if project_root is None:
-            project_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "projects")
+    """Gateway to load and run project and built-in functions with safe execution."""
 
-        if not os.path.isdir(project_root):
-            abort(f"Invalid project root: {project_root}")
+    _default_root = None
 
-        self.project_root = project_root
+    def __init__(self, root=None):
+        if root is None:
+            root = Gateway._default_root
+            if root is None:
+                root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "projects")
+                Gateway._default_root = root  # first time, set default
+
+        if not os.path.isdir(root):
+            abort(f"Invalid project root: {root}")
+
+        self.root = root
         self._cache = {}
-
-        # Load built-ins into a dedicated `builtin` object
+        self.results = Results()
         self.builtin = type("builtin", (), {})()
         self._load_builtins()
+
+    def _wrap_callable(self, func_name, func_obj):
+        """Wrap a callable with try/except and result recording."""
+        @functools.wraps(func_obj)  # Preserve the original function's metadata
+        def wrapped(*args, **kwargs):
+            try:
+                result = func_obj(*args, **kwargs)
+                self.results.insert(func_name, result)
+                return result
+            except Exception as e:
+                print(f"Error while executing '{func_name}': {e}")
+                raise  # re-raise after printing
+        return wrapped
 
     def _load_builtins(self):
         builtins_functions = load_builtins()
         for name, func in builtins_functions.items():
-            setattr(self.builtin, name, func)
-            print(f"Loaded builtin function: {name}")
+            wrapped_func = self._wrap_callable(name, func)
+            setattr(self.builtin, name, wrapped_func)
+            setattr(self, name, wrapped_func)  # Install directly on self
 
     def __getattr__(self, project_name):
         if project_name in self._cache:
             return self._cache[project_name]
 
         try:
-            module, functions = load_project(project_name, self.project_root)
+            module, functions = load_project(project_name, self.root)
             project_obj = type(project_name, (), {})()
             for func_name, func_obj in functions.items():
-                setattr(project_obj, func_name, func_obj)
+                wrapped_func = self._wrap_callable(f"{project_name}.{func_name}", func_obj)
+                setattr(project_obj, func_name, wrapped_func)
             self._cache[project_name] = project_obj
             return project_obj
-        except Exception:
-            raise AttributeError(f"Project '{project_name}' not found.")
+        except Exception as e:
+            raise AttributeError(f"Project '{project_name}' not found: {e}")
 
 
 def show_functions(project_functions: dict):
@@ -140,10 +173,11 @@ def add_function_args(subparser, func_obj):
 
 def cli_main():
     """Main CLI entry point."""
+    # TODO: Replace --project-root with --root
 
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
-    parser.add_argument("-p", "--project-root", type=str, help="Specify project directory")
+    parser.add_argument("-r", "--root", type=str, help="Specify project directory")
     parser.add_argument("-t", "--timed", action="store_true", help="Enable timing")
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("project_name", type=str, nargs="?", help="Project to load")
@@ -163,7 +197,7 @@ def cli_main():
         sys.exit(1)
 
     # Initialize Gateway
-    gway = Gateway(project_root=args.project_root)
+    gway = Gateway(root=args.root)
 
     # Try to load from gateway first
     project_obj = None
@@ -229,10 +263,9 @@ def cli_main():
                 if k in inspect.signature(func_obj).parameters
             }
             result = func_obj(**func_kwargs)
-            print(f"Function '{func_args.function_name}' executed successfully with result: {result}")
         except Exception as e:
-            abort(f"Error executing function '{func_args.function_name}': {e}")
+            abort(f"Error executing '{func_args.function_name}': {e}")
 
     if START_TIME:
         elapsed_time = time.time() - START_TIME
-        print(f"Elapsed time: {elapsed_time:.2f} seconds")
+        print(f"Elapsed: {elapsed_time:.4f} seconds")
