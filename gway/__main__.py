@@ -1,3 +1,3 @@
-from .main import cli_main
+from .core import cli_main
 
 cli_main()

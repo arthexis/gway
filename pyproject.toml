@@ -14,4 +14,4 @@ name = "arthexis"
 email = "arthexis@gmail.com"
 
 ["project.scripts"]
-gway = "gway:gway"
+gway = "gway:cli_main"

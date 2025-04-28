@@ -1,1 +1,1 @@
-from .main import cli_main as gway
+from .core import cli_main

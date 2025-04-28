@@ -18,8 +18,8 @@ def setup_logging(*,
         if not os.path.isabs(logfile):
             logfile = os.path.join(os.getcwd(), logdir, logfile)
     
-    # Define default patterns
-    pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(filename)s:%(lineno)d - %(message)s'
+    # Define default pattern (now using funcName instead of filename)
+    pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(funcName)s:%(lineno)d - %(message)s'
 
     # Clear existing handlers to avoid duplicates
     root_logger = logging.getLogger()
@@ -43,4 +43,3 @@ def setup_logging(*,
     sep = "-" * 70
     cmd_args = " ".join(sys.argv[1:])
     root_logger.info(f"\n{sep}\n> {app_name or '%prog'} {cmd_args}\n{sep}")
-
