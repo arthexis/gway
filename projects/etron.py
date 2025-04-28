@@ -17,12 +17,11 @@ def start_csms(host='[|0.0.0.0]', port='[|9000]'):
     return True
 
 
-def test_csms(host='[|0.0.0.0]', port='[|9000]'):
+def test_csms(url='http://[host|0.0.0.0]:[port|9000]'):
     """	
     Test the Central System Management Server (CSMS) with the given host and port.
     Args:
-        host (str): The host address for the CSMS.
-        port (int): The port number for the CSMS.
+        url (str): The URL for the CSMS.
     Returns:
         bool: True if the CSMS is reachable, False otherwise.
     """
@@ -30,5 +29,5 @@ def test_csms(host='[|0.0.0.0]', port='[|9000]'):
     # Simulate testing the CSMS
     # In a real implementation, this would involve sending a request to the server and checking the response
     # For this example, we'll just print the host and port
-    print(f"CSMS test at {host}:{port} successful")
+    print(f"CSMS test at {url} successful")
     return True

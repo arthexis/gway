@@ -93,26 +93,49 @@ class Gateway:
         # Add logging
         self.logger = logging.getLogger(__name__)
 
+    def _load_builtins(self):
+        """Load built-in functions and install them in the Gateway instance."""
+        # Show a warning if a builtin overrides an existing gateway attribute
+        builtins_functions = load_builtins()
+        for name, func in builtins_functions.items():
+            if hasattr(self, name):
+                self.logger.warning(f"Builtin function '{name}' overrides existing Gateway attribute.")
+            wrapped_func = self._wrap_callable(name, func)
+            setattr(self.builtin, name, wrapped_func)
+            setattr(self, name, wrapped_func)  # Install directly on self
+
     def resolve(self, value: str, param_name: str = None) -> str:
-        """Resolve [key|fallback] sigils using context, results, environment variables."""
-        if not (isinstance(value, str) and value.startswith("[") and value.endswith("]")):
+        """Resolve [key|fallback] sigils anywhere within the string."""
+        if not isinstance(value, str):
             return value
+        
+        # Pattern to match [key|fallback] inside the string
+        sigil_pattern = r"\[([^\[\]]+)\|([^\[\]]+)\]|\[([^\[\]]+)\]"
+        matches = re.finditer(sigil_pattern, value)
 
-        inner = value[1:-1]
-        if '|' in inner:
-            key, fallback = inner.split('|', 1)
-        else:
-            key, fallback = inner, None
+        # For each match, resolve the key or fallback
+        for match in matches:
+            if match.group(1) and match.group(2):  # has both key and fallback
+                key, fallback = match.group(1).strip(), match.group(2).strip()
+            else:  # only a key (fallback is empty, use param_name dynamically)
+                key = match.group(3).strip()
+                # If fallback is empty, use the param_name as a key dynamically
+                fallback = param_name
 
-        key = key.strip()
-        fallback = fallback.strip() if fallback else None
+            resolved_value = self._resolve_key(key, fallback, param_name)
+            value = value.replace(match.group(0), resolved_value)
 
-        # If no key specified, fallback to param_name
-        if not key and param_name:
-            key = param_name
+        return value
 
+    def _resolve_key(self, key: str, fallback: str, param_name: str) -> str:
+        """Helper method to resolve a key from context, results, or environment variables."""
         search_keys = [key, key.lower(), key.upper()]
 
+        # If the fallback is a param_name, use the context with the param_name dynamically
+        if fallback == param_name and param_name in self.context:
+            return self.context[param_name]
+
+        # Search in context, results, or environment variables
         for k in search_keys:
             if k in self.context:
                 return self.context[k]
@@ -122,32 +145,33 @@ class Gateway:
             if env_val is not None:
                 return env_val
 
-        return fallback if fallback is not None else key
-
+        return fallback if fallback is not None else ke
+    
     def _wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
             try:
                 self.logger.debug(f"Calling {func_name} with args: {args} and kwargs: {kwargs}")
 
+                # Get the function signature
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
 
                 self.logger.debug(f"Context before argument injection: {self.context}")
 
-                # First fill missing args from context
+                # First fill missing args from context (only those required by the function)
                 for param in sig.parameters.values():
                     if param.name not in bound_args.arguments:
                         default_value = param.default
                         if isinstance(default_value, str) and default_value.startswith("[") and default_value.endswith("]"):
-                            resolved = self.resolve(default_value)
+                            resolved = self.resolve(default_value, param_name=param.name)
                             bound_args.arguments[param.name] = resolved
                             self.used_context.append(param.name)
 
                 # Then resolve all [|...] inside provided args as well
                 for key, value in bound_args.arguments.items():
-                    if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
+                    if isinstance(value, str):
                         bound_args.arguments[key] = self.resolve(value, param_name=key)
 
                     # Update context always
@@ -155,7 +179,11 @@ class Gateway:
 
                 self.logger.debug(f"Final bound arguments for {func_name}: {bound_args.arguments}")
 
-                result = func_obj(**bound_args.arguments)
+                # Now filter out unnecessary arguments (those that aren't in the function signature)
+                final_args = {key: bound_args.arguments[key] for key in bound_args.arguments if key in sig.parameters}
+
+                result = func_obj(**final_args)  # Pass only the necessary arguments
+
                 self.results.insert(func_name, result)
 
                 if isinstance(result, dict):
@@ -169,13 +197,6 @@ class Gateway:
                 print(f"Error while executing '{func_name}': {e}")
                 raise
         return wrapped
-
-    def _load_builtins(self):
-        builtins_functions = load_builtins()
-        for name, func in builtins_functions.items():
-            wrapped_func = self._wrap_callable(name, func)
-            setattr(self.builtin, name, wrapped_func)
-            setattr(self, name, wrapped_func)  # Install directly on self
 
     def __getattr__(self, project_name):
         if project_name in self._cache:
@@ -191,7 +212,6 @@ class Gateway:
             return project_obj
         except Exception as e:
             raise AttributeError(f"Project '{project_name}' not found: {e}")
-
 
 def show_functions(functions: dict):
     """Display available functions in project."""
