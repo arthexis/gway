@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+import pprint
 import inspect
 import logging
 import argparse
@@ -17,6 +18,12 @@ from .structs import Results
 logger = logging.getLogger(__name__)
 
 
+BASE_PATH = os.path.dirname(os.path.dirname(__file__))
+PROJECTS_DIR = "projects"
+ENVS_DIR = "envs"
+LIBRARY_MODE = True
+
+
 def load_project(project_name: str, root: str = None) -> tuple:
     if root is None:
         root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "projects")
@@ -25,7 +32,7 @@ def load_project(project_name: str, root: str = None) -> tuple:
         raise FileNotFoundError(f"Invalid project root: {root}")
 
     project_parts = project_name.split(".")
-    project_file = os.path.join(root, *project_parts) + ".py"
+    project_file = os.path.join(root, PROJECTS_DIR, *project_parts) + ".py"
 
     if not os.path.isfile(project_file):
         raise FileNotFoundError(f"Project file '{project_file}' not found.")
@@ -67,7 +74,7 @@ class Gateway:
         if root is None:
             root = Gateway._default_root
             if root is None:
-                root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "projects")
+                root = os.path.dirname(os.path.dirname(__file__))  
                 Gateway._default_root = root  # first time, set default
 
         if not os.path.isdir(root):
@@ -298,6 +305,8 @@ def get_default_server():
 
 def cli_main():
     """Main CLI entry point with function chaining support."""
+    global LIBRARY_MODE
+    LIBRARY_MODE = False  
 
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
@@ -322,13 +331,12 @@ def cli_main():
         parser.print_help()
         sys.exit(1)
 
-    env_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "envs")
+    env_root = os.path.join(args.root or BASE_PATH, ENVS_DIR)
 
-    # Handle client env loading
+    # Load environments
     client_name = args.client or get_default_client()
     load_env("clients", client_name, env_root)
 
-    # If the project is "test", run the tests using unittest
     if args.commands[0] == "test":
         print("Running the test suite...")
         os.environ['TEST_MODE'] = '1'
@@ -338,22 +346,16 @@ def cli_main():
         result = runner.run(test_suite)
         sys.exit(0 if result.wasSuccessful() else 1)
 
-    # Handle server env loading
     server_name = args.server or get_default_server()
     load_env("servers", server_name, env_root)
-    
-    # Join the commands list back to a single string
-    command_line = " ".join(args.commands)
 
-    # Split based on " - " or ";"
-    if " - " in command_line:
-        command_chunks = command_line.split(" - ")
-    else:
-        command_chunks = command_line.split(";")
+    # Split command chains
+    command_line = " ".join(args.commands)
+    command_chunks = command_line.split(" - ") if " - " in command_line else command_line.split(";")
 
     gway = Gateway(root=args.root)
-
     current_project_obj = None
+    last_result = None
 
     for chunk in command_chunks:
         chunk = chunk.strip()
@@ -364,24 +366,17 @@ def cli_main():
         if not tokens:
             continue
 
-        first_token = tokens[0]
+        first_token = tokens[0].replace("-", "_")
         remaining_tokens = tokens[1:]
 
-        # Convert dashes to underscores
-        first_token = first_token.replace("-", "_")
-        remaining_tokens = tokens[1:] 
-
-        # Determine if first token is a project, builtin, or function
+        # Resolve project or builtin
         try:
-            # Try loading project
             current_project_obj = getattr(gway, first_token)
             if callable(current_project_obj):
-                # It's a builtin function
                 func_obj = current_project_obj
                 func_tokens = [first_token] + remaining_tokens
                 project_functions = {first_token: func_obj}
             else:
-                # It's a project object
                 project_functions = {
                     name: func for name, func in vars(current_project_obj).items()
                     if callable(func) and not name.startswith("_")
@@ -391,7 +386,6 @@ def cli_main():
                     sys.exit(0)
                 func_tokens = remaining_tokens
         except AttributeError:
-            # Maybe it's a builtin function
             try:
                 func_obj = getattr(gway.builtin, first_token)
                 if callable(func_obj):
@@ -400,7 +394,6 @@ def cli_main():
                 else:
                     abort(f"Unknown command or project: {first_token}")
             except AttributeError:
-                # Try treating it as function of current project
                 if current_project_obj:
                     project_functions = {
                         name: func for name, func in vars(current_project_obj).items()
@@ -430,9 +423,12 @@ def cli_main():
         }
 
         try:
-            func_obj(**func_kwargs)
+            last_result = func_obj(**func_kwargs)
         except Exception as e:
             abort(f"Error executing '{func_name}': {e}")
+
+    if last_result is not None:
+        pprint.pprint(last_result)
 
     if START_TIME:
         elapsed_time = time.time() - START_TIME
