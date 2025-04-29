@@ -6,11 +6,11 @@ import inspect
 import logging
 import argparse
 import functools
-import collections
 import importlib.util
 
 from .logging import setup_logging
 from .builtins import abort, print, verbose
+from .structs import Results
 
 
 logger = logging.getLogger(__name__)
@@ -57,16 +57,6 @@ def load_builtins() -> dict:
         and inspect.getmodule(obj) == builtins_module
     }
     return builtins_functions
-
-
-class Results(collections.ChainMap):
-    """ChainMap-based result collector for Gateway function calls."""
-
-    def insert(self, func_name, value):
-        if isinstance(value, dict):
-            self.maps[0].update(value)
-        else:
-            self.maps[0][func_name] = value
 
 
 class Gateway:
@@ -177,20 +167,13 @@ class Gateway:
                     # Update context always
                     self.context[key] = bound_args.arguments[key]
 
-                self.logger.debug(f"Final bound arguments for {func_name}: {bound_args.arguments}")
-
-                # Now filter out unnecessary arguments (those that aren't in the function signature)
+                self.logger.debug(f"Bound args for {func_name}: {bound_args.arguments}")
                 final_args = {key: bound_args.arguments[key] for key in bound_args.arguments if key in sig.parameters}
-
-                result = func_obj(**final_args)  # Pass only the necessary arguments
-
+                result = func_obj(**final_args)  
                 self.results.insert(func_name, result)
 
                 if isinstance(result, dict):
                     self.context.update(result)
-                    self.logger.debug(f"Context updated with result from {func_name}: {self.context}")
-
-                self.logger.debug(f"Context after execution of {func_name}: {self.context}")
 
                 return result
             except Exception as e:
@@ -212,6 +195,7 @@ class Gateway:
             return project_obj
         except Exception as e:
             raise AttributeError(f"Project '{project_name}' not found: {e}")
+        
 
 def show_functions(functions: dict):
     """Display available functions in project."""
@@ -260,17 +244,63 @@ def add_function_args(subparser, func_obj):
         subparser.add_argument(f"--{arg_name}", **arg_opts)
 
 
+def load_env(env_type: str, name: str, env_root: str):
+    """
+    Load environment variables from envs/{clients|servers}/{name}.env
+    If the file doesn't exist, create an empty one and log a warning.
+    Ensures the .env filename is always lowercase.
+    """
+    assert env_type in ("clients", "servers"), "env_type must be 'clients' or 'servers'"
+    env_dir = os.path.join(env_root, env_type)
+    os.makedirs(env_dir, exist_ok=True)  # Create folder structure if needed
+
+    # Ensure the name is lowercase for the filename
+    env_file = os.path.join(env_dir, f"{name.lower()}.env")
+
+    if not os.path.isfile(env_file):
+        # Create empty .env file
+        open(env_file, "a").close()
+        logger.warning(f"{env_type.capitalize()} env file '{env_file}' not found. Created an empty one.")
+        return
+
+    with open(env_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue  # Skip comments and empty lines
+            if "=" in line:
+                key, value = line.split("=", 1)
+                os.environ[key.strip()] = value.strip()
+                logger.debug(f"Loaded env var: {key.strip()}={value.strip()}")
+
+def get_default_client():
+    """Get the default client name based on logged in username."""
+    try:
+        import getpass
+        username = getpass.getuser()
+        return username if username else "guest"
+    except Exception:
+        return "guest"
+
+def get_default_server():
+    """Get the default server name based on machine hostname."""
+    try:
+        import socket
+        hostname = socket.gethostname()
+        return hostname if hostname else "localhost"
+    except Exception:
+        return "localhost"
+
+
 def cli_main():
     """Main CLI entry point with function chaining support."""
-
-    # This implementation correctly chains functions, but doesnt properly pass the context between them.
-    # It also does not support the use of context variables in the function arguments (we should handle it in the wrapper).
-
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("-r", "--root", type=str, help="Specify project directory")
     parser.add_argument("-t", "--timed", action="store_true", help="Enable timing")
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("-c", "--client", type=str, help="Specify client environment")
+    parser.add_argument("-s", "--server", type=str, help="Specify server environment")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
 
     args = parser.parse_args()
@@ -287,6 +317,18 @@ def cli_main():
         parser.print_help()
         sys.exit(1)
 
+    env_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "envs")
+
+    # Handle client env loading
+    client_name = args.client or get_default_client()
+    load_env("clients", client_name, env_root)
+
+    # Handle server env loading
+    server_name = args.server or get_default_server()
+    load_env("servers", server_name, env_root)
+
+    # --- Your existing CLI parsing logic starts below here ---
+    
     # Join the commands list back to a single string
     command_line = " ".join(args.commands)
 

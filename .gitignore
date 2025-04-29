@@ -21,3 +21,6 @@ venv/
 # Logs
 *.log
 *.log.*
+
+# Client/server environments
+*.env

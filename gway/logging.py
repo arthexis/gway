@@ -19,6 +19,7 @@ def setup_logging(*,
             logfile = os.path.join(os.getcwd(), logdir, logfile)
     
     # Define default pattern (now using funcName instead of filename)
+    # Only time, no full date (date is in filename already)
     pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(funcName)s:%(lineno)d - %(message)s'
 
     # Clear existing handlers to avoid duplicates
@@ -36,7 +37,7 @@ def setup_logging(*,
             logfile, when='midnight', interval=1, backupCount=backup_count, encoding='utf-8'
         )
         file_handler.setLevel(loglevel)
-        file_handler.setFormatter(logging.Formatter(pattern, datefmt='%Y-%m-%d %H:%M:%S'))
+        file_handler.setFormatter(logging.Formatter(pattern, datefmt='%H:%M:%S'))
         root_logger.addHandler(file_handler)
 
     # Initial log message

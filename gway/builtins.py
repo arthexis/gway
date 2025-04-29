@@ -43,7 +43,5 @@ def abort(message: str, exit_code: int = 1):
 
 def hello_world():
     """Print 'Hello, World!'."""
-    from gway import Gateway
-    gway = Gateway()
-    gway.print("Hello, World!")
+    print("Hello, World!")
 
