@@ -5,6 +5,7 @@ import time
 import inspect
 import logging
 import argparse
+import unittest
 import functools
 import importlib.util
 
@@ -123,11 +124,13 @@ class Gateway:
 
         # If the fallback is a param_name, use the context with the param_name dynamically
         if fallback == param_name and param_name in self.context:
+            self.used_context.append(param_name)  # Track usage
             return self.context[param_name]
 
         # Search in context, results, or environment variables
         for k in search_keys:
             if k in self.context:
+                self.used_context.append(k)  # Track usage
                 return self.context[k]
             if k in self.results:
                 return self.results[k]
@@ -135,7 +138,7 @@ class Gateway:
             if env_val is not None:
                 return env_val
 
-        return fallback if fallback is not None else ke
+        return fallback if fallback is not None else key
     
     def _wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
@@ -157,7 +160,7 @@ class Gateway:
                         if isinstance(default_value, str) and default_value.startswith("[") and default_value.endswith("]"):
                             resolved = self.resolve(default_value, param_name=param.name)
                             bound_args.arguments[param.name] = resolved
-                            self.used_context.append(param.name)
+                            self.used_context.append(param.name)  # Track the used context
 
                 # Then resolve all [|...] inside provided args as well
                 for key, value in bound_args.arguments.items():
@@ -170,6 +173,7 @@ class Gateway:
                 self.logger.debug(f"Bound args for {func_name}: {bound_args.arguments}")
                 final_args = {key: bound_args.arguments[key] for key in bound_args.arguments if key in sig.parameters}
                 result = func_obj(**final_args)  
+
                 self.results.insert(func_name, result)
 
                 if isinstance(result, dict):
@@ -323,11 +327,19 @@ def cli_main():
     client_name = args.client or get_default_client()
     load_env("clients", client_name, env_root)
 
+    # If the project is "test", run the tests using unittest
+    if args.commands[0] == "test":
+        print("Running the test suite...")
+        os.environ['TEST_MODE'] = '1'
+        test_loader = unittest.TestLoader()
+        test_suite = test_loader.discover('tests')
+        runner = unittest.TextTestRunner(verbosity=2)
+        result = runner.run(test_suite)
+        sys.exit(0 if result.wasSuccessful() else 1)
+
     # Handle server env loading
     server_name = args.server or get_default_server()
     load_env("servers", server_name, env_root)
-
-    # --- Your existing CLI parsing logic starts below here ---
     
     # Join the commands list back to a single string
     command_line = " ".join(args.commands)
