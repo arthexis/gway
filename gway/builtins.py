@@ -1,59 +1,12 @@
 import os
 import sys
+import inspect
 import logging
 
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
-
-VERBOSE = False
-_print = print  # Store original print
-
-
-def print(*args, **kwargs):
-    """Custom print function to handle verbose output."""
-    message = " ".join(str(arg) for arg in args)
-    logger.info(message)
-    # Check if we should use the original print or verbose option in kwargs
-    if VERBOSE or kwargs.pop("verbose", False):
-        kwargs.pop("args", None)  
-        kwargs.pop("kwargs", None)
-        _print(message, **kwargs)  # Pass the message as args, use kwargs for other options
-    else:
-        _print(message)  # Only print the message
-
-
-
-def verbose(value: bool = None):
-    """Set verbose mode or use as a context manager."""
-
-    global VERBOSE
-
-    if value is not None:
-        VERBOSE = value
-        if VERBOSE:
-            logger.setLevel(logging.DEBUG)
-            logger.debug("Verbose mode enabled.")
-        else:
-            logger.setLevel(logging.INFO)
-            logger.debug("Verbose mode disabled.")
-        return VERBOSE
-    else:
-        class VerboseContext:
-            def __enter__(self):
-                self._original = VERBOSE
-                verbose(True)
-                return self
-
-            def __exit__(self, exc_type, exc_val, exc_tb):
-                verbose(self._original)
-
-            def __repr__(self):
-                return str(VERBOSE)
-
-        return VerboseContext()
-    
 
 def version() -> str:
     """Return the version of the package."""
@@ -88,7 +41,74 @@ def abort(message: str, exit_code: int = 1):
         return exit_code
 
 
-def hello_world():
-    """Print 'Hello, World!'."""
-    print("Hello, World!")
+def hello_world(name: str = "World", greeting: str = "Hello", emoji: str = "👋"):
+    """Smoke test function."""
+    from gway import Gateway
+    gway = Gateway()
+    if hasattr(gway, "hello_world"):
+        # Add hand emoji at the end of the greeting
+        gway.print(f"{greeting.title()}, {name.title()}! {emoji}")
+
+
+def envs(filter: str = None) -> dict:
+    """Return all environment variables in a dictionary."""
+    if filter:
+        filter = filter.upper()
+        return {k: v for k, v in os.environ.items() if filter in k}
+    else: 
+        return os.environ.copy()
+
+
+_print = print
+
+def print(obj, *, max_depth=10, _current_depth=0):
+    """Recursively prints an object with colorized output without extra spacing."""
+    # Show which function called print
+    try:
+        print_frame = inspect.stack()[2]
+    except IndexError:
+        print_frame = inspect.stack()[1]
+    print_origin = f"{print_frame.function}() in {print_frame.filename}:{print_frame.lineno}"
+    logger.info(f"From {print_origin}:\n {obj}")
+
+    from colorama import init as colorama_init, Fore, Style
+    colorama_init(strip=False)
+
+    if _current_depth > max_depth:
+        _print(f"{Fore.YELLOW}...{Style.RESET_ALL}", end="")
+        return
+
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k.startswith("_"):
+                continue
+            key_str = f"{Fore.BLUE}{Style.BRIGHT}{k}{Style.RESET_ALL}"
+            colon = f"{Style.DIM}: {Style.RESET_ALL}"
+            _print(f"{key_str}{colon} {v}")
+    elif isinstance(obj, list):
+        _print("[", end="")
+        for i, item in enumerate(obj):
+            if i > 0:
+                _print(end="")  # No comma separator for items
+            print(item, max_depth=max_depth, _current_depth=_current_depth + 1)
+        _print("]", end="")  # Avoid new line after list
+    elif isinstance(obj, str):
+        _print(f"{Fore.GREEN}{obj}{Style.RESET_ALL}", end="")  # No extra newline after string
+    elif callable(obj):
+        try:
+            func_name = obj.__name__.replace("__", " ").replace("_", "-")
+            sig = inspect.signature(obj)
+            args = []
+            for param in sig.parameters.values():
+                name = param.name.replace("__", " ").replace("_", "-")
+                if param.default is param.empty:
+                    args.append(name)
+                else:
+                    args.append(f"--{name} {param.default}")
+            formatted = " ".join([func_name] + args)
+            _print(f"{Fore.MAGENTA}{formatted}{Style.RESET_ALL}", end="")
+        except Exception:
+            _print(f"{Fore.RED}<function>{Style.RESET_ALL}", end="")
+    else:
+        _print(f"{Fore.GREEN}{str(obj)}{Style.RESET_ALL}", end="")  # No extra newline
 

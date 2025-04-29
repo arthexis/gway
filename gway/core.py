@@ -2,16 +2,16 @@ import os
 import re
 import sys
 import time
-import pprint
 import inspect
 import logging
+import pathlib
 import argparse
 import unittest
 import functools
 import importlib.util
 
 from .logging import setup_logging
-from .builtins import abort, print, verbose
+from .builtins import abort, print
 from .structs import Results
 
 
@@ -19,20 +19,18 @@ logger = logging.getLogger(__name__)
 
 
 BASE_PATH = os.path.dirname(os.path.dirname(__file__))
-PROJECTS_DIR = "projects"
-ENVS_DIR = "envs"
 LIBRARY_MODE = True
 
 
 def load_project(project_name: str, root: str = None) -> tuple:
     if root is None:
-        root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "projects")
+        root = os.path.join(BASE_PATH, "projects")
 
     if not os.path.isdir(root):
         raise FileNotFoundError(f"Invalid project root: {root}")
 
     project_parts = project_name.split(".")
-    project_file = os.path.join(root, PROJECTS_DIR, *project_parts) + ".py"
+    project_file = os.path.join(root, "projects", *project_parts) + ".py"
 
     if not os.path.isfile(project_file):
         raise FileNotFoundError(f"Project file '{project_file}' not found.")
@@ -68,14 +66,14 @@ def load_builtins() -> dict:
 
 
 class Gateway:
-    _default_root = None
+    _first_root = None
 
-    def __init__(self, root=None):
+    def __init__(self, root=None, **kwargs):
         if root is None:
-            root = Gateway._default_root
+            root = Gateway._first_root
             if root is None:
-                root = os.path.dirname(os.path.dirname(__file__))  
-                Gateway._default_root = root  # first time, set default
+                root = BASE_PATH  # Default to the base path if no root is set
+                Gateway._first_root = root  # first time, set default
 
         if not os.path.isdir(root):
             abort(f"Invalid project root: {root}")
@@ -84,12 +82,31 @@ class Gateway:
         self._cache = {}
         self.results = Results()
         self.builtin = type("builtin", (), {})()
-        self.context = {}  # Used to pass arguments between function calls
+        self.context = {**kwargs}  # Used to pass arguments between function calls
         self.used_context = []  # To track which keys were used
         self._load_builtins()
 
         # Add logging
         self.logger = logging.getLogger(__name__)
+
+    def resource(self, *parts, make_dirs=False, touch=False, is_dir=False, is_file=False, root=None):
+        """Construct a path relative to the root and optionally prepare it."""
+        path = pathlib.Path(root or self.root, *parts)
+        if make_dirs:
+            if is_file or touch:
+                path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                path.mkdir(parents=True, exist_ok=True)
+        if touch:
+            if not path.exists():
+                path.touch()
+        if is_dir:
+            if not path.is_dir():
+                raise FileNotFoundError(f"Expected directory at: {path}")
+        if is_file:
+            if not path.is_file():
+                raise FileNotFoundError(f"Expected file at: {path}")
+        return path
 
     def _load_builtins(self):
         """Load built-in functions and install them in the Gateway instance."""
@@ -207,6 +224,13 @@ class Gateway:
         except Exception as e:
             raise AttributeError(f"Project '{project_name}' not found: {e}")
         
+    def __hasattr__(self, project_name):
+        try:
+            _ = self.__getattr__(project_name)
+            return True
+        except AttributeError:
+            return False
+
 
 def show_functions(functions: dict):
     """Display available functions in project."""
@@ -301,7 +325,7 @@ def get_default_server():
         return hostname if hostname else "localhost"
     except Exception:
         return "localhost"
-
+    
 
 def cli_main():
     """Main CLI entry point with function chaining support."""
@@ -309,7 +333,6 @@ def cli_main():
     LIBRARY_MODE = False  
 
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("-r", "--root", type=str, help="Specify project directory")
     parser.add_argument("-t", "--timed", action="store_true", help="Enable timing")
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
@@ -318,9 +341,6 @@ def cli_main():
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
 
     args = parser.parse_args()
-
-    if args.verbose:
-        verbose(True)
 
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel, app_name="gway")
@@ -331,7 +351,7 @@ def cli_main():
         parser.print_help()
         sys.exit(1)
 
-    env_root = os.path.join(args.root or BASE_PATH, ENVS_DIR)
+    env_root = os.path.join(args.root or BASE_PATH, "envs")
 
     # Load environments
     client_name = args.client or get_default_client()
@@ -348,12 +368,13 @@ def cli_main():
 
     server_name = args.server or get_default_server()
     load_env("servers", server_name, env_root)
+    gway_root = os.environ.get("GWAY_ROOT", args.root or BASE_PATH)
 
     # Split command chains
     command_line = " ".join(args.commands)
     command_chunks = command_line.split(" - ") if " - " in command_line else command_line.split(";")
 
-    gway = Gateway(root=args.root)
+    gway = Gateway(root=gway_root)
     current_project_obj = None
     last_result = None
 
@@ -428,7 +449,8 @@ def cli_main():
             abort(f"Error executing '{func_name}': {e}")
 
     if last_result is not None:
-        pprint.pprint(last_result)
+        # TODO: Replace pprint with a custom function that colorizes the output if possible
+        print(last_result)
 
     if START_TIME:
         elapsed_time = time.time() - START_TIME

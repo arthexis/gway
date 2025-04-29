@@ -1,6 +1,6 @@
-import sqlite3
 import os
 import csv
+import sqlite3
 
 
 def connect(*, sql_engine="sqlite3", load_data=True):
