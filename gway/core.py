@@ -114,7 +114,7 @@ class Gateway:
                 fallback = param_name
 
             resolved_value = self._resolve_key(key, fallback, param_name)
-            value = value.replace(match.group(0), resolved_value)
+            value = value.replace(match.group(0), str(resolved_value))
 
         return value
 
@@ -298,6 +298,7 @@ def get_default_server():
 
 def cli_main():
     """Main CLI entry point with function chaining support."""
+
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("-r", "--root", type=str, help="Specify project directory")
@@ -365,6 +366,10 @@ def cli_main():
 
         first_token = tokens[0]
         remaining_tokens = tokens[1:]
+
+        # Convert dashes to underscores
+        first_token = first_token.replace("-", "_")
+        remaining_tokens = tokens[1:] 
 
         # Determine if first token is a project, builtin, or function
         try:

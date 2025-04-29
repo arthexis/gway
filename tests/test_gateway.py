@@ -3,7 +3,6 @@ import unittest
 from unittest import mock
 
 from gway.core import Gateway, load_project, load_builtins
-from gway.structs import Results
 
 
 # A dummy function for testing dynamic loading
@@ -48,11 +47,23 @@ class GatewayTests(unittest.TestCase):
         resolved_fallback = self.gw.resolve("Welcome [missing|default_user]")
         self.assertEqual(resolved_fallback, "Welcome default_user")
 
+    def test_multiple_sigils(self):
+        # Prepare a string with multiple sigils
+        self.gw.context['name'] = 'Alice'
+        self.gw.context['age'] = 30
+        resolved = self.gw.resolve("User: [name|unknown], Age: [age|0]")
+        self.assertEqual(resolved, "User: Alice, Age: 30")
+
     def test_environment_variable_resolution(self):
         # Simulate an environment variable
         os.environ['TEST_ENV'] = 'env_value'
         resolved = self.gw.resolve("Env: [TEST_ENV|fallback]")
         self.assertEqual(resolved, "Env: env_value")
+
+    def test_missing_environment_variable(self):
+        # Ensure the fallback is used when the environment variable is missing
+        resolved = self.gw.resolve("Env: [MISSING_ENV|fallback]")
+        self.assertEqual(resolved, "Env: fallback")
 
     def test_missing_project_raises_attribute_error(self):
         with self.assertRaises(AttributeError):
