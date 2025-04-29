@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gway"
-version = "0.0.4"
+version = "0.0.6"
 description = "Infrastructure for https://www.gelectriic.com"
 requires-python = ">=3.7"
 classifiers = [ "Programming Language :: Python :: 3", "License :: OSI Approved :: MIT License", "Operating System :: OS Independent",]
@@ -15,3 +15,6 @@ email = "arthexis@gmail.com"
 
 [project.scripts]
 gway = "gway:cli_main"
+
+[tool.setuptools]
+packages = [ "gway",]

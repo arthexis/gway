@@ -1,7 +1,7 @@
 import sys
 import toml
 from pathlib import Path
-import subprocess  
+import subprocess
 
 
 def build(bump: bool = False, dist: bool = False) -> None:
@@ -71,6 +71,11 @@ def build(bump: bool = False, dist: bool = False) -> None:
             ],
             "scripts": {
                 project_name: f"{project_name}:cli_main",
+            }
+        },
+        "tool": {
+            "setuptools": {
+                "packages": ["gway"],  # Explicitly specify the packages to include
             }
         }
     }
