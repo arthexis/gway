@@ -57,10 +57,11 @@ class Gateway:
             setattr(self.builtin, name, wrapped_func)
             setattr(self, name, wrapped_func)  # Install directly on self
 
-    def resolve(self, value):
-        if not isinstance(value, str):
-            return value
-        return Sigil(value) % self.find_value
+    def resolve(self, sigil):
+        """Resolve [sigils] in a given string, using find_value()."""
+        if not isinstance(sigil, str):
+            return sigil
+        return Sigil(sigil) % self.find_value
 
     def find_value(self, key: str, fallback: str = None) -> str:
         """Finder function passed to sigil resolution."""
@@ -83,7 +84,7 @@ class Gateway:
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
             try:
-                self.logger.debug(f"Call {func_name} with args: {args} and kwargs: {kwargs}")
+                self.logger.info(f"Call {func_name} with args: {args} and kwargs: {kwargs}")
 
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
