@@ -12,7 +12,8 @@ def build(
     twine: bool = False,
     user: str = "[PYPI_USERNAME]",
     password: str = "[PYPI_PASSWORD]",
-    token: str = "[PYPI_API_TOKEN]"
+    token: str = "[PYPI_API_TOKEN]",
+    git: bool = False,
 ) -> None:
     """
     Build the project and optionally upload to PyPI.
@@ -24,11 +25,17 @@ def build(
         user (str): PyPI username (default: [PYPI_USERNAME]).
         password (str): PyPI password (default: [PYPI_PASSWORD]).
         token (str): PyPI API token (default: [PYPI_API_TOKEN]).
+        git (bool): Require a clean git repo and commit/push after release if True.
     """
     gway = Gateway()
     test_result = gway.run_tests()
     if not test_result:
         gway.abort("Tests failed, build aborted.")
+
+    if git:
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+        if status.stdout.strip():
+            gway.abort("Git repository is not clean. Commit or stash changes before building.")
 
     project_name = "gway"
     description = "Software Project Infrastructure by https://www.gelectriic.com"
@@ -61,8 +68,10 @@ def build(
         new_version = f"{major}.{minor}.{patch}"
         version_path.write_text(new_version)
         print(f"\nBumped version: {current_version} → {new_version}")
+    else:
+        new_version = version_path.read_text().strip()
 
-    version = version_path.read_text().strip()
+    version = new_version
 
     dependencies = [
         line.strip()
@@ -158,3 +167,12 @@ def build(
 
             subprocess.run(upload_command, check=True)
             print("Package uploaded to PyPI successfully.")
+
+    if git:
+        subprocess.run(["git", "add", "VERSION", "pyproject.toml"], check=True)
+
+        commit_msg = f"PyPI Release v{version}" if twine else f"Release v{version}"
+
+        subprocess.run(["git", "commit", "-m", commit_msg], check=True)
+        subprocess.run(["git", "push"], check=True)
+        print(f"Committed and pushed: {commit_msg}")
