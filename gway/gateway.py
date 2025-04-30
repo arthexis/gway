@@ -1,10 +1,8 @@
 import os
-import re
 import sys
 import time
 import inspect
 import logging
-import pathlib
 import argparse
 import unittest
 import functools
@@ -13,6 +11,7 @@ from .logging import setup_logging
 from .builtins import abort, print
 from .environs import get_base_client, get_base_server, load_env
 from .sources import load_builtins, load_project, show_functions
+from .sigils import Sigil
 from .structs import Results
 
 
@@ -58,38 +57,13 @@ class Gateway:
             setattr(self.builtin, name, wrapped_func)
             setattr(self, name, wrapped_func)  # Install directly on self
 
-    def resolve(self, value: str) -> str:
-        """Resolve sigils in the given string using context, results or env variables."""
+    def resolve(self, value):
         if not isinstance(value, str):
             return value
+        return Sigil(value) % self.find_value
 
-        # Match [key|fallback] or [key]
-        sigil_pattern = r"\[([^\[\]|]*)(?:\|([^\[\]]*))?\]"
-
-        def replacer(match):
-            key = match.group(1).strip()
-            fallback = match.group(2).strip() if match.group(2) is not None else None
-
-            if match.group(2) is not None:
-                # This was a [key|fallback] sigil
-                if key == "":
-                    raise ValueError("Empty key is not allowed in [|fallback]")
-                if fallback == "":
-                    raise ValueError(f"Empty fallback is not allowed in [{key}|]")
-
-            elif key == "":
-                raise ValueError("Empty key is not allowed in []")
-
-            resolved = self._resolve_key(key, fallback)
-            return str(resolved) if resolved is not None else ""
-
-        # Substitute all matches
-        result = re.sub(sigil_pattern, replacer, value)
-
-        return result if result != "" else None
-
-    def _resolve_key(self, key: str, fallback: str = None) -> str:
-        """Helper method to resolve a key from results, context, or environment vars."""
+    def find_value(self, key: str, fallback: str = None) -> str:
+        """Finder function passed to sigil resolution."""
         search_keys = [key, key.lower(), key.upper()]
 
         for k in search_keys:
@@ -103,7 +77,6 @@ class Gateway:
             if env_val is not None:
                 return env_val
 
-        # If nothing found and fallback is provided, return fallback
         return fallback
             
     def _wrap_callable(self, func_name, func_obj):
@@ -176,29 +149,6 @@ class Gateway:
             return True
         except AttributeError:
             return False
-
-    def resource(self, *parts, make_dirs=True, touch=False, is_dir=False, is_file=False, root=None):
-        """Construct a path relative to the root and optionally prepare it."""
-        # Should be safe to create dirs by default as they won't be persisted in the repo if empty
-        path = pathlib.Path(root or self.root, *parts)
-        if make_dirs:
-            # Only create directories if they don't already exist
-            if is_file or touch:
-                if not path.parent.exists():
-                    path.parent.mkdir(parents=True, exist_ok=True)
-            else:
-                if not path.exists():
-                    path.mkdir(parents=True, exist_ok=True)
-        if touch:
-            if not path.exists():
-                path.touch()
-        if is_dir:
-            if not path.is_dir():
-                raise FileNotFoundError(f"Expected directory at: {path}")
-        if is_file:
-            if not path.is_file():
-                raise FileNotFoundError(f"Expected file at: {path}")
-        return path
 
 
 def add_function_args(subparser, func_obj):

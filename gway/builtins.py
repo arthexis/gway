@@ -32,7 +32,7 @@ def hello_world(name: str = "World", greeting: str = "Hello"):
     """Smoke test function."""
     from gway import Gateway
     gway = Gateway()
-    
+
     message = f"{greeting.title()}, {name.title()}!"
     if hasattr(gway, "hello_world"):
         gway.print(message)
@@ -128,5 +128,16 @@ def version() -> str:
     else:
         logger.error("VERSION file not found.")
         return "unknown"
-    
-    
+
+
+def resource(*parts, base=None, touch=False):
+    """Construct a path relative to the base. Assumes last part is a file and creates parent directories."""
+    from gway import Gateway
+    gway = Gateway()
+
+    path = pathlib.Path(base or gway.root, *parts)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if touch:
+        path.touch()
+
+    return path
