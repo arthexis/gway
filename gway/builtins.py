@@ -3,6 +3,7 @@ import sys
 import inspect
 import logging
 import pathlib
+import textwrap
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
 
@@ -16,7 +17,7 @@ def abort(message: str, exit_code: int = 1, library_mode: bool = None) -> int:
     if library_mode is None:
         library_mode = LIBRARY_MODE
     logger.error(message)
-    print(f"Error: {message}")
+    print(f"Halting: {message}")
     
     # Check if we are running in test mode by checking an environment variable
     if os.getenv('TEST_MODE') != '1':  # Only call sys.exit if TEST_MODE is not set
@@ -26,7 +27,7 @@ def abort(message: str, exit_code: int = 1, library_mode: bool = None) -> int:
             raise SystemExit(exit_code)
     else:
         # In test mode, just print the error and don't exit
-        print(f"Test mode: {message} (exit code {exit_code})")
+        print(f"Abort in TEST_MODE: {message} (exit code {exit_code})")
         return exit_code
 
 
@@ -153,4 +154,81 @@ def run_tests(root: str = 'tests'):
     test_suite = test_loader.discover(root)
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(test_suite)
+    os.environ['TEST_MODE'] = '0'
     return result.wasSuccessful()
+
+
+def help(*args):
+    """
+    Display help information for a gway function.
+
+    Usage:
+        help("builtin_function")
+        help("project", "function_name")
+    """
+    import inspect
+    import textwrap
+    from gway import Gateway
+
+    gway = Gateway()
+
+    # Determine the function and context
+    if len(args) == 1:
+        location = "builtin"
+        func_name = args[0].replace("-", "_")
+        func_obj = getattr(gway, func_name, None)
+    elif len(args) == 2:
+        location = args[0].replace("-", "_")
+        func_name = args[1].replace("-", "_")
+        module = getattr(gway, location, None)
+        func_obj = getattr(module, func_name, None) if module else None
+    else:
+        gway.print("Usage: help('builtin') or help('project', 'function')")
+        return
+
+    if not func_obj or not callable(func_obj):
+        gway.print(f"Function not found: {' '.join(args)}")
+        return
+
+    doc = inspect.getdoc(func_obj) or "(No docstring available)"
+    sig = inspect.signature(func_obj)
+
+    cli_parts = []
+    code_parts = []
+    for name, param in sig.parameters.items():
+        cli_flag = f"--{name.replace('_', '-')}"
+        is_required = param.default == inspect.Parameter.empty
+        if param.kind == inspect.Parameter.VAR_POSITIONAL:
+            cli_parts.append("[<args>...]")
+            code_parts.append("*args")
+        elif param.kind == inspect.Parameter.VAR_KEYWORD:
+            cli_parts.append("[--kwargs key=value ...]")
+            code_parts.append("**kwargs")
+        elif param.annotation == bool or isinstance(param.default, bool):
+            cli_parts.append(f"[--{name.replace('_', '-')}/--no-{name.replace('_', '-')}]")
+            code_parts.append(f"{name}={param.default}")
+        elif is_required:
+            cli_parts.append(f"<{name}>")
+            code_parts.append(name)
+        else:
+            cli_parts.append(f"{cli_flag} {param.default}")
+            code_parts.append(f"{name}={repr(param.default)}")
+
+    cli_call = f"gway {args[0]}" if len(args) == 1 else f"gway {args[0]} {args[1]}"
+    if cli_parts:
+        cli_call += " " + " ".join(cli_parts)
+
+    code_call = f"gway.{func_name}" if len(args) == 1 else f"gway.{args[0]}.{func_name}"
+    code_call += f"({', '.join(code_parts)})"
+
+    gway.print(f"Help for `{func_name}` in `{location}`:")
+    gway.print(f"Signature: {func_name}{sig}")
+    gway.print(f"Docstring: {textwrap.fill(doc, width=80)}")
+    gway.print(f"Example CLI: {cli_call}")
+    gway.print(f"Example Code: {code_call}")
+
+
+def sigils(*args: str):
+    from .sigils import Sigil
+    text = "\n".join(args)
+    return Sigil(text).list_sigils()

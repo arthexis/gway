@@ -51,6 +51,10 @@ class Sigil:
 
         return re.sub(self._pattern, replacer, self.original) or None
 
+    def list_sigils(self):
+        """Returns a list of all well-formed [sigils] in the original text (including brackets)."""
+        return [match.group(0) for match in self._pattern.finditer(self.original)]
+
     def __mod__(self, finder):
         """Allows use of `%` operator for resolution."""
         return self.resolve(finder)

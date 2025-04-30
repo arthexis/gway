@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import shlex
 import inspect
 import logging
 import argparse
@@ -55,7 +56,7 @@ class Gateway:
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
             try:
-                self.logger.info(f"Call {func_name} with args: {args} and kwargs: {kwargs}")
+                self.logger.debug(f"Call {func_name} with args: {args} and kwargs: {kwargs}")
 
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
@@ -95,7 +96,7 @@ class Gateway:
 
                 return result
             except Exception as e:
-                print(f"Error while executing '{func_name}': {e}")
+                print(f"Error in'{func_name}': {e}")
                 raise
 
         return wrapped
@@ -146,6 +147,7 @@ class Gateway:
             return self.context[key]
         env_val = os.getenv(key.upper())
         if env_val is not None:
+            self.used_context.append(key)
             return env_val
         return fallback
 
@@ -180,6 +182,8 @@ def cli_main():
     """Main CLI entry point with function chaining support."""
     global LIBRARY_MODE
     LIBRARY_MODE = False  
+
+    # TODO: Support *args and parameters with quotes (both single and double) 
 
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
     parser.add_argument("-r", "--root", type=str, help="Specify project directory")
@@ -227,7 +231,7 @@ def cli_main():
         if not chunk:
             continue
 
-        tokens = chunk.split()
+        tokens = shlex.split(chunk)
         if not tokens:
             continue
 
@@ -307,7 +311,8 @@ def cli_main():
         try:
             last_result = func_obj(*func_args, **{**func_kwargs, **extra_kwargs})
         except Exception as e:
-            abort(f"Error executing '{raw_func_name}': {e}")
+            logger.error(e)
+            abort(f"Unhandled {type(e).__name__} in {func_obj.__name__}")
 
     if last_result is not None:
         gway.print(last_result)

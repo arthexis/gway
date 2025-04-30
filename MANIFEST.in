@@ -1,0 +1,4 @@
+include README.rst
+include VERSION
+include requirements.txt
+include pyproject.toml

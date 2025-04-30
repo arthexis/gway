@@ -4,14 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gway"
-version = "0.0.10"
-description = "Infrastructure for https://www.gelectriic.com"
+version = "0.0.23"
+description = "Software Project Infrastructure by https://www.gelectriic.com"
 requires-python = ">=3.7"
-classifiers = [ "Programming Language :: Python :: 3", "License :: OSI Approved :: MIT License", "Operating System :: OS Independent",]
+license = "MIT"
+classifiers = [ "Programming Language :: Python :: 3", "Operating System :: OS Independent",]
 dependencies = [ "toml", "setuptools", "twine", "build",]
 [[project.authors]]
-name = "arthexis"
-email = "arthexis@gmail.com"
+name = "Rafael J. Guillén-Osorio"
+email = "tecnologia@gelectriic.com"
+
+[project.readme]
+file = "README.rst"
+content-type = "text/x-rst"
 
 [project.scripts]
 gway = "gway:cli_main"

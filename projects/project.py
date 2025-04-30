@@ -6,24 +6,40 @@ import subprocess
 from gway import Gateway
 
 
-def build(bump: bool = False, dist: bool = False) -> None:
+def build(
+    bump: bool = False,
+    dist: bool = False,
+    twine: bool = False,
+    user: str = "[PYPI_USERNAME]",
+    password: str = "[PYPI_PASSWORD]",
+    token: str = "[PYPI_API_TOKEN]"
+) -> None:
     """
-    Build the project by generating a pyproject.toml file.
+    Build the project and optionally upload to PyPI.
 
     Args:
-        bump (bool): If True, increment the patch version in VERSION.
-        dist (bool): If True, create a distribution package.
+        bump (bool): Increment patch version if True.
+        dist (bool): Build distribution package if True.
+        twine (bool): Upload to PyPI if True.
+        user (str): PyPI username (default: [PYPI_USERNAME]).
+        password (str): PyPI password (default: [PYPI_PASSWORD]).
+        token (str): PyPI API token (default: [PYPI_API_TOKEN]).
     """
-    Gateway().run_tests()
+    gway = Gateway()
+    test_result = gway.run_tests()
+    if not test_result:
+        gway.abort("Tests failed, build aborted.")
 
     project_name = "gway"
-    description = "Infrastructure for https://www.gelectriic.com"
-    author_name = "arthexis"
-    author_email = "arthexis@gmail.com"
+    description = "Software Project Infrastructure by https://www.gelectriic.com"
+    author_name = "Rafael J. Guillén-Osorio"
+    author_email = "tecnologia@gelectriic.com"
     python_requires = ">=3.7"
+    license_expression = "MIT"
+    readme_file = Path("README.rst")
+
     classifiers = [
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ]
 
@@ -35,17 +51,17 @@ def build(bump: bool = False, dist: bool = False) -> None:
         raise FileNotFoundError("VERSION file not found.")
     if not requirements_path.exists():
         raise FileNotFoundError("requirements.txt file not found.")
+    if not readme_file.exists():
+        raise FileNotFoundError("README.rst file not found.")
 
-    # If bump is True, increment the version
     if bump:
         current_version = version_path.read_text().strip()
         major, minor, patch = map(int, current_version.split("."))
         patch += 1
         new_version = f"{major}.{minor}.{patch}"
         version_path.write_text(new_version)
-        print(f"Bumped version: {current_version} → {new_version}")
+        print(f"\nBumped version: {current_version} → {new_version}")
 
-    # Read version after possible bump
     version = version_path.read_text().strip()
 
     dependencies = [
@@ -64,6 +80,11 @@ def build(bump: bool = False, dist: bool = False) -> None:
             "version": version,
             "description": description,
             "requires-python": python_requires,
+            "license": license_expression,
+            "readme": {
+                "file": "README.rst",
+                "content-type": "text/x-rst"
+            },
             "classifiers": classifiers,
             "dependencies": dependencies,
             "authors": [
@@ -78,24 +99,62 @@ def build(bump: bool = False, dist: bool = False) -> None:
         },
         "tool": {
             "setuptools": {
-                "packages": ["gway"],  # Explicitly specify the packages to include
+                "packages": ["gway"],
             }
         }
     }
 
-    toml_string = toml.dumps(pyproject_content)
-    pyproject_path.write_text(toml_string)
+    pyproject_path.write_text(toml.dumps(pyproject_content), encoding="utf-8")
     print(f"Generated {pyproject_path}")
 
-    # If dist is True, build the distribution package
+    manifest_path = Path("MANIFEST.in")
+    if not manifest_path.exists():
+        manifest_path.write_text(
+            "include README.rst\n"
+            "include VERSION\n"
+            "include requirements.txt\n"
+            "include pyproject.toml\n"
+        )
+        print("Generated MANIFEST.in")
+
     if dist:
         dist_dir = Path("dist")
         if dist_dir.exists():
-            # Clean previous builds
             for item in dist_dir.iterdir():
                 item.unlink()
             dist_dir.rmdir()
 
         print("Building distribution package...")
-        subprocess.run([sys.executable, "-m", "build"], check=True)  # <-- build via Python
+        subprocess.run([sys.executable, "-m", "build"], check=True)
         print("Distribution package created in dist/")
+
+        if twine:
+            print("Validating distribution with twine check...")
+            check_result = subprocess.run(
+                [sys.executable, "-m", "twine", "check", "dist/*"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+
+            if check_result.returncode != 0:
+                print("PyPI README rendering check failed:")
+                print(check_result.stdout)
+                print("Aborting upload.")
+                return
+
+            print("Twine check passed. Uploading to PyPI...")
+
+            upload_command = [
+                sys.executable, "-m", "twine", "upload", "dist/*"
+            ]
+
+            if token:
+                upload_command += ["--username", "__token__", "--password", token]
+            elif user and password:
+                upload_command += ["--username", user, "--password", password]
+            else:
+                raise ValueError("Must provide either token or both user and password for Twine upload.")
+
+            subprocess.run(upload_command, check=True)
+            print("Package uploaded to PyPI successfully.")
