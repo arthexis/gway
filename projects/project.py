@@ -3,6 +3,8 @@ import toml
 from pathlib import Path
 import subprocess
 
+from gway import Gateway
+
 
 def build(bump: bool = False, dist: bool = False) -> None:
     """
@@ -12,6 +14,7 @@ def build(bump: bool = False, dist: bool = False) -> None:
         bump (bool): If True, increment the patch version in VERSION.
         dist (bool): If True, create a distribution package.
     """
+    Gateway().run_tests()
 
     project_name = "gway"
     description = "Infrastructure for https://www.gelectriic.com"

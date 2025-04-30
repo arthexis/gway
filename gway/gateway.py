@@ -4,11 +4,10 @@ import time
 import inspect
 import logging
 import argparse
-import unittest
 import functools
 
 from .logging import setup_logging
-from .builtins import abort, print
+from .builtins import abort, print, run_tests
 from .environs import get_base_client, get_base_server, load_env
 from .sources import load_builtins, load_project, show_functions
 from .sigils import Sigil
@@ -24,13 +23,14 @@ LIBRARY_MODE = True
 
 class Gateway:
     _first_root = None
+    _builtin_cache = None
 
     def __init__(self, root=None, **kwargs):
         if root is None:
             root = Gateway._first_root
             if root is None:
-                root = BASE_PATH  # Default to the base path if no root is set
-                Gateway._first_root = root  # first time, set default
+                root = BASE_PATH
+                Gateway._first_root = root
 
         if not os.path.isdir(root):
             abort(f"Invalid project root: {root}")
@@ -38,43 +38,18 @@ class Gateway:
         self.root = root
         self._cache = {}
         self.results = Results()
-        self.builtin = type("builtin", (), {})()
-        self.context = {**kwargs}  # Used to pass arguments between function calls
-        self.used_context = []  # To track which keys were used
-        self._load_builtins()
-
-        # Add logging
+        self.context = {**kwargs}
+        self.used_context = []
         self.logger = logging.getLogger(__name__)
 
+        self._builtin_functions = {}  # raw function refs
+        self._load_builtins()
+
     def _load_builtins(self):
-        """Load built-in functions and install them in the Gateway instance."""
-        # Show a warning if a builtin overrides an existing gateway attribute
-        builtins_functions = load_builtins()
-        for name, func in builtins_functions.items():
-            if hasattr(self, name):
-                self.logger.warning(f"Builtin function '{name}' overrides existing Gateway attribute.")
-            wrapped_func = self._wrap_callable(name, func)
-            setattr(self.builtin, name, wrapped_func)
-            setattr(self, name, wrapped_func)  # Install directly on self
+        if Gateway._builtin_cache is None:
+            Gateway._builtin_cache = load_builtins()
 
-    def resolve(self, sigil):
-        """Resolve [sigils] in a given string, using find_value()."""
-        if not isinstance(sigil, str):
-            return sigil
-        return Sigil(sigil) % self.find_value
-
-    def find_value(self, key: str, fallback: str = None) -> str:
-        """Find a value in the context, results or environment. Used for sigil resolution."""
-        if key in self.results:
-            self.used_context.append(key)
-            return self.results[key]
-        if key in self.context:
-            self.used_context.append(key)
-            return self.context[key]
-        env_val = os.getenv(key.upper())
-        if env_val is not None:
-            return env_val
-        return fallback
+        self._builtin_functions = Gateway._builtin_cache.copy()
             
     def _wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
@@ -125,31 +100,58 @@ class Gateway:
 
         return wrapped
 
-    def __getattr__(self, project_name):
-        if project_name in self._cache:
-            return self._cache[project_name]
+    def __getattr__(self, name):
+        # Builtin function?
+        if name in self._builtin_functions:
+            func = self._wrap_callable(name, self._builtin_functions[name])
+            setattr(self, name, func)
+            return func
 
+        # Cached project?
+        if name in self._cache:
+            return self._cache[name]
+
+        # Try to load project
         try:
-            module, functions = load_project(project_name, self.root)
-            project_obj = type(project_name, (), {})()
+            module, functions = load_project(name, self.root)
+            project_obj = type(name, (), {})()
             for func_name, func_obj in functions.items():
-                wrapped_func = self._wrap_callable(f"{project_name}.{func_name}", func_obj)
+                wrapped_func = self._wrap_callable(f"{name}.{func_name}", func_obj)
                 setattr(project_obj, func_name, wrapped_func)
-            self._cache[project_name] = project_obj
+            self._cache[name] = project_obj
             return project_obj
         except Exception as e:
-            raise AttributeError(f"Project '{project_name}' not found: {e}")
-        
+            raise AttributeError(f"Project or builtin '{name}' not found: {e}")
+
     def __hasattr__(self, project_name):
         try:
             _ = self.__getattr__(project_name)
             return True
         except AttributeError:
             return False
+        
+    def resolve(self, sigil):
+        """Resolve [sigils] in a given string, using find_value()."""
+        if not isinstance(sigil, str):
+            return sigil
+        return Sigil(sigil) % self.find_value
+
+    def find_value(self, key: str, fallback: str = None) -> str:
+        """Find a value in the context, results or environment. Used for sigil resolution."""
+        if key in self.results:
+            self.used_context.append(key)
+            return self.results[key]
+        if key in self.context:
+            self.used_context.append(key)
+            return self.context[key]
+        env_val = os.getenv(key.upper())
+        if env_val is not None:
+            return env_val
+        return fallback
 
 
 def add_function_args(subparser, func_obj):
-    """Add the function arguments to the subparser."""
+    """Add the function's arguments to the CLI subparser."""
     sig = inspect.signature(func_obj)
     for arg_name, param in sig.parameters.items():
         if param.kind == inspect.Parameter.VAR_POSITIONAL:
@@ -204,14 +206,9 @@ def cli_main():
     client_name = args.client or get_base_client()
     load_env("clients", client_name, env_root)
 
-    if args.commands[0] == "test":
-        print("Running the test suite...")
-        os.environ['TEST_MODE'] = '1'
-        test_loader = unittest.TestLoader()
-        test_suite = test_loader.discover('tests')
-        runner = unittest.TextTestRunner(verbosity=2)
-        result = runner.run(test_suite)
-        sys.exit(0 if result.wasSuccessful() else 1)
+    if args.commands[0] == "test": 
+        results = run_tests()
+        sys.exit(0 if results else 1)
 
     server_name = args.server or get_base_server()
     load_env("servers", server_name, env_root)
@@ -318,3 +315,4 @@ def cli_main():
     if START_TIME:
         elapsed_time = time.time() - START_TIME
         print(f"\nElapsed: {elapsed_time:.4f} seconds")
+

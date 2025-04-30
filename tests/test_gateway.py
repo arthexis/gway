@@ -11,8 +11,8 @@ class GatewayTests(unittest.TestCase):
 
     def test_builtin_loading(self):
         # Builtin function should be available
-        self.assertTrue(hasattr(self.gw.builtin, 'hello_world'))
-        self.assertTrue(callable(getattr(self.gw.builtin, 'hello_world')))
+        self.assertTrue(hasattr(self.gw, 'hello_world'))
+        self.assertTrue(callable(getattr(self.gw, 'hello_world')))
 
     def test_function_wrapping_and_call(self):
         # Call the hello_world function (used as the "dummy_builtin" in the tests)

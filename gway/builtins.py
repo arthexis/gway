@@ -4,6 +4,8 @@ import inspect
 import logging
 import pathlib
 
+# Avoid importing Gateway at the top level in this file specifically (circular import)
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ def enum(*args):
 _print = print
 _INSERT_NL = False
 
-def print(obj, *, max_depth=10, _current_depth=0):
+def print(text, *, max_depth=10, _current_depth=0):
     """Recursively prints an object with colorized output without extra spacing."""
     global _INSERT_NL
     if _INSERT_NL:
@@ -68,7 +70,7 @@ def print(obj, *, max_depth=10, _current_depth=0):
     except IndexError:
         print_frame = inspect.stack()[1]
     print_origin = f"{print_frame.function}() in {print_frame.filename}:{print_frame.lineno}"
-    logger.info(f"From {print_origin}:\n {obj}")
+    logger.info(f"From {print_origin}:\n {text}")
 
     from colorama import init as colorama_init, Fore, Style
     colorama_init(strip=False)
@@ -77,26 +79,26 @@ def print(obj, *, max_depth=10, _current_depth=0):
         _print(f"{Fore.YELLOW}...{Style.RESET_ALL}", end="")
         return
 
-    if isinstance(obj, dict):
-        for k, v in obj.items():
+    if isinstance(text, dict):
+        for k, v in text.items():
             if k.startswith("_"):
                 continue
             key_str = f"{Fore.BLUE}{Style.BRIGHT}{k}{Style.RESET_ALL}"
             colon = f"{Style.DIM}: {Style.RESET_ALL}"
             _print(f"{key_str}{colon} {v}")
-    elif isinstance(obj, list):
+    elif isinstance(text, list):
         _print("[", end="")
-        for i, item in enumerate(obj):
+        for i, item in enumerate(text):
             if i > 0:
                 _print(end="")  # No comma separator for items
             print(item, max_depth=max_depth, _current_depth=_current_depth + 1)
         _print("]", end="")  # Avoid new line after list
-    elif isinstance(obj, str):
-        _print(f"{Fore.GREEN}{obj}{Style.RESET_ALL}", end="")  # No extra newline after string
-    elif callable(obj):
+    elif isinstance(text, str):
+        _print(f"{Fore.GREEN}{text}{Style.RESET_ALL}", end="")  # No extra newline after string
+    elif callable(text):
         try:
-            func_name = obj.__name__.replace("__", " ").replace("_", "-")
-            sig = inspect.signature(obj)
+            func_name = text.__name__.replace("__", " ").replace("_", "-")
+            sig = inspect.signature(text)
             args = []
             for param in sig.parameters.values():
                 name = param.name.replace("__", " ").replace("_", "-")
@@ -109,17 +111,16 @@ def print(obj, *, max_depth=10, _current_depth=0):
         except Exception:
             _print(f"{Fore.RED}<function>{Style.RESET_ALL}", end="")
     else:
-        _print(f"{Fore.GREEN}{str(obj)}{Style.RESET_ALL}", end="")  # No extra newline
+        _print(f"{Fore.GREEN}{str(text)}{Style.RESET_ALL}", end="")  # No extra newline
     _INSERT_NL = True
 
 
 def version() -> str:
     """Return the version of the package."""
     from gway import Gateway
-    gway = Gateway()
 
     # Get the version in the VERSION file
-    version_path = gway.resource("VERSION")
+    version_path = Gateway().resource("VERSION")
     if os.path.exists(version_path):
         with open(version_path, "r") as version_file:
             version = version_file.read().strip()
@@ -133,11 +134,23 @@ def version() -> str:
 def resource(*parts, base=None, touch=False):
     """Construct a path relative to the base. Assumes last part is a file and creates parent directories."""
     from gway import Gateway
-    gway = Gateway()
 
-    path = pathlib.Path(base or gway.root, *parts)
+    path = pathlib.Path(base or Gateway().root, *parts)
     path.parent.mkdir(parents=True, exist_ok=True)
     if touch:
         path.touch()
 
     return path
+
+
+def run_tests(root: str = 'tests'):
+    """Execute all automatically detected test suites."""
+    import unittest
+
+    print("Running the test suite...")
+    os.environ['TEST_MODE'] = '1'
+    test_loader = unittest.TestLoader()
+    test_suite = test_loader.discover(root)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(test_suite)
+    return result.wasSuccessful()

@@ -3,6 +3,7 @@ import csv
 import sqlite3
 import logging
 
+from gway import Gateway
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,6 @@ def connect(*, sql_engine="sqlite3", load_data=True):
     """Used by other functions to connect to the database. Returns a context manager.
         Data from the data folder is loaded into the database if load_data is True (default).
     """
-    from gway import Gateway
     assert sql_engine == "sqlite3", "Only sqlite3 is supported at the moment."
     gway = Gateway()
     
@@ -54,7 +54,8 @@ def connect(*, sql_engine="sqlite3", load_data=True):
                         seen_headers.add(header.lower())
                     
                     # Create table with unique column names
-                    create_table_query = f"CREATE TABLE IF NOT EXISTS [{table_name}] ({', '.join(f'[{h}] TEXT' for h in unique_headers)})"
+                    create_table_query = (f"CREATE TABLE IF NOT EXISTS [{table_name}] "
+                                          f"({', '.join(f'[{h}] TEXT' for h in unique_headers)})")
                     cursor.execute(create_table_query)
                     
                     # Insert data
