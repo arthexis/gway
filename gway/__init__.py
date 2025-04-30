@@ -1,1 +1,1 @@
-from .core import cli_main, Gateway
+from .gateway import cli_main, Gateway

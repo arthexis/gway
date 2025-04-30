@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest import mock
 
-from gway.core import Gateway, load_project, load_builtins
+from gway.gateway import Gateway, load_project, load_builtins
 
 
 # A dummy function for testing dynamic loading

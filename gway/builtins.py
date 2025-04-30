@@ -2,30 +2,16 @@ import os
 import sys
 import inspect
 import logging
-
-from contextlib import contextmanager
+import pathlib
 
 logger = logging.getLogger(__name__)
 
 
-def version() -> str:
-    """Return the version of the package."""
-    # Get the version in the VERSION file
-    from .core import BASE_PATH
-    version_path = os.path.join(BASE_PATH, "VERSION")
-    if os.path.exists(version_path):
-        with open(version_path, "r") as version_file:
-            version = version_file.read().strip()
-            logger.info(f"Current version: {version}")
-            return version
-    else:
-        logger.error("VERSION file not found.")
-        return "unknown"
-    
-
-def abort(message: str, exit_code: int = 1):
+def abort(message: str, exit_code: int = 1, library_mode: bool = None) -> int:
     """Abort with error message."""
-    from .core import LIBRARY_MODE
+    from .gateway import LIBRARY_MODE
+    if library_mode is None:
+        library_mode = LIBRARY_MODE
     logger.error(message)
     print(f"Error: {message}")
     
@@ -112,3 +98,20 @@ def print(obj, *, max_depth=10, _current_depth=0):
     else:
         _print(f"{Fore.GREEN}{str(obj)}{Style.RESET_ALL}", end="")  # No extra newline
 
+
+def version() -> str:
+    """Return the version of the package."""
+    from gway import Gateway
+    gway = Gateway()
+
+    # Get the version in the VERSION file
+    version_path = gway.resource("VERSION")
+    if os.path.exists(version_path):
+        with open(version_path, "r") as version_file:
+            version = version_file.read().strip()
+            logger.info(f"Current version: {version}")
+            return version
+    else:
+        logger.error("VERSION file not found.")
+        return "unknown"
+    

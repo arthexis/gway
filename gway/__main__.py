@@ -1,4 +1,4 @@
-from .core import cli_main
+from .gateway import cli_main
 
 if __name__ == "__main__":
     cli_main()

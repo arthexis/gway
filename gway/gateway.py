@@ -89,25 +89,6 @@ class Gateway:
         # Add logging
         self.logger = logging.getLogger(__name__)
 
-    def resource(self, *parts, make_dirs=False, touch=False, is_dir=False, is_file=False, root=None):
-        """Construct a path relative to the root and optionally prepare it."""
-        path = pathlib.Path(root or self.root, *parts)
-        if make_dirs:
-            if is_file or touch:
-                path.parent.mkdir(parents=True, exist_ok=True)
-            else:
-                path.mkdir(parents=True, exist_ok=True)
-        if touch:
-            if not path.exists():
-                path.touch()
-        if is_dir:
-            if not path.is_dir():
-                raise FileNotFoundError(f"Expected directory at: {path}")
-        if is_file:
-            if not path.is_file():
-                raise FileNotFoundError(f"Expected file at: {path}")
-        return path
-
     def _load_builtins(self):
         """Load built-in functions and install them in the Gateway instance."""
         # Show a warning if a builtin overrides an existing gateway attribute
@@ -120,50 +101,47 @@ class Gateway:
             setattr(self, name, wrapped_func)  # Install directly on self
 
     def resolve(self, value: str, param_name: str = None) -> str:
-        """Resolve [key|fallback] sigils anywhere within the string."""
+        """Resolve [key|fallback], [key], or [|fallback] sigils within a string."""
         if not isinstance(value, str):
             return value
-        
-        # Pattern to match [key|fallback] inside the string
-        sigil_pattern = r"\[([^\[\]]+)\|([^\[\]]+)\]|\[([^\[\]]+)\]"
-        matches = re.finditer(sigil_pattern, value)
 
-        # For each match, resolve the key or fallback
-        for match in matches:
-            if match.group(1) and match.group(2):  # has both key and fallback
-                key, fallback = match.group(1).strip(), match.group(2).strip()
-            else:  # only a key (fallback is empty, use param_name dynamically)
+        # Regex matches [key|fallback], [key], or [|fallback]
+        sigil_pattern = r"\[([^|\[\]]*?)\|([^|\[\]]*?)\]|\[([^\[\]|]+)\]"
+
+        def replacer(match):
+            if match.group(1) is not None and match.group(2) is not None:
+                key = match.group(1).strip() or (param_name or "")
+                fallback = match.group(2).strip() or None
+            elif match.group(3) is not None:
                 key = match.group(3).strip()
-                # If fallback is empty, use the param_name as a key dynamically
-                fallback = param_name
+                fallback = None
+            else:
+                return None  # malformed sigil
 
-            resolved_value = self._resolve_key(key, fallback, param_name)
-            value = value.replace(match.group(0), str(resolved_value))
+            resolved = self._resolve_key(key, fallback, param_name)
+            return str(resolved) if resolved is not None else ""
 
-        return value
+        # Substitute all matches
+        result = re.sub(sigil_pattern, replacer, value)
 
-    def _resolve_key(self, key: str, fallback: str, param_name: str) -> str:
-        """Helper method to resolve a key from context, results, or environment variables."""
+        return result if result != "" else None
+
+    def _resolve_key(self, key: str, fallback: str = None, param_name: str = None) -> str:
+        """Helper method to resolve a key from results, context, or environment vars."""
         search_keys = [key, key.lower(), key.upper()]
 
-        # If the fallback is a param_name, use the context with the param_name dynamically
-        if fallback == param_name and param_name in self.context:
-            self.used_context.append(param_name)  # Track usage
-            return self.context[param_name]
-
-        # Search in context, results, or environment variables
         for k in search_keys:
-            if k in self.context:
-                self.used_context.append(k)  # Track usage
-                return self.context[k]
             if k in self.results:
                 return self.results[k]
+            if k in self.context:
+                return self.context[k]
             env_val = os.getenv(k.upper())
             if env_val is not None:
                 return env_val
 
-        return fallback if fallback is not None else key
-    
+        # If nothing found and fallback is provided, return fallback
+        return fallback
+            
     def _wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
@@ -231,6 +209,29 @@ class Gateway:
         except AttributeError:
             return False
 
+    def resource(self, *parts, make_dirs=True, touch=False, is_dir=False, is_file=False, root=None):
+        """Construct a path relative to the root and optionally prepare it."""
+        # Should be safe to create dirs by default as they won't be persisted in the repo if empty
+        path = pathlib.Path(root or self.root, *parts)
+        if make_dirs:
+            # Only create directories if they don't already exist
+            if is_file or touch:
+                if not path.parent.exists():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                if not path.exists():
+                    path.mkdir(parents=True, exist_ok=True)
+        if touch:
+            if not path.exists():
+                path.touch()
+        if is_dir:
+            if not path.is_dir():
+                raise FileNotFoundError(f"Expected directory at: {path}")
+        if is_file:
+            if not path.is_file():
+                raise FileNotFoundError(f"Expected file at: {path}")
+        return path
+
 
 def show_functions(functions: dict):
     """Display available functions in project."""
@@ -267,16 +268,21 @@ def show_functions(functions: dict):
 def add_function_args(subparser, func_obj):
     """Add the function arguments to the subparser."""
     for arg_name, param in inspect.signature(func_obj).parameters.items():
-        arg_opts = {}
-        if param.annotation == bool:
-            arg_opts["action"] = "store_true"
+        arg_name_cli = f"--{arg_name.replace('_', '-')}"
+        if param.annotation == bool or isinstance(param.default, bool):
+            group = subparser.add_mutually_exclusive_group(required=False)
+            group.add_argument(arg_name_cli, dest=arg_name, action="store_true", help=f"Enable {arg_name}")
+            group.add_argument(f"--no-{arg_name.replace('_', '-')}", dest=arg_name, action="store_false", help=f"Disable {arg_name}")
+            subparser.set_defaults(**{arg_name: param.default})
         else:
-            arg_opts["type"] = param.annotation if param.annotation != param.empty else str
-        if param.default != param.empty:
-            arg_opts["default"] = param.default
-        else:
-            arg_opts["required"] = True
-        subparser.add_argument(f"--{arg_name}", **arg_opts)
+            arg_opts = {
+                "type": param.annotation if param.annotation != inspect.Parameter.empty else str
+            }
+            if param.default != inspect.Parameter.empty:
+                arg_opts["default"] = param.default
+            else:
+                arg_opts["required"] = True
+            subparser.add_argument(arg_name_cli, **arg_opts)
 
 
 def load_env(env_type: str, name: str, env_root: str):
@@ -308,6 +314,7 @@ def load_env(env_type: str, name: str, env_root: str):
                 os.environ[key.strip()] = value.strip()
                 logger.debug(f"Loaded env var: {key.strip()}={value.strip()}")
 
+
 def get_default_client():
     """Get the default client name based on logged in username."""
     try:
@@ -316,6 +323,7 @@ def get_default_client():
         return username if username else "guest"
     except Exception:
         return "guest"
+    
 
 def get_default_server():
     """Get the default server name based on machine hostname."""
@@ -387,16 +395,17 @@ def cli_main():
         if not tokens:
             continue
 
-        first_token = tokens[0].replace("-", "_")
+        raw_first_token = tokens[0]
+        normalized_first_token = raw_first_token.replace("-", "_")
         remaining_tokens = tokens[1:]
 
         # Resolve project or builtin
         try:
-            current_project_obj = getattr(gway, first_token)
+            current_project_obj = getattr(gway, normalized_first_token)
             if callable(current_project_obj):
                 func_obj = current_project_obj
-                func_tokens = [first_token] + remaining_tokens
-                project_functions = {first_token: func_obj}
+                func_tokens = [raw_first_token] + remaining_tokens
+                project_functions = {raw_first_token: func_obj}
             else:
                 project_functions = {
                     name: func for name, func in vars(current_project_obj).items()
@@ -408,33 +417,34 @@ def cli_main():
                 func_tokens = remaining_tokens
         except AttributeError:
             try:
-                func_obj = getattr(gway.builtin, first_token)
+                func_obj = getattr(gway.builtin, normalized_first_token)
                 if callable(func_obj):
-                    project_functions = {first_token: func_obj}
-                    func_tokens = [first_token] + remaining_tokens
+                    project_functions = {raw_first_token: func_obj}
+                    func_tokens = [raw_first_token] + remaining_tokens
                 else:
-                    abort(f"Unknown command or project: {first_token}")
+                    abort(f"Unknown command or project: {raw_first_token}")
             except AttributeError:
                 if current_project_obj:
                     project_functions = {
                         name: func for name, func in vars(current_project_obj).items()
                         if callable(func) and not name.startswith("_")
                     }
-                    func_tokens = [first_token] + remaining_tokens
+                    func_tokens = [raw_first_token] + remaining_tokens
                 else:
-                    abort(f"Unknown project, builtin, or function: {first_token}")
+                    abort(f"Unknown project, builtin, or function: {raw_first_token}")
 
         if not func_tokens:
-            abort(f"No function specified for project or builtin '{first_token}'")
+            abort(f"No function specified for project or builtin '{raw_first_token}'")
 
-        func_name = func_tokens[0]
+        raw_func_name = func_tokens[0]
+        normalized_func_name = raw_func_name.replace("-", "_")
         func_args = func_tokens[1:]
 
-        func_obj = project_functions.get(func_name)
+        func_obj = project_functions.get(raw_func_name) or project_functions.get(normalized_func_name)
         if not func_obj:
-            abort(f"Function '{func_name}' not found.")
+            abort(f"Function '{raw_func_name}' not found.")
 
-        func_parser = argparse.ArgumentParser(prog=func_name)
+        func_parser = argparse.ArgumentParser(prog=raw_func_name)
         add_function_args(func_parser, func_obj)
         parsed_args = func_parser.parse_args(func_args)
 
@@ -446,11 +456,10 @@ def cli_main():
         try:
             last_result = func_obj(**func_kwargs)
         except Exception as e:
-            abort(f"Error executing '{func_name}': {e}")
+            abort(f"Error executing '{raw_func_name}': {e}")
 
     if last_result is not None:
-        # TODO: Replace pprint with a custom function that colorizes the output if possible
-        print(last_result)
+        gway.print(last_result)
 
     if START_TIME:
         elapsed_time = time.time() - START_TIME

@@ -2,7 +2,7 @@ import unittest
 import sys
 import io
 import os
-from gway.core import Gateway
+from gway.gateway import Gateway
 from gway.builtins import *
 
 # Currently, verbose and abort cannot be tested in the same way as the other functions
