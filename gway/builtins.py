@@ -32,10 +32,12 @@ def hello_world(name: str = "World", greeting: str = "Hello"):
     """Smoke test function."""
     from gway import Gateway
     gway = Gateway()
-
+    
     message = f"{greeting.title()}, {name.title()}!"
     if hasattr(gway, "hello_world"):
         gway.print(message)
+
+    return locals()
 
 
 def envs(filter: str = None) -> dict:

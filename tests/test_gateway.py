@@ -2,27 +2,12 @@ import os
 import unittest
 from unittest import mock
 
-from gway.gateway import Gateway, load_project, load_builtins
-
-
-# A dummy function for testing dynamic loading
-def dummy_function(param1: str, param2: str = "default"):
-    """Dummy function for testing."""
-    return {"result": f"{param1}-{param2}"}
-
 
 class GatewayTests(unittest.TestCase):
 
     def setUp(self):
-        # Patch load_builtins to return a fake builtin function
-        self.patcher_builtins = mock.patch('gway.gateway.load_builtins', return_value={'hello_world': dummy_function})
-        self.mock_builtins = self.patcher_builtins.start()
-
-        # Create Gateway instance
-        self.gw = Gateway(root=os.getcwd())
-
-    def tearDown(self):
-        self.patcher_builtins.stop()
+        from gway import Gateway
+        self.gw = Gateway()
 
     def test_builtin_loading(self):
         # Builtin function should be available
@@ -31,9 +16,9 @@ class GatewayTests(unittest.TestCase):
 
     def test_function_wrapping_and_call(self):
         # Call the hello_world function (used as the "dummy_builtin" in the tests)
-        result = self.gw.hello_world(param1="test1", param2="test2")
+        result = self.gw.hello_world(name="test1", greeting="test2")
         self.assertIsInstance(result, dict)
-        self.assertEqual(result['result'], "test1-test2")
+        self.assertEqual(result['message'], "Test2, Test1!")
         # Ensure that hello_world is an attribute of the Gateway instance (not in results)
         self.assertTrue(hasattr(self.gw, 'hello_world'))
 
@@ -49,9 +34,9 @@ class GatewayTests(unittest.TestCase):
 
     def test_multiple_sigils(self):
         # Prepare a string with multiple sigils
-        self.gw.context['name'] = 'Alice'
+        self.gw.context['nickname'] = 'Alice'
         self.gw.context['age'] = 30
-        resolved = self.gw.resolve("User: [name|unknown], Age: [age|0]")
+        resolved = self.gw.resolve("User: [nickname|unknown], Age: [age|0]")
         self.assertEqual(resolved, "User: Alice, Age: 30")
 
     def test_environment_variable_resolution(self):
@@ -71,8 +56,8 @@ class GatewayTests(unittest.TestCase):
 
     def test_wrap_callable_argument_injection(self):
         # Simulate missing optional argument; it should auto-fill
-        result = self.gw.hello_world(param1="only_param1")
-        self.assertEqual(result['result'], "only_param1-default")
+        result = self.gw.hello_world(greeting="only_param1")
+        self.assertEqual(result['message'], "Only_Param1, World!")
 
     def test_used_context_tracking(self):
         # Call function with sigils
@@ -80,6 +65,19 @@ class GatewayTests(unittest.TestCase):
         _ = self.gw.resolve("[key1|fallback]")
         # Ensure that the key was tracked
         self.assertIn('key1', self.gw.used_context)  # Should now track used context
+
+    def test_variadic_positional_args(self):
+        result = self.gw.tests.variadic_positional("a", "b", "c")
+        self.assertEqual(result["args"], ("a", "b", "c"))
+
+    def test_variadic_keyword_args(self):
+        result = self.gw.tests.variadic_keyword(key1="val1", key2="val2")
+        self.assertEqual(result["kwargs"], {"key1": "val1", "key2": "val2"})
+
+    def test_variadic_args_and_kwargs(self):
+        result = self.gw.tests.variadic_both("x", "y", keyA="A", keyB="B")
+        self.assertEqual(result["args"], ("x", "y"))
+        self.assertEqual(result["kwargs"], {"keyA": "A", "keyB": "B"})
 
 
 if __name__ == "__main__":
