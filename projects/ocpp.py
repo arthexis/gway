@@ -1,6 +1,6 @@
 
 
-def start_csms(host='[CSMS_HOST|0.0.0.0]', port='[CSMS_PORT|9000]'):
+async def start_csms(host='[CSMS_HOST|0.0.0.0]', port='[CSMS_PORT|9000]'):
     """	
     Start the Central System Management Server (CSMS) with the given host and port.
     Args:

@@ -4,7 +4,9 @@ import time
 import shlex
 import inspect
 import logging
+import asyncio
 import argparse
+import threading
 import functools
 
 from .logging import setup_logging
@@ -38,10 +40,11 @@ class Gateway:
 
         self.root = root
         self._cache = {}
+        self._async_threads = []
         self.results = Results()
         self.context = {**kwargs}
         self.used_context = []
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger("gway")
 
         self._builtin_functions = {}  # raw function refs
         self._load_builtins()
@@ -88,8 +91,20 @@ class Gateway:
                     elif param.name in bound_args.arguments:
                         kwargs_to_pass[param.name] = bound_args.arguments[param.name]
 
-                result = func_obj(*args_to_pass, **kwargs_to_pass)
-                self.results.insert(func_name, result)
+                if inspect.iscoroutinefunction(func_obj):
+                    thread = threading.Thread(
+                        target=self._run_coroutine_threadsafe,
+                        args=(func_name, func_obj, args_to_pass, kwargs_to_pass),
+                        daemon=True
+                    )
+                    self._async_threads.append(thread)
+                    thread.start()
+                    result = f"[async task started for {func_name}]"
+                else:
+                    result = func_obj(*args_to_pass, **kwargs_to_pass)
+                    self.results.insert(func_name, result)
+                    if isinstance(result, dict):
+                        self.context.update(result)
 
                 if isinstance(result, dict):
                     self.context.update(result)
@@ -131,6 +146,19 @@ class Gateway:
         except AttributeError:
             return False
         
+    def _run_coroutine_threadsafe(self, func_name, coro_func, args, kwargs):
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(coro_func(*args, **kwargs))
+            self.results.insert(func_name, result)
+            if isinstance(result, dict):
+                self.context.update(result)
+        except Exception as e:
+            self.logger.error(f"Async error in {func_name}: {e}")
+        finally:
+            loop.close()
+        
     def resolve(self, sigil):
         """Resolve [sigils] in a given string, using find_value()."""
         if not isinstance(sigil, str):
@@ -150,6 +178,11 @@ class Gateway:
             self.used_context.append(key)
             return env_val
         return fallback
+    
+    def hold(self):
+        for thread in self._async_threads:
+            thread.join()
+        self._async_threads.clear()
 
 
 def add_function_args(subparser, func_obj):

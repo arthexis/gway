@@ -3,7 +3,6 @@ import sys
 import inspect
 import logging
 import pathlib
-import textwrap
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
 
@@ -166,7 +165,6 @@ def help(*args):
         help("builtin_function")
         help("project", "function_name")
     """
-    import inspect
     import textwrap
     from gway import Gateway
 
