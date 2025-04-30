@@ -188,6 +188,8 @@ class Gateway:
 def add_function_args(subparser, func_obj):
     """Add the function's arguments to the CLI subparser."""
     sig = inspect.signature(func_obj)
+    resolver = Gateway()
+
     for arg_name, param in sig.parameters.items():
         if param.kind == inspect.Parameter.VAR_POSITIONAL:
             subparser.add_argument(arg_name, nargs='*', help=f"Variable positional arguments for {arg_name}")
@@ -205,7 +207,13 @@ def add_function_args(subparser, func_obj):
                     "type": param.annotation if param.annotation != inspect.Parameter.empty else str
                 }
                 if param.default != inspect.Parameter.empty:
-                    arg_opts["default"] = param.default
+                    default_val = param.default
+                    if isinstance(default_val, str) and default_val.startswith("[") and default_val.endswith("]"):
+                        try:
+                            default_val = resolver.resolve(default_val)
+                        except Exception as e:
+                            print(f"Warning: failed to resolve default for {arg_name}: {e}")
+                    arg_opts["default"] = default_val
                 else:
                     arg_opts["required"] = True
                 subparser.add_argument(arg_name_cli, **arg_opts)
