@@ -17,7 +17,7 @@ def start_csms(host='[CSMS_HOST|0.0.0.0]', port='[CSMS_PORT|9000]'):
     return True
 
 
-def test_csms(url='http://[host|0.0.0.0]:[port|9000]'):
+def test_csms(url='http://[CSMS_HOST|0.0.0.0]:[CSMS_PORT|9000]'):
     """	
     Test the Central System Management Server (CSMS) with the given host and port.
     Args:

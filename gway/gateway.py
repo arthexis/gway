@@ -100,7 +100,7 @@ class Gateway:
             setattr(self.builtin, name, wrapped_func)
             setattr(self, name, wrapped_func)  # Install directly on self
 
-    def resolve(self, value: str, param_name: str = None) -> str:
+    def resolve(self, value: str) -> str:
         """Resolve [key|fallback], [key], or [|fallback] sigils within a string."""
         if not isinstance(value, str):
             return value
@@ -110,7 +110,7 @@ class Gateway:
 
         def replacer(match):
             if match.group(1) is not None and match.group(2) is not None:
-                key = match.group(1).strip() or (param_name or "")
+                key = match.group(1).strip() or ""
                 fallback = match.group(2).strip() or None
             elif match.group(3) is not None:
                 key = match.group(3).strip()
@@ -118,7 +118,7 @@ class Gateway:
             else:
                 return None  # malformed sigil
 
-            resolved = self._resolve_key(key, fallback, param_name)
+            resolved = self._resolve_key(key, fallback)
             return str(resolved) if resolved is not None else ""
 
         # Substitute all matches
@@ -126,7 +126,7 @@ class Gateway:
 
         return result if result != "" else None
 
-    def _resolve_key(self, key: str, fallback: str = None, param_name: str = None) -> str:
+    def _resolve_key(self, key: str, fallback: str = None) -> str:
         """Helper method to resolve a key from results, context, or environment vars."""
         search_keys = [key, key.lower(), key.upper()]
 
@@ -162,14 +162,14 @@ class Gateway:
                     if param.name not in bound_args.arguments:
                         default_value = param.default
                         if isinstance(default_value, str) and default_value.startswith("[") and default_value.endswith("]"):
-                            resolved = self.resolve(default_value, param_name=param.name)
+                            resolved = self.resolve(default_value)
                             bound_args.arguments[param.name] = resolved
                             self.used_context.append(param.name)  # Track the used context
 
                 # Then resolve all [|...] inside provided args as well
                 for key, value in bound_args.arguments.items():
                     if isinstance(value, str):
-                        bound_args.arguments[key] = self.resolve(value, param_name=key)
+                        bound_args.arguments[key] = self.resolve(value)
 
                     # Update context always
                     self.context[key] = bound_args.arguments[key]
