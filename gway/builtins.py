@@ -4,6 +4,7 @@ import inspect
 import logging
 import pathlib
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,11 +32,10 @@ def hello_world(name: str = "World", greeting: str = "Hello"):
     """Smoke test function."""
     from gway import Gateway
     gway = Gateway()
+
     message = f"{greeting.title()}, {name.title()}!"
     if hasattr(gway, "hello_world"):
         gway.print(message)
-    return message
-        
 
 
 def envs(filter: str = None) -> dict:
@@ -45,12 +45,21 @@ def envs(filter: str = None) -> dict:
         return {k: v for k, v in os.environ.items() if filter in k}
     else: 
         return os.environ.copy()
+    
+
+def enum(*args):
+    for i, arg in enumerate(args):
+        print(f"{i} - {arg}")
 
 
 _print = print
+_INSERT_NL = False
 
 def print(obj, *, max_depth=10, _current_depth=0):
     """Recursively prints an object with colorized output without extra spacing."""
+    global _INSERT_NL
+    if _INSERT_NL:
+        _print()
     # Show which function called print
     try:
         print_frame = inspect.stack()[2]
@@ -99,6 +108,7 @@ def print(obj, *, max_depth=10, _current_depth=0):
             _print(f"{Fore.RED}<function>{Style.RESET_ALL}", end="")
     else:
         _print(f"{Fore.GREEN}{str(obj)}{Style.RESET_ALL}", end="")  # No extra newline
+    _INSERT_NL = True
 
 
 def version() -> str:
@@ -116,4 +126,5 @@ def version() -> str:
     else:
         logger.error("VERSION file not found.")
         return "unknown"
+    
     

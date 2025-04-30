@@ -8,10 +8,11 @@ import pathlib
 import argparse
 import unittest
 import functools
-import importlib.util
 
 from .logging import setup_logging
 from .builtins import abort, print
+from .environs import get_base_client, get_base_server, load_env
+from .sources import load_builtins, load_project, show_functions
 from .structs import Results
 
 
@@ -20,49 +21,6 @@ logger = logging.getLogger(__name__)
 
 BASE_PATH = os.path.dirname(os.path.dirname(__file__))
 LIBRARY_MODE = True
-
-
-def load_project(project_name: str, root: str = None) -> tuple:
-    if root is None:
-        root = os.path.join(BASE_PATH, "projects")
-
-    if not os.path.isdir(root):
-        raise FileNotFoundError(f"Invalid project root: {root}")
-
-    project_parts = project_name.split(".")
-    project_file = os.path.join(root, "projects", *project_parts) + ".py"
-
-    if not os.path.isfile(project_file):
-        raise FileNotFoundError(f"Project file '{project_file}' not found.")
-
-    module_name = project_name.replace(".", "_")
-    spec = importlib.util.spec_from_file_location(module_name, project_file)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load spec for {project_name}")
-
-    project_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(project_module)
-
-    project_functions = {
-        name: obj for name, obj in inspect.getmembers(project_module)
-        if inspect.isfunction(obj) and not name.startswith("_")
-    }
-    return project_module, project_functions
-
-
-def load_builtins() -> dict:
-    """Load only functions defined inside the local builtins.py file."""
-
-    # Make sure to import your OWN 'builtins.py' inside gway package
-    builtins_module = importlib.import_module("gway.builtins")
-
-    builtins_functions = {
-        name: obj for name, obj in inspect.getmembers(builtins_module)
-        if inspect.isfunction(obj)
-        and not name.startswith("_")
-        and inspect.getmodule(obj) == builtins_module
-    }
-    return builtins_functions
 
 
 class Gateway:
@@ -101,22 +59,26 @@ class Gateway:
             setattr(self, name, wrapped_func)  # Install directly on self
 
     def resolve(self, value: str) -> str:
-        """Resolve [key|fallback], [key], or [|fallback] sigils within a string."""
+        """Resolve sigils in the given string using context, results or env variables."""
         if not isinstance(value, str):
             return value
 
-        # Regex matches [key|fallback], [key], or [|fallback]
-        sigil_pattern = r"\[([^|\[\]]*?)\|([^|\[\]]*?)\]|\[([^\[\]|]+)\]"
+        # Match [key|fallback] or [key]
+        sigil_pattern = r"\[([^\[\]|]*)(?:\|([^\[\]]*))?\]"
 
         def replacer(match):
-            if match.group(1) is not None and match.group(2) is not None:
-                key = match.group(1).strip() or ""
-                fallback = match.group(2).strip() or None
-            elif match.group(3) is not None:
-                key = match.group(3).strip()
-                fallback = None
-            else:
-                return None  # malformed sigil
+            key = match.group(1).strip()
+            fallback = match.group(2).strip() if match.group(2) is not None else None
+
+            if match.group(2) is not None:
+                # This was a [key|fallback] sigil
+                if key == "":
+                    raise ValueError("Empty key is not allowed in [|fallback]")
+                if fallback == "":
+                    raise ValueError(f"Empty fallback is not allowed in [{key}|]")
+
+            elif key == "":
+                raise ValueError("Empty key is not allowed in []")
 
             resolved = self._resolve_key(key, fallback)
             return str(resolved) if resolved is not None else ""
@@ -148,36 +110,39 @@ class Gateway:
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
             try:
-                self.logger.debug(f"Calling {func_name} with args: {args} and kwargs: {kwargs}")
+                self.logger.debug(f"Call {func_name} with args: {args} and kwargs: {kwargs}")
 
-                # Get the function signature
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
 
                 self.logger.debug(f"Context before argument injection: {self.context}")
 
-                # First fill missing args from context (only those required by the function)
                 for param in sig.parameters.values():
-                    if param.name not in bound_args.arguments:
+                    if param.name not in bound_args.arguments and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
                         default_value = param.default
                         if isinstance(default_value, str) and default_value.startswith("[") and default_value.endswith("]"):
                             resolved = self.resolve(default_value)
                             bound_args.arguments[param.name] = resolved
-                            self.used_context.append(param.name)  # Track the used context
+                            self.used_context.append(param.name)
 
-                # Then resolve all [|...] inside provided args as well
+                # Resolve strings in all bound args
                 for key, value in bound_args.arguments.items():
                     if isinstance(value, str):
                         bound_args.arguments[key] = self.resolve(value)
-
-                    # Update context always
                     self.context[key] = bound_args.arguments[key]
 
-                self.logger.debug(f"Bound args for {func_name}: {bound_args.arguments}")
-                final_args = {key: bound_args.arguments[key] for key in bound_args.arguments if key in sig.parameters}
-                result = func_obj(**final_args)  
+                args_to_pass = []
+                kwargs_to_pass = {}
+                for param in sig.parameters.values():
+                    if param.kind == param.VAR_POSITIONAL:
+                        args_to_pass.extend(bound_args.arguments.get(param.name, ()))
+                    elif param.kind == param.VAR_KEYWORD:
+                        kwargs_to_pass.update(bound_args.arguments.get(param.name, {}))
+                    elif param.name in bound_args.arguments:
+                        kwargs_to_pass[param.name] = bound_args.arguments[param.name]
 
+                result = func_obj(*args_to_pass, **kwargs_to_pass)
                 self.results.insert(func_name, result)
 
                 if isinstance(result, dict):
@@ -187,6 +152,7 @@ class Gateway:
             except Exception as e:
                 print(f"Error while executing '{func_name}': {e}")
                 raise
+
         return wrapped
 
     def __getattr__(self, project_name):
@@ -235,107 +201,31 @@ class Gateway:
         return path
 
 
-def show_functions(functions: dict):
-    """Display available functions in project."""
-    print("Available functions:")
-    for name, func in functions.items():
-        # Build argument preview
-        args_list = []
-        for param in inspect.signature(func).parameters.values():
-            if param.default != inspect.Parameter.empty:
-                default_val = param.default
-                if isinstance(default_val, str):
-                    default_val = f"{default_val}"
-                args_list.append(f"--{param.name} {default_val}")
-            else:
-                args_list.append(f"--{param.name} <required>")
-
-        args_preview = " ".join(args_list)
-
-        # Extract first non-empty line from docstring
-        doc = ""
-        if func.__doc__:
-            doc_lines = [line.strip() for line in func.__doc__.splitlines()]
-            doc = next((line for line in doc_lines if line), "")
-
-        # Print function with tight spacing
-        if args_preview:
-            print(f"  > {name} {args_preview}")
-        else:
-            print(f"  > {name}")
-        if doc:
-            print(f"      {doc}")
-
-
 def add_function_args(subparser, func_obj):
     """Add the function arguments to the subparser."""
-    for arg_name, param in inspect.signature(func_obj).parameters.items():
-        arg_name_cli = f"--{arg_name.replace('_', '-')}"
-        if param.annotation == bool or isinstance(param.default, bool):
-            group = subparser.add_mutually_exclusive_group(required=False)
-            group.add_argument(arg_name_cli, dest=arg_name, action="store_true", help=f"Enable {arg_name}")
-            group.add_argument(f"--no-{arg_name.replace('_', '-')}", dest=arg_name, action="store_false", help=f"Disable {arg_name}")
-            subparser.set_defaults(**{arg_name: param.default})
+    sig = inspect.signature(func_obj)
+    for arg_name, param in sig.parameters.items():
+        if param.kind == inspect.Parameter.VAR_POSITIONAL:
+            subparser.add_argument(arg_name, nargs='*', help=f"Variable positional arguments for {arg_name}")
+        elif param.kind == inspect.Parameter.VAR_KEYWORD:
+            subparser.add_argument('--kwargs', nargs='*', help='Additional keyword arguments as key=value pairs')
         else:
-            arg_opts = {
-                "type": param.annotation if param.annotation != inspect.Parameter.empty else str
-            }
-            if param.default != inspect.Parameter.empty:
-                arg_opts["default"] = param.default
+            arg_name_cli = f"--{arg_name.replace('_', '-')}"
+            if param.annotation == bool or isinstance(param.default, bool):
+                group = subparser.add_mutually_exclusive_group(required=False)
+                group.add_argument(arg_name_cli, dest=arg_name, action="store_true", help=f"Enable {arg_name}")
+                group.add_argument(f"--no-{arg_name.replace('_', '-')}", dest=arg_name, action="store_false", help=f"Disable {arg_name}")
+                subparser.set_defaults(**{arg_name: param.default})
             else:
-                arg_opts["required"] = True
-            subparser.add_argument(arg_name_cli, **arg_opts)
+                arg_opts = {
+                    "type": param.annotation if param.annotation != inspect.Parameter.empty else str
+                }
+                if param.default != inspect.Parameter.empty:
+                    arg_opts["default"] = param.default
+                else:
+                    arg_opts["required"] = True
+                subparser.add_argument(arg_name_cli, **arg_opts)
 
-
-def load_env(env_type: str, name: str, env_root: str):
-    """
-    Load environment variables from envs/{clients|servers}/{name}.env
-    If the file doesn't exist, create an empty one and log a warning.
-    Ensures the .env filename is always lowercase.
-    """
-    assert env_type in ("clients", "servers"), "env_type must be 'clients' or 'servers'"
-    env_dir = os.path.join(env_root, env_type)
-    os.makedirs(env_dir, exist_ok=True)  # Create folder structure if needed
-
-    # Ensure the name is lowercase for the filename
-    env_file = os.path.join(env_dir, f"{name.lower()}.env")
-
-    if not os.path.isfile(env_file):
-        # Create empty .env file
-        open(env_file, "a").close()
-        logger.warning(f"{env_type.capitalize()} env file '{env_file}' not found. Created an empty one.")
-        return
-
-    with open(env_file, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue  # Skip comments and empty lines
-            if "=" in line:
-                key, value = line.split("=", 1)
-                os.environ[key.strip()] = value.strip()
-                logger.debug(f"Loaded env var: {key.strip()}={value.strip()}")
-
-
-def get_default_client():
-    """Get the default client name based on logged in username."""
-    try:
-        import getpass
-        username = getpass.getuser()
-        return username if username else "guest"
-    except Exception:
-        return "guest"
-    
-
-def get_default_server():
-    """Get the default server name based on machine hostname."""
-    try:
-        import socket
-        hostname = socket.gethostname()
-        return hostname if hostname else "localhost"
-    except Exception:
-        return "localhost"
-    
 
 def cli_main():
     """Main CLI entry point with function chaining support."""
@@ -364,7 +254,7 @@ def cli_main():
     env_root = os.path.join(args.root or BASE_PATH, "envs")
 
     # Load environments
-    client_name = args.client or get_default_client()
+    client_name = args.client or get_base_client()
     load_env("clients", client_name, env_root)
 
     if args.commands[0] == "test":
@@ -376,7 +266,7 @@ def cli_main():
         result = runner.run(test_suite)
         sys.exit(0 if result.wasSuccessful() else 1)
 
-    server_name = args.server or get_default_server()
+    server_name = args.server or get_base_server()
     load_env("servers", server_name, env_root)
     gway_root = os.environ.get("GWAY_ROOT", args.root or BASE_PATH)
 
@@ -450,13 +340,28 @@ def cli_main():
         add_function_args(func_parser, func_obj)
         parsed_args = func_parser.parse_args(func_args)
 
-        func_kwargs = {
-            k: v for k, v in vars(parsed_args).items()
-            if k in inspect.signature(func_obj).parameters
-        }
+        func_kwargs = {}
+        func_args = []
+        extra_kwargs = {}
+
+        for name, value in vars(parsed_args).items():
+            param = inspect.signature(func_obj).parameters.get(name)
+            if param is None:
+                continue
+            if param.kind == inspect.Parameter.VAR_POSITIONAL:
+                func_args.extend(value or [])
+            elif param.kind == inspect.Parameter.VAR_KEYWORD:
+                if value:
+                    for item in value:
+                        if '=' not in item:
+                            abort(f"Invalid kwarg format '{item}'. Expected key=value.")
+                        k, v = item.split("=", 1)
+                        extra_kwargs[k] = v
+            else:
+                func_kwargs[name] = value
 
         try:
-            last_result = func_obj(**func_kwargs)
+            last_result = func_obj(*func_args, **{**func_kwargs, **extra_kwargs})
         except Exception as e:
             abort(f"Error executing '{raw_func_name}': {e}")
 
@@ -465,4 +370,4 @@ def cli_main():
 
     if START_TIME:
         elapsed_time = time.time() - START_TIME
-        print(f"Elapsed: {elapsed_time:.4f} seconds")
+        print(f"\nElapsed: {elapsed_time:.4f} seconds")
