@@ -27,13 +27,15 @@ def abort(message: str, exit_code: int = 1, library_mode: bool = None) -> int:
         return exit_code
 
 
-def hello_world(name: str = "World", greeting: str = "Hello", emoji: str = "👋"):
+def hello_world(name: str = "World", greeting: str = "Hello"):
     """Smoke test function."""
     from gway import Gateway
     gway = Gateway()
+    message = f"{greeting.title()}, {name.title()}!"
     if hasattr(gway, "hello_world"):
-        # Add hand emoji at the end of the greeting
-        gway.print(f"{greeting.title()}, {name.title()}! {emoji}")
+        gway.print(message)
+    return message
+        
 
 
 def envs(filter: str = None) -> dict:

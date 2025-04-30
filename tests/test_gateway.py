@@ -15,7 +15,7 @@ class GatewayTests(unittest.TestCase):
 
     def setUp(self):
         # Patch load_builtins to return a fake builtin function
-        self.patcher_builtins = mock.patch('gway.core.load_builtins', return_value={'hello_world': dummy_function})
+        self.patcher_builtins = mock.patch('gway.gateway.load_builtins', return_value={'hello_world': dummy_function})
         self.mock_builtins = self.patcher_builtins.start()
 
         # Create Gateway instance

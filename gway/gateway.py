@@ -132,8 +132,10 @@ class Gateway:
 
         for k in search_keys:
             if k in self.results:
+                self.used_context.append(k)
                 return self.results[k]
             if k in self.context:
+                self.used_context.append(k)
                 return self.context[k]
             env_val = os.getenv(k.upper())
             if env_val is not None:

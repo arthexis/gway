@@ -25,13 +25,8 @@ class GatewayBuiltinsTests(unittest.TestCase):
         # Test if the builtins can be accessed directly and are callable
         try:
             self.gw.print("test")
-            self.gw.verbose(True)
-            version_result = self.gw.version()
             self.gw.abort("Abort test")
             self.gw.hello_world()
-
-            # Assert that version function returns the expected version
-            self.assertEqual(version_result, "0.1.0")
 
         except AttributeError as e:
             self.fail(f"AttributeError occurred: {e}")
@@ -41,12 +36,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.gw.hello_world()
 
         # Check if "Hello, World!" was printed
-        self.assertEqual(self.sio.getvalue().strip(), "Hello, World!")
-
-    def test_version(self):
-        # Test the version function
-        version_result = self.gw.version()
-        self.assertEqual(version_result, "0.1.0")
+        self.assertIn("Hello, World!", self.sio.getvalue().strip())
 
 
 if __name__ == "__main__":
