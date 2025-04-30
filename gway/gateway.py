@@ -64,20 +64,16 @@ class Gateway:
         return Sigil(sigil) % self.find_value
 
     def find_value(self, key: str, fallback: str = None) -> str:
-        """Finder function passed to sigil resolution."""
-        search_keys = [key, key.lower(), key.upper()]
-
-        for k in search_keys:
-            if k in self.results:
-                self.used_context.append(k)
-                return self.results[k]
-            if k in self.context:
-                self.used_context.append(k)
-                return self.context[k]
-            env_val = os.getenv(k.upper())
-            if env_val is not None:
-                return env_val
-
+        """Find a value in the context, results or environment. Used for sigil resolution."""
+        if key in self.results:
+            self.used_context.append(key)
+            return self.results[key]
+        if key in self.context:
+            self.used_context.append(key)
+            return self.context[key]
+        env_val = os.getenv(key.upper())
+        if env_val is not None:
+            return env_val
         return fallback
             
     def _wrap_callable(self, func_name, func_obj):
