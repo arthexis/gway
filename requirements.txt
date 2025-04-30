@@ -2,3 +2,4 @@ toml
 setuptools 
 twine
 build
+colorama
