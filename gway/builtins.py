@@ -278,10 +278,6 @@ def get_tag(func, key, default=None):
 
 
 def watch_file(filepath, on_change, poll_interval=1.0, logger=None):
-    """
-    Watches a file for changes. Calls `on_change()` when the file is modified.
-    Returns a `threading.Event` you can use to detect when the change happened.
-    """
     import threading
     stop_event = threading.Event()
 
@@ -298,8 +294,7 @@ def watch_file(filepath, on_change, poll_interval=1.0, logger=None):
                     if logger:
                         logger.warning(f"File changed: {filepath}")
                     on_change()
-                    stop_event.set()
-                    return
+                    os._exit(1)
                 last_mtime = current_mtime
             except FileNotFoundError:
                 pass

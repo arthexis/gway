@@ -126,36 +126,6 @@ class Gateway:
                 raise
 
         return wrapped
-
-    def __getattr__(self, name):
-        # Builtin function?
-        if name in self._builtin_functions:
-            func = self._wrap_callable(name, self._builtin_functions[name])
-            setattr(self, name, func)
-            return func
-
-        # Cached project?
-        if name in self._cache:
-            return self._cache[name]
-
-        # Try to load project
-        try:
-            module, functions = load_project(name, self.root)
-            project_obj = type(name, (), {})()
-            for func_name, func_obj in functions.items():
-                wrapped_func = self._wrap_callable(f"{name}.{func_name}", func_obj)
-                setattr(project_obj, func_name, wrapped_func)
-            self._cache[name] = project_obj
-            return project_obj
-        except Exception as e:
-            raise AttributeError(f"Project or builtin '{name}' not found: {e}")
-
-    def __hasattr__(self, project_name):
-        try:
-            _ = self.__getattr__(project_name)
-            return True
-        except AttributeError:
-            return False
         
     def _run_coroutine_threadsafe(self, func_name, coro_func, args, kwargs):
         try:
@@ -183,12 +153,56 @@ class Gateway:
         finally:
             loop.close()
 
+    def hold(self, lockfile=None):
+        if lockfile:
+            watch_file(
+                lockfile,
+                on_change=lambda: (
+                    self.logger.warning("Lockfile triggered async shutdown."),
+                    os._exit(1)
+                ),
+                logger=self.logger
+            )
+        try:
+            while any(thread.is_alive() for thread in self._async_threads):
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            self.logger.warning("KeyboardInterrupt received. Exiting immediately.")
+            os._exit(1)
+
+    def __getattr__(self, name):
+        # Builtin function?
+        if name in self._builtin_functions:
+            func = self._wrap_callable(name, self._builtin_functions[name])
+            setattr(self, name, func)
+            return func
+
+        # Cached project?
+        if name in self._cache:
+            return self._cache[name]
+
+        # Try to load project
+        try:
+            module, functions = load_project(name, self.root)
+            project_obj = type(name, (), {})()
+            for func_name, func_obj in functions.items():
+                wrapped_func = self._wrap_callable(f"{name}.{func_name}", func_obj)
+                setattr(project_obj, func_name, wrapped_func)
+            self._cache[name] = project_obj
+            return project_obj
+        except Exception as e:
+            raise AttributeError(f"Project or builtin '{name}' not found: {e}")
         
     def resolve(self, sigil):
         """Resolve [sigils] in a given string, using find_value()."""
         if not isinstance(sigil, str):
             return sigil
-        return Sigil(sigil) % self.find_value
+        if not isinstance(sigil, Sigil):
+            sigil = Sigil(sigil)
+        return sigil % self.find_value
+    
+    # TODO: Add support to access find_value as if Gateway were a dictionary
+    # When accessing it like that, a missing value should raise an error instead
 
     def find_value(self, key: str, fallback: str = None) -> str:
         """Find a value in the context, results or environment. Used for sigil resolution."""
@@ -204,23 +218,6 @@ class Gateway:
             return env_val
         return fallback
     
-    def hold(self, lockfile=None):
-        stop_event = None
-
-        if lockfile:
-            stop_event = watch_file(
-                lockfile,
-                on_change=lambda: self.logger.warning("Lockfile triggered async shutdown."),
-                logger=self.logger
-            )
-        try:
-            while any(thread.is_alive() for thread in self._async_threads):
-                if stop_event and stop_event.is_set():
-                    break
-                time.sleep(0.1)
-        finally:
-            self._async_threads.clear()
-
 
 def add_function_args(subparser, func_obj):
     """Add the function's arguments to the CLI subparser."""
