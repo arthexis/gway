@@ -293,6 +293,7 @@ def cli_main():
         sys.exit(1)
 
     if args.upgrade:
+        logger.warning(f"Upgrade will be attempted after system exit.")
         sys._run_upgrade = True
 
     env_root = os.path.join(args.root or BASE_PATH, "envs")
@@ -414,6 +415,7 @@ def cli_main():
 
 def run_upgrade():
     if getattr(sys, "_run_upgrade", False):
+        logger.warning(f"Attempting to run upgrade.sh")
         print("\nRunning upgrade script...")
         try:
             subprocess.run(["./upgrade.sh"], check=True)
