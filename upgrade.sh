@@ -15,6 +15,6 @@ echo "[4] Setting executable permissions for scripts..."
 chmod +x gway.sh upgrade.sh
 
 echo "[5] Running test command..."
-gway -v hello-world
+gway hello-world
 
 echo "Upgrade completed successfully."

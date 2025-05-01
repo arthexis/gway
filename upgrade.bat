@@ -21,7 +21,7 @@ pip install -e .
 echo [4] Ensuring scripts are executable (Windows: no chmod needed)...
 
 echo [5] Running test command...
-gway -v hello-world
+gway hello-world
 
 echo Upgrade completed successfully.
 endlocal
