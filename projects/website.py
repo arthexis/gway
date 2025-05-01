@@ -1,4 +1,7 @@
+import os
 import logging
+import time
+import hashlib
 from gway import requires, Gateway, tag
 
 logger = logging.getLogger(__name__)
@@ -163,3 +166,36 @@ def start_server(*,
         return asyncio.to_thread(run_server)  # returns coroutine
     else:
         run_server()
+
+
+@requires("requests")
+def watch_url(url, on_change, poll_interval=30.0, logger=None):
+    import threading
+    import requests
+
+    stop_event = threading.Event()
+
+    def _watch():
+        last_hash = None
+        while not stop_event.is_set():
+            try:
+                response = requests.get(url, timeout=5)
+                response.raise_for_status()
+                current_hash = hashlib.sha256(response.content).hexdigest()
+
+                if last_hash is not None and current_hash != last_hash:
+                    if logger:
+                        logger.warning(f"URL content changed: {url}")
+                    on_change()
+                    os._exit(1)
+
+                last_hash = current_hash
+            except Exception as e:
+                if logger:
+                    logger.warning(f"Error watching URL {url}: {e}")
+            time.sleep(poll_interval)
+
+    thread = threading.Thread(target=_watch, daemon=True)
+    thread.start()
+    return stop_event
+

@@ -153,9 +153,18 @@ class Gateway:
         finally:
             loop.close()
 
-    def hold(self, lockfile=None):
+    def hold(self, lockfile=None, lockurl=None):
         if lockfile:
             watch_file(
+                lockfile,
+                on_change=lambda: (
+                    self.logger.warning("Lockfile triggered async shutdown."),
+                    os._exit(1)
+                ),
+                logger=self.logger
+            )
+        if lockurl:
+            self.website.watch_file(
                 lockfile,
                 on_change=lambda: (
                     self.logger.warning("Lockfile triggered async shutdown."),

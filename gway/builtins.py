@@ -280,7 +280,7 @@ def get_tag(func, key, default=None):
     return getattr(func, 'tags', {}).get(key, default)
 
 
-def watch_file(filepath, on_change, poll_interval=1.0, logger=None):
+def watch_file(filepath, on_change, poll_interval=2.0, logger=None):
     import threading
     stop_event = threading.Event()
 
@@ -306,3 +306,4 @@ def watch_file(filepath, on_change, poll_interval=1.0, logger=None):
     thread = threading.Thread(target=_watch, daemon=True)
     thread.start()
     return stop_event
+
