@@ -167,7 +167,7 @@ class Gateway:
             self.website.watch_url(
                 lockurl,
                 on_change=lambda: (
-                    self.logger.warning("Lockfile triggered async shutdown."),
+                    self.logger.warning("Lockurl triggered async shutdown."),
                     os._exit(1)
                 ),
                 logger=self.logger

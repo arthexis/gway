@@ -173,6 +173,7 @@ def watch_url(url, on_change, poll_interval=30.0, logger=None):
     import threading
     import requests
 
+    logger.info(f"Watching url: {url}")
     stop_event = threading.Event()
 
     def _watch():
