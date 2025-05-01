@@ -277,7 +277,6 @@ def cli_main():
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-c", "--client", type=str, help="Specify client environment")
     parser.add_argument("-s", "--server", type=str, help="Specify server environment")
-    parser.add_argument("-u", "--upgrade", action="store_true", help="Run upgrade.sh after execution")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
 
     args = parser.parse_args()
@@ -292,10 +291,6 @@ def cli_main():
     if not args.commands:
         parser.print_help()
         sys.exit(1)
-
-    if args.upgrade:
-        logger.warning(f"Upgrade will be attempted after system exit.")
-        sys._run_upgrade = True
 
     env_root = os.path.join(args.root or BASE_PATH, "envs")
 
@@ -413,23 +408,3 @@ def cli_main():
         elapsed_time = time.time() - START_TIME
         print(f"\nElapsed: {elapsed_time:.4f} seconds")
 
-
-def run_upgrade():
-    if getattr(sys, "_run_upgrade", False):
-        logger.warning(f"Attempting to run upgrade.sh")
-        print("\nRunning upgrade script...")
-        try:
-            subprocess.run(["./upgrade.sh"], check=True)
-        except Exception as e:
-            print(f"Upgrade failed: {e}")
-
-
-atexit.register(run_upgrade)
-
-
-def handle_exit_signals(signum, frame):
-    sys.exit(0)
-
-
-for sig in (signal.SIGINT, signal.SIGTERM):
-    signal.signal(sig, handle_exit_signals)

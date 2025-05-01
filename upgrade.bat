@@ -9,10 +9,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
-git stash save "Auto-stash before upgrade"
+git stash save "Auto-stash before upgrade" >nul 2>&1
 
 echo [2] Pulling latest code from Git...
-git pull
+for /f "delims=" %%i in ('git pull') do (
+    set "GIT_OUTPUT=%%i"
+)
+
+echo !GIT_OUTPUT!
+if "!GIT_OUTPUT!"=="Already up to date." (
+    echo No updates pulled. Restoring stash (if any) and exiting...
+    git stash pop >nul 2>&1
+    exit /b 0
+)
 
 echo [3] Reinstalling package in editable mode...
 call .venv\Scripts\activate
@@ -24,5 +33,5 @@ echo [5] Running test command...
 gway hello-world
 
 echo Upgrade completed successfully.
-echo
+echo.
 endlocal
