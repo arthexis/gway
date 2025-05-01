@@ -24,4 +24,5 @@ echo [5] Running test command...
 gway hello-world
 
 echo Upgrade completed successfully.
+echo
 endlocal
