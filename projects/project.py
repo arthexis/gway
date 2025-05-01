@@ -1,9 +1,11 @@
+import os
 import sys
 import toml
+import time
 from pathlib import Path
 import subprocess
 
-from gway import Gateway
+from gway import Gateway, requires
 
 
 def build(
@@ -181,3 +183,39 @@ def build(
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
         subprocess.run(["git", "push"], check=True)
         print(f"Committed and pushed: {commit_msg}")
+
+
+@requires("requests")
+def watch_pypi_package(package_name, on_change, poll_interval=6.0, logger=None):
+    import threading
+    import requests
+
+    url = f"https://pypi.org/pypi/{package_name}/json"
+    logger.info(f"Watching PyPI package: {package_name}")
+    stop_event = threading.Event()
+
+    def _watch():
+        last_version = None
+        while not stop_event.is_set():
+            try:
+                response = requests.get(url, timeout=5)
+                response.raise_for_status()
+                data = response.json()
+                current_version = data["info"]["version"]
+                logger.debug(f"Current PyPI version: {current_version}")
+
+                if last_version is not None and current_version != last_version:
+                    if logger:
+                        logger.warning(f"New version detected for {package_name}: {current_version}")
+                    on_change()
+                    os._exit(1)
+
+                last_version = current_version
+            except Exception as e:
+                if logger:
+                    logger.warning(f"Error watching PyPI package {package_name}: {e}")
+            time.sleep(poll_interval)
+
+    thread = threading.Thread(target=_watch, daemon=True)
+    thread.start()
+    return stop_event

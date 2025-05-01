@@ -153,25 +153,22 @@ class Gateway:
         finally:
             loop.close()
 
-    def hold(self, lockfile=None, lockurl=None):
-        if lockfile:
-            watch_file(
-                lockfile,
-                on_change=lambda: (
-                    self.logger.warning("Lockfile triggered async shutdown."),
-                    os._exit(1)
-                ),
-                logger=self.logger
-            )
-        if lockurl:
-            self.website.watch_url(
-                lockurl,
-                on_change=lambda: (
-                    self.logger.warning("Lockurl triggered async shutdown."),
-                    os._exit(1)
-                ),
-                logger=self.logger
-            )
+    def hold(self, lock_file=None, lock_url=None, lock_pypi=False):
+        def shutdown(reason):
+            self.logger.warning(f"{reason} triggered async shutdown.")
+            os._exit(1)
+
+        watchers = [
+            (lock_file, watch_file, "Lockfile"),
+            (lock_url, self.website.watch_url, "Lockurl"),
+            (lock_pypi if lock_pypi is not False else None,
+            self.project.watch_pypi_package, "PyPI package")
+        ]
+        for target, watcher, reason in watchers:
+            if target:
+                if target is True and lock_pypi:
+                    target = "gway"
+                watcher(target, on_change=lambda r=reason: shutdown(r), logger=self.logger)
         try:
             while any(thread.is_alive() for thread in self._async_threads):
                 time.sleep(0.1)
