@@ -186,7 +186,7 @@ def build(
 
 
 @requires("requests")
-def watch_pypi_package(package_name, on_change, poll_interval=6.0, logger=None):
+def watch_pypi_package(package_name, on_change, poll_interval=300.0, logger=None):
     import threading
     import requests
 
