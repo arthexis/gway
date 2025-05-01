@@ -169,7 +169,7 @@ def start_server(*,
 
 
 @requires("requests")
-def watch_url(url, on_change, poll_interval=30.0, logger=None):
+def watch_url(url, on_change, poll_interval=6.0, logger=None):
     import threading
     import requests
 
@@ -183,6 +183,7 @@ def watch_url(url, on_change, poll_interval=30.0, logger=None):
                 response = requests.get(url, timeout=5)
                 response.raise_for_status()
                 current_hash = hashlib.sha256(response.content).hexdigest()
+                logger.debug(f"{current_hash=}")
 
                 if last_hash is not None and current_hash != last_hash:
                     if logger:

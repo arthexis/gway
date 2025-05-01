@@ -279,7 +279,9 @@ def cli_main():
 
     args = parser.parse_args()
 
-    loglevel = "DEBUG" if args.debug else "INFO"
+    loglevel = "INFO"
+    if args.debug:
+        loglevel = "DEBUG"
     setup_logging(logfile="gway.log", loglevel=loglevel, app_name="gway")
 
     START_TIME = time.time() if args.timed else None
