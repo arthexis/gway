@@ -10,9 +10,9 @@ import threading
 import functools
 
 from .logging import setup_logging
-from .builtins import abort, print, run_tests
+from .builtins import abort, print, run_tests, get_tag
 from .environs import get_base_client, get_base_server, load_env
-from .sources import load_builtins, load_project, show_functions
+from .functions import load_builtins, load_project, show_functions
 from .sigils import Sigil
 from .structs import Results
 

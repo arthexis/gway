@@ -3,6 +3,7 @@ import sys
 import inspect
 import logging
 import pathlib
+import textwrap
 
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
@@ -155,7 +156,7 @@ def run_tests(root: str = 'tests'):
     return result.wasSuccessful()
 
 
-def help(*args):
+def help(*args, full_code=False):
     """
     Display help information for a gway function.
 
@@ -163,10 +164,12 @@ def help(*args):
         help("builtin_function")
         help("project", "function_name")
     """
-    import textwrap
     from gway import Gateway
 
     gway = Gateway()
+
+    # TODO: If only a project is passed, but that project is valid, return help on that project instead
+    # This includes its location and what functions are defined by it (include the help of each individual function)
 
     # Determine the function and context
     if len(args) == 1:
@@ -217,15 +220,56 @@ def help(*args):
     code_call = f"gway.{func_name}" if len(args) == 1 else f"gway.{args[0]}.{func_name}"
     code_call += f"({', '.join(code_parts)})"
 
-    return {
+    # Extract TODOs from the function source code
+    todos = []
+    try:
+        source_lines = inspect.getsourcelines(func_obj)[0]
+        todo_block = None
+
+        for line in source_lines:
+            stripped = line.strip()
+            if "# TODO" in stripped:
+                todo_text = stripped.split("# TODO", 1)[-1].strip()
+                if todo_block:
+                    todos.append("\n".join(todo_block))
+                todo_block = [f"TODO: {todo_text}"]
+            elif todo_block and (stripped.startswith("#") or not stripped):
+                comment = stripped.lstrip("#").strip()
+                if comment:
+                    todo_block.append(comment)
+            elif todo_block:
+                todos.append("\n".join(todo_block))
+                todo_block = None
+
+        if todo_block:
+            todos.append("\n".join(todo_block))
+    except Exception as e:
+        todos = [f"Error extracting TODOs: {e}"]
+
+    result = {
         "Signature": f"{func_name}{sig}",
         "Docstring": f"{textwrap.fill(doc, width=80)}",
-        "Example CLI": f"{cli_call}", 
-        "Example Code": f"{code_call}",
+        "Example CLI": cli_call, 
+        "Example Code": code_call,
+        "TODOs": todos or None
     }
 
+    if full_code:
+        try:
+            result["Full Code"] = "".join(inspect.getsourcelines(func_obj)[0])
+        except Exception as e:
+            result["Full Code"] = f"(Could not retrieve code: {e})"
+
+    return result
 
 def sigils(*args: str):
     from .sigils import Sigil
     text = "\n".join(args)
     return Sigil(text).list_sigils()
+
+
+def get_tag(func, key, default=None):
+    # Unwrap to the original function
+    while hasattr(func, '__wrapped__'):
+        func = func.__wrapped__
+    return getattr(func, 'tags', {}).get(key, default)

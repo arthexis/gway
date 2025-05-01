@@ -1,7 +1,7 @@
 GWAY
 ====
 
-**GWAY** is a dynamic CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic context resolution, argument injection, and environment support.
+**GWAY** is a dynamic CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic context resolution, argument injection, and environment support. Higher-level programming, lower barrier to entry.
 
 Features
 --------

@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 
 @requires("bottle", "docutils")
-def setup_app(app=None):
+def setup_app(*, app=None):
     """Configure a simple application that showcases the use of GWAY to generate websites."""
     from bottle import Bottle, static_file, request, template
     from docutils.core import publish_parts
@@ -113,14 +113,19 @@ def setup_app(app=None):
 
 
 @requires("bottle", "requests")
-def setup_proxy(endpoint : str):
+def setup_proxy(*, endpoint : str, app=None, websockets=False):
     """
     Create a proxy handler to the given Bottle app.
-    When using this proxy, create the proxy first then attach the rest of your routes.
+    When using this proxy, attach/create this proxy first then attach the rest of your routes.
     Otherwise, the proxy will catch all requests and block other routes.
     """
     from bottle import request, Bottle
     import requests
+
+    # TODO: Implement websocket forwarding if websockets=True
+    # This should be transparent to websocket applications, including authentication
+
+    if app is None: app = Bottle()
 
     @app.route("/<path:path>", method=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
     def proxy_handler(path):
@@ -136,21 +141,18 @@ def setup_proxy(endpoint : str):
 
 
 @requires("bottle")
-def start_server(
+def start_server(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
     debug=False,
     proxy=None,
     app=None
 ):
-    """Start an HTTP server to host the given application, or the default website."""
+    """Start an HTTP server to host the given application, or the default website if None."""
     from bottle import run
 
-    # TODO: When app is none, build the new app by combining setup_app and proxy_app
-
     if app is None:
+        app = setup_app()
         if proxy:
-            app = setup_app(setup_proxy(endpoint=proxy))
-        else:
-            app = setup_app()
+            app = setup_proxy(endpoint=proxy, app=app)
     run(app, host=host, port=int(port), debug=debug)
