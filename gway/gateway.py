@@ -10,7 +10,7 @@ import threading
 import functools
 
 from .logging import setup_logging
-from .builtins import abort, print, run_tests, get_tag
+from .builtins import abort, print, run_tests, get_tag, watch_file
 from .environs import get_base_client, get_base_server, load_env
 from .functions import load_builtins, load_project, show_functions
 from .sigils import Sigil
@@ -92,6 +92,7 @@ class Gateway:
                         kwargs_to_pass[param.name] = bound_args.arguments[param.name]
 
                 if inspect.iscoroutinefunction(func_obj):
+                    # Case 1: it's an async def function
                     thread = threading.Thread(
                         target=self._run_coroutine_threadsafe,
                         args=(func_name, func_obj, args_to_pass, kwargs_to_pass),
@@ -102,15 +103,22 @@ class Gateway:
                     result = f"[async task started for {func_name}]"
                 else:
                     result = func_obj(*args_to_pass, **kwargs_to_pass)
-                    # TODO: When inserting a result from a function whose name is made out of more than one 
-                    # word separated by _, ignore the first word to create the insertion key. For example:
-                    # A function called setup_app that returns a simple value gets it stored under "app" instead of "setup_app"
-                    self.results.insert(func_name, result)
-                    if isinstance(result, dict):
-                        self.context.update(result)
 
-                if isinstance(result, dict):
-                    self.context.update(result)
+                    if inspect.iscoroutine(result):
+                        # Case 2: returned a coroutine (e.g., via asyncio.to_thread)
+                        thread = threading.Thread(
+                            target=self._run_coroutine_threadsafe_result,
+                            args=(func_name, result),
+                            daemon=True
+                        )
+                        self._async_threads.append(thread)
+                        thread.start()
+                        result = f"[async coroutine started for {func_name}]"
+                    else:
+                        short_key = func_name.split("_", 1)[-1] if "_" in func_name else func_name
+                        self.results.insert(short_key, result)
+                        if isinstance(result, dict):
+                            self.context.update(result)
 
                 return result
             except Exception as e:
@@ -161,6 +169,20 @@ class Gateway:
             self.logger.error(f"Async error in {func_name}: {e}")
         finally:
             loop.close()
+
+    def _run_coroutine_threadsafe_result(self, func_name, coro):
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(coro)
+            self.results.insert(func_name, result)
+            if isinstance(result, dict):
+                self.context.update(result)
+        except Exception as e:
+            self.logger.error(f"Async error in {func_name}: {e}")
+        finally:
+            loop.close()
+
         
     def resolve(self, sigil):
         """Resolve [sigils] in a given string, using find_value()."""
@@ -182,10 +204,22 @@ class Gateway:
             return env_val
         return fallback
     
-    def hold(self):
-        for thread in self._async_threads:
-            thread.join()
-        self._async_threads.clear()
+    def hold(self, lockfile=None):
+        stop_event = None
+
+        if lockfile:
+            stop_event = watch_file(
+                lockfile,
+                on_change=lambda: self.logger.warning("Lockfile triggered async shutdown."),
+                logger=self.logger
+            )
+        try:
+            while any(thread.is_alive() for thread in self._async_threads):
+                if stop_event and stop_event.is_set():
+                    break
+                time.sleep(0.1)
+        finally:
+            self._async_threads.clear()
 
 
 def add_function_args(subparser, func_obj):

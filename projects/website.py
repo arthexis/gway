@@ -1,5 +1,5 @@
 import logging
-from gway import requires, Gateway
+from gway import requires, Gateway, tag
 
 logger = logging.getLogger(__name__)
 
@@ -146,13 +146,20 @@ def start_server(*,
     port="[WEBSITE_PORT|8888]",
     debug=False,
     proxy=None,
-    app=None
+    app=None,
+    daemon=False  # this is the trigger
 ):
     """Start an HTTP server to host the given application, or the default website if None."""
     from bottle import run
 
-    if app is None:
-        app = setup_app()
+    def run_server():
+        actual_app = app or setup_app()
         if proxy:
-            app = setup_proxy(endpoint=proxy, app=app)
-    run(app, host=host, port=int(port), debug=debug)
+            actual_app = setup_proxy(endpoint=proxy, app=actual_app)
+        run(actual_app, host=host, port=int(port), debug=debug)
+
+    if daemon:
+        import asyncio
+        return asyncio.to_thread(run_server)  # returns coroutine
+    else:
+        run_server()

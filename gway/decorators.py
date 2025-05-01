@@ -1,6 +1,7 @@
+import subprocess
 import functools
 import importlib
-import subprocess
+import functools
 import logging
 import sys
 import re
@@ -49,3 +50,6 @@ def requires(*packages):
 
 requires = tag(decorator=True)(requires)
 tag = tag(decorator=True)(tag)
+
+
+__all__ = ("requires", "tag",)

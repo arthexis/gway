@@ -1,7 +1,6 @@
 import unittest
 import sys
 import io
-import os
 from gway.gateway import Gateway
 from gway.builtins import *
 

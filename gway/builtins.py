@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import inspect
 import logging
 import pathlib
@@ -262,6 +263,7 @@ def help(*args, full_code=False):
 
     return result
 
+
 def sigils(*args: str):
     from .sigils import Sigil
     text = "\n".join(args)
@@ -273,3 +275,36 @@ def get_tag(func, key, default=None):
     while hasattr(func, '__wrapped__'):
         func = func.__wrapped__
     return getattr(func, 'tags', {}).get(key, default)
+
+
+def watch_file(filepath, on_change, poll_interval=1.0, logger=None):
+    """
+    Watches a file for changes. Calls `on_change()` when the file is modified.
+    Returns a `threading.Event` you can use to detect when the change happened.
+    """
+    import threading
+    stop_event = threading.Event()
+
+    def _watch():
+        try:
+            last_mtime = os.path.getmtime(filepath)
+        except FileNotFoundError:
+            last_mtime = None
+
+        while not stop_event.is_set():
+            try:
+                current_mtime = os.path.getmtime(filepath)
+                if last_mtime is not None and current_mtime != last_mtime:
+                    if logger:
+                        logger.warning(f"File changed: {filepath}")
+                    on_change()
+                    stop_event.set()
+                    return
+                last_mtime = current_mtime
+            except FileNotFoundError:
+                pass
+            time.sleep(poll_interval)
+
+    thread = threading.Thread(target=_watch, daemon=True)
+    thread.start()
+    return stop_event
