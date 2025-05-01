@@ -277,7 +277,7 @@ def cli_main():
             continue
 
         raw_first_token = tokens[0]
-        normalized_first_token = raw_first_token.replace("-", "_")
+        normalized_first_token = raw_first_token.replace("-", ".")
         remaining_tokens = tokens[1:]
 
         # Resolve project or builtin

@@ -1,8 +1,11 @@
 import functools
 import importlib
 import subprocess
+import logging
 import sys
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def requires(*packages):
@@ -16,7 +19,7 @@ def requires(*packages):
                 try:
                     importlib.import_module(pkg_name)
                 except ImportError:
-                    print(f"[requires] Installing missing package: {package_spec}")
+                    logger.info(f"Installing missing package: {package_spec}")
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package_spec])
 
             return func(*args, **kwargs)

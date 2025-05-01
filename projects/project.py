@@ -79,6 +79,8 @@ def build(
         if line.strip() and not line.startswith("#")
     ]
 
+    # TODO: Can we get the repository URL string directly from the local git repo itself?
+
     pyproject_content = {
         "build-system": {
             "requires": ["setuptools", "wheel"],
@@ -104,6 +106,9 @@ def build(
             ],
             "scripts": {
                 project_name: f"{project_name}:cli_main",
+            },
+            "urls": {
+                "repository": "https://github.com/arthexis/gway.git"
             }
         },
         "tool": {

@@ -1,5 +1,6 @@
 import re
 
+
 class Sigil:
     """
     Represents a resolvable sigil in the format [key] or [key|fallback].

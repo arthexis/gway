@@ -4,8 +4,8 @@ import inspect
 import logging
 import pathlib
 
-# Avoid importing Gateway at the top level in this file specifically (circular import)
 
+# Avoid importing Gateway at the top level in this file specifically (circular import)
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +87,10 @@ def print(text, *, max_depth=10, _current_depth=0):
             colon = f"{Style.DIM}: {Style.RESET_ALL}"
             _print(f"{key_str}{colon} {v}")
     elif isinstance(text, list):
-        _print("[", end="")
         for i, item in enumerate(text):
             if i > 0:
                 _print(end="")  # No comma separator for items
             print(item, max_depth=max_depth, _current_depth=_current_depth + 1)
-        _print("]", end="")  # Avoid new line after list
     elif isinstance(text, str):
         _print(f"{Fore.GREEN}{text}{Style.RESET_ALL}", end="")  # No extra newline after string
     elif callable(text):
