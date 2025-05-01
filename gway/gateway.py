@@ -163,13 +163,14 @@ class Gateway:
             os._exit(1)
 
         watchers = [
-            (lock_file, watch_file, "Lockfile"),
-            (lock_url, self.website.watch_url, "Lockurl"),
+            (lock_file, watch_file, "Lock file"),
+            (lock_url, self.website.watch_url, "Lock url"),
             (lock_pypi if lock_pypi is not False else None,
             self.project.watch_pypi_package, "PyPI package")
         ]
         for target, watcher, reason in watchers:
             if target:
+                self.logger.info(f"Setup watcher for {reason}")
                 if target is True and lock_pypi:
                     target = "gway"
                 watcher(target, on_change=lambda r=reason: shutdown(r), logger=self.logger)

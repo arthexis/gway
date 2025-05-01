@@ -169,7 +169,7 @@ def start_server(*,
 
 
 @requires("requests")
-def watch_url(url, on_change, poll_interval=6.0, logger=None):
+def watch_url(url, on_change, poll_interval=30.0, logger=None):
     import threading
     import requests
 

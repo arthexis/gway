@@ -3,7 +3,6 @@ import importlib
 import inspect
 
 
-
 def load_project(project_name: str, root: str) -> tuple:
     # Only load functions that are explicitly declared in the imported module
     # Avoid including functions that were imported from somewhere else to avoid duplication
