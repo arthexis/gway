@@ -217,11 +217,12 @@ def help(*args):
     code_call = f"gway.{func_name}" if len(args) == 1 else f"gway.{args[0]}.{func_name}"
     code_call += f"({', '.join(code_parts)})"
 
-    gway.print(f"Help for `{func_name}` in `{location}`:")
-    gway.print(f"Signature: {func_name}{sig}")
-    gway.print(f"Docstring: {textwrap.fill(doc, width=80)}")
-    gway.print(f"Example CLI: {cli_call}")
-    gway.print(f"Example Code: {code_call}")
+    return {
+        "Signature": f"{func_name}{sig}",
+        "Docstring": f"{textwrap.fill(doc, width=80)}",
+        "Example CLI": f"{cli_call}", 
+        "Example Code": f"{code_call}",
+    }
 
 
 def sigils(*args: str):

@@ -102,6 +102,9 @@ class Gateway:
                     result = f"[async task started for {func_name}]"
                 else:
                     result = func_obj(*args_to_pass, **kwargs_to_pass)
+                    # TODO: When inserting a result from a function whose name is made out of more than one 
+                    # word separated by _, ignore the first word to create the insertion key. For example:
+                    # A function called setup_app that returns a simple value gets it stored under "app" instead of "setup_app"
                     self.results.insert(func_name, result)
                     if isinstance(result, dict):
                         self.context.update(result)

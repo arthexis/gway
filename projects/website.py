@@ -5,21 +5,75 @@ logger = logging.getLogger(__name__)
 
 
 @requires("bottle", "docutils")
-def start_server(
-    host="[WEBSITE_HOST|127.0.0.1]",
-    port="[WEBSITE_PORT|8888]",
-    debug=False,
-):
-    from bottle import Bottle, static_file, run, template
-    app = Bottle()
+def setup_app(app=None):
+    """Configure a simple application that showcases the use of GWAY to generate websites."""
+    from bottle import Bottle, static_file, request, template
+    from docutils.core import publish_parts
 
-    # TODO: Add a --proxy flag that may provide a an URL to which unhandled routes are forwarded to
-    # The forwarding should be transparent, passing the same path and headers to the destination
+    gway = Gateway()
+    if app is None: app = Bottle()
+
+    @app.route("/ref/<path:re:.*>")
+    def show_reference(path):
+        parts = [p.replace("-", "_") for p in path.strip("/").split("/")]
+
+        if len(parts) == 1:
+            help_info = gway.help(parts[0])
+            title = f"Help for {parts[0]}"
+        elif len(parts) == 2:
+            help_info = gway.help(parts[0], parts[1])
+            title = f"Help for {parts[0]}.{parts[1]}"
+        else:
+            return template("""
+                <!DOCTYPE html>
+                <html><head><title>GWAY Help</title></head>
+                <body style="font-family: sans-serif; max-width: 700px; margin: 2em auto;">
+                    <h2>Invalid reference</h2>
+                    <p>Expected 1 or 2 path components after /ref/.</p>
+                </body>
+                </html>
+            """)
+
+        if help_info is None:
+            return template("""
+                <!DOCTYPE html>
+                <html><head><title>GWAY Help</title></head>
+                <body style="font-family: sans-serif; max-width: 700px; margin: 2em auto;">
+                    <h2>Function Not Found</h2>
+                    <p>No function found for the given path.</p>
+                </body>
+                </html>
+            """)
+
+        return template("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>{{!title}}</title>
+                <style>
+                    body { font-family: sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.6; }
+                    pre { background: #f5f5f5; padding: 1em; overflow-x: auto; }
+                </style>
+            </head>
+            <body>
+                <h1>{{!title}}</h1>
+                <h3>Signature</h3>
+                <pre>{{!help_info['Signature']}}</pre>
+
+                <h3>Docstring</h3>
+                <pre>{{!help_info['Docstring']}}</pre>
+
+                <h3>Example CLI</h3>
+                <pre>{{!help_info['Example CLI']}}</pre>
+
+                <h3>Example Code</h3>
+                <pre>{{!help_info['Example Code']}}</pre>
+            </body>
+            </html>
+        """, **locals())
 
     @app.route("/")
     def index():
-        from docutils.core import publish_parts
-
         gway = Gateway()
         readme_path = gway.resource("README.rst")
 
@@ -28,12 +82,13 @@ def start_server(
 
         html_parts = publish_parts(source=rst_content, writer_name="html")
         body = html_parts["html_body"]
+        version = gway.version()
 
         return template("""
             <!DOCTYPE html>
             <html>
             <head>
-                <title>GWAY</title>
+                <title>GWAY v{{!version}}</title>
                 <style>
                     body { font-family: sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.6; }
                     a { color: #1e88e5; }
@@ -41,19 +96,61 @@ def start_server(
                 </style>
             </head>
             <body>
-                <h1>Welcome to GWAY</h1>
+                <h1>Welcome to GWAY v{{!version}}</h1>
                 <p><a href="https://pypi.org/project/gway/">Latest Release on PyPI</a></p>
                 <p><a href="https://github.com/arthexis/gway/">View the Source Code</a></p>
                 {{!body}}
             </body>
             </html>
-        """, body=body)
+        """, **locals())
 
-    # Static file handler if needed
     @app.route("/static/<filename:path>")
     def send_static(filename):
         gway = Gateway()
         return static_file(filename, root=gway.resource("data", "static"))
 
-    run(app, host=host, port=port, debug=debug)
+    return app
 
+
+@requires("bottle", "requests")
+def setup_proxy(endpoint : str):
+    """
+    Create a proxy handler to the given Bottle app.
+    When using this proxy, create the proxy first then attach the rest of your routes.
+    Otherwise, the proxy will catch all requests and block other routes.
+    """
+    from bottle import request, Bottle
+    import requests
+
+    @app.route("/<path:path>", method=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+    def proxy_handler(path):
+        target_url = f"{endpoint.rstrip('/')}/{path}"
+        headers = {key: value for key, value in request.headers.items()}
+        method = request.method
+        try:
+            resp = requests.request(method, target_url, headers=headers, data=request.body.read(), stream=True)
+            return resp.content, resp.status_code, resp.headers.items()
+        except Exception as e:
+            logger.error("Proxy request failed: %s", e)
+            return f"Proxy error: {e}", 502
+
+
+@requires("bottle")
+def start_server(
+    host="[WEBSITE_HOST|127.0.0.1]",
+    port="[WEBSITE_PORT|8888]",
+    debug=False,
+    proxy=None,
+    app=None
+):
+    """Start an HTTP server to host the given application, or the default website."""
+    from bottle import run
+
+    # TODO: When app is none, build the new app by combining setup_app and proxy_app
+
+    if app is None:
+        if proxy:
+            app = setup_app(setup_proxy(endpoint=proxy))
+        else:
+            app = setup_app()
+    run(app, host=host, port=int(port), debug=debug)
