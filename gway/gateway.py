@@ -286,7 +286,8 @@ def cli_main():
     load_env("clients", client_name, env_root)
 
     if args.commands[0] == "test": 
-        results = run_tests()
+        test_filter = args.commands[1] if len(args.commands) > 1 else None
+        results = run_tests(filter=test_filter)
         sys.exit(0 if results else 1)
 
     server_name = args.server or get_base_server()
@@ -303,12 +304,10 @@ def cli_main():
 
     for chunk in command_chunks:
         chunk = chunk.strip()
-        if not chunk:
-            continue
+        if not chunk: continue
 
         tokens = shlex.split(chunk)
-        if not tokens:
-            continue
+        if not tokens: continue
 
         raw_first_token = tokens[0]
         normalized_first_token = raw_first_token.replace("-", "_")

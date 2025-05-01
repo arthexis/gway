@@ -1,10 +1,9 @@
 import unittest
 import sys
 import io
+import asyncio
 from gway.gateway import Gateway
 from gway.builtins import *
-
-# Currently, verbose and abort cannot be tested in the same way as the other functions
 
 class GatewayBuiltinsTests(unittest.TestCase):
 
@@ -24,9 +23,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
         # Test if the builtins can be accessed directly and are callable
         try:
             self.gw.print("test")
-            self.gw.abort("Abort test")
             self.gw.hello_world()
-
         except AttributeError as e:
             self.fail(f"AttributeError occurred: {e}")
 
@@ -37,6 +34,11 @@ class GatewayBuiltinsTests(unittest.TestCase):
         # Check if "Hello, World!" was printed
         self.assertIn("Hello, World!", self.sio.getvalue().strip())
 
+    async def test_abort(self):
+        """Test that the abort function raises a SystemExit exception."""
+        with self.assertRaises(SystemExit):
+            # Run abort in a separate event loop to avoid exit in main test process
+            await asyncio.to_thread(self.gw.abort, "Abort test")
 
 if __name__ == "__main__":
     unittest.main()

@@ -71,6 +71,5 @@ class SigilTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             s % 42
 
-
 if __name__ == "__main__":
     unittest.main()

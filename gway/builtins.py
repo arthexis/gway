@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import inspect
 import logging
@@ -14,23 +13,10 @@ logger = logging.getLogger(__name__)
 
 def abort(message: str, exit_code: int = 1, library_mode: bool = None) -> int:
     """Abort with error message."""
-    from .gateway import LIBRARY_MODE
-    if library_mode is None:
-        library_mode = LIBRARY_MODE
     logger.error(message)
     print(f"Halting: {message}")
+    raise SystemExit(exit_code)
     
-    # Check if we are running in test mode by checking an environment variable
-    if os.getenv('TEST_MODE') != '1':  # Only call sys.exit if TEST_MODE is not set
-        if not LIBRARY_MODE:
-            sys.exit(exit_code)
-        else:
-            raise SystemExit(exit_code)
-    else:
-        # In test mode, just print the error and don't exit
-        print(f"Abort in TEST_MODE: {message} (exit code {exit_code})")
-        return exit_code
-
 
 def hello_world(name: str = "World", greeting: str = "Hello"):
     """Smoke test function."""
@@ -143,17 +129,34 @@ def resource(*parts, base=None, touch=False):
     return path
 
 
-def run_tests(root: str = 'tests'):
+def run_tests(root: str = 'tests', filter=None):
     """Execute all automatically detected test suites."""
     import unittest
-
     print("Running the test suite...")
-    os.environ['TEST_MODE'] = '1'
-    test_loader = unittest.TestLoader()
-    test_suite = test_loader.discover(root)
+
+    # Define a custom pattern to include files matching the filter
+    def is_test_file(file):
+        # If no filter, exclude files starting with '_'
+        if filter:
+            return file.endswith('.py') and filter in file
+        return file.endswith('.py') and not file.startswith('_')
+
+    # List all the test files manually and filter
+    test_files = [
+        os.path.join(root, f) for f in os.listdir(root)
+        if is_test_file(f)
+    ]
+
+    # Load the test suite manually from the filtered list
+    test_loader = unittest.defaultTestLoader
+    test_suite = unittest.TestSuite()
+
+    for test_file in test_files:
+        test_suite.addTests(test_loader.discover(os.path.dirname(test_file), pattern=os.path.basename(test_file)))
+    
+    # Run the tests
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(test_suite)
-    os.environ['TEST_MODE'] = '0'
     return result.wasSuccessful()
 
 
