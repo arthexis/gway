@@ -1,6 +1,8 @@
 GWAY
 ====
 
+Welcome Traveler, this is the GWAY project README.rst file and website.
+
 **GWAY** is a dynamic CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic context resolution, argument injection, and environment support.
 
 Higher-level programming, lower barrier to entry.
@@ -15,8 +17,11 @@ Features
 - 🧪 Built-in test runner: ``gway test``
 - 📦 Environment-aware loading (e.g., ``clients``, ``servers``)
 
-Example: AWG Cable Calculation
-------------------------------
+Examples
+--------
+
+AWG Cable Calculation
+~~~~~~~~~~~~~~~~~~~~~
 
 Given a project ``awg.py`` containing logic to calculate cable sizes and conduit requirements:
 
@@ -47,19 +52,93 @@ Given a project ``awg.py`` containing logic to calculate cable sizes and conduit
     # Chain cable calculation and echo the result
     gway awg find-cable --meters 25 --amps 60 - print --text "[awg]"
 
-Project Structure Expectations
-------------------------------
+GWAY Website Server
+~~~~~~~~~~~~~~~~~~~
 
-- Project functions should reside in Python modules within the root directory.
-- Environments should be stored under ``envs/clients/`` and ``envs/servers/``.
-- Shared resources like database connections should be accessed through the injected ``Gateway()`` instance.
+You can also run a lightweight help/documentation server directly using GWAY:
+
+.. code-block:: powershell
+
+    PS C:\Users\arthe\Repos\gway> gway --debug website start-server --daemon - hold
+
+This launches an interactive web UI that lets you browse your project, inspect help docs, and search callable functions.
+
+Visit `http://localhost:8888` once it's running.
+
+Online Help & Documentation
+---------------------------
+
+Browse built-in and project-level function documentation online at:
+
+📘 https://arthexis.com
+
+- Use the **search box** in the top left to find any callable by name (e.g., ``find_cable``, ``read_file``, ``parse_json``).
+- You can also navigate directly to: ``https://arthexis.com/help/<project>/<function>`` or ``https://arthexis.com/help/<built-in>``
+
+This is useful for both the included out-of-the-box GWAY tools and your own projects, assuming they follow the GWAY format.
+
 
 Installation
 ------------
 
+Install via PyPI:
+
 .. code-block:: bash
 
-    pip install gway  # or install from local source
+    pip install gway
+
+Install from Source:
+
+.. code-block:: bash
+
+    git clone https://github.com/arthexis/gway.git
+    cd gway
+
+    # Run directly from shell or command prompt
+    ./gway.sh        # On Linux/macOS
+    gway.bat         # On Windows
+
+When running GWAY from source for the first time, it will **auto-install** dependencies if needed.
+
+To **upgrade** to the latest version from source:
+
+.. code-block:: bash
+
+    ./upgrade.sh     # On Linux/macOS
+    upgrade.bat      # On Windows
+
+This pulls the latest updates from the `main` branch and refreshes dependencies.
+
+Project Structure
+-----------------
+
+Here's a quick reference of the main directories in a typical GWAY workspace:
+
++----------------+-------------------------------------------------------------+
+| Directory      | Description                                                 |
++================+=============================================================+
+| envs/clients   | Per-user environment files (e.g., ``username.env``)         |
++----------------+-------------------------------------------------------------+
+| envs/servers   | Per-host environment files (e.g., ``hostname.env``)         |
++----------------+-------------------------------------------------------------+
+| projects/      | Your own Python modules — callable via GWAY                 |
++----------------+-------------------------------------------------------------+
+| logs/          | Runtime logs and outputs                                    |
++----------------+-------------------------------------------------------------+
+| tests/         | Unit tests for your own projects                            |
++----------------+-------------------------------------------------------------+
+| data/          | Static assets, resources, and other data files              |
++----------------+-------------------------------------------------------------+
+| temp/          | Temporary working directory for intermediate output files   |
++----------------+-------------------------------------------------------------+
+
+
+After placing your modules under `projects/`, you can immediately invoke them with:
+
+.. code-block:: bash
+
+    gway my_module my_function --arg1 value
+
 
 License
 -------

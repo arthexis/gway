@@ -1,0 +1,39 @@
+body {
+    font-family: sans-serif;
+    max-width: 900px;
+    margin: 40px auto;
+    line-height: 1.6;
+}
+aside {
+    float: left;
+    width: 220px;
+    margin-right: 3em;
+}
+main {
+    overflow: hidden;
+}
+pre {
+    background: #f5f5f5;
+    padding: 1em;
+    overflow-x: auto;
+}
+li a {
+    text-decoration: none;
+    color: #1e88e5;
+}
+.header-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5em;
+}
+h1 {
+    margin: 0;
+    padding: 0;
+    font-size: 2.2em;
+}
+.search-box input[type="text"] {
+    padding: 0.4em;
+    font-size: 1em;
+    width: 200px;
+}

@@ -6,6 +6,8 @@ from gway import requires, Gateway
 
 logger = logging.getLogger(__name__)
 
+_css_cache = {}
+
 
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
@@ -46,26 +48,26 @@ def setup_app(*, app=None):
         '''
         return f"<aside>{search_box}<ul>{links}</ul></aside>"
 
-    def make_template(*, title="GWAY", navbar="", content=""):
+    def load_css(path):
+        """Load and cache CSS from the given path."""
+        if path in _css_cache:
+            return _css_cache[path]
+        
+        if not os.path.exists(path):
+            return "/* CSS file not found */"
+        
+        with open(path, "r", encoding="utf-8") as f:
+            css = f.read()
+            _css_cache[path] = css
+            return css
+
+    def make_template(*, title="GWAY", navbar="", content="", css_path="data/static/default.css"):
+        css = load_css(css_path)
         return template("""<!DOCTYPE html>
             <html>
             <head>
                 <title>{{!title}}</title>
-                <style>
-                    body { font-family: sans-serif; max-width: 900px; margin: 40px auto; line-height: 1.6; }
-                    aside { float: left; width: 220px; margin-right: 2em; }
-                    main { overflow: hidden; }
-                    pre { background: #f5f5f5; padding: 1em; overflow-x: auto; }
-                    li a { text-decoration: none; color: #1e88e5; }
-                    .consent-box {
-                        background: #fff3cd;
-                        border: 1px solid #ffeeba;
-                        padding: 1em;
-                        margin-bottom: 1.5em;
-                        border-radius: 8px;
-                    }
-                    .consent-box form { display: inline; }
-                </style>
+                <style>{{!css}}</style>
             </head>
             <body>
                 {{!navbar}}
@@ -81,6 +83,8 @@ def setup_app(*, app=None):
         response.status = 303
         response.set_header("Location", redirect_url)
         return ""
+    
+    # TODO: Fix help by moving it into its own builder function reachable with ?c=help
 
     @app.route("/help/<path:re:.*>")
     def show_help(path):
