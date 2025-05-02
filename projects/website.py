@@ -6,6 +6,10 @@ from gway import requires, Gateway, tag
 
 logger = logging.getLogger(__name__)
 
+# TODO: Create a build_navbar function that can be used by setup_app to create a navbar on the right side of the page
+# Build functions should produce html fragments that can be used by other build or setup functions
+# The navbar should be  
+
 
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
@@ -16,7 +20,7 @@ def setup_app(*, app=None):
     gway = Gateway()
     if app is None: app = Bottle()
 
-    @app.route("/ref/<path:re:.*>")
+    @app.route("/help/<path:re:.*>")
     def show_reference(path):
         parts = [p.replace("-", "_") for p in path.strip("/").split("/")]
 
@@ -31,8 +35,7 @@ def setup_app(*, app=None):
                 <!DOCTYPE html>
                 <html><head><title>GWAY Help</title></head>
                 <body style="font-family: sans-serif; max-width: 700px; margin: 2em auto;">
-                    <h2>Invalid reference</h2>
-                    <p>Expected 1 or 2 path components after /ref/.</p>
+                    <h2>Invalid help subject</h2>
                 </body>
                 </html>
             """)

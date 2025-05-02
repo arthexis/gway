@@ -8,10 +8,6 @@ import asyncio
 import argparse
 import threading
 import functools
-import atexit
-import signal
-import subprocess
-
 
 from .logging import setup_logging
 from .builtins import abort, print, run_tests, get_tag, watch_file
@@ -233,9 +229,11 @@ class Gateway:
 def add_function_args(subparser, func_obj):
     """Add the function's arguments to the CLI subparser."""
     sig = inspect.signature(func_obj)
+    logger.debug(f"Add function args for {func_obj.__name__} {sig}")
     resolver = Gateway()
 
     for arg_name, param in sig.parameters.items():
+        logger.debug(f"Inspecting {arg_name=} {param=} {param.kind=}")
         if param.kind == inspect.Parameter.VAR_POSITIONAL:
             subparser.add_argument(arg_name, nargs='*', help=f"Variable positional arguments for {arg_name}")
         elif param.kind == inspect.Parameter.VAR_KEYWORD:
@@ -247,6 +245,7 @@ def add_function_args(subparser, func_obj):
                 group.add_argument(arg_name_cli, dest=arg_name, action="store_true", help=f"Enable {arg_name}")
                 group.add_argument(f"--no-{arg_name.replace('_', '-')}", dest=arg_name, action="store_false", help=f"Disable {arg_name}")
                 subparser.set_defaults(**{arg_name: param.default})
+                logger.debug(f"Subparser default for {arg_name=} set to {param.default=}")
             else:
                 arg_opts = {
                     "type": param.annotation if param.annotation != inspect.Parameter.empty else str
@@ -262,6 +261,26 @@ def add_function_args(subparser, func_obj):
                 else:
                     arg_opts["required"] = True
                 subparser.add_argument(arg_name_cli, **arg_opts)
+                logger.debug(f"Subparser {arg_name=} argument added as {arg_name_cli=} {arg_opts=}")
+
+
+def chunk_command(args_commands):
+    """Split args.commands into logical chunks without breaking quoted arguments."""
+    chunks = []
+    current_chunk = []
+
+    for token in args_commands:
+        if token in ('-', ';'):  # command separator
+            if current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = []
+        else:
+            current_chunk.append(token)
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    return chunks
 
 
 def cli_main():
@@ -281,10 +300,9 @@ def cli_main():
 
     args = parser.parse_args()
 
-    loglevel = "INFO"
-    if args.debug:
-        loglevel = "DEBUG"
+    loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel, app_name="gway")
+    logger.debug(f"Argparser first pass: {args}")
 
     START_TIME = time.time() if args.timed else None
 
@@ -308,36 +326,35 @@ def cli_main():
     gway_root = os.environ.get("GWAY_ROOT", args.root or BASE_PATH)
 
     # Split command chains
-    command_line = " ".join(args.commands)
-    command_chunks = command_line.split(" - ") if " - " in command_line else command_line.split(";")
+    command_chunks = chunk_command(args.commands)
 
     gway = Gateway(root=gway_root)
     current_project_obj = None
     last_result = None
 
     for chunk in command_chunks:
-        chunk = chunk.strip()
+        logger.debug(f"Processing chunk: {chunk}")
         if not chunk: continue
 
-        tokens = shlex.split(chunk)
-        if not tokens: continue
-
-        raw_first_token = tokens[0]
+        raw_first_token = chunk[0]
         normalized_first_token = raw_first_token.replace("-", "_")
-        remaining_tokens = tokens[1:]
+        remaining_tokens = chunk[1:]
 
         # Resolve project or builtin
         try:
             current_project_obj = getattr(gway, normalized_first_token)
+            logger.debug(f"Matched gway attribute: {current_project_obj}")
             if callable(current_project_obj):
                 func_obj = current_project_obj
                 func_tokens = [raw_first_token] + remaining_tokens
                 project_functions = {raw_first_token: func_obj}
+                logger.debug(f"Element is callable {project_functions=}")
             else:
                 project_functions = {
                     name: func for name, func in vars(current_project_obj).items()
                     if callable(func) and not name.startswith("_")
                 }
+                logger.debug(f"Element not callable, inspected contents: {project_functions}")
                 if not remaining_tokens:
                     show_functions(project_functions)
                     sys.exit(0)
@@ -374,12 +391,14 @@ def cli_main():
         func_parser = argparse.ArgumentParser(prog=raw_func_name)
         add_function_args(func_parser, func_obj)
         parsed_args = func_parser.parse_args(func_args)
+        logger.debug(f"Parsed {func_args=} into {parsed_args=}")
 
         func_kwargs = {}
         func_args = []
         extra_kwargs = {}
 
         for name, value in vars(parsed_args).items():
+            print(f"{name=} {value=} {func_args=}")
             param = inspect.signature(func_obj).parameters.get(name)
             if param is None:
                 continue

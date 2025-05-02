@@ -46,9 +46,6 @@ def load_env(env_type: str, name: str, env_root: str):
     Supports BASE_ENV which can be defined in the main env file,
     but base env vars will not override the primary env's values.
     """
-
-    # TODO: Redact sensitive env vars loaded in the logs
-
     assert env_type in ("clients", "servers"), "env_type must be 'clients' or 'servers'"
     env_dir = os.path.join(env_root, env_type)
     os.makedirs(env_dir, exist_ok=True)
@@ -61,6 +58,7 @@ def load_env(env_type: str, name: str, env_root: str):
         return
 
     # Load primary env file
+    logger.debug(f"Loading env file {env_file}")
     primary_env = parse_env_file(env_file)
 
     # Check for BASE_ENV
@@ -72,11 +70,11 @@ def load_env(env_type: str, name: str, env_root: str):
             for key, value in base_env.items():
                 if key not in primary_env:
                     os.environ[key] = value
-                    logger.debug(f"Loaded base env var: {key}={value}")
+                    # logger.debug(f"Loaded base env var: {key}={value}")
         else:
             logger.warning(f"BASE_ENV '{base_env_name}' referenced but not found at '{base_env_file}'.")
 
     # Load primary env variables (override base if needed)
     for key, value in primary_env.items():
         os.environ[key] = value
-        logger.debug(f"Loaded env var: {key}={value}")
+        # logger.debug(f"Loaded env var: {key}={value}")

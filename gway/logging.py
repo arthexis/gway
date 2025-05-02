@@ -44,3 +44,4 @@ def setup_logging(*,
     sep = "-" * 70
     cmd_args = " ".join(sys.argv[1:])
     root_logger.info(f"\n{sep}\n> {app_name or '%prog'} {cmd_args}\n{sep}")
+    root_logger.info(f"Loglevel set to {loglevel} ({logging.getLevelName(loglevel)})")
