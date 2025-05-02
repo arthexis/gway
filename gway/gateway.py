@@ -9,7 +9,7 @@ import threading
 import functools
 
 from .logging import setup_logging
-from .builtins import abort, print, run_tests, get_tag, watch_file
+from .builtins import abort, print, run_tests, watch_file
 from .environs import get_base_client, get_base_server, load_env
 from .functions import load_builtins, load_project, show_functions
 from .sigils import Resolver
@@ -149,6 +149,7 @@ class Gateway(Resolver):
             loop.close()
 
     def hold(self, lock_file=None, lock_url=None, lock_pypi=False):
+        # TODO: Create a PID watcher and allow hold to use it with a lock_pid kwarg.
         def shutdown(reason):
             self.logger.warning(f"{reason} triggered async shutdown.")
             os._exit(1)
@@ -180,12 +181,11 @@ class Gateway(Resolver):
             return func
 
         # Cached project?
-        if name in self._cache:
-            return self._cache[name]
+        if name in self._cache: return self._cache[name]
 
         # Try to load project
         try:
-            module, functions = load_project(name, self.root)
+            _, functions = load_project(name, self.root)
             project_obj = type(name, (), {})()
             for func_name, func_obj in functions.items():
                 wrapped_func = self._wrap_callable(f"{name}.{func_name}", func_obj)
@@ -213,7 +213,8 @@ def add_function_args(subparser, func_obj):
             if param.annotation == bool or isinstance(param.default, bool):
                 group = subparser.add_mutually_exclusive_group(required=False)
                 group.add_argument(arg_name_cli, dest=arg_name, action="store_true", help=f"Enable {arg_name}")
-                group.add_argument(f"--no-{arg_name.replace('_', '-')}", dest=arg_name, action="store_false", help=f"Disable {arg_name}")
+                group.add_argument(f"--no-{arg_name.replace('_', '-')}", 
+                                   dest=arg_name, action="store_false", help=f"Disable {arg_name}")
                 subparser.set_defaults(**{arg_name: param.default})
                 logger.debug(f"Subparser default for {arg_name=} set to {param.default=}")
             else:
@@ -385,7 +386,7 @@ def cli_main():
         logger.info(f"Result:\n{last_result}") 
         gway.print(last_result)
     else:
-        logger.warning(f"No results returned.")
+        logger.info(f"No results returned.")
 
     if start_time:
         elapsed_time = time.time() - start_time

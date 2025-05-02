@@ -5,6 +5,8 @@ import logging
 import pathlib
 import textwrap
 
+from colorama import init as colorama_init, Fore, Style
+
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
 
@@ -24,9 +26,7 @@ def hello_world(name: str = "World", greeting: str = "Hello"):
     gway = Gateway()
 
     message = f"{greeting.title()}, {name.title()}!"
-    if hasattr(gway, "hello_world"):
-        gway.print(message)
-
+    if hasattr(gway, "hello_world"): gway.print(message)
     return locals()
 
 
@@ -60,7 +60,6 @@ def print(text, *, max_depth=10, _current_depth=0):
     print_origin = f"{print_frame.function}() in {print_frame.filename}:{print_frame.lineno}"
     logger.debug(f"From {print_origin}:\n {text}")
 
-    from colorama import init as colorama_init, Fore, Style
     colorama_init(strip=False)
 
     if _current_depth > max_depth:

@@ -26,6 +26,7 @@ def get_base_server():
     
 
 def parse_env_file(env_file):
+    """Parse the given .env file into a dictionary."""
     env_vars = {}
     with open(env_file, "r") as f:
         for line in f:
@@ -70,11 +71,9 @@ def load_env(env_type: str, name: str, env_root: str):
             for key, value in base_env.items():
                 if key not in primary_env:
                     os.environ[key] = value
-                    # logger.debug(f"Loaded base env var: {key}={value}")
         else:
             logger.warning(f"BASE_ENV '{base_env_name}' referenced but not found at '{base_env_file}'.")
 
     # Load primary env variables (override base if needed)
     for key, value in primary_env.items():
         os.environ[key] = value
-        # logger.debug(f"Loaded env var: {key}={value}")

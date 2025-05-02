@@ -18,8 +18,7 @@ def setup_logging(*,
         if not os.path.isabs(logfile):
             logfile = os.path.join(os.getcwd(), logdir, logfile)
     
-    # Define default pattern (now using funcName instead of filename)
-    # Only time, no full date (date is in filename already)
+    # Define default pattern (now using funcName instead of filename). Only time, no date.
     pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(funcName)s:%(lineno)d - %(message)s'
 
     # Clear existing handlers to avoid duplicates
@@ -27,8 +26,6 @@ def setup_logging(*,
     if root_logger.handlers:
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
-
-    # Set root logger level
     root_logger.setLevel(loglevel)
 
     # File handler (rotating daily at midnight)

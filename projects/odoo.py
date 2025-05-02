@@ -80,30 +80,17 @@ def fetch_quotes(
     model = 'sale.order'
     method = 'search_read'
 
-    # Start with the default state filter
     domain_filter = [('state', '=', state)]
-
-    # Add filter for older quotations if specified
     if older_than:
         cutoff_date = (datetime.now() - timedelta(days=older_than)).strftime('%Y-%m-%d')
         domain_filter.append(('create_date', '<=', cutoff_date))
-
-    # Add filter for salesperson's name if specified
     if salesperson:
         domain_filter.append(('user_id.name', 'ilike', salesperson))
-
-    # Add filter for customer's name if specified
     if customer:
         domain_filter.append(('partner_id.name', 'ilike', customer))
-
-    # Merge additional filters if provided
     if kwargs:
         domain_filter.extend(kwargs)
-
-    # Fields to fetch
     fields_to_fetch = ['name', 'amount_total', 'create_date', 'user_id', 'partner_id']
-
-    # Execute the query
     try:
         result = gway.odoo.execute(
             [domain_filter], {'fields': fields_to_fetch},
@@ -177,8 +164,6 @@ def fetch_customers(
         domain_filter.append((field, 'ilike', value))
 
     fields_to_fetch = ['name', 'create_date']
-
-    # Execute the query
     try:
         result = gway.odoo.execute(
             [domain_filter], {'fields': fields_to_fetch},
@@ -191,7 +176,9 @@ def fetch_customers(
 
 
 def fetch_order(order_id):
-    """Fetch the details of a specific order by its ID from Odoo, including all line details."""
+    """
+    Fetch the details of a specific order by its ID from Odoo, including all line details.
+    """
     order_model = 'sale.order'
     order_method = 'read'
     line_model = 'sale.order.line'
@@ -232,13 +219,6 @@ def fetch_order(order_id):
 def send_chat(message: str, *, username: str = "[ODOO_USERNAME]") -> bool:
     """
     Send a chat message to an Odoo user by username.
-
-    Args:
-        username (str): The username of the recipient.
-        message (str): The chat message content.
-
-    Returns:
-        bool: True if the message was successfully sent, False otherwise.
     """
     user_info = gway.odoo.get_user_info(username=username)
     if not user_info:
@@ -263,17 +243,10 @@ def read_chat(*,
     ) -> list[dict]:
     """
     Read chat messages from an Odoo user by username.
-
-    Args:
-        username (str): The username of the message sender.
-        unread (bool): If True, only retrieve unread messages.
-
-    Returns:
-        list[dict]: List of chat messages.
+    If unread is True, only return unread messages.
     """
     user_info = gway.odoo.get_user_info(username=username)
-    if not user_info:
-        return []
+    if not user_info: return []
 
     user_id = user_info["id"]
     domain = [["author_id", "=", user_id]]
@@ -290,15 +263,7 @@ def read_chat(*,
 
 
 def get_user_info(*, username: str) -> dict:
-    """
-    Retrieve Odoo user information by username.
-
-    Args:
-        username (str): The username of the user.
-
-    Returns:
-        dict: A dictionary with user details, or None if the user is not found.
-    """
+    """Retrieve Odoo user information by username."""
     user_data = gway.odoo.execute(
         model="res.users",
         method="search_read",
