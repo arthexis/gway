@@ -264,22 +264,18 @@ def cli_main():
     parser.add_argument("-c", "--client", type=str, help="Specify client environment")
     parser.add_argument("-s", "--server", type=str, help="Specify server environment")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
-
     args = parser.parse_args()
 
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel, app_name="gway")
     logger.debug(f"Argparser first pass: {args}")
-
-    START_TIME = time.time() if args.timed else None
+    start_time = time.time() if args.timed else None
 
     if not args.commands:
         parser.print_help()
         sys.exit(1)
 
     env_root = os.path.join(args.root or BASE_PATH, "envs")
-
-    # Load environments
     client_name = args.client or get_base_client()
     load_env("clients", client_name, env_root)
 
@@ -291,8 +287,6 @@ def cli_main():
     server_name = args.server or get_base_server()
     load_env("servers", server_name, env_root)
     gway_root = os.environ.get("GWAY_ROOT", args.root or BASE_PATH)
-
-    # Split command chains
     command_chunks = chunk_command(args.commands)
 
     gway = Gateway(root=gway_root)
@@ -307,7 +301,6 @@ def cli_main():
         normalized_first_token = raw_first_token.replace("-", "_")
         remaining_tokens = chunk[1:]
 
-        # Resolve project or builtin
         try:
             current_project_obj = getattr(gway, normalized_first_token)
             logger.debug(f"Matched gway attribute: {current_project_obj}")
@@ -386,10 +379,9 @@ def cli_main():
             logger.error(e)
             abort(f"Unhandled {type(e).__name__} in {func_obj.__name__}")
 
-    if last_result is not None:
-        gway.print(last_result)
+    if last_result is not None: gway.print(last_result)
 
-    if START_TIME:
-        elapsed_time = time.time() - START_TIME
+    if start_time:
+        elapsed_time = time.time() - start_time
         print(f"\nElapsed: {elapsed_time:.4f} seconds")
 

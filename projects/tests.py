@@ -1,3 +1,7 @@
+# This module contains functions that are useful to test against
+# However, it doesn't implement the test runner functionality itself
+# See the builtins module for run_tests instead
+
 
 # A dummy function for testing dynamic loading
 def dummy_function(param1: str, param2: str = "default"):
