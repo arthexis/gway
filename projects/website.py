@@ -77,7 +77,7 @@ def setup_app(*, app=None):
                 <main>{{!content}}</main>
                 <hr><footer>This website has been built, tested and released with GWAY v{{!version}}. 
                         GWAY itself is powered by <a href="https://www.python.org/">Python</a>. 
-                        Hosting sponsored by a href="https://www.gelectriic.org/">Gelectriic Solutions</a>.</footer>
+                        Hosting sponsored by <a href="https://www.gelectriic.org/">Gelectriic Solutions</a>.</footer>
             </body>
             </html>
         """, **locals())
