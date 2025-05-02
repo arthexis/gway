@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import json
 import inspect
 import logging
 import asyncio
@@ -255,7 +256,7 @@ def chunk_command(args_commands):
 
 
 def cli_main():
-    """Main CLI entry point with function chaining support."""
+    """Main CLI entry point."""
 
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
     parser.add_argument("-r", "--root", type=str, help="Specify project directory")
@@ -263,11 +264,10 @@ def cli_main():
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-c", "--client", type=str, help="Specify client environment")
     parser.add_argument("-s", "--server", type=str, help="Specify server environment")
+    parser.add_argument("-a", "--all", action="store_true", help="Return all results, not just the last one")
+    parser.add_argument("-j", "--json", action="store_true", help="Output result(s) as JSON")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
-
-    # TODO: Consider --all arg to return all results, not just the last one
-    # TODO: Consider --json option to return last/all results as JSON (depending on --all)
 
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel, app_name="gway")
@@ -295,6 +295,7 @@ def cli_main():
     gway = Gateway(root=gway_root)
     current_project_obj = None
     last_result = None
+    all_results = []
 
     for chunk in command_chunks:
         logger.debug(f"Processing chunk: {chunk}")
@@ -377,18 +378,26 @@ def cli_main():
                 func_kwargs[name] = value
 
         try:
-            last_result = func_obj(*func_args, **{**func_kwargs, **extra_kwargs})
+            result = func_obj(*func_args, **{**func_kwargs, **extra_kwargs})
+            last_result = result
+            if args.all:
+                all_results.append(result)
         except Exception as e:
             logger.error(e)
             abort(f"Unhandled {type(e).__name__} in {func_obj.__name__}")
 
-    if last_result is not None:
-        logger.info(f"Result:\n{last_result}") 
-        gway.print(last_result)
+    # Output handling
+    if args.json:
+        output = all_results if args.all else last_result
+        print(json.dumps(output, indent=2, default=str))
     else:
-        logger.info(f"No results returned.")
+        output = all_results if args.all else last_result
+        if output is not None:
+            logger.info(f"Result:\n{output}") 
+            gway.print(output)
+        else:
+            logger.info(f"No results returned.")
 
     if start_time:
         elapsed_time = time.time() - start_time
         print(f"\nElapsed: {elapsed_time:.4f} seconds")
-
