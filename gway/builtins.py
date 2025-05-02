@@ -58,7 +58,7 @@ def print(text, *, max_depth=10, _current_depth=0):
     except IndexError:
         print_frame = inspect.stack()[1]
     print_origin = f"{print_frame.function}() in {print_frame.filename}:{print_frame.lineno}"
-    logger.info(f"From {print_origin}:\n {text}")
+    logger.debug(f"From {print_origin}:\n {text}")
 
     from colorama import init as colorama_init, Fore, Style
     colorama_init(strip=False)
@@ -118,7 +118,10 @@ def version() -> str:
 
 
 def resource(*parts, base=None, touch=False):
-    """Construct a path relative to the base. Assumes last part is a file and creates parent directories."""
+    """
+    Construct a path relative to the base, or the Gateway root if not specified.
+    Assumes last part is a file and creates parent directories along the way.
+    """
     from gway import Gateway
 
     path = pathlib.Path(base or Gateway().root, *parts)
@@ -152,7 +155,8 @@ def run_tests(root: str = 'tests', filter=None):
     test_suite = unittest.TestSuite()
 
     for test_file in test_files:
-        test_suite.addTests(test_loader.discover(os.path.dirname(test_file), pattern=os.path.basename(test_file)))
+        test_suite.addTests(test_loader.discover(
+            os.path.dirname(test_file), pattern=os.path.basename(test_file)))
     
     # Run the tests
     runner = unittest.TextTestRunner(verbosity=2)
@@ -167,19 +171,35 @@ def help(*args, full_code=False):
     Usage:
         help("builtin_function")
         help("project", "function_name")
+        help("project")  # NEW: Show help for all functions in a project
     """
     from gway import Gateway
-
     gway = Gateway()
-
-    # TODO: If only a project is passed, but that project is valid, return help on that project instead
-    # This includes its location and what functions are defined by it (include the help of each individual function)
 
     # Determine the function and context
     if len(args) == 1:
-        location = "builtin"
-        func_name = args[0].replace("-", "_")
-        func_obj = getattr(gway, func_name, None)
+        name = args[0].replace("-", "_")
+        func_obj = getattr(gway, name, None)
+
+        if func_obj and callable(func_obj):
+            # It's a direct function (builtin)
+            location = "builtin"
+            func_name = name
+        elif hasattr(gway, name):
+            # It's a project/module: show help on all functions inside
+            module = getattr(gway, name)
+            output = {
+                "Project": name,
+                "Module": str(module),
+                "Available Functions": sorted(
+                    attr for attr in dir(module)
+                    if not attr.startswith("_") and callable(getattr(module, attr))
+                )
+            }
+            return output
+        else:
+            gway.print(f"Function or project not found: {args[0]}")
+            return
     elif len(args) == 2:
         location = args[0].replace("-", "_")
         func_name = args[1].replace("-", "_")
@@ -224,7 +244,6 @@ def help(*args, full_code=False):
     code_call = f"gway.{func_name}" if len(args) == 1 else f"gway.{args[0]}.{func_name}"
     code_call += f"({', '.join(code_parts)})"
 
-    # Extract TODOs from the function source code
     todos = []
     try:
         source_lines = inspect.getsourcelines(func_obj)[0]
@@ -306,4 +325,10 @@ def watch_file(filepath, on_change, poll_interval=5.0, logger=None):
     thread = threading.Thread(target=_watch, daemon=True)
     thread.start()
     return stop_event
+
+
+def scratch():
+    from gway import Gateway
+    gway = Gateway()
+    # TODO: Use this function for quick tests
 

@@ -64,8 +64,7 @@ class Gateway(Resolver):
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
-
-                self.logger.debug(f"Context before argument injection: {self.context}")
+                # self.logger.debug(f"Context before argument injection: {self.context}")
 
                 for param in sig.parameters.values():
                     if param.name not in bound_args.arguments and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
@@ -266,6 +265,9 @@ def cli_main():
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
 
+    # TODO: Consider --all arg to return all results, not just the last one
+    # TODO: Consider --json option to return last/all results as JSON (depending on --all)
+
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel, app_name="gway")
     logger.debug(f"Argparser first pass: {args}")
@@ -314,7 +316,7 @@ def cli_main():
                     name: func for name, func in vars(current_project_obj).items()
                     if callable(func) and not name.startswith("_")
                 }
-                logger.debug(f"Element not callable, inspected contents: {project_functions}")
+                logger.debug(f"Element contents: {', '.join(project_functions.keys())}")
                 if not remaining_tokens:
                     show_functions(project_functions)
                     sys.exit(0)
@@ -379,7 +381,11 @@ def cli_main():
             logger.error(e)
             abort(f"Unhandled {type(e).__name__} in {func_obj.__name__}")
 
-    if last_result is not None: gway.print(last_result)
+    if last_result is not None:
+        logger.info(f"Result:\n{last_result}") 
+        gway.print(last_result)
+    else:
+        logger.warning(f"No results returned.")
 
     if start_time:
         elapsed_time = time.time() - start_time
