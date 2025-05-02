@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-import shlex
 import inspect
 import logging
 import asyncio
@@ -13,27 +12,22 @@ from .logging import setup_logging
 from .builtins import abort, print, run_tests, get_tag, watch_file
 from .environs import get_base_client, get_base_server, load_env
 from .functions import load_builtins, load_project, show_functions
-from .sigils import Sigil
+from .sigils import Resolver
 from .structs import Results
 
 
 logger = logging.getLogger(__name__)
-
-
 BASE_PATH = os.path.dirname(os.path.dirname(__file__))
-LIBRARY_MODE = True
 
 
-class Gateway:
+class Gateway(Resolver):
     _first_root = None
     _builtin_cache = None
 
     def __init__(self, root=None, **kwargs):
         if root is None:
-            root = Gateway._first_root
-            if root is None:
-                root = BASE_PATH
-                Gateway._first_root = root
+            root = Gateway._first_root or BASE_PATH
+            Gateway._first_root = root
 
         if not os.path.isdir(root):
             abort(f"Invalid project root: {root}")
@@ -43,10 +37,16 @@ class Gateway:
         self._async_threads = []
         self.results = Results()
         self.context = {**kwargs}
-        self.used_context = []
         self.logger = logging.getLogger("gway")
 
-        self._builtin_functions = {}  # raw function refs
+        # Initialize Resolver with search order
+        super().__init__([
+            ('results', self.results),
+            ('context', self.context),
+            ('env', os.environ)
+        ])
+
+        self._builtin_functions = {}
         self._load_builtins()
 
     def _load_builtins(self):
@@ -73,14 +73,14 @@ class Gateway:
                         if isinstance(default_value, str) and default_value.startswith("[") and default_value.endswith("]"):
                             resolved = self.resolve(default_value)
                             bound_args.arguments[param.name] = resolved
-                            self.used_context.append(param.name)
 
-                # Resolve strings in all bound args
+                # Resolve and update context
                 for key, value in bound_args.arguments.items():
                     if isinstance(value, str):
                         bound_args.arguments[key] = self.resolve(value)
                     self.context[key] = bound_args.arguments[key]
 
+                # Prepare args and kwargs for function call
                 args_to_pass = []
                 kwargs_to_pass = {}
                 for param in sig.parameters.values():
@@ -91,60 +91,56 @@ class Gateway:
                     elif param.name in bound_args.arguments:
                         kwargs_to_pass[param.name] = bound_args.arguments[param.name]
 
+                # Handle coroutine function
                 if inspect.iscoroutinefunction(func_obj):
-                    # Case 1: it's an async def function
                     thread = threading.Thread(
-                        target=self._run_coroutine_threadsafe,
+                        target=self._run_coroutine,
                         args=(func_name, func_obj, args_to_pass, kwargs_to_pass),
                         daemon=True
                     )
                     self._async_threads.append(thread)
                     thread.start()
-                    result = f"[async task started for {func_name}]"
-                else:
-                    result = func_obj(*args_to_pass, **kwargs_to_pass)
+                    return f"[async task started for {func_name}]"
 
-                    if inspect.iscoroutine(result):
-                        # Case 2: returned a coroutine (e.g., via asyncio.to_thread)
-                        thread = threading.Thread(
-                            target=self._run_coroutine_threadsafe_result,
-                            args=(func_name, result),
-                            daemon=True
-                        )
-                        self._async_threads.append(thread)
-                        thread.start()
-                        result = f"[async coroutine started for {func_name}]"
-                    else:
-                        short_key = func_name.split("_", 1)[-1] if "_" in func_name else func_name
-                        self.results.insert(short_key, result)
-                        if isinstance(result, dict):
-                            self.context.update(result)
+                # Call synchronous function
+                result = func_obj(*args_to_pass, **kwargs_to_pass)
+
+                # Handle coroutine result from sync function
+                if inspect.iscoroutine(result):
+                    thread = threading.Thread(
+                        target=self._run_coroutine,
+                        args=(func_name, result),
+                        daemon=True
+                    )
+                    self._async_threads.append(thread)
+                    thread.start()
+                    return f"[async coroutine started for {func_name}]"
+
+                # Store result
+                short_key = func_name.split("_", 1)[-1] if "_" in func_name else func_name
+                self.results.insert(short_key, result)
+                if isinstance(result, dict):
+                    self.context.update(result)
 
                 return result
+
             except Exception as e:
-                print(f"Error in'{func_name}': {e}")
+                self.logger.error(f"Error in '{func_name}': {e}")
                 raise
 
         return wrapped
         
-    def _run_coroutine_threadsafe(self, func_name, coro_func, args, kwargs):
+    def _run_coroutine(self, func_name, coro_or_func, args=None, kwargs=None):
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(coro_func(*args, **kwargs))
-            self.results.insert(func_name, result)
-            if isinstance(result, dict):
-                self.context.update(result)
-        except Exception as e:
-            self.logger.error(f"Async error in {func_name}: {e}")
-        finally:
-            loop.close()
 
-    def _run_coroutine_threadsafe_result(self, func_name, coro):
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(coro)
+            # Determine if it's already a coroutine object
+            if asyncio.iscoroutine(coro_or_func):
+                result = loop.run_until_complete(coro_or_func)
+            else:
+                result = loop.run_until_complete(coro_or_func(*(args or ()), **(kwargs or {})))
+
             self.results.insert(func_name, result)
             if isinstance(result, dict):
                 self.context.update(result)
@@ -200,31 +196,6 @@ class Gateway:
         except Exception as e:
             raise AttributeError(f"Project or builtin '{name}' not found: {e}")
         
-    def resolve(self, sigil):
-        """Resolve [sigils] in a given string, using find_value()."""
-        if not isinstance(sigil, str):
-            return sigil
-        if not isinstance(sigil, Sigil):
-            sigil = Sigil(sigil)
-        return sigil % self.find_value
-    
-    # TODO: Add support to access find_value as if Gateway were a dictionary
-    # When accessing it like that, a missing value should raise an error instead
-
-    def find_value(self, key: str, fallback: str = None) -> str:
-        """Find a value in the context, results or environment. Used for sigil resolution."""
-        if key in self.results:
-            self.used_context.append(key)
-            return self.results[key]
-        if key in self.context:
-            self.used_context.append(key)
-            return self.context[key]
-        env_val = os.getenv(key.upper())
-        if env_val is not None:
-            self.used_context.append(key)
-            return env_val
-        return fallback
-    
 
 def add_function_args(subparser, func_obj):
     """Add the function's arguments to the CLI subparser."""
@@ -285,10 +256,6 @@ def chunk_command(args_commands):
 
 def cli_main():
     """Main CLI entry point with function chaining support."""
-    global LIBRARY_MODE
-    LIBRARY_MODE = False  
-
-    # TODO: Support *args and parameters with quotes (both single and double) 
 
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
     parser.add_argument("-r", "--root", type=str, help="Specify project directory")

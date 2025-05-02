@@ -11,7 +11,7 @@ import textwrap
 logger = logging.getLogger(__name__)
 
 
-def abort(message: str, exit_code: int = 1, library_mode: bool = None) -> int:
+def abort(message: str, exit_code: int = 1) -> int:
     """Abort with error message."""
     logger.error(message)
     print(f"Halting: {message}")

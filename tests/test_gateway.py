@@ -59,13 +59,6 @@ class GatewayTests(unittest.TestCase):
         result = self.gw.hello_world(greeting="only_param1")
         self.assertEqual(result['message'], "Only_Param1, World!")
 
-    def test_used_context_tracking(self):
-        # Call function with sigils
-        self.gw.context = {'key1': 'val1'}
-        _ = self.gw.resolve("[key1|fallback]")
-        # Ensure that the key was tracked
-        self.assertIn('key1', self.gw.used_context)  # Should now track used context
-
     def test_variadic_positional_args(self):
         result = self.gw.tests.variadic_positional("a", "b", "c")
         self.assertEqual(result["args"], ("a", "b", "c"))

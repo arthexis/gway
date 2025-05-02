@@ -1,4 +1,5 @@
 import re
+import os
 
 
 class Sigil:
@@ -59,3 +60,31 @@ class Sigil:
     def __mod__(self, finder):
         """Allows use of `%` operator for resolution."""
         return self.resolve(finder)
+
+
+class Resolver:
+    def __init__(self, search_order):
+        """
+        :param search_order: List of (name, source) pairs to search in order.
+                             E.g., [('results', results), ('context', context), ('env', os.environ)]
+        """
+        self._search_order = search_order
+
+    def resolve(self, sigil):
+        """Resolve [sigils] in a given string, using find_value()."""
+        if not isinstance(sigil, str):
+            return sigil
+        if not isinstance(sigil, Sigil):
+            sigil = Sigil(sigil)
+        return sigil % self.find_value
+
+    def find_value(self, key: str, fallback: str = None) -> str:
+        """Find a value from the search sources provided in search_order."""
+        for name, source in self._search_order:
+            if name == "env":
+                val = os.getenv(key.upper())
+                if val is not None:
+                    return val
+            elif key in source:
+                return source[key]
+        return fallback
