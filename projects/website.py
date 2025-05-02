@@ -64,6 +64,7 @@ def setup_app(*, app=None):
 
     def make_template(*, title="GWAY", navbar="", content="", css_path="data/static/default.css"):
         css = load_css(css_path)
+        version = gway.version()
         return template("""<!DOCTYPE html>
             <html>
             <head>
@@ -73,6 +74,8 @@ def setup_app(*, app=None):
             <body>
                 {{!navbar}}
                 <main>{{!content}}</main>
+                <hr><footer>This website has been built, tested, released and hosted with GWAY v{{!version}}. 
+                        GWAY itself is powered by <a href="https://www.python.org/">Python</a>.</footer>
             </body>
             </html>
         """, **locals())
