@@ -66,10 +66,11 @@ def setup_app(*, app=None):
         css = load_css(css_path)
         version = gway.version()
         return template("""<!DOCTYPE html>
-            <html>
+            <html lang="en">
             <head>
                 <title>{{!title}}</title>
                 <style>{{!css}}</style>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             </head>
             <body>
                 {{!navbar}}
