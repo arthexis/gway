@@ -398,7 +398,6 @@ def cli_main():
         extra_kwargs = {}
 
         for name, value in vars(parsed_args).items():
-            print(f"{name=} {value=} {func_args=}")
             param = inspect.signature(func_obj).parameters.get(name)
             if param is None:
                 continue
