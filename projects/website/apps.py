@@ -219,9 +219,11 @@ def start_server(*,
     from bottle import run
 
     def run_server():
+        logger.info("Building default application")
         actual_app = app or setup_app()
         if proxy:
             actual_app = setup_proxy(endpoint=proxy, app=actual_app)
+        logger.info(f"Starting app: {actual_app}")
         run(actual_app, host=host, port=int(port), debug=debug)
 
     if daemon:

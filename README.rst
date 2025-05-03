@@ -117,9 +117,9 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+-------------------------------------------------------------+
 | Directory      | Description                                                 |
 +================+=============================================================+
-| envs/clients   | Per-user environment files (e.g., ``username.env``)         |
+| envs/clients/  | Per-user environment files (e.g., ``username.env``)         |
 +----------------+-------------------------------------------------------------+
-| envs/servers   | Per-host environment files (e.g., ``hostname.env``)         |
+| envs/servers/  | Per-host environment files (e.g., ``hostname.env``)         |
 +----------------+-------------------------------------------------------------+
 | projects/      | Your own Python modules — callable via GWAY                 |
 +----------------+-------------------------------------------------------------+
@@ -130,6 +130,8 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 | data/          | Static assets, resources, and other data files              |
 +----------------+-------------------------------------------------------------+
 | temp/          | Temporary working directory for intermediate output files   |
++----------------+-------------------------------------------------------------+
+| scripts/       | GWAY script files (for --batch mode)                        |
 +----------------+-------------------------------------------------------------+
 
 

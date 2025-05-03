@@ -110,7 +110,9 @@ def build(
                 project_name: f"{project_name}:cli_main",
             },
             "urls": {
-                "repository": "https://github.com/arthexis/gway.git"
+                "Repository": "https://github.com/arthexis/gway.git",
+                "Homepage": "https://arthexis.com",
+                "Sponsor": "https://www.gelectriic.com/",
             }
         },
         "tool": {
