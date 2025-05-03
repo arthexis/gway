@@ -109,7 +109,7 @@ def version() -> str:
     if os.path.exists(version_path):
         with open(version_path, "r") as version_file:
             version = version_file.read().strip()
-            logger.info(f"Current version: {version}")
+            logger.debug(f"Current version: {version}")
             return version
     else:
         logger.error("VERSION file not found.")

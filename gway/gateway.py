@@ -257,7 +257,6 @@ def chunk_command(args_commands):
 
 def cli_main():
     """Main CLI entry point."""
-
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
     parser.add_argument("-r", "--root", type=str, help="Specify project directory")
     parser.add_argument("-t", "--timed", action="store_true", help="Enable timing")
@@ -266,41 +265,56 @@ def cli_main():
     parser.add_argument("-s", "--server", type=str, help="Specify server environment")
     parser.add_argument("-a", "--all", action="store_true", help="Return all results, not just the last one")
     parser.add_argument("-j", "--json", action="store_true", help="Output result(s) as JSON")
+    parser.add_argument("-b", "--batch", type=str, help="Run commands from a batch script")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
-
-    # TODO: Add a -b / --batch mode that allows the user to specify a script of functions to run
-    # Each line in script should be executed 
 
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel, app_name="gway")
     logger.debug(f"Argparser first pass: {args}")
     start_time = time.time() if args.timed else None
 
-    if not args.commands:
-        parser.print_help()
-        sys.exit(1)
-
     env_root = os.path.join(args.root or BASE_PATH, "envs")
     client_name = args.client or get_base_client()
-    load_env("clients", client_name, env_root)
-
-    if args.commands[0] == "test": 
-        test_filter = args.commands[1] if len(args.commands) > 1 else None
-        results = run_tests(filter=test_filter)
-        sys.exit(0 if results else 1)
-
     server_name = args.server or get_base_server()
-    load_env("servers", server_name, env_root)
     gway_root = os.environ.get("GWAY_ROOT", args.root or BASE_PATH)
-    command_chunks = chunk_command(args.commands)
 
     gway = Gateway(root=gway_root)
+    load_env("clients", client_name, env_root)
+    load_env("servers", server_name, env_root)
+
+    command_sources = []
+
+    if args.batch:
+        batch_filename = args.batch
+        if not os.path.isabs(batch_filename):
+            candidate_names = [batch_filename]
+            if not os.path.splitext(batch_filename)[1]:
+                candidate_names += [f"{batch_filename}.gws", f"{batch_filename}.txt"]
+            for name in candidate_names:
+                batch_path = gway.resource("scripts", name)
+                if os.path.isfile(batch_path):
+                    break
+            else:
+                abort(f"Batch script not found in scripts/: tried {candidate_names}")
+        else:
+            batch_path = batch_filename
+            if not os.path.isfile(batch_path):
+                abort(f"Batch file not found: {batch_path}")
+        logger.info(f"Running batch from: {batch_path}")
+        with open(batch_path) as f:
+            command_sources = [line.strip().split() for line in f if line.strip() and not line.strip().startswith("#")]
+    else:
+        if not args.commands:
+            parser.print_help()
+            sys.exit(1)
+        command_sources = chunk_command(args.commands)
+
     current_project_obj = None
     last_result = None
     all_results = []
 
-    for chunk in command_chunks:
+    for chunk in command_sources:
         logger.debug(f"Processing chunk: {chunk}")
         if not chunk: continue
 
@@ -315,13 +329,11 @@ def cli_main():
                 func_obj = current_project_obj
                 func_tokens = [raw_first_token] + remaining_tokens
                 project_functions = {raw_first_token: func_obj}
-                logger.debug(f"Element is callable {project_functions=}")
             else:
                 project_functions = {
                     name: func for name, func in vars(current_project_obj).items()
                     if callable(func) and not name.startswith("_")
                 }
-                logger.debug(f"Element contents: {', '.join(project_functions.keys())}")
                 if not remaining_tokens:
                     show_functions(project_functions)
                     sys.exit(0)
@@ -389,18 +401,14 @@ def cli_main():
             logger.error(e)
             abort(f"Unhandled {type(e).__name__} in {func_obj.__name__}")
 
-    # Output handling
+    output = all_results if args.all else last_result
     if args.json:
-        output = all_results if args.all else last_result
         print(json.dumps(output, indent=2, default=str))
+    elif output is not None:
+        logger.info(f"Result:\n{output}")
+        gway.print(output)
     else:
-        output = all_results if args.all else last_result
-        if output is not None:
-            logger.info(f"Result:\n{output}") 
-            gway.print(output)
-        else:
-            logger.info(f"No results returned.")
+        logger.info("No results returned.")
 
     if start_time:
-        elapsed_time = time.time() - start_time
-        print(f"\nElapsed: {elapsed_time:.4f} seconds")
+        print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
