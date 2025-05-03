@@ -2,6 +2,9 @@ import os
 import logging
 import time
 import hashlib
+
+from urllib.parse import quote, unquote
+from functools import wraps
 from gway import requires, Gateway
 
 logger = logging.getLogger(__name__)
@@ -17,22 +20,57 @@ def setup_app(*, app=None):
 
     if app is None: app = Bottle()
 
+    def security_middleware(app):
+        """Middleware to fix headers and secure cookies."""
+        def wrapped_app(environ, start_response):
+            def custom_start_response(status, headers, exc_info=None):
+                # Remove default 'Server' header
+                headers = [(k, v) for k, v in headers if k.lower() != 'server']
+                # Add fixed headers
+                headers += [
+                    ("Cache-Control", "no-cache, no-store, must-revalidate"),
+                    ("X-Content-Type-Options", "nosniff"),
+                    ("Server", "GWAY")  # Optional: replace with your server name
+                ]
+                return start_response(status, headers, exc_info)
+
+            return app(environ, custom_start_response)
+
+        # Patch Bottle's response.set_cookie to enforce secure, httponly
+        original_set_cookie = response.set_cookie
+
+        @wraps(original_set_cookie)
+        def secure_set_cookie(name, value, **kwargs):
+            kwargs.setdefault("secure", True)
+            kwargs.setdefault("httponly", True)
+            kwargs.setdefault("samesite", "Lax")
+            kwargs.setdefault("path", "/")
+            return original_set_cookie(name, value, **kwargs)
+
+        response.set_cookie = secure_set_cookie
+
+        return wrapped_app
+
+
     def cookies_enabled():
         return request.get_cookie("cookies_accepted") == "yes"
-
+    
     def update_visited(current):
         if not cookies_enabled():
             return []
-        visited = request.get_cookie("visited", "").split(",")
+        
+        raw = request.get_cookie("visited", "")
+        visited = [unquote(v) for v in raw.split(",") if v]
+
         if current not in visited:
             visited.append(current)
-        visited = list(sorted(set(visited), key=lambda x: (x != "readme", x.lower())))
-        response.set_cookie("visited", ",".join(visited))
+
+        # Store as comma-separated quoted values
+        cookie_value = ",".join(quote(v) for v in visited)
+        response.set_cookie("visited", cookie_value)
+
         return visited
-
-    # TODO: Navbar improvement: when a builder fails to execute properly or is not found, 
-    # Avoid adding that c to the history shown in the navbar, only remember valid routes
-
+    
     def build_navbar(visited):
         if not cookies_enabled():
             visited = []
@@ -71,6 +109,7 @@ def setup_app(*, app=None):
         return template("""<!DOCTYPE html>
             <html lang="en">
             <head>
+                <meta charset="UTF-8" />
                 <title>{{!title}}</title>
                 <style>{{!css}}</style>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -133,6 +172,7 @@ def setup_app(*, app=None):
         except AssertionError:
             return static_file(filename, root=gway.resource("data", "static"))
 
+    app = security_middleware(app)
     return app
 
 
