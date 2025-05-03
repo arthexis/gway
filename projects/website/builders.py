@@ -9,7 +9,6 @@ def build_readme():
     from docutils.core import publish_parts
 
     readme_path = gway.resource("README.rst")
-
     with open(readme_path, encoding="utf-8") as f:
         rst_content = f.read()
 

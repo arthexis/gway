@@ -29,11 +29,16 @@ def tag(**new_tags):
     return decorator
 
 
+_requirement_cache = set()
+
 def requires(*packages):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             for package_spec in packages:
+                if package_spec in _requirement_cache:
+                    continue
+
                 # Extract package name for import checking
                 pkg_name = re.split(r'[><=]', package_spec)[0]
 
@@ -42,6 +47,8 @@ def requires(*packages):
                 except ImportError:
                     logger.info(f"Installing missing package: {package_spec}")
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package_spec])
+                    
+                _requirement_cache.add(package_spec)
 
             return func(*args, **kwargs)
         return wrapper
