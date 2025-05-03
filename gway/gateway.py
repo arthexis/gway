@@ -269,6 +269,9 @@ def cli_main():
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
 
+    # TODO: Add a -b / --batch mode that allows the user to specify a script of functions to run
+    # Each line in script should be executed 
+
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel, app_name="gway")
     logger.debug(f"Argparser first pass: {args}")

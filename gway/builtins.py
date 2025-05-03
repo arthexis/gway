@@ -116,14 +116,17 @@ def version() -> str:
         return "unknown"
 
 
-def resource(*parts, base=None, touch=False):
+def resource(*parts, base=None, touch=False, check=False):
     """
     Construct a path relative to the base, or the Gateway root if not specified.
     Assumes last part is a file and creates parent directories along the way.
     """
     from gway import Gateway
-
     path = pathlib.Path(base or Gateway().root, *parts)
+
+    if not touch and check:
+        assert path.exists(), f"Resource {path} missing"
+
     path.parent.mkdir(parents=True, exist_ok=True)
     if touch:
         path.touch()

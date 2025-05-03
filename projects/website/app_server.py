@@ -30,6 +30,9 @@ def setup_app(*, app=None):
         response.set_cookie("visited", ",".join(visited))
         return visited
 
+    # TODO: Navbar improvement: when a builder fails to execute properly or is not found, 
+    # Avoid adding that c to the history shown in the navbar, only remember valid routes
+
     def build_navbar(visited):
         if not cookies_enabled():
             visited = []
@@ -92,19 +95,21 @@ def setup_app(*, app=None):
     
     @app.route("/")
     def index():
-        c = request.query.get("c", "readme")
+        c = request.query.get("c", "readme").replace("-", "_")
         kwargs = {k: v for k, v in request.query.items() if k != "c"}
 
         builder = getattr(gway.website, f"build_{c}", None)
+
+        visited = []
         if not builder:
-            content = f"<p>No content found for '{c}'</p>"
+            content = f"<p>No content found for '<code>{c}</code>'</p>"
         else:
             try:
                 content = builder(**kwargs)
+                visited = update_visited(c)  # ✅ Only add to history if builder worked
             except Exception as e:
-                content = f"<p>Error in content builder: {e}</p>"
+                content = f"<p>Error in content builder '<code>{c}</code>': {e}</p>"
 
-        visited = update_visited(c)
         navbar = build_navbar(visited)
 
         if not cookies_enabled():
@@ -123,7 +128,10 @@ def setup_app(*, app=None):
 
     @app.route("/static/<filename:path>")
     def send_static(filename):
-        return static_file(filename, root=gway.resource("data", "static"))
+        try:
+            return static_file(filename, root=gway.resource("temp", "static", check=True))
+        except AssertionError:
+            return static_file(filename, root=gway.resource("data", "static"))
 
     return app
 
