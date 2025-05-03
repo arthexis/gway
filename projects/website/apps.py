@@ -71,7 +71,7 @@ def setup_app(*, app=None):
 
         return visited
     
-    def build_navbar(visited):
+    def build_navbar(visited, current_url=None):
         if not cookies_enabled():
             visited = []
         links = "".join(
@@ -88,7 +88,17 @@ def setup_app(*, app=None):
                 />
             </form>
         '''
-        return f"<aside>{search_box}<ul>{links}</ul></aside>"
+        qr_html = ""
+        if current_url:
+            qr_url = gway.project.generate_qr_code_url(current_url)
+            qr_html = f'''
+                <div style="margin-top: 1em; text-align: center;">
+                    <p style="margin-bottom: 0.5em;">QR Code for this page:</p>
+                    <img src="{qr_url}" alt="QR Code" style="max-width: 150px;" />
+                </div>
+            '''
+
+        return f"<aside>{search_box}<ul>{links}</ul><br>{qr_html}</aside>"
 
     def load_css(path):
         """Load and cache CSS from the given path."""
@@ -132,7 +142,7 @@ def setup_app(*, app=None):
         response.status = 303
         response.set_header("Location", redirect_url)
         return ""
-    
+        
     @app.route("/")
     def index():
         c = request.query.get("c", "readme").replace("-", "_")
@@ -150,7 +160,11 @@ def setup_app(*, app=None):
             except Exception as e:
                 content = f"<p>Error in content builder '<code>{c}</code>': {e}</p>"
 
-        navbar = build_navbar(visited)
+        current_url = request.fullpath
+        if request.query_string:
+            current_url += "?" + request.query_string
+
+        navbar = build_navbar(visited, current_url=current_url)
 
         if not cookies_enabled():
             consent_box = f"""
@@ -165,6 +179,7 @@ def setup_app(*, app=None):
             content = consent_box + content
 
         return make_template(navbar=navbar, content=content)
+
 
     @app.route("/static/<filename:path>")
     def send_static(filename):

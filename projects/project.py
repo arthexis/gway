@@ -1,4 +1,5 @@
 import os
+import base64
 import sys
 import toml
 import time
@@ -6,6 +7,8 @@ from pathlib import Path
 import subprocess
 
 from gway import Gateway, requires
+
+gway = Gateway()
 
 
 def build(
@@ -29,7 +32,7 @@ def build(
         token (str): PyPI API token (default: [PYPI_API_TOKEN]).
         git (bool): Require a clean git repo and commit/push after release if True.
     """
-    gway = Gateway()
+    
     test_result = gway.run_tests()
     if not test_result:
         gway.abort("Tests failed, build aborted.")
@@ -221,3 +224,18 @@ def watch_pypi_package(package_name, on_change, poll_interval=300.0, logger=None
     thread = threading.Thread(target=_watch, daemon=True)
     thread.start()
     return stop_event
+
+
+@requires("qrcode[pil]")
+def generate_qr_code_url(value):
+    """Return the URL for a QR code image for a given value, generating it if needed."""
+    import qrcode
+
+    safe_filename = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=") + ".png"
+    qr_path = gway.resource("temp", "shared", "qr_codes", safe_filename)
+
+    if not os.path.exists(qr_path):
+        img = qrcode.make(value)
+        img.save(qr_path)
+
+    return f"/temp/qr_codes/{safe_filename}"

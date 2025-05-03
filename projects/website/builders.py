@@ -43,13 +43,8 @@ def build_help(path=""):
     return f"<h1>{title}</h1>{rows}"
 
 
-@requires("qrcode[pil]")
 def build_qr_code(*, value=None):
     """Generate a QR code for a given value and serve it from cache if available."""
-    import base64
-    import qrcode
-
-    # If no value provided, show a form
     if not value:
         return '''
             <h1>QR Code Generator</h1>
@@ -60,19 +55,8 @@ def build_qr_code(*, value=None):
                 <button type="submit" style="padding: 0.5em;">Generate QR</button>
             </form>
         '''
-
-    # Generate filename: base64 encoding of value + ".png"
-    safe_filename = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=") + ".png"
-    qr_path = gway.resource("temp", "shared", "qr_codes", safe_filename)
-
-    # Generate QR only if it doesn't already exist
-    if not os.path.exists(qr_path):
-        img = qrcode.make(value)
-        img.save(qr_path)
-
-    # Construct URL to serve QR image
-    qr_url = f"/temp/qr_codes/{safe_filename}"
-
+    
+    qr_url = gway.project.generate_qr_code_url(value)
     return f"""
         <h1>QR Code for: <code>{value}</code></h1>
         <img src="{qr_url}" alt="QR Code" style="max-width: 300px;" />
