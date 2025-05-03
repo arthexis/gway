@@ -112,6 +112,7 @@ def setup_app(*, app=None):
                 <meta charset="UTF-8" />
                 <title>{{!title}}</title>
                 <style>{{!css}}</style>
+                <link rel="icon" href="/static/favicon.ico" type="image/x-icon" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             </head>
             <body>
@@ -145,7 +146,7 @@ def setup_app(*, app=None):
         else:
             try:
                 content = builder(**kwargs)
-                visited = update_visited(c)  # ✅ Only add to history if builder worked
+                visited = update_visited(c)
             except Exception as e:
                 content = f"<p>Error in content builder '<code>{c}</code>': {e}</p>"
 
@@ -167,10 +168,11 @@ def setup_app(*, app=None):
 
     @app.route("/static/<filename:path>")
     def send_static(filename):
-        try:
-            return static_file(filename, root=gway.resource("temp", "static", check=True))
-        except AssertionError:
-            return static_file(filename, root=gway.resource("data", "static"))
+        return static_file(filename, root=gway.resource("data", "static"))
+    
+    @app.route("/temp/<filename:path>")
+    def send_temp(filename):
+        return static_file(filename, root=gway.resource("temp", "shared"))
 
     app = security_middleware(app)
     return app

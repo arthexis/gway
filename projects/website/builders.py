@@ -63,7 +63,7 @@ def build_qr_code(*, value=None):
 
     # Generate filename: base64 encoding of value + ".png"
     safe_filename = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=") + ".png"
-    qr_path = gway.resource("temp", "static", "qr_codes", safe_filename)
+    qr_path = gway.resource("temp", "shared", "qr_codes", safe_filename)
 
     # Generate QR only if it doesn't already exist
     if not os.path.exists(qr_path):
@@ -71,7 +71,7 @@ def build_qr_code(*, value=None):
         img.save(qr_path)
 
     # Construct URL to serve QR image
-    qr_url = f"/static/qr_codes/{safe_filename}"
+    qr_url = f"/temp/qr_codes/{safe_filename}"
 
     return f"""
         <h1>QR Code for: <code>{value}</code></h1>
