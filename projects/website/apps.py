@@ -121,7 +121,7 @@ def setup_app(*, app=None):
             <body>
                 {{!navbar}}
                 <main>{{!content}}</main>
-                <hr><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
+                <br><hr><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
                         <p>GWAY is powered by <a href="https://www.python.org/">Python</a>.
                         Hosting by <a href="https://www.gelectriic.org/">Gelectriic Solutions</a>.</p></footer>
             </body>

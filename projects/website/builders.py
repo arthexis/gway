@@ -1,5 +1,4 @@
-import os
-from gway import Gateway, requires
+from gway import Gateway
 
 gway = Gateway()
 

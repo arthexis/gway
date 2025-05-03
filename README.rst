@@ -53,6 +53,13 @@ Given a project ``awg.py`` containing logic to calculate cable sizes and conduit
     # Chain cable calculation and echo the result
     gway awg find-cable --meters 25 --amps 60 - print --text "[awg]"
 
+**Online Example**
+
+You can test the AWG cable sizer online here, or in your own instance:
+
+https://arthexis.com/?c=awg_finder
+
+
 GWAY Website Server
 ~~~~~~~~~~~~~~~~~~~
 
