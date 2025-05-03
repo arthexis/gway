@@ -48,3 +48,9 @@ input.large {
     padding: 0.5em; 
     margin-right: 0.5em;
 }
+input.help {
+    width: 100%; 
+    padding: 0.5em; 
+    border-radius: 8px; 
+    border: 1px solid #ccc;
+}

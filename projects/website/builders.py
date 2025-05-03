@@ -60,3 +60,61 @@ def build_qr_code(*, value=None):
         <img src="{qr_url}" alt="QR Code" style="max-width: 300px;" />
         <p><a href="/?c=qr-code">Generate another</a></p>
     """
+
+
+def build_awg_finder(
+    *, meters=None, amps="40", volts="220", material="cu", 
+    max_lines="3", phases="1", conduit=None, neutral="0"
+):
+    """Page builder for AWG cable finder with HTML form and result."""
+    
+    if not meters:
+        return '''
+            <h1>AWG Cable Finder</h1>
+            <form method="get">
+                <input type="hidden" name="c" value="awg-finder" />
+                <label>Meters: <input type="number" name="meters" required min="1" /></label><br/>
+                <label>Amps: <input type="number" name="amps" value="40" /></label><br/>
+                <label>Volts: <input type="number" name="volts" value="220" /></label><br/>
+                <label>Material: 
+                    <select name="material">
+                        <option value="cu">Copper (cu)</option>
+                        <option value="al">Aluminum (al)</option>
+                        <option value="?">Don't know</option>
+                    </select>
+                </label><br/>
+                <label>Max Lines: <input type="number" name="max_lines" value="3" /></label><br/>
+                <label>Phases: 
+                    <select name="phases">
+                        <option value="1">Single Phase (1)</option>
+                        <option value="3">Three Phase (3)</option>
+                    </select>
+                </label><br/>
+                <label>Neutral (0 or 1): <input type="number" name="neutral" value="0" /></label><br/>
+                <label>Conduit (emt/true/blank): <input name="conduit" /></label><br/>
+                <button type="submit" style="padding: 0.5em;">Find Cable</button>
+            </form>
+        '''
+
+    try:
+        result = gway.awg.find_cable(
+            meters=meters, amps=amps, volts=volts,
+            material=material, max_lines=max_lines, 
+            phases=phases, conduit=conduit, neutral=neutral
+        )
+    except Exception as e:
+        return f"<p style='color:red;'>Error: {e}</p><p><a href='/?c=awg-finder'>Try again</a></p>"
+
+    return f"""
+        <h1>Recommended Cable</h1>
+        <ul>
+            <li><strong>AWG Size:</strong> {result['awg']}</li>
+            <li><strong>Lines:</strong> {result['lines']}</li>
+            <li><strong>Total Cables:</strong> {result['cables']}</li>
+            <li><strong>Total Length (m):</strong> {result['cable_m']}</li>
+            <li><strong>Voltage Drop:</strong> {result['vdrop']:.2f} V ({result['vdperc']:.2f}%)</li>
+            <li><strong>Voltage at End:</strong> {result['vend']:.2f} V</li>
+            {f"<li><strong>Conduit:</strong> {result['conduit']} ({result['pipe_in']})</li>" if 'conduit' in result else ""}
+        </ul>
+        <p><a href="/?c=awg-finder">Calculate again</a></p>
+    """

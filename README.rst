@@ -1,9 +1,9 @@
 GWAY
 ====
 
-Welcome Traveler, this is the GWAY project README.rst file and website.
+Welcome [Traveler], this is the GWAY project README.rst file and website.
 
-**GWAY** is an experimental CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic context resolution, argument injection, and environment support.
+**GWAY** is an [experimental] CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic sigil & context resolution, argument injection, and multi-environment support.
 
 Higher-level programming, lower barrier to entry.
 
@@ -13,10 +13,10 @@ Features
 
 - 🔌 Seamless function calling from CLI or code (e.g., ``gway.awg.find_cable()``)
 - ⛓️ CLI chaining support: ``func1 - func2`` or ``func1 ; func2``
-- 🧠 Sigil-based context resolution (e.g., ``[result_key]``)
+- 🧠 Sigil-based context resolution (e.g., ``[result_context_or_env_key|fallback]``)
 - ⚙️ Automatic CLI argument generation, with support for ``*args`` and ``**kwargs``
-- 🧪 Built-in test runner: ``gway test``
-- 📦 Environment-aware loading (e.g., ``clients``, ``servers``)
+- 🧪 Built-in test runner and packaging: ``gway run-tests`` and ``gway project build``
+- 📦 Environment-aware loading (e.g., ``clients`` and ``servers`` .env files)
 
 Examples
 --------

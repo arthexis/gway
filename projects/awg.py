@@ -2,6 +2,7 @@ import logging
 from gway import Gateway
 
 logger = logging.getLogger(__name__)
+gway = Gateway()
 
 
 class AWG(int):
@@ -23,89 +24,96 @@ def find_cable(
         max_lines="3", phases="1", conduit=None, neutral="0"
     ) -> dict:
     """Calculate the type of cable needed for an electrical system."""
-    cursor = Gateway().database.connect()
+    with gway.database.connect() as cursor:
+            
+        amps = int(amps)
+        meters = int(meters)
+        volts = int(volts)
+        max_lines = int(max_lines)
+        phases = int(phases)
+        neutral = int(neutral)
         
-    amps = int(amps)
-    meters = int(meters)
-    volts = int(volts)
-    max_lines = int(max_lines)
-    phases = int(phases)
-    neutral = int(neutral)
-    
-    assert amps >= 40, "Min. charger load is 20 Amps."
-    assert meters >= 1, "Consider at least 1 meter of cable."
-    assert 110 <= volts <= 460, "Volt range is 110-460."
-    assert material in ("cu", "al", "?"), "Material must be cu, al or ?."
-    assert phases in (1, 3), "Allowed phases 1 or 3."
-    
-    if phases == 3:
-        formula = "sqrt(3) * (? / line_num) * (k_ohm_km / 1000)"
-    else:
-        formula = "2 * (? / line_num) * (k_ohm_km / 1000)"
-    
-    sql = f"""
-        SELECT awg_size, line_num, {formula} * ? AS vdrop
-        FROM awg_cable_size
-        WHERE (material = ? OR ? = '?')  
-        AND ((amps_75c >= ? AND ? > 100) 
-        OR (amps_60c >= ? AND ? <= 100))
-        AND ({formula} * ?) / ? <= 0.03
-        AND line_num <= ?
-        ORDER BY line_num ASC, awg_size DESC LIMIT 1;
-    """
-    
-    params = [amps, meters, material, material, "?",  amps, amps, amps, amps, meters, volts, max_lines]
-    logger.debug(f"AWG find-cable SQL: {sql}, params: {params}")
-    cursor.execute(sql, params)
-    row = cursor.fetchone()
-    if not row:
-        return {"awg": "n/a"}
-    
-    awg_result = AWG(row[0])
-    cables = row[1] * (phases + neutral)
-    result = {
-        "awg": str(awg_result),
-        "amps": amps,
-        "meters": meters,
-        "lines": row[1],
-        "vdrop": row[2],
-        "vend": volts - row[2],
-        "vdperc": row[2] / volts * 100,
-        "cables": cables,
-        "cable_m": int(cables) * meters,
-    }
+        assert amps >= 40, "Min. charger load is 20 Amps."
+        assert meters >= 1, "Consider at least 1 meter of cable."
+        assert 110 <= volts <= 460, "Volt range is 110-460."
+        assert material in ("cu", "al", "?"), "Material must be cu, al or ?."
+        assert phases in (1, 3), "Allowed phases 1 or 3."
+        
+        if phases == 3:
+            formula = "sqrt(3) * (:meters / line_num) * (k_ohm_km / 1000)"
+        else:
+            formula = "2 * (:meters / line_num) * (k_ohm_km / 1000)"
+        
+        sql = f"""
+            SELECT awg_size, line_num, {formula} AS vdrop
+            FROM awg_cable_size
+            WHERE (material = :material OR :material = '?')  
+            AND ((amps_75c >= :amps AND :amps > 100) 
+            OR (amps_60c >= :amps AND :amps <= 100))
+            AND ({formula}) / :volts <= 0.03
+            AND line_num <= :max_lines
+            ORDER BY line_num ASC, awg_size DESC LIMIT 1;
+        """
+        
+        params = {
+            "amps": amps,
+            "meters": meters,
+            "material": material,
+            "volts": volts,
+            "max_lines": max_lines
+        }
 
-    if conduit:
-        if conduit is True:
-            conduit = "emt"
-        fill = find_conduit(awg_result, cables, conduit=conduit)
-        result["conduit"] = conduit
-        result["pipe_in"] = fill["size_in"]
-    return result
+        logger.debug(f"AWG find-cable SQL: {sql}, params: {params}")
+        cursor.execute(sql, params)
+        row = cursor.fetchone()
+        if not row:
+            return {"awg": "n/a"}
+        
+        awg_result = AWG(row[0])
+        cables = row[1] * (phases + neutral)
+        result = {
+            "awg": str(awg_result),
+            "amps": amps,
+            "meters": meters,
+            "lines": row[1],
+            "vdrop": row[2],
+            "vend": volts - row[2],
+            "vdperc": row[2] / volts * 100,
+            "cables": cables,
+            "cable_m": int(cables) * meters,
+        }
+
+        if conduit:
+            if conduit is True:
+                conduit = "emt"
+            fill = find_conduit(awg_result, cables, conduit=conduit)
+            result["conduit"] = conduit
+            result["pipe_in"] = fill["size_in"]
+        return result
 
 
 def find_conduit(awg, cables, conduit="emt"):
     """Calculate the kind of conduit required for a set of cables."""
-    cursor = Gateway().database.connect()
+    with gway.database.connect() as cursor:
 
-    assert conduit in ("emt", "imc", "rmc", "fmc"), "Allowed: emt, imc, rmc, fmc."
-    assert 1 <= cables <= 30, "Valid for 1-30 cables per conduit."
-    
-    awg = AWG(awg)
+        assert conduit in ("emt", "imc", "rmc", "fmc"), "Allowed: emt, imc, rmc, fmc."
+        assert 1 <= cables <= 30, "Valid for 1-30 cables per conduit."
+        
+        awg = AWG(awg)
 
-    sql = f"""
-        SELECT trade_size
-        FROM awg_conduit_fill
-        WHERE lower(conduit) = lower(:conduit)
-          AND awg_{str(awg)} >= :cables
-        ORDER BY line_num ASC, awg_size DESC LIMIT 1  
-    """
+        sql = f"""
+            SELECT trade_size
+            FROM awg_conduit_fill
+            WHERE lower(conduit) = lower(:conduit)
+            AND awg_{str(awg)} >= :cables
+            ORDER BY trade_size DESC LIMIT 1  
+        """
 
-    cursor.execute(sql, {"conduit": conduit, "cables": cables})
-    row = cursor.fetchone()
-    if not row:
-        return {"trade_size": "n/a"}
+        cursor.execute(sql, {"conduit": conduit, "cables": cables})
+        row = cursor.fetchone()
+        if not row:
+            return {"trade_size": "n/a"}
 
-    return {
-        "size_in": row[0]
-    }
+        return {
+            "size_in": row[0]
+        }

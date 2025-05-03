@@ -78,12 +78,7 @@ def setup_app(*, app=None):
         search_box = '''
             <form action="/" method="get" style="margin-bottom: 1em;">
                 <input type="hidden" name="c" value="help" />
-                <input 
-                    type="text" 
-                    name="path" 
-                    placeholder="Search GWAY" 
-                    style="width: 100%; padding: 0.5em; border-radius: 8px; border: 1px solid #ccc;" 
-                />
+                <input type="text" name="path" placeholder="Search GWAY" style="help" />
             </form>
         '''
         qr_html = ""
@@ -126,9 +121,9 @@ def setup_app(*, app=None):
             <body>
                 {{!navbar}}
                 <main>{{!content}}</main>
-                <hr><footer>This website was built, tested and released with GWAY v{{!version}}. 
-                        GWAY is powered by <a href="https://www.python.org/">Python</a>. 
-                        Hosting by <a href="https://www.gelectriic.org/">Gelectriic Solutions</a>.</footer>
+                <hr><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
+                        <p>GWAY is powered by <a href="https://www.python.org/">Python</a>.
+                        Hosting by <a href="https://www.gelectriic.org/">Gelectriic Solutions</a>.</p></footer>
             </body>
             </html>
         """, **locals())
@@ -170,7 +165,7 @@ def setup_app(*, app=None):
                     <form action="/accept-cookies" method="post">
                         <input type="hidden" name="next" value="/?c={c}" />
                         This app uses cookies to improve your experience. 
-                        <button type="submit">Accept</button>
+                        <button type="submit"> Accept </button>
                     </form>
                 </div>
             """
