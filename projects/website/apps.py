@@ -28,7 +28,7 @@ def setup_app(*, app=None):
                 headers = [(k, v) for k, v in headers if k.lower() != 'server']
                 # Add fixed headers
                 headers += [
-                    ("Cache-Control", "no-cache, no-store, must-revalidate"),
+                    ("Cache-Control", "no-cache"),
                     ("X-Content-Type-Options", "nosniff"),
                     ("Server", "GWAY")  # Optional: replace with your server name
                 ]
@@ -48,9 +48,7 @@ def setup_app(*, app=None):
             return original_set_cookie(name, value, **kwargs)
 
         response.set_cookie = secure_set_cookie
-
         return wrapped_app
-
 
     def cookies_enabled():
         return request.get_cookie("cookies_accepted") == "yes"

@@ -163,6 +163,7 @@ def run_tests(root: str = 'tests', filter=None):
     # Run the tests
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(test_suite)
+    logger.info(f"Test results: {str(result).strip()}")
     return result.wasSuccessful()
 
 

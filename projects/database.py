@@ -4,7 +4,6 @@ import sqlite3
 import logging
 
 from gway import Gateway
-
 logger = logging.getLogger(__name__)
 
 

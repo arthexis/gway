@@ -49,8 +49,7 @@ def build_qr_code(*, value=None):
             <h1>QR Code Generator</h1>
             <form method="get">
                 <input type="hidden" name="c" value="qr-code" />
-                <input type="text" name="value" placeholder="Enter text or URL" required
-                    style="width: 60%; padding: 0.5em; margin-right: 0.5em;" />
+                <input type="text" name="value" placeholder="Enter text or URL" required class="large" />
                 <button type="submit" style="padding: 0.5em;">Generate QR</button>
             </form>
         '''

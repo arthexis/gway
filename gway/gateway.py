@@ -405,7 +405,7 @@ def cli_main():
     if args.json:
         print(json.dumps(output, indent=2, default=str))
     elif output is not None:
-        logger.info(f"Result:\n{output}")
+        logger.info(f"Last function result:\n{output}")
         gway.print(output)
     else:
         logger.info("No results returned.")

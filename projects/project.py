@@ -1,14 +1,16 @@
 import os
-import base64
 import sys
 import toml
 import time
-from pathlib import Path
+import base64
+import logging
 import subprocess
+from pathlib import Path
 
 from gway import Gateway, requires
 
 gway = Gateway()
+logger = logging.getLogger(__name__)
 
 
 def build(
@@ -33,6 +35,7 @@ def build(
         git (bool): Require a clean git repo and commit/push after release if True.
     """
     
+    logger.info(f"Running tests before project build.")
     test_result = gway.run_tests()
     if not test_result:
         gway.abort("Tests failed, build aborted.")
@@ -72,7 +75,7 @@ def build(
         patch += 1
         new_version = f"{major}.{minor}.{patch}"
         version_path.write_text(new_version)
-        print(f"\nBumped version: {current_version} → {new_version}")
+        logger.info(f"\nBumped version: {current_version} → {new_version}")
     else:
         new_version = version_path.read_text().strip()
 
@@ -83,8 +86,6 @@ def build(
         for line in requirements_path.read_text().splitlines()
         if line.strip() and not line.startswith("#")
     ]
-
-    # TODO: Can we get the repository URL string directly from the local git repo itself?
 
     pyproject_content = {
         "build-system": {
@@ -126,7 +127,7 @@ def build(
     }
 
     pyproject_path.write_text(toml.dumps(pyproject_content), encoding="utf-8")
-    print(f"Generated {pyproject_path}")
+    logger.info(f"Generated {pyproject_path}")
 
     manifest_path = Path("MANIFEST.in")
     if not manifest_path.exists():
@@ -136,7 +137,7 @@ def build(
             "include requirements.txt\n"
             "include pyproject.toml\n"
         )
-        print("Generated MANIFEST.in")
+        logger.info("Generated MANIFEST.in")
 
     if dist:
         dist_dir = Path("dist")
@@ -145,12 +146,12 @@ def build(
                 item.unlink()
             dist_dir.rmdir()
 
-        print("Building distribution package...")
+        logger.info("Building distribution package...")
         subprocess.run([sys.executable, "-m", "build"], check=True)
-        print("Distribution package created in dist/")
+        logger.info("Distribution package created in dist/")
 
         if twine:
-            print("Validating distribution with twine check...")
+            logger.info("Validating distribution with twine check...")
             check_result = subprocess.run(
                 [sys.executable, "-m", "twine", "check", "dist/*"],
                 stdout=subprocess.PIPE,
@@ -159,12 +160,10 @@ def build(
             )
 
             if check_result.returncode != 0:
-                print("PyPI README rendering check failed:")
-                print(check_result.stdout)
-                print("Aborting upload.")
+                logger.error("PyPI README rendering check failed, aborting upload:\n{check_result.stdout}")
                 return
 
-            print("Twine check passed. Uploading to PyPI...")
+            logger.info("Twine check passed. Uploading to PyPI...")
 
             upload_command = [
                 sys.executable, "-m", "twine", "upload", "dist/*"
@@ -178,7 +177,7 @@ def build(
                 raise ValueError("Must provide either token or both user and password for Twine upload.")
 
             subprocess.run(upload_command, check=True)
-            print("Package uploaded to PyPI successfully.")
+            logger.info("Package uploaded to PyPI successfully.")
 
     if git:
         subprocess.run(["git", "add", "VERSION", "pyproject.toml"], check=True)
@@ -187,7 +186,7 @@ def build(
 
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
         subprocess.run(["git", "push"], check=True)
-        print(f"Committed and pushed: {commit_msg}")
+        logger.info(f"Committed and pushed: {commit_msg}")
 
 
 @requires("requests")
@@ -239,5 +238,5 @@ def generate_qr_code_url(value):
         if not os.path.exists(qr_path):
             img = qrcode.make(value)
             img.save(qr_path)
-    _qr_code_cache.add(encoded_value)
+        _qr_code_cache.add(encoded_value)
     return f"/temp/qr_codes/{safe_filename}"
