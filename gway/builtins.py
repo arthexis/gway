@@ -116,13 +116,22 @@ def version() -> str:
         return "unknown"
 
 
-def resource(*parts, base=None, touch=False, check=False):
+def resource(*parts, base=None, touch=False, check=False, temp=False):
     """
     Construct a path relative to the base, or the Gateway root if not specified.
     Assumes last part is a file and creates parent directories along the way.
+    Skips base and root if the first element in parts is already an absolute path.
     """
     from gway import Gateway
-    path = pathlib.Path(base or Gateway().root, *parts)
+
+    # If the first part is an absolute path, construct directly from it
+    first = pathlib.Path(parts[0])
+    if first.is_absolute():
+        path = pathlib.Path(*parts)
+    elif temp:
+        path = pathlib.Path("temp", *parts)
+    else:
+        path = pathlib.Path(base or Gateway().root, *parts)
 
     if not touch and check:
         assert path.exists(), f"Resource {path} missing"
@@ -133,6 +142,22 @@ def resource(*parts, base=None, touch=False, check=False):
 
     return path
 
+
+def readlines(*parts, base=None, unique=False):
+    """Fetch a GWAY resource split by lines. If unique=True, returns a set, otherwise a list."""
+    resource_file = resource(*parts, base=None)
+    lines = [] if not unique else set()
+    if os.path.exists(resource_file):
+        with open(resource_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    if unique:
+                        lines.add(line)
+                    else:
+                        lines.append(line)
+    return lines
+                    
 
 def run_tests(root: str = 'tests', filter=None):
     """Execute all automatically detected test suites."""
@@ -328,10 +353,4 @@ def watch_file(filepath, on_change, poll_interval=5.0, logger=None):
     thread = threading.Thread(target=_watch, daemon=True)
     thread.start()
     return stop_event
-
-
-def scratch():
-    from gway import Gateway
-    gway = Gateway()
-    # TODO: Use this function for quick tests
 

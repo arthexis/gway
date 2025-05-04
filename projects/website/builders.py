@@ -70,6 +70,8 @@ def build_awg_finder(
     if not meters:
         return '''
             <h1>AWG Cable Finder</h1>
+            <p>Warning: This calculator may not be applicable to your use case.
+              Consult your local electrical code before making real-life cable sizing decisions.</p>
             <form method="get">
                 <input type="hidden" name="c" value="awg-finder" />
                 <label>Meters: <input type="number" name="meters" required min="1" /></label><br/>
@@ -90,7 +92,7 @@ def build_awg_finder(
                     </select>
                 </label><br/>
                 <label>Neutral (0 or 1): <input type="number" name="neutral" value="0" /></label><br/>
-                <label>Conduit (emt/true/blank): <input name="conduit" /></label><br/>
+                <label>Conduit (emt/true/blank): <input name="conduit" /></label><br/><br/>
                 <button type="submit" style="padding: 0.5em;">Find Cable</button>
             </form>
         '''
