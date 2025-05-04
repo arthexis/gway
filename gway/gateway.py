@@ -223,8 +223,8 @@ def cli_main():
     gway_root = os.environ.get("GWAY_ROOT", args.root or BASE_PATH)
 
     gway = Gateway(root=gway_root)
-    load_env("clients", client_name, env_root)
-    load_env("servers", server_name, env_root)
+    load_env("client", client_name, env_root)
+    load_env("server", server_name, env_root)
 
     command_sources = []
 

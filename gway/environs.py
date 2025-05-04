@@ -47,8 +47,8 @@ def load_env(env_type: str, name: str, env_root: str):
     Supports BASE_ENV which can be defined in the main env file,
     but base env vars will not override the primary env's values.
     """
-    assert env_type in ("clients", "servers"), "env_type must be 'clients' or 'servers'"
-    env_dir = os.path.join(env_root, env_type)
+    assert env_type in ("client", "server"), "env_type must be 'client' or 'server'"
+    env_dir = os.path.join(env_root, env_type + "s")
     os.makedirs(env_dir, exist_ok=True)
 
     env_file = os.path.join(env_dir, f"{name.lower()}.env")
@@ -77,3 +77,5 @@ def load_env(env_type: str, name: str, env_root: str):
     # Load primary env variables (override base if needed)
     for key, value in primary_env.items():
         os.environ[key] = value
+
+    os.environ[env_type.upper()] = name
