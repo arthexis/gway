@@ -1,5 +1,6 @@
 import logging
 from gway import Gateway
+from typing import get_type_hints, Literal, Union, Optional
 
 logger = logging.getLogger(__name__)
 gway = Gateway()
@@ -19,10 +20,17 @@ class AWG(int):
         return f"AWG({str(self)})"
 
 
-def find_cable(
-        meters, *, amps="40", volts="220", material="cu", 
-        max_lines="3", phases="1", conduit=None, neutral="0"
-    ) -> dict:
+def find_cable( 
+        *,
+        meters: Union[int, str, None] = None,
+        amps: Union[int, str] = "40",
+        volts: Union[int, str] = "220",
+        material: Literal["cu", "al", "?"] = "cu",
+        max_lines: Union[int, str] = "3",
+        phases: Literal["1", "3", 1, 3] = "1",
+        conduit: Optional[Union[str, bool]] = None,
+        neutral: Union[int, str] = "0"
+    ):
     """Calculate the type of cable needed for an electrical system."""
     with gway.database.connect() as cursor:
             
