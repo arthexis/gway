@@ -61,8 +61,7 @@ class Gateway(Resolver):
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
             try:
-                self.logger.debug(f"Call {func_name} with args: {args} and kwargs: {kwargs}")
-
+                self.logger.debug(f"Call <{func_name}>: {args=} {kwargs=}")
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()

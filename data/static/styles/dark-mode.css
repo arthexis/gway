@@ -1,0 +1,89 @@
+body {
+    font-family: sans-serif;
+    max-width: 900px;
+    margin: 40px auto;
+    line-height: 1.6;
+    background-color: #121212;
+    color: #e0e0e0;
+}
+aside {
+    float: left;
+    width: 220px;
+    margin-right: 3em;
+}
+main {
+    overflow: hidden;
+}
+pre {
+    background: #1e1e1e;
+    color: #e0e0e0;
+    padding: 1em;
+    overflow-x: auto;
+    border-radius: 6px;
+}
+li a {
+    text-decoration: none;
+    color: #64b5f6;
+}
+li a:hover {
+    color: #90caf9;
+}
+.header-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5em;
+}
+h1 {
+    margin: 0;
+    padding: 0;
+    font-size: 2.2em;
+    color: #ffffff;
+}
+.search-box input[type="text"] {
+    padding: 0.4em;
+    font-size: 1em;
+    width: 200px;
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 4px;
+}
+footer {
+    font-size: 0.8em;
+    color: #aaa;
+    margin-top: 2em;
+    border-top: 1px solid #333;
+    padding-top: 1em;
+}
+aside ul li a {
+    text-transform: uppercase;
+}
+input.large {
+    width: 60%;
+    padding: 0.5em;
+    margin-right: 0.5em;
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    border-radius: 4px;
+}
+input.help {
+    width: 100%;
+    padding: 0.5em;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+}
+button {
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #666;
+    padding: 0.5em 1em;
+    border-radius: 4px;
+    cursor: pointer;
+}
+button:hover {
+    background-color: #444;
+}

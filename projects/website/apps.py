@@ -14,7 +14,7 @@ _css_cache = {}
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
     """Configure a simple application that showcases the use of GWAY to generate websites."""
-    from bottle import Bottle, static_file, request, response, template
+    from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     if app is None: app = Bottle()
 
@@ -104,15 +104,31 @@ def setup_app(*, app=None):
             _css_cache[path] = css
             return css
 
-    def make_template(*, title="GWAY", navbar="", content="", css_path="data/static/default.css"):
-        css = load_css(css_path)
+    def make_template(*, 
+            title="GWAY", navbar="", content="", css="default.css", 
+            inline_css=False,
+        ):
+        css_path = gway.resource("data", "static", "styles", css)
+
+        # TODO complete: fallback to default.css if custom css doesn't exist
+        if css != "default.css" and not os.path.exists(css_path):
+            css = "default.css"
+            css_path = gway.resource("data", "static", "styles", css)
+
+        if inline_css:
+            css_content = load_css(css_path)
+            css_html = f"<style>{css_content}</style>"
+        else:
+            css_url = f"/static/styles/{css}"
+            css_html = f'<link rel="stylesheet" href="{css_url}" />'
+
         version = gway.version()
         return template("""<!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8" />
                 <title>{{!title}}</title>
-                <style>{{!css}}</style>
+                {{!css_html}}
                 <link rel="icon" href="/static/favicon.ico" type="image/x-icon" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             </head>
@@ -134,23 +150,26 @@ def setup_app(*, app=None):
         response.set_header("Location", redirect_url)
         return ""
         
-    @app.route("/")
+    @app.route("/", method=["GET", "POST"])
     def index():
         c = request.query.get("c", "readme").replace("-", "_")
         kwargs = {k: v for k, v in request.query.items() if k != "c"}
 
-        # Find and use a website.builder function to generate the HTML template
         builder = getattr(gway.website, f"build_{c}", None)
 
         visited = []
         if not builder:
-            content = f"<p>No content found for '<code>{c}</code>'</p>"
+            logger.error(f"Unknown builder {builder.__name__}")
+            content = f"<p>Content not found.</p>"
         else:
             try:
                 content = builder(**kwargs)
                 visited = update_visited(c)
+            except HTTPResponse as res:
+                return res  
             except Exception as e:
-                content = f"<p>Error in content builder '<code>{c}</code>': {e}</p>"
+                logger.exception(e)
+                content = f"<p>Content not found.</p>"            
 
         current_url = request.fullpath
         if request.query_string:
@@ -170,7 +189,8 @@ def setup_app(*, app=None):
             """
             content = consent_box + content
 
-        return make_template(navbar=navbar, content=content)
+        css = request.get_cookie("css", "default.css")
+        return make_template(navbar=navbar, content=content, css=css)
 
 
     @app.route("/static/<filename:path>")

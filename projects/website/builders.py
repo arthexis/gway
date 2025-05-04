@@ -1,4 +1,5 @@
-from gway import Gateway
+import os
+from gway import Gateway, requires
 
 gway = Gateway()
 
@@ -55,7 +56,8 @@ def build_qr_code(*, value=None):
     
     qr_url = gway.project.generate_qr_code_url(value)
     return f"""
-        <h1>QR Code for: <code>{value}</code></h1>
+        <h1>QR Code for:</h1>
+        <h2><code>{value}</code></h2>
         <img src="{qr_url}" alt="QR Code" style="max-width: 300px;" />
         <p><a href="/?c=qr-code">Generate another</a></p>
     """
@@ -119,3 +121,42 @@ def build_awg_finder(
         </ul>
         <p><a href="/?c=awg-finder">Calculate again</a></p>
     """
+
+@requires("bottle")
+def build_css_selector():
+    """Allows user to choose from available stylesheets and shows current selection."""
+    from bottle import request, response, redirect
+
+    styles_dir = gway.resource("data", "static", "styles")
+    available = sorted(
+        f for f in os.listdir(styles_dir)
+        if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
+    )
+
+    # Handle form submission
+    if request.method == "POST":
+        selected = request.forms.get("css")
+        if selected in available:
+            response.set_cookie("css", selected, path="/")
+            return redirect("/")  # Redirect to GET view
+        else:
+            return f"<p style='color:red;'>Invalid selection: {selected}</p>"
+
+    current = request.get_cookie("css") or "default.css"
+
+    form = f"""
+        <h1>Select CSS Theme</h1>
+        <p>Current theme: <strong>{current}</strong></p>
+        <form method="post" action="/?c=css-selector">
+            <select name="css">
+                {{options}}
+            </select>
+            <button type="submit">Set Theme</button>
+        </form>
+    """
+
+    options = "\n".join(
+        f'<option value="{css}"{" selected" if css == current else ""}>{css}</option>'
+        for css in available
+    )
+    return form.format(options=options)
