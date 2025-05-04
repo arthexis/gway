@@ -1,2 +1,2 @@
 website start-server --daemon
-hold
+hold --lock-file VERSION
