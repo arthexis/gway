@@ -18,10 +18,7 @@ _css_cache = {}
 # https://arthexis.com/temp/qr_codes/Lz9jPWhlbHA.png
 # We should implement some kind of general cache busting solution for all hosted resources
 
-# TODO: Fix this issue -> https://readme.arthexis.com/ is reported as unsafe
-# This server couldn't prove that it's readme.arthexis.com; its security certificate is from arthexis.com. This may be caused by a misconfiguration or an attacker intercepting your connection.
-
-# TODO: Improve the help function to list all available projects and make them hyperlinked
+# TODO: Create an access log (consider storing in database if not too slow)
 
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
@@ -34,6 +31,15 @@ def setup_app(*, app=None):
         """
         Returns (context, is_subdomain) based on query string or subdomain.
         """
+
+        # TODO: Testing shows that some URLS in production are being formed as:
+        # https://help.arthexis.com/?c=readme
+        # However, once a subdomain is succesfully being used, builder functions should not use
+        # the c query param, and just use subdomain construction
+        # (But we have to keep c around for localhost and ip addresses)
+        # Make two changes: First, instead of checking for localhost and IP addresses, have this
+        # function return the protocol used: c will be used for http only and subdomains for https
+
         query_c = request.query.get("c")
         if query_c:
             return query_c.replace("-", "_"), False

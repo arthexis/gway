@@ -201,8 +201,28 @@ def help(*args, full_code=False):
         help("project", "function_name")
         help("project")  # NEW: Show help for all functions in a project
     """
+
     from gway import Gateway
     gway = Gateway()
+
+    if len(args) == 0:
+        # List all available projects by scanning gway.root/projects
+        projects_dir = os.path.join(gway.root, "projects")
+        if not os.path.isdir(projects_dir):
+            gway.print(f"Projects directory not found: {projects_dir}")
+            return
+
+        available_projects = []
+        for entry in os.scandir(projects_dir):
+            if entry.is_dir() and os.path.isfile(os.path.join(entry.path, "__init__.py")):
+                available_projects.append(entry.name)
+            elif entry.is_file() and entry.name.endswith(".py"):
+                available_projects.append(entry.name[:-3])  # Strip .py
+
+        print('To see more information try: gway help <project>')
+        return {
+            "Available Projects": sorted(available_projects)
+        }
 
     # Determine the function and context
     if len(args) == 1:
