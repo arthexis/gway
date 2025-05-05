@@ -213,6 +213,93 @@ def fetch_order(order_id):
     return result
         
 
+def fetch_templates(*, name=None, active=True, **kwargs):
+    """
+    Fetch available quotation templates from Odoo with optional filters.
+
+    Parameters:
+        name (str, optional): Filter templates by name or part of it.
+        active (bool): Whether to include only active templates. Defaults to True.
+        **kwargs: Additional filters as key-value pairs.
+
+    Returns:
+        dict: The fetched quotation templates.
+    """
+    model = 'sale.order.template'
+    method = 'search_read'
+    
+    domain_filter = []
+    if name:
+        domain_filter.append(('name', 'ilike', name))
+    if active is not None:
+        domain_filter.append(('active', '=', active))
+    for field, value in kwargs.items():
+        domain_filter.append((field, '=', value))
+
+    fields_to_fetch = ['name', 'number_of_days', 'active']
+    
+    try:
+        result = gway.odoo.execute(
+            [domain_filter], {'fields': fields_to_fetch},
+            model=model, method=method
+        )
+        return result
+    except Exception as e:
+        gway.logger.error(f"Error fetching quotation templates: {e}")
+        raise
+
+
+def create_quote(*, customer, template_id, validity=None, notes=None):
+    """
+    Create a new quotation using a specified template and customer name.
+
+    Parameters:
+        customer (str): The name (or partial name) of the customer to link to the quote.
+        template_id (int): The ID of the quotation template to use.
+        validity (str, optional): The expiration date for the quote in 'YYYY-MM-DD' format.
+        notes (str, optional): Internal notes or message to include in the quote.
+
+    Returns:
+        dict: The created quotation details.
+    """
+    # TODO: Add a "template" kwarg in addition to template ID, this is a string we use to
+    # Lookup the best matching template from fetch_templates, for example if a template has the name
+    # Instalación Porsche 7-7.5 kW 20A, we can pass "Porsche 20A" or similar to match the template
+
+    # Step 1: Lookup the customer ID
+    customer_result = fetch_customers(name=customer)
+    if not customer_result:
+        return {'error': f"No customer found matching name: {customer}"}
+    
+    customer_id = customer_result[0]['id']
+
+    # Step 2: Create the quote using the template
+    model = 'sale.order'
+    method = 'create'
+
+    values = {
+        'partner_id': customer_id,
+        'sale_order_template_id': template_id,
+    }
+
+    if validity:
+        values['validity_date'] = validity
+    if notes:
+        values['note'] = notes
+
+    try:
+        quote_id = gway.odoo.execute(
+            [values], {},
+            model=model, method=method
+        )
+    except Exception as e:
+        gway.logger.error(f"Error creating quote: {e}")
+        raise
+
+    # Step 3: Return full quote details
+    return fetch_order(quote_id)
+
+
 def send_chat(message: str, *, username: str = "[ODOO_USERNAME]") -> bool:
     """
     Send a chat message to an Odoo user by username.

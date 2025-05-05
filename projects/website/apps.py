@@ -8,12 +8,9 @@ from gway import requires, Gateway
 logger = logging.getLogger(__name__)
 gway = Gateway()
 
+
 _css_cache = {}
 
-
-# TODO: Fix this reported error:
-# A 'set-cookie' header has an invalid cookie value.
-# Set-Cookie: visited="qr_code\054readme\054awg_finder"; HttpOnly; Path=/; SameSite=lax; Secure
 
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
@@ -21,6 +18,24 @@ def setup_app(*, app=None):
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     if app is None: app = Bottle()
+
+    def find_url_context(default="readme"):
+        """
+        Returns (context, is_subdomain) based on query string or subdomain.
+        """
+        query_c = request.query.get("c")
+        if query_c:
+            return query_c.replace("-", "_"), False
+
+        host = request.urlparts.netloc.split(":")[0]
+        if host.replace(".", "").isdigit() or host.startswith("localhost"):
+            return default, False  # IP or localhost
+
+        parts = host.split(".")
+        if len(parts) > 2 and parts[0].lower() != "www":
+            return parts[0].replace("-", "_"), True
+
+        return default, False
 
     def security_middleware(app):
         """Middleware to fix headers and secure cookies."""
@@ -156,15 +171,17 @@ def setup_app(*, app=None):
         
     @app.route("/", method=["GET", "POST"])
     def index():
-        c = request.query.get("c", "readme").replace("-", "_")
+        c, is_subdomain = find_url_context()
         kwargs = {k: v for k, v in request.query.items() if k != "c"}
 
         builder = getattr(gway.website, f"build_{c}", None)
 
         visited = []
         if not builder:
-            logger.error(f"Unknown builder {builder.__name__}")
-            content = f"<p>Content not found.</p>"
+            target = "https://readme.arthexis.com" if is_subdomain else "/?c=readme"
+            response.status = 302
+            response.set_header("Location", target)
+            return ""
         else:
             try:
                 content = builder(**kwargs)
