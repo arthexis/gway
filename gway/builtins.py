@@ -37,12 +37,6 @@ def envs(filter: str = None) -> dict:
         return {k: v for k, v in os.environ.items() if filter in k}
     else: 
         return os.environ.copy()
-    
-
-def enum(*args):
-    for i, arg in enumerate(args):
-        print(f"{i} - {arg}")
-
 
 _print = print
 _INSERT_NL = False
@@ -373,4 +367,5 @@ def watch_file(filepath, on_change, poll_interval=5.0, logger=None):
     thread = threading.Thread(target=_watch, daemon=True)
     thread.start()
     return stop_event
+
 

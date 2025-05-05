@@ -141,7 +141,7 @@ def fetch_customers(
     Returns:
         dict: The fetched customers.
     """
-    # TODO: If latest_quotes is a number, also fetch the latest quotes for this customer.
+    # TODO: If latest_quotes is a number, also fetch the many latest quotes for this customer.
 
     model = 'res.partner'
     method = 'search_read'

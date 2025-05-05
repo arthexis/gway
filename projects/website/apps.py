@@ -27,33 +27,6 @@ def setup_app(*, app=None):
 
     if app is None: app = Bottle()
 
-    def find_url_context(default="readme"):
-        """
-        Returns (context, is_subdomain) based on query string or subdomain.
-        """
-
-        # TODO: Testing shows that some URLS in production are being formed as:
-        # https://help.arthexis.com/?c=readme
-        # However, once a subdomain is succesfully being used, builder functions should not use
-        # the c query param, and just use subdomain construction
-        # (But we have to keep c around for localhost and ip addresses)
-        # Make two changes: First, instead of checking for localhost and IP addresses, have this
-        # function return the protocol used: c will be used for http only and subdomains for https
-
-        query_c = request.query.get("c")
-        if query_c:
-            return query_c.replace("-", "_"), False
-
-        host = request.urlparts.netloc.split(":")[0]
-        if host.replace(".", "").isdigit() or host.startswith("localhost"):
-            return default, False  # IP or localhost
-
-        parts = host.split(".")
-        if len(parts) > 2 and parts[0].lower() != "www":
-            return parts[0].replace("-", "_"), True
-
-        return default, False
-
     def security_middleware(app):
         """Middleware to fix headers and secure cookies."""
         def wrapped_app(environ, start_response):
@@ -188,14 +161,13 @@ def setup_app(*, app=None):
         
     @app.route("/", method=["GET", "POST"])
     def index():
-        c, is_subdomain = find_url_context()
+        c = request.query.get("c")
         kwargs = {k: v for k, v in request.query.items() if k != "c"}
-
         builder = getattr(gway.website, f"build_{c}", None)
 
         visited = []
         if not builder:
-            target = "https://readme.arthexis.com" if is_subdomain else "/?c=readme"
+            target = "/?c=readme"
             response.status = 302
             response.set_header("Location", target)
             return ""
@@ -214,7 +186,6 @@ def setup_app(*, app=None):
             current_url += "?" + request.query_string
 
         navbar = build_navbar(visited, current_url=current_url)
-
         if not cookies_enabled():
             consent_box = f"""
                 <div class="consent-box">
