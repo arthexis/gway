@@ -54,3 +54,6 @@ input.help {
     border-radius: 8px; 
     border: 1px solid #ccc;
 }
+input.submit {
+    padding: 0.5em;
+}

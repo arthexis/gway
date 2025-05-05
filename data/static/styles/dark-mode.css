@@ -87,3 +87,6 @@ button {
 button:hover {
     background-color: #444;
 }
+input.submit {
+    padding: 0.5em;
+}

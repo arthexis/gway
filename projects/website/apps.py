@@ -11,6 +11,10 @@ gway = Gateway()
 _css_cache = {}
 
 
+# TODO: Fix this reported error:
+# A 'set-cookie' header has an invalid cookie value.
+# Set-Cookie: visited="qr_code\054readme\054awg_finder"; HttpOnly; Path=/; SameSite=lax; Secure
+
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
     """Configure a simple application that showcases the use of GWAY to generate websites."""
@@ -39,7 +43,8 @@ def setup_app(*, app=None):
 
         @wraps(original_set_cookie)
         def secure_set_cookie(name, value, **kwargs):
-            kwargs.setdefault("secure", True)
+            is_secure = request.urlparts.scheme == "https"
+            kwargs.setdefault("secure", is_secure)
             kwargs.setdefault("httponly", True)
             kwargs.setdefault("samesite", "Lax")
             kwargs.setdefault("path", "/")
@@ -50,23 +55,23 @@ def setup_app(*, app=None):
 
     def cookies_enabled():
         return request.get_cookie("cookies_accepted") == "yes"
-    
+        
     def update_visited(current, cookie_name="visited"):
         if not cookies_enabled():
             return []
-        
+
         raw = request.get_cookie(cookie_name, "")
-        visited = [unquote(v) for v in raw.split(",") if v]
+        visited = raw.split("|") if raw else []
 
         if current not in visited:
             visited.append(current)
 
-        # Store as comma-separated quoted values
-        cookie_value = ",".join(quote(v) for v in visited)
+        # Use a safe separator (not comma) and avoid quotes
+        cookie_value = "|".join(visited)
         response.set_cookie(cookie_name, cookie_value)
 
         return visited
-    
+
     def build_navbar(visited, current_url=None):
         if not cookies_enabled():
             visited = ["readme"]
@@ -110,7 +115,6 @@ def setup_app(*, app=None):
         ):
         css_path = gway.resource("data", "static", "styles", css)
 
-        # TODO complete: fallback to default.css if custom css doesn't exist
         if css != "default.css" and not os.path.exists(css_path):
             css = "default.css"
             css_path = gway.resource("data", "static", "styles", css)
@@ -137,7 +141,7 @@ def setup_app(*, app=None):
                 <main>{{!content}}</main>
                 <br><hr><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
                         <p>GWAY is powered by <a href="https://www.python.org/">Python</a>.
-                        Hosting by <a href="https://www.gelectriic.org/">Gelectriic Solutions</a>.</p></footer>
+                        Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>.</p></footer>
             </body>
             </html>
         """, **locals())

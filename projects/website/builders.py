@@ -3,6 +3,8 @@ from gway import Gateway, requires
 
 gway = Gateway()
 
+# Considerations for ALL builder functions:
+# Don't use inline CSS ever, each user can have different css configurations. 
 
 def build_readme():
     """Render the README.rst file as HTML."""
@@ -50,7 +52,7 @@ def build_qr_code(*, value=None):
             <form method="get">
                 <input type="hidden" name="c" value="qr-code" />
                 <input type="text" name="value" placeholder="Enter text or URL" required class="large" />
-                <button type="submit" style="padding: 0.5em;">Generate QR</button>
+                <button type="submit" class="submit">Generate QR</button>
             </form>
         '''
     
