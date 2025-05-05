@@ -11,6 +11,17 @@ gway = Gateway()
 
 _css_cache = {}
 
+# TODO: Fix this reported error -> The 'server' header should only contain the server name
+# Server: nginx/1.18.0 (ubuntu)
+
+# TODO: Resource should use cache busting but URL does not match configured patterns.
+# https://arthexis.com/temp/qr_codes/Lz9jPWhlbHA.png
+# We should implement some kind of general cache busting solution for all hosted resources
+
+# TODO: Fix this issue -> https://readme.arthexis.com/ is reported as unsafe
+# This server couldn't prove that it's readme.arthexis.com; its security certificate is from arthexis.com. This may be caused by a misconfiguration or an attacker intercepting your connection.
+
+# TODO: Improve the help function to list all available projects and make them hyperlinked
 
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
