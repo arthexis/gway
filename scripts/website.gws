@@ -1,2 +1,2 @@
 website start-server --daemon
-hold --lock-file VERSION
+hold --lock-file VERSION --lock-pypi

@@ -90,3 +90,9 @@ button:hover {
 input.submit {
     padding: 0.5em;
 }
+img.qr {
+    max-width: 300px;
+}
+p.error {
+    color:goldenrod;
+}

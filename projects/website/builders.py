@@ -60,7 +60,7 @@ def build_qr_code(*, value=None):
     return f"""
         <h1>QR Code for:</h1>
         <h2><code>{value}</code></h2>
-        <img src="{qr_url}" alt="QR Code" style="max-width: 300px;" />
+        <img src="{qr_url}" alt="QR Code" class="qr" />
         <p><a href="/?c=qr-code">Generate another</a></p>
     """
 
@@ -97,7 +97,7 @@ def build_awg_finder(
                 </label><br/>
                 <label>Neutral (0 or 1): <input type="number" name="neutral" value="0" /></label><br/>
                 <label>Conduit (emt/true/blank): <input name="conduit" /></label><br/><br/>
-                <button type="submit" style="padding: 0.5em;">Find Cable</button>
+                <button type="submit" class="submit">Find Cable</button>
             </form>
         '''
 
@@ -108,7 +108,7 @@ def build_awg_finder(
             phases=phases, conduit=conduit, neutral=neutral
         )
     except Exception as e:
-        return f"<p style='color:red;'>Error: {e}</p><p><a href='/?c=awg-finder'>Try again</a></p>"
+        return f"<p class='error'>Error: {e}</p><p><a href='/?c=awg-finder'>Try again</a></p>"
 
     return f"""
         <h1>Recommended Cable</h1>
@@ -142,7 +142,7 @@ def build_css_selector():
             response.set_cookie("css", selected, path="/")
             return redirect("/")  # Redirect to GET view
         else:
-            return f"<p style='color:red;'>Invalid selection: {selected}</p>"
+            return f"<p class='error'>Invalid selection: {selected}</p>"
 
     current = request.get_cookie("css") or "default.css"
 

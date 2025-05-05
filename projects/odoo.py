@@ -4,9 +4,6 @@ from gway import Gateway
 
 gway = Gateway()
 
-#---------------------------------------------------------------------------------------
-# Odoo functions for interacting with the Odoo API
-#---------------------------------------------------------------------------------------
 
 def execute(
         *args, model: str, method: str, 
@@ -28,7 +25,7 @@ def execute(
     Returns:
         dict: The result of the execute_kw call.
     """
-    gway.logger.debug(f"Odoo Execute: {model=} {method=} @ {url=} {db_name=} {username=} {password=}")
+    gway.logger.info(f"Odoo Execute: {model=} {method=} @ {url=} {db_name=} {username=}")
     try:
         common_client = client.ServerProxy(f"{url}/xmlrpc/2/common")
     except Exception as e:
@@ -47,7 +44,7 @@ def execute(
         for reserved in ("db_name", "uid", "password", "model", "method"):
             gway.logger.warning(f"Removing reserved keyword: {reserved}")
             kwargs.pop(reserved, None)
-        gway.logger.debug(f"Executing {model}.{method} with args: {args} and kwargs: {kwargs}")
+        gway.logger.debug(f"Model client call execute_kw {model}.{method} with {args=} {kwargs=}")
         result = models_client.execute_kw(db_name, uid, password, model, method, *args, **kwargs)
         return result
     except Exception as e:
