@@ -5,6 +5,8 @@ gway = Gateway()
 
 # Considerations for ALL builder functions:
 # Don't use inline CSS ever, each user can have different css configurations. 
+# Instead use simple common sense names for classes and add them to .css files.
+# The class name should not indicate aesthetics, but the function of the element.
 
 def build_readme():
     """Render the README.rst file as HTML."""
@@ -51,7 +53,7 @@ def build_qr_code(*, value=None):
             <h1>QR Code Generator</h1>
             <form method="get">
                 <input type="hidden" name="c" value="qr-code" />
-                <input type="text" name="value" placeholder="Enter text or URL" required class="large" />
+                <input type="text" name="value" placeholder="Enter text or URL" required class="main" />
                 <button type="submit" class="submit">Generate QR</button>
             </form>
         '''

@@ -43,7 +43,7 @@ footer {
 aside ul li a {
     text-transform: uppercase;
 }
-input.large {
+input.main {
     width: 60%; 
     padding: 0.5em; 
     margin-right: 0.5em;
@@ -62,4 +62,16 @@ img.qr {
 }
 p.error {
     color:red;
+}
+form.navbar {
+    margin-bottom: 1em;
+}
+div.qr {
+    margin-top: 1em; text-align: center;
+}
+p.qr {
+    margin-bottom: 0.5em
+}
+img.navbar-qr {
+    max-width: 150px;
 }

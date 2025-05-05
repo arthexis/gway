@@ -79,18 +79,18 @@ def setup_app(*, app=None):
             f'<li><a href="/?c={b}">{b.title()}</a></li>' for b in sorted(visited) if b
         )
         search_box = '''
-            <form action="/" method="get" style="margin-bottom: 1em;">
+            <form action="/" method="get" class="navbar">
                 <input type="hidden" name="c" value="help" />
-                <input type="text" name="path" placeholder="Search GWAY" style="help" />
+                <input type="text" name="path" placeholder="Search GWAY" class="help" />
             </form>
         '''
         qr_html = ""
         if current_url:
             qr_url = gway.project.generate_qr_code_url(current_url)
             qr_html = f'''
-                <div style="margin-top: 1em; text-align: center;">
-                    <p style="margin-bottom: 0.5em;">QR Code for this page:</p>
-                    <img src="{qr_url}" alt="QR Code" style="max-width: 150px;" />
+                <div class="qr">
+                    <p class="qr">QR Code for this page:</p>
+                    <img src="{qr_url}" alt="QR Code" class="navbar-qr" />
                 </div>
             '''
 
