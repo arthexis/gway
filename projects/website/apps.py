@@ -20,6 +20,8 @@ _css_cache = {}
 
 # TODO: Create an access log (consider storing in database if not too slow)
 
+# TODO: Consider getting rid of c and just using the first path to specify the builder?
+
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
     """Configure a simple application that showcases the use of GWAY to generate websites."""
@@ -86,7 +88,7 @@ def setup_app(*, app=None):
         search_box = '''
             <form action="/" method="get" class="navbar">
                 <input type="hidden" name="c" value="help" />
-                <input type="text" name="path" placeholder="Search GWAY" class="help" />
+                <input type="text" name="q" placeholder="Search GWAY" class="help" />
             </form>
         '''
         qr_html = ""

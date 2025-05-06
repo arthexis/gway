@@ -20,29 +20,64 @@ def build_readme():
     return html_parts["html_body"]
 
 
-def build_help(path=""):
-    """Render dynamic help based on GWAY introspection."""
-    # Allow whitespace and punctuation as separators (convert to slash first)
-    path = path.replace(" ", "/").replace(".", "/").replace("-", "_") if path else ""
-    parts = [p for p in path.strip("/").split("/") if p]
+def build_help(q=""):
+    """Render dynamic help based on GWAY introspection and search-style links."""
+    q = q.replace(" ", "/").replace(".", "/").replace("-", "_") if q else ""
+    parts = [p for p in q.strip("/").split("/") if p]
 
     if len(parts) == 0:
         help_info = gway.help()
-        title = f"Basic Help"
+        title = "Available Projects"
+        content = "<ul>"
+        for project in help_info["Available Projects"]:
+            content += f'<li><a href="?c=help&q={project}">{project}</a></li>'
+        content += "</ul>"
+        return f"<h1>{title}</h1>{content}"
+
     elif len(parts) == 1:
-        help_info = gway.help(parts[0])
-        title = f"Help for {parts[0]}"
+        project = parts[0]
+        help_info = gway.help(project)
+        title = f"Help Topics for <code>{project}</code>"
+
     elif len(parts) == 2:
-        help_info = gway.help(parts[0], parts[1])
-        title = f"Help for {parts[0]}.{parts[1]}"
+        project, function = parts
+        help_info = gway.help(project, function)
+        title = f"Help for <code>{project}.{function}</code>"
+
     else:
         return "<h2>Invalid help subject</h2><p>Use format: <code>project function</code></p>"
 
     if help_info is None:
-        return "<h2>Function Not Found</h2><p>No help found for the given input.</p>"
+        return "<h2>Not Found</h2><p>No help found for the given input.</p>"
 
-    rows = "".join(f"<h3>{k}</h3><pre>{v}</pre>" for k, v in help_info.items())
-    return f"<h1>{title}</h1>{rows}"
+    if "Matches" in help_info:
+        sections = [render_help_section(match, use_query_links=True) for match in help_info["Matches"]]
+        return f"<h1>{title}</h1>{''.join(sections)}"
+
+    return f"<h1>{title}</h1>{render_help_section(help_info, use_query_links=True)}"
+
+
+def render_help_section(info, use_query_links=False):
+    """Render a help section with clean formatting and query-style links."""
+    rows = []
+    for key, value in info.items():
+        if use_query_links:
+            if key == "Project":
+                value = f'<a href="?c=help&q={value}">{value}</a>'
+            elif key == "Function":
+                proj = info.get("Project", "")
+                value = f'<a href="?c=help&q={proj}/{value}">{value}</a>'
+
+        if key in ("Signature", "Example CLI", "Example Code", "Full Code"):
+            value = f"<pre><code>{value}</code></pre>"
+        elif key in ("Docstring", "TODOs"):
+            value = f"<div class='doc'>{value}</div>"
+        else:
+            value = f"<p>{value}</p>"
+
+        rows.append(f"<section><h3>{key}</h3>{value}</section>")
+
+    return f"<article class='help-entry'>{''.join(rows)}</article>"
 
 
 def build_qr_code(*, value=None):
