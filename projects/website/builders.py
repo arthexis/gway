@@ -28,8 +28,6 @@ def build_help(path=""):
 
     if len(parts) == 0:
         help_info = gway.help()
-        # TODO: This returns a dict such as:
-        # Available Projects:  ['awg', 'database', 'ocpp', 'odoo', 'project', 'tests', 'website']
         title = f"Basic Help"
     elif len(parts) == 1:
         help_info = gway.help(parts[0])

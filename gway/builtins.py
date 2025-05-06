@@ -201,8 +201,7 @@ def help(*args, full_code=False):
 
     db_path = gway.resource("data", "help.sqlite")
     if not os.path.isfile(db_path):
-        gway.print("Help database not found. Run build() first.")
-        return
+        gway.release.build_help_db()
 
     with gway.database.connect(db_path, row_factory=True) as cur:
 

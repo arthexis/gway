@@ -91,7 +91,7 @@ def setup_app(*, app=None):
         '''
         qr_html = ""
         if current_url:
-            qr_url = gway.project.generate_qr_code_url(current_url)
+            qr_url = gway.release.generate_qr_code_url(current_url)
             qr_html = f'''
                 <div class="qr">
                     <p class="qr">QR Code for this page:</p>
