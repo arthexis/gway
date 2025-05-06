@@ -159,7 +159,7 @@ class Gateway(Resolver):
             (lock_file, watch_file, "Lock file"),
             (lock_url, self.website.watch_url, "Lock url"),
             (lock_pypi if lock_pypi is not False else None,
-            self.project.watch_pypi_package, "PyPI package")
+            self.release.watch_pypi_package, "PyPI package")
         ]
         for target, watcher, reason in watchers:
             if target:

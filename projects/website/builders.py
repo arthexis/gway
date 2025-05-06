@@ -22,15 +22,16 @@ def build_readme():
 
 def build_help(path=""):
     """Render dynamic help based on GWAY introspection."""
-    # Handle None input and normalize separators
-    if not path:
-        return "<h2>No help topic provided</h2><p>Please enter a valid topic or function name.</p>"
-
     # Allow whitespace and punctuation as separators (convert to slash first)
-    path = path.replace(" ", "/").replace(".", "/").replace("-", "_")
+    path = path.replace(" ", "/").replace(".", "/").replace("-", "_") if path else ""
     parts = [p for p in path.strip("/").split("/") if p]
 
-    if len(parts) == 1:
+    if len(parts) == 0:
+        help_info = gway.help()
+        # TODO: This returns a dict such as:
+        # Available Projects:  ['awg', 'database', 'ocpp', 'odoo', 'project', 'tests', 'website']
+        title = f"Basic Help"
+    elif len(parts) == 1:
         help_info = gway.help(parts[0])
         title = f"Help for {parts[0]}"
     elif len(parts) == 2:

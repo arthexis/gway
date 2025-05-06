@@ -18,7 +18,10 @@ def infer_type(value):
 
 
 @contextmanager
-def connect(*database, sql_engine="sqlite3", load_data=True, force=False, temp_name="gsol.sqlite"):
+def connect(
+        *database, sql_engine="sqlite3", load_data=False, force=False, 
+        temp_name="gsol.sqlite", row_factory=False, 
+    ):
     """
     Connects to a SQLite database using a context manager.
     Loads CSV data from the data folder if load_data is True.
@@ -31,11 +34,14 @@ def connect(*database, sql_engine="sqlite3", load_data=True, force=False, temp_n
         database = ("temp", temp_name)
 
     db_path = gway.resource(*database)
-    data_path = os.path.join(gway.root, "data")
+    if isinstance(load_data, str):
+        data_path = gway.resource("data", load_data)
+    else:
+        data_path = gway.resource("data")  
     conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
 
     def load_csv(path, parent_path=""):
+        cursor = conn.cursor()
         for item in os.listdir(path):
             full_path = os.path.join(path, item)
             if os.path.isdir(full_path):
@@ -83,7 +89,6 @@ def connect(*database, sql_engine="sqlite3", load_data=True, force=False, temp_n
                         create_table_query = (f"CREATE TABLE [{table_name}] ("
                                               f"{', '.join(f'[{unique_headers[i]}] {column_types[i]}' for i in range(len(unique_headers)))})")
                         cursor.execute(create_table_query)
-
                         insert_query = (f"INSERT INTO [{table_name}] ({', '.join(f'[{h}]' for h in unique_headers)}) "
                                         f"VALUES ({', '.join('?' for _ in unique_headers)})")
 
@@ -93,10 +98,17 @@ def connect(*database, sql_engine="sqlite3", load_data=True, force=False, temp_n
                         logger.info(f"Loaded table '{table_name}' with columns: {', '.join(unique_headers)}")
                     else:
                         logger.info(f"Skipped existing table '{table_name}' (force=False)")
+        cursor.close()
 
     if load_data:
         load_csv(data_path)
+    
+    if callable(row_factory):
+        conn.row_factory = row_factory
+    elif row_factory:
+        conn.row_factory = sqlite3.Row
 
+    cursor = conn.cursor()
     yield cursor
     conn.close()
 

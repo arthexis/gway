@@ -4,6 +4,8 @@ import toml
 import time
 import base64
 import logging
+import inspect
+import textwrap
 import subprocess
 from pathlib import Path
 
@@ -17,14 +19,13 @@ def build(
     bump: bool = False,
     dist: bool = False,
     twine: bool = False,
+    help_db: bool = True,
     user: str = "[PYPI_USERNAME]",
     password: str = "[PYPI_PASSWORD]",
     token: str = "[PYPI_API_TOKEN]",
     git: bool = False,
 ) -> None:
-    """
-    Build the project and optionally upload to PyPI.
-
+    """Build the project and optionally upload to PyPI.
     Args:
         bump (bool): Increment patch version if True.
         dist (bool): Build distribution package if True.
@@ -44,6 +45,9 @@ def build(
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
         if status.stdout.strip():
             gway.abort("Git repository is not clean. Commit or stash changes before building.")
+
+    if help_db:
+        build_help_db()
 
     project_name = "gway"
     description = "Software Project Infrastructure by https://www.gelectriic.com"
@@ -163,7 +167,6 @@ def build(
                 return
 
             logger.info("Twine check passed. Uploading to PyPI...")
-
             upload_command = [
                 sys.executable, "-m", "twine", "upload", "dist/*"
             ]
@@ -180,12 +183,61 @@ def build(
 
     if git:
         subprocess.run(["git", "add", "VERSION", "pyproject.toml"], check=True)
-
         commit_msg = f"PyPI Release v{version}" if twine else f"Release v{version}"
-
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
         subprocess.run(["git", "push"], check=True)
         logger.info(f"Committed and pushed: {commit_msg}")
+
+
+def build_help_db():
+    from gway.functions import load_project
+
+    with gway.database.connect("data", "help.sqlite") as cursor:
+        cursor.execute("DROP TABLE IF EXISTS help")
+        cursor.execute("""
+            CREATE VIRTUAL TABLE help USING fts5(
+                project, function, signature, docstring, source, todos, tokenize='porter')   
+        """)
+
+        projects_dir = os.path.join(gway.root, "projects")
+        for entry in os.scandir(projects_dir):
+            if entry.name.startswith("_"):
+                continue
+            name = entry.name[:-3] if entry.name.endswith(".py") else entry.name
+            try:
+                module, funcs = load_project(name, gway.root)
+                for fname, func in funcs.items():
+                    doc = inspect.getdoc(func)
+                    sig = str(inspect.signature(func))
+                    source = "".join(inspect.getsourcelines(func)[0])
+                    todos = extract_todos(source)
+
+                    cursor.execute("INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)", 
+                                (name, fname, sig, doc, source, "\n".join(todos)))
+            except Exception as e:
+                logger.warning(f"Skipping project {name}: {e}")
+
+        cursor.execute("COMMIT")
+
+
+def extract_todos(source):
+    todos = []
+    lines = source.splitlines()
+    current = []
+    for line in lines:
+        stripped = line.strip()
+        if "# TODO" in stripped:
+            if current:
+                todos.append("\n".join(current))
+            current = [stripped]
+        elif current and (stripped.startswith("#") or not stripped):
+            current.append(stripped)
+        elif current:
+            todos.append("\n".join(current))
+            current = []
+    if current:
+        todos.append("\n".join(current))
+    return todos
 
 
 @requires("requests")

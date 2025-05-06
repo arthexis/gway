@@ -71,7 +71,7 @@ def load_builtins() -> dict:
 
 
 def show_functions(functions: dict):
-    """Display available functions in project."""
+    """Display a formatted view of available functions."""
     print("Available functions:")
     for name, func in functions.items():
         # Build argument preview

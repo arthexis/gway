@@ -38,59 +38,68 @@ def envs(filter: str = None) -> dict:
     else: 
         return os.environ.copy()
 
+
 _print = print
 _INSERT_NL = False
 
-def print(text, *, max_depth=10, _current_depth=0):
-    """Recursively prints an object with colorized output without extra spacing."""
+def print(obj, *, max_depth=10, _current_depth=0, _indent=0):
+    """YAML-like compact printer with color and proper key-value formatting."""
     global _INSERT_NL
     if _INSERT_NL:
         _print()
-    # Show which function called print
-    try:
-        print_frame = inspect.stack()[2]
-    except IndexError:
-        print_frame = inspect.stack()[1]
-    print_origin = f"{print_frame.function}() in {print_frame.filename}:{print_frame.lineno}"
-    logger.debug(f"From {print_origin}:\n {text}")
+    if _current_depth == 0:
+        try:
+            frame = inspect.stack()[2]
+        except IndexError:
+            frame = inspect.stack()[1]
+        origin = f"{frame.function}() in {frame.filename}:{frame.lineno}"
+        import logging
+        logging.getLogger("gway").debug(f"From {origin}:\n{obj}")
 
     colorama_init(strip=False)
-
+    indent = "  " * _indent
     if _current_depth > max_depth:
-        _print(f"{Fore.YELLOW}...{Style.RESET_ALL}", end="")
+        _print(f"{indent}{Fore.YELLOW}...{Style.RESET_ALL}")
         return
-
-    if isinstance(text, dict):
-        for k, v in text.items():
-            if k.startswith("_"):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if str(k).startswith("_"):
                 continue
             key_str = f"{Fore.BLUE}{Style.BRIGHT}{k}{Style.RESET_ALL}"
-            colon = f"{Style.DIM}: {Style.RESET_ALL}"
-            _print(f"{key_str}{colon} {v}")
-    elif isinstance(text, list):
-        for i, item in enumerate(text):
-            if i > 0:
-                _print(end="")  # No comma separator for items
-            print(item, max_depth=max_depth, _current_depth=_current_depth + 1)
-    elif isinstance(text, str):
-        _print(f"{Fore.GREEN}{text}{Style.RESET_ALL}", end="")  # No extra newline after string
-    elif callable(text):
+            if isinstance(v, str) and "\n" not in v:
+                # Compact single-line value
+                _print(f"{indent}{key_str}: {Fore.GREEN}{v.strip()}{Style.RESET_ALL}")
+            elif isinstance(v, str) and v.strip() == "":
+                continue  # Skip empty strings
+            else:
+                _print(f"{indent}{key_str}:{Style.RESET_ALL}")
+                print(v, max_depth=max_depth, _current_depth=_current_depth + 1, _indent=_indent + 1)
+    elif isinstance(obj, list):
+        for item in obj:
+            print(item, max_depth=max_depth, _current_depth=_current_depth + 1, _indent=_indent)
+    elif isinstance(obj, str):
+        lines = obj.splitlines()
+        for line in lines:
+            if line.strip():
+                _print(f"{indent}{Fore.GREEN}{line.rstrip()}{Style.RESET_ALL}")
+    elif callable(obj):
         try:
-            func_name = text.__name__.replace("__", " ").replace("_", "-")
-            sig = inspect.signature(text)
+            func_name = obj.__name__.replace("__", " ").replace("_", "-")
+            sig = inspect.signature(obj)
             args = []
             for param in sig.parameters.values():
                 name = param.name.replace("__", " ").replace("_", "-")
                 if param.default is param.empty:
                     args.append(name)
                 else:
-                    args.append(f"--{name} {param.default}")
+                    args.append(f"--{name}={param.default}")
             formatted = " ".join([func_name] + args)
-            _print(f"{Fore.MAGENTA}{formatted}{Style.RESET_ALL}", end="")
+            _print(f"{indent}{Fore.MAGENTA}{formatted}{Style.RESET_ALL}")
         except Exception:
-            _print(f"{Fore.RED}<function>{Style.RESET_ALL}", end="")
+            _print(f"{indent}{Fore.RED}<function>{Style.RESET_ALL}")
     else:
-        _print(f"{Fore.GREEN}{str(text)}{Style.RESET_ALL}", end="")  # No extra newline
+        _print(f"{indent}{Fore.CYAN}{str(obj)}{Style.RESET_ALL}")
+
     _INSERT_NL = True
 
 
@@ -187,145 +196,52 @@ def run_tests(root: str = 'tests', filter=None):
 
 
 def help(*args, full_code=False):
-    """
-    Display help information for a gway function.
-
-    Usage:
-        help("builtin_function")
-        help("project", "function_name")
-        help("project")  # NEW: Show help for all functions in a project
-    """
-
     from gway import Gateway
     gway = Gateway()
 
-    if len(args) == 0:
-        # List all available projects by scanning gway.root/projects
-        projects_dir = os.path.join(gway.root, "projects")
-        if not os.path.isdir(projects_dir):
-            gway.print(f"Projects directory not found: {projects_dir}")
-            return
-
-        available_projects = []
-        for entry in os.scandir(projects_dir):
-            if entry.is_dir() and os.path.isfile(os.path.join(entry.path, "__init__.py")):
-                available_projects.append(entry.name)
-            elif entry.is_file() and entry.name.endswith(".py"):
-                available_projects.append(entry.name[:-3])  # Strip .py
-
-        print('To see more information try: gway help <project>')
-        return {
-            "Available Projects": sorted(available_projects)
-        }
-
-    # Determine the function and context
-    if len(args) == 1:
-        name = args[0].replace("-", "_")
-        func_obj = getattr(gway, name, None)
-
-        if func_obj and callable(func_obj):
-            # It's a direct function (builtin)
-            location = "builtin"
-            func_name = name
-        elif hasattr(gway, name):
-            # It's a project/module: show help on all functions inside
-            module = getattr(gway, name)
-            output = {
-                "Project": name,
-                "Module": str(module),
-                "Available Functions": sorted(
-                    attr for attr in dir(module)
-                    if not attr.startswith("_") and callable(getattr(module, attr))
-                )
-            }
-            return output
-        else:
-            gway.print(f"Function or project not found: {args[0]}")
-            return
-    elif len(args) == 2:
-        location = args[0].replace("-", "_")
-        func_name = args[1].replace("-", "_")
-        module = getattr(gway, location, None)
-        func_obj = getattr(module, func_name, None) if module else None
-    else:
-        gway.print("Usage: help('builtin') or help('project', 'function')")
+    db_path = gway.resource("data", "help.sqlite")
+    if not os.path.isfile(db_path):
+        gway.print("Help database not found. Run build() first.")
         return
 
-    if not func_obj or not callable(func_obj):
-        gway.print(f"Function not found: {' '.join(args)}")
-        return
+    with gway.database.connect(db_path, row_factory=True) as cur:
 
-    doc = inspect.getdoc(func_obj) or "(No docstring available)"
-    sig = inspect.signature(func_obj)
+        if len(args) == 0:
+            cur.execute("SELECT DISTINCT project FROM help")
+            return {"Available Projects": sorted([row["project"] for row in cur.fetchall()])}
 
-    cli_parts = []
-    code_parts = []
-    for name, param in sig.parameters.items():
-        cli_flag = f"--{name.replace('_', '-')}"
-        is_required = param.default == inspect.Parameter.empty
-        if param.kind == inspect.Parameter.VAR_POSITIONAL:
-            cli_parts.append("[<args>...]")
-            code_parts.append("*args")
-        elif param.kind == inspect.Parameter.VAR_KEYWORD:
-            cli_parts.append("[--kwargs key=value ...]")
-            code_parts.append("**kwargs")
-        elif param.annotation == bool or isinstance(param.default, bool):
-            cli_parts.append(f"[--{name.replace('_', '-')}/--no-{name.replace('_', '-')}]")
-            code_parts.append(f"{name}={param.default}")
-        elif is_required:
-            cli_parts.append(f"<{name}>")
-            code_parts.append(name)
+        elif len(args) == 1:
+            query = args[0].replace("-", "_")
+            cur.execute("SELECT * FROM help WHERE help MATCH ?", (query,))
+        elif len(args) == 2:
+            project = args[0].replace("-", "_")
+            func = args[1].replace("-", "_")
+            cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", (project, func))
         else:
-            cli_parts.append(f"{cli_flag} {param.default}")
-            code_parts.append(f"{name}={repr(param.default)}")
+            gway.print("Too many arguments.")
+            return
 
-    cli_call = f"gway {args[0]}" if len(args) == 1 else f"gway {args[0]} {args[1]}"
-    if cli_parts:
-        cli_call += " " + " ".join(cli_parts)
+        rows = cur.fetchall()
+        if not rows:
+            gway.print(f"No help found for: {' '.join(args)}")
+            return
 
-    code_call = f"gway.{func_name}" if len(args) == 1 else f"gway.{args[0]}.{func_name}"
-    code_call += f"({', '.join(code_parts)})"
+        results = []
+        for row in rows:
+            results.append({k:v for k,v in {
+                "Project": row["project"],
+                "Function": row["function"],
+                "Signature": textwrap.fill(row["signature"], 100).strip(),
+                "Docstring": row["docstring"].strip() if row["docstring"] else None,  # <--- trim leading/trailing blank lines
+                "TODOs": row["todos"].strip() if row["todos"] else None,          # <--- same here
+                "Example CLI": f"gway {row['project']} {row['function']}",
+                "Example Code": textwrap.fill(
+                    f"gway.{row['project']}.{row['function']}({row['signature']})", 100
+                ).strip(),  # <--- remove any trailing blank lines
+                **({"Full Code": row["source"]} if full_code else {})
+            }.items() if v})
 
-    todos = []
-    try:
-        source_lines = inspect.getsourcelines(func_obj)[0]
-        todo_block = None
-
-        for line in source_lines:
-            stripped = line.strip()
-            if "# TODO" in stripped:
-                todo_text = stripped.split("# TODO", 1)[-1].strip()
-                if todo_block:
-                    todos.append("\n".join(todo_block))
-                todo_block = [f"TODO: {todo_text}"]
-            elif todo_block and (stripped.startswith("#") or not stripped):
-                comment = stripped.lstrip("#").strip()
-                if comment:
-                    todo_block.append(comment)
-            elif todo_block:
-                todos.append("\n".join(todo_block))
-                todo_block = None
-
-        if todo_block:
-            todos.append("\n".join(todo_block))
-    except Exception as e:
-        todos = [f"Error extracting TODOs: {e}"]
-
-    result = {
-        "Signature": f"{func_name}{sig}",
-        "Docstring": f"{textwrap.fill(doc, width=80)}",
-        "Example CLI": cli_call, 
-        "Example Code": code_call,
-        "TODOs": todos or None
-    }
-
-    if full_code:
-        try:
-            result["Full Code"] = "".join(inspect.getsourcelines(func_obj)[0])
-        except Exception as e:
-            result["Full Code"] = f"(Could not retrieve code: {e})"
-
-    return result
+        return results[0] if len(results) == 1 else {"Matches": results}
 
 
 def sigils(*args: str):
@@ -367,5 +283,4 @@ def watch_file(filepath, on_change, poll_interval=5.0, logger=None):
     thread = threading.Thread(target=_watch, daemon=True)
     thread.start()
     return stop_event
-
 

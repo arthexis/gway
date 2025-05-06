@@ -32,7 +32,7 @@ def find_cable(
         neutral: Union[int, str] = "0"
     ):
     """Calculate the type of cable needed for an electrical system."""
-    with gway.database.connect() as cursor:
+    with gway.database.connect(load_data="awg") as cursor:
             
         amps = int(amps)
         meters = int(meters)
@@ -102,7 +102,7 @@ def find_cable(
 
 def find_conduit(awg, cables, conduit="emt"):
     """Calculate the kind of conduit required for a set of cables."""
-    with gway.database.connect() as cursor:
+    with gway.database.connect(load_data="awg") as cursor:
 
         assert conduit in ("emt", "imc", "rmc", "fmc"), "Allowed: emt, imc, rmc, fmc."
         assert 1 <= cables <= 30, "Valid for 1-30 cables per conduit."
