@@ -24,6 +24,7 @@ def build(
     password: str = "[PYPI_PASSWORD]",
     token: str = "[PYPI_API_TOKEN]",
     git: bool = False,
+    all: bool = False
 ) -> None:
     """Build the project and optionally upload to PyPI.
     Args:
@@ -35,7 +36,12 @@ def build(
         token (str): PyPI API token (default: [PYPI_API_TOKEN]).
         git (bool): Require a clean git repo and commit/push after release if True.
     """
-    
+    if all:
+        bump = True
+        dist = True
+        twine = True
+        help_db = True
+        git = True
     logger.info(f"Running tests before project build.")
     test_result = gway.run_tests()
     if not test_result:
