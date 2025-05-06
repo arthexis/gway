@@ -287,7 +287,7 @@ def watch_pypi_package(package_name, on_change, poll_interval=300.0, logger=None
 _qr_code_cache = set()
 
 @requires("qrcode[pil]")
-def generate_qr_code_url(value):
+def generate_qr_code(value):
     """Return the URL for a QR code image for a given value, generating it if needed."""
     import qrcode
     safe_filename = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=") + ".png"

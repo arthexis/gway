@@ -3,12 +3,10 @@ from gway import Gateway, requires
 
 gway = Gateway()
 
-# Considerations for ALL builder functions:
-# Don't use inline CSS ever, each user can have different css configurations. 
-# Instead use simple common sense names for classes and add them to .css files.
-# The class name should not indicate aesthetics, but the function of the element.
 
-def build_readme():
+# Don't use inline CSS ever, each user can have different css configurations. 
+
+def view_readme():
     """Render the README.rst file as HTML."""
     from docutils.core import publish_parts
 
@@ -20,17 +18,17 @@ def build_readme():
     return html_parts["html_body"]
 
 
-def build_help(q=""):
+def view_help(topic=""):
     """Render dynamic help based on GWAY introspection and search-style links."""
-    q = q.replace(" ", "/").replace(".", "/").replace("-", "_") if q else ""
-    parts = [p for p in q.strip("/").split("/") if p]
+    topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
+    parts = [p for p in topic.strip("/").split("/") if p]
 
     if len(parts) == 0:
         help_info = gway.help()
         title = "Available Projects"
         content = "<ul>"
         for project in help_info["Available Projects"]:
-            content += f'<li><a href="?c=help&q={project}">{project}</a></li>'
+            content += f'<li><a href="/help?topic={project}">{project}</a></li>'
         content += "</ul>"
         return f"<h1>{title}</h1>{content}"
 
@@ -51,22 +49,22 @@ def build_help(q=""):
         return "<h2>Not Found</h2><p>No help found for the given input.</p>"
 
     if "Matches" in help_info:
-        sections = [render_help_section(match, use_query_links=True) for match in help_info["Matches"]]
+        sections = [help_section(match, use_query_links=True) for match in help_info["Matches"]]
         return f"<h1>{title}</h1>{''.join(sections)}"
 
-    return f"<h1>{title}</h1>{render_help_section(help_info, use_query_links=True)}"
+    return f"<h1>{title}</h1>{help_section(help_info, use_query_links=True)}"
 
 
-def render_help_section(info, use_query_links=False):
-    """Render a help section with clean formatting and query-style links."""
+def help_section(info, use_query_links=False):
+    """Render a help section with clean formatting and route-based query links."""
     rows = []
     for key, value in info.items():
         if use_query_links:
             if key == "Project":
-                value = f'<a href="?c=help&q={value}">{value}</a>'
+                value = f'<a href="/help?topic={value}">{value}</a>'
             elif key == "Function":
                 proj = info.get("Project", "")
-                value = f'<a href="?c=help&q={proj}/{value}">{value}</a>'
+                value = f'<a href="/help?topic={proj}/{value}">{value}</a>'
 
         if key in ("Signature", "Example CLI", "Example Code", "Full Code"):
             value = f"<pre><code>{value}</code></pre>"
@@ -80,7 +78,7 @@ def render_help_section(info, use_query_links=False):
     return f"<article class='help-entry'>{''.join(rows)}</article>"
 
 
-def build_qr_code(*, value=None):
+def view_qr_code(*, value=None):
     """Generate a QR code for a given value and serve it from cache if available."""
     if not value:
         return '''
@@ -92,16 +90,16 @@ def build_qr_code(*, value=None):
             </form>
         '''
     
-    qr_url = gway.project.generate_qr_code_url(value)
+    qr_url = gway.generate_qr_code(value)
     return f"""
         <h1>QR Code for:</h1>
         <h2><code>{value}</code></h2>
         <img src="{qr_url}" alt="QR Code" class="qr" />
-        <p><a href="/?c=qr-code">Generate another</a></p>
+        <p><a href="/qr-code">Generate another</a></p>
     """
 
 
-def build_awg_finder(
+def view_awg_finder(
     *, meters=None, amps="40", volts="220", material="cu", 
     max_lines="3", phases="1", conduit=None, neutral="0"
 ):
@@ -112,8 +110,7 @@ def build_awg_finder(
             <h1>AWG Cable Finder</h1>
             <p>Warning: This calculator may not be applicable to your use case.
               Consult your local electrical code before making real-life cable sizing decisions.</p>
-            <form method="get">
-                <input type="hidden" name="c" value="awg-finder" />
+            <form method="get" action="/awg-finder">
                 <label>Meters: <input type="number" name="meters" required min="1" /></label><br/>
                 <label>Amps: <input type="number" name="amps" value="40" /></label><br/>
                 <label>Volts: <input type="number" name="volts" value="220" /></label><br/>
@@ -144,7 +141,7 @@ def build_awg_finder(
             phases=phases, conduit=conduit, neutral=neutral
         )
     except Exception as e:
-        return f"<p class='error'>Error: {e}</p><p><a href='/?c=awg-finder'>Try again</a></p>"
+        return f"<p class='error'>Error: {e}</p><p><a href='/awg-finder'>Try again</a></p>"
 
     return f"""
         <h1>Recommended Cable</h1>
@@ -157,11 +154,11 @@ def build_awg_finder(
             <li><strong>Voltage at End:</strong> {result['vend']:.2f} V</li>
             {f"<li><strong>Conduit:</strong> {result['conduit']} ({result['pipe_in']})</li>" if 'conduit' in result else ""}
         </ul>
-        <p><a href="/?c=awg-finder">Calculate again</a></p>
+        <p><a href="/awg-finder">Calculate again</a></p>
     """
 
 @requires("bottle")
-def build_css_selector():
+def view_css_selector():
     """Allows user to choose from available stylesheets and shows current selection."""
     from bottle import request, response, redirect
 
@@ -185,7 +182,7 @@ def build_css_selector():
     form = f"""
         <h1>Select CSS Theme</h1>
         <p>Current theme: <strong>{current}</strong></p>
-        <form method="post" action="/?c=css-selector">
+        <form method="post" action="/css-selector">
             <select name="css">
                 {{options}}
             </select>
@@ -198,3 +195,4 @@ def build_css_selector():
         for css in available
     )
     return form.format(options=options)
+

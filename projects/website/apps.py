@@ -1,12 +1,10 @@
 import os
 import logging
 
-from urllib.parse import quote, unquote
 from functools import wraps
 from gway import requires, Gateway
 
 logger = logging.getLogger(__name__)
-gway = Gateway()
 
 
 _css_cache = {}
@@ -20,13 +18,16 @@ _css_cache = {}
 
 # TODO: Create an access log (consider storing in database if not too slow)
 
-# TODO: Consider getting rid of c and just using the first path to specify the builder?
+# TODO: Replace c query string logic with a new view system: 
+# /<view> should execute a function in gway.website.views of the same name now
+# <view> replaces the value of c
 
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
     """Configure a simple application that showcases the use of GWAY to generate websites."""
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
+    gway = Gateway()
     if app is None: app = Bottle()
 
     def security_middleware(app):
@@ -79,21 +80,20 @@ def setup_app(*, app=None):
 
         return visited
 
-    def build_navbar(visited, current_url=None):
+    def render_navbar(visited, current_url=None):
         if not cookies_enabled():
             visited = ["readme"]
         links = "".join(
-            f'<li><a href="/?c={b}">{b.title()}</a></li>' for b in sorted(visited) if b
+            f'<li><a href="/{b}">{b.title()}</a></li>' for b in sorted(visited) if b
         )
         search_box = '''
-            <form action="/" method="get" class="navbar">
-                <input type="hidden" name="c" value="help" />
-                <input type="text" name="q" placeholder="Search GWAY" class="help" />
+            <form action="/help" method="get" class="navbar">
+                <input type="text" name="topic" placeholder="Search GWAY" class="help" />
             </form>
         '''
         qr_html = ""
         if current_url:
-            qr_url = gway.release.generate_qr_code_url(current_url)
+            qr_url = gway.release.generate_qr_code(current_url)
             qr_html = f'''
                 <div class="qr">
                     <p class="qr">QR Code for this page:</p>
@@ -116,7 +116,7 @@ def setup_app(*, app=None):
             _css_cache[path] = css
             return css
 
-    def make_template(*, 
+    def render_template(*, 
             title="GWAY", navbar="", content="", css="default.css", 
             inline_css=False,
         ):
@@ -163,46 +163,9 @@ def setup_app(*, app=None):
         
     @app.route("/", method=["GET", "POST"])
     def index():
-        c = request.query.get("c")
-        kwargs = {k: v for k, v in request.query.items() if k != "c"}
-        builder = getattr(gway.website, f"build_{c}", None)
-
-        visited = []
-        if not builder:
-            target = "/?c=readme"
-            response.status = 302
-            response.set_header("Location", target)
-            return ""
-        else:
-            try:
-                content = builder(**kwargs)
-                visited = update_visited(c)
-            except HTTPResponse as res:
-                return res  
-            except Exception as e:
-                logger.exception(e)
-                content = f"<p>Content not found.</p>"            
-
-        current_url = request.fullpath
-        if request.query_string:
-            current_url += "?" + request.query_string
-
-        navbar = build_navbar(visited, current_url=current_url)
-        if not cookies_enabled():
-            consent_box = f"""
-                <div class="consent-box">
-                    <form action="/accept-cookies" method="post">
-                        <input type="hidden" name="next" value="/?c={c}" />
-                        This app uses cookies to improve your experience. 
-                        <button type="submit"> Accept </button>
-                    </form>
-                </div>
-            """
-            content = consent_box + content
-
-        css = request.get_cookie("css", "default.css")
-        return make_template(navbar=navbar, content=content, css=css)
-
+        response.status = 302
+        response.set_header("Location", "/readme")
+        return ""
 
     @app.route("/static/<filename:path>")
     def send_static(filename):
@@ -211,6 +174,52 @@ def setup_app(*, app=None):
     @app.route("/temp/<filename:path>")
     def send_temp(filename):
         return static_file(filename, root=gway.resource("temp", "shared"))
+        
+    @app.route("/<view>", method=["GET", "POST"])
+    def view_dispatch(view):
+        import website.views as views
+
+        kwargs = dict(request.query)
+        view = view.replace("-", "_")
+        view_func = getattr(views, f"view_{view}", None)
+
+        if not callable(view_func):
+            # Redirect to /readme if view not found
+            response.status = 302
+            response.set_header("Location", "/readme")
+            return ""
+
+        try:
+            content = view_func(**kwargs)
+            visited = update_visited(view)
+        except HTTPResponse as res:
+            return res
+        except Exception as e:
+            logger.exception(e)
+            # Redirect to /readme on view error
+            response.status = 302
+            response.set_header("Location", "/readme")
+            return ""
+
+        current_url = request.fullpath
+        if request.query_string:
+            current_url += "?" + request.query_string
+
+        navbar = render_navbar(visited, current_url=current_url)
+        if not cookies_enabled():
+            consent_box = f"""
+                <div class="consent-box">
+                    <form action="/accept-cookies" method="post">
+                        <input type="hidden" name="next" value="/{view}" />
+                        This app uses cookies to improve your experience. 
+                        <button type="submit"> Accept </button>
+                    </form>
+                </div>
+            """
+            content = consent_box + content
+
+        css = request.get_cookie("css", "default.css")
+        return render_template(navbar=navbar, content=content, css=css)
 
     app = security_middleware(app)
     return app
