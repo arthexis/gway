@@ -183,6 +183,8 @@ def build(
 
     if git:
         subprocess.run(["git", "add", "VERSION", "pyproject.toml"], check=True)
+        if help_db:
+            subprocess.run(["git", "add", "data/help.sqlite"], check=True)
         commit_msg = f"PyPI Release v{version}" if twine else f"Release v{version}"
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
         subprocess.run(["git", "push"], check=True)
