@@ -10,14 +10,6 @@ logger = logging.getLogger(__name__)
 _css_cache = {}
 
 
-def cache_bust(path, base_url):
-    """Append cache-busting query string using file mtime."""
-    if not os.path.exists(path):
-        return base_url
-    mtime = int(os.path.getmtime(path))
-    return f"{base_url}?v={mtime}"
-
-
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
     """Configure a simple application that showcases the use of GWAY to generate websites."""
@@ -131,7 +123,7 @@ def setup_app(*, app=None):
             css_content = load_css(css_path)
             css_html = f"<style>{css_content}</style>"
         else:
-            css_url = cache_bust(css_path, f"/static/styles/{css}")
+            css_url = f"/static/styles/{css}"
             css_html = f'<link rel="stylesheet" href="{css_url}" />'
 
         return template("""<!DOCTYPE html>
