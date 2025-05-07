@@ -9,18 +9,14 @@ logger = logging.getLogger(__name__)
 
 _css_cache = {}
 
-# TODO: Fix this reported error -> The 'server' header should only contain the server name
-# Server: nginx/1.18.0 (ubuntu)
 
-# TODO: Resource should use cache busting but URL does not match configured patterns.
-# https://arthexis.com/temp/qr_codes/Lz9jPWhlbHA.png
-# We should implement some kind of general cache busting solution for all hosted resources
+def cache_bust(path, base_url):
+    """Append cache-busting query string using file mtime."""
+    if not os.path.exists(path):
+        return base_url
+    mtime = int(os.path.getmtime(path))
+    return f"{base_url}?v={mtime}"
 
-# TODO: Create an access log (consider storing in database if not too slow)
-
-# TODO: Replace c query string logic with a new view system: 
-# /<view> should execute a function in gway.website.views of the same name now
-# <view> replaces the value of c
 
 @requires("bottle", "docutils")
 def setup_app(*, app=None):
@@ -28,6 +24,7 @@ def setup_app(*, app=None):
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     gway = Gateway()
+    version = gway.version()
     if app is None: app = Bottle()
 
     def security_middleware(app):
@@ -40,7 +37,7 @@ def setup_app(*, app=None):
                 headers += [
                     ("Cache-Control", "no-cache"),
                     ("X-Content-Type-Options", "nosniff"),
-                    ("Server", "GWAY")  # Optional: replace with your server name
+                    ("Server", f"GWAY v{version}")  # Optional: replace with your server name
                 ]
                 return start_response(status, headers, exc_info)
 
@@ -73,14 +70,17 @@ def setup_app(*, app=None):
 
         if current not in visited:
             visited.append(current)
-
-        # Use a safe separator (not comma) and avoid quotes
-        cookie_value = "|".join(visited)
+       
+        cookie_value = "|".join(visited)   # Use a safe separator (not comma) and avoid quotes
         response.set_cookie(cookie_name, cookie_value)
 
         return visited
 
     def render_navbar(visited, current_url=None):
+
+        # TODO: Take the size of the viewport into consideration. If the screen is too
+        # narrow, make the navbar appear below the main content instead.
+
         if not cookies_enabled():
             visited = ["readme"]
         links = "".join(
@@ -120,6 +120,7 @@ def setup_app(*, app=None):
             title="GWAY", navbar="", content="", css="default.css", 
             inline_css=False,
         ):
+        nonlocal version
         css_path = gway.resource("data", "static", "styles", css)
 
         if css != "default.css" and not os.path.exists(css_path):
@@ -130,10 +131,9 @@ def setup_app(*, app=None):
             css_content = load_css(css_path)
             css_html = f"<style>{css_content}</style>"
         else:
-            css_url = f"/static/styles/{css}"
+            css_url = cache_bust(css_path, f"/static/styles/{css}")
             css_html = f'<link rel="stylesheet" href="{css_url}" />'
 
-        version = gway.version()
         return template("""<!DOCTYPE html>
             <html lang="en">
             <head>
@@ -175,28 +175,25 @@ def setup_app(*, app=None):
     def send_temp(filename):
         return static_file(filename, root=gway.resource("temp", "shared"))
         
-    @app.route("/<view>", method=["GET", "POST"])
+    @app.route("/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
+        segments = view.strip("/").split("/")
+        view_name = segments[0].replace("-", "_")
+        args = segments[1:]
+
         import website.views as views
-
+        view_func = getattr(views, f"view_{view_name}", None)
         kwargs = dict(request.query)
-        view = view.replace("-", "_")
-        view_func = getattr(views, f"view_{view}", None)
-
-        if not callable(view_func):
-            # Redirect to /readme if view not found
-            response.status = 302
-            response.set_header("Location", "/readme")
-            return ""
 
         try:
-            content = view_func(**kwargs)
-            visited = update_visited(view)
+            content = view_func(*args, **kwargs)
+            visited = update_visited(view_name)
+
         except HTTPResponse as res:
             return res
         except Exception as e:
             logger.exception(e)
-            # Redirect to /readme on view error
+            # Redirect to /readme on any error
             response.status = 302
             response.set_header("Location", "/readme")
             return ""

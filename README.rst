@@ -57,7 +57,7 @@ Given a project ``awg.py`` containing logic to calculate cable sizes and conduit
 
 You can test the AWG cable sizer online here, or in your own instance:
 
-https://arthexis.com/?c=awg_finder
+https://arthexis.com/awg-finder
 
 
 GWAY Website Server
@@ -78,9 +78,9 @@ Online Help & Documentation
 
 Browse built-in and project-level function documentation online at:
 
-📘 https://arthexis.com
+📘 https://arthexis.com/help
 
-- Use the **search box** in the top left to find any callable by name (e.g., ``find_cable``, ``read_file``, ``parse_json``).
+- Use the **search box** in the top left to find any callable by name (e.g., ``find_cable``, ``resource``, ``start_server``).
 - You can also navigate directly to: ``https://arthexis.com/help/<project>/<function>`` or ``https://arthexis.com/help/<built-in>``
 
 This is useful for both the included out-of-the-box GWAY tools and your own projects, assuming they follow the GWAY format.

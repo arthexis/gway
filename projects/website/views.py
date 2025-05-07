@@ -6,7 +6,7 @@ gway = Gateway()
 
 # Don't use inline CSS ever, each user can have different css configurations. 
 
-def view_readme():
+def view_readme(*args, **kwargs):
     """Render the README.rst file as HTML."""
     from docutils.core import publish_parts
 
@@ -18,7 +18,7 @@ def view_readme():
     return html_parts["html_body"]
 
 
-def view_help(topic=""):
+def view_help(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
@@ -55,7 +55,7 @@ def view_help(topic=""):
     return f"<h1>{title}</h1>{help_section(help_info, use_query_links=True)}"
 
 
-def help_section(info, use_query_links=False):
+def help_section(info, use_query_links=False, *args, **kwargs):
     """Render a help section with clean formatting and route-based query links."""
     rows = []
     for key, value in info.items():
@@ -78,7 +78,7 @@ def help_section(info, use_query_links=False):
     return f"<article class='help-entry'>{''.join(rows)}</article>"
 
 
-def view_qr_code(*, value=None):
+def view_qr_code(*args, value=None, **kwargs):
     """Generate a QR code for a given value and serve it from cache if available."""
     if not value:
         return '''
@@ -100,8 +100,8 @@ def view_qr_code(*, value=None):
 
 
 def view_awg_finder(
-    *, meters=None, amps="40", volts="220", material="cu", 
-    max_lines="3", phases="1", conduit=None, neutral="0"
+    *args, meters=None, amps="40", volts="220", material="cu", 
+    max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
 ):
     """Page builder for AWG cable finder with HTML form and result."""
     
