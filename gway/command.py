@@ -153,7 +153,7 @@ def cli_main():
             if args.all:
                 all_results.append(result)
         except Exception as e:
-            gw.error(e)
+            gw.exception(e)
             abort(f"Unhandled {type(e).__name__} in {func_obj.__name__}")
 
     output = all_results if args.all else last_result

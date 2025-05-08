@@ -30,13 +30,7 @@ class Gateway(Resolver):
             ('env', os.environ)
         ])
 
-        self._builtin_functions = {}
-        self._load_builtins()
-
-    def _load_builtins(self):
         if Gateway._builtin_cache is None:
-
-            # Make sure to import your OWN 'builtins.py' inside gway package
             builtins_module = importlib.import_module("gway.builtins")
             Gateway._builtin_cache = {
                 name: obj for name, obj in inspect.getmembers(builtins_module)
@@ -141,7 +135,6 @@ class Gateway(Resolver):
 
     def hold(self, lock_file=None, lock_url=None, lock_pypi=False):
         from .watchers import watch_file, watch_url, watch_pypi_package
-        # TODO: Create a PID watcher and allow hold to use it with a lock_pid kwarg.
         def shutdown(reason):
             self.warning(f"{reason} triggered async shutdown.")
             os._exit(1)
@@ -176,27 +169,22 @@ class Gateway(Resolver):
             return func
 
         # Cached project?
-        if name in self._cache:
-            return self._cache[name]
+        if name in self._cache: return self._cache[name]
 
-        # Try to load project
+        # Attempt dynamic project loading via load_project
         try:
             self.debug(f"Loading project {name}")
-            _, functions = self.load_project(self.base_path, name)
-            project_obj = type(name, (), {})()
-            for func_name, func_obj in functions.items():
-                wrapped_func = self._wrap_callable(f"{name}.{func_name}", func_obj)
-                setattr(project_obj, func_name, wrapped_func)
-            self._cache[name] = project_obj
+            project_obj = self.load_project(project_name=name)
             return project_obj
         except Exception as e:
-            raise AttributeError(f"Project or builtin '{name}' not found: {e}")        
+            raise AttributeError(f"Project or builtin '{name}' not found: {e}")
 
-    def load_project(self, project_name: str, root: str = None) -> tuple:
+    def load_project(self, project_name: str, root: str = "projects"):
         # Replace hyphens with underscores in module names
         project_name = project_name.replace("-", "_")
-        project_path = os.path.join(self.base_path or root, "projects", *project_name.split("."))
+        project_path = gw.resource(root, *project_name.split("."))
         load_mode = None
+        self.debug(f"Loading {project_name=} {root=}")
 
         if os.path.isdir(project_path) and os.path.isfile(os.path.join(project_path, "__init__.py")):
             # It's a package
@@ -205,7 +193,7 @@ class Gateway(Resolver):
             load_mode = "package"
         else:
             # It's a single module
-            project_file = project_path + ".py"
+            project_file = str(project_path) + ".py"
             if not os.path.isfile(project_file):
                 raise FileNotFoundError(f"Project file or package not found: {project_file}")
             module_name = project_name.replace(".", "_")
@@ -227,11 +215,18 @@ class Gateway(Resolver):
         else:
             project_functions = {
                 name: obj for name, obj in inspect.getmembers(project_module, inspect.isfunction)
-                if not name.startswith("_") 
+                if not name.startswith("_")
             }
 
-        return project_module, project_functions
+        # Wrap project functions in a project object
+        project_obj = type(project_name, (), {})()
+        for func_name, func_obj in project_functions.items():
+            wrapped_func = self._wrap_callable(f"{project_name}.{func_name}", func_obj)
+            setattr(project_obj, func_name, wrapped_func)
+
+        # Cache and return
+        self._cache[project_name] = project_obj
+        return project_obj
 
 
 gw = Gateway()
-
