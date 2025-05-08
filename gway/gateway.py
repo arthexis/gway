@@ -182,7 +182,7 @@ class Gateway(Resolver):
         # Try to load project
         try:
             self.debug(f"Loading project {name}")
-            _, functions = load_project(self.base_path, name)
+            _, functions = self.load_project(self.base_path, name)
             project_obj = type(name, (), {})()
             for func_name, func_obj in functions.items():
                 wrapped_func = self._wrap_callable(f"{name}.{func_name}", func_obj)
