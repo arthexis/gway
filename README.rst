@@ -5,7 +5,7 @@ Welcome [Traveler], this is the GWAY project README.rst file and website.
 
 **GWAY** is an **experimental** CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic sigil & context resolution, argument injection, and multi-environment support.
 
-`Higher-level programming, lower barrier to entry.`
+`Lower barrier to entry, higher-level programming.`
 
 
 Features
@@ -30,10 +30,9 @@ Given a project ``awg.py`` containing logic to calculate cable sizes and conduit
 
 .. code-block:: python
 
-    from gway import Gateway
+    from gway import gw
 
-    gway = Gateway()
-    result = gway.awg.find_cable(meters=30, amps=60, material="cu", volts=240)
+    result = gw.awg.find_cable(meters=30, amps=60, material="cu", volts=240)
     print(result)
 
 **Call from CLI**

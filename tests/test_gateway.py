@@ -2,11 +2,10 @@ import os
 import unittest
 from unittest import mock
 
+from gway import gw
+
 
 class GatewayTests(unittest.TestCase):
-
-    def setUp(self):
-        from gway import gw
 
     def test_builtin_loading(self):
         # Builtin function should be available
