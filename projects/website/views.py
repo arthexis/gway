@@ -1,7 +1,5 @@
 import os
-from gway import Gateway, requires
-
-gway = Gateway()
+from gway import gw, requires
 
 
 # Don't use inline CSS ever, each user can have different css configurations. 
@@ -10,7 +8,7 @@ def view_readme(*args, **kwargs):
     """Render the README.rst file as HTML."""
     from docutils.core import publish_parts
 
-    readme_path = gway.resource("README.rst")
+    readme_path = gw.resource("README.rst")
     with open(readme_path, encoding="utf-8") as f:
         rst_content = f.read()
 
@@ -24,7 +22,7 @@ def view_help(topic="", *args, **kwargs):
     parts = [p for p in topic.strip("/").split("/") if p]
 
     if len(parts) == 0:
-        help_info = gway.help()
+        help_info = gw.help()
         title = "Available Projects"
         content = "<ul>"
         for project in help_info["Available Projects"]:
@@ -34,12 +32,12 @@ def view_help(topic="", *args, **kwargs):
 
     elif len(parts) == 1:
         project = parts[0]
-        help_info = gway.help(project)
+        help_info = gw.help(project)
         title = f"Help Topics for <code>{project}</code>"
 
     elif len(parts) == 2:
         project, function = parts
-        help_info = gway.help(project, function)
+        help_info = gw.help(project, function)
         title = f"Help for <code>{project}.{function}</code>"
 
     else:
@@ -80,17 +78,19 @@ def help_section(info, use_query_links=False, *args, **kwargs):
 
 def view_qr_code(*args, value=None, **kwargs):
     """Generate a QR code for a given value and serve it from cache if available."""
+
+    gw.info(f"Entering QR View {value=} {args=} {kwargs=}")
+    
     if not value:
         return '''
             <h1>QR Code Generator</h1>
-            <form method="get">
-                <input type="hidden" name="c" value="qr-code" />
+            <form method="post" action="/qr-code">
                 <input type="text" name="value" placeholder="Enter text or URL" required class="main" />
                 <button type="submit" class="submit">Generate QR</button>
             </form>
         '''
     
-    qr_url = gway.generate_qr_code(value)
+    qr_url = gw.qr_code.generate_url(value)
     return f"""
         <h1>QR Code for:</h1>
         <h2><code>{value}</code></h2>
@@ -135,7 +135,7 @@ def view_awg_finder(
         '''
 
     try:
-        result = gway.awg.find_cable(
+        result = gw.awg.find_cable(
             meters=meters, amps=amps, volts=volts,
             material=material, max_lines=max_lines, 
             phases=phases, conduit=conduit, neutral=neutral
@@ -162,7 +162,7 @@ def view_css_selector():
     """Allows user to choose from available stylesheets and shows current selection."""
     from bottle import request, response, redirect
 
-    styles_dir = gway.resource("data", "static", "styles")
+    styles_dir = gw.resource("data", "static", "styles")
     available = sorted(
         f for f in os.listdir(styles_dir)
         if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))

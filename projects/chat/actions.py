@@ -1,10 +1,7 @@
 import json
 import os
-import logging
 
-from gway import Gateway, requires
-
-logger = logging.getLogger(__name__)
+from gway import gw, requires
 
 
 @requires("bottle")
@@ -13,12 +10,9 @@ def start_api(
         port: int = "[CHAT_API_PORT|8081]", 
         debug: bool = False
     ):
-    from bottle import Bottle, request, response, run, static_file, abort
-
-    logger.info(f"{host}:{port}")
-
+    from bottle import Bottle, request, response, run, abort
+    gw.info(f"{host}:{port}")
     app = Bottle()
-    gway = Gateway()
 
     @app.get("/chat/functions")
     def get_functions():
@@ -28,10 +22,10 @@ def start_api(
             return {"error": "Missing 'function_names' parameter"}
 
         try:
-            functions = gway.describe_functions(fnames.split(" - "))
+            functions = gw.describe_functions(fnames.split(" - "))
             return functions
         except Exception as e:
-            logger.exception("Error describing functions")
+            gw.exception("Error describing functions")
             response.status = 500
             return {"error": str(e)}
 
@@ -47,10 +41,10 @@ def start_api(
             return {"error": "Missing 'function_names'"}
 
         try:
-            results = gway.run(fnames, args=args, kwargs=kwargs)
+            results = gw.run(fnames, args=args, kwargs=kwargs)
             return {"result": results}
         except Exception as e:
-            logger.exception("Function execution failed")
+            gw.exception("Function execution failed")
             response.status = 500
             return {"error": str(e)}
 
@@ -66,7 +60,7 @@ def start_api(
 
     @app.get("/chat/products/<product_id>")
     def get_product(product_id):
-        product_path = gway.resource("temp", "products", product_id, "product.json")
+        product_path = gw.resource("temp", "products", product_id, "product.json")
         if not os.path.exists(product_path):
             abort(404, "Product not found")
         with open(product_path) as f:
@@ -74,7 +68,7 @@ def start_api(
 
     @app.get("/chat/products/<product_id>/files")
     def get_product_files(product_id):
-        product_dir = gway.resource("temp", "products", product_id)
+        product_dir = gw.resource("temp", "products", product_id)
         if not os.path.isdir(product_dir):
             abort(404, "No files found")
         # return a list of files (or ZIP, or first file)

@@ -1,4 +1,2 @@
-from .gateway import cli_main, Gateway
+from .gateway import cli_main, Gateway, gw
 from .decorators import *
-
-# This is not the best code in the world, it is just a tribute.

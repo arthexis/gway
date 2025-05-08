@@ -1,9 +1,5 @@
 import inspect
-import logging
-
-from typing import get_origin, get_args, Literal, Union, Optional
-
-logger = logging.getLogger(__name__)
+from typing import get_origin, get_args, Literal, Union
 
 
 def parse_kwargs(kwargs_list):
@@ -14,10 +10,10 @@ def parse_kwargs(kwargs_list):
             key, value = kv.split('=', 1)
             kwargs[key] = value
         else:
-            logger.warning(f"Invalid kwargs entry: {kv} (expected format key=value)")
+            print(f"Invalid kwargs entry: {kv} (expected format key=value)")
     return kwargs
 
-def get_arg_options(arg_name, param, resolver=None):
+def get_arg_options(arg_name, param, gw=None):
     """Infer argparse options from parameter signature."""
     opts = {}
     annotation = param.annotation
@@ -38,7 +34,7 @@ def get_arg_options(arg_name, param, resolver=None):
         if len(non_none) == 1:
             # Union[T, None] → Optional[T]
             inner_param = type("param", (), {"annotation": non_none[0], "default": default})
-            return get_arg_options(arg_name, inner_param, resolver)
+            return get_arg_options(arg_name, inner_param, gw)
         elif all(a in (str, int, float) for a in non_none):
             inferred_type = str  # generalize for user input
 
@@ -48,11 +44,11 @@ def get_arg_options(arg_name, param, resolver=None):
     opts["type"] = inferred_type
 
     if default != inspect.Parameter.empty:
-        if isinstance(default, str) and default.startswith("[") and default.endswith("]") and resolver:
+        if isinstance(default, str) and default.startswith("[") and default.endswith("]") and gw:
             try:
-                default = resolver.resolve(default)
+                default = gw.resolve(default)
             except Exception as e:
-                logger.warning(f"Failed to resolve default for {arg_name}: {e}")
+                print(f"Failed to resolve default for {arg_name}: {e}")
         opts["default"] = default
     else:
         opts["required"] = True
@@ -62,14 +58,10 @@ def get_arg_options(arg_name, param, resolver=None):
 
 def add_function_args(subparser, func_obj):
     """Add the function's arguments to the CLI subparser."""
-    from gway import Gateway
+    from gway import gw
 
     sig = inspect.signature(func_obj)
-    logger.debug(f"Add function args for {func_obj.__name__} {sig}")
-    resolver = Gateway()  
-
     for arg_name, param in sig.parameters.items():
-        logger.debug(f"Inspecting {arg_name=} {param=} {param.kind=}")
 
         if param.kind == inspect.Parameter.VAR_POSITIONAL:
             subparser.add_argument(arg_name, nargs='*', help=f"Variable positional arguments for {arg_name}")
@@ -86,11 +78,9 @@ def add_function_args(subparser, func_obj):
                 group.add_argument(arg_name_cli, dest=arg_name, action="store_true", help=f"Enable {arg_name}")
                 group.add_argument(f"--no-{arg_name.replace('_', '-')}", dest=arg_name, action="store_false", help=f"Disable {arg_name}")
                 subparser.set_defaults(**{arg_name: param.default})
-                logger.debug(f"Subparser default for {arg_name=} set to {param.default=}")
             else:
-                arg_opts = get_arg_options(arg_name, param, resolver)
+                arg_opts = get_arg_options(arg_name, param, gw)
                 subparser.add_argument(arg_name_cli, **arg_opts)
-                logger.debug(f"Subparser {arg_name=} argument added as {arg_name_cli=} {arg_opts=}")
 
 
 def chunk_command(args_commands):

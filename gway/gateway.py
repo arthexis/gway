@@ -10,36 +10,24 @@ import threading
 import functools
 
 from .logging import setup_logging
-from .builtins import abort, print, watch_file
+from .builtins import abort
 from .environs import get_base_client, get_base_server, load_env
-from .functions import load_builtins, load_project, show_functions
+from .functions import load_builtins, load_project, show_functions_cli
 from .argparser import add_function_args, chunk_command
 from .sigils import Resolver
 from .structs import Results
 
 
-logger = logging.getLogger(__name__)
-BASE_PATH = os.path.dirname(os.path.dirname(__file__))
-
-
 class Gateway(Resolver):
-    _first_root = None
     _builtin_cache = None
 
-    def __init__(self, root=None, **kwargs):
-        if root is None:
-            root = Gateway._first_root or BASE_PATH
-            Gateway._first_root = root
-
-        if not os.path.isdir(root):
-            abort(f"Invalid project root: {root}")
-
-        self.root = root
+    def __init__(self, **kwargs):
         self._cache = {}
         self._async_threads = []
+        self.base_path = os.path.dirname(os.path.dirname(__file__))
         self.results = Results()
         self.context = {**kwargs}
-        self.logger = logging.getLogger("gway")
+        self.logger = logging.getLogger("gw")
 
         # Initialize Resolver with search order
         super().__init__([
@@ -61,11 +49,11 @@ class Gateway(Resolver):
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
             try:
-                self.logger.debug(f"Call <{func_name}>: {args=} {kwargs=}")
+                self.debug(f"Call <{func_name}>: {args=} {kwargs=}")
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
-                # self.logger.debug(f"Context before argument injection: {self.context}")
+                # self.debug(f"Context before argument injection: {self.context}")
 
                 for param in sig.parameters.values():
                     if param.name not in bound_args.arguments and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
@@ -125,7 +113,7 @@ class Gateway(Resolver):
                 return result
 
             except Exception as e:
-                self.logger.error(f"Error in '{func_name}': {e}")
+                self.error(f"Error in '{func_name}': {e}")
                 raise
 
         return wrapped
@@ -145,36 +133,40 @@ class Gateway(Resolver):
             if isinstance(result, dict):
                 self.context.update(result)
         except Exception as e:
-            self.logger.error(f"Async error in {func_name}: {e}")
+            self.error(f"Async error in {func_name}: {e}")
         finally:
             loop.close()
 
     def hold(self, lock_file=None, lock_url=None, lock_pypi=False):
+        from .watchers import watch_file, watch_url, watch_pypi_package
         # TODO: Create a PID watcher and allow hold to use it with a lock_pid kwarg.
         def shutdown(reason):
-            self.logger.warning(f"{reason} triggered async shutdown.")
+            self.warning(f"{reason} triggered async shutdown.")
             os._exit(1)
 
         watchers = [
             (lock_file, watch_file, "Lock file"),
-            (lock_url, self.website.watch_url, "Lock url"),
-            (lock_pypi if lock_pypi is not False else None,
-            self.release.watch_pypi_package, "PyPI package")
+            (lock_url, watch_url, "Lock url"),
+            (lock_pypi if lock_pypi is not False else None, watch_pypi_package, "PyPI package")
         ]
         for target, watcher, reason in watchers:
             if target:
-                self.logger.info(f"Setup watcher for {reason}")
+                self.info(f"Setup watcher for {reason}")
                 if target is True and lock_pypi:
                     target = "gway"
-                watcher(target, on_change=lambda r=reason: shutdown(r), logger=self.logger)
+                watcher(target, on_change=lambda r=reason: shutdown(r))
         try:
             while any(thread.is_alive() for thread in self._async_threads):
                 time.sleep(0.1)
         except KeyboardInterrupt:
-            self.logger.warning("KeyboardInterrupt received. Exiting immediately.")
+            self.warning("KeyboardInterrupt received. Exiting immediately.")
             os._exit(1)
 
     def __getattr__(self, name):
+        # Delegate standard logger methods to self.logger
+        if hasattr(self.logger, name) and callable(getattr(self.logger, name)):
+            return getattr(self.logger, name)
+
         # Builtin function?
         if name in self._builtin_functions:
             func = self._wrap_callable(name, self._builtin_functions[name])
@@ -182,11 +174,13 @@ class Gateway(Resolver):
             return func
 
         # Cached project?
-        if name in self._cache: return self._cache[name]
+        if name in self._cache:
+            return self._cache[name]
 
         # Try to load project
         try:
-            _, functions = load_project(name, self.root)
+            self.debug(f"Loading project {name}")
+            _, functions = load_project(self.base_path, name)
             project_obj = type(name, (), {})()
             for func_name, func_obj in functions.items():
                 wrapped_func = self._wrap_callable(f"{name}.{func_name}", func_obj)
@@ -197,10 +191,12 @@ class Gateway(Resolver):
             raise AttributeError(f"Project or builtin '{name}' not found: {e}")
 
 
+gw = Gateway()
+
+
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
-    parser.add_argument("-r", "--root", type=str, help="Specify project directory")
     parser.add_argument("-t", "--timed", action="store_true", help="Enable timing")
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-c", "--client", type=str, help="Specify client environment")
@@ -212,16 +208,13 @@ def cli_main():
     args = parser.parse_args()
 
     loglevel = "DEBUG" if args.debug else "INFO"
-    setup_logging(logfile="gway.log", loglevel=loglevel, app_name="gway")
-    logger.debug(f"Argparser first pass: {args}")
+    setup_logging(logfile="gway.log", loglevel=loglevel)
     start_time = time.time() if args.timed else None
 
-    env_root = os.path.join(args.root or BASE_PATH, "envs")
+    env_root = os.path.join(gw.base_path, "envs")
     client_name = args.client or get_base_client()
     server_name = args.server or get_base_server()
-    gway_root = os.environ.get("GWAY_ROOT", args.root or BASE_PATH)
 
-    gway = Gateway(root=gway_root)
     load_env("client", client_name, env_root)
     load_env("server", server_name, env_root)
 
@@ -234,7 +227,7 @@ def cli_main():
             if not os.path.splitext(batch_filename)[1]:
                 candidate_names += [f"{batch_filename}.gws", f"{batch_filename}.txt"]
             for name in candidate_names:
-                batch_path = gway.resource("scripts", name)
+                batch_path = gw.resource("scripts", name)
                 if os.path.isfile(batch_path):
                     break
             else:
@@ -243,9 +236,10 @@ def cli_main():
             batch_path = batch_filename
             if not os.path.isfile(batch_path):
                 abort(f"Batch file not found: {batch_path}")
-        logger.info(f"Running batch from: {batch_path}")
+        gw.info(f"Running batch from: {batch_path}")
         with open(batch_path) as f:
-            command_sources = [line.strip().split() for line in f if line.strip() and not line.strip().startswith("#")]
+            command_sources = [line.strip().split() 
+                for line in f if line.strip() and not line.strip().startswith("#")]
     else:
         if not args.commands:
             parser.print_help()
@@ -257,16 +251,17 @@ def cli_main():
     all_results = []
 
     for chunk in command_sources:
-        logger.debug(f"Processing chunk: {chunk}")
+        gw.debug(f"Processing chunk: {chunk}")
         if not chunk: continue
 
         raw_first_token = chunk[0]
         normalized_first_token = raw_first_token.replace("-", "_")
+        gw.debug(f"{normalized_first_token=}")
         remaining_tokens = chunk[1:]
 
         try:
-            current_project_obj = getattr(gway, normalized_first_token)
-            logger.debug(f"Matched gway attribute: {current_project_obj}")
+            current_project_obj = getattr(gw, normalized_first_token)
+            gw.debug(f"Matched gway attribute: {current_project_obj}")
             if callable(current_project_obj):
                 func_obj = current_project_obj
                 func_tokens = [raw_first_token] + remaining_tokens
@@ -277,12 +272,12 @@ def cli_main():
                     if callable(func) and not name.startswith("_")
                 }
                 if not remaining_tokens:
-                    show_functions(project_functions)
+                    show_functions_cli(project_functions)
                     sys.exit(0)
                 func_tokens = remaining_tokens
         except AttributeError:
             try:
-                func_obj = getattr(gway.builtin, normalized_first_token)
+                func_obj = getattr(gw.builtin, normalized_first_token)
                 if callable(func_obj):
                     project_functions = {raw_first_token: func_obj}
                     func_tokens = [raw_first_token] + remaining_tokens
@@ -312,7 +307,7 @@ def cli_main():
         func_parser = argparse.ArgumentParser(prog=raw_func_name)
         add_function_args(func_parser, func_obj)
         parsed_args = func_parser.parse_args(func_args)
-        logger.debug(f"Parsed {func_args=} into {parsed_args=}")
+        gw.debug(f"Parsed {func_args=} into {parsed_args=}")
 
         func_kwargs = {}
         func_args = []
@@ -340,17 +335,16 @@ def cli_main():
             if args.all:
                 all_results.append(result)
         except Exception as e:
-            logger.error(e)
+            gw.error(e)
             abort(f"Unhandled {type(e).__name__} in {func_obj.__name__}")
 
     output = all_results if args.all else last_result
     if args.json:
         print(json.dumps(output, indent=2, default=str))
     elif output is not None:
-        logger.info(f"Last function result:\n{output}")
-        gway.print(output)
+        gw.info(f"Last function result:\n{output}")
+        print(output)
     else:
-        logger.info("No results returned.")
-
+        gw.info("No results returned.")
     if start_time:
         print(f"\nElapsed: {time.time() - start_time:.4f} seconds")

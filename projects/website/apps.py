@@ -1,11 +1,6 @@
 import os
-import logging
-
 from functools import wraps
-from gway import requires, Gateway
-
-logger = logging.getLogger(__name__)
-
+from gway import requires, gw
 
 _css_cache = {}
 
@@ -15,8 +10,7 @@ def setup_app(*, app=None):
     """Configure a simple application that showcases the use of GWAY to generate websites."""
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
-    gway = Gateway()
-    version = gway.version()
+    version = gw.version()
     if app is None: app = Bottle()
 
     def security_middleware(app):
@@ -85,7 +79,7 @@ def setup_app(*, app=None):
         '''
         qr_html = ""
         if current_url:
-            qr_url = gway.release.generate_qr_code(current_url)
+            qr_url = gw.qr_code.generate_url(current_url)
             qr_html = f'''
                 <div class="qr">
                     <p class="qr">QR Code for this page:</p>
@@ -113,11 +107,11 @@ def setup_app(*, app=None):
             inline_css=False,
         ):
         nonlocal version
-        css_path = gway.resource("data", "static", "styles", css)
+        css_path = gw.resource("data", "static", "styles", css)
 
         if css != "default.css" and not os.path.exists(css_path):
             css = "default.css"
-            css_path = gway.resource("data", "static", "styles", css)
+            css_path = gw.resource("data", "static", "styles", css)
 
         if inline_css:
             css_content = load_css(css_path)
@@ -138,7 +132,7 @@ def setup_app(*, app=None):
             <body>
                 {{!navbar}}
                 <main>{{!content}}</main>
-                <br><hr><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
+                <br/><hr><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
                         <p>GWAY is powered by <a href="https://www.python.org/">Python</a>.
                         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>.</p></footer>
             </body>
@@ -161,11 +155,11 @@ def setup_app(*, app=None):
 
     @app.route("/static/<filename:path>")
     def send_static(filename):
-        return static_file(filename, root=gway.resource("data", "static"))
+        return static_file(filename, root=gw.resource("data", "static"))
     
     @app.route("/temp/<filename:path>")
     def send_temp(filename):
-        return static_file(filename, root=gway.resource("temp", "shared"))
+        return static_file(filename, root=gw.resource("temp", "shared"))
         
     @app.route("/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
@@ -178,13 +172,13 @@ def setup_app(*, app=None):
         kwargs = dict(request.query)
 
         try:
+            gw.info(f"Dispatching to function {view_func.__name__}")
             content = view_func(*args, **kwargs)
             visited = update_visited(view_name)
-
         except HTTPResponse as res:
             return res
         except Exception as e:
-            logger.exception(e)
+            gw.exception(e)
             # Redirect to /readme on any error
             response.status = 302
             response.set_header("Location", "/readme")

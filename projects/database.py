@@ -1,11 +1,8 @@
 import os
 import csv
 import sqlite3
-import logging
-
 from contextlib import contextmanager
-from gway import Gateway
-logger = logging.getLogger(__name__)
+from gway import gw
 
 
 def infer_type(value):
@@ -29,15 +26,14 @@ def connect(
     """
     assert sql_engine == "sqlite3", "Only sqlite3 is supported at the moment."
 
-    gway = Gateway()
     if not database:
         database = ("temp", temp_name)
 
-    db_path = gway.resource(*database)
+    db_path = gw.resource(*database)
     if isinstance(load_data, str):
-        data_path = gway.resource("data", load_data)
+        data_path = gw.resource("data", load_data)
     else:
-        data_path = gway.resource("data")  
+        data_path = gw.resource("data")  
     conn = sqlite3.connect(db_path)
 
     def load_csv(path, parent_path=""):
@@ -58,7 +54,7 @@ def connect(
                         headers = next(reader)
                         sample_row = next(reader)
                     except StopIteration:
-                        logger.warning(f"Skipping empty CSV file: {full_path}")
+                        gw.warning(f"Skipping empty CSV file: {full_path}")
                         continue
 
                     unique_headers = []
@@ -83,7 +79,7 @@ def connect(
 
                     if table_exists and force:
                         cursor.execute(f"DROP TABLE IF EXISTS [{table_name}]")
-                        logger.info(f"Dropped existing table '{table_name}' due to force=True")
+                        gw.info(f"Dropped existing table '{table_name}' due to force=True")
 
                     if not table_exists or force:
                         create_table_query = (f"CREATE TABLE [{table_name}] ("
@@ -95,9 +91,9 @@ def connect(
                         cursor.execute(insert_query, sample_row)
                         cursor.executemany(insert_query, reader)
                         cursor.execute("COMMIT")
-                        logger.info(f"Loaded table '{table_name}' with columns: {', '.join(unique_headers)}")
+                        gw.info(f"Loaded table '{table_name}' with columns: {', '.join(unique_headers)}")
                     else:
-                        logger.info(f"Skipped existing table '{table_name}' (force=False)")
+                        gw.info(f"Skipped existing table '{table_name}' (force=False)")
         cursor.close()
 
     if load_data:

@@ -1,8 +1,4 @@
 import os
-import logging
-
-
-logger = logging.getLogger(__name__)
 
 
 def get_base_client():
@@ -55,11 +51,8 @@ def load_env(env_type: str, name: str, env_root: str):
 
     if not os.path.isfile(env_file):
         open(env_file, "a").close()
-        logger.warning(f"{env_type.capitalize()} env file '{env_file}' not found. Created an empty one.")
-        return
 
     # Load primary env file
-    logger.debug(f"Loading env file {env_file}")
     primary_env = parse_env_file(env_file)
 
     # Check for BASE_ENV
@@ -71,8 +64,6 @@ def load_env(env_type: str, name: str, env_root: str):
             for key, value in base_env.items():
                 if key not in primary_env:
                     os.environ[key] = value
-        else:
-            logger.warning(f"BASE_ENV '{base_env_name}' referenced but not found at '{base_env_file}'.")
 
     # Load primary env variables (override base if needed)
     for key, value in primary_env.items():

@@ -5,7 +5,7 @@ import logging.handlers
 
 
 def setup_logging(*, 
-                 logfile=None, logdir="logs", app_name=None,
+                 logfile=None, logdir="logs", prog_name="gway",
                  loglevel="INFO", pattern=None, backup_count=7):
     """Globally configure logging with optional rotating file and console handlers."""
     
@@ -22,11 +22,11 @@ def setup_logging(*,
     pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(funcName)s:%(lineno)d - %(message)s'
 
     # Clear existing handlers to avoid duplicates
-    root_logger = logging.getLogger()
-    if root_logger.handlers:
-        for handler in root_logger.handlers[:]:
-            root_logger.removeHandler(handler)
-    root_logger.setLevel(loglevel)
+    logger = logging.getLogger()
+    if logger.handlers:
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+    logger.setLevel(loglevel)
 
     # File handler (rotating daily at midnight)
     if logfile:
@@ -35,10 +35,12 @@ def setup_logging(*,
         )
         file_handler.setLevel(loglevel)
         file_handler.setFormatter(logging.Formatter(pattern, datefmt='%H:%M:%S'))
-        root_logger.addHandler(file_handler)
+        logger.addHandler(file_handler)
 
     # Initial log message
     sep = "-" * 70
     cmd_args = " ".join(sys.argv[1:])
-    root_logger.info(f"\n{sep}\n> {app_name or '%prog'} {cmd_args}\n{sep}")
-    root_logger.info(f"Loglevel set to {loglevel} ({logging.getLevelName(loglevel)})")
+    logger.info(f"\n{sep}\n> {prog_name or '%prog'} {cmd_args}\n{sep}")
+    logger.info(f"Loglevel set to {loglevel} ({logging.getLevelName(loglevel)})")
+
+    return logger

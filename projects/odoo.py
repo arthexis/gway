@@ -1,8 +1,6 @@
 from xmlrpc import client
 from datetime import datetime, timedelta
-from gway import Gateway
-
-gway = Gateway()
+from gway import gw
 
 
 def execute(
@@ -25,30 +23,30 @@ def execute(
     Returns:
         dict: The result of the execute_kw call.
     """
-    gway.logger.info(f"Odoo Execute: {model=} {method=} @ {url=} {db_name=} {username=}")
+    gw.info(f"Odoo Execute: {model=} {method=} @ {url=} {db_name=} {username=}")
     try:
         common_client = client.ServerProxy(f"{url}/xmlrpc/2/common")
     except Exception as e:
-        gway.logger.exception(f"Error with ServerProxy setup", e)
+        gw.exception(f"Error with ServerProxy setup", e)
         raise
-    gway.logger.debug(f"ServerProxy client: {common_client}")
+    gw.debug(f"ServerProxy client: {common_client}")
     try:
         uid = common_client.authenticate(db_name, username, password, {})
     except Exception as e:
-        gway.logger.error(f"Error with Odoo authentication: {e}")
-        gway.print(f"( Did you forget to specify the correct --client? )")
+        gw.error(f"Error with Odoo authentication: {e}")
+        print(f"( Did you forget to specify the correct --client? )")
         raise
 
     try:
         models_client = client.ServerProxy(f"{url}/xmlrpc/2/object")
         for reserved in ("db_name", "uid", "password", "model", "method"):
-            gway.logger.warning(f"Removing reserved keyword: {reserved}")
+            gw.warning(f"Removing reserved keyword: {reserved}")
             kwargs.pop(reserved, None)
-        gway.logger.debug(f"Model client call execute_kw {model}.{method} with {args=} {kwargs=}")
+        gw.debug(f"Model client call execute_kw {model}.{method} with {args=} {kwargs=}")
         result = models_client.execute_kw(db_name, uid, password, model, method, *args, **kwargs)
         return result
     except Exception as e:
-        gway.logger.error(f"Error executing {model}.{method}: {e}")
+        gw.error(f"Error executing {model}.{method}: {e}")
         raise
 
 
@@ -89,13 +87,13 @@ def fetch_quotes(
         domain_filter.extend(kwargs)
     fields_to_fetch = ['name', 'amount_total', 'create_date', 'user_id', 'partner_id']
     try:
-        result = gway.odoo.execute(
+        result = gw.odoo.execute(
             [domain_filter], {'fields': fields_to_fetch},
             model=model, method=method
         )
         return result
     except Exception as e:
-        gway.logger.error(f"Error fetching quotations: {e}")
+        gw.error(f"Error fetching quotations: {e}")
         raise
 
 
@@ -112,7 +110,7 @@ def fetch_products(*, name=None, latest_quotes=None):
         domain_filter.append(('name', 'ilike', name))
     
     fields_to_fetch = ['name', 'list_price']  # Add fields as needed
-    result = gway.odoo.execute(
+    result = gw.odoo.execute(
         [domain_filter], {'fields': fields_to_fetch},
         model=model, method=method
     )
@@ -162,13 +160,13 @@ def fetch_customers(
 
     fields_to_fetch = ['name', 'create_date']
     try:
-        result = gway.odoo.execute(
+        result = gw.odoo.execute(
             [domain_filter], {'fields': fields_to_fetch},
             model=model, method=method
         )
         return result
     except Exception as e:
-        gway.logger.error(f"Error fetching customers: {e}")
+        gw.error(f"Error fetching customers: {e}")
         raise
 
 
@@ -187,20 +185,20 @@ def fetch_order(order_id):
     # Check if order_id is a string that starts with 'S' and fetch by name instead of ID
     if isinstance(order_id, str) and order_id.startswith('S'):
         order_domain_filter = [('name', '=', order_id)]
-        order_result = gway.odoo.execute(
+        order_result = gw.odoo.execute(
             order_model, 'search_read', [order_domain_filter], {'fields': order_fields})
         if order_result:
             order_id = order_result[0]['id']
         else:
             return {'error': 'Order not found.'}
     else:
-        order_result = gway.odoo.execute(
+        order_result = gw.odoo.execute(
             [[order_id]], {'fields': order_fields},
             model=order_model, method=order_method,
         )
 
     line_domain_filter = [('order_id', '=', order_id)]
-    line_result = gway.odoo.execute(
+    line_result = gw.odoo.execute(
         [line_domain_filter], {'fields': line_fields},
         model=line_model, method=line_method,
     )
@@ -239,13 +237,13 @@ def fetch_templates(*, name=None, active=True, **kwargs):
     fields_to_fetch = ['name', 'number_of_days', 'active']
     
     try:
-        result = gway.odoo.execute(
+        result = gw.odoo.execute(
             [domain_filter], {'fields': fields_to_fetch},
             model=model, method=method
         )
         return result
     except Exception as e:
-        gway.logger.error(f"Error fetching quotation templates: {e}")
+        gw.error(f"Error fetching quotation templates: {e}")
         raise
 
 
@@ -288,12 +286,12 @@ def create_quote(*, customer, template_id, validity=None, notes=None):
         values['note'] = notes
 
     try:
-        quote_id = gway.odoo.execute(
+        quote_id = gw.odoo.execute(
             [values], {},
             model=model, method=method
         )
     except Exception as e:
-        gway.logger.error(f"Error creating quote: {e}")
+        gw.error(f"Error creating quote: {e}")
         raise
 
     # Step 3: Return full quote details
@@ -304,12 +302,12 @@ def send_chat(message: str, *, username: str = "[ODOO_USERNAME]") -> bool:
     """
     Send a chat message to an Odoo user by username.
     """
-    user_info = gway.odoo.get_user_info(username=username)
+    user_info = gw.odoo.get_user_info(username=username)
     if not user_info:
         return False
 
     user_id = user_info["id"]
-    return gway.odoo.execute(
+    return gw.odoo.execute(
         model="mail.channel",
         method="message_post",
         kwargs={
@@ -329,7 +327,7 @@ def read_chat(*,
     Read chat messages from an Odoo user by username.
     If unread is True, only return unread messages.
     """
-    user_info = gway.odoo.get_user_info(username=username)
+    user_info = gw.odoo.get_user_info(username=username)
     if not user_info: return []
 
     user_id = user_info["id"]
@@ -337,7 +335,7 @@ def read_chat(*,
     if unread:
         domain.append(["message_read", "=", False])
 
-    messages = gway.odoo.execute(
+    messages = gw.odoo.execute(
         model="mail.message",
         method="search_read",
         domain=domain,
@@ -348,14 +346,14 @@ def read_chat(*,
 
 def get_user_info(*, username: str) -> dict:
     """Retrieve Odoo user information by username."""
-    user_data = gway.odoo.execute(
+    user_data = gw.odoo.execute(
         model="res.users",
         method="search_read",
         domain=[["login", "=", username]],
         fields=["id", "name", "login"],
     )
     if not user_data:
-        gway.logger.error(f"User not found: {username}")
+        gw.error(f"User not found: {username}")
         return None
     return user_data[0]  # Return the first (and likely only) match.
 

@@ -22,7 +22,6 @@ class GatewayBuiltinsTests(unittest.TestCase):
     def test_builtins_functions(self):
         # Test if the builtins can be accessed directly and are callable
         try:
-            self.gw.print("test")
             self.gw.hello_world()
         except AttributeError as e:
             self.fail(f"AttributeError occurred: {e}")
