@@ -88,50 +88,28 @@ def setup_app(*, app=None):
 
         return f"<aside>{search_box}<ul>{links}</ul><br>{qr_html}</aside>"
 
-    def load_css(path):
-        """Load and cache CSS from the given path."""
-        if path in _css_cache:
-            return _css_cache[path]
-        
-        if not os.path.exists(path):
-            return "/* CSS file not found */"
-        
-        with open(path, "r", encoding="utf-8") as f:
-            css = f.read()
-            _css_cache[path] = css
-            return css
-
-    def render_template(*, 
-            title="GWAY", navbar="", content="", css="default.css", 
-            inline_css=False,
-        ):
+    def render_template(*, title="GWAY", navbar="", content="", css_files=None):
         nonlocal version
-        css_path = gw.resource("data", "static", "styles", css)
+        css_files = css_files or ["default.css"]
 
-        if css != "default.css" and not os.path.exists(css_path):
-            css = "default.css"
-            css_path = gw.resource("data", "static", "styles", css)
-
-        if inline_css:
-            css_content = load_css(css_path)
-            css_html = f"<style>{css_content}</style>"
-        else:
-            css_url = f"/static/styles/{css}"
-            css_html = f'<link rel="stylesheet" href="{css_url}" />'
+        css_links = "\n".join(
+            f'<link rel="stylesheet" href="/static/styles/{css}">'
+            for css in css_files
+        )
 
         return template("""<!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8" />
                 <title>{{!title}}</title>
-                {{!css_html}}
+                {{!css_links}}
                 <link rel="icon" href="/static/favicon.ico" type="image/x-icon" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             </head>
             <body>
                 {{!navbar}}
                 <main>{{!content}}</main>
-                <br/><hr><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
+                <br/><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
                         <p>GWAY is powered by <a href="https://www.python.org/">Python</a>.
                         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>.</p></footer>
             </body>
@@ -199,8 +177,10 @@ def setup_app(*, app=None):
             """
             content = consent_box + content
 
-        css = request.get_cookie("css", "default.css")
-        return render_template(navbar=navbar, content=content, css=css)
+        css_cookie = request.get_cookie("css", "")  # e.g. "dark-mode.css"
+        css_files = ["default.css"] + [f.strip() for f in css_cookie.split(",") if f.strip()]
+        return render_template(navbar=navbar, content=content, css_files=css_files)
+
 
     app = security_middleware(app)
     return app
