@@ -1,2 +1,3 @@
-from .gateway import cli_main, Gateway, gw
-from .decorators import *
+from .gateway import Gateway, gw
+from .cli import cli_main
+from .decorators import requires

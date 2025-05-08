@@ -60,33 +60,3 @@ def load_builtins() -> dict:
     }
     return builtins_functions
 
-
-def show_functions_cli(functions: dict):
-    """Display a formatted view of available functions."""
-    print("Available functions:")
-    for name, func in functions.items():
-        # Build argument preview
-        args_list = []
-        for param in inspect.signature(func).parameters.values():
-            if param.default != inspect.Parameter.empty:
-                default_val = param.default
-                if isinstance(default_val, str):
-                    default_val = f"{default_val}"
-                args_list.append(f"--{param.name} {default_val}")
-            else:
-                args_list.append(f"--{param.name} <required>")
-
-        args_preview = " ".join(args_list)
-
-        # Extract first non-empty line from docstring
-        doc = ""
-        if func.__doc__:
-            doc_lines = [line.strip() for line in func.__doc__.splitlines()]
-            doc = next((line for line in doc_lines if line), "")
-            
-        if args_preview:
-            print(f"  > {name} {args_preview}")
-        else:
-            print(f"  > {name}")
-        if doc:
-            print(f"      {doc}")
