@@ -192,7 +192,7 @@ def build(
 
 
 def build_help_db():
-    from gway.functions import load_project
+    from gway.loader import load_project
 
     with gw.database.connect("data", "help.sqlite") as cursor:
         cursor.execute("DROP TABLE IF EXISTS help")
