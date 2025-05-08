@@ -38,7 +38,8 @@ def start_server(*,
     debug=False,
     proxy=None,
     app=None,
-    daemon=False  # this is the trigger
+    daemon=False,
+    threaded=True
 ):
     """Start an HTTP server to host the given application, or the default website if None."""
     from bottle import run
@@ -49,7 +50,7 @@ def start_server(*,
         if proxy:
             actual_app = setup_proxy(endpoint=proxy, app=actual_app)
         gw.info(f"Starting app: {actual_app}")
-        run(actual_app, host=host, port=int(port), debug=debug)
+        run(actual_app, host=host, port=int(port), debug=debug, threaded=threaded)
 
     if daemon:
         import asyncio
