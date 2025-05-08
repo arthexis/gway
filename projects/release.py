@@ -207,7 +207,7 @@ def build_help_db():
                 continue
             name = entry.name[:-3] if entry.name.endswith(".py") else entry.name
             try:
-                module, funcs = load_project(name, gway.root)
+                module, funcs = load_project(gw.base_path, name)
                 for fname, func in funcs.items():
                     doc = inspect.getdoc(func)
                     sig = str(inspect.signature(func))
