@@ -75,14 +75,25 @@ p.qr {
 img.navbar-qr {
     max-width: 150px;
 }
-@media (max-width: 600px) {
-    aside {
-        display: block;
-        width: 100%;
-        order: 2; /* if using flexbox */
+@media (max-width: 768px) {
+    body {
+        display: flex;
+        flex-direction: column;
     }
+
+    aside {
+        order: 2; /* Appear after main */
+        width: 100%;
+    }
+
     main {
         order: 1;
+    }
+
+    .navbar, .navbar-qr {
+        display: block;
+        margin: 0 auto;
+        text-align: center;
     }
 }
 

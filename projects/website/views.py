@@ -4,7 +4,7 @@ from gway import gw, requires
 
 # Don't use inline CSS ever, each user can have different css configurations. 
 
-def view_readme(*args, **kwargs):
+def view_gway(*args, **kwargs):
     """Render the README.rst file as HTML."""
     from docutils.core import publish_parts
 
@@ -156,7 +156,7 @@ def view_awg_finder(
         </ul>
         <p><a href="/awg-finder">Calculate again</a></p>
     """
-
+    
 @requires("bottle")
 def view_css_selector():
     """Allows user to choose from available stylesheets and shows current selection."""

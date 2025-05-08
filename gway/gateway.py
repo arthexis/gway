@@ -173,7 +173,6 @@ class Gateway(Resolver):
 
         # Attempt dynamic project loading via load_project
         try:
-            self.debug(f"Loading project {name}")
             project_obj = self.load_project(project_name=name)
             return project_obj
         except Exception as e:
@@ -181,10 +180,10 @@ class Gateway(Resolver):
 
     def load_project(self, project_name: str, root: str = "projects"):
         # Replace hyphens with underscores in module names
+        self.debug(f"Loading {project_name=} from {root=}")
         project_name = project_name.replace("-", "_")
         project_path = gw.resource(root, *project_name.split("."))
         load_mode = None
-        self.debug(f"Loading {project_name=} {root=}")
 
         if os.path.isdir(project_path) and os.path.isfile(os.path.join(project_path, "__init__.py")):
             # It's a package

@@ -30,6 +30,7 @@ def setup_app(*, app=None):
             return app(environ, custom_start_response)
 
         # Patch Bottle's response.set_cookie to enforce secure, httponly
+        # This may report an error for cookies not being secure in development which we can ignore
         original_set_cookie = response.set_cookie
 
         @wraps(original_set_cookie)
@@ -64,13 +65,11 @@ def setup_app(*, app=None):
 
     def render_navbar(visited, current_url=None):
 
-        # TODO: Take the size of the viewport into consideration. If the screen is too
-        # narrow, make the navbar appear below the main content instead.
-
         if not cookies_enabled():
-            visited = ["readme"]
+            visited = ["gway"]
         links = "".join(
-            f'<li><a href="/{b}">{b.title()}</a></li>' for b in sorted(visited) if b
+            f'<li><a href="/{b.replace("_", "-")}">{b.replace("_", " ").replace("-", " ").title()}</a></li>'
+            for b in sorted(visited) if b
         )
         search_box = '''
             <form action="/help" method="get" class="navbar">
@@ -150,7 +149,7 @@ def setup_app(*, app=None):
     @app.route("/", method=["GET", "POST"])
     def index():
         response.status = 302
-        response.set_header("Location", "/readme")
+        response.set_header("Location", "/gway")
         return ""
 
     @app.route("/static/<filename:path>")
@@ -178,10 +177,9 @@ def setup_app(*, app=None):
         except HTTPResponse as res:
             return res
         except Exception as e:
-            gw.exception(e)
-            # Redirect to /readme on any error
+            gw.exception(e)  # Redirect to /gway on any error after logging
             response.status = 302
-            response.set_header("Location", "/readme")
+            response.set_header("Location", "/gway")
             return ""
 
         current_url = request.fullpath
@@ -206,4 +204,3 @@ def setup_app(*, app=None):
 
     app = security_middleware(app)
     return app
-
