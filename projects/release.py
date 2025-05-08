@@ -47,7 +47,7 @@ def build(
             gw.abort("Git repository is not clean. Commit or stash changes before building.")
 
     if help_db:
-        build_help_db()
+        build_help()
 
     project_name = "gway"
     description = "Software Project Infrastructure by https://www.gelectriic.com"
@@ -191,8 +191,7 @@ def build(
         gw.info(f"Committed and pushed: {commit_msg}")
 
 
-def build_help_db():
-
+def build_help():
     with gw.database.connect("data", "help.sqlite") as cursor:
         cursor.execute("DROP TABLE IF EXISTS help")
         cursor.execute("""
@@ -206,15 +205,24 @@ def build_help_db():
                 continue
             name = entry.name[:-3] if entry.name.endswith(".py") else entry.name
             try:
-                module, funcs = gw.load_project(gw.base_path, name)
-                for fname, func in funcs.items():
-                    doc = inspect.getdoc(func)
-                    sig = str(inspect.signature(func))
-                    source = "".join(inspect.getsourcelines(func)[0])
+                project_obj = gw.load_project(name)
+                for fname in dir(project_obj):
+                    if fname.startswith("_"):
+                        continue
+                    func = getattr(project_obj, fname, None)
+                    if not callable(func):
+                        continue
+
+                    # Get original function (unwrap functools.wraps)
+                    raw_func = getattr(func, "__wrapped__", func)
+
+                    doc = inspect.getdoc(raw_func) or ""
+                    sig = str(inspect.signature(raw_func))
+                    source = "".join(inspect.getsourcelines(raw_func)[0])
                     todos = extract_todos(source)
 
                     cursor.execute("INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)", 
-                                (name, fname, sig, doc, source, "\n".join(todos)))
+                                   (name, fname, sig, doc, source, "\n".join(todos)))
             except Exception as e:
                 gw.warning(f"Skipping project {name}: {e}")
 
