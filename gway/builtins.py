@@ -1,7 +1,7 @@
 import os
-import inspect
-import pathlib
 import textwrap
+import ast
+import pathlib
 
 from colorama import init as colorama_init, Fore, Style
 
@@ -79,9 +79,9 @@ def resource(*parts, touch=False, check=False, temp=False):
     return path
 
 
-def readlines(*parts, base=None, unique=False):
+def readlines(*parts, unique=False):
     """Fetch a GWAY resource split by lines. If unique=True, returns a set, otherwise a list."""
-    resource_file = resource(*parts, base=None)
+    resource_file = resource(*parts)
     lines = [] if not unique else set()
     if os.path.exists(resource_file):
         with open(resource_file, "r") as f:
@@ -130,6 +130,22 @@ def test(root: str = 'tests', filter=None):
     return result.wasSuccessful()
 
 
+def _strip_types(sig: str) -> str:
+    try:
+        node = ast.parse(f"def _({sig}): pass").body[0]
+        args = node.args
+        param_names = []
+        for arg in args.args:
+            param_names.append(arg.arg)
+        if args.vararg:
+            param_names.append(f"*{args.vararg.arg}")
+        if args.kwarg:
+            param_names.append(f"**{args.kwarg.arg}")
+        return ", ".join(param_names)
+    except Exception:
+        return sig  # fallback if parsing fails
+
+
 def help(*args, full_code=False):
     from gway import gw
 
@@ -145,35 +161,42 @@ def help(*args, full_code=False):
 
         elif len(args) == 1:
             query = args[0].replace("-", "_")
+            parts = query.split(".")
+            exact_rows = []
+
+            if len(parts) == 2:
+                project, function = parts
+                cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", (project, function))
+                exact_rows = cur.fetchall()
+
             cur.execute("SELECT * FROM help WHERE help MATCH ?", (query,))
+            fuzzy_rows = [row for row in cur.fetchall() if row not in exact_rows]
+            rows = exact_rows + fuzzy_rows
+
         elif len(args) == 2:
             project = args[0].replace("-", "_")
             func = args[1].replace("-", "_")
             cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", (project, func))
+            rows = cur.fetchall()
         else:
             print("Too many arguments.")
             return
 
-        rows = cur.fetchall()
         if not rows:
             print(f"No help found for: {' '.join(args)}")
             return
 
-        # TODO: Example code generation is not as expected. Currently it just mangles the signature a little
-        # However that doesn't work because of type annotations. Instead just make it look like a regular function call
-
         results = []
         for row in rows:
-            results.append({k:v for k,v in {
+            example_code = f"gw.{row['project']}.{row['function']}({_strip_types(row['signature'])})"
+            results.append({k: v for k, v in {
                 "Project": row["project"],
                 "Function": row["function"],
                 "Signature": textwrap.fill(row["signature"], 100).strip(),
-                "Docstring": row["docstring"].strip() if row["docstring"] else None,  # <--- trim leading/trailing blank lines
-                "TODOs": row["todos"].strip() if row["todos"] else None,          # <--- same here
+                "Docstring": row["docstring"].strip() if row["docstring"] else None,
+                "TODOs": row["todos"].strip() if row["todos"] else None,
                 "Example CLI": f"gway {row['project']} {row['function']}",
-                "Example Code": textwrap.fill(
-                    f"gw.{row['project']}.{row['function']}({row['signature']})", 100
-                ).strip(),  # <--- remove any trailing blank lines
+                "Example Code": textwrap.fill(example_code, 100).strip(),
                 **({"Full Code": row["source"]} if full_code else {})
             }.items() if v})
 
@@ -184,3 +207,20 @@ def sigils(*args: str):
     from .sigils import Sigil
     text = "\n".join(args)
     return Sigil(text).list_sigils()
+
+
+def run_batch(*script: str, **context):
+    """Run commands parsed from a .gws file."""
+    from .command import load_batch, process_commands
+    from gway import gw
+
+    gw.debug(f"{script=}")
+    if not script[-1].endswith(".gws"):
+        script = script[0:-1] + ((script[-1] + ".gws"), )
+    script_path = gw.resource(*script)
+    gw.debug(f"{script_path}")
+
+    command_sources, comments = load_batch(script_path)
+    gw.debug(f"{chr(10).join(comments)}")  # Optional: log batch comments
+
+    return process_commands(command_sources, **context)

@@ -78,9 +78,6 @@ def help_section(info, use_query_links=False, *args, **kwargs):
 
 def view_qr_code(*args, value=None, **kwargs):
     """Generate a QR code for a given value and serve it from cache if available."""
-
-    gw.info(f"Entering QR View {value=} {args=} {kwargs=}")
-    
     if not value:
         return '''
             <h1>QR Code Generator</h1>
@@ -89,7 +86,6 @@ def view_qr_code(*args, value=None, **kwargs):
                 <button type="submit" class="submit">Generate QR</button>
             </form>
         '''
-    
     qr_url = gw.qr_code.generate_url(value)
     return f"""
         <h1>QR Code for:</h1>
@@ -133,7 +129,6 @@ def view_awg_finder(
                 <button type="submit" class="submit">Find Cable</button>
             </form>
         '''
-
     try:
         result = gw.awg.find_cable(
             meters=meters, amps=amps, volts=volts,
@@ -156,7 +151,7 @@ def view_awg_finder(
         </ul>
         <p><a href="/awg-finder">Calculate again</a></p>
     """
-    
+
 @requires("bottle")
 def view_css_selector():
     """Allows user to choose from available stylesheets and shows current selection."""
@@ -196,3 +191,9 @@ def view_css_selector():
     )
     return form.format(options=options)
 
+
+# TODO: Create a new view_forms function that can construct custom forms for other functions
+# and allows submitting those forms back to the view to execute each of those functions
+# in the given order against the same gw (Gateway) instance. 
+# These forms will be contained in .gws files located in gw.resources("forms")
+# Each line in the .gws file contains 

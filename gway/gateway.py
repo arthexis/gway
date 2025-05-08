@@ -14,22 +14,35 @@ from .structs import Results
 
 class Gateway(Resolver):
     _builtin_cache = None
+    _thread_local = threading.local()
 
     def __init__(self, **kwargs):
         self._cache = {}
         self._async_threads = []
         self.base_path = os.path.dirname(os.path.dirname(__file__))
-        self.results = Results()
-        self.context = {**kwargs}
         self.logger = logging.getLogger("gw")
 
-        # Initialize Resolver with search order
+        # Thread-local context/results
+        if not hasattr(Gateway._thread_local, "context"):
+            Gateway._thread_local.context = {}
+        if not hasattr(Gateway._thread_local, "results"):
+            Gateway._thread_local.results = Results()
+
+        # Inject initial context if provided
+        Gateway._thread_local.context.update(kwargs)
+
+        # Aliases for convenience
+        self.context = Gateway._thread_local.context
+        self.results = Gateway._thread_local.results
+
+        # Resolver setup
         super().__init__([
             ('results', self.results),
             ('context', self.context),
             ('env', os.environ)
         ])
 
+        # Cache builtins once
         if Gateway._builtin_cache is None:
             builtins_module = importlib.import_module("gway.builtins")
             Gateway._builtin_cache = {
@@ -40,7 +53,7 @@ class Gateway(Resolver):
             }
 
         self._builtin_functions = Gateway._builtin_cache.copy()
-            
+
     def _wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
@@ -226,6 +239,6 @@ class Gateway(Resolver):
         # Cache and return
         self._cache[project_name] = project_obj
         return project_obj
-
+    
 
 gw = Gateway()
