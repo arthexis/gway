@@ -149,7 +149,7 @@ def setup_app(*, app=None):
         kwargs = dict(request.query)
 
         try:
-            gw.info(f"Dispatching to function {view_func.__name__}")
+            gw.info(f"Dispatching to function {view_func}")
             content = view_func(*args, **kwargs)
             visited = update_visited(view_name)
         except HTTPResponse as res:

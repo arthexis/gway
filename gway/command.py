@@ -22,6 +22,7 @@ def cli_main():
     parser.add_argument("-a", dest="all", action="store_true", help="Return all results, not just the last one")
     parser.add_argument("-j", dest="json", action="store_true", help="Output result(s) as JSON")
     parser.add_argument("-b", dest="batch", type=str, help="Run commands from a batch script")
+    parser.add_argument("-x", dest="callback", type=str, help="Execute a callback per command")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
 
@@ -45,7 +46,12 @@ def cli_main():
             sys.exit(1)
         command_sources = chunk_command(args.commands)
 
-    all_results, last_result = process_commands(command_sources)
+    # TODO: If a callback was provided, find the given function and pass it to process_commands
+    if args.callback:
+        callback = gw[args.callback]
+        all_results, last_result = process_commands(command_sources, callback=callback)
+    else:
+        all_results, last_result = process_commands(command_sources)
     output = all_results if args.all else last_result
 
     if args.json:
@@ -60,17 +66,35 @@ def cli_main():
         print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
 
 
-def process_commands(command_sources, **context):
-    """Shared logic for executing CLI or batch commands."""
+def process_commands(command_sources, callback=None, **context):
+    """Shared logic for executing CLI or batch commands with optional per-node callback."""
     from gway import gw, Gateway
-    
+
     all_results = []
     last_result = None
-    
+
     gw = Gateway(**context) if context else gw
 
     for chunk in command_sources:
+        if not chunk:
+            continue
+
         gw.debug(f"Processing chunk: {chunk}")
+
+        # Invoke callback if provided
+        if callback:
+            callback_result = callback(chunk)
+            if callback_result is False:
+                gw.debug(f"Skipping chunk due to callback: {chunk}")
+                continue
+            elif isinstance(callback_result, list):
+                gw.debug(f"Callback replaced chunk: {callback_result}")
+                chunk = callback_result
+            elif callback_result is None or callback_result is True:
+                pass  # continue with original chunk
+            else:
+                abort(f"Invalid callback return value for chunk: {callback_result}")
+
         if not chunk:
             continue
 
@@ -134,7 +158,6 @@ def process_commands(command_sources, **context):
             abort(f"Unhandled {type(e).__name__} in {func_obj.__name__}")
 
     return all_results, last_result
-
 
 def prepare_arguments(parsed_args, func_obj):
     """Prepare *args and **kwargs for a function call."""

@@ -7,6 +7,8 @@ from colorama import init as colorama_init, Fore, Style
 
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
+# Instead, use "from gway import gw" inside the function definitions themselves
+# Trust me, bro. It works.
     
 
 def hello_world(name: str = "World", greeting: str = "Hello"):
@@ -224,3 +226,15 @@ def run_batch(*script: str, **context):
     gw.debug(f"{chr(10).join(comments)}")  # Optional: log batch comments
 
     return process_commands(command_sources, **context)
+
+
+def skip_all(chunk):
+    from gway import gw
+    gw.info(f"Skiping chunk: {chunk}")
+    return False
+
+
+def log_all(chunk):
+    from gway import gw
+    gw.info(f"Logging chunk: {chunk}")
+    return True

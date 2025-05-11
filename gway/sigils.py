@@ -70,6 +70,10 @@ class Resolver:
         """
         self._search_order = search_order
 
+    # TODO: Create a method that allows us to register_source(another source) to the search order
+    def append_source(self, source):
+        self._search_order.append(source)
+
     def resolve(self, sigil):
         """Resolve [sigils] in a given string, using find_value()."""
         if not isinstance(sigil, str):
@@ -88,3 +92,28 @@ class Resolver:
             elif key in source:
                 return source[key]
         return fallback
+    
+    def __getitem__(self, key):
+        """
+        Enable dict-like access with fallback to attribute resolution using dot notation.
+        E.g., resolver['some.key'] will try to resolve with find_value first,
+        then fallback to attribute traversal.
+        """
+        # Try to find via search_order
+        value = self.find_value(key)
+        if value is not None:
+            return value
+
+        # Dot notation traversal
+        parts = key.replace('-', '_').split('.')
+        current = self
+
+        for part in parts:
+            if hasattr(current, part):
+                current = getattr(current, part)
+            elif isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                raise AttributeError(f"Cannot resolve '{key}' via attribute access")
+        return current
+
