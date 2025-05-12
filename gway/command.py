@@ -9,19 +9,20 @@ from typing import get_origin, get_args, Literal, Union
 from .logging import setup_logging
 from .builtins import abort
 from .environs import load_env, get_base_client, get_base_server
-from .gateway import gw
+from .gateway import gw, Gateway
 
 
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
-    parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing")
-    parser.add_argument("-d", dest="debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("-c", dest="client", type=str, help="Specify client environment")
-    parser.add_argument("-s", dest="server", type=str, help="Specify server environment")
     parser.add_argument("-a", dest="all", action="store_true", help="Return all results, not just the last one")
-    parser.add_argument("-j", dest="json", action="store_true", help="Output result(s) as JSON")
     parser.add_argument("-b", dest="batch", type=str, help="Run commands from a batch script")
+    parser.add_argument("-c", dest="client", type=str, help="Specify client environment")
+    parser.add_argument("-d", dest="debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("-e", dest="expression", type=str, help="Return resolved sigil at the end")
+    parser.add_argument("-j", dest="json", action="store_true", help="Output result(s) as JSON")
+    parser.add_argument("-s", dest="server", type=str, help="Specify server environment")
+    parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing")
     parser.add_argument("-x", dest="callback", type=str, help="Execute a callback per command")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
@@ -46,21 +47,33 @@ def cli_main():
             sys.exit(1)
         command_sources = chunk_command(args.commands)
 
-    # TODO: If a callback was provided, find the given function and pass it to process_commands
     if args.callback:
         callback = gw[args.callback]
         all_results, last_result = process_commands(command_sources, callback=callback)
     else:
         all_results, last_result = process_commands(command_sources)
-    output = all_results if args.all else last_result
 
-    if args.json:
-        print(json.dumps(output, indent=2, default=str))
-    elif output is not None:
-        gw.info(f"Last function result:\n{output}")
-        print(output)
-    else:
-        gw.info("No results returned.")
+    # Print all results immediately if --all is set
+    if args.all:
+        for result in all_results:
+            if args.json:
+                print(json.dumps(result, indent=2, default=str))
+            elif result is not None:
+                gw.info(f"Result:\n{result}")
+                print(result)
+
+    # Final result resolution
+    output = Gateway(**last_result).resolve(args.expression) if args.expression else last_result
+
+    # Only print final result if --all wasn't used
+    if not args.all:
+        if args.json:
+            print(json.dumps(output, indent=2, default=str))
+        elif output is not None:
+            gw.info(f"Last function result:\n{output}")
+            print(output)
+        else:
+            gw.info("No results returned.")
 
     if start_time:
         print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
