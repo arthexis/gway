@@ -70,7 +70,6 @@ class Resolver:
         """
         self._search_order = search_order
 
-    # TODO: Create a method that allows us to register_source(another source) to the search order
     def append_source(self, source):
         self._search_order.append(source)
 
@@ -81,7 +80,7 @@ class Resolver:
         if not isinstance(sigil, Sigil):
             sigil = Sigil(sigil)
         return sigil % self.find_value
-
+    
     def find_value(self, key: str, fallback: str = None) -> str:
         """Find a value from the search sources provided in search_order."""
         for name, source in self._search_order:
@@ -92,28 +91,43 @@ class Resolver:
             elif key in source:
                 return source[key]
         return fallback
-    
-    def __getitem__(self, key):
-        """
-        Enable dict-like access with fallback to attribute resolution using dot notation.
-        E.g., resolver['some.key'] will try to resolve with find_value first,
-        then fallback to attribute traversal.
-        """
-        # Try to find via search_order
-        value = self.find_value(key)
-        if value is not None:
-            return value
+
+    def _resolve_key(self, key: str, fallback: str = None) -> str:
+        """Tries find_value first, then attribute/dot-notation fallback."""
+        val = self.find_value(key, fallback)
+        if val is not None:
+            return val
 
         # Dot notation traversal
         parts = key.replace('-', '_').split('.')
         current = self
-
         for part in parts:
             if hasattr(current, part):
                 current = getattr(current, part)
             elif isinstance(current, dict) and part in current:
                 current = current[part]
             else:
-                raise AttributeError(f"Cannot resolve '{key}' via attribute access")
+                return None
         return current
 
+    def __getitem__(self, key):
+        value = self._resolve_key(key)
+        if value is None:
+            raise KeyError(f"Cannot resolve key '{key}'")
+        return value
+
+    def __contains__(self, sigil_text):
+        try:
+            sigil = Sigil(sigil_text)
+        except (ValueError, TypeError):
+            return False
+
+        for raw in sigil.list_sigils():
+            match = Sigil._pattern.match(raw)
+            if not match:
+                return False
+            key = match.group(1).strip()
+            fallback = match.group(2).strip() if match.group(2) is not None else None
+            if self._resolve_key(key, fallback) is None:
+                return False
+        return True

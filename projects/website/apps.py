@@ -180,6 +180,15 @@ def setup_app(*, app=None):
         css_cookie = request.get_cookie("css", "")  # e.g. "dark-mode.css"
         css_files = ["default.css"] + [f.strip() for f in css_cookie.split(",") if f.strip()]
         return render_template(navbar=navbar, content=content, css_files=css_files)
+    
+
+# TODO: Create a new setup_forms_app which attaches its routes to an existing app if provided
+# and if not, creates a basic bottle setup, just enough to implement the following requirements:
+# endpoint => /form/<form-name>
+# form_name must match a .gws form file in the gw.resource("data", "forms") directory
+# These forms can be processed by running process_commands (attached below) and passing a 
+# callback to it. This callback should interpret commands like this:
+# 
 
 
     app = security_middleware(app)

@@ -19,7 +19,8 @@ def setup_logging(*,
             logfile = os.path.join(os.getcwd(), logdir, logfile)
     
     # Define default pattern (now using funcName instead of filename). Only time, no date.
-    pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(funcName)s:%(lineno)d - %(message)s'
+    # TODO: Replace funcName with the name of the python script followed by : then the line number
+    pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(filename)s:%(lineno)d - %(message)s'
 
     # Clear existing handlers to avoid duplicates
     logger = logging.getLogger()

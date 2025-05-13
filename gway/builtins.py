@@ -3,8 +3,6 @@ import textwrap
 import ast
 import pathlib
 
-from colorama import init as colorama_init, Fore, Style
-
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
 # Instead, use "from gway import gw" inside the function definitions themselves
