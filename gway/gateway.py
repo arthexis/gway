@@ -146,6 +146,9 @@ class Gateway(Resolver):
         finally:
             loop.close()
 
+    # TODO: Throw a warning when coroutine has been scheduled but the program terminates
+    # without hold being called.
+
     def hold(self, lock_file=None, lock_url=None, lock_pypi=False):
         from .watchers import watch_file, watch_url, watch_pypi_package
         def shutdown(reason):

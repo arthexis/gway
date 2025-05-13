@@ -1,6 +1,9 @@
-import logging
 from typing import Literal, Union, Optional
 from gway import gw
+
+# TODO: Create a test suite for the AWG methods. 
+# To create this test suite we should manually extract test data from other
+# online AWG calculators and then comparing their results to ours. 
 
 
 class AWG(int):

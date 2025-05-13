@@ -1,4 +1,5 @@
 import os
+import uuid
 from functools import wraps
 from gway import requires, gw
 
@@ -181,15 +182,114 @@ def setup_app(*, app=None):
         css_files = ["default.css"] + [f.strip() for f in css_cookie.split(",") if f.strip()]
         return render_template(navbar=navbar, content=content, css_files=css_files)
     
-
-# TODO: Create a new setup_forms_app which attaches its routes to an existing app if provided
-# and if not, creates a basic bottle setup, just enough to implement the following requirements:
-# endpoint => /form/<form-name>
-# form_name must match a .gws form file in the gw.resource("data", "forms") directory
-# These forms can be processed by running process_commands (attached below) and passing a 
-# callback to it. This callback should interpret commands like this:
-# 
-
-
     app = security_middleware(app)
     return app
+
+
+@requires("markdown", "bottle")
+def setup_forms(
+    app=None,
+    forms_dir="data/forms",
+    results_dir="temp/result",
+    route_prefix="/form"
+):
+    import markdown
+    from bottle import Bottle, static_file, request
+    from gway import process_commands, load_batch
+
+    """
+    Sets up a Bottle app that serves .gws forms at /form/<form-name> and POSTs results.
+
+    Args:
+        app: An optional Bottle app to attach routes to.
+        forms_dir: Directory (relative to resource root) where .gws files are stored.
+        results_dir: Directory (relative to resource root) for storing result HTML.
+        route_prefix: URL prefix for form and result routes.
+
+    Returns:
+        Configured Bottle app.
+    """
+    if app is None:
+        app = Bottle()
+
+    form_path = lambda name: gw.resource(forms_dir, f"{name}.gws")
+    result_path = lambda name: gw.resource(results_dir, f"{name}.html")
+    result_url = lambda name: f"{route_prefix}/results/{name}.html"
+
+    os.makedirs(gw.resource(results_dir), exist_ok=True)
+
+    @app.route(f"{route_prefix}/results/<filename>")
+    def show_result(filename):
+        return static_file(filename, root=gw.resource(results_dir))
+
+    @app.route(f"{route_prefix}/<form_name>", method="GET")
+    def show_form(form_name):
+        script_file = form_path(form_name)
+        if not os.path.isfile(script_file):
+            return f"<p>Form '{form_name}' not found.</p>"
+
+        commands, comments = load_batch(script_file)
+
+        # Extract instructions from comments
+        instructions = "\n".join(c[1:].strip() for c in comments)
+        html_instructions = markdown.markdown(instructions)
+
+        # Extract fields from commands
+        fields = set()
+
+        def collect_fields(chunk):
+            for tok in chunk[1:]:
+                if tok.startswith("{") and tok.endswith("}"):
+                    fields.add(tok[1:-1])
+            return False
+
+        process_commands(commands, callback=collect_fields)
+
+        form_fields = "\n".join(
+            f'<label>{field}: <input name="{field}" required></label><br>'
+            for field in sorted(fields)
+        )
+
+        return f"""
+        <html><body>
+        <h2>Form: {form_name}</h2>
+        <div>{html_instructions}</div><br>
+        <form method="POST">
+            {form_fields}
+            <br><button type="submit">Submit</button>
+        </form>
+        </body></html>
+        """
+
+    @app.route(f"{route_prefix}/<form_name>", method="POST")
+    def submit_form(form_name):
+        script_file = form_path(form_name)
+        if not os.path.isfile(script_file):
+            return f"<p>Form '{form_name}' not found.</p>"
+
+        commands, _ = load_batch(script_file)
+        form_data = dict(request.forms)
+        txn_id = str(uuid.uuid4())
+
+        # Run commands using form data
+        results, _ = process_commands(
+            commands,
+            callback=lambda chunk: True,
+            **form_data
+        )
+
+        result_html = f"""
+        <html><body>
+        <p><a href="{route_prefix}/{form_name}">&larr; Back to form</a></p>
+        <h2>Results</h2>
+        <pre>{results}</pre>
+        </body></html>
+        """
+
+        with open(result_path(txn_id), "w") as f:
+            f.write(result_html)
+
+        redirect(result_url(txn_id))
+
+    return app
+
