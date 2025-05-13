@@ -187,7 +187,7 @@ def setup_app(*, app=None):
 
 
 @requires("markdown", "bottle")
-def setup_forms(
+def setup_forms_app(*,
     app=None,
     forms_dir="data/forms",
     results_dir="temp/result",

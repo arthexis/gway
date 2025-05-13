@@ -29,7 +29,7 @@ def find_cable(
         max_lines: Union[int, str] = "3",
         phases: Literal["1", "3", 1, 3] = "1",
         conduit: Optional[Union[str, bool]] = None,
-        neutral: Union[int, str] = "0"
+        neutral: Union[int, str] = "1"
     ):
     """Calculate the type of cable needed for an electrical system."""
     with gw.database.connect(load_data="awg") as cursor:

@@ -12,18 +12,22 @@ def start_server(*,
     proxy=None,
     app=None,
     daemon=False,
-    threaded=True
+    threaded=True,
+    default=False,
 ):
-    """Start an HTTP server to host the given application, or the default website if None."""
+    """Start an HTTP server to host the given application, or the default help website if None."""
     from bottle import run
 
     def run_server():
-        gw.info("Building default application")
-        actual_app = app or setup_app()
+        nonlocal default, app
+        if not app:
+            if not default:
+                gw.warning("Building default help app. If this was your intent, run with --default.")
+            app = setup_app()
         if proxy:
-            actual_app = setup_proxy(endpoint=proxy, app=actual_app)
-        gw.info(f"Starting app: {actual_app}")
-        run(actual_app, host=host, port=int(port), debug=debug, threaded=threaded)
+            app = setup_proxy(endpoint=proxy, app=app)
+        gw.info(f"Starting app: {app}")
+        run(app, host=host, port=int(port), debug=debug, threaded=threaded)
 
     if daemon:
         import asyncio

@@ -54,6 +54,16 @@ class Gateway(Resolver):
 
         self._builtin_functions = Gateway._builtin_cache.copy()
 
+    # TODO: Solve the following issue detected in testing.
+    # When running a command such as this:
+    # gway -d website setup-forms-app - website start-server --daemon - hold  
+    # It is expected website.setup_forms_app return an app object, which gets 
+    # stored as per logs. However, we expect website.start_server to then be
+    # passed that app value, but it doesn't appear in the bound args.
+    # In general, even if the default value is not a sigil, we want to see if
+    # we can use context to fulfill it. We could use find_value instead of
+    # resolve for this use case, using the param name itself as key.
+
     def _wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
@@ -71,8 +81,9 @@ class Gateway(Resolver):
                             resolved = self.resolve(default_value)
                             bound_args.arguments[param.name] = resolved
 
-                # Resolve and update context
+                # Use explicit kwargs provided to override existing context
                 for key, value in bound_args.arguments.items():
+                    self.debug(f"Bound {key=} {value=}")
                     if isinstance(value, str):
                         bound_args.arguments[key] = self.resolve(value)
                     self.context[key] = bound_args.arguments[key]
@@ -81,12 +92,30 @@ class Gateway(Resolver):
                 args_to_pass = []
                 kwargs_to_pass = {}
                 for param in sig.parameters.values():
+                    self.debug(f"Prepare {param=}")
                     if param.kind == param.VAR_POSITIONAL:
-                        args_to_pass.extend(bound_args.arguments.get(param.name, ()))
+                        bound_val = bound_args.arguments.get(param.name, ())
+                        self.debug(f"Kind == VAR_POSITIONAL {bound_val=} -> extend args")
+                        args_to_pass.extend(bound_val)
                     elif param.kind == param.VAR_KEYWORD:
-                        kwargs_to_pass.update(bound_args.arguments.get(param.name, {}))
+                        bound_val = bound_args.arguments.get(param.name, {})
+                        self.debug(f"Kind == VAR_KEYWORD {bound_val=} -> extend kwargs")
+                        kwargs_to_pass.update(bound_val)
                     elif param.name in bound_args.arguments:
-                        kwargs_to_pass[param.name] = bound_args.arguments[param.name]
+                        bound_val =  bound_args.arguments[param.name]
+                        self.debug(f"Name in Bound args {bound_val=} -> set kwarg element")
+                        # If equal to the original default value, override with context value
+                        if param.default == bound_val:
+                            self.debug(f"Value is the same as {param.default=}")
+                            found_val = self.find_value(param.name)
+                            if found_val and found_val != bound_val:
+                                self.debug(f"Substituing bound value with {found_val=}")
+                                bound_val = found_val
+                        else:
+                            self.debug(f"Value distinct from {param.default=}")
+                        kwargs_to_pass[param.name] = bound_val
+                    else:
+                        self.debug(f"No preparation procedure matched.")
 
                 # Handle coroutine function
                 if inspect.iscoroutinefunction(func_obj):
@@ -114,7 +143,8 @@ class Gateway(Resolver):
                     return f"[async coroutine started for {func_name}]"
 
                 # Store result
-                short_key = func_name.split("_", 1)[-1] if "_" in func_name else func_name
+                short_key = func_name.split("_")[-1] if "_" in func_name else func_name
+                self.debug(f"Stored {short_key} = {result}")
                 self.results.insert(short_key, result)
                 if isinstance(result, dict):
                     self.context.update(result)
