@@ -194,7 +194,7 @@ def setup_forms_app(*,
     route_prefix="/form"
 ):
     import markdown
-    from bottle import Bottle, static_file, request
+    from bottle import Bottle, static_file, request, redirect
     from gway import process_commands, load_batch
 
     """
@@ -211,6 +211,10 @@ def setup_forms_app(*,
     """
     if app is None:
         app = Bottle()
+
+        @app.route("/")
+        def index_redirect():
+            redirect(route_prefix + "s")  # e.g., "/forms"
 
     form_path = lambda name: gw.resource(forms_dir, f"{name}.gws")
     result_path = lambda name: gw.resource(results_dir, f"{name}.html")
@@ -290,6 +294,40 @@ def setup_forms_app(*,
             f.write(result_html)
 
         redirect(result_url(txn_id))
+
+    @app.route(route_prefix, method="GET")
+    @app.route(route_prefix + "s", method="GET")
+    def list_forms():
+        forms_root = gw.resource(forms_dir)
+        form_files = [
+            f for f in os.listdir(forms_root)
+            if f.endswith(".gws") and os.path.isfile(os.path.join(forms_root, f))
+        ]
+
+        entries = []
+        for filename in sorted(form_files):
+            name = filename[:-4]  # remove .gws
+            path = os.path.join(forms_root, filename)
+            with open(path, encoding="utf-8") as f:
+                hint = ""
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("#") and len(line) > 1:
+                        hint = line[1:].strip()
+                        break
+            entries.append((name, hint))
+
+        links_html = "\n".join(
+            f"<p><a href='{route_prefix}/{name}'>{name}</a><br><small>{hint}</small></p>"
+            for name, hint in entries
+        )
+
+        return f"""
+        <html><body>
+        <h2>Available Forms</h2>
+        {links_html}
+        </body></html>
+        """
 
     return app
 

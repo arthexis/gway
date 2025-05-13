@@ -144,8 +144,11 @@ class Gateway(Resolver):
 
                 # Store result
                 short_key = func_name.split("_")[-1] if "_" in func_name else func_name
-                self.debug(f"Stored {short_key} = {result}")
+                long_key = func_name.split("_", 1)[-1] if "_" in func_name else func_name
+                self.debug(f"Stored {short_key=} {long_key=} {result=}")
                 self.results.insert(short_key, result)
+                if long_key != short_key:
+                    self.results.insert(long_key, result)
                 if isinstance(result, dict):
                     self.context.update(result)
 

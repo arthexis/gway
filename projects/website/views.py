@@ -190,10 +190,3 @@ def view_css_selector():
         for css in available
     )
     return form.format(options=options)
-
-
-# TODO: Create a new view_forms function that can construct custom forms for other functions
-# and allows submitting those forms back to the view to execute each of those functions
-# in the given order against the same gw (Gateway) instance. 
-# These forms will be contained in .gws files located in gw.resources("forms")
-# Each line in the .gws file contains 
