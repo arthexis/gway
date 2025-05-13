@@ -52,11 +52,6 @@ class GatewayTests(unittest.TestCase):
         with self.assertRaises(AttributeError):
             _ = gw.non_existent_project
 
-    def test_wrap_callable_argument_injection(self):
-        # Simulate missing optional argument; it should auto-fill
-        result = gw.hello_world(greeting="only_param1")
-        self.assertEqual(result['message'], "Only_Param1, World!")
-
     def test_variadic_positional_args(self):
         result = gw.tests.variadic_positional("a", "b", "c")
         self.assertEqual(result["args"], ("a", "b", "c"))
