@@ -186,6 +186,10 @@ def setup_app(*, app=None):
     return app
 
 
+# TODO: Merge setup_forms_app into setup_app, including giving it the forms_dir
+# results_dir and route_prefix. 
+
+
 @requires("markdown", "bottle")
 def setup_forms_app(*,
     app=None,

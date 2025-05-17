@@ -1,7 +1,9 @@
 import os
-import textwrap
 import ast
 import pathlib
+import textwrap
+import datetime
+import time as _time
 
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
@@ -201,6 +203,22 @@ def help(*args, full_code=False):
             }.items() if v})
 
         return results[0] if len(results) == 1 else {"Matches": results}
+
+
+def now(self, *, utc=False) -> "datetime":
+    """Return the current datetime object."""
+    return datetime.datetime.now(datetime.timezone.utc) if utc else datetime.datetime.now()
+
+
+def time(self, *, utc=False) -> str:
+    """Return the current time of day as HH:MM:SS."""
+    struct_time = _time.gmtime() if utc else _time.localtime()
+    return _time.strftime('%H:%M:%S', struct_time)
+
+
+def timestamp(self, *, utc=False) -> str:
+    """Return the current timestamp in ISO-8601 format."""
+    return now(utc=utc).isoformat().replace("+00:00", "Z" if utc else "")
 
 
 def sigils(*args: str):

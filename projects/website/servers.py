@@ -12,16 +12,16 @@ def start_server(*,
     app=None,
     daemon=False,
     threaded=True,
-    default=False,
+    base=False,
 ):
-    """Start an HTTP server to host the given application, or the default help website if None."""
+    """Start an HTTP server to host the given application, or the base help website if None."""
     from bottle import run
 
     def run_server():
-        nonlocal default, app
+        nonlocal base, app
         if not app:
-            if not default:
-                gw.warning("Building default help app. If this was your intent, run with --default.")
+            if not base:
+                gw.warning("Building base help app. If this was your intent, run with --base.")
             app = setup_app()
         if proxy:
             app = setup_proxy(endpoint=proxy, app=app)
