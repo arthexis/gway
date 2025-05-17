@@ -16,11 +16,15 @@ class Gateway(Resolver):
     _builtin_cache = None
     _thread_local = threading.local()
 
-    def __init__(self, **kwargs):
+    def __init__(self, verbose=False, **kwargs):
         self._cache = {}
         self._async_threads = []
         self.base_path = os.path.dirname(os.path.dirname(__file__))
         self.logger = logging.getLogger("gw")
+        if not verbose:
+            self.verbose =  lambda *_, **__: None
+        elif verbose is True:
+            self.verbose =  lambda *args, **kwargs: self.info(*args, **kwargs)
 
         # Thread-local context/results
         if not hasattr(Gateway._thread_local, "context"):

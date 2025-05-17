@@ -23,9 +23,13 @@ def cli_main():
     parser.add_argument("-j", dest="json", action="store_true", help="Output result(s) as JSON")
     parser.add_argument("-s", dest="server", type=str, help="Specify server environment")
     parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode")
     parser.add_argument("-x", dest="callback", type=str, help="Execute a callback per command")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
+
+    # TODO: Can we make -v also work if we pass a string to it?
+    # Then we can pass it like this: Gateway(verbose=args.verbose)
 
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel)

@@ -2,7 +2,6 @@ from gway import requires, gw
 from .apps import setup_app
 from .proxies import setup_proxy
 
-# TODO: Create a start_wsgi version that works according to the protocol
 
 @requires("bottle")
 def start_server(*,

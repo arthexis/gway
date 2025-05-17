@@ -1,11 +1,17 @@
 import os
 import unittest
-from unittest import mock
 
 from gway import gw
 
 
 class GatewayTests(unittest.TestCase):
+
+    def test_awg_find_cable_callable(self):
+        func = gw["awg.find_cable"]
+        self.assertTrue(callable(func))
+        results = func(meters=40)
+        gw.debug(f"AWG Find cable {results=}")
+        self.assertTrue(results)
 
     def test_builtin_loading(self):
         # Builtin function should be available
