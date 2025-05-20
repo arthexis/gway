@@ -10,7 +10,7 @@ _qr_code_cache = set()
 
 
 @requires("qrcode[pil]")
-def generate_image(value, *, path=None):
+def generate_img(value, *, path=None):
     """Generate a QR code image from the given value and save it to the specified path.
     If path is not provided, we use a random uuid to name it, unrelated to the value.
     """
@@ -21,6 +21,9 @@ def generate_image(value, *, path=None):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     img.save(path)
     return {"image": img, "path": path}
+
+
+generate_image = generate_img
 
 
 @requires("qrcode[pil]")
@@ -56,7 +59,6 @@ def scan_image(source):
     """
     import cv2
     import numpy as np
-    from PIL import Image
 
     # 1) Load image into an OpenCV BGR array
     if isinstance(source, str):
@@ -83,3 +85,6 @@ def scan_image(source):
         return [data] if data else []
 
     return []
+
+
+scan_img = scan_image

@@ -8,7 +8,6 @@ import os
 
 _requirement_cache = set()
 
-
 def requires(*packages, **kw_packages):
     def decorator(func):
         @functools.wraps(func)

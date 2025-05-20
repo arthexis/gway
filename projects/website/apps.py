@@ -12,7 +12,9 @@ def setup_app(*, app=None):
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     version = gw.version()
-    if app is None: app = Bottle()
+    if app is None or isinstance(app, str) or app is True: 
+        # TODO: If an app name is given, see if we should look it up from gw
+        app = Bottle()
 
     def security_middleware(app):
         """Middleware to fix headers and secure cookies."""

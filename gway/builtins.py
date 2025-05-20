@@ -11,21 +11,21 @@ import time as _time
 # Trust me, bro. It works.
     
 
-def hello_world(name: str = "World", greeting: str = "Hello"):
+def hello_world(*, name: str = "World", greeting: str = "Hello"):
     """Smoke test function."""
     from gway import gw
 
     message = f"{greeting.title()}, {name.title()}!"
     if hasattr(gw, "hello_world"): print(message)
-    else: print("Greetings not found.")
+    else: print("Greeting protocol not found ((serious smoke)).")
     return locals()
 
 
-def abort(message: str, exit_code: int = 1) -> int:
+def abort(message: str, *, exit_code: int = 1) -> int:
     """Abort with error message."""
     from gway import gw
 
-    gw.error(message)
+    gw.critical(message)
     print(f"Halting: {message}")
     raise SystemExit(exit_code)
 
@@ -39,9 +39,12 @@ def envs(filter: str = None) -> dict:
         return os.environ.copy()
 
 
-def version() -> str:
+def version(assert_min=None) -> str:
     """Return the version of the package."""
     from gway import gw
+
+    # TODO: Implement assert_min with valid mayor.minor.patch logic
+    # Raise AssertionError if min is given and not met by actual VERSION
 
     # Get the version in the VERSION file
     version_path = gw.resource("VERSION")
