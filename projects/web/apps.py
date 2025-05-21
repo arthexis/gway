@@ -69,7 +69,7 @@ def setup_app(*, app=None, project=None, module=None):
             for b in sorted(visited) if b
         )
         search_box = '''
-            <form action="/help" method="get" class="navbar">
+            <form action="/view/help" method="get" class="navbar">
                 <input type="text" name="topic" placeholder="Search GWAY" class="help" />
             </form>
         '''
@@ -121,12 +121,6 @@ def setup_app(*, app=None, project=None, module=None):
         if not redirect_url.startswith("/"):
             redirect_url = f"/{redirect_url}"
         response.set_header("Location", f"/gway{redirect_url}")
-        return ""
-        
-    @app.route("/", method=["GET", "POST"])
-    def index():
-        response.status = 302
-        response.set_header("Location", "/gway/readme")
         return ""
 
     @app.route("/static/<filename:path>")
@@ -217,7 +211,12 @@ def setup_app(*, app=None, project=None, module=None):
             content=content,
             css_files=css_files
         )
-
+            
+    @app.route("/", method=["GET", "POST"])
+    def index():
+        response.status = 302
+        response.set_header("Location", "/gway/readme")
+        return ""
 
     app = security_middleware(app)
     return app
