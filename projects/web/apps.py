@@ -1,20 +1,19 @@
 import os
 import uuid
+import inspect
+import importlib
 from functools import wraps
 from gway import requires, gw
 
 _css_cache = {}
 
 
-@requires("bottle", "docutils")
-def setup_app(*, app=None):
+def setup_app(*, app=None, project=None, module=None):
     """Configure a simple application that showcases the use of GWAY to generate websites."""
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     version = gw.version()
-    if app is None or isinstance(app, str) or app is True: 
-        # TODO: If an app name is given, see if we should look it up from gw
-        app = Bottle()
+    if app is None: app = Bottle()
 
     def security_middleware(app):
         """Middleware to fix headers and secure cookies."""
@@ -143,47 +142,86 @@ def setup_app(*, app=None):
         
     @app.route("/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
-        segments = view.strip("/").split("/")
-        view_name = segments[0].replace("-", "_")
-        args = segments[1:]
+        # Normalize incoming path
+        segments   = view.strip("/").split("/")
+        view_name  = segments[0].replace("-", "_")
+        args       = segments[1:]
+        kwargs     = dict(request.query)
 
-        import web.views as views
-        view_func = getattr(views, f"view_{view_name}", None)
-        kwargs = dict(request.query)
-
+        # Dynamically import the module or project package
         try:
-            gw.info(f"Dispatching to function {view_func}")
+            if module:
+                source = importlib.import_module(module)
+            elif project:
+                source = getattr(gw, project)
+            else:
+                source = importlib.import_module("web.views")
+        except (ImportError, AttributeError) as e:
+            gw.exception(e)
+            response.status = 500
+            return render_template(
+                title="Server Error",
+                content="<h1>500 Internal Server Error</h1><p>Could not load views source.</p>"
+            )
+
+        # Try to resolve the callable:
+        # 1) First, a function named exactly `view_name`
+        # 2) Then, a function named `view_<view_name>`
+        view_func = getattr(source, view_name, None)
+        if not callable(view_func):
+            view_func = getattr(source, f"view_{view_name}", None)
+        if not callable(view_func):
+            response.status = 404
+            return render_template(
+                title="Not Found",
+                content=f"<h1>404 - View “{view_name}” not found.</h1>"
+            )
+
+        # Execute the view
+        try:
+            gw.info(f"Dispatching to view {view_func.__name__} (args={args}, kwargs={kwargs})")
             content = view_func(*args, **kwargs)
             visited = update_visited(view_name)
-        except HTTPResponse as res:
-            return res
+        except HTTPResponse as resp:
+            return resp
         except Exception as e:
-            gw.exception(e)  # Redirect to /gway on any error after logging
+            gw.exception(e)
+            # On error, bounce back to default page
             response.status = 302
             response.set_header("Location", "/gway")
             return ""
 
-        current_url = request.fullpath
+        # Build navbar & consent
+        full_url = request.fullpath
         if request.query_string:
-            current_url += "?" + request.query_string
+            full_url += "?" + request.query_string
+        navbar = render_navbar(visited, current_url=full_url)
 
-        navbar = render_navbar(visited, current_url=current_url)
         if not cookies_enabled():
             consent_box = f"""
                 <div class="consent-box">
-                    <form action="/accept-cookies" method="post">
-                        <input type="hidden" name="next" value="/{view}" />
-                        This app uses cookies to improve your experience. 
-                        <button type="submit"> Accept </button>
-                    </form>
+                <form action="/accept-cookies" method="post">
+                    <input type="hidden" name="next" value="/{view}" />
+                    This site uses cookies to improve your experience.
+                    <button type="submit">Accept</button>
+                </form>
                 </div>
             """
             content = consent_box + content
 
-        css_cookie = request.get_cookie("css", "")  # e.g. "dark-mode.css"
-        css_files = ["default.css"] + [f.strip() for f in css_cookie.split(",") if f.strip()]
-        return render_template(navbar=navbar, content=content, css_files=css_files)
-    
+        # CSS preferences
+        css_cookie = request.get_cookie("css", "")
+        css_files  = ["default.css"] + [c.strip() for c in css_cookie.split(",") if c.strip()]
+
+        # Render the final page
+        return render_template(
+            title=view_name.replace("_", " ").title(),
+            navbar=navbar,
+            content=content,
+            css_files=css_files
+        )
+
+
     app = security_middleware(app)
     return app
 

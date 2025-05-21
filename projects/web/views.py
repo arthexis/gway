@@ -1,11 +1,9 @@
-import os
-from gway import gw, requires
-
 
 # Don't use inline CSS ever, each user can have different css configurations. 
 
-def view_gway(*args, **kwargs):
+def gway(*args, **kwargs):
     """Render the README.rst file as HTML."""
+    from gway import gw
     from docutils.core import publish_parts
 
     readme_path = gw.resource("README.rst")
@@ -16,8 +14,9 @@ def view_gway(*args, **kwargs):
     return html_parts["html_body"]
 
 
-def view_help(topic="", *args, **kwargs):
+def help(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
+    from gway import gw
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
 
@@ -47,13 +46,13 @@ def view_help(topic="", *args, **kwargs):
         return "<h2>Not Found</h2><p>No help found for the given input.</p>"
 
     if "Matches" in help_info:
-        sections = [help_section(match, use_query_links=True) for match in help_info["Matches"]]
+        sections = [_help_section(match, use_query_links=True) for match in help_info["Matches"]]
         return f"<h1>{title}</h1>{''.join(sections)}"
 
-    return f"<h1>{title}</h1>{help_section(help_info, use_query_links=True)}"
+    return f"<h1>{title}</h1>{_help_section(help_info, use_query_links=True)}"
 
 
-def help_section(info, use_query_links=False, *args, **kwargs):
+def _help_section(info, use_query_links=False, *args, **kwargs):
     """Render a help section with clean formatting and route-based query links."""
     rows = []
     for key, value in info.items():
@@ -76,8 +75,9 @@ def help_section(info, use_query_links=False, *args, **kwargs):
     return f"<article class='help-entry'>{''.join(rows)}</article>"
 
 
-def view_qr_code(*args, value=None, **kwargs):
+def qr_code(*args, value=None, **kwargs):
     """Generate a QR code for a given value and serve it from cache if available."""
+    from gway import gw
     if not value:
         return '''
             <h1>QR Code Generator</h1>
@@ -95,12 +95,12 @@ def view_qr_code(*args, value=None, **kwargs):
     """
 
 
-def view_awg_finder(
+def awg_finder(
     *args, meters=None, amps="40", volts="220", material="cu", 
     max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
 ):
     """Page builder for AWG cable finder with HTML form and result."""
-    
+    from gway import gw
     if not meters:
         return '''
             <h1>AWG Cable Finder</h1>
@@ -152,9 +152,11 @@ def view_awg_finder(
         <p><a href="/awg-finder">Calculate again</a></p>
     """
 
-@requires("bottle")
-def view_css_selector():
+
+def css_selector():
     """Allows user to choose from available stylesheets and shows current selection."""
+    import os
+    from gway import gw
     from bottle import request, response, redirect
 
     styles_dir = gw.resource("data", "static", "styles")

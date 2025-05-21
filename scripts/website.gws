@@ -1,2 +1,3 @@
-website start-server --daemon
+web setup-app 
+web start-server --daemon
 hold --lock-file VERSION --lock-pypi
