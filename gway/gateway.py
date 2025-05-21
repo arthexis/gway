@@ -182,6 +182,7 @@ class Gateway(Resolver):
                 self.context.update(result)
         except Exception as e:
             self.error(f"Async error in {func_name}: {e}")
+            self.exception(e)
         finally:
             loop.close()
 
