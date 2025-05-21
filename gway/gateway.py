@@ -93,9 +93,6 @@ class Gateway(Resolver):
                     if isinstance(value, str):
                         resolved = self.resolve(value)
                         bound_args.arguments[key] = resolved
-                        self.debug(f"Rebound {key=} {value=} {resolved=}")
-                    else:
-                        self.debug(f"Bound {key=} {value=}")
                     self.context[key] = bound_args.arguments[key]
 
                 # Prepare args and kwargs for function call
@@ -189,10 +186,10 @@ class Gateway(Resolver):
             loop.close()
 
     # TODO: Log as self.critical when coroutine has been scheduled but the program terminates
-    # without hold being called. If possible, have a way for us to have a callback
-    # so that we have the option to call hold ourselves (under limited conditions.)
+    # without until being called. If possible, have a way for us to have a callback
+    # so that we have the option to call until ourselves (under limited conditions.)
 
-    def hold(self, lock_file=None, lock_url=None, lock_pypi=False):
+    def until(self, lock_file=None, lock_url=None, lock_pypi=False):
         from .watchers import watch_file, watch_url, watch_pypi_package
         def shutdown(reason):
             self.warning(f"{reason} triggered async shutdown.")
