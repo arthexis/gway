@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gway"
-version = "0.1.15"
+version = "0.1.16"
 description = "Software Project Infrastructure by https://www.gelectriic.com"
 requires-python = ">=3.7"
 license = "MIT"
 classifiers = [ "Programming Language :: Python :: 3", "Operating System :: OS Independent",]
-dependencies = [ "toml", "setuptools", "twine", "build", "colorama", "bottle", "requests", "dateparser", "fastapi", "uvicorn", "docutils", "qrcode[pil]",]
+dependencies = [ "toml", "setuptools", "twine", "build", "colorama", "bottle", "paste", "requests", "dateparser", "fastapi", "uvicorn", "docutils", "qrcode[pil]",]
 [[project.authors]]
 name = "Rafael J. Guillén-Osorio"
 email = "tecnologia@gelectriic.com"
