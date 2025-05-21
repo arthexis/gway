@@ -117,7 +117,7 @@ class Gateway(Resolver):
                             found_val = self.find_value(param.name)
                             self.debug(f"Checking override: {bound_val=} == {param.default=} => {found_val=}")
                             if found_val is not None and found_val != bound_val:
-                                self.warning(f"Injecting {param.name}={found_val} overrides default {bound_val=}")
+                                self.info(f"Injected {param.name}={found_val} overrides default {bound_val=}")
                                 bound_val = found_val
                         else:
                             self.debug(f"Value for {param.name} differs from default "

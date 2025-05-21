@@ -147,7 +147,7 @@ def setup_app(*, app=None):
         view_name = segments[0].replace("-", "_")
         args = segments[1:]
 
-        import website.views as views
+        import web.views as views
         view_func = getattr(views, f"view_{view_name}", None)
         kwargs = dict(request.query)
 

@@ -4,6 +4,7 @@ twine
 build
 colorama
 bottle
-bottle-websocket
 requests
 dateparser
+fastapi
+uvicorn
