@@ -1,15 +1,10 @@
-import os
-import uuid
-import inspect
 import importlib
 from functools import wraps
 from gway import requires, gw
 
-_css_cache = {}
-
 
 def setup_app(*, app=None, project=None, module=None):
-    """Configure a simple application that showcases the use of GWAY to generate websites."""
+    """Configure a simple application that showcases the use of GWAY to generate web apps."""
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     version = gw.version()
@@ -67,10 +62,10 @@ def setup_app(*, app=None, project=None, module=None):
 
     def render_navbar(visited, current_url=None):
 
-        if not cookies_enabled():
-            visited = ["gway"]
+        if not cookies_enabled() or len(visited) < 2:
+            visited = ["gway", "theme"]
         links = "".join(
-            f'<li><a href="/{b.replace("_", "-")}">{b.replace("_", " ").replace("-", " ").title()}</a></li>'
+            f'<li><a href="/view/{b.replace("_", "-")}">{b.replace("_", " ").replace("-", " ").title()}</a></li>'
             for b in sorted(visited) if b
         )
         search_box = '''
@@ -129,7 +124,7 @@ def setup_app(*, app=None, project=None, module=None):
     @app.route("/", method=["GET", "POST"])
     def index():
         response.status = 302
-        response.set_header("Location", "/gway")
+        response.set_header("Location", "/view/gway")
         return ""
 
     @app.route("/static/<filename:path>")
@@ -140,7 +135,7 @@ def setup_app(*, app=None, project=None, module=None):
     def send_temp(filename):
         return static_file(filename, root=gw.resource("temp", "shared"))
         
-    @app.route("/<view:path>", method=["GET", "POST"])
+    @app.route("/view/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
         # Normalize incoming path
         segments   = view.strip("/").split("/")
@@ -188,7 +183,7 @@ def setup_app(*, app=None, project=None, module=None):
             gw.exception(e)
             # On error, bounce back to default page
             response.status = 302
-            response.set_header("Location", "/gway")
+            response.set_header("Location", "/view/gway")
             return ""
 
         # Build navbar & consent
@@ -224,154 +219,3 @@ def setup_app(*, app=None, project=None, module=None):
 
     app = security_middleware(app)
     return app
-
-
-# TODO: Merge setup_forms_app into setup_app, including giving it the forms_dir
-# results_dir and route_prefix. 
-
-
-@requires("markdown", "bottle")
-def setup_forms_app(*,
-    app=None,
-    forms_dir="data/forms",
-    results_dir="temp/result",
-    route_prefix="/form"
-):
-    import markdown
-    from bottle import Bottle, static_file, request, redirect
-    from gway import process_commands, load_batch
-
-    """
-    Sets up a Bottle app that serves .gws forms at /form/<form-name> and POSTs results.
-
-    Args:
-        app: An optional Bottle app to attach routes to.
-        forms_dir: Directory (relative to resource root) where .gws files are stored.
-        results_dir: Directory (relative to resource root) for storing result HTML.
-        route_prefix: URL prefix for form and result routes.
-
-    Returns:
-        Configured Bottle app.
-    """
-    if app is None:
-        app = Bottle()
-
-        @app.route("/")
-        def index_redirect():
-            redirect(route_prefix + "s")  # e.g., "/forms"
-
-    form_path = lambda name: gw.resource(forms_dir, f"{name}.gws")
-    result_path = lambda name: gw.resource(results_dir, f"{name}.html")
-    result_url = lambda name: f"{route_prefix}/results/{name}.html"
-
-    os.makedirs(gw.resource(results_dir), exist_ok=True)
-
-    @app.route(f"{route_prefix}/results/<filename>")
-    def show_result(filename):
-        return static_file(filename, root=gw.resource(results_dir))
-
-    @app.route(f"{route_prefix}/<form_name>", method="GET")
-    def show_form(form_name):
-        script_file = form_path(form_name)
-        if not os.path.isfile(script_file):
-            return f"<p>Form '{form_name}' not found.</p>"
-
-        commands, comments = load_batch(script_file)
-
-        # Extract instructions from comments
-        instructions = "\n".join(c[1:].strip() for c in comments)
-        html_instructions = markdown.markdown(instructions)
-
-        # Extract fields from commands
-        fields = set()
-
-        def collect_fields(chunk):
-            for tok in chunk[1:]:
-                if tok.startswith("{") and tok.endswith("}"):
-                    fields.add(tok[1:-1])
-            return False
-
-        process_commands(commands, callback=collect_fields)
-
-        form_fields = "\n".join(
-            f'<label>{field}: <input name="{field}" required></label><br>'
-            for field in sorted(fields)
-        )
-
-        return f"""
-        <html><body>
-        <h2>Form: {form_name}</h2>
-        <div>{html_instructions}</div><br>
-        <form method="POST">
-            {form_fields}
-            <br><button type="submit">Submit</button>
-        </form>
-        </body></html>
-        """
-
-    @app.route(f"{route_prefix}/<form_name>", method="POST")
-    def submit_form(form_name):
-        script_file = form_path(form_name)
-        if not os.path.isfile(script_file):
-            return f"<p>Form '{form_name}' not found.</p>"
-
-        commands, _ = load_batch(script_file)
-        form_data = dict(request.forms)
-        txn_id = str(uuid.uuid4())
-
-        # Run commands using form data
-        results, _ = process_commands(
-            commands,
-            callback=lambda chunk: True,
-            **form_data
-        )
-
-        result_html = f"""
-        <html><body>
-        <p><a href="{route_prefix}/{form_name}">&larr; Back to form</a></p>
-        <h2>Results</h2>
-        <pre>{results}</pre>
-        </body></html>
-        """
-
-        with open(result_path(txn_id), "w") as f:
-            f.write(result_html)
-
-        redirect(result_url(txn_id))
-
-    @app.route(route_prefix, method="GET")
-    @app.route(route_prefix + "s", method="GET")
-    def list_forms():
-        forms_root = gw.resource(forms_dir)
-        form_files = [
-            f for f in os.listdir(forms_root)
-            if f.endswith(".gws") and os.path.isfile(os.path.join(forms_root, f))
-        ]
-
-        entries = []
-        for filename in sorted(form_files):
-            name = filename[:-4]  # remove .gws
-            path = os.path.join(forms_root, filename)
-            with open(path, encoding="utf-8") as f:
-                hint = ""
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("#") and len(line) > 1:
-                        hint = line[1:].strip()
-                        break
-            entries.append((name, hint))
-
-        links_html = "\n".join(
-            f"<p><a href='{route_prefix}/{name}'>{name}</a><br><small>{hint}</small></p>"
-            for name, hint in entries
-        )
-
-        return f"""
-        <html><body>
-        <h2>Available Forms</h2>
-        {links_html}
-        </body></html>
-        """
-
-    return app
-

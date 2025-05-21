@@ -106,7 +106,7 @@ def awg_finder(
             <h1>AWG Cable Finder</h1>
             <p>Warning: This calculator may not be applicable to your use case.
               Consult your local electrical code before making real-life cable sizing decisions.</p>
-            <form method="get" action="/awg-finder">
+            <form method="post">
                 <label>Meters: <input type="number" name="meters" required min="1" /></label><br/>
                 <label>Amps: <input type="number" name="amps" value="40" /></label><br/>
                 <label>Volts: <input type="number" name="volts" value="220" /></label><br/>
@@ -153,7 +153,7 @@ def awg_finder(
     """
 
 
-def css_selector():
+def theme():
     """Allows user to choose from available stylesheets and shows current selection."""
     import os
     from gway import gw
@@ -179,7 +179,7 @@ def css_selector():
     form = f"""
         <h1>Select CSS Theme</h1>
         <p>Current theme: <strong>{current}</strong></p>
-        <form method="post" action="/css-selector">
+        <form method="post">
             <select name="css">
                 {{options}}
             </select>

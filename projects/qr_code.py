@@ -36,7 +36,7 @@ def generate_url(value):
     if safe_filename not in _qr_code_cache:
         qr_path = gw.resource("temp", "shared", "qr_codes", safe_filename)
         if not os.path.exists(qr_path):
-            generate_image(value, qr_path)
+            generate_image(value, path=qr_path)
         _qr_code_cache.add(safe_filename)
     return f"/temp/qr_codes/{safe_filename}"
 
