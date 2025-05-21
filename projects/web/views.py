@@ -1,7 +1,7 @@
 
 # Don't use inline CSS ever, each user can have different css configurations. 
 
-def gway(*args, **kwargs):
+def readme(*args, **kwargs):
     """Render the README.rst file as HTML."""
     from gway import gw
     from docutils.core import publish_parts
@@ -162,7 +162,8 @@ def theme():
     styles_dir = gw.resource("data", "static", "styles")
     available = sorted(
         f for f in os.listdir(styles_dir)
-        if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
+        if f.endswith(".css") and not f.startswith("default.") and
+        os.path.isfile(os.path.join(styles_dir, f))
     )
 
     # Handle form submission

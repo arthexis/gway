@@ -63,9 +63,9 @@ def setup_app(*, app=None, project=None, module=None):
     def render_navbar(visited, current_url=None):
 
         if not cookies_enabled() or len(visited) < 2:
-            visited = ["gway", "theme"]
+            visited = ["readme", "theme"]
         links = "".join(
-            f'<li><a href="/view/{b.replace("_", "-")}">{b.replace("_", " ").replace("-", " ").title()}</a></li>'
+            f'<li><a href="/gway/{b.replace("_", "-")}">{b.replace("_", " ").replace("-", " ").title()}</a></li>'
             for b in sorted(visited) if b
         )
         search_box = '''
@@ -124,7 +124,7 @@ def setup_app(*, app=None, project=None, module=None):
     @app.route("/", method=["GET", "POST"])
     def index():
         response.status = 302
-        response.set_header("Location", "/view/gway")
+        response.set_header("Location", "/gway/readme")
         return ""
 
     @app.route("/static/<filename:path>")
@@ -135,7 +135,7 @@ def setup_app(*, app=None, project=None, module=None):
     def send_temp(filename):
         return static_file(filename, root=gw.resource("temp", "shared"))
         
-    @app.route("/view/<view:path>", method=["GET", "POST"])
+    @app.route("/gway/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
         # Normalize incoming path
         segments   = view.strip("/").split("/")
@@ -183,7 +183,7 @@ def setup_app(*, app=None, project=None, module=None):
             gw.exception(e)
             # On error, bounce back to default page
             response.status = 302
-            response.set_header("Location", "/view/gway")
+            response.set_header("Location", "/gway/readme")
             return ""
 
         # Build navbar & consent

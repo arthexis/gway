@@ -142,11 +142,11 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+-------------------------------------------------------------+
 
 
-After placing your modules under `projects/`, you can immediately invoke them with:
+After placing your modules under `projects/`, you can immediately invoke them from the CLI with:
 
 .. code-block:: bash
 
-    gway my_module my_function --arg1 value
+    gway project-name my-function --arg1 value
 
 
 License
