@@ -25,7 +25,7 @@ def help(topic="", *args, **kwargs):
         title = "Available Projects"
         content = "<ul>"
         for project in help_info["Available Projects"]:
-            content += f'<li><a href="/help?topic={project}">{project}</a></li>'
+            content += f'<li><a href="?topic={project}">{project}</a></li>'
         content += "</ul>"
         return f"<h1>{title}</h1>{content}"
 
@@ -58,10 +58,10 @@ def _help_section(info, use_query_links=False, *args, **kwargs):
     for key, value in info.items():
         if use_query_links:
             if key == "Project":
-                value = f'<a href="/help?topic={value}">{value}</a>'
+                value = f'<a href="?topic={value}">{value}</a>'
             elif key == "Function":
                 proj = info.get("Project", "")
-                value = f'<a href="/help?topic={proj}/{value}">{value}</a>'
+                value = f'<a href="?topic={proj}/{value}">{value}</a>'
 
         if key in ("Signature", "Example CLI", "Example Code", "Full Code"):
             value = f"<pre><code>{value}</code></pre>"
@@ -81,7 +81,7 @@ def qr_code(*args, value=None, **kwargs):
     if not value:
         return '''
             <h1>QR Code Generator</h1>
-            <form method="post" action="/qr-code">
+            <form method="post">
                 <input type="text" name="value" placeholder="Enter text or URL" required class="main" />
                 <button type="submit" class="submit">Generate QR</button>
             </form>
