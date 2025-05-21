@@ -13,15 +13,15 @@ git clean -fd
 
 NEW_HASH=$(git rev-parse HEAD)
 
+echo "[4] Ensuring scripts are executable..."
+chmod +x gway.sh upgrade.sh
+
 if [ "$OLD_HASH" == "$NEW_HASH" ]; then
     echo "No updates detected. Skipping reinstall."
 else
-    echo "[4] Reinstalling package in editable mode..."
+    echo "[5] Reinstalling package in editable mode..."
     source .venv/bin/activate
     pip install -e .
-
-    echo "[5] Setting executable permissions for scripts..."
-    chmod +x gway.sh upgrade.sh
 
     echo "[6] Running test command..."
     gway hello-world
