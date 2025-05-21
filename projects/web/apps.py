@@ -116,9 +116,11 @@ def setup_app(*, app=None, project=None, module=None):
     @app.route("/accept-cookies", method="POST")
     def accept_cookies():
         response.set_cookie("cookies_accepted", "yes")
-        redirect_url = request.forms.get("next", "/")
+        redirect_url = request.forms.get("next", "/readme")
         response.status = 303
-        response.set_header("Location", redirect_url)
+        if not redirect_url.startswith("/"):
+            redirect_url = f"/{redirect_url}"
+        response.set_header("Location", f"/gway{redirect_url}")
         return ""
         
     @app.route("/", method=["GET", "POST"])
