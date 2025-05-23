@@ -26,7 +26,6 @@ def generate_img(value, *, path=None):
 generate_image = generate_img
 
 
-@requires("qrcode[pil]")
 def generate_url(value):
     """Return the local URL to a QR code with the given value. 
     This will only work when the website is up and running to serve /temp.
@@ -41,7 +40,6 @@ def generate_url(value):
     return f"/temp/qr_codes/{safe_filename}"
 
 
-@requires("qrcode[pil]")
 def generate_b64data(value):
     """Generate a QR code image from the given value and return it as a base64-encoded PNG string."""
     import qrcode

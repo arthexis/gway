@@ -1,5 +1,6 @@
 from gway import gw
 
+
 def start_server(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
@@ -48,7 +49,7 @@ def start_server(*,
                 # It's a WSGI/ASGI callable; do not invoke
                 gw.info(f"Detected callable WSGI/ASGI app: {app}")
 
-        gw.info(f"Starting app: {app}")
+        gw.info(f"Starting {app=} @ {host}:{port}")
 
         # 4. Detect ASGI/FastAPI
         try:

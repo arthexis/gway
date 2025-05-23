@@ -99,20 +99,20 @@ class Gateway(Resolver):
                 args_to_pass = []
                 kwargs_to_pass = {}
                 for param in sig.parameters.values():
-                    self.debug(f"Preparing {param=}")
+                    # self.debug(f"Preparing {param=}")
                     if param.kind == param.VAR_POSITIONAL:
                         bound_val = bound_args.arguments.get(param.name, ())
-                        self.debug(f"Kind == VAR_POSITIONAL {bound_val=} -> extend args")
+                        # self.debug(f"Kind == VAR_POSITIONAL {bound_val=} -> extend args")
                         args_to_pass.extend(bound_val)
                     elif param.kind == param.VAR_KEYWORD:
                         bound_val = bound_args.arguments.get(param.name, {})
-                        self.debug(f"Kind == VAR_KEYWORD {bound_val=} -> extend kwargs")
+                        # self.debug(f"Kind == VAR_KEYWORD {bound_val=} -> extend kwargs")
                         kwargs_to_pass.update(bound_val)
                     elif param.name in bound_args.arguments:
                         bound_val = bound_args.arguments[param.name]
                         if param.default == bound_val:
                             found_val = self.find_value(param.name)
-                            self.debug(f"Checking override: {bound_val=} == {param.default=} => {found_val=}")
+                            # self.debug(f"Checking override: {bound_val=} == {param.default=} => {found_val=}")
                             if found_val is not None and found_val != bound_val:
                                 self.info(f"Injected {param.name}={found_val} overrides default {bound_val=}")
                                 bound_val = found_val
@@ -149,12 +149,12 @@ class Gateway(Resolver):
                     return f"[async coroutine started for {func_name}]"
 
                 # Store result
-                short_key = func_name.split("_")[-1] if "_" in func_name else func_name
-                long_key = func_name.split("_", 1)[-1] if "_" in func_name else func_name
-                self.info(f"Stored {short_key=} {long_key=} {result=}")
-                self.results.insert(short_key, result)
-                if long_key != short_key:
-                    self.results.insert(long_key, result)
+                sk = func_name.split("_")[-1] if "_" in func_name else func_name
+                lk = func_name.split("_", 1)[-1] if "_" in func_name else func_name
+                self.info(f"Stored {result=} into {sk=} {lk=} ")
+                self.results.insert(sk, result)
+                if lk != sk:
+                    self.results.insert(lk, result)
                 if isinstance(result, dict):
                     self.context.update(result)
 

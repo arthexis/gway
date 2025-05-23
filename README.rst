@@ -1,7 +1,7 @@
 GWAY
 ====
 
-Welcome [Traveler], this is the GWAY project README.rst file and website.
+Welcome [Viajante], this is the GWAY project README.rst file and website.
 
 **GWAY** is an **experimental** CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic sigil & context resolution, argument injection, and multi-environment support.
 
@@ -56,7 +56,7 @@ Given a project ``awg.py`` containing logic to calculate cable sizes and conduit
 
 You can test the AWG cable sizer online here, or in your own instance:
 
-https://arthexis.com/awg-finder
+https://arthexis.com/gway/awg-finder
 
 
 GWAY Website Server
@@ -66,7 +66,7 @@ You can also run a lightweight help/documentation server directly using GWAY:
 
 .. code-block:: powershell
 
-    PS C:\Users\arthe\Repos\gway> gway --debug website start-server --daemon - hold
+    > gway --debug website start-server --daemon - hold
 
 This launches an interactive web UI that lets you browse your project, inspect help docs, and search callable functions.
 

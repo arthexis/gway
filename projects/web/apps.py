@@ -1,14 +1,60 @@
 import importlib
 from functools import wraps
-from gway import requires, gw
+from urllib.parse import urlencode
+from gway import gw
 
 
-def setup_app(*, app=None, project=None, module=None):
+def _build_url(prefix, *args, **kwargs):
+    path = "/".join(str(a).strip("/") for a in args if a)
+    url = f"/{prefix}/{path}"
+    if kwargs:
+        url += "?" + urlencode(kwargs)
+    return url
+
+
+def setup_app(*, 
+              app=None, project=None, module=None, 
+              path="gway", static="static", temp="temp", title="GWAY"
+            ):
     """Configure a simple application that showcases the use of GWAY to generate web apps."""
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     version = gw.version()
     if app is None: app = Bottle()
+
+    def redirect_error(error=None, note=""):
+        gw.error("Redirecting due to error." + (" " + note if note else ""))
+        
+        # Log request metadata
+        gw.error(f"Method: {request.method}")
+        gw.error(f"Path: {request.path}")
+        gw.error(f"Full URL: {request.url}")
+        gw.error(f"Query: {dict(request.query)}")
+        
+        try:
+            if request.json:
+                gw.error(f"JSON body: {request.json}")
+            elif request.forms:
+                gw.error(f"Form data: {request.forms.decode()}")
+        except Exception as e:
+            gw.exception(e)
+
+        # Log headers and cookies for more context
+        gw.error(f"Headers: {dict(request.headers)}")
+        gw.error(f"Cookies: {request.cookies}")
+
+        if error:
+            gw.exception(error)
+
+        # Redirect to default view
+        response.status = 302
+        response.set_header("Location", f"/{path}/readme")
+        return ""
+
+    gw.web.static_url = lambda *args, **kwargs: _build_url(static, *args, **kwargs)
+    gw.web.temp_url   = lambda *args, **kwargs: _build_url(temp, *args, **kwargs)
+    gw.web.app_url    = lambda *args, **kwargs: _build_url(path, *args, **kwargs)
+    gw.web.redirect_error = redirect_error
 
     def security_middleware(app):
         """Middleware to fix headers and secure cookies."""
@@ -65,11 +111,11 @@ def setup_app(*, app=None, project=None, module=None):
         if not cookies_enabled() or len(visited) < 2:
             visited = ["readme", "theme"]
         links = "".join(
-            f'<li><a href="/gway/{b.replace("_", "-")}">{b.replace("_", " ").replace("-", " ").title()}</a></li>'
+            f'<li><a href="/{path}/{b.replace("_", "-")}">{b.replace("_", " ").replace("-", " ").title()}</a></li>'
             for b in sorted(visited) if b
         )
-        search_box = '''
-            <form action="/gway/help" method="get" class="navbar">
+        search_box = f'''
+            <form action="/{path}/help" method="get" class="navbar">
                 <input type="text" name="topic" placeholder="Search GWAY" class="help" />
             </form>
         '''
@@ -90,9 +136,14 @@ def setup_app(*, app=None, project=None, module=None):
         css_files = css_files or ["default.css"]
 
         css_links = "\n".join(
-            f'<link rel="stylesheet" href="/static/styles/{css}">'
+            f'<link rel="stylesheet" href="/{static}/styles/{css}">'
             for css in css_files
         )
+        favicon = f'<link rel="icon" href="/{static}/favicon.ico" type="image/x-icon" />'
+        credits = f'''
+            <p>GWAY is powered by <a href="https://www.python.org/">Python</a>.
+            Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>.</p>
+        '''
 
         return template("""<!DOCTYPE html>
             <html lang="en">
@@ -100,15 +151,15 @@ def setup_app(*, app=None, project=None, module=None):
                 <meta charset="UTF-8" />
                 <title>{{!title}}</title>
                 {{!css_links}}
-                <link rel="icon" href="/static/favicon.ico" type="image/x-icon" />
+                {{!favicon}}
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             </head>
             <body>
                 {{!navbar}}
                 <main>{{!content}}</main>
                 <br/><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
-                        <p>GWAY is powered by <a href="https://www.python.org/">Python</a>.
-                        Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>.</p></footer>
+                {{!credits}}
+                </footer>
             </body>
             </html>
         """, **locals())
@@ -120,24 +171,37 @@ def setup_app(*, app=None, project=None, module=None):
         response.status = 303
         if not redirect_url.startswith("/"):
             redirect_url = f"/{redirect_url}"
-        response.set_header("Location", f"/gway{redirect_url}")
+        response.set_header("Location", f"/{path}{redirect_url}")
         return ""
 
-    @app.route("/static/<filename:path>")
+    @app.route(f"/{static}/<filename:path>")
     def send_static(filename):
         return static_file(filename, root=gw.resource("data", "static"))
     
-    @app.route("/temp/<filename:path>")
+    @app.route(f"/{temp}/<filename:path>")
     def send_temp(filename):
         return static_file(filename, root=gw.resource("temp", "shared"))
         
-    @app.route("/gway/<view:path>", method=["GET", "POST"])
+    @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
+        # TODO: When a POST is received with a payload, assign the top-level
+        # items as kwargs (combined with request.query if needed)
+
         # Normalize incoming path
         segments   = view.strip("/").split("/")
         view_name  = segments[0].replace("-", "_")
         args       = segments[1:]
         kwargs     = dict(request.query)
+
+        # If POST, update with form or JSON body data
+        if request.method == "POST":
+            try:
+                if request.json:
+                    kwargs.update(request.json)
+                elif request.forms:
+                    kwargs.update(request.forms.decode())  # decode() makes it a dict
+            except Exception as e:
+                return redirect_error(e, note="Error loading JSON payload")
 
         # Dynamically import the module or project package
         try:
@@ -148,12 +212,7 @@ def setup_app(*, app=None, project=None, module=None):
             else:
                 source = importlib.import_module("web.views")
         except (ImportError, AttributeError) as e:
-            gw.exception(e)
-            response.status = 500
-            return render_template(
-                title="Server Error",
-                content="<h1>500 Internal Server Error</h1><p>Could not load views source.</p>"
-            )
+            return redirect_error(e, note="Error loading views")
 
         # Try to resolve the callable:
         # 1) First, a function named exactly `view_name`
@@ -162,11 +221,7 @@ def setup_app(*, app=None, project=None, module=None):
         if not callable(view_func):
             view_func = getattr(source, f"view_{view_name}", None)
         if not callable(view_func):
-            response.status = 404
-            return render_template(
-                title="Not Found",
-                content=f"<h1>404 - View “{view_name}” not found.</h1>"
-            )
+            return redirect_error(note="View not found or not callable")
 
         # Execute the view
         try:
@@ -176,11 +231,7 @@ def setup_app(*, app=None, project=None, module=None):
         except HTTPResponse as resp:
             return resp
         except Exception as e:
-            gw.exception(e)
-            # On error, bounce back to default page
-            response.status = 302
-            response.set_header("Location", "/gway/readme")
-            return ""
+            return redirect_error(e, note="View not found or not callable")
 
         # Build navbar & consent
         full_url = request.fullpath
@@ -206,7 +257,7 @@ def setup_app(*, app=None, project=None, module=None):
 
         # Render the final page
         return render_template(
-            title=view_name.replace("_", " ").title(),
+            title="GWAY - " + view_name.replace("_", " ").title(),
             navbar=navbar,
             content=content,
             css_files=css_files
@@ -215,7 +266,7 @@ def setup_app(*, app=None, project=None, module=None):
     @app.route("/", method=["GET", "POST"])
     def index():
         response.status = 302
-        response.set_header("Location", "/gway/readme")
+        response.set_header("Location", f"/{path}/readme")
         return ""
 
     app = security_middleware(app)
