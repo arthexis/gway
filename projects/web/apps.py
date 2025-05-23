@@ -69,7 +69,7 @@ def setup_app(*, app=None, project=None, module=None):
             for b in sorted(visited) if b
         )
         search_box = '''
-            <form action="/gway/help" method="post" class="navbar">
+            <form action="/gway/help" method="get" class="navbar">
                 <input type="text" name="topic" placeholder="Search GWAY" class="help" />
             </form>
         '''
