@@ -77,10 +77,10 @@ Online Help & Documentation
 
 Browse built-in and project-level function documentation online at:
 
-📘 https://arthexis.com/help
+📘 https://arthexis.com/gway/help
 
 - Use the **search box** in the top left to find any callable by name (e.g., ``find_cable``, ``resource``, ``start_server``).
-- You can also navigate directly to: ``https://arthexis.com/help/<project>/<function>`` or ``https://arthexis.com/help/<built-in>``
+- You can also navigate directly to: ``https://arthexis.com/gway/help/<project>/<function>`` or ``https://arthexis.com/gway/help/<built-in>``
 
 This is useful for both the included out-of-the-box GWAY tools and your own projects, assuming they follow the GWAY format.
 
@@ -138,7 +138,7 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+-------------------------------------------------------------+
 | temp/          | Temporary working directory for intermediate output files   |
 +----------------+-------------------------------------------------------------+
-| scripts/       | GWAY script files (for --batch mode)                        |
+| scripts/       | .gws script files (for --batch mode)                        |
 +----------------+-------------------------------------------------------------+
 
 
