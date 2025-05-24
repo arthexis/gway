@@ -20,16 +20,14 @@ def cli_main():
     parser.add_argument("-c", dest="client", type=str, help="Specify client environment")
     parser.add_argument("-d", dest="debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-e", dest="expression", type=str, help="Return resolved sigil at the end")
-    parser.add_argument("-j", dest="json", action="store_true", help="Output result(s) as JSON")
+    parser.add_argument("-j", dest="json", nargs="?", const=True, default=False, 
+                              help="Output result(s) as JSON, optionally to a file.")
     parser.add_argument("-s", dest="server", type=str, help="Specify server environment")
     parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing")
     parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode")
     parser.add_argument("-x", dest="callback", type=str, help="Execute a callback per command")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
-
-    # TODO: Can we make -v also work if we pass a string to it?
-    # Then we can pass it like this: Gateway(verbose=args.verbose)
 
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel)
@@ -61,18 +59,28 @@ def cli_main():
     if args.all:
         for result in all_results:
             if args.json:
-                print(json.dumps(result, indent=2, default=str))
+                json_output = json.dumps(result, indent=2, default=str)
+                if isinstance(args.json, str):
+                    with open(args.json, "a") as f:
+                        f.write(json_output + "\n")
+                else:
+                    print(json_output)
             elif result is not None:
                 gw.info(f"Result:\n{result}")
                 print(result)
 
-    # Final result resolution
+    # Final result resolution (in expression mode only)
     output = Gateway(**last_result).resolve(args.expression) if args.expression else last_result
 
     # Only print final result if --all wasn't used
     if not args.all:
         if args.json:
-            print(json.dumps(output, indent=2, default=str))
+            json_output = json.dumps(output, indent=2, default=str)
+            if isinstance(args.json, str):
+                with open(args.json, "w") as f:
+                    f.write(json_output + "\n")
+            else:
+                print(json_output)
         elif output is not None:
             gw.info(f"Last function result:\n{output}")
             print(output)
