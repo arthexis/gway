@@ -1,3 +1,19 @@
+from gway import gw, requires
+
+
+@requires("plyer")
+def notify(message, *, title="GWAY Notice", timeout=8):
+    """Show a user interface notification with the specified title and message."""
+    from plyer import notification
+
+    try:
+        notification.notify(
+            title=title, message=message, app_name="gway", timeout=timeout)
+        gw.info(f"Notification: {title} - {message}")
+    except Exception as e:
+        gw.critical(f"Error displaying: {str(e)}")
+        raise
+
 
 def lookup_font(*prefix):
     """Look up fonts installed on a Windows system by partial name (prefix).

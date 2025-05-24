@@ -4,13 +4,20 @@ from urllib.parse import urlencode
 from gway import gw
 
 
-def _build_url(prefix, *args, **kwargs):
+def build_url(prefix, *args, **kwargs):
     path = "/".join(str(a).strip("/") for a in args if a)
     url = f"/{prefix}/{path}"
     if kwargs:
         url += "?" + urlencode(kwargs)
     return url
 
+
+# TODO: Ensure setup_app works by chaining on itself. This means the resulting app object
+# should be able to be passed to setup_app again, so that we could, for example, create one app
+# per module/project and host them together, or mount the same module on a different 
+# subpath and require some for of authentication (when that is implemented)
+# Completely constant routes should not be setup twice (though it doesn't impact performance 
+# much if it does, as long as it doesn't mangle the previous routes.)
 
 def setup_app(*, 
               app=None, project=None, module=None, 
@@ -51,9 +58,9 @@ def setup_app(*,
         response.set_header("Location", f"/{path}/readme")
         return ""
 
-    gw.web.static_url = lambda *args, **kwargs: _build_url(static, *args, **kwargs)
-    gw.web.temp_url   = lambda *args, **kwargs: _build_url(temp, *args, **kwargs)
-    gw.web.app_url    = lambda *args, **kwargs: _build_url(path, *args, **kwargs)
+    gw.web.static_url = lambda *args, **kwargs: build_url(static, *args, **kwargs)
+    gw.web.temp_url   = lambda *args, **kwargs: build_url(temp, *args, **kwargs)
+    gw.web.app_url    = lambda *args, **kwargs: build_url(path, *args, **kwargs)
     gw.web.redirect_error = redirect_error
 
     def security_middleware(app):

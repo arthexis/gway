@@ -1,12 +1,11 @@
 import os
 import sys
 import toml
-import logging
 import inspect
 import subprocess
 from pathlib import Path
 
-from gway import gw, requires
+from gway import gw
 
 
 def build(
