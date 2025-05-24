@@ -20,15 +20,7 @@ class Gateway(Resolver):
     _builtin_cache = None
     _thread_local = threading.local()
 
-    # TODO: Allow Gateway to receive a "buffer" parameter which may be a filename
-    # in a string or Path object, or a file object or stream. 
-
-    # TODO: Rewrite IO functions on the Gateway instance to use this buffer by default.
-
     def __init__(self, verbose=False, **kwargs):
-
-        # TODO: Support a "project" param that will import all functions
-        # in that project as additional builtin functions (first-level attributes)
 
         self._cache = {}
         self._async_threads = []
@@ -185,10 +177,6 @@ class Gateway(Resolver):
             self.exception(e)
         finally:
             loop.close()
-
-    # TODO: Log as self.critical when coroutine has been scheduled but the program terminates
-    # without until being called. If possible, have a way for us to have a callback
-    # so that we have the option to call until ourselves (under limited conditions.)
 
     def until(self, lock_file=None, lock_url=None, lock_pypi=False):
         from .watchers import watch_file, watch_url, watch_pypi_package

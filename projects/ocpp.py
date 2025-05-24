@@ -7,13 +7,13 @@ def setup_sink_app(*,
                    host='[OCPP_CSMS_HOST|0.0.0.0]', 
                    port='[OCPP_CSMS_PORT|9000]', 
                    app=None,
-                    ):
+        ):
     """Basic OCPP passive sink for messages, acting as a dummy CSMS server. DO NOT MODIFY.
         This function was tested on a real eTron charger on 2025/4/5, prior to ocpp__start_dummy.
     """
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
     import json
     import traceback
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
     if app is None: app = FastAPI()
 
