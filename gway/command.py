@@ -11,6 +11,15 @@ from .builtins import abort
 from .environs import load_env, get_base_client, get_base_server
 from .gateway import gw, Gateway
 
+# TODO: When building a CLI for a function with single positional arg
+# allow that argument to be passed positionally in the CLI too 
+# For example a function such as example(filter=None, *, foo=None)
+# Should allow to be called from the CLI like this:
+# gway example 'whatever'
+# gway example 'whatever' --foo more
+# Currently, these functions can only be called like this:
+# gway example --filter 'whatever'
+
 
 def cli_main():
     """Main CLI entry point."""
