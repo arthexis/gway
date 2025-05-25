@@ -63,6 +63,10 @@ class Gateway(Resolver):
 
         self._builtin_functions = Gateway._builtin_cache.copy()
 
+    def success(self, message):
+        print(message)
+        self.info(message)
+
     def _wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
@@ -141,14 +145,18 @@ class Gateway(Resolver):
                     return f"[async coroutine started for {func_name}]"
 
                 # Store result
-                sk = func_name.split("_")[-1] if "_" in func_name else func_name
-                lk = func_name.split("_", 1)[-1] if "_" in func_name else func_name
-                self.info(f"Stored {result=} into {sk=} {lk=} ")
-                self.results.insert(sk, result)
-                if lk != sk:
-                    self.results.insert(lk, result)
-                if isinstance(result, dict):
-                    self.context.update(result)
+
+                if result is not None:
+                    sk = func_name.split("_")[-1] if "_" in func_name else func_name
+                    lk = func_name.split("_", 1)[-1] if "_" in func_name else func_name
+                    self.info(f"Stored {result=} into {sk=} {lk=} ")
+                    self.results.insert(sk, result)
+                    if lk != sk:
+                        self.results.insert(lk, result)
+                    if isinstance(result, dict):
+                        self.context.update(result)
+                else:
+                    self.debug("Result is None, skip storing.")
 
                 return result
 

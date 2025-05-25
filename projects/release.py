@@ -141,7 +141,6 @@ def build(
             "include VERSION\n"
             "include requirements.txt\n"
             "include pyproject.toml\n"
-            "recursive-include vscode *\n"
         )
         gw.info("Generated MANIFEST.in")
 

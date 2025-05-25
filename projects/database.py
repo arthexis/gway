@@ -17,7 +17,7 @@ def infer_type(value):
 @contextmanager
 def connect(
         *database, sql_engine="sqlite3", load_data=False, force=False, 
-        temp_name="gsol.sqlite", row_factory=False, 
+        temp_name="local.sqlite", row_factory=False, 
     ):
     """
     Connects to a SQLite database using a context manager.
@@ -115,7 +115,6 @@ def table(
     sql_engine="sqlite3",
     load_data=False,
     force=False,
-    temp_name="gsol.sqlite",
     row_factory=False,
     select=None,
     limit=None,
@@ -146,7 +145,6 @@ def table(
         sql_engine=sql_engine,
         load_data=load_arg,
         force=force,
-        temp_name=temp_name,
         row_factory=row_factory
     ) as cursor:
         # build SELECT clause
