@@ -12,13 +12,15 @@ from .environs import load_env, get_base_client, get_base_server
 from .gateway import gw, Gateway
 
 # TODO: When building a CLI for a function with single positional arg
-# allow that argument to be passed positionally in the CLI too 
+# allow that arguments before * to be passed positionally in the CLI too 
 # For example a function such as example(filter=None, *, foo=None)
 # Should allow to be called from the CLI like this:
 # gway example 'whatever'
 # gway example 'whatever' --foo more
+# (Even if filter has a default value, its should be allowed possitionally )
 # Currently, these functions can only be called like this:
 # gway example --filter 'whatever'
+# The rest of the functionality should be preserved
 
 
 def cli_main():
@@ -31,6 +33,7 @@ def cli_main():
     parser.add_argument("-e", dest="expression", type=str, help="Return resolved sigil at the end")
     parser.add_argument("-j", dest="json", nargs="?", const=True, default=False, 
                               help="Output result(s) as JSON, optionally to a file.")
+    parser.add_argument("-n", dest="name", type=str, help="Name for the app instance and logger.")
     parser.add_argument("-s", dest="server", type=str, help="Specify server environment")
     parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing")
     parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode")
@@ -295,21 +298,32 @@ def show_functions(functions: dict):
 def add_function_args(subparser, func_obj):
     """Add the function's arguments to the CLI subparser."""
     sig = inspect.signature(func_obj)
-    for arg_name, param in sig.parameters.items():
+    seen_kw_only = False
+
+    for i, (arg_name, param) in enumerate(sig.parameters.items()):
         if param.kind == inspect.Parameter.VAR_POSITIONAL:
             subparser.add_argument(arg_name, nargs='*', help=f"Variable positional arguments for {arg_name}")
         elif param.kind == inspect.Parameter.VAR_KEYWORD:
             subparser.add_argument('--kwargs', nargs='*', help='Additional keyword arguments as key=value pairs')
         else:
-            arg_name_cli = f"--{arg_name.replace('_', '-')}"
-            if param.annotation == bool or isinstance(param.default, bool):
-                group = subparser.add_mutually_exclusive_group(required=False)
-                group.add_argument(arg_name_cli, dest=arg_name, action="store_true", help=f"Enable {arg_name}")
-                group.add_argument(f"--no-{arg_name.replace('_', '-')}", dest=arg_name, action="store_false", help=f"Disable {arg_name}")
-                subparser.set_defaults(**{arg_name: param.default})
+            # Detect if it's before the first keyword-only argument (i.e. before *)
+            if not seen_kw_only and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.POSITIONAL_ONLY):
+                # Add as positional (if it has a default, make it optional)
+                if param.default != inspect.Parameter.empty:
+                    subparser.add_argument(arg_name, nargs='?', **get_arg_options(arg_name, param, gw))
+                else:
+                    subparser.add_argument(arg_name, **get_arg_options(arg_name, param, gw))
             else:
-                arg_opts = get_arg_options(arg_name, param, gw)
-                subparser.add_argument(arg_name_cli, **arg_opts)
+                seen_kw_only = True
+                arg_name_cli = f"--{arg_name.replace('_', '-')}"
+                if param.annotation == bool or isinstance(param.default, bool):
+                    group = subparser.add_mutually_exclusive_group(required=False)
+                    group.add_argument(arg_name_cli, dest=arg_name, action="store_true", help=f"Enable {arg_name}")
+                    group.add_argument(f"--no-{arg_name.replace('_', '-')}", dest=arg_name, action="store_false", help=f"Disable {arg_name}")
+                    subparser.set_defaults(**{arg_name: param.default})
+                else:
+                    arg_opts = get_arg_options(arg_name, param, gw)
+                    subparser.add_argument(arg_name_cli, **arg_opts)
 
 
 def get_arg_options(arg_name, param, gw=None):

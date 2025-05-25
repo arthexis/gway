@@ -1,7 +1,3 @@
-# TODO: Prioritize and analye code and its TODOs. 
-# Indicate the most urgent/important TODO to implement and propose a standard implementation for it.
-# Fully write all modified functions preserving the coding style. 
-
 import os
 import sys
 import time
@@ -20,12 +16,13 @@ class Gateway(Resolver):
     _builtin_cache = None
     _thread_local = threading.local()
 
-    def __init__(self, verbose=False, **kwargs):
+    def __init__(self, verbose=False, name="gw", **kwargs):
 
         self._cache = {}
         self._async_threads = []
         self.base_path = os.path.dirname(os.path.dirname(__file__))
-        self.logger = logging.getLogger("gw")
+        self.name = name
+        self.logger = logging.getLogger(name)
         if not verbose:
             self.verbose =  lambda *_, **__: None
         elif verbose is True:

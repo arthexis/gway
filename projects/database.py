@@ -5,15 +5,6 @@ from contextlib import contextmanager
 from gway import gw
 
 
-def infer_type(value):
-    """Infer SQL type from a sample value."""
-    try:
-        float(value)
-        return "REAL"
-    except ValueError:
-        return "TEXT"
-    
-    
 @contextmanager
 def connect(
         *database, sql_engine="sqlite3", load_data=False, force=False, 
@@ -112,81 +103,11 @@ def connect(
     conn.close()
 
 
-def table(
-    name,
-    *database,
-    sql_engine="sqlite3",
-    load_data=False,
-    force=False,
-    temp_name="local.sqlite",
-    row_factory=False,
-    select=None,
-    limit=None,
-    where=None,
-    **filters
-):
-    """
-    Fetch rows from `name` in a SQLite DB.
+def infer_type(value):
+    """Infer SQL type from a sample value."""
+    try:
+        float(value)
+        return "REAL"
+    except ValueError:
+        return "TEXT"
 
-    Parameters:
-      name (str): name of the table to query.
-      *database, sql_engine, temp_name, force, row_factory: passed through to `connect()`.
-      load_data (bool): if True, CSV data for only this table is loaded.
-      select (str | list[str]): columns to project; defaults to '*'.
-      where (str): raw SQL fragment for additional filtering.
-      limit (int): maximum number of rows to return.
-      **filters: column=value pairs to build WHERE clauses. If value is a string
-                 starting with '>=', '<=', '>', or '<', that operator is used.
-
-    Returns:
-      list of rows (tuples or sqlite3.Row if row_factory=True).
-    """
-    # when loading data, restrict to this table’s CSV directory
-    load_arg = name if load_data else False
-
-    with connect(
-        *database,
-        sql_engine=sql_engine,
-        load_data=load_arg,
-        force=force,
-        temp_name=temp_name,
-        row_factory=row_factory
-    ) as cursor:
-        # build SELECT clause
-        if select:
-            if isinstance(select, (list, tuple)):
-                select_clause = ", ".join(select)
-            else:
-                select_clause = str(select)
-        else:
-            select_clause = "*"
-
-        # build WHERE clauses from filters
-        conditions = []
-        params = []
-        for col, val in filters.items():
-            op = "="
-            operand = val
-            if isinstance(val, str):
-                for prefix in (">=", "<=", ">", "<"):
-                    if val.startswith(prefix):
-                        op = prefix
-                        operand = val[len(prefix):]
-                        break
-            conditions.append(f"[{col}] {op} ?")
-            params.append(operand)
-
-        # include raw WHERE if provided
-        if where:
-            conditions.append(f"({where})")
-
-        where_clause = ""
-        if conditions:
-            where_clause = " WHERE " + " AND ".join(conditions)
-
-        # assemble LIMIT
-        limit_clause = f" LIMIT {int(limit)}" if limit is not None else ""
-
-        sql = f"SELECT {select_clause} FROM [{name}]{where_clause}{limit_clause}"
-        cursor.execute(sql, params)
-        return cursor.fetchall()

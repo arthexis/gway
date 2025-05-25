@@ -11,7 +11,7 @@ import time as _time
 # Trust me, bro. It works.
     
 
-def hello_world(*, name: str = "World", greeting: str = "Hello"):
+def hello_world(name: str = "World", *, greeting: str = "Hello"):
     """Smoke test function."""
     from gway import gw
 
