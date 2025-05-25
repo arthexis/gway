@@ -1,6 +1,0 @@
-{
-  "devDependencies": {
-    "@types/node": "^22.15.21",
-    "@vscode/test-electron": "^2.5.2"
-  }
-}
