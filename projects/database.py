@@ -12,12 +12,12 @@ def infer_type(value):
         return "REAL"
     except ValueError:
         return "TEXT"
-
-
+    
+    
 @contextmanager
 def connect(
         *database, sql_engine="sqlite3", load_data=False, force=False, 
-        temp_name="gsol.sqlite", row_factory=False, 
+        temp_name="local.sqlite", row_factory=False, 
     ):
     """
     Connects to a SQLite database using a context manager.
@@ -32,8 +32,11 @@ def connect(
     db_path = gw.resource(*database)
     if isinstance(load_data, str):
         data_path = gw.resource("data", load_data)
+        initial_parent = os.path.basename(load_data.rstrip("/\\"))
     else:
-        data_path = gw.resource("data")  
+        data_path = gw.resource("data")
+        initial_parent = ""
+
     conn = sqlite3.connect(db_path)
 
     def load_csv(path, parent_path=""):
@@ -82,7 +85,7 @@ def connect(
                         gw.info(f"Dropped existing table '{name}' due to force=True")
 
                     if not table_exists or force:
-                        create_table_query = (f"CREATE TABLE [{name}] ("
+                        create_table_query = (f"CREATE TABLE [{name}] (" 
                                               f"{', '.join(f'[{unique_headers[i]}] {column_types[i]}' for i in range(len(unique_headers)))})")
                         cursor.execute(create_table_query)
                         insert_query = (f"INSERT INTO [{name}] ({', '.join(f'[{h}]' for h in unique_headers)}) "
@@ -97,7 +100,7 @@ def connect(
         cursor.close()
 
     if load_data:
-        load_csv(data_path)
+        load_csv(data_path, parent_path=initial_parent)
     
     if callable(row_factory):
         conn.row_factory = row_factory
@@ -115,7 +118,7 @@ def table(
     sql_engine="sqlite3",
     load_data=False,
     force=False,
-    temp_name="gsol.sqlite",
+    temp_name="local.sqlite",
     row_factory=False,
     select=None,
     limit=None,
