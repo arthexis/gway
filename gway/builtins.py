@@ -39,21 +39,38 @@ def envs(filter: str = None) -> dict:
         return os.environ.copy()
 
 
-def version(assert_min=None) -> str:
-    """Return the version of the package."""
+def version(check=None) -> str:
+    """Return the version of the package. If `check` is provided,
+    ensure the version meets or exceeds the required `major.minor.patch` string.
+    Raise AssertionError if requirement is not met.
+    """
     from gway import gw
 
-    # TODO: Implement assert_min with valid mayor.minor.patch logic
-    # Raise AssertionError if min is given and not met by actual VERSION
+    def parse_version(vstr):
+        parts = vstr.strip().split(".")
+        if len(parts) == 1:
+            parts = (parts[0], '0', '0')
+        elif len(parts) == 2:
+            parts = (parts[0], parts[1], '0')
+        if len(parts) > 3:
+            raise ValueError(f"Invalid version format: '{vstr}', expected 'major.minor.patch'")
+        return tuple(int(part) for part in parts)
 
     # Get the version in the VERSION file
     version_path = gw.resource("VERSION")
     if os.path.exists(version_path):
         with open(version_path, "r") as version_file:
-            version = version_file.read().strip()
-            return version
+            current_version = version_file.read().strip()
+
+        if check:
+            current_tuple = parse_version(current_version)
+            required_tuple = parse_version(check)
+            if current_tuple < required_tuple:
+                raise AssertionError(f"Required version >= {check}, found {current_version}")
+
+        return current_version
     else:
-        print("VERSION file not found.")
+        gw.critical("VERSION file not found.")
         return "unknown"
 
 
@@ -208,18 +225,18 @@ def help(*args, full_code=False):
         return results[0] if len(results) == 1 else {"Matches": results}
 
 
-def now(self, *, utc=False) -> "datetime":
+def now(*, utc=False) -> "datetime":
     """Return the current datetime object."""
     return datetime.datetime.now(datetime.timezone.utc) if utc else datetime.datetime.now()
 
 
-def time(self, *, utc=False) -> str:
+def time(*, utc=False) -> str:
     """Return the current time of day as HH:MM:SS."""
     struct_time = _time.gmtime() if utc else _time.localtime()
     return _time.strftime('%H:%M:%S', struct_time)
 
 
-def timestamp(self, *, utc=False) -> str:
+def timestamp(*, utc=False) -> str:
     """Return the current timestamp in ISO-8601 format."""
     return now(utc=utc).isoformat().replace("+00:00", "Z" if utc else "")
 

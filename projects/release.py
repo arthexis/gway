@@ -8,7 +8,7 @@ from pathlib import Path
 from gway import gw
 
 
-def build(
+def build(*,
     bump: bool = False,
     dist: bool = False,
     twine: bool = False,
