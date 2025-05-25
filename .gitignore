@@ -27,3 +27,22 @@ venv/
 
 # Temporary files
 temp/
+
+# Node dependencies
+node_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# OS junk files
+.DS_Store
+Thumbs.db
+
+# Coverage & test results (if using Jest, Mocha, etc.)
+coverage/
+*.lcov
+
+# Package lock (optional; use only one lockfile)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

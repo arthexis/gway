@@ -17,6 +17,7 @@ def build(
     password: str = "[PYPI_PASSWORD]",
     token: str = "[PYPI_API_TOKEN]",
     git: bool = False,
+    vscode: bool = False,
     all: bool = False
 ) -> None:
     """Build the project and optionally upload to PyPI.
@@ -28,6 +29,7 @@ def build(
         password (str): PyPI password (default: [PYPI_PASSWORD]).
         token (str): PyPI API token (default: [PYPI_API_TOKEN]).
         git (bool): Require a clean git repo and commit/push after release if True.
+        vscode (bool): Build the vscode extension.
     """
     if all:
         bump = True
@@ -35,6 +37,7 @@ def build(
         twine = True
         help_db = True
         git = True
+        vscode = True
     gw.info(f"Running tests before project build.")
     test_result = gw.test()
     if not test_result:
@@ -44,6 +47,25 @@ def build(
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
         if status.stdout.strip():
             gw.abort("Git repository is not clean. Commit or stash changes before building.")
+
+    if vscode:
+        import sys
+
+        vscode_dir = gw.resource("vscode")
+        if vscode_dir.exists():
+            gw.info("Building VS Code extension…")
+            npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+            try:
+                subprocess.run([npm_cmd, "install"], cwd=vscode_dir, check=True)
+                subprocess.run([npm_cmd, "run", "build"], cwd=vscode_dir, check=True)
+            except subprocess.CalledProcessError as e:
+                stdout = e.stdout.decode() if e.stdout else "(no stdout)"
+                stderr = e.stderr.decode() if e.stderr else "(no stderr)"
+                gw.error(f"`npm install` failed:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
+                gw.abort()
+            gw.info("VS Code extension built.")
+        else:
+            gw.warning("No vscode/ folder found, skipping extension build.")
 
     if help_db:
         build_help()
@@ -139,6 +161,7 @@ def build(
             "include VERSION\n"
             "include requirements.txt\n"
             "include pyproject.toml\n"
+            "recursive-include vscode *\n"
         )
         gw.info("Generated MANIFEST.in")
 
