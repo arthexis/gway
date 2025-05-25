@@ -12,6 +12,37 @@ def build_url(prefix, *args, **kwargs):
     return url
 
 
+def redirect_error(error=None, note="", default="/gway/readme"):
+    from bottle import request, response
+    gw.error("Redirecting due to error." + (" " + note if note else ""))
+    
+    # Log request metadata
+    gw.error(f"Method: {request.method}")
+    gw.error(f"Path: {request.path}")
+    gw.error(f"Full URL: {request.url}")
+    gw.error(f"Query: {dict(request.query)}")
+    
+    try:
+        if request.json:
+            gw.error(f"JSON body: {request.json}")
+        elif request.forms:
+            gw.error(f"Form data: {request.forms.decode()}")
+    except Exception as e:
+        gw.exception(e)
+
+    # Log headers and cookies for more context
+    gw.error(f"Headers: {dict(request.headers)}")
+    gw.error(f"Cookies: {request.cookies}")
+
+    if error:
+        gw.exception(error)
+
+    # Redirect to default view
+    response.status = 302
+    response.set_header("Location", default)
+    return ""
+
+
 # TODO: Ensure setup_app works by chaining on itself. This means the resulting app object
 # should be able to be passed to setup_app again, so that we could, for example, create one app
 # per module/project and host them together, or mount the same module on a different 
@@ -21,42 +52,17 @@ def build_url(prefix, *args, **kwargs):
 
 def setup_app(*, 
               app=None, project=None, module=None, 
-              path="gway", static="static", temp="temp", title="GWAY"
+              path="gway", static="static", temp="temp"
             ):
     """Configure a simple application that showcases the use of GWAY to generate web apps."""
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     version = gw.version()
     if app is None: app = Bottle()
-
-    def redirect_error(error=None, note=""):
-        gw.error("Redirecting due to error." + (" " + note if note else ""))
-        
-        # Log request metadata
-        gw.error(f"Method: {request.method}")
-        gw.error(f"Path: {request.path}")
-        gw.error(f"Full URL: {request.url}")
-        gw.error(f"Query: {dict(request.query)}")
-        
-        try:
-            if request.json:
-                gw.error(f"JSON body: {request.json}")
-            elif request.forms:
-                gw.error(f"Form data: {request.forms.decode()}")
-        except Exception as e:
-            gw.exception(e)
-
-        # Log headers and cookies for more context
-        gw.error(f"Headers: {dict(request.headers)}")
-        gw.error(f"Cookies: {request.cookies}")
-
-        if error:
-            gw.exception(error)
-
-        # Redirect to default view
-        response.status = 302
-        response.set_header("Location", f"/{path}/readme")
-        return ""
+    if not hasattr(app, "_gway_paths"):
+        app._gway_paths = {path: (project, module)}
+    else:
+        app._gway_paths[path] = (project, module)
 
     gw.web.static_url = lambda *args, **kwargs: build_url(static, *args, **kwargs)
     gw.web.temp_url   = lambda *args, **kwargs: build_url(temp, *args, **kwargs)

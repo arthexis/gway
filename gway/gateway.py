@@ -16,7 +16,7 @@ class Gateway(Resolver):
     _builtin_cache = None
     _thread_local = threading.local()
 
-    def __init__(self, verbose=False, name="gw", **kwargs):
+    def __init__(self, *, verbose=False, name="gw", **kwargs):
 
         self._cache = {}
         self._async_threads = []
@@ -183,7 +183,7 @@ class Gateway(Resolver):
         finally:
             loop.close()
 
-    def until(self, lock_file=None, lock_url=None, lock_pypi=False):
+    def until(self, *, lock_file=None, lock_url=None, lock_pypi=False):
         from .watchers import watch_file, watch_url, watch_pypi_package
         def shutdown(reason):
             self.warning(f"{reason} triggered async shutdown.")
@@ -228,7 +228,7 @@ class Gateway(Resolver):
         except Exception as e:
             raise AttributeError(f"Project or builtin '{name}' not found: {e}")
 
-    def load_project(self, project_name: str, root: str = "projects"):
+    def load_project(self, project_name: str, *, root: str = "projects"):
         # Replace hyphens with underscores in module names
         project_name = project_name.replace("-", "_")
         project_path = gw.resource(root, *project_name.split("."))
