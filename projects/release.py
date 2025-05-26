@@ -193,7 +193,7 @@ def build(*,
 
 
 def build_help():
-    with gw.database.connect("data", "help.sqlite") as cursor:
+    with gw.sql.connect("data", "help.sqlite") as cursor:
         cursor.execute("DROP TABLE IF EXISTS help")
         cursor.execute("""
             CREATE VIRTUAL TABLE help USING fts5(

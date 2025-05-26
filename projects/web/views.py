@@ -86,7 +86,7 @@ def qr_code(*args, value=None, **kwargs):
                 <button type="submit" class="submit">Generate QR</button>
             </form>
         '''
-    qr_url = gw.qr_code.generate_url(value)
+    qr_url = gw.qr.generate_url(value)
     back_link = gw.web.app_url("qr-code")
     return f"""
         <h1>QR Code for:</h1>

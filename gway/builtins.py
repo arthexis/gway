@@ -175,7 +175,7 @@ def help(*args, full_code=False):
     if not os.path.isfile(db_path):
         gw.release.build_help_db()
 
-    with gw.database.connect(db_path, row_factory=True) as cur:
+    with gw.sql.connect(db_path, row_factory=True) as cur:
 
         if len(args) == 0:
             cur.execute("SELECT DISTINCT project FROM help")

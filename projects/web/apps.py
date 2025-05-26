@@ -54,6 +54,8 @@ def setup_app(*,
     if app is None: app = Bottle()
     _first_setup = not hasattr(app, "_gway_paths")
     if _first_setup:
+        # The app produced by setup_app can be passed to setup_again with a new path
+        # In such cases, we avoid performing some setup steps
         app._gway_paths = {path: (project, module)}
         gw.web.static_url = lambda *args, **kwargs: build_url(static, *args, **kwargs)
         gw.web.temp_url   = lambda *args, **kwargs: build_url(temp, *args, **kwargs)
@@ -128,7 +130,7 @@ def setup_app(*,
         '''
         qr_html = ""
         if current_url:
-            qr_url = gw.qr_code.generate_url(current_url)
+            qr_url = gw.qr.generate_url(current_url)
             qr_html = f'''
                 <div class="qr">
                     <p class="qr">QR Code for this page:</p>

@@ -6,7 +6,7 @@ import threading
 from .decorators import requires
 
 
-def watch_file(filepath, on_change, poll_interval=5.0):
+def watch_file(filepath, on_change, *, poll_interval=5.0):
     stop_event = threading.Event()
 
     def _watch():
@@ -32,7 +32,7 @@ def watch_file(filepath, on_change, poll_interval=5.0):
 
 
 @requires("requests")
-def watch_url(url, on_change, poll_interval=30.0):
+def watch_url(url, on_change, *, poll_interval=30.0):
     import threading
     import requests
 
@@ -58,7 +58,7 @@ def watch_url(url, on_change, poll_interval=30.0):
 
 
 @requires("requests")
-def watch_pypi_package(package_name, on_change, poll_interval=300.0):
+def watch_pypi_package(package_name, on_change, *, poll_interval=300.0):
     import threading
     import requests
 
