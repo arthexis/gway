@@ -10,4 +10,5 @@ dateparser
 fastapi
 uvicorn
 docutils
+croniter
 qrcode[pil]

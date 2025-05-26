@@ -8,19 +8,8 @@ from typing import get_origin, get_args, Literal, Union
 
 from .logging import setup_logging
 from .builtins import abort
-from .environs import load_env, get_base_client, get_base_server
+from .envs import load_env, get_base_client, get_base_server
 from .gateway import gw, Gateway
-
-# TODO: When building a CLI for a function with single positional arg
-# allow that arguments before * to be passed positionally in the CLI too 
-# For example a function such as example(filter=None, *, foo=None)
-# Should allow to be called from the CLI like this:
-# gway example 'whatever'
-# gway example 'whatever' --foo more
-# (Even if filter has a default value, its should be allowed possitionally )
-# Currently, these functions can only be called like this:
-# gway example --filter 'whatever'
-# The rest of the functionality should be preserved
 
 
 def cli_main():
@@ -196,6 +185,7 @@ def process_commands(command_sources, callback=None, **context):
 
     return all_results, last_result
 
+
 def prepare_arguments(parsed_args, func_obj):
     """Prepare *args and **kwargs for a function call."""
     func_args = []
@@ -239,7 +229,7 @@ def load_batch(batch_filename):
     else:
         batch_path = batch_filename
         if not os.path.isfile(batch_path):
-            abort(f"Batch file not found: {batch_path}")
+            raise FileNotFoundError(f"Batch file not found: {batch_path}")
 
     gw.info(f"Loading commands from batch: {batch_path}")
 
@@ -300,30 +290,72 @@ def add_function_args(subparser, func_obj):
     sig = inspect.signature(func_obj)
     seen_kw_only = False
 
-    for i, (arg_name, param) in enumerate(sig.parameters.items()):
+    for arg_name, param in sig.parameters.items():
+        # VAR_POSITIONAL: e.g. *args
         if param.kind == inspect.Parameter.VAR_POSITIONAL:
-            subparser.add_argument(arg_name, nargs='*', help=f"Variable positional arguments for {arg_name}")
+            subparser.add_argument(
+                arg_name,
+                nargs='*',
+                help=f"Variable positional arguments for {arg_name}"
+            )
+
+        # VAR_KEYWORD: e.g. **kwargs
         elif param.kind == inspect.Parameter.VAR_KEYWORD:
-            subparser.add_argument('--kwargs', nargs='*', help='Additional keyword arguments as key=value pairs')
+            subparser.add_argument(
+                '--kwargs',
+                nargs='*',
+                help='Additional keyword arguments as key=value pairs'
+            )
+
+        # regular args or keyword-only
         else:
-            # Detect if it's before the first keyword-only argument (i.e. before *)
-            if not seen_kw_only and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.POSITIONAL_ONLY):
-                # Add as positional (if it has a default, make it optional)
-                if param.default != inspect.Parameter.empty:
-                    subparser.add_argument(arg_name, nargs='?', **get_arg_options(arg_name, param, gw))
+            is_positional = not seen_kw_only and param.kind in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD
+            )
+
+            # before the first kw-only marker (*) → positional
+            if is_positional:
+                opts = get_arg_options(arg_name, param, gw)
+                # argparse forbids 'required' on positionals:
+                opts.pop('required', None)
+
+                if param.default is not inspect.Parameter.empty:
+                    # optional positional
+                    subparser.add_argument(
+                        arg_name,
+                        nargs='?',
+                        **opts
+                    )
                 else:
-                    subparser.add_argument(arg_name, **get_arg_options(arg_name, param, gw))
+                    # required positional
+                    subparser.add_argument(
+                        arg_name,
+                        **opts
+                    )
+
+            # after * or keyword-only → flags
             else:
                 seen_kw_only = True
-                arg_name_cli = f"--{arg_name.replace('_', '-')}"
-                if param.annotation == bool or isinstance(param.default, bool):
-                    group = subparser.add_mutually_exclusive_group(required=False)
-                    group.add_argument(arg_name_cli, dest=arg_name, action="store_true", help=f"Enable {arg_name}")
-                    group.add_argument(f"--no-{arg_name.replace('_', '-')}", dest=arg_name, action="store_false", help=f"Disable {arg_name}")
+                cli_name = f"--{arg_name.replace('_', '-')}"
+                if param.annotation is bool or isinstance(param.default, bool):
+                    grp = subparser.add_mutually_exclusive_group(required=False)
+                    grp.add_argument(
+                        cli_name,
+                        dest=arg_name,
+                        action="store_true",
+                        help=f"Enable {arg_name}"
+                    )
+                    grp.add_argument(
+                        f"--no-{arg_name.replace('_', '-')}",
+                        dest=arg_name,
+                        action="store_false",
+                        help=f"Disable {arg_name}"
+                    )
                     subparser.set_defaults(**{arg_name: param.default})
                 else:
-                    arg_opts = get_arg_options(arg_name, param, gw)
-                    subparser.add_argument(arg_name_cli, **arg_opts)
+                    opts = get_arg_options(arg_name, param, gw)
+                    subparser.add_argument(cli_name, **opts)
 
 
 def get_arg_options(arg_name, param, gw=None):

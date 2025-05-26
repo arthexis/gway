@@ -92,7 +92,8 @@ def resource(*parts, touch=False, check=False, temp=False):
         path = pathlib.Path(gw.base_path, *parts)
 
     if not touch and check:
-        assert path.exists(), f"Resource {path} missing"
+        if not path.exists():
+            raise FileNotFoundError(f"Resource {path} missing")
 
     path.parent.mkdir(parents=True, exist_ok=True)
     if touch:
@@ -248,19 +249,41 @@ def sigils(*args: str):
 
 
 def run_batch(*script: str, **context):
-    """Run commands parsed from a .gws file."""
+    """Run commands parsed from a .gws file, falling back to the 'scripts/' resource bundle."""
     from .command import load_batch, process_commands
     from gway import gw
+    import os
 
-    gw.debug(f"{script=}")
+    gw.debug(f"run_batch called with script tuple: {script!r}")
+
+    # Ensure the last element ends with '.gws'
     if not script[-1].endswith(".gws"):
-        script = script[0:-1] + ((script[-1] + ".gws"), )
-    script_path = gw.resource(*script)
-    gw.debug(f"{script_path}")
+        script = script[:-1] + (script[-1] + ".gws",)
+        gw.debug(f"Appended .gws extension, new script tuple: {script!r}")
 
+    # Try to resolve the script as given
+    try:
+        script_path = gw.resource(*script, check=True)
+        gw.debug(f"Found script at: {script_path}")
+    except (FileNotFoundError, KeyError) as first_exc:
+        # Fallback: look in the 'scripts' directory of the package
+        gw.debug(f"Script not found at {script!r}: {first_exc!r}")
+        try:
+            script_path = gw.resource("scripts", *script)
+            gw.debug(f"Found script in 'scripts/': {script_path}")
+        except Exception as second_exc:
+            # If still not found, re-raise with a clear message
+            msg = (
+                f"Could not locate script {script!r} "
+                f"(tried direct lookup and under 'scripts/')."
+            )
+            gw.debug(f"{msg} Last error: {second_exc!r}")
+            raise FileNotFoundError(msg) from second_exc
+
+    # Load and run the batch
     command_sources, comments = load_batch(script_path)
-    gw.debug(f"{chr(10).join(comments)}")  # Optional: log batch comments
-
+    if comments:
+        gw.debug("Batch comments:\n" + "\n".join(comments))
     return process_commands(command_sources, **context)
 
 

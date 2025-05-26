@@ -8,4 +8,4 @@ from .decorators import requires
 from .sigils import Sigil, Resolver
 from .structs import Results
 from .logging import setup_logging
-from .environs import load_env
+from .envs import load_env

@@ -16,8 +16,8 @@ class AWG(int):
 
 
 def find_cable(
-    *,
     meters: Union[int, str, None] = None,
+    *,
     amps: Union[int, str] = "40",
     volts: Union[int, str] = "220",
     material: Literal["cu", "al", "?"] = "cu",
@@ -105,7 +105,7 @@ def find_cable(
         return {"awg": "n/a"}
 
 
-def find_conduit(awg, cables, conduit="emt"):
+def find_conduit(awg, cables, *, conduit="emt"):
     """Calculate the kind of conduit required for a set of cables."""
     with gw.sql.connect(load_data="awg") as cursor:
 
