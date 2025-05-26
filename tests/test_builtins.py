@@ -24,7 +24,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
             self.fail(f"AttributeError occurred: {e}")
 
     def test_load_qr_code_project(self):
-        project = gw.load_project("qr_code")
+        project = gw.load_project("qr")
         test_url = project.generate_url("test")
         self.assertTrue(test_url.endswith(".png"))
 
