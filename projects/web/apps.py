@@ -43,13 +43,6 @@ def redirect_error(error=None, note="", default="/gway/readme"):
     return ""
 
 
-# TODO: Ensure setup_app works by chaining on itself. This means the resulting app object
-# should be able to be passed to setup_app again, so that we could, for example, create one app
-# per module/project and host them together, or mount the same module on a different 
-# subpath and require some for of authentication (when that is implemented)
-# Completely constant routes should not be setup twice (though it doesn't impact performance 
-# much if it does, as long as it doesn't mangle the previous routes.)
-
 def setup_app(*, 
               app=None, project=None, module=None, 
               path="gway", static="static", temp="temp"
@@ -59,47 +52,48 @@ def setup_app(*,
 
     version = gw.version()
     if app is None: app = Bottle()
-    if not hasattr(app, "_gway_paths"):
+    _first_setup = not hasattr(app, "_gway_paths")
+    if _first_setup:
         app._gway_paths = {path: (project, module)}
+        gw.web.static_url = lambda *args, **kwargs: build_url(static, *args, **kwargs)
+        gw.web.temp_url   = lambda *args, **kwargs: build_url(temp, *args, **kwargs)
+        gw.web.app_url    = lambda *args, **kwargs: build_url(path, *args, **kwargs)
+        gw.web.redirect_error = redirect_error
+        
+        def security_middleware(app):
+            """Middleware to fix headers and secure cookies."""
+            def wrapped_app(environ, start_response):
+                def custom_start_response(status, headers, exc_info=None):
+                    # Remove default 'Server' header
+                    headers = [(k, v) for k, v in headers if k.lower() != 'server']
+                    # Add fixed headers
+                    headers += [
+                        ("Cache-Control", "no-cache"),
+                        ("X-Content-Type-Options", "nosniff"),
+                        ("Server", f"GWAY v{version}")  # Optional: replace with your server name
+                    ]
+                    return start_response(status, headers, exc_info)
+
+                return app(environ, custom_start_response)
+
+            # Patch Bottle's response.set_cookie to enforce secure, httponly
+            # This may report an error for cookies not being secure in development which we can ignore
+            original_set_cookie = response.set_cookie
+
+            @wraps(original_set_cookie)
+            def secure_set_cookie(name, value, **kwargs):
+                is_secure = request.urlparts.scheme == "https"
+                kwargs.setdefault("secure", is_secure)
+                kwargs.setdefault("httponly", True)
+                kwargs.setdefault("samesite", "Lax")
+                kwargs.setdefault("path", "/")
+                return original_set_cookie(name, value, **kwargs)
+
+            response.set_cookie = secure_set_cookie
+            return wrapped_app
+
     else:
         app._gway_paths[path] = (project, module)
-
-    gw.web.static_url = lambda *args, **kwargs: build_url(static, *args, **kwargs)
-    gw.web.temp_url   = lambda *args, **kwargs: build_url(temp, *args, **kwargs)
-    gw.web.app_url    = lambda *args, **kwargs: build_url(path, *args, **kwargs)
-    gw.web.redirect_error = redirect_error
-
-    def security_middleware(app):
-        """Middleware to fix headers and secure cookies."""
-        def wrapped_app(environ, start_response):
-            def custom_start_response(status, headers, exc_info=None):
-                # Remove default 'Server' header
-                headers = [(k, v) for k, v in headers if k.lower() != 'server']
-                # Add fixed headers
-                headers += [
-                    ("Cache-Control", "no-cache"),
-                    ("X-Content-Type-Options", "nosniff"),
-                    ("Server", f"GWAY v{version}")  # Optional: replace with your server name
-                ]
-                return start_response(status, headers, exc_info)
-
-            return app(environ, custom_start_response)
-
-        # Patch Bottle's response.set_cookie to enforce secure, httponly
-        # This may report an error for cookies not being secure in development which we can ignore
-        original_set_cookie = response.set_cookie
-
-        @wraps(original_set_cookie)
-        def secure_set_cookie(name, value, **kwargs):
-            is_secure = request.urlparts.scheme == "https"
-            kwargs.setdefault("secure", is_secure)
-            kwargs.setdefault("httponly", True)
-            kwargs.setdefault("samesite", "Lax")
-            kwargs.setdefault("path", "/")
-            return original_set_cookie(name, value, **kwargs)
-
-        response.set_cookie = secure_set_cookie
-        return wrapped_app
 
     def cookies_enabled():
         return request.get_cookie("cookies_accepted") == "yes"
@@ -177,29 +171,28 @@ def setup_app(*,
             </html>
         """, **locals())
 
-    @app.route("/accept-cookies", method="POST")
-    def accept_cookies():
-        response.set_cookie("cookies_accepted", "yes")
-        redirect_url = request.forms.get("next", "/readme")
-        response.status = 303
-        if not redirect_url.startswith("/"):
-            redirect_url = f"/{redirect_url}"
-        response.set_header("Location", f"/{path}{redirect_url}")
-        return ""
+    if _first_setup:
 
-    @app.route(f"/{static}/<filename:path>")
-    def send_static(filename):
-        return static_file(filename, root=gw.resource("data", "static"))
-    
-    @app.route(f"/{temp}/<filename:path>")
-    def send_temp(filename):
-        return static_file(filename, root=gw.resource("temp", "shared"))
+        @app.route("/accept-cookies", method="POST")
+        def accept_cookies():
+            response.set_cookie("cookies_accepted", "yes")
+            redirect_url = request.forms.get("next", "/readme")
+            response.status = 303
+            if not redirect_url.startswith("/"):
+                redirect_url = f"/{redirect_url}"
+            response.set_header("Location", f"/{path}{redirect_url}")
+            return ""
+
+        @app.route(f"/{static}/<filename:path>")
+        def send_static(filename):
+            return static_file(filename, root=gw.resource("data", "static"))
         
+        @app.route(f"/{temp}/<filename:path>")
+        def send_temp(filename):
+            return static_file(filename, root=gw.resource("temp", "shared"))
+            
     @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
-        # TODO: When a POST is received with a payload, assign the top-level
-        # items as kwargs (combined with request.query if needed)
-
         # Normalize incoming path
         segments   = view.strip("/").split("/")
         view_name  = segments[0].replace("-", "_")
@@ -275,12 +268,15 @@ def setup_app(*,
             content=content,
             css_files=css_files
         )
-            
-    @app.route("/", method=["GET", "POST"])
-    def index():
-        response.status = 302
-        response.set_header("Location", f"/{path}/readme")
-        return ""
+    
+    if _first_setup:
+                
+        @app.route("/", method=["GET", "POST"])
+        def index():
+            response.status = 302
+            response.set_header("Location", f"/{path}/readme")
+            return ""
 
-    app = security_middleware(app)
+        app = security_middleware(app)
+
     return app
