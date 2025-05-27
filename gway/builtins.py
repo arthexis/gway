@@ -249,17 +249,17 @@ def sigils(*args: str):
 
 
 def run_recipe(*script: str, **context):
-    """Run commands parsed from a .gws file, falling back to the 'scripts/' resource bundle."""
+    """Run commands parsed from a .gwr file, falling back to the 'scripts/' resource bundle."""
     from .console import load_recipe, process_commands
     from gway import gw
     import os
 
     gw.debug(f"run_recipe called with script tuple: {script!r}")
 
-    # Ensure the last element ends with '.gws'
-    if not script[-1].endswith(".gws"):
-        script = script[:-1] + (script[-1] + ".gws",)
-        gw.debug(f"Appended .gws extension, new script tuple: {script!r}")
+    # Ensure the last element ends with '.gwr'
+    if not script[-1].endswith(".gwr"):
+        script = script[:-1] + (script[-1] + ".gwr",)
+        gw.debug(f"Appended .gwr extension, new script tuple: {script!r}")
 
     # Try to resolve the script as given
     try:

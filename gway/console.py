@@ -22,7 +22,7 @@ def cli_main():
     parser.add_argument("-j", dest="json", nargs="?", const=True, default=False, 
                               help="Output result(s) as JSON, optionally to a file.")
     parser.add_argument("-n", dest="name", type=str, help="Name for the app instance and logger.")
-    parser.add_argument("-r", dest="recipe", type=str, help="Execute a GWAY recipe file.")
+    parser.add_argument("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
     parser.add_argument("-s", dest="server", type=str, help="Specify server environment")
     parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing")
     parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode")
@@ -212,14 +212,14 @@ def prepare_arguments(parsed_args, func_obj):
 
 
 def load_recipe(recipe_filename):
-    """Load commands and comments from a .gws file."""
+    """Load commands and comments from a .gwr file."""
     commands = []
     comments = []
 
     if not os.path.isabs(recipe_filename):
         candidate_names = [recipe_filename]
         if not os.path.splitext(recipe_filename)[1]:
-            candidate_names += [f"{recipe_filename}.gws", f"{recipe_filename}.txt"]
+            candidate_names += [f"{recipe_filename}.gwr", f"{recipe_filename}.txt"]
         for name in candidate_names:
             recipe_path = gw.resource("scripts", name)
             if os.path.isfile(recipe_path):

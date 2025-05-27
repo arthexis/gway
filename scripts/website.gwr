@@ -1,4 +1,5 @@
-# Default GWAY website config
+# Default GWAY website ingredients
+
 web setup-app 
 web start-server --daemon
 until --lock-file VERSION --lock-pypi
