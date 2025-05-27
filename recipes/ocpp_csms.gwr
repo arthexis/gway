@@ -1,0 +1,5 @@
+# OCPP 1.6 CSMS Recipe with basic RFID auth
+
+ocpp setup-csms-app --allowlist temp/csms/customers.cdv
+web start-server --daemon
+until --lock-file VERSION --lock-pypi

@@ -12,3 +12,4 @@ uvicorn
 docutils
 croniter
 qrcode[pil]
+cryptography
