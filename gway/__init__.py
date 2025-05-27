@@ -3,7 +3,7 @@
 # right entry-point depending on what channel you're comming from.
 
 from .gateway import Gateway, gw
-from .command import cli_main, process_commands, load_batch
+from .console import cli_main, process_commands, load_batch
 from .decorators import requires
 from .sigils import Sigil, Resolver
 from .structs import Results

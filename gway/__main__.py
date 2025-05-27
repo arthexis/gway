@@ -1,4 +1,4 @@
-from .command import cli_main
+from .console import cli_main
 
 r"""
   __                                 .___        .__                        .___                

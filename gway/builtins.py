@@ -250,7 +250,7 @@ def sigils(*args: str):
 
 def run_batch(*script: str, **context):
     """Run commands parsed from a .gws file, falling back to the 'scripts/' resource bundle."""
-    from .command import load_batch, process_commands
+    from .console import load_batch, process_commands
     from gway import gw
     import os
 
