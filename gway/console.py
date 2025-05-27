@@ -221,11 +221,11 @@ def load_recipe(recipe_filename):
         if not os.path.splitext(recipe_filename)[1]:
             candidate_names += [f"{recipe_filename}.gwr", f"{recipe_filename}.txt"]
         for name in candidate_names:
-            recipe_path = gw.resource("scripts", name)
+            recipe_path = gw.resource("recipes", name)
             if os.path.isfile(recipe_path):
                 break
         else:
-            abort(f"Recipe not found in scripts/: tried {candidate_names}")
+            abort(f"Recipe not found in recipes/: tried {candidate_names}")
     else:
         recipe_path = recipe_filename
         if not os.path.isfile(recipe_path):

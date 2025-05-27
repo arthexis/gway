@@ -249,7 +249,7 @@ def sigils(*args: str):
 
 
 def run_recipe(*script: str, **context):
-    """Run commands parsed from a .gwr file, falling back to the 'scripts/' resource bundle."""
+    """Run commands parsed from a .gwr file, falling back to the 'recipes/' resource bundle."""
     from .console import load_recipe, process_commands
     from gway import gw
     import os
@@ -266,16 +266,16 @@ def run_recipe(*script: str, **context):
         script_path = gw.resource(*script, check=True)
         gw.debug(f"Found script at: {script_path}")
     except (FileNotFoundError, KeyError) as first_exc:
-        # Fallback: look in the 'scripts' directory of the package
+        # Fallback: look in the 'recipes' directory of the package
         gw.debug(f"Script not found at {script!r}: {first_exc!r}")
         try:
-            script_path = gw.resource("scripts", *script)
-            gw.debug(f"Found script in 'scripts/': {script_path}")
+            script_path = gw.resource("recipes", *script)
+            gw.debug(f"Found script in 'recipes/': {script_path}")
         except Exception as second_exc:
             # If still not found, re-raise with a clear message
             msg = (
                 f"Could not locate script {script!r} "
-                f"(tried direct lookup and under 'scripts/')."
+                f"(tried direct lookup and under 'recipes/')."
             )
             gw.debug(f"{msg} Last error: {second_exc!r}")
             raise FileNotFoundError(msg) from second_exc
