@@ -11,8 +11,8 @@ _stop_event = threading.Event()
 
 
 class _ScheduledJob:
-    def __init__(self, script: str, *, cron: str = None, delay: float = None, repeat: bool = False):
-        self.script = script
+    def __init__(self, recipe: str, *, cron: str = None, delay: float = None, repeat: bool = False):
+        self.recipe = recipe
         self.cron = cron
         self.delay = delay
         self.repeat = repeat
@@ -44,8 +44,8 @@ def _scheduler_loop(threaded: bool):
         for job in list(_jobs):
             if job.next_run <= now:
                 def _run(job):
-                    gw.info(f"[Scheduler] Executing script: {job.script}")
-                    gw.run_batch(job.script)
+                    gw.info(f"[Scheduler] Executing recipe: {job.recipe}")
+                    gw.run_recipe(job.recipe)
 
                 if threaded:
                     threading.Thread(target=_run, args=(job,), daemon=True).start()
@@ -57,13 +57,13 @@ def _scheduler_loop(threaded: bool):
         time.sleep(1)
 
 
-def schedule(script: str, *, 
+def schedule(recipe: str, *, 
              cron: str = None, delay: float = None, repeat: bool = False, 
              daemon: bool = False, threaded: bool = True):
     """
-    Schedule a batch script to run.
+    Schedule a recipe to run.
 
-    :param script: Path to the batch script file
+    :param recipe: Path to the batch recipe file
     :param cron: A cron expression (e.g. '0 2 * * *') for scheduled time
     :param delay: Delay in seconds before first run
     :param repeat: Whether to repeat according to cron/delay
@@ -71,7 +71,7 @@ def schedule(script: str, *,
     :param threaded: Execute each job in its own thread
     :return: Coroutine if daemon=True, otherwise the ScheduledJob instance
     """
-    job = _ScheduledJob(script, cron=cron, delay=delay, repeat=repeat)
+    job = _ScheduledJob(recipe, cron=cron, delay=delay, repeat=repeat)
     _jobs.append(job)
 
     global _scheduler_thread

@@ -248,13 +248,13 @@ def sigils(*args: str):
     return Sigil(text).list_sigils()
 
 
-def run_batch(*script: str, **context):
+def run_recipe(*script: str, **context):
     """Run commands parsed from a .gws file, falling back to the 'scripts/' resource bundle."""
-    from .console import load_batch, process_commands
+    from .console import load_recipe, process_commands
     from gway import gw
     import os
 
-    gw.debug(f"run_batch called with script tuple: {script!r}")
+    gw.debug(f"run_recipe called with script tuple: {script!r}")
 
     # Ensure the last element ends with '.gws'
     if not script[-1].endswith(".gws"):
@@ -280,10 +280,10 @@ def run_batch(*script: str, **context):
             gw.debug(f"{msg} Last error: {second_exc!r}")
             raise FileNotFoundError(msg) from second_exc
 
-    # Load and run the batch
-    command_sources, comments = load_batch(script_path)
+    # Load and run the recipe
+    command_sources, comments = load_recipe(script_path)
     if comments:
-        gw.debug("Batch comments:\n" + "\n".join(comments))
+        gw.debug("Recipe comments:\n" + "\n".join(comments))
     return process_commands(command_sources, **context)
 
 

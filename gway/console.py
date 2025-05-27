@@ -15,14 +15,14 @@ from .gateway import gw, Gateway
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
-    parser.add_argument("-a", dest="all", action="store_true", help="Return all results, not just the last one")
-    parser.add_argument("-b", dest="batch", type=str, help="Run commands from a batch script")
+    parser.add_argument("-a", dest="all", action="store_true", help="Return all results, not just the last")
     parser.add_argument("-c", dest="client", type=str, help="Specify client environment")
     parser.add_argument("-d", dest="debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-e", dest="expression", type=str, help="Return resolved sigil at the end")
     parser.add_argument("-j", dest="json", nargs="?", const=True, default=False, 
                               help="Output result(s) as JSON, optionally to a file.")
     parser.add_argument("-n", dest="name", type=str, help="Name for the app instance and logger.")
+    parser.add_argument("-r", dest="recipe", type=str, help="Execute a GWAY recipe file.")
     parser.add_argument("-s", dest="server", type=str, help="Specify server environment")
     parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing")
     parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode")
@@ -41,9 +41,9 @@ def cli_main():
     load_env("client", client_name, env_root)
     load_env("server", server_name, env_root)
 
-    if args.batch:
-        command_sources, comments = load_batch(args.batch)
-        gw.info(f"Comments in batch script:\n{chr(10).join(comments)}")
+    if args.recipe:
+        command_sources, comments = load_recipe(args.recipe)
+        gw.info(f"Comments in recipe:\n{chr(10).join(comments)}")
     else:
         if not args.commands:
             parser.print_help()
@@ -93,7 +93,7 @@ def cli_main():
 
 
 def process_commands(command_sources, callback=None, **context):
-    """Shared logic for executing CLI or batch commands with optional per-node callback."""
+    """Shared logic for executing CLI or recipe commands with optional per-node callback."""
     from gway import gw, Gateway
 
     all_results = []
@@ -211,29 +211,29 @@ def prepare_arguments(parsed_args, func_obj):
     return func_args, {**func_kwargs, **extra_kwargs}
 
 
-def load_batch(batch_filename):
+def load_recipe(recipe_filename):
     """Load commands and comments from a .gws file."""
     commands = []
     comments = []
 
-    if not os.path.isabs(batch_filename):
-        candidate_names = [batch_filename]
-        if not os.path.splitext(batch_filename)[1]:
-            candidate_names += [f"{batch_filename}.gws", f"{batch_filename}.txt"]
+    if not os.path.isabs(recipe_filename):
+        candidate_names = [recipe_filename]
+        if not os.path.splitext(recipe_filename)[1]:
+            candidate_names += [f"{recipe_filename}.gws", f"{recipe_filename}.txt"]
         for name in candidate_names:
-            batch_path = gw.resource("scripts", name)
-            if os.path.isfile(batch_path):
+            recipe_path = gw.resource("scripts", name)
+            if os.path.isfile(recipe_path):
                 break
         else:
-            abort(f"Batch script not found in scripts/: tried {candidate_names}")
+            abort(f"Recipe not found in scripts/: tried {candidate_names}")
     else:
-        batch_path = batch_filename
-        if not os.path.isfile(batch_path):
-            raise FileNotFoundError(f"Batch file not found: {batch_path}")
+        recipe_path = recipe_filename
+        if not os.path.isfile(recipe_path):
+            raise FileNotFoundError(f"Recipe not found: {recipe_path}")
 
-    gw.info(f"Loading commands from batch: {batch_path}")
+    gw.info(f"Loading commands from recipe: {recipe_path}")
 
-    with open(batch_path) as f:
+    with open(recipe_path) as f:
         for line in f:
             stripped_line = line.strip()
             if stripped_line.startswith("#"):
