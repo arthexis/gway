@@ -8,7 +8,6 @@ import time as _time
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
 # Instead, use "from gway import gw" inside the function definitions themselves
-# Trust me, bro. It works.
     
 
 def hello_world(name: str = "World", *, greeting: str = "Hello"):
@@ -226,22 +225,6 @@ def help(*args, full_code=False):
         return results[0] if len(results) == 1 else {"Matches": results}
 
 
-def now(*, utc=False) -> "datetime":
-    """Return the current datetime object."""
-    return datetime.datetime.now(datetime.timezone.utc) if utc else datetime.datetime.now()
-
-
-def time(*, utc=False) -> str:
-    """Return the current time of day as HH:MM:SS."""
-    struct_time = _time.gmtime() if utc else _time.localtime()
-    return _time.strftime('%H:%M:%S', struct_time)
-
-
-def timestamp(*, utc=False) -> str:
-    """Return the current timestamp in ISO-8601 format."""
-    return now(utc=utc).isoformat().replace("+00:00", "Z" if utc else "")
-
-
 def sigils(*args: str):
     from .sigils import Sigil
     text = "\n".join(args)
@@ -252,7 +235,6 @@ def run_recipe(*script: str, **context):
     """Run commands parsed from a .gwr file, falling back to the 'recipes/' resource bundle."""
     from .console import load_recipe, process_commands
     from gway import gw
-    import os
 
     gw.debug(f"run_recipe called with script tuple: {script!r}")
 
@@ -286,14 +268,3 @@ def run_recipe(*script: str, **context):
         gw.debug("Recipe comments:\n" + "\n".join(comments))
     return process_commands(command_sources, **context)
 
-
-def skip_all(chunk):
-    from gway import gw
-    gw.info(f"Skiping chunk: {chunk}")
-    return False
-
-
-def log_all(chunk):
-    from gway import gw
-    gw.info(f"Logging chunk: {chunk}")
-    return True

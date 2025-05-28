@@ -4,9 +4,9 @@ from gway import gw
 # and are used to simulate the CSMS server. Ported from gsol to gway.
 
 def setup_sink_app(*, 
-                   host='[OCPP_CSMS_HOST|0.0.0.0]', 
-                   port='[OCPP_CSMS_PORT|9000]', 
-                   app=None,
+            host='[OCPP_CSMS_HOST|0.0.0.0]', 
+            port='[OCPP_CSMS_PORT|9000]', 
+            app=None,
         ):
     """Basic OCPP passive sink for messages, acting as a dummy CSMS server."""
     import json
@@ -58,11 +58,11 @@ def setup_sink_app(*,
     
 
 def setup_csms_app(*,
-            host='[OCPP_CSMS_HOST|0.0.0.0]', 
-            port='[OCPP_CSMS_PORT|9000]', 
-            app=None,
-            allowlist=None,
-        ):
+        host='[OCPP_CSMS_HOST|0.0.0.0]', 
+        port='[OCPP_CSMS_PORT|9000]', 
+        app=None,
+        allowlist=None,
+    ):
     """
     OCPP 1.6 CSMS implementation that validates RFID Authorize requests.
 
@@ -73,31 +73,55 @@ def setup_csms_app(*,
     """
     import json
     import traceback
+    import os
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
     if app is None:
         app = FastAPI()
 
+    def load_allowlist() -> dict[str, list[str]]:
+        if not allowlist:
+            return {}
+
+        try:
+            path = gw.resource(allowlist)
+            if not os.path.exists(path):
+                gw.error(f"[OCPP] Allowlist file not found: {path}")
+                return {}
+
+            result = {}
+            with open(path, "r") as f:
+                for lineno, line in enumerate(f, start=1):
+                    line = line.strip()
+                    if not line: continue
+                    parts = line.split(":")
+                    rfid = parts[0].strip()
+
+                    if len(rfid) == 8 and all(c in "0123456789ABCDEFabcdef" for c in rfid):
+                        extra_fields = [part.strip() for part in parts[1:]]
+                        result[rfid] = extra_fields
+                    else:
+                        gw.warn(f"[OCPP] Invalid RFID at line {lineno} in allowlist: '{line}'")
+
+            return result
+
+        except Exception as e:
+            gw.abort(f"[OCPP] Failed to read allowlist '{allowlist}': {e}")
+
     def is_authorized_rfid(rfid: str) -> bool:
         if not allowlist:
             return True
-        try:
-            path = gw.resource(allowlist)
-            with open(path, "r") as f:
-                rfids = {line.strip() for line in f if line.strip()}
-            return rfid in rfids
-        except Exception as e:
-            gw.error(f"[OCPP] Failed to read allowlist '{allowlist}': {e}")
-            return False
+        return rfid in load_allowlist()
 
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
-        gw.info(f"[OCPP] New WebSocket connection at /{path}")
+        charger_id = path.strip("/").split("/")[-1]
+        gw.info(f"[OCPP] New WebSocket connection at /{path} (charger_id={charger_id})")
         try:
             await websocket.accept()
             while True:
                 raw = await websocket.receive_text()
-                gw.info(f"[OCPP:{path}] Message received: {raw}")
+                gw.info(f"[OCPP:{charger_id}] Message received: {raw}")
 
                 try:
                     msg = json.loads(raw)
@@ -107,33 +131,36 @@ def setup_csms_app(*,
                         action = msg[2]
                         payload = msg[3] if len(msg) > 3 else {}
 
-                        gw.info(f"[OCPP:{path}] -> Action: {action} | Payload: {payload}")
+                        gw.info(f"[OCPP:{charger_id}] -> Action: {action} | Payload: {payload}")
 
                         if action == "Authorize":
                             id_tag = payload.get("idTag")
                             accepted = is_authorized_rfid(id_tag)
                             status = "Accepted" if accepted else "Rejected"
                             response = [3, message_id, {"idTagInfo": {"status": status}}]
-                            gw.info(f"[OCPP:{path}] <- Authorize: {id_tag} -> {status}")
+                            gw.info(f"[OCPP:{charger_id}] <- Authorize: {id_tag} -> {status}")
                         else:
-                            # Generic Accept response for other calls
                             response = [3, message_id, {"status": "Accepted"}]
-                            gw.info(f"[OCPP:{path}] <- Acknowledged {action}: {response}")
+                            gw.info(f"[OCPP:{charger_id}] <- Acknowledged {action}: {response}")
 
                         await websocket.send_text(json.dumps(response))
                     else:
-                        gw.error(f"[OCPP:{path}] Received non-Call message or malformed")
+                        gw.error(f"[OCPP:{charger_id}] Received non-Call message or malformed")
 
                 except Exception as e:
-                    gw.error(f"[OCPP:{path}] Error parsing message: {e}")
+                    gw.error(f"[OCPP:{charger_id}] Error parsing message: {e}")
                     gw.debug(traceback.format_exc())
 
         except WebSocketDisconnect:
-            gw.info(f"[OCPP:{path}] Disconnected")
+            gw.info(f"[OCPP:{charger_id}] Disconnected")
         except Exception as e:
-            gw.error(f"[OCPP:{path}] WebSocket error: {e}")
+            gw.error(f"[OCPP:{charger_id}] WebSocket error: {e}")
             gw.debug(traceback.format_exc())
 
+    if allowlist:
+        _ = load_allowlist()  # Validates on startup
+
     gw.info(f"Setup OCPP 1.6 auth sink on {host}:{port} (allowlist={allowlist})")
+
     return app
 
