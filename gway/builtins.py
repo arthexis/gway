@@ -232,7 +232,10 @@ def sigils(*args: str):
 
 
 def run_recipe(*script: str, **context):
-    """Run commands parsed from a .gwr file, falling back to the 'recipes/' resource bundle."""
+    """
+    Run commands parsed from a .gwr file, falling back to the 'recipes/' resource bundle.
+    Recipes are gway scripts composed of one command per line with optional comments.
+    """
     from .console import load_recipe, process_commands
     from gway import gw
 

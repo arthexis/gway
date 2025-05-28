@@ -41,7 +41,7 @@ def setup_sink_app(*,
                         gw.info(f"[OCPP:{path}] <- Acknowledged: {response}")
                     else:
                         # Unknown or non-call message
-                        gw.error(f"[OCPP:{path}] Received non-Call message or malformed")
+                        gw.warning(f"[OCPP:{path}] Received non-Call message or malformed")
 
                 except Exception as e:
                     gw.error(f"[OCPP:{path}] Error parsing message:", str(e))
@@ -145,7 +145,7 @@ def setup_csms_app(*,
 
                         await websocket.send_text(json.dumps(response))
                     else:
-                        gw.error(f"[OCPP:{charger_id}] Received non-Call message or malformed")
+                        gw.warning(f"[OCPP:{charger_id}] Received non-Call message or malformed")
 
                 except Exception as e:
                     gw.error(f"[OCPP:{charger_id}] Error parsing message: {e}")
@@ -159,6 +159,7 @@ def setup_csms_app(*,
 
     if allowlist:
         _ = load_allowlist()  # Validates on startup
+        gw.debug("Allowlist loaded without errors.")
 
     gw.info(f"Setup OCPP 1.6 auth sink on {host}:{port} (allowlist={allowlist})")
 

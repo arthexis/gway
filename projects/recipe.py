@@ -83,3 +83,7 @@ Icon=accessories-text-editor
     subprocess.run(["update-desktop-database", str(app_dir)], check=True)
 
     gw.info(".gwr association registered in your Linux desktop environment.")
+
+
+def run(*script: str, **context):
+    return gw.run_recipe(*script, **context)
