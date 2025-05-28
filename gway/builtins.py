@@ -2,8 +2,6 @@ import os
 import ast
 import pathlib
 import textwrap
-import datetime
-import time as _time
 
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
@@ -226,6 +224,7 @@ def help(*args, full_code=False):
 
 
 def sigils(*args: str):
+    """List the valid sigils found in any of the given args."""
     from .sigils import Sigil
     text = "\n".join(args)
     return Sigil(text).list_sigils()
