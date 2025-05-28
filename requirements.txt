@@ -13,3 +13,4 @@ docutils
 croniter
 qrcode[pil]
 cryptography
+jinja2

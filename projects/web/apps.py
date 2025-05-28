@@ -47,11 +47,21 @@ def setup_app(*,
               app=None, project=None, module=None, 
               path="gway", static="static", temp="temp"
             ):
-    """Configure a simple application that showcases the use of GWAY to generate web apps."""
+    """
+    Configure a simple application that showcases the use of GWAY to generate web apps.
+    This version uses Bottle. 
+    """
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     version = gw.version()
     if app is None: app = Bottle()
+
+    # TODO: When receiving an existing app, validate its a Bottle app, if not show a
+    # critical error explaining the mismatch unless there is some way to integrate them.
+    # Consider passing multiple apps in a tuple as an omnibus and just modifying the 
+    # Bottle app among them, and leaving the rest as-is.
+    # start_server would have to handle receiving multple apps in a tuple as well.
+
     _first_setup = not hasattr(app, "_gway_paths")
     if _first_setup:
         # The app produced by setup_app can be passed to setup_again with a new path

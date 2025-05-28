@@ -7,7 +7,7 @@ Type=simple
 User=arthe
 WorkingDirectory=/home/arthe/gway
 ExecStartPre=/home/arthe/gway/upgrade.sh
-ExecStart=/home/ubuntu/gway/gway.sh -r ocpp_csms                                     
+ExecStart=/home/arthe/gway/gway.sh -r ocpp_csms                                     
 Restart=on-failure
 Environment=PYTHONUNBUFFERED=1
 StandardOutput=journal

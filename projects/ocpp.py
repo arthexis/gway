@@ -57,6 +57,19 @@ def setup_sink_app(*,
     return app
     
 
+import json
+import traceback
+import os
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from typing import Dict
+
+# Track active connections
+_active_cons: Dict[str, WebSocket] = {}
+
+
 def setup_csms_app(*,
         host='[OCPP_CSMS_HOST|0.0.0.0]', 
         port='[OCPP_CSMS_PORT|9000]', 
@@ -64,20 +77,20 @@ def setup_csms_app(*,
         allowlist=None,
     ):
     """
-    OCPP 1.6 CSMS implementation that validates RFID Authorize requests.
-
-    - If `allowlist` is provided, it should be a filename with one RFID per line.
-    - If `allowlist` is not provided, all Authorize requests are accepted.
-    - Uses gw.resource to resolve resource paths.
-    - Reloads allowlist on each transaction for hot reloading support.
+    OCPP 1.6 CSMS implementation with:
+    - RFID Authorize validation via optional allowlist file
+    - WebSocket session tracking
+    - Basic status page at /
+    - UI support for de-authorizing chargers
     """
-    import json
-    import traceback
-    import os
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
     if app is None:
         app = FastAPI()
+
+    static_dir = gw.resource("data", "static")
+    templates_dir = gw.resource("data", "templates")
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    templates = Jinja2Templates(directory=templates_dir)
 
     def load_allowlist() -> dict[str, list[str]]:
         if not allowlist:
@@ -119,6 +132,8 @@ def setup_csms_app(*,
         gw.info(f"[OCPP] New WebSocket connection at /{path} (charger_id={charger_id})")
         try:
             await websocket.accept()
+            _active_cons[charger_id] = websocket
+
             while True:
                 raw = await websocket.receive_text()
                 gw.info(f"[OCPP:{charger_id}] Message received: {raw}")
@@ -156,12 +171,27 @@ def setup_csms_app(*,
         except Exception as e:
             gw.error(f"[OCPP:{charger_id}] WebSocket error: {e}")
             gw.debug(traceback.format_exc())
+        finally:
+            _active_cons.pop(charger_id, None)
+
+    @app.get("/", response_class=HTMLResponse)
+    async def status_page(request: Request):
+        return templates.TemplateResponse("status.html", {
+            "request": request,
+            "connections": _active_cons.keys()
+        })
+
+    @app.post("/disconnect/{charger_id}")
+    async def disconnect_charger(charger_id: str):
+        ws = _active_cons.get(charger_id)
+        if ws:
+            await ws.close(code=1000)
+            return {"status": "disconnected"}
+        return {"status": "not_found"}
 
     if allowlist:
         _ = load_allowlist()  # Validates on startup
         gw.debug("Allowlist loaded without errors.")
 
     gw.info(f"Setup OCPP 1.6 auth sink on {host}:{port} (allowlist={allowlist})")
-
     return app
-
