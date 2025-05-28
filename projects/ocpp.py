@@ -1,3 +1,12 @@
+
+import json
+import traceback
+import os
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from typing import Dict
 from gway import gw
 
 # These are ports of the functions originally tested on the eTron charger
@@ -56,15 +65,6 @@ def setup_sink_app(*,
     gw.info(f"Setup passive OCPP sink on {host}:{port}")
     return app
     
-
-import json
-import traceback
-import os
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from typing import Dict
 
 # Track active connections
 _active_cons: Dict[str, WebSocket] = {}
