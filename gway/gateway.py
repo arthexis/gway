@@ -16,10 +16,11 @@ class Gateway(Resolver):
     _builtin_cache = None
     _thread_local = threading.local()
 
-    def __init__(self, *, verbose=False, name="gw", **kwargs):
+    def __init__(self, *, verbose=False, name="gw", _debug=False, **kwargs):
 
         self._cache = {}
         self._async_threads = []
+        self._debug = _debug
         self.base_path = os.path.dirname(os.path.dirname(__file__))
         self.name = name
         self.logger = logging.getLogger(name)
@@ -278,6 +279,13 @@ class Gateway(Resolver):
         # Cache and return
         self._cache[project_name] = project_obj
         return project_obj
+    
+    def log(self, *args, **kwargs):
+        if self._debug:
+            self.debug(*args, **kwargs)
+            return "debug"
+        self.info(*args, **kwargs)
+        return "info"
     
 
 # This line allows using "from gway import gw" everywhere else

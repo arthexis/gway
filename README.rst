@@ -211,6 +211,201 @@ This script sets up a web application, launches the server in daemon mode, and w
 Recipes make Gway scripting modular and composable. Include them in your automation flows for maximum reuse and clarity.
 
 
+INCLUDED PROJECTS
+=================
+
+.. rubric:: awg
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - find_cable
+   * - find_conduit
+
+.. rubric:: clip
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - copy
+   * - requires
+
+.. rubric:: etron
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - extract_records
+
+.. rubric:: gif
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - animate
+
+.. rubric:: gui
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - lookup_font
+   * - notify
+   * - requires
+
+.. rubric:: job
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - schedule
+
+.. rubric:: net
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - export_connections
+
+.. rubric:: ocpp
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - setup_csms_app
+   * - setup_sink_app
+
+.. rubric:: odoo
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - Form
+   * - asynccontextmanager
+   * - create_quote
+   * - execute
+   * - fetch_customers
+   * - fetch_order
+   * - fetch_products
+   * - fetch_quotes
+   * - fetch_templates
+   * - get_user_info
+   * - read_chat
+   * - send_chat
+   * - setup_chatbot_app
+
+.. rubric:: png
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - credit_images
+   * - sanitize_filename
+
+.. rubric:: qr
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - generate_b64data
+   * - generate_image
+   * - generate_img
+   * - generate_url
+   * - requires
+   * - scan_image
+   * - scan_img
+
+.. rubric:: readme
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - collect_projects
+
+.. rubric:: recipe
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - register_gwr
+   * - run
+
+.. rubric:: release
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - build
+   * - build_help
+   * - extract_todos
+
+.. rubric:: sql
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - connect
+   * - contextmanager
+   * - infer_type
+
+.. rubric:: t
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - now
+   * - now_plus
+   * - to_download
+   * - ts
+
+.. rubric:: tests
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - dummy_function
+   * - variadic_both
+   * - variadic_keyword
+   * - variadic_positional
+
+.. rubric:: web
+
+.. list-table:: Functions
+   :header-rows: 1
+
+   * - Function
+   * - awg_finder
+   * - build_url
+   * - help
+   * - qr_code
+   * - readme
+   * - redirect_error
+   * - requires
+   * - setup_app
+   * - setup_proxy
+   * - start_server
+   * - theme
+   * - urlencode
+   * - wraps
+
+
 License
 -------
 
