@@ -233,45 +233,47 @@ class Gateway(Resolver):
         project_name = project_name.replace("-", "_")
         project_path = gw.resource(root, *project_name.split("."))
         self.debug(f"Load {project_name=} under {root=} -> {project_path}")
-        load_mode = None
 
+        # Determine if it's a package or module
         if os.path.isdir(project_path) and os.path.isfile(os.path.join(project_path, "__init__.py")):
             # It's a package
             project_file = os.path.join(project_path, "__init__.py")
             module_name = project_name.replace(".", "_")
-            load_mode = "package"
         else:
             # It's a single module
             project_file = str(project_path) + ".py"
             if not os.path.isfile(project_file):
                 raise FileNotFoundError(f"Project file or package not found: {project_file}")
             module_name = project_name.replace(".", "_")
-            load_mode = "module"
 
+        # Load spec
         spec = importlib.util.spec_from_file_location(module_name, project_file)
         if spec is None or spec.loader is None:
-            raise ImportError(f"Could not load spec for {project_name}")
+            raise ImportError(f"Could not load spec for {project_name!r} from {project_file}")
 
         project_module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = project_module  # Important for relative imports
-        spec.loader.exec_module(project_module)
+        sys.modules[module_name] = project_module  # so relative imports work
 
-        if load_mode == "module":
-            project_functions = {
-                name: obj for name, obj in inspect.getmembers(project_module, inspect.isfunction)
-                if not name.startswith("_") and obj.__module__ == project_module.__name__
-            }
-        else:
-            project_functions = {
-                name: obj for name, obj in inspect.getmembers(project_module, inspect.isfunction)
-                if not name.startswith("_")
-            }
+        # === NEW: wrap exec_module to catch ImportError and log it ===
+        try:
+            spec.loader.exec_module(project_module)
+        except Exception as e:
+            self.error(f"Failed to import project '{project_name}' from {project_file}: {e}", exc_info=True)
+            # re-raise so caller sees it
+            raise
 
-        # Wrap project functions in a project object
+        # Collect all public functions
+        project_functions = {
+            name: obj
+            for name, obj in inspect.getmembers(project_module, inspect.isfunction)
+            if not name.startswith("_")
+        }
+
+        # Wrap them up on a fresh namespace object
         project_obj = type(project_name, (), {})()
         for func_name, func_obj in project_functions.items():
-            wrapped_func = self._wrap_callable(f"{project_name}.{func_name}", func_obj)
-            setattr(project_obj, func_name, wrapped_func)
+            wrapped = self._wrap_callable(f"{project_name}.{func_name}", func_obj)
+            setattr(project_obj, func_name, wrapped)
 
         # Cache and return
         self._cache[project_name] = project_obj

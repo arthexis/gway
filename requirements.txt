@@ -14,3 +14,4 @@ croniter
 qrcode[pil]
 cryptography
 jinja2
+pygame
