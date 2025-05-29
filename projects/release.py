@@ -16,6 +16,7 @@ def build(*,
     user: str = "[PYPI_USERNAME]",
     password: str = "[PYPI_PASSWORD]",
     token: str = "[PYPI_API_TOKEN]",
+    projects: bool = False,
     git: bool = False,
     all: bool = False
 ) -> None:
@@ -36,6 +37,7 @@ def build(*,
         twine = True
         help_db = True
         git = True
+        projects = True
 
     gw.info(f"Running tests before project build.")
     test_result = gw.test()
@@ -49,6 +51,10 @@ def build(*,
 
     if help_db:
         build_help()
+
+    if projects:
+        project_dir = gw.resource("projects")
+        gw.readme.collect_projects(project_dir)
 
     project_name = "gway"
     description = "Software Project Infrastructure by https://www.gelectriic.com"
