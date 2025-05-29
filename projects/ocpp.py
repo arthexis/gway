@@ -88,7 +88,7 @@ def setup_csms_app(*,
         app = FastAPI()
 
     static_dir = gw.resource("data", "static")
-    templates_dir = gw.resource("data", "templates")
+    templates_dir = gw.resource("data", "ocpp", "templates")
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
     templates = Jinja2Templates(directory=templates_dir)
 

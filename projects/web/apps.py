@@ -1,6 +1,7 @@
 import importlib
 from functools import wraps
 from urllib.parse import urlencode
+from collections.abc import Iterable
 from gway import gw
 
 
@@ -44,8 +45,8 @@ def redirect_error(error=None, note="", default="/gway/readme"):
 
 
 def setup_app(*, 
-              app=None, project=None, module=None, 
-              path="gway", static="static", temp="temp"
+            app=None, project=None, module=None, 
+            path="gway", static="static", temp="temp"
             ):
     """
     Configure a simple application that showcases the use of GWAY to generate web apps.
@@ -54,13 +55,21 @@ def setup_app(*,
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
     version = gw.version()
-    if app is None: app = Bottle()
 
-    # TODO: When receiving an existing app, validate its a Bottle app, if not show a
-    # critical error explaining the mismatch unless there is some way to integrate them.
-    # Consider passing multiple apps in a tuple as an omnibus and just modifying the 
-    # Bottle app among them, and leaving the rest as-is.
-    # start_server would have to handle receiving multple apps in a tuple as well.
+    if app is not None:
+        if isinstance(app, Iterable) and not isinstance(app, Bottle):
+            bottles = [a for a in app if isinstance(a, Bottle)]
+            if len(bottles) == 1:
+                app = bottles[0]
+            elif len(bottles) == 0:
+                gw.warn("No Bottle app found in iterable; creating new Bottle app.")
+                app = Bottle()
+            else:
+                raise TypeError("Iterable must contain at most one Bottle app.")
+        elif not isinstance(app, Bottle):
+            raise TypeError("Provided app must be a Bottle instance or an iterable containing one.")
+    else:
+        app = Bottle()
 
     _first_setup = not hasattr(app, "_gway_paths")
     if _first_setup:
@@ -119,7 +128,7 @@ def setup_app(*,
 
         if current not in visited:
             visited.append(current)
-       
+    
         cookie_value = "|".join(visited)   # Use a safe separator (not comma) and avoid quotes
         response.set_cookie(cookie_name, cookie_value)
 

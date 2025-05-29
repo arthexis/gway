@@ -1,5 +1,5 @@
 from gway import gw
-
+from collections.abc import Iterable
 
 def start_server(*,
     host="[WEBSITE_HOST|127.0.0.1]",
@@ -9,18 +9,46 @@ def start_server(*,
     app=None,
     daemon=False,
     threaded=True,
+    is_worker=False,
 ):
     """Start an HTTP (WSGI) or ASGI server to host the given application.
 
     - If `app` is a FastAPI instance, runs with Uvicorn.
     - If `app` is a WSGI app (Bottle, Paste URLMap, or generic WSGI callables), uses Paste+ws4py or Bottle.
     - If `app` is a zero-arg factory, it will be invoked (supporting sync or async factories).
+    - If `app` is a list of apps, each will be run in its own thread (each on an incremented port).
     """
     import inspect
     import asyncio
 
     def run_server():
         nonlocal app
+
+        # A. Dispatch multiple apps in threads if we aren't already in a worker
+        if not is_worker and isinstance(app, Iterable) and not isinstance(app, (str, bytes)):
+            from threading import Thread
+            threads = []
+            for i, sub_app in enumerate(app):
+                t = Thread(
+                    target=start_server,
+                    kwargs=dict(
+                        host=host,
+                        port=int(port) + i,
+                        debug=debug,
+                        proxy=proxy,
+                        app=sub_app,
+                        daemon=daemon,
+                        threaded=threaded,
+                        is_worker=True,
+                    ),
+                    daemon=daemon,
+                )
+                t.start()
+                threads.append(t)
+            if not daemon:
+                for t in threads:
+                    t.join()
+            return
 
         # 1. Lazy-load or build the app from a string or None
         if app is None or isinstance(app, str):
@@ -46,7 +74,6 @@ def start_server(*,
                     maybe_app = asyncio.get_event_loop().run_until_complete(maybe_app)
                 app = maybe_app
             else:
-                # It's a WSGI/ASGI callable; do not invoke
                 gw.info(f"Detected callable WSGI/ASGI app: {app}")
 
         gw.info(f"Starting {app=} @ {host}:{port}")
@@ -59,13 +86,10 @@ def start_server(*,
             is_asgi = False
 
         if is_asgi:
-            # Run ASGI app with Uvicorn
             try:
                 import uvicorn
             except ImportError:
-                raise RuntimeError(
-                    "uvicorn is required to serve ASGI apps. Please install uvicorn."
-                )
+                raise RuntimeError("uvicorn is required to serve ASGI apps. Please install uvicorn.")
 
             uvicorn.run(
                 app,
@@ -75,7 +99,7 @@ def start_server(*,
                 workers=1,
                 reload=debug,
             )
-            return  # done
+            return
 
         # 5. Fallback to WSGI servers
         from bottle import run as bottle_run, Bottle
@@ -92,11 +116,8 @@ def start_server(*,
         except ImportError:
             ws4py_available = False
 
-        # a) Paste HTTP server (supports any WSGI callable)
         if httpserver:
-            # use Paste+ws4py if websockets, otherwise generic WSGI serve
             httpserver.serve(app, host=host, port=int(port))
-        # b) Fallback to Bottle run for Bottle apps
         elif isinstance(app, Bottle):
             bottle_run(
                 app,
@@ -108,7 +129,6 @@ def start_server(*,
         else:
             raise TypeError(f"Unsupported WSGI app type: {type(app)}")
 
-    # 6. Daemon mode: run in a background thread
     if daemon:
         return asyncio.to_thread(run_server)
     else:

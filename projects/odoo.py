@@ -319,6 +319,8 @@ def send_chat(message: str, *, username: str = "[ODOO_USERNAME]") -> bool:
     )
 
 
+# TODO: Investigate what needs to be done to create a chatbot server.
+
 def read_chat(*, 
         unread: bool = True, 
         username: str = "[ODOO_USERNAME]", 
