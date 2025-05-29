@@ -105,10 +105,8 @@ def start_server(*,
         from bottle import run as bottle_run, Bottle
         try:
             from paste import httpserver
-            from paste.urlmap import URLMap
         except ImportError:
             httpserver = None
-            URLMap = None
 
         try:
             from ws4py.server.wsgiutils import WebSocketWSGIApplication

@@ -1,5 +1,10 @@
 from xmlrpc import client
 from datetime import datetime, timedelta
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from datetime import datetime
+from contextlib import asynccontextmanager
+import asyncio
 from gway import gw
 
 
@@ -71,7 +76,6 @@ def fetch_quotes(
     Returns:
         dict: The fetched quotations.
     """
-    # TODO: If salesperson is not specified, use the current user as default (ODOO_ADMIN_USER). 
     model = 'sale.order'
     method = 'search_read'
 
@@ -102,7 +106,6 @@ def fetch_products(*, name=None, latest_quotes=None):
     Fetch the list of non-archived products from Odoo.
     If a name is provided, use it as a partial filter on the product name.
     """
-    # TODO: If latest_quotes is a number, also fetch the latest quotes that use this product.
     model = 'product.product'
     method = 'search_read'
     domain_filter = [('active', '=', True)]  # Non-archived products have active=True
@@ -260,10 +263,6 @@ def create_quote(*, customer, template_id, validity=None, notes=None):
     Returns:
         dict: The created quotation details.
     """
-    # TODO: Add a "template" kwarg in addition to template ID, this is a string we use to
-    # Lookup the best matching template from fetch_templates, for example if a template has the name
-    # Instalación Porsche 7-7.5 kW 20A, we can pass "Porsche 20A" or similar to match the template
-
     # Step 1: Lookup the customer ID
     customer_result = fetch_customers(name=customer)
     if not customer_result:
@@ -319,8 +318,6 @@ def send_chat(message: str, *, username: str = "[ODOO_USERNAME]") -> bool:
     )
 
 
-# TODO: Investigate what needs to be done to create a chatbot server.
-
 def read_chat(*, 
         unread: bool = True, 
         username: str = "[ODOO_USERNAME]", 
@@ -359,3 +356,89 @@ def get_user_info(*, username: str) -> dict:
         return None
     return user_data[0]  # Return the first (and likely only) match.
 
+
+chatbot_log: list[dict] = []
+
+def setup_chatbot_app(*, 
+            path="/chatbot", username="[ODOO_USERNAME]", alias="Operator", apps=None
+        ):
+    """
+    Create a FastAPI app (or append to existing ones) serving a chatbot UI and logic.
+    """
+
+    last_seen = {}
+
+    def log_msg(direction, msg):
+        chatbot_log.append({
+            "timestamp": datetime.utcnow().isoformat(),
+            "direction": direction,
+            "message": msg,
+        })
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        async def poll_messages():
+            while True:
+                try:
+                    messages = gw.odoo.read_chat(username=username)
+                    for msg in messages:
+                        msg_id = msg["id"]
+                        if msg_id not in last_seen:
+                            log_msg("in", msg["body"])
+                            last_seen[msg_id] = True
+                    await asyncio.sleep(5)
+                except Exception as e:
+                    gw.error(f"Chatbot polling error: {e}")
+                    await asyncio.sleep(10)
+        asyncio.create_task(poll_messages())
+        yield
+
+    app = FastAPI(lifespan=lifespan)
+
+    @app.get(path, response_class=HTMLResponse)
+    async def ui(request: Request):
+        messages = gw.odoo.read_chat(username=username, unread=False)
+        html = f"""
+        <html>
+        <head>
+            <title>Chatbot Interface</title>
+            <style>
+                body {{ font-family: sans-serif; padding: 1rem; }}
+                .log {{ background: #f9f9f9; padding: 1em; margin-bottom: 1em; border: 1px solid #ccc; }}
+                .incoming {{ color: darkblue; }}
+                .outgoing {{ color: darkgreen; }}
+                form {{ margin-top: 1em; }}
+            </style>
+        </head>
+        <body>
+            <h1>Chatbot: {username}</h1>
+            <div class="log">
+        """
+        for msg in reversed(messages[-20:]):
+            cls = "incoming" if msg["author_id"][1] != alias else "outgoing"
+            html += f"<div class='{cls}'><b>{msg['author_id'][1]}</b>: {msg['body']}</div>"
+        html += f"""
+            </div>
+            <form method="post">
+                <label>Alias: <input name="alias" value="{alias}" /></label><br />
+                <textarea name="body" rows="3" cols="60" placeholder="Type response..."></textarea><br/>
+                <button type="submit">Send</button>
+            </form>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html, status_code=200)
+
+    @app.post(path)
+    async def post_message(alias: str = Form(...), body: str = Form(...)):
+        if body.strip():
+            gw.odoo.send_chat(body, username=username)
+            log_msg("out", body)
+        return RedirectResponse(url=path, status_code=303)
+
+    if apps is None:
+        return [app]
+    elif isinstance(apps, list):
+        return apps + [app]
+    else:
+        return [apps, app]
