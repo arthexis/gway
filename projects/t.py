@@ -1,7 +1,7 @@
-import re
-import time as _time
+# t is for time (time was taken)
+# Legacy functions have been placed before imports
+
 import datetime
-import requests
 
 
 def now(*, utc=False) -> "datetime":
@@ -15,15 +15,14 @@ def now_plus(*, seconds=0, utc=False) -> "datetime":
     return base + datetime.timedelta(seconds=seconds)
 
 
-def time(*, utc=False) -> str:
-    """Return the current time of day as HH:MM:SS."""
-    struct_time = _time.gmtime() if utc else _time.localtime()
-    return _time.strftime('%H:%M:%S', struct_time)
-
-
-def timestamp(*, utc=False) -> str:
+def ts(*, utc=False) -> str:
     """Return the current timestamp in ISO-8601 format."""
     return now(utc=utc).isoformat().replace("+00:00", "Z" if utc else "")
+
+
+import re
+import time
+import requests
 
 
 def to_download(filesize):
@@ -33,7 +32,7 @@ def to_download(filesize):
     it within 4 ranges. You choose the ranges logarithmically. Then, perform a quick 
     check against google to let the user know what their current range is.
     """
-    
+
     # 1. Size parsing
     def parse_size(size_str):
         """
@@ -42,20 +41,27 @@ def to_download(filesize):
         Accepts decimal (k=1e3) or binary (Ki=2**10) prefixes.
         """
         size_str = size_str.strip()
+
+        # Handle plain bytes (e.g. '123 B')
+        plain_b_match = re.match(r"^([\d\.]+)\s*(bytes?|b)$", size_str, re.IGNORECASE)
+        if plain_b_match:
+            return float(plain_b_match.group(1))
+
+        # Handle KB/MB/etc
         pattern = r"^([\d\.]+)\s*([kKmMgGtTpP])([iI])?[bB]?$"
         m = re.match(pattern, size_str)
         if not m:
             raise ValueError(f"Unrecognized size format: {size_str!r}")
-        num, prefix, binary = m.group(1,2,3)
+        num, prefix, binary = m.group(1, 2, 3)
         num = float(num)
-        exp = {"k":1, "m":2, "g":3, "t":4, "p":5}[prefix.lower()]
+        exp = {"k": 1, "m": 2, "g": 3, "t": 4, "p": 5}[prefix.lower()]
         if binary:
             factor = 2 ** (10 * exp)
         else:
             factor = 10 ** (3 * exp)
         return num * factor
 
-    # 2. Human‐friendly duration
+    # 2. Human-friendly duration
     def format_duration(seconds):
         if seconds < 1:
             return f"{seconds*1000:.1f} ms"
@@ -77,20 +83,14 @@ def to_download(filesize):
 
     def estimate_download_times(size_str):
         size_bytes = parse_size(size_str)
-        estimates = []
-        for speed, label in SPEED_BRACKETS:
-            t = size_bytes / speed
-            estimates.append((label, format_duration(t)))
-        return estimates
+        return [(label, format_duration(size_bytes / speed))
+                for speed, label in SPEED_BRACKETS]
 
     # 4. Quick live check against Google
     def measure_current_speed(test_url=None):
-        """
-        Downloads a small Google logo and measures
-        average download speed in bytes/sec.
-        """
         if test_url is None:
-            test_url = "https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png"
+            test_url = ("https://www.google.com/images/branding/"
+                        "googlelogo/2x/googlelogo_color_272x92dp.png")
         start = time.time()
         r = requests.get(test_url, stream=True, timeout=10)
         total = 0
@@ -100,12 +100,10 @@ def to_download(filesize):
         return total / elapsed  # bytes per second
 
     def classify_speed(bps):
-        """
-        Find which bracket your speed bps falls into.
-        """
         for i, (speed, label) in enumerate(SPEED_BRACKETS):
-            # if it's slower than midpoint to next bracket, it's here
-            if i == len(SPEED_BRACKETS)-1 or bps < (speed * (SPEED_BRACKETS[i+1][0] / speed)**0.5):
+            # slower than midpoint to next bracket → this bracket
+            if i == len(SPEED_BRACKETS)-1 or \
+               bps < speed * ((SPEED_BRACKETS[i+1][0]/speed)**0.5):
                 return label
         return SPEED_BRACKETS[-1][1]
 
@@ -117,11 +115,13 @@ def to_download(filesize):
         try:
             print("\nMeasuring your current download speed…")
             speed = measure_current_speed()
-            human = format_duration(parse_size('1 B') / speed)  # seconds to download 1 B
-            print(f" → Detected ≈{speed/1024:.1f}\u00A0kB/s ({format_duration(size=1/speed)})")
+            # human = time to download 1 B
+            human = format_duration(parse_size('1 B') / speed)
+            print(f" → Detected ≈{speed/1024:.1f}\u00A0kB/s ({human})")
             bracket = classify_speed(speed)
             print(f"   You’re in the **{bracket}** range.")
         except Exception as e:
             print(f" (Could not measure live speed: {e})")
+            raise
 
     download_time_report(filesize)
