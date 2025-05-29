@@ -156,56 +156,53 @@ Gway recipes are lightweight `.gwr` scripts containing one command per line, opt
 
 Each line undergoes **sigil resolution** using the evolving context before being executed. This makes recipes ideal for scripting interactive workflows where the result of one command feeds into the next.
 
-### 🔁 How It Works
+🔁 How It Works
+~~~~~~~~~~~~~~~
 
 Under the hood, recipes are executed using the `run_recipe` function:
 
 .. code-block:: python
 
-```
-from gway import gw
+    from gway import gw
 
-# Run a named recipe
-gw.recipe.run("example")
+    # Run a named recipe
+    gw.recipe.run("example")
 
-# Or with extra context:
-# Project and size are assumed to be parameters of the example function)
-gw.recipe.run("example", project="Delta", size=12)
-```
+    # Or with extra context:
+    # Project and size are assumed to be parameters of the example function.
+    gw.recipe.run("example", project="Delta", size=12)
 
 If the file isn't found directly, Gway will look in its internal `recipes/` resource folder.
+
 
 🌐 Example: `website.gwr`
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 An example recipe named `website.gwr` is already included. It generates a basic web setup using inferred context. Here's what it contains:
 
-.. code-block:: gwr
+.. code-block:: 
 
-```
-# Default GWAY website ingredients
+    # Default GWAY website ingredients
 
-web setup-app
-web start-server --daemon
-until --lock-file VERSION --lock-pypi
-```
+    web setup-app
+    web start-server --daemon
+    until --lock-file VERSION --lock-pypi
+
 
 You can run it with:
 
 .. code-block:: bash
 
-```
-gway -r website
-```
+    gway -r website
+
 
 Or in Python:
 
 .. code-block:: python
 
-```
-from gway import gw
-gw.recipe.run("website")
-```
+    from gway import gw
+    gw.recipe.run("website")
+
 
 This script sets up a web application, launches the server in daemon mode, and waits for lock conditions using built-in context.
 
