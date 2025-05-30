@@ -9,7 +9,7 @@ class FilteredTracebackFormatter(logging.Formatter):
     """
     A Formatter that, when an exception is logged, strips out any
     traceback frames whose filename path contains 'gway/gway', counts them,
-    and replaces them with a summary line—unless gw._debug is True.
+    and replaces them with a summary line—unless gw.debug_mode is True.
     """
 
     def formatException(self, ei):
@@ -22,7 +22,7 @@ class FilteredTracebackFormatter(logging.Formatter):
         debug_mode = False
         try:
             from gway import gw
-            debug_mode = getattr(gw, "_debug", False)
+            debug_mode = getattr(gw, "debug_mode", False)
         except Exception:
             pass
 
