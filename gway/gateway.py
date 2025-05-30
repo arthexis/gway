@@ -15,24 +15,35 @@ from .structs import Results
 
 class ProjectStub(SimpleNamespace):
     def __init__(self, name, funcs, gateway):
+        """
+        A stub representing a project namespace. Holds available functions
+        and raises an error when called without an explicit function.
+        """
         super().__init__(**funcs)
         self._gateway = gateway
         self._name = name
+        # _default_func is no longer used for guessing
         self._default_func = None
 
     def __call__(self, *args, **kwargs):
-        if not self._default_func:
-            preferred = ["main", "start", "setup", "init", "run", "begin", "first"]
-            candidates = {k: v for k, v in self.__dict__.items() if callable(v)}
-            for key in preferred:
-                if key in candidates:
-                    self._default_func = candidates[key]
-                    break
-            if not self._default_func and len(candidates) == 1:
-                self._default_func = list(candidates.values())[0]
-            if not self._default_func:
-                raise AttributeError(f"No default function found for project '{self._name}'")
-        return self._default_func(*args, **kwargs)
+        """
+        When the project object itself is invoked, list all available
+        functions and abort with an informative error, instead of guessing.
+        """
+        from gway.console import show_functions
+
+        # Gather all callables in this namespace
+        functions = {
+            name: func
+            for name, func in self.__dict__.items()
+            if callable(func)
+        }
+
+        # Display available functions to the user
+        show_functions(functions)
+
+        # Abort with a clear message
+        gw.abort(f"Invalid function specified for project '{self._name}'")
 
 class Gateway(Resolver):
     _builtin_cache = None

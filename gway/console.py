@@ -152,7 +152,11 @@ def process_commands(command_sources, callback=None, **context):
         resolved_obj, func_args, path = resolve_nested_object(gw, list(chunk))
 
         if not callable(resolved_obj):
-            abort(f"No callable found in command path: {' '.join(path)}")
+            if hasattr(resolved_obj, '__functions__'):
+                show_functions(resolved_obj.__functions__)
+            else:
+                gw.error(f"Object at path {' '.join(path)} is not callable.")
+            abort(f"No function found at: {' '.join(path)}")
 
         # Parse function arguments
         func_parser = argparse.ArgumentParser(prog=".".join(path))
