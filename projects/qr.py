@@ -9,7 +9,6 @@ from gway import requires, gw
 _qr_code_cache = set()
 
 
-@requires("qrcode[pil]")
 def generate_img(value, *, path=None):
     """Generate a QR code image from the given value and save it to the specified path.
     If path is not provided, we use a random uuid to name it, unrelated to the value.

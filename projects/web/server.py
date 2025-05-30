@@ -1,7 +1,11 @@
 from gway import gw
 from collections.abc import Iterable
 
-def start(*,
+# TODO: Allow *apps to be passed as an argument and used together with the app kwarg
+# The same way the setup function in project/web/server.py works.
+# Should return the app or iterable of collected apps.
+
+def start(*apps,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
     debug=False,
@@ -24,11 +28,21 @@ def start(*,
     def run_server():
         nonlocal app
 
-        # A. Dispatch multiple apps in threads if we aren't already in a worker
-        if not is_worker and isinstance(app, Iterable) and not isinstance(app, (str, bytes)):
+        # A. Merge *apps and app into a single list if needed
+        all_apps = []
+        if apps:
+            all_apps.extend(apps)
+        if app:
+            if isinstance(app, Iterable) and not isinstance(app, (str, bytes)):
+                all_apps.extend(app)
+            else:
+                all_apps.append(app)
+
+        # B. Dispatch multiple apps in threads if we aren't already in a worker
+        if not is_worker and len(all_apps) > 1:
             from threading import Thread
             threads = []
-            for i, sub_app in enumerate(app):
+            for i, sub_app in enumerate(all_apps):
                 t = Thread(
                     target=gw.web.server.start,
                     kwargs=dict(
@@ -50,12 +64,13 @@ def start(*,
                     t.join()
             return
 
-        # 1. Lazy-load or build the app from a string or None
-        if app is None or isinstance(app, str):
-            if app is None:
-                gw.warning(
-                    f"Building default app (app is None). Run with --app default to silence.")
-            app = gw.web.app.setup(app=app)
+        # 1. If no apps passed, fallback to default app
+        if not all_apps:
+            gw.warning(
+                f"Building default app (app is None). Run with --app default to silence.")
+            app = gw.web.app.setup(app=None)
+        else:
+            app = all_apps[0]  # Run the first (or only) app normally
 
         # 2. Wrap with proxy if requested
         if proxy:
