@@ -1,13 +1,13 @@
+# projects/readme.py
 """
 GWAY project module to collect all projects and functions and update README.rst.
-Usage (CLI): gway readme collect-projects <projects_dir> [--readme READMENAME]
+Usage (CLI): gway readme collect projects <projects_dir> [--readme READMENAME]
 """
 
 import os
 import importlib.util
 import inspect
 from gway import gw
-
 
 def collect_projects(project_dir: str, readme: str = "README.rst"):
     """
@@ -42,10 +42,12 @@ def collect_projects(project_dir: str, readme: str = "README.rst"):
             if fname.startswith("_"):
                 continue
             doc = inspect.getdoc(obj) or "(no description)"
+            cli_path = ' '.join(name.replace('_', ' ').split('.'))
+            cli_func = fname.replace('_', ' ')
             funcs.append({
                 "name": fname,
                 "doc": doc,
-                "cli": f"gway {name} {fname}"
+                "cli": f"gway {cli_path} {cli_func}"
             })
         projects[name] = funcs
 

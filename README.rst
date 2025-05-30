@@ -12,10 +12,10 @@ Features
 --------
 
 - 🔌 Seamless function calling from CLI or code (e.g., ``gway.awg.find_cable()``)
-- ⛓️ CLI chaining support: ``func1 - func2`` or ``func1 ; func2``
+- ⛓️ CLI chaining support: ``proj 1 func1 - proj2 func2`` (flexible separators)
 - 🧠 Sigil-based context resolution (e.g., ``[result_context_or_env_key|fallback]``)
 - ⚙️ Automatic CLI argument generation, with support for ``*args`` and ``**kwargs``
-- 🧪 Built-in test runner and packaging: ``gway run-tests`` and ``gway project build``
+- 🧪 Built-in test runner and self-packaging: ``gway test`` and ``gway release build``
 - 📦 Environment-aware loading (e.g., ``clients`` and ``servers`` .env files)
 
 Examples
@@ -40,17 +40,17 @@ Given a project ``awg.py`` containing logic to calculate cable sizes and conduit
 .. code-block:: bash
 
     # Basic cable sizing
-    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240
+    gway awg find cable --meters 30 --amps 60 --material cu --volts 240
 
     # With conduit calculation
-    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240 --conduit emt
+    gway awg find cable --meters 30 --amps 60 --material cu --volts 240 --conduit emt
 
 **Chaining Example**
 
 .. code-block:: bash
 
     # Chain cable calculation and echo the result
-    gway awg find-cable --meters 25 --amps 60 - print --text "[awg]"
+    gway awg find cable --meters 25 --amps 60 - print --text "[awg]"
 
 **Online Example**
 
@@ -66,7 +66,7 @@ You can also run a lightweight help/documentation server directly using GWAY:
 
 .. code-block:: powershell
 
-    > gway --debug website start-server --daemon - hold
+    > gway -d web server start --daemon - until --lock-pypi
 
 This launches an interactive web UI that lets you browse your project, inspect help docs, and search callable functions.
 
@@ -146,7 +146,10 @@ After placing your modules under `projects/`, you can immediately invoke them fr
 
 .. code-block:: bash
 
-    gway project-name my-function --arg1 value
+    gway project-dir-or-script your-function argN --kwargN valueN
+
+
+By default, results get reused as context for future calls made with the same Gateway thread.  
 
 
 🧪 Recipes
@@ -178,14 +181,14 @@ If the file isn't found directly, Gway will look in its internal `recipes/` reso
 🌐 Example: `website.gwr`
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-An example recipe named `website.gwr` is already included. It generates a basic web setup using inferred context. Here's what it contains:
+An example recipe named `website.gwr` is already included. It generates a basic web setup using inferred context. Default parameters are taken from client and server .envs where possible automatically. Here's what it contains:
 
 .. code-block:: 
 
     # Default GWAY website ingredients
 
-    web setup-app
-    web start-server --daemon
+    web app setup
+    web server start --daemon
     until --lock-file VERSION --lock-pypi
 
 
@@ -201,7 +204,7 @@ Or in Python:
 .. code-block:: python
 
     from gway import gw
-    gw.recipe.run("website")
+    gw.run("website")
 
 
 This script sets up a web application, launches the server in daemon mode, and waits for lock conditions using built-in context.
@@ -218,11 +221,11 @@ INCLUDED PROJECTS
 
 - ``find_cable`` — Calculate the type of cable needed for an electrical system.
 
-  Example CLI: ``gway awg find_cable``
+  Example CLI: ``gway awg find cable``
 
 - ``find_conduit`` — Calculate the kind of conduit required for a set of cables.
 
-  Example CLI: ``gway awg find_conduit``
+  Example CLI: ``gway awg find conduit``
 
 
 .. rubric:: clip
@@ -236,33 +239,11 @@ INCLUDED PROJECTS
   Example CLI: ``gway clip requires``
 
 
-.. rubric:: etron
-
-- ``extract_records`` — Load data from EV IOCHARGER to CSV format.
-
-  Example CLI: ``gway etron extract_records``
-
-
 .. rubric:: gif
 
 - ``animate`` — (no description)
 
   Example CLI: ``gway gif animate``
-
-
-.. rubric:: gui
-
-- ``lookup_font`` — Look up fonts installed on a Windows system by partial name (prefix).
-
-  Example CLI: ``gway gui lookup_font``
-
-- ``notify`` — Show a user interface notification with the specified title and message.
-
-  Example CLI: ``gway gui notify``
-
-- ``requires`` — (no description)
-
-  Example CLI: ``gway gui requires``
 
 
 .. rubric:: job
@@ -276,18 +257,7 @@ INCLUDED PROJECTS
 
 - ``export_connections`` — Export NetworkManager connections into a JSON-serializable list of dicts.
 
-  Example CLI: ``gway net export_connections``
-
-
-.. rubric:: ocpp
-
-- ``setup_csms_app`` — OCPP 1.6 CSMS implementation with:
-
-  Example CLI: ``gway ocpp setup_csms_app``
-
-- ``setup_sink_app`` — Basic OCPP passive sink for messages, acting as a dummy CSMS server.
-
-  Example CLI: ``gway ocpp setup_sink_app``
+  Example CLI: ``gway net export connections``
 
 
 .. rubric:: odoo
@@ -302,7 +272,7 @@ INCLUDED PROJECTS
 
 - ``create_quote`` — Create a new quotation using a specified template and customer name.
 
-  Example CLI: ``gway odoo create_quote``
+  Example CLI: ``gway odoo create quote``
 
 - ``execute`` — A generic function to directly interface with Odoo's execute_kw method.
 
@@ -310,69 +280,69 @@ INCLUDED PROJECTS
 
 - ``fetch_customers`` — Fetch customers from Odoo with optional filters.
 
-  Example CLI: ``gway odoo fetch_customers``
+  Example CLI: ``gway odoo fetch customers``
 
 - ``fetch_order`` — Fetch the details of a specific order by its ID from Odoo, including all line details.
 
-  Example CLI: ``gway odoo fetch_order``
+  Example CLI: ``gway odoo fetch order``
 
 - ``fetch_products`` — Fetch the list of non-archived products from Odoo.
 
-  Example CLI: ``gway odoo fetch_products``
+  Example CLI: ``gway odoo fetch products``
 
 - ``fetch_quotes`` — Fetch quotes/quotations from Odoo with optional filters.
 
-  Example CLI: ``gway odoo fetch_quotes``
+  Example CLI: ``gway odoo fetch quotes``
 
 - ``fetch_templates`` — Fetch available quotation templates from Odoo with optional filters.
 
-  Example CLI: ``gway odoo fetch_templates``
+  Example CLI: ``gway odoo fetch templates``
 
 - ``get_user_info`` — Retrieve Odoo user information by username.
 
-  Example CLI: ``gway odoo get_user_info``
+  Example CLI: ``gway odoo get user info``
 
 - ``read_chat`` — Read chat messages from an Odoo user by username.
 
-  Example CLI: ``gway odoo read_chat``
+  Example CLI: ``gway odoo read chat``
 
 - ``send_chat`` — Send a chat message to an Odoo user by username.
 
-  Example CLI: ``gway odoo send_chat``
+  Example CLI: ``gway odoo send chat``
 
 - ``setup_chatbot_app`` — Create a FastAPI app (or append to existing ones) serving a chatbot UI and logic.
 
-  Example CLI: ``gway odoo setup_chatbot_app``
+  Example CLI: ``gway odoo setup chatbot app``
 
 
 .. rubric:: png
 
 - ``credit_images`` — Receives a folder containing .png image files and uses a reverse image lookup
 
-  Example CLI: ``gway png credit_images``
+  Example CLI: ``gway png credit images``
 
 - ``sanitize_filename`` — Sanitize the credit string to be filesystem-safe.
 
-  Example CLI: ``gway png sanitize_filename``
+  Example CLI: ``gway png sanitize filename``
 
 
 .. rubric:: qr
 
 - ``generate_b64data`` — Generate a QR code image from the given value and return it as a base64-encoded PNG string.
 
-  Example CLI: ``gway qr generate_b64data``
+  Example CLI: ``gway qr generate b64data``
 
 - ``generate_image`` — Generate a QR code image from the given value and save it to the specified path.
 
-  Example CLI: ``gway qr generate_image``
+  Example CLI: ``gway qr generate image``
 
 - ``generate_img`` — Generate a QR code image from the given value and save it to the specified path.
 
-  Example CLI: ``gway qr generate_img``
+  Example CLI: ``gway qr generate img``
 
 - ``generate_url`` — Return the local URL to a QR code with the given value. 
 
-  Example CLI: ``gway qr generate_url``
+  Example CLI: ``gway qr generate url``
 
 - ``requires`` — (no description)
 
@@ -380,25 +350,25 @@ INCLUDED PROJECTS
 
 - ``scan_image`` — Scan the given image (file‑path or PIL.Image) for QR codes and return
 
-  Example CLI: ``gway qr scan_image``
+  Example CLI: ``gway qr scan image``
 
 - ``scan_img`` — Scan the given image (file‑path or PIL.Image) for QR codes and return
 
-  Example CLI: ``gway qr scan_img``
+  Example CLI: ``gway qr scan img``
 
 
 .. rubric:: readme
 
 - ``collect_projects`` — Scan `project_dir` for all modules/packages, collect public functions,
 
-  Example CLI: ``gway readme collect_projects``
+  Example CLI: ``gway readme collect projects``
 
 
 .. rubric:: recipe
 
 - ``register_gwr`` — Register the .gwr file extension so that double-click launches:
 
-  Example CLI: ``gway recipe register_gwr``
+  Example CLI: ``gway recipe register gwr``
 
 - ``run`` — (no description)
 
@@ -413,11 +383,14 @@ INCLUDED PROJECTS
 
 - ``build_help`` — (no description)
 
-  Example CLI: ``gway release build_help``
+  Example CLI: ``gway release build help``
 
 - ``extract_todos`` — (no description)
 
-  Example CLI: ``gway release extract_todos``
+  Example CLI: ``gway release extract todos``
+
+
+.. rubric:: service
 
 
 .. rubric:: sql
@@ -432,22 +405,26 @@ INCLUDED PROJECTS
 
 - ``infer_type`` — Infer SQL type from a sample value.
 
-  Example CLI: ``gway sql infer_type``
+  Example CLI: ``gway sql infer type``
 
 
 .. rubric:: t
+
+- ``minus`` — Return current datetime plus given seconds.
+
+  Example CLI: ``gway t minus``
 
 - ``now`` — Return the current datetime object.
 
   Example CLI: ``gway t now``
 
-- ``now_plus`` — Return current datetime plus given seconds.
+- ``plus`` — Return current datetime plus given seconds.
 
-  Example CLI: ``gway t now_plus``
+  Example CLI: ``gway t plus``
 
 - ``to_download`` — Prompt: Create a python function that takes a file size such as 100 MB or 1.76 GB 
 
-  Example CLI: ``gway t to_download``
+  Example CLI: ``gway t to download``
 
 - ``ts`` — Return the current timestamp in ISO-8601 format.
 
@@ -458,74 +435,19 @@ INCLUDED PROJECTS
 
 - ``dummy_function`` — Dummy function for testing.
 
-  Example CLI: ``gway tests dummy_function``
+  Example CLI: ``gway tests dummy function``
 
 - ``variadic_both`` — (no description)
 
-  Example CLI: ``gway tests variadic_both``
+  Example CLI: ``gway tests variadic both``
 
 - ``variadic_keyword`` — (no description)
 
-  Example CLI: ``gway tests variadic_keyword``
+  Example CLI: ``gway tests variadic keyword``
 
 - ``variadic_positional`` — (no description)
 
-  Example CLI: ``gway tests variadic_positional``
-
-
-.. rubric:: web
-
-- ``awg_finder`` — Page builder for AWG cable finder with HTML form and result.
-
-  Example CLI: ``gway web awg_finder``
-
-- ``build_url`` — (no description)
-
-  Example CLI: ``gway web build_url``
-
-- ``help`` — Render dynamic help based on GWAY introspection and search-style links.
-
-  Example CLI: ``gway web help``
-
-- ``qr_code`` — Generate a QR code for a given value and serve it from cache if available.
-
-  Example CLI: ``gway web qr_code``
-
-- ``readme`` — Render the README.rst file as HTML.
-
-  Example CLI: ``gway web readme``
-
-- ``redirect_error`` — (no description)
-
-  Example CLI: ``gway web redirect_error``
-
-- ``requires`` — (no description)
-
-  Example CLI: ``gway web requires``
-
-- ``setup_app`` — Configure a simple application that showcases the use of GWAY to generate web apps.
-
-  Example CLI: ``gway web setup_app``
-
-- ``setup_proxy`` — Create a proxy handler to the given Bottle app.
-
-  Example CLI: ``gway web setup_proxy``
-
-- ``start_server`` — Start an HTTP (WSGI) or ASGI server to host the given application.
-
-  Example CLI: ``gway web start_server``
-
-- ``theme`` — Allows user to choose from available stylesheets and shows current selection.
-
-  Example CLI: ``gway web theme``
-
-- ``urlencode`` — Encode a dict or sequence of two-element tuples into a URL query string.
-
-  Example CLI: ``gway web urlencode``
-
-- ``wraps`` — Decorator factory to apply update_wrapper() to a wrapper function
-
-  Example CLI: ``gway web wraps``
+  Example CLI: ``gway tests variadic positional``
 
 
 

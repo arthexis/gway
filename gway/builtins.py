@@ -268,3 +268,7 @@ def run_recipe(*script: str, **context):
         gw.debug("Recipe comments:\n" + "\n".join(comments))
     return process_commands(command_sources, **context)
 
+
+def run(*script: str, **context):
+    from gway import gw
+    return gw.run_recipe(*script, **context)
