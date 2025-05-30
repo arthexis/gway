@@ -167,7 +167,8 @@ def process_commands(command_sources, callback=None, **context):
             all_results.append(result)
         except Exception as e:
             gw.exception(e)
-            abort(f"Unhandled {type(e).__name__} in {resolved_obj.__name__}")
+            name = getattr(resolved_obj, "__name__", str(resolved_obj))
+            abort(f"Unhandled {type(e).__name__} in {name}")
 
     return all_results, last_result
 
