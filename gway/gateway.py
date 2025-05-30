@@ -9,9 +9,30 @@ import threading
 import importlib
 import functools
 
+from types import SimpleNamespace
 from .sigils import Resolver
 from .structs import Results
 
+class ProjectStub(SimpleNamespace):
+    def __init__(self, name, funcs, gateway):
+        super().__init__(**funcs)
+        self._gateway = gateway
+        self._name = name
+        self._default_func = None
+
+    def __call__(self, *args, **kwargs):
+        if not self._default_func:
+            preferred = ["main", "start", "setup", "init", "run", "begin", "first"]
+            candidates = {k: v for k, v in self.__dict__.items() if callable(v)}
+            for key in preferred:
+                if key in candidates:
+                    self._default_func = candidates[key]
+                    break
+            if not self._default_func and len(candidates) == 1:
+                self._default_func = list(candidates.values())[0]
+            if not self._default_func:
+                raise AttributeError(f"No default function found for project '{self._name}'")
+        return self._default_func(*args, **kwargs)
 
 class Gateway(Resolver):
     _builtin_cache = None
@@ -30,27 +51,22 @@ class Gateway(Resolver):
         elif verbose is True:
             self.verbose =  lambda *args, **kwargs: self.info(*args, **kwargs)
 
-        # Thread-local context/results
         if not hasattr(Gateway._thread_local, "context"):
             Gateway._thread_local.context = {}
         if not hasattr(Gateway._thread_local, "results"):
             Gateway._thread_local.results = Results()
 
-        # Inject initial context if provided
         Gateway._thread_local.context.update(kwargs)
 
-        # Aliases for convenience
         self.context = Gateway._thread_local.context
         self.results = Gateway._thread_local.results
 
-        # Resolver setup
         super().__init__([
             ('results', self.results),
             ('context', self.context),
             ('env', os.environ),
         ])
 
-        # Cache builtins once
         if Gateway._builtin_cache is None:
             builtins_module = importlib.import_module("gway.builtins")
             Gateway._builtin_cache = {
@@ -75,7 +91,6 @@ class Gateway(Resolver):
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
 
-                # Inject defaults from context if needed
                 for param in sig.parameters.values():
                     if (param.name not in bound_args.arguments
                         and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)):
@@ -85,13 +100,11 @@ class Gateway(Resolver):
                             and default_value.endswith("]")):
                             bound_args.arguments[param.name] = self.resolve(default_value)
 
-                # Override & record in context
                 for key, value in bound_args.arguments.items():
                     if isinstance(value, str):
                         bound_args.arguments[key] = self.resolve(value)
                     self.context[key] = bound_args.arguments[key]
 
-                # Prepare positional and keyword args
                 args_to_pass = []
                 kwargs_to_pass = {}
                 for param in sig.parameters.values():
@@ -101,7 +114,6 @@ class Gateway(Resolver):
                         kwargs_to_pass.update(bound_args.arguments.get(param.name, {}))
                     elif param.name in bound_args.arguments:
                         val = bound_args.arguments[param.name]
-                        # Allow context overrides of defaults
                         if param.default == val:
                             found = self.find_value(param.name)
                             if found is not None and found != val:
@@ -109,7 +121,6 @@ class Gateway(Resolver):
                                 val = found
                         kwargs_to_pass[param.name] = val
 
-                # Handle async functions
                 if inspect.iscoroutinefunction(func_obj):
                     thread = threading.Thread(
                         target=self._run_coroutine,
@@ -120,10 +131,8 @@ class Gateway(Resolver):
                     thread.start()
                     return f"[async task started for {func_name}]"
 
-                # Call the function
                 result = func_obj(*args_to_pass, **kwargs_to_pass)
 
-                # Handle coroutine return
                 if inspect.iscoroutine(result):
                     thread = threading.Thread(
                         target=self._run_coroutine,
@@ -134,14 +143,12 @@ class Gateway(Resolver):
                     thread.start()
                     return f"[async coroutine started for {func_name}]"
 
-                # Store non-None results with updated key logic
                 if result is not None:
                     parts = func_name.split(".")
                     project = parts[-2] if len(parts) > 1 else parts[-1]
                     func = parts[-1]
 
                     def split_words(name):
-                        # Split by underscore or camelCase boundaries
                         return re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', name.replace("_", " "))
 
                     words = split_words(func)
@@ -175,7 +182,6 @@ class Gateway(Resolver):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-            # Determine if it's already a coroutine object
             if asyncio.iscoroutine(coro_or_func):
                 result = loop.run_until_complete(coro_or_func)
             else:
@@ -215,60 +221,48 @@ class Gateway(Resolver):
             os._exit(1)
 
     def __getattr__(self, name):
-        # Delegate standard logger methods to self.logger
         if hasattr(self.logger, name) and callable(getattr(self.logger, name)):
             return getattr(self.logger, name)
 
-        # Builtin function?
         if name in self._builtin_functions:
             func = self._wrap_callable(name, self._builtin_functions[name])
             setattr(self, name, func)
             return func
 
-        # Cached project?
         if name in self._cache: return self._cache[name]
 
-        # Attempt dynamic project loading via load_project
         try:
             project_obj = self.load_project(project_name=name)
             return project_obj
         except Exception as e:
             raise AttributeError(f"Project or builtin '{name}' not found: {e}")
-    
-    def load_project(self, project_name: str, *, root: str = "projects"):
-        from types import SimpleNamespace
 
-        # Resolve the file-system path (can be a dir or a .py file)
+    def load_project(self, project_name: str, *, root: str = "projects"):
         base = gw.resource(root, *project_name.split("."))
         self.debug(f"Loading {project_name} from {base}")
 
-        # Helper to load a single .py as a namespace
         def load_module_namespace(py_path: str, dotted: str):
             mod = self.load_py_file(py_path, dotted)
-            ns = SimpleNamespace()
+            funcs = {}
             for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                 if not fname.startswith("_"):
-                    wrapped = self._wrap_callable(f"{dotted}.{fname}", obj)
-                    setattr(ns, fname, wrapped)
+                    funcs[fname] = self._wrap_callable(f"{dotted}.{fname}", obj)
+            ns = ProjectStub(dotted, funcs, self)
             self._cache[dotted] = ns
             return ns
 
-        # 1) Directory: recurse into sub-folders and .py files
         if os.path.isdir(base):
             return self.recurse_namespace(base, project_name)
 
-        # 2) Single file: support Path objects correctly
         from pathlib import Path
         base_path = Path(base)
         py_file = base_path if base_path.suffix == ".py" else base_path.with_suffix(".py")
         if py_file.is_file():
             return load_module_namespace(str(py_file), project_name)
 
-        # 3) Not found
         raise FileNotFoundError(f"Project path not found: {base}")
 
     def load_py_file(self, path: str, dotted_name: str):
-        """Load a .py from an arbitrary path into a new module object."""
         module_name = dotted_name.replace(".", "_")
         spec = importlib.util.spec_from_file_location(module_name, path)
         if spec is None or spec.loader is None:
@@ -283,25 +277,22 @@ class Gateway(Resolver):
         return mod
 
     def recurse_namespace(self, current_path: str, dotted_prefix: str):
-        """Recursively walk a folder and build a namespace of wrapped callables."""
-        from types import SimpleNamespace
-
-        ns = SimpleNamespace()
+        funcs = {}
         for entry in os.listdir(current_path):
             full = os.path.join(current_path, entry)
             if entry.endswith(".py") and not entry.startswith("__"):
                 subname = entry[:-3]
                 dotted = f"{dotted_prefix}.{subname}"
                 mod = self.load_py_file(full, dotted)
-                sub_ns = SimpleNamespace()
+                sub_funcs = {}
                 for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                     if not fname.startswith("_"):
-                        wrapped = self._wrap_callable(f"{dotted}.{fname}", obj)
-                        setattr(sub_ns, fname, wrapped)
-                setattr(ns, subname, sub_ns)
+                        sub_funcs[fname] = self._wrap_callable(f"{dotted}.{fname}", obj)
+                funcs[subname] = ProjectStub(dotted, sub_funcs, self)
             elif os.path.isdir(full) and not entry.startswith("__"):
                 dotted = f"{dotted_prefix}.{entry}"
-                setattr(ns, entry, self.recurse_namespace(full, dotted))
+                funcs[entry] = self.recurse_namespace(full, dotted)
+        ns = ProjectStub(dotted_prefix, funcs, self)
         self._cache[dotted_prefix] = ns
         return ns
 
@@ -311,7 +302,7 @@ class Gateway(Resolver):
             return "debug"
         self.info(*args, **kwargs)
         return "info"
-    
+
 
 # This line allows using "from gway import gw" everywhere else
 gw = Gateway()
