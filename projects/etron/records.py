@@ -1,7 +1,7 @@
 from gway import gw
 
 
-def extract_records(data_dir, *, 
+def extract(data_dir, *, 
         add_days=0, output_csv=None, after=None, before=None, batch=None):
     r"""Load data from EV IOCHARGER to CSV format.
         > gsol etron extract-records "temp\etron\san_pedro" 

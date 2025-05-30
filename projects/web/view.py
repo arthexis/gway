@@ -1,4 +1,6 @@
 
+# These view functions can be rendered by setup_app.
+# Views receive the query params and json payload merged into kwargs.
 # Don't use inline CSS ever, each user can have different css configurations. 
 
 def readme(*args, **kwargs):

@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import time
 import inspect
@@ -73,51 +74,42 @@ class Gateway(Resolver):
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
-                # self.debug(f"Context before argument injection: {self.context}")
 
+                # Inject defaults from context if needed
                 for param in sig.parameters.values():
-                    if param.name not in bound_args.arguments and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+                    if (param.name not in bound_args.arguments
+                        and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)):
                         default_value = param.default
-                        if isinstance(default_value, str) and default_value.startswith("[") and default_value.endswith("]"):
-                            resolved = self.resolve(default_value)
-                            bound_args.arguments[param.name] = resolved
+                        if (isinstance(default_value, str)
+                            and default_value.startswith("[")
+                            and default_value.endswith("]")):
+                            bound_args.arguments[param.name] = self.resolve(default_value)
 
-                # Use explicit kwargs provided to override existing context
+                # Override & record in context
                 for key, value in bound_args.arguments.items():
                     if isinstance(value, str):
-                        resolved = self.resolve(value)
-                        bound_args.arguments[key] = resolved
+                        bound_args.arguments[key] = self.resolve(value)
                     self.context[key] = bound_args.arguments[key]
 
-                # Prepare args and kwargs for function call
+                # Prepare positional and keyword args
                 args_to_pass = []
                 kwargs_to_pass = {}
                 for param in sig.parameters.values():
-                    # self.debug(f"Preparing {param=}")
                     if param.kind == param.VAR_POSITIONAL:
-                        bound_val = bound_args.arguments.get(param.name, ())
-                        # self.debug(f"Kind == VAR_POSITIONAL {bound_val=} -> extend args")
-                        args_to_pass.extend(bound_val)
+                        args_to_pass.extend(bound_args.arguments.get(param.name, ()))
                     elif param.kind == param.VAR_KEYWORD:
-                        bound_val = bound_args.arguments.get(param.name, {})
-                        # self.debug(f"Kind == VAR_KEYWORD {bound_val=} -> extend kwargs")
-                        kwargs_to_pass.update(bound_val)
+                        kwargs_to_pass.update(bound_args.arguments.get(param.name, {}))
                     elif param.name in bound_args.arguments:
-                        bound_val = bound_args.arguments[param.name]
-                        if param.default == bound_val:
-                            found_val = self.find_value(param.name)
-                            # self.debug(f"Checking override: {bound_val=} == {param.default=} => {found_val=}")
-                            if found_val is not None and found_val != bound_val:
-                                self.info(f"Injected {param.name}={found_val} overrides default {bound_val=}")
-                                bound_val = found_val
-                        else:
-                            self.debug(f"Value for {param.name} differs from default "
-                                       f"({param.default=}); using provided {bound_val=}")
-                        kwargs_to_pass[param.name] = bound_val
-                    else:
-                        self.debug(f"No preparation procedure matched for {param.name}")
+                        val = bound_args.arguments[param.name]
+                        # Allow context overrides of defaults
+                        if param.default == val:
+                            found = self.find_value(param.name)
+                            if found is not None and found != val:
+                                self.info(f"Injected {param.name}={found} overrides default {val=}")
+                                val = found
+                        kwargs_to_pass[param.name] = val
 
-                # Handle coroutine function
+                # Handle async functions
                 if inspect.iscoroutinefunction(func_obj):
                     thread = threading.Thread(
                         target=self._run_coroutine,
@@ -128,10 +120,10 @@ class Gateway(Resolver):
                     thread.start()
                     return f"[async task started for {func_name}]"
 
-                # Call synchronous function
+                # Call the function
                 result = func_obj(*args_to_pass, **kwargs_to_pass)
 
-                # Handle coroutine result from sync function
+                # Handle coroutine return
                 if inspect.iscoroutine(result):
                     thread = threading.Thread(
                         target=self._run_coroutine,
@@ -142,12 +134,26 @@ class Gateway(Resolver):
                     thread.start()
                     return f"[async coroutine started for {func_name}]"
 
-                # Store result
-
+                # Store non-None results with updated key logic
                 if result is not None:
-                    sk = func_name.split("_")[-1] if "_" in func_name else func_name
-                    lk = func_name.split("_", 1)[-1] if "_" in func_name else func_name
-                    self.info(f"Stored {result=} into {sk=} {lk=} ")
+                    parts = func_name.split(".")
+                    project = parts[-2] if len(parts) > 1 else parts[-1]
+                    func = parts[-1]
+
+                    def split_words(name):
+                        # Split by underscore or camelCase boundaries
+                        return re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', name.replace("_", " "))
+
+                    words = split_words(func)
+
+                    if len(words) == 1:
+                        sk = project
+                    else:
+                        sk = words[-1]
+
+                    lk = ".".join([project] + words[1:]) if len(words) > 1 else project
+
+                    self.info(f"Stored {result=} into {sk=} {lk=}")
                     self.results.insert(sk, result)
                     if lk != sk:
                         self.results.insert(lk, result)
@@ -163,7 +169,7 @@ class Gateway(Resolver):
                 raise
 
         return wrapped
-        
+
     def _run_coroutine(self, func_name, coro_or_func, args=None, kwargs=None):
         try:
             loop = asyncio.new_event_loop()
@@ -228,58 +234,77 @@ class Gateway(Resolver):
             return project_obj
         except Exception as e:
             raise AttributeError(f"Project or builtin '{name}' not found: {e}")
-
-    def load_project(self, project_name: str, *, root: str = "projects"):
-        # Replace hyphens with underscores in module names
-        project_name = project_name.replace("-", "_")
-        project_path = gw.resource(root, *project_name.split("."))
-        self.debug(f"Load {project_name=} under {root=} -> {project_path}")
-
-        # Determine if it's a package or module
-        if os.path.isdir(project_path) and os.path.isfile(os.path.join(project_path, "__init__.py")):
-            # It's a package
-            project_file = os.path.join(project_path, "__init__.py")
-            module_name = project_name.replace(".", "_")
-        else:
-            # It's a single module
-            project_file = str(project_path) + ".py"
-            if not os.path.isfile(project_file):
-                raise FileNotFoundError(f"Project file or package not found: {project_file}")
-            module_name = project_name.replace(".", "_")
-
-        # Load spec
-        spec = importlib.util.spec_from_file_location(module_name, project_file)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Could not load spec for {project_name!r} from {project_file}")
-
-        project_module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = project_module  # so relative imports work
-
-        # === NEW: wrap exec_module to catch ImportError and log it ===
-        try:
-            spec.loader.exec_module(project_module)
-        except Exception as e:
-            self.error(f"Failed to import project '{project_name}' from {project_file}: {e}", exc_info=True)
-            # re-raise so caller sees it
-            raise
-
-        # Collect all public functions
-        project_functions = {
-            name: obj
-            for name, obj in inspect.getmembers(project_module, inspect.isfunction)
-            if not name.startswith("_")
-        }
-
-        # Wrap them up on a fresh namespace object
-        project_obj = type(project_name, (), {})()
-        for func_name, func_obj in project_functions.items():
-            wrapped = self._wrap_callable(f"{project_name}.{func_name}", func_obj)
-            setattr(project_obj, func_name, wrapped)
-
-        # Cache and return
-        self._cache[project_name] = project_obj
-        return project_obj
     
+    def load_project(self, project_name: str, *, root: str = "projects"):
+        from types import SimpleNamespace
+
+        # Resolve the file-system path (can be a dir or a .py file)
+        base = gw.resource(root, *project_name.split("."))
+        self.debug(f"Loading {project_name} from {base}")
+
+        # Helper to load a single .py as a namespace
+        def load_module_namespace(py_path: str, dotted: str):
+            mod = self.load_py_file(py_path, dotted)
+            ns = SimpleNamespace()
+            for fname, obj in inspect.getmembers(mod, inspect.isfunction):
+                if not fname.startswith("_"):
+                    wrapped = self._wrap_callable(f"{dotted}.{fname}", obj)
+                    setattr(ns, fname, wrapped)
+            self._cache[dotted] = ns
+            return ns
+
+        # 1) Directory: recurse into sub-folders and .py files
+        if os.path.isdir(base):
+            return self.recurse_namespace(base, project_name)
+
+        # 2) Single file: support Path objects correctly
+        from pathlib import Path
+        base_path = Path(base)
+        py_file = base_path if base_path.suffix == ".py" else base_path.with_suffix(".py")
+        if py_file.is_file():
+            return load_module_namespace(str(py_file), project_name)
+
+        # 3) Not found
+        raise FileNotFoundError(f"Project path not found: {base}")
+
+    def load_py_file(self, path: str, dotted_name: str):
+        """Load a .py from an arbitrary path into a new module object."""
+        module_name = dotted_name.replace(".", "_")
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot load spec for {path}")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = mod
+        try:
+            spec.loader.exec_module(mod)
+        except Exception:
+            self.error(f"Failed to import {dotted_name} from {path}", exc_info=True)
+            raise
+        return mod
+
+    def recurse_namespace(self, current_path: str, dotted_prefix: str):
+        """Recursively walk a folder and build a namespace of wrapped callables."""
+        from types import SimpleNamespace
+
+        ns = SimpleNamespace()
+        for entry in os.listdir(current_path):
+            full = os.path.join(current_path, entry)
+            if entry.endswith(".py") and not entry.startswith("__"):
+                subname = entry[:-3]
+                dotted = f"{dotted_prefix}.{subname}"
+                mod = self.load_py_file(full, dotted)
+                sub_ns = SimpleNamespace()
+                for fname, obj in inspect.getmembers(mod, inspect.isfunction):
+                    if not fname.startswith("_"):
+                        wrapped = self._wrap_callable(f"{dotted}.{fname}", obj)
+                        setattr(sub_ns, fname, wrapped)
+                setattr(ns, subname, sub_ns)
+            elif os.path.isdir(full) and not entry.startswith("__"):
+                dotted = f"{dotted_prefix}.{entry}"
+                setattr(ns, entry, self.recurse_namespace(full, dotted))
+        self._cache[dotted_prefix] = ns
+        return ns
+
     def log(self, *args, **kwargs):
         if self._debug:
             self.debug(*args, **kwargs)

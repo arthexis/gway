@@ -1,58 +1,40 @@
-import importlib
 from functools import wraps
 from urllib.parse import urlencode
 from collections.abc import Iterable
 from gway import gw
 
+# TODO: After the changes to how projects and modules work in gway, it has been 
+# decided that web.app.setup will no longer accept modules to load views from and 
+# instead use the project option only. Sub-projects of that project will be 
+# allowed for serving. So, if project="ocpp", both ocpp/csms.py and ocpp/evcs.py projects will
+# be exposed, as /ocpp/csms and /ocpp/evcs endpoints respectively. 
 
-def build_url(prefix, *args, **kwargs):
-    path = "/".join(str(a).strip("/") for a in args if a)
-    url = f"/{prefix}/{path}"
-    if kwargs:
-        url += "?" + urlencode(kwargs)
-    return url
+# TODO: web/views.py has been renamed to web/view.py Make sure this is consistent in the code
 
-
-def redirect_error(error=None, note="", default="/gway/readme"):
-    from bottle import request, response
-    gw.error("Redirecting due to error." + (" " + note if note else ""))
-    
-    # Log request metadata
-    gw.error(f"Method: {request.method}")
-    gw.error(f"Path: {request.path}")
-    gw.error(f"Full URL: {request.url}")
-    gw.error(f"Query: {dict(request.query)}")
-    
-    try:
-        if request.json:
-            gw.error(f"JSON body: {request.json}")
-        elif request.forms:
-            gw.error(f"Form data: {request.forms.decode()}")
-    except Exception as e:
-        gw.exception(e)
-
-    # Log headers and cookies for more context
-    gw.error(f"Headers: {dict(request.headers)}")
-    gw.error(f"Cookies: {request.cookies}")
-
-    if error:
-        gw.exception(error)
-
-    # Redirect to default view
-    response.status = 302
-    response.set_header("Location", default)
-    return ""
-
-
-def setup_app(*, 
-            app=None, project=None, module=None, 
-            path="gway", static="static", temp="temp"
-            ):
+def setup(
+        *,
+        app=None,
+        project="web.view",
+        path="gway",
+        static="static",
+        temp="temp",
+        home: str = "readme",
+    ):
     """
     Configure a simple application that showcases the use of GWAY to generate web apps.
-    This version uses Bottle. 
+    This version uses Bottle but can ingest other frameworks safely.
     """
     from bottle import Bottle, static_file, request, response, template, HTTPResponse
+
+    # TODO: Add a "home" parameter that will be used to determine the default view
+    # used as the landing and redirect after errors. This is needed because
+    # the default readme view may not exist in other projects. If home is None
+    # default to the readme as now. home should be relative to project or default web.view
+
+    # TODO: If readme is not found, try index, home, start or first before giving up.
+
+    # TODO: Ensure all references to module are removed and use projects not.
+    # Remember we can access functions directly with gw['project.path.func_name']
 
     version = gw.version()
 
@@ -75,7 +57,7 @@ def setup_app(*,
     if _first_setup:
         # The app produced by setup_app can be passed to setup_again with a new path
         # In such cases, we avoid performing some setup steps
-        app._gway_paths = {path: (project, module)}
+        app._gway_paths = {path: project}
         gw.web.static_url = lambda *args, **kwargs: build_url(static, *args, **kwargs)
         gw.web.temp_url   = lambda *args, **kwargs: build_url(temp, *args, **kwargs)
         gw.web.app_url    = lambda *args, **kwargs: build_url(path, *args, **kwargs)
@@ -212,84 +194,81 @@ def setup_app(*,
         def send_temp(filename):
             return static_file(filename, root=gw.resource("temp", "shared"))
             
-    @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
-    def view_dispatch(view):
-        # Normalize incoming path
-        segments   = view.strip("/").split("/")
-        view_name  = segments[0].replace("-", "_")
-        args       = segments[1:]
-        kwargs     = dict(request.query)
+        @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
+        def view_dispatch(view):
+            # 1. Normalize segments & apply `home` fallback
+            segments = [s for s in view.strip("/").split("/") if s]
+            if not segments:
+                segments = [home]
+            view_name = segments[0].replace("-", "_")
+            args = segments[1:]
+            kwargs = dict(request.query)
 
-        # If POST, update with form or JSON body data
-        if request.method == "POST":
+            # Merge POST payload
+            if request.method == "POST":
+                try:
+                    if request.json:
+                        kwargs.update(request.json)
+                    elif request.forms:
+                        kwargs.update(request.forms.decode())
+                except Exception as e:
+                    return redirect_error(e, note="Error loading JSON payload")
+
+            # 2. Resolve the GWAY project namespace via bracket notation
             try:
-                if request.json:
-                    kwargs.update(request.json)
-                elif request.forms:
-                    kwargs.update(request.forms.decode())  # decode() makes it a dict
+                source = gw[project]
             except Exception as e:
-                return redirect_error(e, note="Error loading JSON payload")
+                return redirect_error(e, note=f"Project '{project}' not found via gw['{project}']")
 
-        # Dynamically import the module or project package
-        try:
-            if module:
-                source = importlib.import_module(module)
-            elif project:
-                source = getattr(gw, project)
-            else:
-                source = importlib.import_module("web.views")
-        except (ImportError, AttributeError) as e:
-            return redirect_error(e, note="Error loading views")
+            # 3. Locate the view function
+            view_func = getattr(source, view_name, None)
+            if not callable(view_func):
+                view_func = getattr(source, f"view_{view_name}", None)
+            if not callable(view_func) and hasattr(source, view_name):
+                sub = getattr(source, view_name)
+                view_func = getattr(sub, view_name, None)
 
-        # Try to resolve the callable:
-        # 1) First, a function named exactly `view_name`
-        # 2) Then, a function named `view_<view_name>`
-        view_func = getattr(source, view_name, None)
-        if not callable(view_func):
-            view_func = getattr(source, f"view_{view_name}", None)
-        if not callable(view_func):
-            return redirect_error(note="View not found or not callable")
+            if not callable(view_func):
+                return redirect_error(note=f"View '{view_name}' not found in project '{project}'")
 
-        # Execute the view
-        try:
-            gw.info(f"Dispatching to view {view_func.__name__} (args={args}, kwargs={kwargs})")
-            content = view_func(*args, **kwargs)
-            visited = update_visited(view_name)
-        except HTTPResponse as resp:
-            return resp
-        except Exception as e:
-            return redirect_error(e, note="View not found or not callable")
+            # 4. Invoke & render
+            try:
+                gw.info(f"Dispatching to view {view_func.__name__} (args={args}, kwargs={kwargs})")
+                content = view_func(*args, **kwargs)
+                visited = update_visited(view_name)
+            except HTTPResponse as resp:
+                return resp
+            except Exception as e:
+                return redirect_error(e, note="Error during view execution")
 
-        # Build navbar & consent
-        full_url = request.fullpath
-        if request.query_string:
-            full_url += "?" + request.query_string
-        navbar = render_navbar(visited, current_url=full_url)
+            # 5. Navbar, consent, CSS, template—unchanged
+            full_url = request.fullpath
+            if request.query_string:
+                full_url += "?" + request.query_string
+            navbar = render_navbar(visited, current_url=full_url)
 
-        if not cookies_enabled():
-            consent_box = f"""
-                <div class="consent-box">
-                <form action="/accept-cookies" method="post">
-                    <input type="hidden" name="next" value="/{view}" />
-                    This site uses cookies to improve your experience.
-                    <button type="submit">Accept</button>
-                </form>
-                </div>
-            """
-            content = consent_box + content
+            if not cookies_enabled():
+                consent_box = f"""
+                    <div class="consent-box">
+                    <form action="/accept-cookies" method="post">
+                        <input type="hidden" name="next" value="/{view}" />
+                        This site uses cookies to improve your experience.
+                        <button type="submit">Accept</button>
+                    </form>
+                    </div>
+                """
+                content = consent_box + content
 
-        # CSS preferences
-        css_cookie = request.get_cookie("css", "")
-        css_files  = ["default.css"] + [c.strip() for c in css_cookie.split(",") if c.strip()]
+            css_cookie = request.get_cookie("css", "")
+            css_files = ["default.css"] + [c.strip() for c in css_cookie.split(",") if c.strip()]
 
-        # Render the final page
-        return render_template(
-            title="GWAY - " + view_name.replace("_", " ").title(),
-            navbar=navbar,
-            content=content,
-            css_files=css_files
-        )
-    
+            return render_template(
+                title="GWAY - " + view_name.replace("_", " ").title(),
+                navbar=navbar,
+                content=content,
+                css_files=css_files
+            )
+        
     if _first_setup:
                 
         @app.route("/", method=["GET", "POST"])
@@ -301,3 +280,44 @@ def setup_app(*,
         app = security_middleware(app)
 
     return app
+
+...
+
+def build_url(prefix, *args, **kwargs):
+    path = "/".join(str(a).strip("/") for a in args if a)
+    url = f"/{prefix}/{path}"
+    if kwargs:
+        url += "?" + urlencode(kwargs)
+    return url
+
+
+def redirect_error(error=None, note="", default="/gway/readme"):
+    from bottle import request, response
+    gw.error("Redirecting due to error." + (" " + note if note else ""))
+    
+    # Log request metadata
+    gw.error(f"Method: {request.method}")
+    gw.error(f"Path: {request.path}")
+    gw.error(f"Full URL: {request.url}")
+    gw.error(f"Query: {dict(request.query)}")
+    
+    try:
+        if request.json:
+            gw.error(f"JSON body: {request.json}")
+        elif request.forms:
+            gw.error(f"Form data: {request.forms.decode()}")
+    except Exception as e:
+        gw.exception(e)
+
+    # Log headers and cookies for more context
+    gw.error(f"Headers: {dict(request.headers)}")
+    gw.error(f"Cookies: {request.cookies}")
+
+    if error:
+        gw.exception(error)
+
+    # Redirect to default view
+    response.status = 302
+    response.set_header("Location", default)
+    return ""
+

@@ -12,6 +12,12 @@ from .envs import load_env, get_base_client, get_base_server
 from .gateway import gw, Gateway
 
 
+# TODO: Allow spaces to also be used to delimit words in function names. 
+# For exampe setup_csms in ocpp/app.py may be called both as:
+# gway ocpp app setup-csms
+# gway ocpp app setup csms
+
+
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
@@ -94,12 +100,36 @@ def cli_main():
 
 def process_commands(command_sources, callback=None, **context):
     """Shared logic for executing CLI or recipe commands with optional per-node callback."""
-    from gway import gw, Gateway
+    from gway import gw as _global_gw, Gateway
+    from .builtins import abort
 
     all_results = []
     last_result = None
 
-    gw = Gateway(**context) if context else gw
+    gw = Gateway(**context) if context else _global_gw
+
+    def resolve_nested_object(root, tokens):
+        """Resolve a sequence of command tokens to a nested object (e.g. gw.project.module.func)."""
+        path = []
+        obj = root
+
+        while tokens:
+            normalized = normalize_token(tokens[0])
+            if hasattr(obj, normalized):
+                obj = getattr(obj, normalized)
+                path.append(tokens.pop(0))
+            else:
+                # Try to resolve composite function names from remaining tokens
+                for i in range(len(tokens), 0, -1):
+                    joined = "_".join(normalize_token(t) for t in tokens[:i])
+                    if hasattr(obj, joined):
+                        obj = getattr(obj, joined)
+                        path.extend(tokens[:i])
+                        tokens[:] = tokens[i:]
+                        return obj, tokens, path
+                break  # No match found; exit lookup loop
+
+        return obj, tokens, path
 
     for chunk in command_sources:
         if not chunk:
@@ -117,71 +147,33 @@ def process_commands(command_sources, callback=None, **context):
                 gw.debug(f"Callback replaced chunk: {callback_result}")
                 chunk = callback_result
             elif callback_result is None or callback_result is True:
-                pass  # continue with original chunk
+                pass
             else:
                 abort(f"Invalid callback return value for chunk: {callback_result}")
 
         if not chunk:
             continue
 
-        raw_first_token = chunk[0]
-        normalized_first_token = raw_first_token.replace("-", "_")
-        remaining_tokens = chunk[1:]
+        # Resolve nested project/function path
+        resolved_obj, func_args, path = resolve_nested_object(gw, list(chunk))
 
-        current_project_obj = None
-        func_tokens = []
-        project_functions = {}
+        if not callable(resolved_obj):
+            abort(f"No callable found in command path: {' '.join(path)}")
 
-        try:
-            current_project_obj = getattr(gw, normalized_first_token)
-            if callable(current_project_obj):
-                project_functions = {raw_first_token: current_project_obj}
-                func_tokens = [raw_first_token] + remaining_tokens
-            else:
-                project_functions = {
-                    name: func for name, func in vars(current_project_obj).items()
-                    if callable(func) and not name.startswith("_")
-                }
-                func_tokens = remaining_tokens or abort(f"No function specified for project '{raw_first_token}'")
-        except AttributeError:
-            try:
-                builtin_func = getattr(gw.builtin, normalized_first_token)
-                if callable(builtin_func):
-                    project_functions = {raw_first_token: builtin_func}
-                    func_tokens = [raw_first_token] + remaining_tokens
-                else:
-                    abort(f"Unknown command or project: {raw_first_token}")
-            except AttributeError:
-                if current_project_obj:
-                    project_functions = {
-                        name: func for name, func in vars(current_project_obj).items()
-                        if callable(func) and not name.startswith("_")
-                    }
-                    func_tokens = [raw_first_token] + remaining_tokens
-                else:
-                    abort(f"Unknown project, builtin, or function: {raw_first_token}")
-
-        raw_func_name = func_tokens[0]
-        normalized_func_name = raw_func_name.replace("-", "_")
-        func_args = func_tokens[1:]
-
-        func_obj = project_functions.get(raw_func_name) or project_functions.get(normalized_func_name)
-        if not func_obj:
-            abort(f"Function '{raw_func_name}' not found.")
-
-        func_parser = argparse.ArgumentParser(prog=raw_func_name)
-        add_function_args(func_parser, func_obj)
+        # Parse function arguments
+        func_parser = argparse.ArgumentParser(prog=".".join(path))
+        add_function_args(func_parser, resolved_obj)
         parsed_args = func_parser.parse_args(func_args)
 
-        final_args, final_kwargs = prepare_arguments(parsed_args, func_obj)
-
+        # Prepare and invoke
+        final_args, final_kwargs = prepare_arguments(parsed_args, resolved_obj)
         try:
-            result = func_obj(*final_args, **final_kwargs)
+            result = resolved_obj(*final_args, **final_kwargs)
             last_result = result
             all_results.append(result)
         except Exception as e:
             gw.exception(e)
-            abort(f"Unhandled {type(e).__name__} in {func_obj.__name__}")
+            abort(f"Unhandled {type(e).__name__} in {resolved_obj.__name__}")
 
     return all_results, last_result
 
@@ -209,39 +201,6 @@ def prepare_arguments(parsed_args, func_obj):
             func_kwargs[name] = value
 
     return func_args, {**func_kwargs, **extra_kwargs}
-
-
-def load_recipe(recipe_filename):
-    """Load commands and comments from a .gwr file."""
-    commands = []
-    comments = []
-
-    if not os.path.isabs(recipe_filename):
-        candidate_names = [recipe_filename]
-        if not os.path.splitext(recipe_filename)[1]:
-            candidate_names += [f"{recipe_filename}.gwr", f"{recipe_filename}.txt"]
-        for name in candidate_names:
-            recipe_path = gw.resource("recipes", name)
-            if os.path.isfile(recipe_path):
-                break
-        else:
-            abort(f"Recipe not found in recipes/: tried {candidate_names}")
-    else:
-        recipe_path = recipe_filename
-        if not os.path.isfile(recipe_path):
-            raise FileNotFoundError(f"Recipe not found: {recipe_path}")
-
-    gw.info(f"Loading commands from recipe: {recipe_path}")
-
-    with open(recipe_path) as f:
-        for line in f:
-            stripped_line = line.strip()
-            if stripped_line.startswith("#"):
-                comments.append(stripped_line)
-            elif stripped_line:
-                commands.append(stripped_line.split())
-
-    return commands, comments
 
 
 def chunk_command(args_commands):
@@ -394,3 +353,40 @@ def get_arg_options(arg_name, param, gw=None):
         opts["required"] = True
 
     return opts
+
+
+def load_recipe(recipe_filename):
+    """Load commands and comments from a .gwr file."""
+    commands = []
+    comments = []
+
+    if not os.path.isabs(recipe_filename):
+        candidate_names = [recipe_filename]
+        if not os.path.splitext(recipe_filename)[1]:
+            candidate_names += [f"{recipe_filename}.gwr", f"{recipe_filename}.txt"]
+        for name in candidate_names:
+            recipe_path = gw.resource("recipes", name)
+            if os.path.isfile(recipe_path):
+                break
+        else:
+            abort(f"Recipe not found in recipes/: tried {candidate_names}")
+    else:
+        recipe_path = recipe_filename
+        if not os.path.isfile(recipe_path):
+            raise FileNotFoundError(f"Recipe not found: {recipe_path}")
+
+    gw.info(f"Loading commands from recipe: {recipe_path}")
+
+    with open(recipe_path) as f:
+        for line in f:
+            stripped_line = line.strip()
+            if stripped_line.startswith("#"):
+                comments.append(stripped_line)
+            elif stripped_line:
+                commands.append(stripped_line.split())
+
+    return commands, comments
+
+
+def normalize_token(token):
+    return token.replace("-", "_").replace(" ", "_").replace(".", "_")

@@ -9,10 +9,16 @@ def now(*, utc=False) -> "datetime":
     return datetime.datetime.now(datetime.timezone.utc) if utc else datetime.datetime.now()
 
 
-def now_plus(*, seconds=0, utc=False) -> "datetime":
+def plus(*, seconds=0, utc=False) -> "datetime":
     """Return current datetime plus given seconds."""
     base = now(utc=utc)
     return base + datetime.timedelta(seconds=seconds)
+
+
+def minus(*, seconds=0, utc=False) -> "datetime":
+    """Return current datetime plus given seconds."""
+    base = now(utc=utc)
+    return base - datetime.timedelta(seconds=seconds)
 
 
 def ts(*, utc=False) -> str:

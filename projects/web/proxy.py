@@ -2,7 +2,7 @@ from gway import requires, gw
 
 
 @requires("requests", "httpx", "websockets", "fastapi")
-def setup_proxy_app(*, endpoint: str, app=None, websockets: bool = False, path="/"):
+def setup_app(*, endpoint: str, app=None, websockets: bool = False, path="/"):
     """
     Create an HTTP proxy to the given endpoint.
     If websockets=True and app is FastAPI or None, add WebSocket proxy support.

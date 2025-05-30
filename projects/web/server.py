@@ -1,7 +1,7 @@
 from gway import gw
 from collections.abc import Iterable
 
-def start_app_server(*,
+def start(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
     debug=False,
@@ -30,7 +30,7 @@ def start_app_server(*,
             threads = []
             for i, sub_app in enumerate(app):
                 t = Thread(
-                    target=start_server,
+                    target=gw.web.server.start,
                     kwargs=dict(
                         host=host,
                         port=int(port) + i,
@@ -54,14 +54,12 @@ def start_app_server(*,
         if app is None or isinstance(app, str):
             if app is None:
                 gw.warning(
-                    f"Building online help app (app=None). Run with --app help to remove this warning."
-                )
-            from .apps import setup_app
-            app = setup_app(app=app)
+                    f"Building default app (app is None). Run with --app default to silence.")
+            app = gw.web.app.setup(app=app)
 
         # 2. Wrap with proxy if requested
         if proxy:
-            from .proxies import setup_proxy
+            from .proxy import setup_proxy
             app = setup_proxy(endpoint=proxy, app=app)
 
         # 3. If app is a zero-arg factory, invoke it
@@ -133,4 +131,4 @@ def start_app_server(*,
         run_server()
 
 
-start_server = start_app_server
+start_app = start
