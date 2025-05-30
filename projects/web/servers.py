@@ -1,7 +1,7 @@
 from gway import gw
 from collections.abc import Iterable
 
-def start_server(*,
+def start_app_server(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
     debug=False,
@@ -131,3 +131,6 @@ def start_server(*,
         return asyncio.to_thread(run_server)
     else:
         run_server()
+
+
+start_server = start_app_server

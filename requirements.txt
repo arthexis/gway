@@ -16,3 +16,5 @@ cryptography
 jinja2
 pygame
 python-multipart
+httpx
+websockets
