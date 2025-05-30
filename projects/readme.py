@@ -1,8 +1,8 @@
-# projects/readme.py
 """
 GWAY project module to collect all projects and functions and update README.rst.
 Usage (CLI): gway readme collect-projects <projects_dir> [--readme READMENAME]
 """
+
 import os
 import importlib.util
 import inspect
@@ -18,13 +18,12 @@ def collect_projects(project_dir: str, readme: str = "README.rst"):
         project_dir: path to the GWAY projects directory.
         readme: path to the README file to update.
     """
-    # 1) Gather projects and their functions
+    # 1) Gather projects and their public functions
     projects = {}
     for entry in os.scandir(project_dir):
         if entry.name.startswith("_"):
             continue
         name = entry.name[:-3] if entry.is_file() and entry.name.endswith(".py") else entry.name
-        # resolve module file path
         module_root = os.path.join(project_dir, *name.split("."))
         if os.path.isdir(module_root) and os.path.isfile(os.path.join(module_root, "__init__.py")):
             module_file = os.path.join(module_root, "__init__.py")
@@ -37,35 +36,40 @@ def collect_projects(project_dir: str, readme: str = "README.rst"):
         except Exception as e:
             gw.warning(f"Skipping project {name}: failed to import: {e}")
             continue
-        funcs = [fname for fname, obj in inspect.getmembers(module, inspect.isfunction) if not fname.startswith("_")]
+
+        funcs = []
+        for fname, obj in inspect.getmembers(module, inspect.isfunction):
+            if fname.startswith("_"):
+                continue
+            doc = inspect.getdoc(obj) or "(no description)"
+            funcs.append({
+                "name": fname,
+                "doc": doc,
+                "cli": f"gway {name} {fname}"
+            })
         projects[name] = funcs
 
     # 2) Build RST lines for INCLUDED PROJECTS
     lines = ["INCLUDED PROJECTS\n", "=================\n\n"]
     for name, funcs in sorted(projects.items()):
         lines.append(f".. rubric:: {name}\n\n")
-        lines.append(".. list-table:: Functions\n   :header-rows: 1\n\n")
-        lines.append("   * - Function\n")
-        for fn in funcs:
-            lines.append(f"   * - {fn}\n")
+        for f in funcs:
+            lines.append(f"- ``{f['name']}`` — {f['doc'].splitlines()[0]}\n\n")
+            lines.append(f"  Example CLI: ``{f['cli']}``\n\n")
         lines.append("\n")
 
     # 3) Read existing README and locate section boundaries
     with open(readme, 'r', encoding='utf-8') as f:
         content = f.readlines()
 
-    # find LICENSE heading
     license_idx = next((i for i, l in enumerate(content) if l.strip().upper() == 'LICENSE'), len(content))
-    # find existing INCLUDED PROJECTS
     start_idx = next((i for i, l in enumerate(content) if l.strip() == 'INCLUDED PROJECTS'), None)
     if start_idx is not None:
-        # truncate old section
         content = content[:start_idx] + content[license_idx:]
         license_idx = start_idx
 
-    # insert new section before LICENSE
+    # 4) Insert the updated project section
     new_content = content[:license_idx] + lines + ['\n'] + content[license_idx:]
-
     with open(readme, 'w', encoding='utf-8') as f:
         f.writelines(new_content)
 
