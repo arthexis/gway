@@ -90,12 +90,10 @@ def resource(*parts, touch=False, check=False, temp=False):
 
     if not touch and check:
         if not path.exists():
-            raise FileNotFoundError(f"Resource {path} missing")
+            gw.abort(f"Required resource {path} missing")
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    if touch:
-        path.touch()
-
+    if touch: path.touch()
     return path
 
 
