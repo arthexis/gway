@@ -2,6 +2,8 @@ import os
 import ast
 import pathlib
 import textwrap
+from collections.abc import Iterable
+from typing import Any, Callable, List, Optional
 
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
@@ -272,4 +274,42 @@ def run_recipe(*script: str, **context):
 def run(*script: str, **context):
     from gway import gw
     return gw.run_recipe(*script, **context)
+
+
+def filter_apps(
+    *apps: Any,
+    kwarg: Optional[Any] = None,
+    selector: Callable[[Any], bool]
+) -> List[Any]:
+    """
+    Collects positional *apps and the single `kwarg` value, flattens any
+    iterables (that don’t themselves match selector), and returns only
+    those items for which selector(item) is True.
+    """
+    candidates: List[Any] = []
+
+    # helper to append one candidate or a sequence of them
+    def _collect(x: Any):
+        if x is None:
+            return
+        # if x itself matches, take it as a single app
+        if selector(x):
+            candidates.append(x)
+        # else if it’s iterable, drill in
+        elif isinstance(x, Iterable):
+            for sub in x:
+                _collect(sub)
+        # otherwise discard it
+        else:
+            return
+
+    # collect from kwarg first (so kwarg= overrides positional if desired)
+    if kwarg is not None:
+        _collect(kwarg)
+
+    # then collect from all the rest
+    for a in apps:
+        _collect(a)
+
+    return candidates
 

@@ -8,7 +8,6 @@ import asyncio
 import threading
 import importlib
 import functools
-
 from types import SimpleNamespace
 from .sigils import Resolver
 from .structs import Results

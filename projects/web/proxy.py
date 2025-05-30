@@ -1,38 +1,64 @@
-from gway import requires, gw
+from gway import gw
+import requests
 
 
-@requires("requests", "httpx", "websockets", "fastapi")
-def setup_app(*, endpoint: str, app=None, websockets: bool = False, path="/"):
+def setup_app(*apps, endpoint: str, app=None, websockets: bool = False, path: str = "/"):
     """
-    Create an HTTP proxy to the given endpoint.
-    If websockets=True and app is FastAPI or None, add WebSocket proxy support.
-    If app is None and websockets=True, creates a new FastAPI app.
-    If app is Bottle, only HTTP proxy supported.
+    Create an HTTP (and optional WebSocket) proxy to the given endpoint.
+    Accepts positional apps, the `app=` kwarg, or both. Flattens any iterables
+    and selects apps by type using gw.filter_apps.
+
+    Returns a single app if one is provided, otherwise a tuple of apps.
     """
-    import requests
+    # selectors for app types
+    from bottle import Bottle
 
-    # Detect FastAPI
-    is_fastapi = False
-    if app is not None:
-        is_fastapi = hasattr(app, "websocket")
+    def is_bottle_app(candidate) -> bool:
+        return isinstance(candidate, Bottle)
 
-    # Auto enable websockets if FastAPI app detected and websockets not explicitly set True
+    def is_fastapi_app(candidate) -> bool:
+        return hasattr(candidate, "websocket")
+
+    # collect apps by type
+    bottle_apps = gw.filter_apps(*apps, kwarg=app, selector=is_bottle_app)
+    fastapi_apps = gw.filter_apps(*apps, kwarg=app, selector=is_fastapi_app)
+
+    prepared = []
+
+    # if no matching apps, default to a new Bottle
+    if not bottle_apps and not fastapi_apps:
+        default = Bottle()
+        prepared.append(_wire_proxy(default, endpoint, websockets, path))
+    else:
+        for b in bottle_apps:
+            prepared.append(_wire_proxy(b, endpoint, websockets, path))
+        for f in fastapi_apps:
+            prepared.append(_wire_proxy(f, endpoint, websockets, path))
+
+    return prepared[0] if len(prepared) == 1 else tuple(prepared)
+
+
+def _wire_proxy(app, endpoint: str, websockets: bool, path: str):
+    """
+    Internal: attach HTTP and optional WS proxy routes
+    to Bottle or FastAPI-compatible app.
+    """
+    # detect FastAPI-like
+    is_fastapi = hasattr(app, "websocket")
+
+    # auto-enable websockets for FastAPI
     if is_fastapi and not websockets:
         websockets = True
 
-    # If app is None and websockets is True, create FastAPI app
+    # FastAPI: new app if needed
     if app is None and websockets:
         from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-        import httpx
-        import websockets
-        import asyncio
+        import httpx, websockets, asyncio
 
         app = FastAPI()
-        base_path = path.rstrip("/")
-        if base_path == "":
-            base_path = "/"
+        base = path.rstrip("/") or "/"
 
-        @app.api_route(base_path + "/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+        @app.api_route(f"{base}/{{full_path:path}}", methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"])
         async def proxy_http(request: Request, full_path: str):
             url = endpoint.rstrip("/") + "/" + full_path
             client = httpx.AsyncClient()
@@ -41,44 +67,38 @@ def setup_app(*, endpoint: str, app=None, websockets: bool = False, path="/"):
             resp = await client.request(request.method, url, headers=headers, content=body)
             return resp.content, resp.status_code, resp.headers.items()
 
-        if websockets:
-            @app.websocket(base_path + "/{full_path:path}")
-            async def proxy_ws(websocket: WebSocket, full_path: str):
-                upstream_ws_url = endpoint.rstrip("/") + "/" + full_path
-                await websocket.accept()
-
-                try:
-                    async with websockets.connect(upstream_ws_url) as upstream_ws:
-
-                        async def client_to_upstream():
-                            while True:
-                                msg = await websocket.receive_text()
-                                await upstream_ws.send(msg)
-
-                        async def upstream_to_client():
-                            while True:
-                                msg = await upstream_ws.recv()
-                                await websocket.send_text(msg)
-
-                        await asyncio.gather(client_to_upstream(), upstream_to_client())
-
-                except WebSocketDisconnect:
-                    pass
-                except Exception as e:
-                    gw.error(f"WebSocket proxy error: {e}")
+        @app.websocket(f"{base}/{{full_path:path}}")
+        async def proxy_ws(ws: WebSocket, full_path: str):
+            upstream = endpoint.rstrip("/") + "/" + full_path
+            await ws.accept()
+            try:
+                async with websockets.connect(upstream) as up:
+                    async def c2u():
+                        while True:
+                            m = await ws.receive_text()
+                            await up.send(m)
+                    async def u2c():
+                        while True:
+                            m = await up.recv()
+                            await ws.send_text(m)
+                    await asyncio.gather(c2u(), u2c())
+            except WebSocketDisconnect:
+                pass
+            except Exception as e:
+                gw.error(f"WebSocket proxy error: {e}")
 
         return app
 
-    # If app is Bottle, setup HTTP proxy only
-    if hasattr(app, "route"):
+    # Bottle-only HTTP proxy
+    if hasattr(app, "route") and not is_fastapi:
         from bottle import request
-        @app.route(path + "<path:path>", method=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
-        def proxy_handler(path):
-            target_url = f"{endpoint.rstrip('/')}/{path}"
-            headers = {key: value for key, value in request.headers.items()}
-            method = request.method
+
+        @app.route(f"{path}<path:path>", method=["GET","POST","PUT","DELETE","PATCH","OPTIONS","HEAD"])
+        def _bottle_proxy(path):
+            target = f"{endpoint.rstrip('/')}/{path}"
+            headers = {k: v for k, v in request.headers.items()}
             try:
-                resp = requests.request(method, target_url, headers=headers, data=request.body.read(), stream=True)
+                resp = requests.request(request.method, target, headers=headers, data=request.body.read(), stream=True)
                 return resp.content, resp.status_code, resp.headers.items()
             except Exception as e:
                 gw.error("Proxy request failed: %s", e)
@@ -89,18 +109,14 @@ def setup_app(*, endpoint: str, app=None, websockets: bool = False, path="/"):
 
         return app
 
-    # Otherwise, assume FastAPI-like app and append HTTP + WS proxy if requested
+    # Existing FastAPI-like app augmentation
     if is_fastapi:
         from fastapi import WebSocket, WebSocketDisconnect, Request
-        import httpx
-        import websockets
-        import asyncio
+        import httpx, websockets, asyncio
 
-        base_path = path.rstrip("/")
-        if base_path == "":
-            base_path = "/"
+        base = path.rstrip("/") or "/"
 
-        @app.api_route(base_path + "/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+        @app.api_route(f"{base}/{{full_path:path}}", methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"])
         async def proxy_http(request: Request, full_path: str):
             url = endpoint.rstrip("/") + "/" + full_path
             client = httpx.AsyncClient()
@@ -110,26 +126,21 @@ def setup_app(*, endpoint: str, app=None, websockets: bool = False, path="/"):
             return resp.content, resp.status_code, resp.headers.items()
 
         if websockets:
-            @app.websocket(base_path + "/{full_path:path}")
-            async def proxy_ws(websocket: WebSocket, full_path: str):
-                upstream_ws_url = endpoint.rstrip("/") + "/" + full_path
-                await websocket.accept()
-
+            @app.websocket(f"{base}/{{full_path:path}}")
+            async def proxy_ws(ws: WebSocket, full_path: str):
+                upstream = endpoint.rstrip("/") + "/" + full_path
+                await ws.accept()
                 try:
-                    async with websockets.connect(upstream_ws_url) as upstream_ws:
-
-                        async def client_to_upstream():
+                    async with websockets.connect(upstream) as up:
+                        async def c2u():
                             while True:
-                                msg = await websocket.receive_text()
-                                await upstream_ws.send(msg)
-
-                        async def upstream_to_client():
+                                m = await ws.receive_text()
+                                await up.send(m)
+                        async def u2c():
                             while True:
-                                msg = await upstream_ws.recv()
-                                await websocket.send_text(msg)
-
-                        await asyncio.gather(client_to_upstream(), upstream_to_client())
-
+                                m = await up.recv()
+                                await ws.send_text(m)
+                        await asyncio.gather(c2u(), u2c())
                 except WebSocketDisconnect:
                     pass
                 except Exception as e:
@@ -137,6 +148,4 @@ def setup_app(*, endpoint: str, app=None, websockets: bool = False, path="/"):
 
         return app
 
-    # Unsupported app type
     raise RuntimeError("Unsupported app type for setup_proxy: must be Bottle or FastAPI-compatible")
-
