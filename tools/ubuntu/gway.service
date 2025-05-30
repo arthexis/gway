@@ -7,7 +7,7 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/gway
 ExecStartPre=/home/ubuntu/gway/upgrade.sh
-ExecStart=/home/ubuntu/gway/gway.sh -r website                                         
+ExecStart=/home/ubuntu/gway/gway.sh -dr website                                         
 Restart=on-failure
 Environment=PYTHONUNBUFFERED=1
 StandardOutput=journal
