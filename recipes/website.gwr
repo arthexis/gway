@@ -1,6 +1,5 @@
-# Default GWAY website ingredients
+# Minimal GWAY website ingredients
 
-release build --help-db --projects
 web app setup 
 web server start-app --daemon
 until --lock-file VERSION --lock-pypi

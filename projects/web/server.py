@@ -1,9 +1,6 @@
 from gway import gw
 from collections.abc import Iterable
 
-# TODO: Allow *apps to be passed as an argument and used together with the app kwarg
-# The same way the setup function in project/web/server.py works.
-# Should return the app or iterable of collected apps.
 
 def start(*apps,
     host="[WEBSITE_HOST|127.0.0.1]",

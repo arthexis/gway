@@ -1,5 +1,6 @@
 import re
 import os
+import itertools
 
 
 class Sigil:
@@ -80,7 +81,7 @@ class Resolver:
         if not isinstance(sigil, Sigil):
             sigil = Sigil(sigil)
         return sigil % self.find_value
-    
+
     def find_value(self, key: str, fallback: str = None) -> str:
         """Find a value from the search sources provided in search_order."""
         for name, source in self._search_order:
@@ -92,23 +93,37 @@ class Resolver:
                 return source[key]
         return fallback
 
+    def _generate_key_variants(self, key):
+        """Generate possible variants of the key by trying all permutations with normalized separators."""
+        separators = ['.', '-', '_', ' ']
+        parts = re.split(r'[\.\-_ ]+', key)
+        permutations = set(
+            sep.join(p) for p in itertools.permutations(parts) for sep in separators
+        )
+        return permutations
+
     def _resolve_key(self, key: str, fallback: str = None) -> str:
-        """Tries find_value first, then attribute/dot-notation fallback."""
+        """Tries find_value first, then attribute/dot-notation fallback with reordering."""
         val = self.find_value(key, fallback)
         if val is not None:
             return val
 
-        # Dot notation traversal
-        parts = key.replace('-', '_').split('.')
-        current = self
-        for part in parts:
-            if hasattr(current, part):
-                current = getattr(current, part)
-            elif isinstance(current, dict) and part in current:
-                current = current[part]
-            else:
-                return None
-        return current
+        for variant in self._generate_key_variants(key):
+            # Dot notation traversal
+            parts = variant.split('.')
+            current = self
+            for part in parts:
+                if hasattr(current, part):
+                    current = getattr(current, part)
+                elif isinstance(current, dict) and part in current:
+                    current = current[part]
+                else:
+                    current = None
+                    break
+            if current is not None:
+                return current
+
+        return None
 
     def __getitem__(self, key):
         value = self._resolve_key(key)
