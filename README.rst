@@ -211,199 +211,373 @@ This script sets up a web application, launches the server in daemon mode, and w
 Recipes make Gway scripting modular and composable. Include them in your automation flows for maximum reuse and clarity.
 
 
+License
+-------
+
+MIT License
+
 INCLUDED PROJECTS
 =================
 
-.. rubric:: awg
 
-.. list-table:: Functions
-   :header-rows: 1
+============
+Project: awg
+============
 
-   * - Function
-   * - find_cable
-   * - find_conduit
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| find_cable           | Calculate the type of cable needed...  |
+|                      | gway awg find_cable                     |
++----------------------+--------------------------------------+
+| find_conduit         | Calculate the kind of conduit...       |
+|                      | gway awg find_conduit                   |
++----------------------+--------------------------------------+
 
-.. rubric:: clip
 
-.. list-table:: Functions
-   :header-rows: 1
+=============
+Project: clip
+=============
 
-   * - Function
-   * - copy
-   * - requires
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| copy                 | Extracts the contents of the...        |
+|                      | gway clip copy                           |
++----------------------+--------------------------------------+
+| requires             |                                        |
+|                      | gway clip requires                       |
++----------------------+--------------------------------------+
 
-.. rubric:: etron
 
-.. list-table:: Functions
-   :header-rows: 1
+==============
+Project: etron
+==============
 
-   * - Function
-   * - extract_records
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| extract_records      | Load data from EV IOCHARGER to CSV...  |
+|                      | gway etron extract_records                |
++----------------------+--------------------------------------+
 
-.. rubric:: gif
 
-.. list-table:: Functions
-   :header-rows: 1
+============
+Project: gif
+============
 
-   * - Function
-   * - animate
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| animate              |                                        |
+|                      | gway gif animate                        |
++----------------------+--------------------------------------+
 
-.. rubric:: gui
 
-.. list-table:: Functions
-   :header-rows: 1
+============
+Project: gui
+============
 
-   * - Function
-   * - lookup_font
-   * - notify
-   * - requires
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| lookup_font          | Look up fonts installed on a...        |
+|                      | gway gui lookup_font                    |
++----------------------+--------------------------------------+
+| notify               | Show a user interface notification...  |
+|                      | gway gui notify                         |
++----------------------+--------------------------------------+
+| requires             |                                        |
+|                      | gway gui requires                       |
++----------------------+--------------------------------------+
 
-.. rubric:: job
 
-.. list-table:: Functions
-   :header-rows: 1
+============
+Project: job
+============
 
-   * - Function
-   * - schedule
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| schedule             | Schedule a recipe to run.              |
+|                      | gway job schedule                       |
++----------------------+--------------------------------------+
 
-.. rubric:: net
 
-.. list-table:: Functions
-   :header-rows: 1
+============
+Project: net
+============
 
-   * - Function
-   * - export_connections
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| export_connections   | Export NetworkManager connections...   |
+|                      | gway net export_connections             |
++----------------------+--------------------------------------+
 
-.. rubric:: ocpp
 
-.. list-table:: Functions
-   :header-rows: 1
+=============
+Project: ocpp
+=============
 
-   * - Function
-   * - setup_csms_app
-   * - setup_sink_app
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| setup_csms_app       | OCPP 1.6 CSMS implementation with:     |
+|                      | gway ocpp setup_csms_app                 |
++----------------------+--------------------------------------+
+| setup_sink_app       | Basic OCPP passive sink for...         |
+|                      | gway ocpp setup_sink_app                 |
++----------------------+--------------------------------------+
 
-.. rubric:: odoo
 
-.. list-table:: Functions
-   :header-rows: 1
+=============
+Project: odoo
+=============
 
-   * - Function
-   * - Form
-   * - asynccontextmanager
-   * - create_quote
-   * - execute
-   * - fetch_customers
-   * - fetch_order
-   * - fetch_products
-   * - fetch_quotes
-   * - fetch_templates
-   * - get_user_info
-   * - read_chat
-   * - send_chat
-   * - setup_chatbot_app
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| Form                 |                                        |
+|                      | gway odoo Form                           |
++----------------------+--------------------------------------+
+| asynccontextmanager  | @asynccontextmanager decorator.        |
+|                      | gway odoo asynccontextmanager            |
++----------------------+--------------------------------------+
+| create_quote         | Create a new quotation using a...      |
+|                      | gway odoo create_quote                   |
++----------------------+--------------------------------------+
+| execute              | A generic function to directly...      |
+|                      | gway odoo execute                        |
++----------------------+--------------------------------------+
+| fetch_customers      | Fetch customers from Odoo with...      |
+|                      | gway odoo fetch_customers                |
++----------------------+--------------------------------------+
+| fetch_order          | Fetch the details of a specific...     |
+|                      | gway odoo fetch_order                    |
++----------------------+--------------------------------------+
+| fetch_products       | Fetch the list of non-archived...      |
+|                      | gway odoo fetch_products                 |
++----------------------+--------------------------------------+
+| fetch_quotes         | Fetch quotes/quotations from Odoo...   |
+|                      | gway odoo fetch_quotes                   |
++----------------------+--------------------------------------+
+| fetch_templates      | Fetch available quotation templates... |
+|                      | gway odoo fetch_templates                |
++----------------------+--------------------------------------+
+| get_user_info        | Retrieve Odoo user information by...   |
+|                      | gway odoo get_user_info                  |
++----------------------+--------------------------------------+
+| read_chat            | Read chat messages from an Odoo...     |
+|                      | gway odoo read_chat                      |
++----------------------+--------------------------------------+
+| send_chat            | Send a chat message to an Odoo user... |
+|                      | gway odoo send_chat                      |
++----------------------+--------------------------------------+
+| setup_chatbot_app    | Create a FastAPI app (or append to...  |
+|                      | gway odoo setup_chatbot_app              |
++----------------------+--------------------------------------+
 
-.. rubric:: png
 
-.. list-table:: Functions
-   :header-rows: 1
+============
+Project: png
+============
 
-   * - Function
-   * - credit_images
-   * - sanitize_filename
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| credit_images        | Receives a folder containing .png...   |
+|                      | gway png credit_images                  |
++----------------------+--------------------------------------+
+| sanitize_filename    | Sanitize the credit string to be...    |
+|                      | gway png sanitize_filename              |
++----------------------+--------------------------------------+
 
-.. rubric:: qr
 
-.. list-table:: Functions
-   :header-rows: 1
+===========
+Project: qr
+===========
 
-   * - Function
-   * - generate_b64data
-   * - generate_image
-   * - generate_img
-   * - generate_url
-   * - requires
-   * - scan_image
-   * - scan_img
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| generate_b64data     | Generate a QR code image from the...   |
+|                      | gway qr generate_b64data               |
++----------------------+--------------------------------------+
+| generate_image       | Generate a QR code image from the...   |
+|                      | gway qr generate_image                 |
++----------------------+--------------------------------------+
+| generate_img         | Generate a QR code image from the...   |
+|                      | gway qr generate_img                   |
++----------------------+--------------------------------------+
+| generate_url         | Return the local URL to a QR code...   |
+|                      | gway qr generate_url                   |
++----------------------+--------------------------------------+
+| requires             |                                        |
+|                      | gway qr requires                       |
++----------------------+--------------------------------------+
+| scan_image           | Scan the given image (file‑path or...  |
+|                      | gway qr scan_image                     |
++----------------------+--------------------------------------+
+| scan_img             | Scan the given image (file‑path or...  |
+|                      | gway qr scan_img                       |
++----------------------+--------------------------------------+
 
-.. rubric:: readme
 
-.. list-table:: Functions
-   :header-rows: 1
+===============
+Project: readme
+===============
 
-   * - Function
-   * - collect_projects
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| collect_projects     | Update README.rst to include the...    |
+|                      | gway readme collect_projects               |
++----------------------+--------------------------------------+
+| shorten              | Collapse and truncate the given...     |
+|                      | gway readme shorten                        |
++----------------------+--------------------------------------+
 
-.. rubric:: recipe
 
-.. list-table:: Functions
-   :header-rows: 1
+===============
+Project: recipe
+===============
 
-   * - Function
-   * - register_gwr
-   * - run
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| register_gwr         | Register the .gwr file extension so... |
+|                      | gway recipe register_gwr                   |
++----------------------+--------------------------------------+
+| run                  |                                        |
+|                      | gway recipe run                            |
++----------------------+--------------------------------------+
 
-.. rubric:: release
 
-.. list-table:: Functions
-   :header-rows: 1
+================
+Project: release
+================
 
-   * - Function
-   * - build
-   * - build_help
-   * - extract_todos
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| build                | Build the project and optionally...    |
+|                      | gway release build                          |
++----------------------+--------------------------------------+
+| build_help           |                                        |
+|                      | gway release build_help                     |
++----------------------+--------------------------------------+
+| extract_todos        |                                        |
+|                      | gway release extract_todos                  |
++----------------------+--------------------------------------+
 
-.. rubric:: sql
 
-.. list-table:: Functions
-   :header-rows: 1
+============
+Project: sql
+============
 
-   * - Function
-   * - connect
-   * - contextmanager
-   * - infer_type
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| connect              | Connects to a SQLite database using... |
+|                      | gway sql connect                        |
++----------------------+--------------------------------------+
+| contextmanager       | @contextmanager decorator.             |
+|                      | gway sql contextmanager                 |
++----------------------+--------------------------------------+
+| infer_type           | Infer SQL type from a sample value.    |
+|                      | gway sql infer_type                     |
++----------------------+--------------------------------------+
 
-.. rubric:: t
 
-.. list-table:: Functions
-   :header-rows: 1
+==========
+Project: t
+==========
 
-   * - Function
-   * - now
-   * - now_plus
-   * - to_download
-   * - ts
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| now                  | Return the current datetime object.    |
+|                      | gway t now                            |
++----------------------+--------------------------------------+
+| now_plus             | Return current datetime plus given...  |
+|                      | gway t now_plus                       |
++----------------------+--------------------------------------+
+| to_download          | Prompt: Create a python function...    |
+|                      | gway t to_download                    |
++----------------------+--------------------------------------+
+| ts                   | Return the current timestamp in...     |
+|                      | gway t ts                             |
++----------------------+--------------------------------------+
 
-.. rubric:: tests
 
-.. list-table:: Functions
-   :header-rows: 1
+==============
+Project: tests
+==============
 
-   * - Function
-   * - dummy_function
-   * - variadic_both
-   * - variadic_keyword
-   * - variadic_positional
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| dummy_function       | Dummy function for testing.            |
+|                      | gway tests dummy_function                 |
++----------------------+--------------------------------------+
+| variadic_both        |                                        |
+|                      | gway tests variadic_both                  |
++----------------------+--------------------------------------+
+| variadic_keyword     |                                        |
+|                      | gway tests variadic_keyword               |
++----------------------+--------------------------------------+
+| variadic_positional  |                                        |
+|                      | gway tests variadic_positional            |
++----------------------+--------------------------------------+
 
-.. rubric:: web
 
-.. list-table:: Functions
-   :header-rows: 1
+============
+Project: web
+============
 
-   * - Function
-   * - awg_finder
-   * - build_url
-   * - help
-   * - qr_code
-   * - readme
-   * - redirect_error
-   * - requires
-   * - setup_app
-   * - setup_proxy
-   * - start_server
-   * - theme
-   * - urlencode
-   * - wraps
++----------------------+--------------------------------------+
+| Function             | Docstring                            |
++======================+======================================+
+| awg_finder           | Page builder for AWG cable finder...   |
+|                      | gway web awg_finder                     |
++----------------------+--------------------------------------+
+| build_url            |                                        |
+|                      | gway web build_url                      |
++----------------------+--------------------------------------+
+| help                 | Render dynamic help based on GWAY...   |
+|                      | gway web help                           |
++----------------------+--------------------------------------+
+| qr_code              | Generate a QR code for a given...      |
+|                      | gway web qr_code                        |
++----------------------+--------------------------------------+
+| readme               | Render the README.rst file as HTML.    |
+|                      | gway web readme                         |
++----------------------+--------------------------------------+
+| redirect_error       |                                        |
+|                      | gway web redirect_error                 |
++----------------------+--------------------------------------+
+| requires             |                                        |
+|                      | gway web requires                       |
++----------------------+--------------------------------------+
+| setup_app            | Configure a simple application that... |
+|                      | gway web setup_app                      |
++----------------------+--------------------------------------+
+| setup_proxy          | Create a proxy handler to the given... |
+|                      | gway web setup_proxy                    |
++----------------------+--------------------------------------+
+| start_server         | Start an HTTP (WSGI) or ASGI server... |
+|                      | gway web start_server                   |
++----------------------+--------------------------------------+
+| theme                | Allows user to choose from...          |
+|                      | gway web theme                          |
++----------------------+--------------------------------------+
+| urlencode            | Encode a dict or sequence of two-...   |
+|                      | gway web urlencode                      |
++----------------------+--------------------------------------+
+| wraps                | Decorator factory to apply...          |
+|                      | gway web wraps                          |
++----------------------+--------------------------------------+
 
 
 License

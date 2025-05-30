@@ -1,81 +1,72 @@
+# projects/readme.py
+"""
+GWAY project module to collect all projects and functions and update README.rst.
+Usage (CLI): gway readme collect-projects <projects_dir> [--readme READMENAME]
+"""
 import os
+import importlib.util
 import inspect
-from textwrap import shorten
 from gway import gw
 
 
-def collect_projects(project_dir="projects"):
-    """Update README.rst to include the INCLUDED PROJECTS section."""
+def collect_projects(project_dir: str, readme: str = "README.rst"):
+    """
+    Scan `project_dir` for all modules/packages, collect public functions,
+    build an RST section, and insert/update it in `readme` before the LICENSE heading.
 
-    readme_path = gw.resource("README.rst")
-    if not os.path.exists(readme_path):
-        gw.abort(f"README.rst not found at {readme_path}")
-
-    with open(readme_path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    # Remove existing INCLUDED PROJECTS section if it exists
-    start_marker = "INCLUDED PROJECTS"
-    end_marker = "LICENSE"
-    lower = content.lower()
-    if start_marker.lower() in lower and end_marker.lower() in lower:
-        start = lower.index(start_marker.lower())
-        end = lower.index(end_marker.lower())
-        content = content[:start] + content[end:]
-
-    # Gather project documentation
-    lines = []
-    lines.append("INCLUDED PROJECTS")
-    lines.append("=================")
-    lines.append("")
-
-    projects_path = gw.resource(project_dir)
-    for entry in sorted(os.listdir(projects_path)):
-        if entry.startswith("_") or not (entry.endswith(".py") or os.path.isdir(os.path.join(projects_path, entry))):
+    Args:
+        project_dir: path to the GWAY projects directory.
+        readme: path to the README file to update.
+    """
+    # 1) Gather projects and their functions
+    projects = {}
+    for entry in os.scandir(project_dir):
+        if entry.name.startswith("_"):
             continue
-
-        project = entry[:-3] if entry.endswith(".py") else entry
+        name = entry.name[:-3] if entry.is_file() and entry.name.endswith(".py") else entry.name
+        # resolve module file path
+        module_root = os.path.join(project_dir, *name.split("."))
+        if os.path.isdir(module_root) and os.path.isfile(os.path.join(module_root, "__init__.py")):
+            module_file = os.path.join(module_root, "__init__.py")
+        else:
+            module_file = module_root + ".py"
         try:
-            project_obj = gw.load_project(project)
+            spec = importlib.util.spec_from_file_location(name, module_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
         except Exception as e:
-            gw.warning(f"Skipping {project}: {e}")
+            gw.warning(f"Skipping project {name}: failed to import: {e}")
             continue
+        funcs = [fname for fname, obj in inspect.getmembers(module, inspect.isfunction) if not fname.startswith("_")]
+        projects[name] = funcs
 
-        lines.append("")
-        header = f"Project: {project}"
-        underline = "=" * len(header)
-        lines.append(underline)
-        lines.append(header)
-        lines.append(underline)
-        lines.append("")
+    # 2) Build RST lines for INCLUDED PROJECTS
+    lines = ["INCLUDED PROJECTS\n", "=================\n\n"]
+    for name, funcs in sorted(projects.items()):
+        lines.append(f".. rubric:: {name}\n\n")
+        lines.append(".. list-table:: Functions\n   :header-rows: 1\n\n")
+        lines.append("   * - Function\n")
+        for fn in funcs:
+            lines.append(f"   * - {fn}\n")
+        lines.append("\n")
 
-        lines.append("+----------------------+--------------------------------------+")
-        lines.append("| Function             | Docstring                            |")
-        lines.append("+======================+======================================+")
+    # 3) Read existing README and locate section boundaries
+    with open(readme, 'r', encoding='utf-8') as f:
+        content = f.readlines()
 
-        for fname in dir(project_obj):
-            if fname.startswith("_"):
-                continue
-            func = getattr(project_obj, fname)
-            if not callable(func):
-                continue
+    # find LICENSE heading
+    license_idx = next((i for i, l in enumerate(content) if l.strip().upper() == 'LICENSE'), len(content))
+    # find existing INCLUDED PROJECTS
+    start_idx = next((i for i, l in enumerate(content) if l.strip() == 'INCLUDED PROJECTS'), None)
+    if start_idx is not None:
+        # truncate old section
+        content = content[:start_idx] + content[license_idx:]
+        license_idx = start_idx
 
-            raw_func = getattr(func, "__wrapped__", func)
-            doc = inspect.getdoc(raw_func) or ""
-            short_doc = shorten(doc.splitlines()[0] if doc else "", width=38, placeholder="...")
+    # insert new section before LICENSE
+    new_content = content[:license_idx] + lines + ['\n'] + content[license_idx:]
 
-            lines.append(f"| {fname:<20} | {short_doc:<38} |")
-            lines.append(f"| {'':<20} | gway {project} {fname:<30} |")
-            lines.append("+----------------------+--------------------------------------+")
-        lines.append("")
+    with open(readme, 'w', encoding='utf-8') as f:
+        f.writelines(new_content)
 
-    # Re-insert LICENSE section
-    license_index = content.lower().find("license")
-    license_section = content[license_index:].lstrip() if license_index >= 0 else "\nLICENSE\n=======\n"
-
-    updated_content = content.strip() + "\n\n" + "\n".join(lines) + "\n\n" + license_section
-
-    with open(readme_path, "w", encoding="utf-8") as f:
-        f.write(updated_content)
-
-    gw.info(f"README.rst updated with INCLUDED PROJECTS section.")
+    gw.log(f"Updated {readme} with {len(projects)} projects.")
