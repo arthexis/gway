@@ -12,12 +12,6 @@ from .envs import load_env, get_base_client, get_base_server
 from .gateway import gw, Gateway
 
 
-# TODO: Allow spaces to also be used to delimit words in function names. 
-# For exampe setup_csms in ocpp/app.py may be called both as:
-# gway ocpp app setup-csms
-# gway ocpp app setup csms
-
-
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")

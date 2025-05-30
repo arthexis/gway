@@ -1,5 +1,5 @@
 # OCPP 1.6 CSMS Recipe with basic RFID auth
 
-ocpp setup-csms-app --allowlist data/ocpp/test_rfids.cdv
+ocpp csms --allowlist data/ocpp/test_rfids.cdv
 web start-server --daemon
 until --lock-file VERSION --lock-pypi

@@ -260,6 +260,17 @@ INCLUDED PROJECTS
   Example CLI: ``gway net export connections``
 
 
+.. rubric:: ocpp
+
+- ``setup_csms_app`` — OCPP 1.6 CSMS implementation with:
+
+  Example CLI: ``gway ocpp setup csms app``
+
+- ``setup_sink_app`` — Basic OCPP passive sink for messages, acting as a dummy CSMS server.
+
+  Example CLI: ``gway ocpp setup sink app``
+
+
 .. rubric:: odoo
 
 - ``Form`` — (no description)

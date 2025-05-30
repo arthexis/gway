@@ -1,9 +1,9 @@
 
 # projects/ocpp.py
 
-import os
 import json
 import traceback
+import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -14,7 +14,7 @@ from gway import gw
 # These are ports of the functions originally tested on the eTron charger
 # and are used to simulate the CSMS server. Ported from gsol to gway.
 
-def setup_sink(*, 
+def setup_sink_app(*, 
             host='[OCPP_CSMS_HOST|0.0.0.0]', 
             port='[OCPP_CSMS_PORT|9000]', 
             app=None,
@@ -72,7 +72,7 @@ def setup_sink(*,
 _active_cons: Dict[str, WebSocket] = {}
 
 
-def setup_csms(*,
+def setup_csms_app(*,
         host='[OCPP_CSMS_HOST|0.0.0.0]', 
         port='[OCPP_CSMS_PORT|9000]', 
         app=None,
