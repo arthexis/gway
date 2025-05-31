@@ -20,6 +20,7 @@ def setup_sink_app(*,
             app=None,
         ):
     """Basic OCPP passive sink for messages, acting as a dummy CSMS server."""
+
     import json
     import traceback
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect

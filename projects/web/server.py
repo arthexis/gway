@@ -1,6 +1,4 @@
 from gway import gw
-from collections.abc import Iterable
-
 
 def start(*apps,
     host="[WEBSITE_HOST|127.0.0.1]",
@@ -25,15 +23,8 @@ def start(*apps,
     def run_server():
         nonlocal app
 
-        # A. Merge *apps and app into a single list if needed
-        all_apps = []
-        if apps:
-            all_apps.extend(apps)
-        if app:
-            if isinstance(app, Iterable) and not isinstance(app, (str, bytes)):
-                all_apps.extend(app)
-            else:
-                all_apps.append(app)
+        # A. Merge positional *apps and app= into one flat list
+        all_apps = gw.filter_apps(*apps, kwarg=app, selector=lambda x: True)
 
         # B. Dispatch multiple apps in threads if we aren't already in a worker
         if not is_worker and len(all_apps) > 1:
@@ -64,14 +55,14 @@ def start(*apps,
         # 1. If no apps passed, fallback to default app
         if not all_apps:
             gw.warning(
-                f"Building default app (app is None). Run with --app default to silence.")
+                "Building default app (app is None). Run with --app default to silence.")
             app = gw.web.app.setup(app=None)
         else:
             app = all_apps[0]  # Run the first (or only) app normally
 
         # 2. Wrap with proxy if requested
         if proxy:
-            from .proxy import setup_proxy
+            from .proxy import setup_app as setup_proxy
             app = setup_proxy(endpoint=proxy, app=app)
 
         # 3. If app is a zero-arg factory, invoke it

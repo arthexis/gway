@@ -1,5 +1,3 @@
-import re
-import subprocess
 from gway import requires, gw
 
 
