@@ -1,6 +1,7 @@
 import re
 from gway import gw
 
+
 def find(*paths, **patterns):
     if len(paths) < 2:
         raise ValueError("At least two path elements are required: file path(s) and key")
@@ -46,6 +47,7 @@ def find(*paths, **patterns):
             return result
 
     return None
+
 
 def store(*paths, sep='=', value):
     if len(paths) < 2:

@@ -2,6 +2,7 @@ import os
 import time
 import hashlib
 import threading
+import requests
 
 from .decorators import requires
 
@@ -43,11 +44,7 @@ def watch_file(filepath, on_change, *, poll_interval=10.0, hash=False):
     return stop_event
 
 
-@requires("requests")
 def watch_url(url, on_change, *, poll_interval=60.0, event="change", resend=False, value=None):
-    import threading
-    import requests
-
     stop_event = threading.Event()
 
     def _watch():
@@ -90,11 +87,7 @@ def watch_url(url, on_change, *, poll_interval=60.0, event="change", resend=Fals
     return stop_event
 
 
-@requires("requests")
 def watch_pypi_package(package_name, on_change, *, poll_interval=500.0):
-    import threading
-    import requests
-
     url = f"https://pypi.org/pypi/{package_name}/json"
     stop_event = threading.Event()
 

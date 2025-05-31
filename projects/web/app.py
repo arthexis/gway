@@ -2,6 +2,7 @@ from functools import wraps
 from urllib.parse import urlencode
 from collections.abc import Iterable
 from gway import gw
+from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
 
 def setup(
@@ -18,7 +19,7 @@ def setup(
     Accepts either `app=` keyword, `*apps` positional, or both.
     If multiple Bottle apps are passed, a tuple is returned.
     """
-    from bottle import Bottle, static_file, request, response, template, HTTPResponse
+    
 
     version = gw.version()
     candidates = []

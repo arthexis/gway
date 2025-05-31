@@ -103,6 +103,12 @@ def connect(
     conn.close()
 
 
+# TODO: Create a query() function that will combine the opening of the conection and the query. 
+# If a SQL query is not provided, it may be passed the name of one or more tables.
+# If so, return them. If 2 or more, use natural joins. If extra kwargs are passed
+# convert them to additional filter clauses. Limit may be specified as a kwarg defaults to None (fetch all lines)
+
+
 ...
 
 

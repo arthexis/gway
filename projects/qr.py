@@ -1,8 +1,8 @@
 import os
 import uuid
 import base64
-
 from io import BytesIO
+import qrcode
 from gway import requires, gw
 
 
@@ -13,7 +13,6 @@ def generate_img(value, *, path=None):
     """Generate a QR code image from the given value and save it to the specified path.
     If path is not provided, we use a random uuid to name it, unrelated to the value.
     """
-    import qrcode
     img = qrcode.make(value)
     if path is None:
         path = gw.resource("work", "shared", "qr_codes", str(uuid.uuid4()) + ".png")
@@ -41,7 +40,6 @@ def generate_url(value):
 
 def generate_b64data(value):
     """Generate a QR code image from the given value and return it as a base64-encoded PNG string."""
-    import qrcode
     img = qrcode.make(value)
     buffer = BytesIO()
     img.save(buffer, format="PNG")

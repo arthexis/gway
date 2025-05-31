@@ -1,3 +1,7 @@
+import os
+import json
+import csv
+from datetime import datetime, timedelta
 from gway import gw
 
 
@@ -7,11 +11,6 @@ def extract(data_dir, *,
         > gsol etron extract-records "work\etron\san_pedro" 
         > gsol etron extract-records "work\etron\calzada_del_valle"   
     """
-    import os
-    import json
-    import csv
-    from datetime import datetime, timedelta
-
     dir_name = os.path.split(data_dir.strip('/').strip('\\'))[-1]
     data_dir = gw.resource(data_dir)
     output_csv = output_csv or gw.resource("work", f"{dir_name}_records.csv")
