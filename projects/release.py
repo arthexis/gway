@@ -7,6 +7,10 @@ from pathlib import Path
 
 from gway import gw
 
+# TODO: Fix an Issue detected after running gway release build --all
+# a README.rst file is left dirty in the git repo, but the repo is expected
+# to start clean and finish clean. Ensure that if we are updating this file
+# we are including it in the commit to git like we do the help.sqlite database.
 
 def build(*,
     bump: bool = False,
@@ -189,9 +193,12 @@ def build(*,
             gw.info("Package uploaded to PyPI successfully.")
 
     if git:
-        subprocess.run(["git", "add", "VERSION", "pyproject.toml"], check=True)
+        files_to_add = ["VERSION", "pyproject.toml"]
         if help_db:
-            subprocess.run(["git", "add", "data/help.sqlite"], check=True)
+            files_to_add.append("data/help.sqlite")
+        if projects:
+            files_to_add.append("README.rst")
+        subprocess.run(["git", "add"] + files_to_add, check=True)
         commit_msg = f"PyPI Release v{version}" if twine else f"Release v{version}"
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
         subprocess.run(["git", "push"], check=True)

@@ -270,6 +270,10 @@ INCLUDED PROJECTS
 
 .. rubric:: mail
 
+- ``search`` — (no description)
+
+  Example CLI: ``gway mail search``
+
 - ``send`` — Send an email with the specified subject and message, using defaults from env if available.
 
   Example CLI: ``gway mail send``
@@ -496,6 +500,21 @@ INCLUDED PROJECTS
 - ``variadic_positional`` — (no description)
 
   Example CLI: ``gway tests variadic positional``
+
+
+.. rubric:: wiki
+
+- ``ask`` — Fetch data from Wikidata using either a SPARQL query or natural language.
+
+  Example CLI: ``gway wiki ask``
+
+- ``fetch`` — Fetch data from Wikidata using either a SPARQL query or natural language.
+
+  Example CLI: ``gway wiki fetch``
+
+- ``query`` — Fetch data from Wikidata using either a SPARQL query or natural language.
+
+  Example CLI: ``gway wiki query``
 
 
 
