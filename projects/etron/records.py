@@ -14,7 +14,7 @@ def extract(data_dir, *,
 
     dir_name = os.path.split(data_dir.strip('/').strip('\\'))[-1]
     data_dir = gw.resource(data_dir)
-    output_csv = output_csv or gw.resource("temp", f"{dir_name}_records.csv")
+    output_csv = output_csv or gw.resource("work", f"{dir_name}_records.csv")
     gw.info(f"Reading data files from {data_dir}")
 
     # Define the columns for the CSV

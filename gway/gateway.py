@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+import uuid
 import inspect
 import logging
 import asyncio
@@ -53,6 +54,7 @@ class Gateway(Resolver):
         self._cache = {}
         self._async_threads = []
         self._debug = _debug
+        self.uuid = uuid.uuid4()
         self.base_path = os.path.dirname(os.path.dirname(__file__))
         self.name = name
         self.logger = logging.getLogger(name)

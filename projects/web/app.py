@@ -10,7 +10,7 @@ def setup(
     project="web.view",
     path="gway",
     static="static",
-    temp="temp",
+    work="work",
     home: str = "readme",
 ):
     """
@@ -43,7 +43,7 @@ def setup(
         if _first_setup:
             app._gway_paths = {path: project}
             gw.web.static_url = lambda *args, **kwargs: build_url(static, *args, **kwargs)
-            gw.web.temp_url = lambda *args, **kwargs: build_url(temp, *args, **kwargs)
+            gw.web.work_url = lambda *args, **kwargs: build_url(work, *args, **kwargs)
             gw.web.app_url = lambda *args, **kwargs: build_url(path, *args, **kwargs)
             gw.web.redirect_error = redirect_error
 
@@ -158,9 +158,9 @@ def setup(
         def send_static(filename):
             return static_file(filename, root=gw.resource("data", "static"))
 
-        @app.route(f"/{temp}/<filename:path>")
-        def send_temp(filename):
-            return static_file(filename, root=gw.resource("temp", "shared"))
+        @app.route(f"/{work}/<filename:path>")
+        def send_work(filename):
+            return static_file(filename, root=gw.resource("work", "shared"))
 
         @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
         def view_dispatch(view):

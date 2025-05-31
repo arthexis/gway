@@ -27,6 +27,13 @@ venv/
 
 # Temporary files
 temp/
+tmp/
+.temp/
+.tmp/
+work/
+.work/
+products/
+.products/
 
 # Node dependencies
 node_modules/

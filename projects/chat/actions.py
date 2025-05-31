@@ -60,7 +60,7 @@ def start_api(
 
     @app.get("/chat/products/<product_id>")
     def get_product(product_id):
-        product_path = gw.resource("temp", "products", product_id, "product.json")
+        product_path = gw.resource("work", "products", product_id, "product.json")
         if not os.path.exists(product_path):
             abort(404, "Product not found")
         with open(product_path) as f:
@@ -68,7 +68,7 @@ def start_api(
 
     @app.get("/chat/products/<product_id>/files")
     def get_product_files(product_id):
-        product_dir = gw.resource("temp", "products", product_id)
+        product_dir = gw.resource("work", "products", product_id)
         if not os.path.isdir(product_dir):
             abort(404, "No files found")
         # return a list of files (or ZIP, or first file)

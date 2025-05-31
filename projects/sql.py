@@ -18,7 +18,7 @@ def connect(
     assert sql_engine == "sqlite3", "Only sqlite3 is supported at the moment."
 
     if not database:
-        database = ("temp", temp_name)
+        database = ("work", temp_name)
 
     db_path = gw.resource(*database)
     if isinstance(load_data, str):

@@ -73,7 +73,7 @@ def version(check=None) -> str:
         return "unknown"
 
 
-def resource(*parts, touch=False, check=False, temp=False):
+def resource(*parts, touch=False, check=False):
     """
     Construct a path relative to the base, or the Gateway root if not specified.
     Assumes last part is a file and creates parent directories along the way.
@@ -85,8 +85,6 @@ def resource(*parts, touch=False, check=False, temp=False):
     first = pathlib.Path(parts[0])
     if first.is_absolute():
         path = pathlib.Path(*parts)
-    elif temp:
-        path = pathlib.Path("temp", *parts)
     else:
         path = pathlib.Path(gw.base_path, *parts)
 
@@ -273,6 +271,9 @@ def run_recipe(*script: str, **context):
 
 def run(*script: str, **context):
     from gway import gw
+    # TODO: If args provided for script don't seem to be recipe file 
+    # (we could catch the exception), see if we can write them joined by line breaks into 
+    # file at path gw.resource('work', 'run', gw.uuid, 'script.cdv')
     return gw.run_recipe(*script, **context)
 
 

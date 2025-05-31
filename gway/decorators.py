@@ -34,7 +34,7 @@ def requires(*packages, **kw_packages):
                     except ImportError:
                         gw.abort(f"Unable to install and import {package_spec}")
 
-                    temp_req_file = gw.resource("temp", "requirements.txt")
+                    temp_req_file = gw.resource("work", "requirements.txt")
                     existing_reqs = set()
 
                     if os.path.exists(temp_req_file):

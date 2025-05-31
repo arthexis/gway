@@ -4,10 +4,16 @@
 # Views receive the query params and json payload merged into kwargs.
 # Don't use inline CSS ever, each user can have different css configurations. 
 
+from datetime import datetime
+import os
+import secrets
+from docutils.core import publish_parts
+from bottle import request, response, redirect
+from gway import gw
+
+
 def readme(*args, **kwargs):
     """Render the README.rst file as HTML."""
-    from gway import gw
-    from docutils.core import publish_parts
 
     readme_path = gw.resource("README.rst")
     with open(readme_path, encoding="utf-8") as f:
@@ -80,7 +86,6 @@ def _help_section(info, use_query_links=False, *args, **kwargs):
 
 def qr_code(*args, value=None, **kwargs):
     """Generate a QR code for a given value and serve it from cache if available."""
-    from gway import gw
     if not value:
         return '''
             <h1>QR Code Generator</h1>
@@ -104,7 +109,6 @@ def awg_finder(
     max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
 ):
     """Page builder for AWG cable finder with HTML form and result."""
-    from gway import gw
     if not meters:
         return '''
             <h1>AWG Cable Finder</h1>
@@ -159,10 +163,6 @@ def awg_finder(
 
 def theme():
     """Allows user to choose from available stylesheets and shows current selection."""
-    import os
-    from gway import gw
-    from bottle import request, response, redirect
-
     styles_dir = gw.resource("data", "static", "styles")
     available = sorted(
         f for f in os.listdir(styles_dir)
@@ -199,147 +199,145 @@ def theme():
     return form.format(options=options)
 
 
+...
+
+
 def register(**kwargs):
     """
-    Register a node by accepting a POST with node_key and secret_key.
-    Stores registration requests in registry.sqlite with nodes_allowed and nodes_denied tables.
-    Sends email to ADMIN_EMAIL with approve/deny links.
-    Handles approval/denial responses via a 'response' query param.
+    Register a node using .cdv-based storage with optional approval by role-based email.
+    
+    Accepts:
+    - node_key: str
+    - secret_key: str
+    - start: optional ISO date string, defaults to now
+    - end: optional ISO date string
+    - credits: optional int
+    - role: optional str, defaults to 'ADMIN'
+    - response: optional approval response via approve:secret or deny:secret
     """
     import os
     import secrets
-    from gway import gw
+    from datetime import datetime
     from bottle import request
+    from gway import gw
 
-    # Database file path inside data folder
-    db_path = ("temp", "registry.sqlite")
-
-    admin_email = os.environ.get("ADMIN_EMAIL")
-    if not admin_email:
-        return "<p class='error'>Admin email not configured.</p>"
+    registry_path = ("work", "node", "registry.cdv")
     
-    # Connect to DB using gw.sql.connect
-    with gw.sql.connect(*db_path, row_factory=True) as cur:
-        # Ensure tables exist
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                node_key TEXT UNIQUE,
-                secret_key TEXT,
-                request_secret TEXT UNIQUE,
-                approved INTEGER DEFAULT 0,
-                denied INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS nodes_allowed (
-                node_key TEXT PRIMARY KEY,
-                secret_key TEXT,
-                approved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS nodes_denied (
-                node_key TEXT PRIMARY KEY,
-                secret_key TEXT,
-                denied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+    response = kwargs.get("response")
+    now = datetime.now().isoformat()
 
-        # Process response param for approval/denial
-        response = kwargs.get("response", "")
-        if response.startswith("approve:") or response.startswith("deny:"):
-            action, req_secret = response.split(":", 1)
-            cur.execute("SELECT node_key, secret_key, approved, denied FROM requests WHERE request_secret = ?", (req_secret,))
-            row = cur.fetchone()
-            if not row:
-                return "<p class='error'>Invalid or expired approval token.</p>"
-            if row["approved"]:
-                return "<p>Request already approved.</p>"
-            if row["denied"]:
-                return "<p>Request already denied.</p>"
+    if response:
+        action, req_secret = response.split(":", 1)
+        match = gw.cdv.find(*registry_path, req_secret, node_key=".*")
+        if not match:
+            return "<p class='error'>Invalid or expired approval token.</p>"
 
-            node_key = row["node_key"]
-            secret_key = row["secret_key"]
+        node_key = match.get("node_key")
+        secret_key = match.get("secret_key")
+        start = match.get("start")
+        end = match.get("end")
 
-            if action == "approve":
-                # Mark approved
-                cur.execute("UPDATE requests SET approved=1 WHERE request_secret=?", (req_secret,))
-                # Insert into nodes_allowed (ignore if exists)
-                cur.execute("""
-                    INSERT OR REPLACE INTO nodes_allowed (node_key, secret_key) VALUES (?, ?)
-                """, (node_key, secret_key))
-                return f"<p>Node <code>{node_key}</code> approved successfully.</p>"
+        if action == "approve":
+            start_ok = not start or start <= now
+            end_ok = not end or end > now
+            if not start_ok or not end_ok:
+                return "<p class='error'>Request outside valid date range.</p>"
+            gw.cdv.store(*registry_path, node_key, secret_key=secret_key, approved=req_secret)
+            return f"<p>Node <code>{node_key}</code> approved.</p>"
 
-            elif action == "deny":
-                # Mark denied
-                cur.execute("UPDATE requests SET denied=1 WHERE request_secret=?", (req_secret,))
-                # Insert into nodes_denied (ignore if exists)
-                cur.execute("""
-                    INSERT OR REPLACE INTO nodes_denied (node_key, secret_key) VALUES (?, ?)
-                """, (node_key, secret_key))
-                return f"<p>Node <code>{node_key}</code> denied successfully.</p>"
+        elif action == "deny":
+            gw.cdv.store(*registry_path, node_key, secret_key=secret_key, denied=req_secret)
+            return f"<p>Node <code>{node_key}</code> denied.</p>"
 
-            else:
-                return "<p class='error'>Unknown response action.</p>"
+        else:
+            return "<p class='error'>Unknown response action.</p>"
 
-        # Otherwise, expect POST with registration info
-        if request.method != "POST":
-            return """
-                <h1>Node Registration</h1>
-                <p>Please POST JSON with <code>node_key</code> and <code>secret_key</code>.</p>
-            """
+    if not kwargs:
+        return """
+        <h1>Register Node</h1>
+        <form method='post'>
+            <label>Node Key: <input name='node_key' required></label><br>
+            <label>Secret Key: <input name='secret_key' required></label><br>
+            <label>Start (optional): <input name='start' placeholder='YYYY-MM-DD'></label><br>
+            <label>End (optional): <input name='end' placeholder='YYYY-MM-DD'></label><br>
+            <label>Credits (optional): <input name='credits' type='number'></label><br>
+            <label>Role (optional): <input name='role' placeholder='ADMIN'></label><br>
+            <button type='submit'>Submit</button>
+        </form>
+        """
 
-        node_key = kwargs.get("node_key")
-        secret_key = kwargs.get("secret_key")
-        if not node_key or not secret_key:
-            return "<p class='error'>Missing required fields: node_key and secret_key.</p>"
+    node_key = kwargs.get("node_key")
+    secret_key = kwargs.get("secret_key")
+    start = kwargs.get("start") or now
+    end = kwargs.get("end")
+    credits = kwargs.get("credits")
+    role = (kwargs.get("role") or "ADMIN").upper()
 
-        # Check if node_key already registered or pending
-        cur.execute("SELECT approved, denied FROM requests WHERE node_key = ?", (node_key,))
-        existing = cur.fetchone()
-        if existing:
-            if existing["approved"]:
-                return f"<p>Node <code>{node_key}</code> is already approved.</p>"
-            if existing["denied"]:
-                return f"<p>Node <code>{node_key}</code> has been denied previously.</p>"
-            return f"<p>Node <code>{node_key}</code> registration is pending approval.</p>"
+    if not node_key or not secret_key:
+        return "<p class='error'>Missing node_key or secret_key.</p>"
 
-        # Generate a unique request secret for approval links
-        request_secret = secrets.token_urlsafe(32)
+    req_secret = secrets.token_urlsafe(16)
 
-        # Insert registration request
-        cur.execute("""
-            INSERT INTO requests (node_key, secret_key, request_secret) VALUES (?, ?, ?)
-        """, (node_key, secret_key, request_secret))
+    # Check for existing
+    existing = gw.cdv.find(*registry_path, node_key)
+    if existing:
+        if "approved" in existing:
+            return f"<p>Node <code>{node_key}</code> already approved.</p>"
+        if "denied" in existing:
+            return f"<p>Node <code>{node_key}</code> has been denied.</p>"
+        return f"<p>Node <code>{node_key}</code> registration is pending.</p>"
 
-        # Send email to admin with approve/deny links
-        base_url = gw.web.app_url("register-node")
+    # Store request
+    record = {
+        "secret_key": secret_key,
+        "request_secret": req_secret,
+        "start": start,
+    }
+    if end:
+        record["end"] = end
+    if credits:
+        record["credits"] = str(credits)
+    record["role"] = role
 
-        approve_link = f"{base_url}?response=approve:{request_secret}"
-        deny_link = f"{base_url}?response=deny:{request_secret}"
+    gw.cdv.store(*registry_path, node_key, **record)
 
-        email_subject = f"Node Registration Request: {node_key}"
-        email_body = f"""
-A new node registration request has been received:
+    # Lookup email
+    email_key = f"{role}_EMAIL"
+    admin_email = os.environ.get(email_key) or os.environ.get("ADMIN_EMAIL")
+
+    if not admin_email:
+        return """
+        <p class='error'>No admin email found for role. Please set ADMIN_EMAIL or {role}_EMAIL in your environment or in [client].env or [server].env.</p>
+        """
+
+    base_url = gw.web.app_url("register-node")
+    approve_link = f"{base_url}?response=approve:{req_secret}"
+    deny_link = f"{base_url}?response=deny:{req_secret}"
+
+    email_subject = f"Registration Request: {node_key}"
+    email_body = f"""
+A new node registration request was received:
 
 Node Key: {node_key}
+Role: {role}
+Credits: {credits or 'N/A'}
+Start: {start}
+End: {end or 'N/A'}
 
-To approve the node, click here:
+Approve:
 {approve_link}
 
-To deny the node, click here:
+Deny:
 {deny_link}
-"""
-        # Send email
-        try:
-            gw.mail.send(
-                to=admin_email,
-                subject=email_subject,
-                body=email_body
-            )
-        except Exception as e:
-            return f"<p class='error'>Failed to send notification email: {e}</p>"
+    """
 
-        return f"<p>Registration request for node <code>{node_key}</code> received. An administrator will review it shortly.</p>"
+    try:
+        gw.mail.send(
+            to=admin_email,
+            subject=email_subject,
+            body=email_body
+        )
+    except Exception as e:
+        return f"<p class='error'>Failed to send email: {e}</p>"
+
+    return f"<p>Registration for <code>{node_key}</code> submitted.</p>"

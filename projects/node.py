@@ -20,7 +20,7 @@ def register(server: str, node_key: str):
     secret_key = secrets.token_urlsafe(32)
 
     # Save secret key locally
-    secret_path = gw.resource("temp", f"node.{node_key}.secret")
+    secret_path = gw.resource("work", f"node.{node_key}.secret")
     os.makedirs(os.path.dirname(secret_path), exist_ok=True)
     with open(secret_path, "w", encoding="utf-8") as f:
         f.write(secret_key)
