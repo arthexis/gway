@@ -270,7 +270,11 @@ INCLUDED PROJECTS
 
 .. rubric:: mail
 
-- ``search`` — (no description)
+- ``message_from_bytes`` — Parse a bytes string into a Message object model.
+
+  Example CLI: ``gway mail message from bytes``
+
+- ``search`` — Search emails by subject and optionally body. Use "*" to match any subject.
 
   Example CLI: ``gway mail search``
 
