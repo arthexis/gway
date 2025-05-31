@@ -228,15 +228,18 @@ INCLUDED PROJECTS
   Example CLI: ``gway awg find conduit``
 
 
+.. rubric:: cdv
+
+- ``find`` — (no description)
+
+  Example CLI: ``gway cdv find``
+
+
 .. rubric:: clip
 
 - ``copy`` — Extracts the contents of the clipboard and returns it.
 
   Example CLI: ``gway clip copy``
-
-- ``requires`` — (no description)
-
-  Example CLI: ``gway clip requires``
 
 
 .. rubric:: gif
@@ -265,6 +268,13 @@ INCLUDED PROJECTS
 - ``export_connections`` — Export NetworkManager connections into a JSON-serializable list of dicts.
 
   Example CLI: ``gway net export connections``
+
+
+.. rubric:: node
+
+- ``register`` — Registers this node with the given server's registration endpoint.
+
+  Example CLI: ``gway node register``
 
 
 .. rubric:: ocpp
