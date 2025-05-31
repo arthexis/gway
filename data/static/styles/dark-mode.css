@@ -1,63 +1,388 @@
+/* --------------------------------------------
+   Cyberpunk Glitchy Dark Mode Stylesheet
+   “Go wild twice” edition
+-------------------------------------------- */
+
+/* Base Styles */
 body {
-    background-color: #121212;
-    color: #e0e0e0;
+  margin: 0;
+  padding: 0;
+  background-color: #0a0a0a;
+  color: #e0e0e0;
+  font-family: 'Roboto Mono', monospace;
+  overflow-x: hidden;
 }
 
-pre {
-    background: #1e1e1e;
-    color: #e0e0e0;
-    border-radius: 6px;
+/* Neon Glow Animation */
+@keyframes neon-flicker {
+  0%, 18%, 22%, 25%, 53%, 57%, 100% {
+    text-shadow:
+      0 0 4px #00fff3,
+      0 0 8px #00fff3,
+      0 0 16px #00fff3,
+      0 0 32px #00fff3,
+      0 0 48px #5200ff;
+  }
+  20%, 24%, 55% {
+    text-shadow: none;
+  }
 }
 
-li a {
-    color: #64b5f6;
+/* Glitch Animation for Headings (First Wild) */
+@keyframes glitch-vert {
+  0% {
+    clip: rect(24px, 9999px, 56px, 0);
+    transform: translate(0);
+  }
+  5% {
+    clip: rect(80px, 9999px, 96px, 0);
+    transform: translate(-2px, -2px);
+  }
+  10% {
+    clip: rect(0px, 9999px, 24px, 0);
+    transform: translate(2px, 2px);
+  }
+  15% {
+    clip: rect(40px, 9999px, 68px, 0);
+    transform: translate(-1px, 1px);
+  }
+  20% {
+    clip: rect(60px, 9999px, 88px, 0);
+    transform: translate(1px, -1px);
+  }
+  25%, 100% {
+    clip: rect(0px, 9999px, 9999px, 0);
+    transform: translate(0);
+  }
 }
 
-li a:hover {
-    color: #90caf9;
+/* Glitch Animation for Links (Second Wild) */
+@keyframes link-glitch {
+  0% {
+    text-shadow: 
+      2px 0 0 #ff0080,
+      -2px 0 0 #00ffff;
+    opacity: 1;
+    transform: none;
+  }
+  10% {
+    text-shadow: 
+      2px 0 0 #ff0080,
+      -2px 0 0 #00ffff;
+    transform: translate(1px, -1px);
+  }
+  20% {
+    text-shadow: none;
+    opacity: 0.8;
+    transform: translate(-1px, 1px);
+  }
+  30% {
+    text-shadow: 
+      -2px 0 0 #ff0080,
+      2px 0 0 #00ffff;
+    opacity: 1;
+    transform: translate(2px, 0);
+  }
+  40% {
+    text-shadow: none;
+    opacity: 0.9;
+    transform: translate(-2px, 0);
+  }
+  50% {
+    text-shadow: 
+      2px 0 0 #ff0080,
+      -2px 0 0 #00ffff;
+    opacity: 1;
+    transform: translate(0);
+  }
+  55%, 100% {
+    text-shadow: 
+      2px 0 0 #ff0080,
+      -2px 0 0 #00ffff;
+    opacity: 1;
+    transform: none;
+  }
 }
 
+/* Global Link Styles */
+a {
+  color: #ff0080;
+  position: relative;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s ease-in-out;
+}
+a::before,
+a::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0.8;
+  clip-path: polygon(0 45%, 100% 45%, 100% 50%, 0 50%);
+  overflow: hidden;
+}
+a::before {
+  color: #00ffff;
+  z-index: -2;
+  animation: link-glitch 2s infinite linear alternate-reverse;
+}
+a::after {
+  color: #ff0080;
+  z-index: -3;
+  animation: link-glitch 3s infinite step-end alternate;
+}
+a:hover {
+  color: #00ffff;
+}
+a:hover::before,
+a:hover::after {
+  animation-duration: 1.2s;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  position: relative;
+  color: #00fff3;
+  animation: neon-flicker 2s infinite alternate;
+  letter-spacing: 1px;
+}
 h1 {
-    color: #ffffff;
+  font-size: 3rem;
+  margin: 1rem 0;
+  animation: neon-flicker 1.5s infinite alternate;
+  overflow: hidden;
+}
+h1::before {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 2px;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: #ff00ff;
+  clip-path: rect(0, 900px, 0, 0);
+  animation: glitch-vert 1.2s infinite linear alternate-reverse;
 }
 
+/* Paragraphs */
+p {
+  line-height: 1.6;
+  margin-bottom: 1em;
+}
+
+/* Lists */
+ul, ol {
+  margin-left: 1.5rem;
+  padding-left: 0;
+}
+li {
+  margin-bottom: 0.5rem;
+}
+li a {
+  display: inline-block;
+  position: relative;
+  color: #ff0080;
+  text-decoration: none;
+  padding: 2px 0;
+}
+li a::before,
+li a::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0.9;
+  clip-path: polygon(0 60%, 100% 60%, 100% 65%, 0 65%);
+  overflow: hidden;
+}
+li a::before {
+  color: #00ffff;
+  z-index: -2;
+  animation: link-glitch 1.8s infinite linear alternate-reverse;
+}
+li a::after {
+  color: #ff0080;
+  z-index: -3;
+  animation: link-glitch 2.5s infinite step-start alternate;
+}
+li a:hover {
+  color: #00ffff;
+}
+li a:hover::before,
+li a:hover::after {
+  animation-duration: 0.8s;
+}
+
+/* Blockquotes */
+blockquote {
+  border-left: 4px solid #00fff3;
+  padding-left: 1em;
+  color: #a0a0a0;
+  font-style: italic;
+}
+
+/* Code Blocks */
+pre {
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  box-shadow:
+    inset 0 0 10px rgba(0, 255, 243, 0.2),
+    inset 0 0 5px rgba(255, 0, 255, 0.1);
+}
+code {
+  background-color: #222;
+  color: #f2f2f2;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+/* Search Box */
+.search-box {
+  margin: 1.5rem 0;
+}
 .search-box input[type="text"] {
-    background-color: #1e1e1e;
-    color: #e0e0e0;
-    border: 1px solid #444;
-    border-radius: 4px;
+  width: 100%;
+  padding: 0.75em 1em;
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+  border: 1px solid #333;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: box-shadow 0.2s ease;
+}
+.search-box input[type="text"]:focus {
+  outline: none;
+  box-shadow: 0 0 8px #00fff3;
 }
 
-footer {
-    color: #aaa;
-}
-
-input.main {
-    background-color: #1e1e1e;
-    color: #e0e0e0;
-    border: 1px solid #555;
-    border-radius: 4px;
-}
-
-input.help {
-    background-color: #1e1e1e;
-    color: #e0e0e0;
-    border: 1px solid #444;
-}
-
+/* Buttons */
 button {
-    background-color: #333;
-    color: #fff;
-    border: 1px solid #666;
-    padding: 0.5em 1em;
-    border-radius: 4px;
-    cursor: pointer;
+  background-color: #1f1f1f;
+  color: #e0e0e0;
+  border: 2px solid #00fff3;
+  padding: 0.6em 1.2em;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
 }
-
+button::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -75%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(0, 255, 243, 0.4),
+    transparent
+  );
+  transform: skewX(-25deg);
+  transition: left 0.5s ease;
+}
 button:hover {
-    background-color: #444;
+  background-color: #00fff3;
+  color: #0a0a0a;
+  box-shadow:
+    0 0 10px #00fff3,
+    0 0 20px #00fff3,
+    0 0 30px #5200ff;
+}
+button:hover::after {
+  left: 125%;
 }
 
+/* Form Inputs */
+input[type="text"].main,
+input[type="text"].help {
+  width: 100%;
+  padding: 0.6em 1em;
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+  border: 1px solid #333;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.2s ease;
+}
+input[type="text"].main:focus,
+input[type="text"].help:focus {
+  outline: none;
+  border-color: #00fff3;
+  box-shadow: 0 0 6px #00fff3;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  padding: 1.5rem 0;
+  color: #888;
+  font-size: 0.9rem;
+  border-top: 1px solid #333;
+  margin-top: 2rem;
+}
+
+/* Error Text */
 p.error {
-    color: goldenrod;
+  color: #ffb300;
+  font-weight: bold;
+  text-shadow: 0 0 3px rgba(255, 179, 0, 0.7);
+}
+
+/* Utility: Glitch Overlay for Entire Sections (Optional) */
+.section-glitch {
+  position: relative;
+  overflow: hidden;
+}
+.section-glitch::before,
+.section-glitch::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -10%;
+  width: 120%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.15);
+  opacity: 0.5;
+  pointer-events: none;
+}
+.section-glitch::before {
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 0, 128, 0.1) 0%,
+    rgba(0, 255, 243, 0.1) 100%
+  );
+  animation: glitch-vert 1s infinite linear alternate-reverse;
+}
+.section-glitch::after {
+  background: linear-gradient(
+    to top,
+    rgba(255, 0, 128, 0.05) 0%,
+    rgba(0, 255, 243, 0.05) 100%
+  );
+  animation: glitch-vert 1.3s infinite linear alternate;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+::-webkit-scrollbar-thumb {
+  background: #00fff3;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #ff0080;
 }

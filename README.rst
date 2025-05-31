@@ -7,13 +7,17 @@ Welcome [Viajante], this is the GWAY project README.rst file and website.
 
 `Lowering barrier to enter a higher-level of programming.`
 
+Fetch the source and changelogs here:
+
+https://github.com/arthexis/gway
+
 
 Features
 --------
 
 - 🔌 Seamless function calling from CLI or code (e.g., ``gway.awg.find_cable()``)
 - ⛓️ CLI chaining support: ``proj 1 func1 - proj2 func2`` (flexible separators)
-- 🧠 Sigil-based context resolution (e.g., ``[result_context_or_env_key|fallback]``)
+- 🧠 Sigil-based context resolution (e.g., ``[result-context-or-env-key|fallback]``)
 - ⚙️ Automatic CLI argument generation, with support for ``*args`` and ``**kwargs``
 - 🧪 Built-in test runner and self-packaging: ``gway test`` and ``gway release build``
 - 📦 Environment-aware loading (e.g., ``clients`` and ``servers`` .env files)
@@ -40,17 +44,17 @@ Given a project ``awg.py`` containing logic to calculate cable sizes and conduit
 .. code-block:: bash
 
     # Basic cable sizing
-    gway awg find cable --meters 30 --amps 60 --material cu --volts 240
+    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240
 
     # With conduit calculation
-    gway awg find cable --meters 30 --amps 60 --material cu --volts 240 --conduit emt
+    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240 --conduit emt
 
 **Chaining Example**
 
 .. code-block:: bash
 
     # Chain cable calculation and echo the result
-    gway awg find cable --meters 25 --amps 60 - print --text "[awg]"
+    gway awg find-cable --meters 25 --amps 60 - print --text "[awg]"
 
 **Online Example**
 
