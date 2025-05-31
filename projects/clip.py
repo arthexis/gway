@@ -15,5 +15,5 @@ def copy(value=None, *, notify=True):
         else:
             gw.gui.notify("Clipboard modified (%+d bytes)" % distance)
     else:
-        gw.debug("Clipboard called with no value.")
+        gw.debug("clip.copy called with no value.")
     return original

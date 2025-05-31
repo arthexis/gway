@@ -4,9 +4,7 @@
 # Views receive the query params and json payload merged into kwargs.
 # Don't use inline CSS ever, each user can have different css configurations. 
 
-from datetime import datetime
 import os
-import secrets
 from docutils.core import publish_parts
 from bottle import request, response, redirect
 from gway import gw
@@ -112,8 +110,8 @@ def awg_finder(
     if not meters:
         return '''
             <h1>AWG Cable Finder</h1>
-            <p>Warning: This calculator may not be applicable to your use case.
-              Consult your local electrical code before making real-life cable sizing decisions.</p>
+            <p>Warning: This calculator may not be applicable to your use case. It may be completely wrong.
+              Consult a LOCAL certified electrician before making real-life cable sizing decisions.</p>
             <form method="post">
                 <label>Meters: <input type="number" name="meters" required min="1" /></label><br/>
                 <label>Amps: <input type="number" name="amps" value="40" /></label><br/>

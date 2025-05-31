@@ -234,6 +234,18 @@ INCLUDED PROJECTS
 
   Example CLI: ``gway cdv find``
 
+- ``pop`` — (no description)
+
+  Example CLI: ``gway cdv pop``
+
+- ``remove`` — (no description)
+
+  Example CLI: ``gway cdv remove``
+
+- ``store`` — (no description)
+
+  Example CLI: ``gway cdv store``
+
 
 .. rubric:: clip
 

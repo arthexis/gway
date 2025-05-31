@@ -36,7 +36,7 @@ def generate_url(value):
         if not os.path.exists(qr_path):
             generate_image(value, path=qr_path)
         _qr_code_cache.add(safe_filename)
-    return f"/work/qr_codes/{safe_filename}"
+    return f"/work/qr-codes/{safe_filename}"
 
 
 def generate_b64data(value):

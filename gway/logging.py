@@ -72,11 +72,6 @@ def setup_logging(*,
         file_h.setFormatter(formatter)
         root.addHandler(file_h)
 
-    console_h = logging.StreamHandler(sys.stderr)
-    console_h.setLevel(loglevel)
-    console_h.setFormatter(formatter)
-    root.addHandler(console_h)
-
     sep = "-" * 70
     cmd_args = " ".join(sys.argv[1:])
     root.info(f"\n{sep}\n> {prog_name} {cmd_args}\n{sep}")
