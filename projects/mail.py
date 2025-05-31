@@ -1,34 +1,56 @@
 import os
 from gway import gw
+import imaplib
+import smtplib
+from email.mime.text import MIMEText
+import platform, socket, json
+from email import message_from_bytes
 
 
-def send(*, subject, message=None, to=None):
+def send(*subject, message=None, to=None, **kwargs):
     """
     Send an email with the specified subject and message, using defaults from env if available.
+    If message is None, send system info and recent logs.
     """
-    import smtplib
-    from email.mime.text import MIMEText
-
     to = to or os.environ.get("ADMIN_EMAIL")
+    subject = gw.resolve(" ".join(subject))
     gw.debug(f"Preparing to send email to {to}: {subject}")
 
-    # Retrieve default values from environment variables
-    sender_email = os.environ.get("MAIL_SENDER", None)
-    sender_password = os.environ.get("MAIL_PASSWORD", None)
-    smtp_server = os.environ.get("SMTP_SERVER", None)
-    smtp_port = os.environ.get("SMTP_PORT", None)
+    sender_email = os.environ.get("MAIL_SENDER")
+    sender_password = os.environ.get("MAIL_PASSWORD")
+    smtp_server = os.environ.get("SMTP_SERVER")
+    smtp_port = os.environ.get("SMTP_PORT")
 
     gw.debug(f"MAIL_SENDER: {sender_email}")
     gw.debug(f"SMTP_SERVER: {smtp_server}")
     gw.debug(f"SMTP_PORT: {smtp_port}")
     gw.debug("Environment variables loaded.")
 
-    # Ensure all required values are available
     if not all([sender_email, sender_password, smtp_server, smtp_port]):
         gw.debug("Missing one or more required email configuration details.")
         return "Missing email configuration details."
 
-    # Create the email message
+    if message is None:
+        try:
+            log_path = gw.resource("logs", "gway.log")
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                last_lines = f.readlines()[-100:]
+        except Exception as e:
+            last_lines = [f"<Could not read log file: {e}>"]
+
+        system_info = {
+            "hostname": socket.gethostname(),
+            "platform": platform.platform(),
+            "kwargs": kwargs
+        }
+
+        message = (
+            "System Info:\n" +
+            json.dumps(system_info, indent=2) +
+            "\n\nRecent Log Lines:\n" +
+            "".join(last_lines)
+        )
+
     msg = MIMEText(message)
     msg['Subject'] = subject
     msg['From'] = sender_email
@@ -55,13 +77,9 @@ def send(*, subject, message=None, to=None):
 
 
 def search(subject_fragment, body_fragment=None):
-    import imaplib
-    from email import message_from_bytes
-
-    # TODO: If the value "*" is passed for subject fragment, allow any subject
-    # and just filter by body or any of the other filters.
-
-    # Environment variables for email access
+    """
+    Search emails by subject and optionally body. Use "*" to match any subject.
+    """
     EMAIL_SENDER = os.environ["MAIL_SENDER"]
     EMAIL_PASSWORD = os.environ["MAIL_PASSWORD"]
     IMAP_SERVER = os.environ["IMAP_SERVER"]
@@ -73,9 +91,8 @@ def search(subject_fragment, body_fragment=None):
         mail.login(EMAIL_SENDER, EMAIL_PASSWORD)
         mail.select('inbox')
 
-        # Construct search criteria
         search_criteria = []
-        if subject_fragment:
+        if subject_fragment and subject_fragment != "*":
             search_criteria.append(f'(SUBJECT "{subject_fragment}")')
         if body_fragment:
             search_criteria.append(f'(BODY "{body_fragment}")')
@@ -107,7 +124,6 @@ def search(subject_fragment, body_fragment=None):
                 if content_type in ["text/plain", "text/html"]:
                     email_content = part.get_payload(decode=True).decode()
                 elif part.get('Content-Disposition') is not None:
-                    # This part is an attachment
                     file_data = part.get_payload(decode=True)
                     file_name = part.get_filename()
                     attachments.append((file_name, file_data))
@@ -129,5 +145,3 @@ def search(subject_fragment, body_fragment=None):
         if mail:
             mail.close()
             mail.logout()
-
-
