@@ -10,6 +10,8 @@ import threading
 import importlib
 import functools
 from types import SimpleNamespace
+
+from .envs import load_env, get_base_client, get_base_server
 from .sigils import Resolver
 from .structs import Results
 
@@ -45,12 +47,13 @@ class ProjectStub(SimpleNamespace):
         # Abort with a clear message
         gw.abort(f"Invalid function specified for project '{self._name}'")
 
+
 class Gateway(Resolver):
     _builtin_cache = None
     _thread_local = threading.local()
 
-    def __init__(self, *, verbose=False, name="gw", _debug=False, **kwargs):
-
+    def __init__(self, *, client=None, server=None, verbose=False, name="gw", _debug=False, **kwargs):
+        # Basic initialization
         self._cache = {}
         self._async_threads = []
         self._debug = _debug
@@ -58,31 +61,46 @@ class Gateway(Resolver):
         self.base_path = os.path.dirname(os.path.dirname(__file__))
         self.name = name
         self.logger = logging.getLogger(name)
-        if not verbose:
-            self.verbose =  lambda *_, **__: None
-        elif verbose is True:
-            self.verbose =  lambda *args, **kwargs: self.info(*args, **kwargs)
 
+        if not verbose:
+            self.verbose = lambda *_, **__: None
+        elif verbose is True:
+            self.verbose = lambda *args, **kwargs: self.info(*args, **kwargs)
+
+        # Pull out client/server overrides so they don't go into context
+        client_name = client or get_base_client()
+        server_name = server or get_base_server()
+
+        # Ensure thread-local context/results exist
         if not hasattr(Gateway._thread_local, "context"):
             Gateway._thread_local.context = {}
         if not hasattr(Gateway._thread_local, "results"):
             Gateway._thread_local.results = Results()
 
+        # Merge any extra kwargs into the shared context
         Gateway._thread_local.context.update(kwargs)
 
         self.context = Gateway._thread_local.context
         self.results = Gateway._thread_local.results
 
+        # Initialize the Resolver with "results", "context", and the real OS environment
         super().__init__([
             ('results', self.results),
             ('context', self.context),
             ('env', os.environ),
         ])
 
+        # === Moved load_env here so every Gateway always loads env correctly ===
+        env_root = os.path.join(self.base_path, "envs")
+        load_env("client", client_name, env_root)
+        load_env("server", server_name, env_root)
+
+        # Populate the builtin-function cache on first instantiation
         if Gateway._builtin_cache is None:
             builtins_module = importlib.import_module("gway.builtins")
             Gateway._builtin_cache = {
-                name: obj for name, obj in inspect.getmembers(builtins_module)
+                name: obj
+                for name, obj in inspect.getmembers(builtins_module)
                 if inspect.isfunction(obj)
                 and not name.startswith("_")
                 and inspect.getmodule(obj) == builtins_module

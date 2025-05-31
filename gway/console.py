@@ -1,3 +1,5 @@
+# File: gway/console.py
+
 import os
 import sys
 import json
@@ -8,8 +10,8 @@ from typing import get_origin, get_args, Literal, Union
 
 from .logging import setup_logging
 from .builtins import abort
-from .envs import load_env, get_base_client, get_base_server
-from .gateway import gw, Gateway
+from .envs import get_base_client, get_base_server, load_env
+from .gateway import Gateway, gw  # Note: we’ll still import gw in case someone refers to it elsewhere.
 
 
 def cli_main():
@@ -19,7 +21,7 @@ def cli_main():
     parser.add_argument("-c", dest="client", type=str, help="Specify client environment")
     parser.add_argument("-d", dest="debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-e", dest="expression", type=str, help="Return resolved sigil at the end")
-    parser.add_argument("-j", dest="json", nargs="?", const=True, default=False, 
+    parser.add_argument("-j", dest="json", nargs="?", const=True, default=False,
                               help="Output result(s) as JSON, optionally to a file.")
     parser.add_argument("-n", dest="name", type=str, help="Name for the app instance and logger.")
     parser.add_argument("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
@@ -30,33 +32,42 @@ def cli_main():
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
 
+    # 1) Set up logging
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel)
     start_time = time.time() if args.timed else None
 
-    env_root = os.path.join(gw.base_path, "envs")
+    # 2) Determine client/server names (fall back to defaults if not provided)
     client_name = args.client or get_base_client()
     server_name = args.server or get_base_server()
 
-    load_env("client", client_name, env_root)
-    load_env("server", server_name, env_root)
+    # 3) Instantiate a local Gateway (this now loads the environments in __init__)
+    gw_local = Gateway(
+        client=client_name,
+        server=server_name,
+        verbose=args.verbose or args.debug,
+        name=args.name or "gw",
+        _debug=args.debug
+    )
 
+    # 4) Handle a .gwr recipe or direct commands
     if args.recipe:
         command_sources, comments = load_recipe(args.recipe)
-        gw.info(f"Comments in recipe:\n{chr(10).join(comments)}")
+        gw_local.info(f"Comments in recipe:\n{chr(10).join(comments)}")
     else:
         if not args.commands:
             parser.print_help()
             sys.exit(1)
         command_sources = chunk_command(args.commands)
 
+    # 5) Execute commands (with or without a callback)
     if args.callback:
-        callback = gw[args.callback]
+        callback = gw_local[args.callback]
         all_results, last_result = process_commands(command_sources, callback=callback)
     else:
         all_results, last_result = process_commands(command_sources)
 
-    # Print all results immediately if --all is set
+    # 6) If --all is set, print every result immediately
     if args.all:
         for result in all_results:
             if args.json:
@@ -67,13 +78,13 @@ def cli_main():
                 else:
                     print(json_output)
             elif result is not None:
-                gw.info(f"Result:\n{result}")
+                gw_local.info(f"Result:\n{result}")
                 print(result)
 
-    # Final result resolution (in expression mode only)
+    # 7) Resolve final "expression" if requested
     output = Gateway(**last_result).resolve(args.expression) if args.expression else last_result
 
-    # Only print final result if --all wasn't used
+    # 8) If not --all, print just the final output (JSON or plain)
     if not args.all:
         if args.json:
             json_output = json.dumps(output, indent=2, default=str)
@@ -83,11 +94,12 @@ def cli_main():
             else:
                 print(json_output)
         elif output is not None:
-            gw.info(f"Last function result:\n{output}")
+            gw_local.info(f"Last function result:\n{output}")
             print(output)
         else:
-            gw.info("No results returned.")
+            gw_local.info("No results returned.")
 
+    # 9) Print timing if requested
     if start_time:
         print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
 
