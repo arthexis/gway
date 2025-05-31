@@ -6,22 +6,34 @@ import threading
 from .decorators import requires
 
 
-def watch_file(filepath, on_change, *, poll_interval=5.0):
+def watch_file(filepath, on_change, *, poll_interval=10.0, hash=False):
     stop_event = threading.Event()
 
     def _watch():
         try:
             last_mtime = os.path.getmtime(filepath)
+            last_hash = hashlib.md5(open(filepath, 'rb').read()).hexdigest() if hash else None
         except FileNotFoundError:
             last_mtime = None
+            last_hash = None
 
         while not stop_event.is_set():
             try:
                 current_mtime = os.path.getmtime(filepath)
-                if last_mtime is not None and current_mtime != last_mtime:
-                    on_change()
-                    os._exit(1)
-                last_mtime = current_mtime
+                if hash:
+                    if current_mtime != last_mtime:
+                        with open(filepath, 'rb') as f:
+                            current_hash = hashlib.md5(f.read()).hexdigest()
+                        if last_hash and current_hash != last_hash:
+                            on_change()
+                            os._exit(1)
+                        last_hash = current_hash
+                    last_mtime = current_mtime
+                else:
+                    if last_mtime is not None and current_mtime != last_mtime:
+                        on_change()
+                        os._exit(1)
+                    last_mtime = current_mtime
             except FileNotFoundError:
                 pass
             time.sleep(poll_interval)
@@ -32,7 +44,7 @@ def watch_file(filepath, on_change, *, poll_interval=5.0):
 
 
 @requires("requests")
-def watch_url(url, on_change, *, poll_interval=30.0):
+def watch_url(url, on_change, *, poll_interval=60.0, event="change", resend=False, value=None):
     import threading
     import requests
 
@@ -41,15 +53,36 @@ def watch_url(url, on_change, *, poll_interval=30.0):
     def _watch():
         last_hash = None
         while not stop_event.is_set():
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
-            current_hash = hashlib.sha256(response.content).hexdigest()
+            try:
+                response = requests.get(url, timeout=5)
+                content = response.content
+                status_ok = 200 <= response.status_code < 400
 
-            if last_hash is not None and current_hash != last_hash:
-                on_change()
-                os._exit(1)
-
-            last_hash = current_hash
+                if event == "up":
+                    if status_ok:
+                        on_change()
+                        os._exit(1)
+                elif event == "down":
+                    if not status_ok:
+                        on_change()
+                        os._exit(1)
+                elif event == "has" and isinstance(value, str):
+                    if value.lower() in content.decode(errors="ignore").lower():
+                        on_change()
+                        os._exit(1)
+                elif event == "lacks" and isinstance(value, str):
+                    if value.lower() not in content.decode(errors="ignore").lower():
+                        on_change()
+                        os._exit(1)
+                else:  # event == "change"
+                    response.raise_for_status()
+                    current_hash = hashlib.sha256(content).hexdigest()
+                    if last_hash is not None and current_hash != last_hash:
+                        on_change()
+                        os._exit(1)
+                    last_hash = current_hash
+            except Exception:
+                pass
             time.sleep(poll_interval)
 
     thread = threading.Thread(target=_watch, daemon=True)
@@ -58,7 +91,7 @@ def watch_url(url, on_change, *, poll_interval=30.0):
 
 
 @requires("requests")
-def watch_pypi_package(package_name, on_change, *, poll_interval=300.0):
+def watch_pypi_package(package_name, on_change, *, poll_interval=500.0):
     import threading
     import requests
 

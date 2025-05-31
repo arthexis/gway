@@ -5,6 +5,8 @@ import sys
 import re
 import os
 
+from pkg_resources import working_set
+
 
 _requirement_cache = set()
 
@@ -34,15 +36,15 @@ def requires(*packages, **kw_packages):
                     except ImportError:
                         gw.abort(f"Unable to install and import {package_spec}")
 
-                    temp_req_file = gw.resource("work", "requirements.txt")
+                    work_req_file = gw.resource("work", "requirements.txt")
                     existing_reqs = set()
 
-                    if os.path.exists(temp_req_file):
-                        with open(temp_req_file, "r") as f:
+                    if os.path.exists(work_req_file):
+                        with open(work_req_file, "r") as f:
                             existing_reqs = {line.strip() for line in f if line.strip()}
 
                     if package_spec not in existing_reqs:
-                        with open(temp_req_file, "a") as f:
+                        with open(work_req_file, "a") as f:
                             f.write(package_spec + "\n")
 
                 _requirement_cache.add(package_spec)

@@ -160,6 +160,7 @@ def setup(
 
         @app.route(f"/{work}/<filename:path>")
         def send_work(filename):
+            filename = filename.replace('-', '_')
             return static_file(filename, root=gw.resource("work", "shared"))
 
         @app.route(f"/{path}/<view:path>", method=["GET", "POST"])

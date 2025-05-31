@@ -2,7 +2,7 @@
 
 # These view functions can be rendered by setup_app.
 # Views receive the query params and json payload merged into kwargs.
-# Don't use inline CSS ever, each user can have different css configurations. 
+# Don't use inline CSS ever, each user can have their own style sheets.
 
 import os
 from docutils.core import publish_parts

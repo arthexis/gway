@@ -284,7 +284,15 @@ INCLUDED PROJECTS
 
 .. rubric:: node
 
-- ``register`` — Registers this node with the given server's registration endpoint.
+- ``check`` — Check registration status for this node.
+
+  Example CLI: ``gway node check``
+
+- ``identify`` — Returns a unique identifier for this system.
+
+  Example CLI: ``gway node identify``
+
+- ``register`` — Register this node with the given server's /register endpoint.
 
   Example CLI: ``gway node register``
 

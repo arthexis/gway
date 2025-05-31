@@ -16,7 +16,7 @@ def generate_img(value, *, path=None):
     import qrcode
     img = qrcode.make(value)
     if path is None:
-        path = gw.resource("work", "qr_codes", str(uuid.uuid4()) + ".png")
+        path = gw.resource("work", "shared", "qr_codes", str(uuid.uuid4()) + ".png")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     img.save(path)
     return {"image": img, "path": path}
@@ -27,7 +27,7 @@ generate_image = generate_img
 
 def generate_url(value):
     """Return the local URL to a QR code with the given value. 
-    This will only work when the website is up and running to serve /temp.
+    This will only work when the website is up and running to serve /work
     This generates a new QR code image if needed, or uses a cache if possible.
     """
     safe_filename = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=") + ".png"

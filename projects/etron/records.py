@@ -4,8 +4,8 @@ from gway import gw
 def extract(data_dir, *, 
         add_days=0, output_csv=None, after=None, before=None, batch=None):
     r"""Load data from EV IOCHARGER to CSV format.
-        > gsol etron extract-records "temp\etron\san_pedro" 
-        > gsol etron extract-records "temp\etron\calzada_del_valle"   
+        > gsol etron extract-records "work\etron\san_pedro" 
+        > gsol etron extract-records "work\etron\calzada_del_valle"   
     """
     import os
     import json
