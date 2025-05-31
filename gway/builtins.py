@@ -163,6 +163,9 @@ def _strip_types(sig: str) -> str:
     except Exception:
         return sig  # fallback if parsing fails
 
+# TODO: Extend the help function to fallback on gw.wiki.query to answer general help questions 
+# from the user from wikipedia. If the help already contains the token "wiki", remove 
+# that piece of text and use the wiki mode manually. 
 
 def help(*args, full_code=False):
     from gway import gw
@@ -221,6 +224,9 @@ def help(*args, full_code=False):
         return results[0] if len(results) == 1 else {"Matches": results}
 
 
+h = help
+
+
 def sigils(*args: str):
     """List the valid sigils found in any of the given args."""
     from .sigils import Sigil
@@ -276,6 +282,7 @@ def run(*script: str, **context):
     # file at path gw.resource('work', 'run', gw.uuid, 'script.cdv')
     return gw.run_recipe(*script, **context)
 
+r = run
 
 def filter_apps(
     *apps: Any,
