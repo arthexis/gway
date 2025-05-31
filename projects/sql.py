@@ -103,6 +103,9 @@ def connect(
     conn.close()
 
 
+...
+
+
 def infer_type(value):
     """Infer SQL type from a sample value."""
     try:

@@ -197,3 +197,149 @@ def theme():
         for css in available
     )
     return form.format(options=options)
+
+
+def register(**kwargs):
+    """
+    Register a node by accepting a POST with node_key and secret_key.
+    Stores registration requests in registry.sqlite with nodes_allowed and nodes_denied tables.
+    Sends email to ADMIN_EMAIL with approve/deny links.
+    Handles approval/denial responses via a 'response' query param.
+    """
+    import os
+    import secrets
+    from gway import gw
+    from bottle import request
+
+    # Database file path inside data folder
+    db_path = ("temp", "registry.sqlite")
+
+    admin_email = os.environ.get("ADMIN_EMAIL")
+    if not admin_email:
+        return "<p class='error'>Admin email not configured.</p>"
+    
+    # Connect to DB using gw.sql.connect
+    with gw.sql.connect(*db_path, row_factory=True) as cur:
+        # Ensure tables exist
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                node_key TEXT UNIQUE,
+                secret_key TEXT,
+                request_secret TEXT UNIQUE,
+                approved INTEGER DEFAULT 0,
+                denied INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS nodes_allowed (
+                node_key TEXT PRIMARY KEY,
+                secret_key TEXT,
+                approved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS nodes_denied (
+                node_key TEXT PRIMARY KEY,
+                secret_key TEXT,
+                denied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Process response param for approval/denial
+        response = kwargs.get("response", "")
+        if response.startswith("approve:") or response.startswith("deny:"):
+            action, req_secret = response.split(":", 1)
+            cur.execute("SELECT node_key, secret_key, approved, denied FROM requests WHERE request_secret = ?", (req_secret,))
+            row = cur.fetchone()
+            if not row:
+                return "<p class='error'>Invalid or expired approval token.</p>"
+            if row["approved"]:
+                return "<p>Request already approved.</p>"
+            if row["denied"]:
+                return "<p>Request already denied.</p>"
+
+            node_key = row["node_key"]
+            secret_key = row["secret_key"]
+
+            if action == "approve":
+                # Mark approved
+                cur.execute("UPDATE requests SET approved=1 WHERE request_secret=?", (req_secret,))
+                # Insert into nodes_allowed (ignore if exists)
+                cur.execute("""
+                    INSERT OR REPLACE INTO nodes_allowed (node_key, secret_key) VALUES (?, ?)
+                """, (node_key, secret_key))
+                return f"<p>Node <code>{node_key}</code> approved successfully.</p>"
+
+            elif action == "deny":
+                # Mark denied
+                cur.execute("UPDATE requests SET denied=1 WHERE request_secret=?", (req_secret,))
+                # Insert into nodes_denied (ignore if exists)
+                cur.execute("""
+                    INSERT OR REPLACE INTO nodes_denied (node_key, secret_key) VALUES (?, ?)
+                """, (node_key, secret_key))
+                return f"<p>Node <code>{node_key}</code> denied successfully.</p>"
+
+            else:
+                return "<p class='error'>Unknown response action.</p>"
+
+        # Otherwise, expect POST with registration info
+        if request.method != "POST":
+            return """
+                <h1>Node Registration</h1>
+                <p>Please POST JSON with <code>node_key</code> and <code>secret_key</code>.</p>
+            """
+
+        node_key = kwargs.get("node_key")
+        secret_key = kwargs.get("secret_key")
+        if not node_key or not secret_key:
+            return "<p class='error'>Missing required fields: node_key and secret_key.</p>"
+
+        # Check if node_key already registered or pending
+        cur.execute("SELECT approved, denied FROM requests WHERE node_key = ?", (node_key,))
+        existing = cur.fetchone()
+        if existing:
+            if existing["approved"]:
+                return f"<p>Node <code>{node_key}</code> is already approved.</p>"
+            if existing["denied"]:
+                return f"<p>Node <code>{node_key}</code> has been denied previously.</p>"
+            return f"<p>Node <code>{node_key}</code> registration is pending approval.</p>"
+
+        # Generate a unique request secret for approval links
+        request_secret = secrets.token_urlsafe(32)
+
+        # Insert registration request
+        cur.execute("""
+            INSERT INTO requests (node_key, secret_key, request_secret) VALUES (?, ?, ?)
+        """, (node_key, secret_key, request_secret))
+
+        # Send email to admin with approve/deny links
+        base_url = gw.web.app_url("register-node")
+
+        approve_link = f"{base_url}?response=approve:{request_secret}"
+        deny_link = f"{base_url}?response=deny:{request_secret}"
+
+        email_subject = f"Node Registration Request: {node_key}"
+        email_body = f"""
+A new node registration request has been received:
+
+Node Key: {node_key}
+
+To approve the node, click here:
+{approve_link}
+
+To deny the node, click here:
+{deny_link}
+"""
+        # Send email
+        try:
+            gw.mail.send(
+                to=admin_email,
+                subject=email_subject,
+                body=email_body
+            )
+        except Exception as e:
+            return f"<p class='error'>Failed to send notification email: {e}</p>"
+
+        return f"<p>Registration request for node <code>{node_key}</code> received. An administrator will review it shortly.</p>"

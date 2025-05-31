@@ -253,6 +253,13 @@ INCLUDED PROJECTS
   Example CLI: ``gway job schedule``
 
 
+.. rubric:: mail
+
+- ``send`` — Send an email with the specified subject and message, using defaults from env if available.
+
+  Example CLI: ``gway mail send``
+
+
 .. rubric:: net
 
 - ``export_connections`` — Export NetworkManager connections into a JSON-serializable list of dicts.

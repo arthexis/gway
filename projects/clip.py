@@ -1,7 +1,6 @@
-from gway import requires, gw
+from gway import gw
 
 
-@requires("pyperclip")
 def copy(value=None, *, notify=True):
     """Extracts the contents of the clipboard and returns it."""
     import pyperclip
