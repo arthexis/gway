@@ -322,7 +322,7 @@ INCLUDED PROJECTS
 
   Example CLI: ``gway node identify``
 
-- ``register`` — Register this node with the given server's /register endpoint.
+- ``register`` — Register this node with the given server's register endpoint.
 
   Example CLI: ``gway node register``
 
@@ -459,11 +459,11 @@ INCLUDED PROJECTS
 
 .. rubric:: screen
 
-- ``shot`` — Take a full‐screen screenshot and save it under:
+- ``shot`` — Take a screenshot in the specified mode and save it under:
 
   Example CLI: ``gway screen shot``
 
-- ``take_screenshot`` — Take a full‐screen screenshot and save it under:
+- ``take_screenshot`` — Take a screenshot in the specified mode and save it under:
 
   Example CLI: ``gway screen take screenshot``
 
