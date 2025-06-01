@@ -6,40 +6,38 @@ import json
 import time
 import inspect
 import argparse
+import csv
+import io
 from typing import get_origin, get_args, Literal, Union
 
 from .logging import setup_logging
 from .builtins import abort
-from .gateway import Gateway, gw  
+from .gateway import Gateway, gw
 
-# TODO: When the command doesn't match any known builtin project or function,
-# Check if its a .gwr recipe file in the recipes/ directory or the current directory.
-# Finally, if nothing, show available projects.
 
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
-    parser.add_argument("-a", dest="all", action="store_true", help="Return all results, not just the last")
+    parser.add_argument("-a", dest="all", action="store_true", help="Show all results, not just the last")
     parser.add_argument("-c", dest="client", type=str, help="Specify client environment")
     parser.add_argument("-d", dest="debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-e", dest="expression", type=str, help="Return resolved sigil at the end")
     parser.add_argument("-j", dest="json", nargs="?", const=True, default=False,
-                              help="Output result(s) as JSON, optionally to a file.")
+                        help="Output result(s) as JSON")
     parser.add_argument("-n", dest="name", type=str, help="Name for the app instance and logger.")
+    parser.add_argument("-o", dest="outfile", type=str, help="Write output to this file")
     parser.add_argument("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
     parser.add_argument("-s", dest="server", type=str, help="Specify server environment")
     parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing")
     parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode")
-    parser.add_argument("-x", dest="callback", type=str, help="Execute a callback per command")
+    parser.add_argument("-x", dest="callback", type=str, help="Execute a callback per command or standalone")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
 
-    # 1) Set up logging
     loglevel = "DEBUG" if args.debug else "INFO"
     setup_logging(logfile="gway.log", loglevel=loglevel)
     start_time = time.time() if args.timed else None
 
-    # 2) Instantiate a local Gateway (this now loads the environments in __init__)
     gw_local = Gateway(
         client=args.client,
         server=args.server,
@@ -48,56 +46,75 @@ def cli_main():
         _debug=args.debug
     )
 
-    # 3) Handle a .gwr recipe or direct commands
     if args.recipe:
         command_sources, comments = load_recipe(args.recipe)
         gw_local.info(f"Comments in recipe:\n{chr(10).join(comments)}")
-    else:
-        if not args.commands:
-            parser.print_help()
-            sys.exit(1)
+    elif args.commands:
         command_sources = chunk_command(args.commands)
-
-    # 4) Execute commands (with or without a callback)
-    if args.callback:
-        callback = gw_local[args.callback]
-        all_results, last_result = process_commands(command_sources, callback=callback)
+    elif args.callback:
+        command_sources = []
     else:
-        all_results, last_result = process_commands(command_sources)
+        parser.print_help()
+        sys.exit(1)
 
-    # 5) If --all is set, print every result immediately
+    if command_sources:
+        if args.callback:
+            callback = gw_local[args.callback]
+            all_results, last_result = process_commands(command_sources, callback=callback)
+        else:
+            all_results, last_result = process_commands(command_sources)
+    elif args.callback:
+        callback = gw_local[args.callback]
+        output = callback()
+        all_results, last_result = [output], output
+    else:
+        all_results, last_result = [], None
+
     if args.all:
         for result in all_results:
             if args.json:
                 json_output = json.dumps(result, indent=2, default=str)
-                if isinstance(args.json, str):
-                    with open(args.json, "a") as f:
-                        f.write(json_output + "\n")
+                print(json_output)
+            elif isinstance(result, list) and result and isinstance(result[0], dict):
+                csv_output = _rows_to_csv(result)
+                if csv_output:
+                    print(csv_output)
                 else:
-                    print(json_output)
+                    gw_local.info(f"Result:\n{result}")
+                    print(result)
             elif result is not None:
                 gw_local.info(f"Result:\n{result}")
                 print(result)
 
-    # 6) Resolve final "expression" if requested
     output = Gateway(**last_result).resolve(args.expression) if args.expression else last_result
+    output_is_csv = isinstance(output, list) and output and isinstance(output[0], dict)
 
-    # 7) If not --all, print just the final output (JSON or plain)
     if not args.all:
         if args.json:
             json_output = json.dumps(output, indent=2, default=str)
-            if isinstance(args.json, str):
-                with open(args.json, "w") as f:
-                    f.write(json_output + "\n")
+            print(json_output)
+        elif output_is_csv:
+            csv_output = _rows_to_csv(output)
+            if csv_output:
+                print(csv_output)
             else:
-                print(json_output)
+                gw_local.info(f"Last function result:\n{output}")
+                print(output)
         elif output is not None:
             gw_local.info(f"Last function result:\n{output}")
             print(output)
         else:
             gw_local.info("No results returned.")
 
-    # 8) Print timing if requested
+    if args.outfile:
+        with open(args.outfile, "w") as f:
+            if args.json:
+                f.write(json.dumps(all_results if args.all else output, indent=2, default=str))
+            elif output_is_csv:
+                f.write(_rows_to_csv(output))
+            else:
+                f.write(str(output))
+
     if start_time:
         print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
 
@@ -166,7 +183,7 @@ def process_commands(command_sources, callback=None, **context):
                 show_functions(resolved_obj.__functions__)
             else:
                 gw.error(f"Object at path {' '.join(path)} is not callable.")
-            abort(f"No function found at: {' '.join(path)}")
+            abort(f"No project with name '{chunk[0]}'")
 
         # Parse function arguments
         func_parser = argparse.ArgumentParser(prog=".".join(path))
@@ -365,6 +382,9 @@ def get_arg_options(arg_name, param, gw=None):
     return opts
 
 
+...
+
+
 def load_recipe(recipe_filename):
     """Load commands and comments from a .gwr file."""
     commands = []
@@ -400,3 +420,16 @@ def load_recipe(recipe_filename):
 
 def normalize_token(token):
     return token.replace("-", "_").replace(" ", "_").replace(".", "_")
+
+
+def _rows_to_csv(rows):
+    if not rows:
+        return ""
+    try:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+        return output.getvalue()
+    except Exception:
+        return None

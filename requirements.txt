@@ -18,6 +18,7 @@ pygame
 python-multipart
 httpx
 websockets
-pyperclip
+pyperclip; platform_system == "Windows"
 plyer
 numpy
+pygetwindow; platform_system == "Windows"

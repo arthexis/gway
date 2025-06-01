@@ -10,10 +10,11 @@ def setup(
     *apps,
     app=None,
     project="web.view",
-    path="gway",
+    path=None,
     static="static",
     work="work",
     home: str = "readme",
+    prefix: str = "view",
 ):
     """
     Configure one or more Bottle apps to work with GWAY.
@@ -21,11 +22,8 @@ def setup(
     If multiple Bottle apps are passed, a tuple is returned.
     """
 
-    # TODO: Add a prefix param. When accessing functions on the project
-    #      via gw, the prefix will be prepended to the function name with an underscore.
-    # If prefix is None, don't prepend anything (not even an underscore).
-    # The default will be "view", so in gw["web.view"]  view functions are
-    # expected to be named like "view_readme", "view_about", etc.
+    if path is None:
+        path = project.replace(".", "/") if project != "web.view" else "gway"
 
     version = gw.version()
     candidates = []
@@ -44,7 +42,7 @@ def setup(
 
     prepared_apps = []
     for original_app in bottles:
-        app = original_app  # preserve reference
+        app = original_app
 
         _first_setup = not hasattr(app, "_gway_paths")
         if _first_setup:
@@ -102,7 +100,7 @@ def setup(
                 visited = ["readme"]
 
             links = "".join(
-                f'<li><a href="/{path}/{b.replace("_", "-")}">'
+                f'<li><a href="/{path}/{b.replace("_", "-")}">' 
                 f'{b.replace("_", " ").replace("-", " ").title()}</a></li>'
                 for b in sorted(visited) if b
             )
@@ -121,7 +119,6 @@ def setup(
                     </div>
                 '''
 
-            # ─── Style selector form (submits on change) ───
             styles_dir = gw.resource("data", "static", "styles")
             available_styles = sorted(
                 f for f in os.listdir(styles_dir)
@@ -149,8 +146,7 @@ def setup(
             nonlocal version
             css_files = css_files or ["default.css"]
             css_links = "\n".join(
-                f'<link rel="stylesheet" href="/{static}/styles/{css}">'
-                for css in css_files
+                f'<link rel="stylesheet" href="/{static}/styles/{css}">' for css in css_files
             )
             favicon = f'<link rel="icon" href="/{static}/favicon.ico" type="image/x-icon" />'
             credits = f'''
@@ -186,14 +182,16 @@ def setup(
             response.set_header("Location", f"/{path}{redirect_url}")
             return ""
 
-        @app.route(f"/{static}/<filename:path>")
-        def send_static(filename):
-            return static_file(filename, root=gw.resource("data", "static"))
+        if static:
+            @app.route(f"/{static}/<filename:path>")
+            def send_static(filename):
+                return static_file(filename, root=gw.resource("data", "static"))
 
-        @app.route(f"/{work}/<filename:path>")
-        def send_work(filename):
-            filename = filename.replace('-', '_')
-            return static_file(filename, root=gw.resource("work", "shared"))
+        if work:
+            @app.route(f"/{work}/<filename:path>")
+            def send_work(filename):
+                filename = filename.replace('-', '_')
+                return static_file(filename, root=gw.resource("work", "shared"))
 
         @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
         def view_dispatch(view):
@@ -215,14 +213,19 @@ def setup(
                 source = gw[project]
             except Exception as e:
                 return redirect_error(e, note=f"Project '{project}' not found via gw['{project}']")
-            view_func = getattr(source, view_name, None)
-            if not callable(view_func):
-                view_func = getattr(source, f"view_{view_name}", None)
-            if not callable(view_func) and hasattr(source, view_name):
-                sub = getattr(source, view_name)
-                view_func = getattr(sub, view_name, None)
+
+            tried_names = []
+            if prefix:
+                tried_names.append(f"{prefix}_{view_name}")
+            tried_names += [view_name, f"view_{view_name}", f"view_index", f"view_home"]
+            view_func = None
+            for name in tried_names:
+                view_func = getattr(source, name, None)
+                if callable(view_func):
+                    break
             if not callable(view_func):
                 return redirect_error(note=f"View '{view_name}' not found in project '{project}'")
+
             try:
                 gw.info(f"Dispatching to view {view_func.__name__} (args={args}, kwargs={kwargs})")
                 content = view_func(*args, **kwargs)
@@ -231,6 +234,7 @@ def setup(
                 return resp
             except Exception as e:
                 return redirect_error(e, note="Error during view execution")
+
             full_url = request.fullpath
             if request.query_string:
                 full_url += "?" + request.query_string
@@ -247,7 +251,6 @@ def setup(
                 """
                 content = consent_box + content
 
-            # ─── If “?css=” (or “?style=”), append “.css” if needed, set cookie, and use it ───
             style_param = request.query.get("css") or request.query.get("style")
             if style_param:
                 if not style_param.endswith(".css"):
@@ -271,16 +274,12 @@ def setup(
             response.set_header("Location", f"/{path}/readme")
             return ""
 
-        # Apply middleware *after* routes are attached
         if _first_setup:
             app = security_middleware(app)
 
         prepared_apps.append(app)
 
     return prepared_apps[0] if len(prepared_apps) == 1 else tuple(prepared_apps)
-
-
-...
 
 
 def build_url(prefix, *args, **kwargs):
@@ -294,13 +293,12 @@ def build_url(prefix, *args, **kwargs):
 def redirect_error(error=None, note="", default="/gway/readme"):
     from bottle import request, response
     gw.error("Redirecting due to error." + (" " + note if note else ""))
-    
-    # Log request metadata
+
     gw.error(f"Method: {request.method}")
     gw.error(f"Path: {request.path}")
     gw.error(f"Full URL: {request.url}")
     gw.error(f"Query: {dict(request.query)}")
-    
+
     try:
         if request.json:
             gw.error(f"JSON body: {request.json}")
@@ -309,15 +307,12 @@ def redirect_error(error=None, note="", default="/gway/readme"):
     except Exception as e:
         gw.exception(e)
 
-    # Log headers and cookies for more context
     gw.error(f"Headers: {dict(request.headers)}")
     gw.error(f"Cookies: {request.cookies}")
 
     if error:
         gw.exception(error)
 
-    # Redirect to default view
     response.status = 302
     response.set_header("Location", default)
     return ""
-

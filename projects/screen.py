@@ -1,5 +1,3 @@
-# projects/screen.py
-
 import os
 import platform
 import subprocess
@@ -8,11 +6,7 @@ from PIL import ImageGrab
 from gway import gw
 
 
-def _get_active_window_name():
-    """
-    Return the title of the active/focused window. Falls back to "window"
-    if anything goes wrong or if the platform isn’t recognized.
-    """
+def _get_active_window():
     system = platform.system()
 
     if system == "Windows":
@@ -28,7 +22,6 @@ def _get_active_window_name():
             return "window"
 
     elif system == "Darwin":
-        # AppleScript to get the frontmost process name
         try:
             script = 'tell application "System Events" to get name of first process whose frontmost is true'
             p = subprocess.Popen(
@@ -43,7 +36,6 @@ def _get_active_window_name():
             return "window"
 
     else:
-        # Assume Linux/X11: try `xdotool`
         try:
             p = subprocess.Popen(
                 ["xdotool", "getactivewindow", "getwindowname"],
@@ -58,21 +50,15 @@ def _get_active_window_name():
 
 
 def _sanitize_filename(name: str) -> str:
-    """
-    Replace characters that are not alphanumeric, space, underscore, or hyphen
-    with underscores. Then collapse spaces into underscores.
-    """
-    # First replace any problematic char with "_"
     cleaned = "".join(
         c if (c.isalnum() or c in (" ", "_", "-")) else "_" for c in name
     )
-    # Replace spaces with underscores, and strip any leading/trailing underscores
     return cleaned.replace(" ", "_").strip("_") or "window"
 
 
-def take_screenshot() -> str:
+def take_screenshot(mode: str = "full") -> str:
     """
-    Take a full‐screen screenshot and save it under:
+    Take a screenshot in the specified mode and save it under:
 
         gw.resource("work", "screenshots")
 
@@ -82,31 +68,36 @@ def take_screenshot() -> str:
 
     Returns:
         The full path to the saved screenshot file.
+
+    Modes:
+        - "full": entire screen
+        - "active"/"window": active window only (Windows only; falls back to full)
     """
 
-    # TODO: Implement a new mode param that defaults to "full"
-    # with the current behavior, but allows for
-    # "active" or "window" to only capture the active window instead of the full screen.
-
-    
-
-    # 1. Determine screenshots directory via GWAY’s resource helper
     screenshots_dir = gw.resource("work", "screenshots")
     os.makedirs(screenshots_dir, exist_ok=True)
 
-    # 2. Get and sanitize the active‐window name
-    window_name = _get_active_window_name()
+    window_name = _get_active_window()
     window_name = _sanitize_filename(window_name)
 
-    # 3. Generate timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # 4. Build filename and full path
     filename = f"{window_name}_{timestamp}.png"
     filepath = os.path.join(screenshots_dir, filename)
 
-    # 5. Capture the screen and save as PNG
-    img = ImageGrab.grab()
+    if mode in ("active", "window"):
+        try:
+            import pygetwindow as gwnd
+            win = gwnd.getActiveWindow()
+            if win and win.left != -32000:  # Avoid minimized windows
+                bbox = (win.left, win.top, win.right, win.bottom)
+                img = ImageGrab.grab(bbox=bbox)
+            else:
+                img = ImageGrab.grab()
+        except Exception:
+            img = ImageGrab.grab()
+    else:
+        img = ImageGrab.grab()
+
     img.save(filepath)
 
     return filepath

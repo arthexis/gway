@@ -8,7 +8,7 @@ from gway import gw
 @contextmanager
 def connect(
         *database, sql_engine="sqlite3", load_data=False, force=False, 
-        work_file="local.sqlite", row_factory=False, 
+        work_db="local.sqlite", row_factory=False, 
     ):
     """
     Connects to a SQLite database using a context manager.
@@ -17,8 +17,7 @@ def connect(
     """
     assert sql_engine == "sqlite3", "Only sqlite3 is supported at the moment."
 
-    if not database:
-        database = ("work", work_file)
+    if not database: database = ("work", work_db)
 
     db_path = gw.resource(*database)
     if isinstance(load_data, str):
