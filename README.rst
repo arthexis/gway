@@ -517,21 +517,6 @@ INCLUDED PROJECTS
   Example CLI: ``gway tests variadic positional``
 
 
-.. rubric:: wiki
-
-- ``ask`` — Fetch data from Wikidata using either a SPARQL query or natural language.
-
-  Example CLI: ``gway wiki ask``
-
-- ``fetch`` — Fetch data from Wikidata using either a SPARQL query or natural language.
-
-  Example CLI: ``gway wiki fetch``
-
-- ``query`` — Fetch data from Wikidata using either a SPARQL query or natural language.
-
-  Example CLI: ``gway wiki query``
-
-
 
 License
 -------
