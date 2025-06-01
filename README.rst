@@ -258,6 +258,13 @@ INCLUDED PROJECTS
   Example CLI: ``gway clip copy``
 
 
+.. rubric:: etron
+
+- ``extract_records`` — Load data from EV IOCHARGER to CSV format.
+
+  Example CLI: ``gway etron extract records``
+
+
 .. rubric:: gif
 
 - ``animate`` — (no description)
@@ -307,6 +314,10 @@ INCLUDED PROJECTS
 - ``register`` — Register this node with the given server's /register endpoint.
 
   Example CLI: ``gway node register``
+
+- ``report`` — Generate a system report with platform info and recent logs.
+
+  Example CLI: ``gway node report``
 
 
 .. rubric:: ocpp
@@ -375,17 +386,6 @@ INCLUDED PROJECTS
   Example CLI: ``gway odoo setup chatbot app``
 
 
-.. rubric:: png
-
-- ``credit_images`` — Receives a folder containing .png image files and uses a reverse image lookup
-
-  Example CLI: ``gway png credit images``
-
-- ``sanitize_filename`` — Sanitize the credit string to be filesystem-safe.
-
-  Example CLI: ``gway png sanitize filename``
-
-
 .. rubric:: qr
 
 - ``generate_b64data`` — Generate a QR code image from the given value and return it as a base64-encoded PNG string.
@@ -403,10 +403,6 @@ INCLUDED PROJECTS
 - ``generate_url`` — Return the local URL to a QR code with the given value. 
 
   Example CLI: ``gway qr generate url``
-
-- ``requires`` — (no description)
-
-  Example CLI: ``gway qr requires``
 
 - ``scan_image`` — Scan the given image (file‑path or PIL.Image) for QR codes and return
 
@@ -448,6 +444,17 @@ INCLUDED PROJECTS
 - ``extract_todos`` — (no description)
 
   Example CLI: ``gway release extract todos``
+
+
+.. rubric:: screen
+
+- ``shot`` — Take a full‐screen screenshot and save it under:
+
+  Example CLI: ``gway screen shot``
+
+- ``take_screenshot`` — Take a full‐screen screenshot and save it under:
+
+  Example CLI: ``gway screen take screenshot``
 
 
 .. rubric:: service

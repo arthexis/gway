@@ -7,10 +7,10 @@ from pathlib import Path
 
 from gway import gw
 
-# TODO: Fix an Issue detected after running gway release build --all
-# a README.rst file is left dirty in the git repo, but the repo is expected
-# to start clean and finish clean. Ensure that if we are updating this file
-# we are including it in the commit to git like we do the help.sqlite database.
+# TODO: When the PYPI credentials are not found this error is shown:
+# Halting: Unhandled ValueError in build
+# Instead gw.abort with a more helpful message
+# Handle similar errors in other places too
 
 def build(*,
     bump: bool = False,
@@ -187,7 +187,7 @@ def build(*,
             elif user and password:
                 upload_command += ["--username", user, "--password", password]
             else:
-                raise ValueError("Must provide either token or both user and password for Twine upload.")
+                gw.abort("Must provide either a PyPI API token or both username and password for Twine upload.")
 
             subprocess.run(upload_command, check=True)
             gw.info("Package uploaded to PyPI successfully.")
@@ -261,4 +261,3 @@ def extract_todos(source):
     if current:
         todos.append("\n".join(current))
     return todos
-
