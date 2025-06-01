@@ -1,4 +1,4 @@
-# web/view.py
+# projects/web/view.py
 
 # These view functions can be rendered by setup_app.
 # Views receive the query params and json payload merged into kwargs.

@@ -1,3 +1,5 @@
+# projects/node.py
+
 import os
 import uuid
 import secrets
@@ -7,6 +9,93 @@ import requests
 import socket
 import json
 from gway import gw
+
+
+def register(
+        *,
+        node_key: str = None,
+        server: str = None,
+        start: str = None,
+        end: str = None,
+        credits: int = None,
+        role: str = "ADMIN",
+        message: str = None,
+        manual: bool = False,
+        endpoint: str = "/gway/register",
+    ):
+    """
+    Register this node with the given server's register endpoint.
+
+    Generates a secret_key (or reuses existing one), stores it locally in identity.cdv,
+    and sends it (along with optional metadata) to the server.
+    """
+    if not endpoint.startswith('/'): 
+        endpoint = "/" + endpoint
+    
+    if not node_key:
+        node_key = identify()
+
+    if not server:
+        server = os.environ.get("SERVER_URL")
+
+    if manual and (not server):
+        print("Error: cannot run in manual mode—no 'server' specified and $SERVER_URL is unset.")
+        return "Manual registration aborted (missing server)."
+
+    if not server or not node_key:
+        raise ValueError("Both 'server' (or env['SERVER_URL']) and 'node_key' are required.")
+
+    # Attempt to reuse secret_key from identity.cdv
+    existing = gw.cdv.find("work", "identity", node_key, **{"0": r"^sk=(.*)"})
+    if isinstance(existing, dict) and "secret_key" in existing:
+        secret_key = existing["secret_key"]
+    elif isinstance(existing, str):
+        secret_key = existing
+    else:
+        secret_key = secrets.token_urlsafe(32)
+        identity_record = {"sk": secret_key}
+        if role:
+            identity_record["role"] = role.upper()
+        if start:
+            identity_record["start"] = start
+        if end:
+            identity_record["end"] = end
+        if credits is not None:
+            identity_record["credits"] = credits
+        gw.cdv.store("work", "identity", node_key, value=identity_record)
+
+    url = f"{server.rstrip('/')}{endpoint}"
+    payload = {
+        "node_key": node_key,
+        "secret_key": secret_key,
+    }
+    if start:
+        payload["start"] = start
+    if end:
+        payload["end"] = end
+    if credits is not None:
+        payload["credits"] = credits
+    if role:
+        payload["role"] = role.upper()
+    if message:
+        payload["message"] = message
+
+    if manual:
+        print(f"[Manual Registration Required]")
+        print(f"Visit this URL: {url}")
+        print("Submit the following JSON payload:")
+        print(json.dumps(payload, indent=2))
+        return "Manual registration output printed."
+
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException as e:
+        return f"Failed to register node with server: {e}"
+
+
+...
 
 
 def report(**kwargs):
@@ -37,78 +126,12 @@ def report(**kwargs):
     )
 
 
-def register(
-    node_key: str = None,
-    server: str = None,
-    start: str = None,
-    end: str = None,
-    credits: int = None,
-    role: str = "ADMIN",
-    message: str = None,
-):
-    """
-    Register this node with the given server's /register endpoint.
-
-    Generates a secret_key, stores it locally, and sends it (along with any
-    optional 'start', 'end', 'credits', 'role', and 'message' fields) to the server.
-
-    Args:
-        server (str, optional): Base URL of the server (including port).
-                                Defaults to the 'SERVER_URL' environment variable if not provided.
-        node_key (str): Unique identifier for this node.
-        start (str, optional): ISO date string when this node becomes active.
-                               Defaults to now if omitted.
-        end (str, optional): ISO date string when this node expires.
-        credits (int, optional): Number of credits to grant.
-        role (str, optional): Role for this node (e.g., 'ADMIN', 'NODE'). Defaults to 'ADMIN'.
-        message (str, optional): Custom message to send along with the registration.
-    """
-
-    if not node_key:
-        node_key = identify()
-
-    if not server:
-        server = os.environ.get("SERVER_URL")
-
-    if not server or not node_key:
-        raise ValueError("Both 'server' (or env['SERVER_URL']) and 'node_key' are required.")
-
-    secret_key = secrets.token_urlsafe(32)
-    secret_path = gw.resource("work", f"node.{node_key}.secret")
-    os.makedirs(os.path.dirname(secret_path), exist_ok=True)
-    with open(secret_path, "w", encoding="utf-8") as f:
-        f.write(secret_key)
-
-    url = f"{server.rstrip('/')}/register"
-    payload = {
-        "node_key": node_key,
-        "secret_key": secret_key,
-    }
-    if start:
-        payload["start"] = start
-    if end:
-        payload["end"] = end
-    if credits is not None:
-        payload["credits"] = credits
-    if role:
-        payload["role"] = role.upper()
-    if message:
-        payload["message"] = message
-
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
-        return response.text
-    except requests.RequestException as e:
-        return f"Failed to register node with server: {e}"
-
-
-def check(server: str, node_key: str) -> str:
+def check(server: str, node_key: str, endpoint: str = "/gway/register") -> str:
     """
     Check registration status for this node.
 
     Reads the locally‐stored secret_key, then POSTs {node_key, secret_key} to
-    the server's /register endpoint. The server will respond with text indicating
+    the server's register endpoint. The server will respond with text indicating
     "approved", "denied", or "pending."
 
     Only returns cleanly if the server explicitly indicates approval; otherwise, raises
@@ -122,6 +145,8 @@ def check(server: str, node_key: str) -> str:
         str: If approved, returns "<Server response containing 'approved'>".
              If denied or pending, returns "Node not approved: <server-text>".
     """
+    if not endpoint.startswith('/'): 
+        endpoint = "/" + endpoint
 
     if not server or not node_key:
         raise ValueError("Both 'server' and 'node_key' parameters are required.")
@@ -135,7 +160,7 @@ def check(server: str, node_key: str) -> str:
     with open(secret_path, "r", encoding="utf-8") as f:
         secret_key = f.read().strip()
 
-    url = f"{server.rstrip('/')}/register"
+    url = f"{server.rstrip('/')}{endpoint}"
     payload = {
         "node_key": node_key,
         "secret_key": secret_key,

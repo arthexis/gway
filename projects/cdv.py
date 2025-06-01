@@ -1,3 +1,5 @@
+# projects/cdv.py 
+
 import re
 from gway import gw
 
@@ -12,6 +14,10 @@ def find(*paths, **patterns):
         file_parts[-1] += '.cdv'
 
     cdv_file = gw.resource(*file_parts)
+
+    # If the .cdv file does not exist, return None instead of raising
+    if not cdv_file.exists():
+        return None
 
     with open(cdv_file, 'r') as f:
         for line in reversed(f.readlines()):
@@ -37,8 +43,12 @@ def find(*paths, **patterns):
             for i, val in enumerate(values):
                 for field, regex in compiled.items():
                     if i == field or str(i) == str(field):
-                        if regex.search(val):
-                            result[field] = val
+                        match = regex.search(val)
+                        if match:
+                            if match.groups():
+                                result[field] = match.group(1)
+                            else:
+                                result[field] = val[match.end():] if match.end() < len(val) else ''
 
             if not result:
                 continue
@@ -72,6 +82,10 @@ def store(*paths, sep='=', value):
 
     with open(cdv_file, 'a') as f:
         f.write(f"{key}:{val_str}\n")
+
+
+...
+
 
 def remove(*paths):
     if len(paths) < 2:
