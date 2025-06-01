@@ -333,7 +333,7 @@ INCLUDED PROJECTS
 
 .. rubric:: ocpp
 
-- ``setup_csms_app`` — OCPP 1.6 CSMS implementation with:
+- ``setup_csms_app`` — OCPP 1.6 CSMS implementation with RFID authorization.
 
   Example CLI: ``gway ocpp setup csms app``
 
