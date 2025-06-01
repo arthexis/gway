@@ -4,8 +4,6 @@ import hashlib
 import threading
 import requests
 
-from .decorators import requires
-
 
 def watch_file(filepath, on_change, *, poll_interval=10.0, hash=False):
     stop_event = threading.Event()
@@ -44,7 +42,8 @@ def watch_file(filepath, on_change, *, poll_interval=10.0, hash=False):
     return stop_event
 
 
-def watch_url(url, on_change, *, poll_interval=60.0, event="change", resend=False, value=None):
+def watch_url(url, on_change, *, 
+              poll_interval=60.0, event="change", resend=False, value=None):
     stop_event = threading.Event()
 
     def _watch():

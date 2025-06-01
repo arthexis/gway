@@ -4,7 +4,7 @@ import os
 from gway import gw, requires
 
 
-@requires("bottle")
+("bottle")
 def start_api(
         host: str = "[CHAT_API_HOST|localhost]", 
         port: int = "[CHAT_API_PORT|8081]", 

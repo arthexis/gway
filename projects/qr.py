@@ -46,7 +46,6 @@ def generate_b64data(value):
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-@requires(cv2="opencv-python", numpy="numpy")
 def scan_image(source):
     """
     Scan the given image (file‑path or PIL.Image) for QR codes and return

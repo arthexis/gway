@@ -3,7 +3,6 @@ from gway import gw
 import imaplib
 import smtplib
 from email.mime.text import MIMEText
-import platform, socket, json
 from email import message_from_bytes
 
 
@@ -31,25 +30,7 @@ def send(*subject, message=None, to=None, **kwargs):
         return "Missing email configuration details."
 
     if message is None:
-        try:
-            log_path = gw.resource("logs", "gway.log")
-            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                last_lines = f.readlines()[-100:]
-        except Exception as e:
-            last_lines = [f"<Could not read log file: {e}>"]
-
-        system_info = {
-            "hostname": socket.gethostname(),
-            "platform": platform.platform(),
-            "kwargs": kwargs
-        }
-
-        message = (
-            "System Info:\n" +
-            json.dumps(system_info, indent=2) +
-            "\n\nRecent Log Lines:\n" +
-            "".join(last_lines)
-        )
+        message = gw.node.report(**kwargs)
 
     msg = MIMEText(message)
     msg['Subject'] = subject

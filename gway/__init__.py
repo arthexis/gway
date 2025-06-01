@@ -4,7 +4,6 @@
 
 from .gateway import Gateway, gw
 from .console import cli_main, process_commands, load_recipe
-from .decorators import requires
 from .sigils import Sigil, Resolver
 from .structs import Results
 from .logging import setup_logging

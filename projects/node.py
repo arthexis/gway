@@ -6,7 +6,31 @@ import secrets
 import platform
 import subprocess
 import requests
+import platform, socket, json
 from gway import gw
+
+
+def report(**kwargs):
+    """Generate a system report with platform info and recent logs."""
+    try:
+        log_path = gw.resource("logs", "gway.log")
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            last_lines = f.readlines()[-100:]
+    except Exception as e:
+        last_lines = [f"<Could not read log file: {e}>"]
+
+    system_info = {
+        "hostname": socket.gethostname(),
+        "platform": platform.platform(),
+        "kwargs": kwargs
+    }
+
+    return (
+        "System Info:\n" +
+        json.dumps(system_info, indent=2) +
+        "\n\nRecent Log Lines:\n" +
+        "".join(last_lines)
+    )
 
 
 def register(

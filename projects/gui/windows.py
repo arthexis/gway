@@ -1,7 +1,6 @@
 from gway import gw, requires
 
 
-@requires("plyer")
 def notify(message, *, title="GWAY Notice", timeout=8):
     """Show a user interface notification with the specified title and message."""
     from plyer import notification
