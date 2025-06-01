@@ -159,44 +159,6 @@ def awg_finder(
     """
 
 
-def theme():
-    """Allows user to choose from available stylesheets and shows current selection."""
-    styles_dir = gw.resource("data", "static", "styles")
-    available = sorted(
-        f for f in os.listdir(styles_dir)
-        if f.endswith(".css") and not f.startswith("default.") and
-        os.path.isfile(os.path.join(styles_dir, f))
-    )
-
-    # Handle form submission
-    if request.method == "POST":
-        selected = request.forms.get("css")
-        if selected in available:
-            response.set_cookie("css", selected, path="/")
-            return redirect("/")  # Redirect to GET view
-        else:
-            return f"<p class='error'>Invalid selection: {selected}</p>"
-
-    current = request.get_cookie("css") or "default.css"
-
-    form = f"""
-        <h1>Select CSS Theme</h1>
-        <p>Current theme: <strong>{current}</strong></p>
-        <form method="post">
-            <select name="css">
-                {{options}}
-            </select>
-            <button type="submit">Set Theme</button>
-        </form>
-    """
-
-    options = "\n".join(
-        f'<option value="{css}"{" selected" if css == current else ""}>{css}</option>'
-        for css in available
-    )
-    return form.format(options=options)
-
-
 ...
 
 

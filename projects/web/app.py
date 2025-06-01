@@ -1,3 +1,4 @@
+import os
 from functools import wraps
 from urllib.parse import urlencode
 from collections.abc import Iterable
@@ -19,7 +20,6 @@ def setup(
     Accepts either `app=` keyword, `*apps` positional, or both.
     If multiple Bottle apps are passed, a tuple is returned.
     """
-    
 
     version = gw.version()
     candidates = []
@@ -92,10 +92,12 @@ def setup(
             return visited
 
         def render_navbar(visited, current_url=None):
-            if not cookies_enabled() or len(visited) < 2:
-                visited = ["readme", "theme"]
+            if not cookies_enabled() or len(visited) < 1:
+                visited = ["readme"]
+
             links = "".join(
-                f'<li><a href="/{path}/{b.replace("_", "-")}">{b.replace("_", " ").replace("-", " ").title()}</a></li>'
+                f'<li><a href="/{path}/{b.replace("_", "-")}">'
+                f'{b.replace("_", " ").replace("-", " ").title()}</a></li>'
                 for b in sorted(visited) if b
             )
             search_box = f'''
@@ -112,7 +114,30 @@ def setup(
                         <img src="{qr_url}" alt="QR Code" class="navbar-qr" />
                     </div>
                 '''
-            return f"<aside>{search_box}<ul>{links}</ul><br>{qr_html}</aside>"
+
+            # ─── Style selector form (submits on change) ───
+            styles_dir = gw.resource("data", "static", "styles")
+            available_styles = sorted(
+                f for f in os.listdir(styles_dir)
+                if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
+            )
+
+            current_style = request.get_cookie("css") or "default.css"
+            options = "\n".join(
+                f'<option value="{s}"{" selected" if s == current_style else ""}>{s[:-4]}</option>'
+                for s in available_styles
+            )
+            style_selector = f'''
+                <form method="get" class="style-form">
+                    <label for="css-style">Style:</label>
+                    <select id="css-style" name="css" class="style-selector" onchange="this.form.submit()">
+                        {options}
+                    </select>
+                    <noscript><button type="submit">Set</button></noscript>
+                </form>
+            '''
+
+            return f"<aside>{search_box}<ul>{links}</ul><br>{qr_html}<br>{style_selector}</aside>"
 
         def render_template(*, title="GWAY", navbar="", content="", css_files=None):
             nonlocal version
@@ -215,8 +240,18 @@ def setup(
                     </div>
                 """
                 content = consent_box + content
-            css_cookie = request.get_cookie("css", "")
-            css_files = ["default.css"] + [c.strip() for c in css_cookie.split(",") if c.strip()]
+
+            # ─── If “?css=” (or “?style=”), append “.css” if needed, set cookie, and use it ───
+            style_param = request.query.get("css") or request.query.get("style")
+            if style_param:
+                if not style_param.endswith(".css"):
+                    style_param += ".css"
+                response.set_cookie("css", style_param, path="/")
+                css_files = ["default.css", style_param]
+            else:
+                css_cookie = request.get_cookie("css", "")
+                css_files = ["default.css"] + [c.strip() for c in css_cookie.split(",") if c.strip()]
+
             return render_template(
                 title="GWAY - " + view_name.replace("_", " ").title(),
                 navbar=navbar,
