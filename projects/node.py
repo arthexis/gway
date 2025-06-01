@@ -56,6 +56,9 @@ def register(
         credits (int, optional): Number of credits to grant.
         role (str, optional): Role for this node (e.g., 'ADMIN', 'NODE'). Defaults to 'ADMIN'.
     """
+
+    # TODO: 
+
     # Validate required arguments
     if not server or not node_key:
         raise ValueError("Both 'server' and 'node_key' parameters are required.")

@@ -3,7 +3,7 @@ import uuid
 import base64
 from io import BytesIO
 import qrcode
-from gway import requires, gw
+from gway import gw
 
 
 _qr_code_cache = set()
