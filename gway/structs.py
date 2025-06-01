@@ -66,6 +66,7 @@ class Project(SimpleNamespace):
         When the project object itself is invoked, list all available
         functions and abort with an informative error, instead of guessing.
         """
+        from gway import gw
         from gway.console import show_functions
 
         # Gather all callables in this namespace
@@ -77,7 +78,4 @@ class Project(SimpleNamespace):
 
         # Display available functions to the user
         show_functions(functions)
-
-        # Abort with a clear message
-        gw.abort(f"Invalid function specified for project '{self._name}'")
 

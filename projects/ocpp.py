@@ -80,11 +80,8 @@ def setup_csms_app(*,
         allowlist=None,
     ):
     """
-    OCPP 1.6 CSMS implementation with:
-    - RFID Authorize validation via optional allowlist file
-    - WebSocket session tracking
-    - Basic status page at /
-    - UI support for de-authorizing chargers
+    OCPP 1.6 CSMS implementation with RFID authorization.
+    Specify an allowlist file in .cdv format (RFID: [extra fields...])
     """
 
     if app is None:

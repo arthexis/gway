@@ -248,6 +248,7 @@ def show_functions(functions: dict):
             doc_lines = [line.strip() for line in func.__doc__.splitlines()]
             doc = next((line for line in doc_lines if line), "")
 
+        name = name.replace("_", "-")
         print(f"  > {name} {args_preview}")
         if doc:
             print(f"      {doc}")

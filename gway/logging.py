@@ -5,7 +5,7 @@ import logging.handlers
 import traceback
 
 
-class FilteredTracebackFormatter(logging.Formatter):
+class FilteredFormatter(logging.Formatter):
     """
     A Formatter that, when an exception is logged, strips out any
     traceback frames whose filename path contains 'gway/gway', counts them,
@@ -61,7 +61,7 @@ def setup_logging(*,
         root.removeHandler(h)
     root.setLevel(loglevel)
 
-    formatter = FilteredTracebackFormatter(pattern, datefmt='%H:%M:%S')
+    formatter = FilteredFormatter(pattern, datefmt='%H:%M:%S')
 
     if logfile:
         file_h = logging.handlers.TimedRotatingFileHandler(
