@@ -162,34 +162,18 @@ def _strip_types(sig: str) -> str:
         return ", ".join(param_names)
     except Exception:
         return sig  # fallback if parsing fails
-
-
+    
+    
 def help(*args, full_code=False):
     from gway import gw
+    import os, textwrap
 
     db_path = gw.resource("data", "help.sqlite")
     if not os.path.isfile(db_path):
         gw.release.build_help_db()
 
-    # 1) Combine all args into a single string, for easy “wiki” detection:
     joined_args = " ".join(args).strip()
-    lowercase_args = joined_args.lower().split()
 
-    # 2) If the user explicitly included the token "wiki" anywhere, strip it out
-    #    and immediately call gw.wiki.query(...) on what remains.
-    if "wiki" in lowercase_args:
-        # Build a new query string that omits every “wiki” token
-        filtered_words = [w for w in joined_args.split() if w.lower() != "wiki"]
-        wiki_query = " ".join(filtered_words).strip()
-
-        if not wiki_query:
-            # If they only typed “help wiki” or “wiki”, return a usage hint:
-            return {"error": "Please provide a term after 'wiki'. Example: help('wiki', 'python')"}
-        else:
-            gw.info(f"Help: Detected 'wiki' token. Falling back to gw.wiki.query('{wiki_query}')")
-            return gw.wiki.query(wiki_query)
-
-    # 3) Otherwise—proceed with the normal SQLite‐backed help lookup.
     with gw.sql.connect(db_path, row_factory=True) as cur:
 
         # Case: no arguments → list all available projects
@@ -211,7 +195,6 @@ def help(*args, full_code=False):
                 )
                 exact_rows = cur.fetchall()
 
-            # Perform a full‐text search on the “help” column
             cur.execute("SELECT * FROM help WHERE help MATCH ?", (query,))
             fuzzy_rows = [row for row in cur.fetchall() if row not in exact_rows]
             rows = exact_rows + fuzzy_rows
@@ -230,12 +213,10 @@ def help(*args, full_code=False):
             print("Too many arguments.")
             return
 
-        # 4) If no rows matched, **fall back** to gw.wiki.query on the entire original query
+        # If no rows matched, return an error
         if not rows:
-            gw.info(f"Help: No help found for '{joined_args}'. Falling back to gw.wiki.query.")
-            return gw.wiki.query(joined_args)
+            return {"error": f"No help found for '{joined_args}'."}
 
-        # 5) Otherwise, format and return the matching help entries
         results = []
         for row in rows:
             example_code = f"gw.{row['project']}.{row['function']}({_strip_types(row['signature'])})"
@@ -250,7 +231,6 @@ def help(*args, full_code=False):
             }
             if full_code:
                 entry["Full Code"] = row["source"]
-            # Filter out any None values
             results.append({k: v for k, v in entry.items() if v})
 
         return results[0] if len(results) == 1 else {"Matches": results}
