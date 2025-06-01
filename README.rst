@@ -272,6 +272,17 @@ INCLUDED PROJECTS
   Example CLI: ``gway gif animate``
 
 
+.. rubric:: gui
+
+- ``lookup_font`` — Look up fonts installed on a Windows system by partial name (prefix).
+
+  Example CLI: ``gway gui lookup font``
+
+- ``notify`` — Show a user interface notification with the specified title and message.
+
+  Example CLI: ``gway gui notify``
+
+
 .. rubric:: job
 
 - ``schedule`` — Schedule a recipe to run.
