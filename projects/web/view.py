@@ -304,8 +304,10 @@ Deny:
 
     return f"<p>Registration for <code>{node_key}</code> submitted.</p>"
 
-# TODO: Create an auth function to returns true if the current request
-# comes from a registered node, and redirect to /register otherwise. 
-# A minimal role can be specified, defaulting to 'ADMIN'.
-# To validate the node, it should check the secret_key provided in the 
-# header or query params against the stored secret_key for that node_key.
+# TODO: Create an remote view function that can run a remote command on this node
+# This would use the node_key and secret_key to authenticate
+# Only run the command if the node is registered and approved.
+# The command would be sent to the node via a POST request and include
+# all args and kwargs as JSON (passed in as kwargs).
+# Return the result of the command execution as JSON.
+# The role of the node should be ADMIN for the command to be allowed.

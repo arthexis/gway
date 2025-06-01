@@ -20,5 +20,4 @@ httpx
 websockets
 pyperclip
 plyer
-cv2
 numpy

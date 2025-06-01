@@ -1,4 +1,4 @@
-from gway import gw, requires
+from gway import gw
 
 
 def notify(message, *, title="GWAY Notice", timeout=8):

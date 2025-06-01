@@ -21,6 +21,12 @@ def setup(
     If multiple Bottle apps are passed, a tuple is returned.
     """
 
+    # TODO: Add a prefix param. When accessing functions on the project
+    #      via gw, the prefix will be prepended to the function name with an underscore.
+    # If prefix is None, don't prepend anything (not even an underscore).
+    # The default will be "view", so in gw["web.view"]  view functions are
+    # expected to be named like "view_readme", "view_about", etc.
+
     version = gw.version()
     candidates = []
     if app is not None:

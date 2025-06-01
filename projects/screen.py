@@ -88,6 +88,8 @@ def take_screenshot() -> str:
     # with the current behavior, but allows for
     # "active" or "window" to only capture the active window instead of the full screen.
 
+    
+
     # 1. Determine screenshots directory via GWAY’s resource helper
     screenshots_dir = gw.resource("work", "screenshots")
     os.makedirs(screenshots_dir, exist_ok=True)

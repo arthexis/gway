@@ -1,19 +1,19 @@
-# projects/node.py
-
 import os
 import uuid
 import secrets
 import platform
 import subprocess
 import requests
-import platform, socket, json
+import socket
+import json
 from gway import gw
 
 
 def report(**kwargs):
     """Generate a system report with platform info and recent logs."""
 
-    # TODO: Add the unique node identifier to the report from identify()
+    # Include the unique node identifier
+    node_id = identify()
 
     try:
         log_path = gw.resource("logs", "gway.log")
@@ -23,6 +23,7 @@ def report(**kwargs):
         last_lines = [f"<Could not read log file: {e}>"]
 
     system_info = {
+        "node_id": node_id,
         "hostname": socket.gethostname(),
         "platform": platform.platform(),
         "kwargs": kwargs
@@ -37,44 +38,47 @@ def report(**kwargs):
 
 
 def register(
-    server: str,
-    node_key: str,
+    node_key: str = None,
+    server: str = None,
     start: str = None,
     end: str = None,
     credits: int = None,
     role: str = "ADMIN",
+    message: str = None,
 ):
     """
     Register this node with the given server's /register endpoint.
 
     Generates a secret_key, stores it locally, and sends it (along with any
-    optional 'start', 'end', 'credits', and 'role' fields) to the server.
+    optional 'start', 'end', 'credits', 'role', and 'message' fields) to the server.
 
     Args:
-        server (str): Base URL of the server (including port).
+        server (str, optional): Base URL of the server (including port).
+                                Defaults to the 'SERVER_URL' environment variable if not provided.
         node_key (str): Unique identifier for this node.
         start (str, optional): ISO date string when this node becomes active.
                                Defaults to now if omitted.
         end (str, optional): ISO date string when this node expires.
         credits (int, optional): Number of credits to grant.
         role (str, optional): Role for this node (e.g., 'ADMIN', 'NODE'). Defaults to 'ADMIN'.
+        message (str, optional): Custom message to send along with the registration.
     """
 
-    # TODO: Allow server to be optional, default to os.environ["SERVER_URL"]
-    # TODO: Create new "message" parameter to send a custom message with registration
+    if not node_key:
+        node_key = identify()
 
-    # Validate required arguments
+    if not server:
+        server = os.environ.get("SERVER_URL")
+
     if not server or not node_key:
-        raise ValueError("Both 'server' and 'node_key' parameters are required.")
+        raise ValueError("Both 'server' (or env['SERVER_URL']) and 'node_key' are required.")
 
-    # Generate a new secret_key and save it locally (overwrites if it already exists).
     secret_key = secrets.token_urlsafe(32)
     secret_path = gw.resource("work", f"node.{node_key}.secret")
     os.makedirs(os.path.dirname(secret_path), exist_ok=True)
     with open(secret_path, "w", encoding="utf-8") as f:
         f.write(secret_key)
 
-    # Build payload including all provided fields
     url = f"{server.rstrip('/')}/register"
     payload = {
         "node_key": node_key,
@@ -88,6 +92,8 @@ def register(
         payload["credits"] = credits
     if role:
         payload["role"] = role.upper()
+    if message:
+        payload["message"] = message
 
     try:
         response = requests.post(url, json=payload, timeout=10)
@@ -105,16 +111,18 @@ def check(server: str, node_key: str) -> str:
     the server's /register endpoint. The server will respond with text indicating
     "approved", "denied", or "pending."
 
+    Only returns cleanly if the server explicitly indicates approval; otherwise, raises
+    or returns an error message.
+
     Args:
         server (str): Base URL of the server (including port).
         node_key (str): Unique identifier for this node (must have run register()).
 
     Returns:
-        str: The raw text response from the server, which will say either:
-             - "Node <node_key> approved."
-             - "Node <node_key> has been denied."
-             - "Node <node_key> registration is pending."
+        str: If approved, returns "<Server response containing 'approved'>".
+             If denied or pending, returns "Node not approved: <server-text>".
     """
+
     if not server or not node_key:
         raise ValueError("Both 'server' and 'node_key' parameters are required.")
 
@@ -136,15 +144,22 @@ def check(server: str, node_key: str) -> str:
     try:
         response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
-        return response.text
+        text = response.text or ""
+        # Only treat as success if the server explicitly says "approved"
+        if "approved" in text.lower():
+            return text
+        else:
+            raise RuntimeError(f"Node not approved: {text}")
     except requests.RequestException as e:
         return f"Failed to check registration status: {e}"
+    except RuntimeError as err:
+        return str(err)
 
 
 def identify() -> str:
     """
     Returns a unique identifier for this system.
-    
+
     Tries platform-specific hardware serials and falls back to a UUID based on MAC address.
     """
     system = platform.system()
@@ -168,7 +183,11 @@ def identify() -> str:
 
     elif system == "Windows":
         try:
-            output = subprocess.check_output(["wmic", "csproduct", "get", "uuid"], stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+            output = subprocess.check_output(
+                ["wmic", "csproduct", "get", "uuid"],
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL
+            )
             lines = output.decode().splitlines()
             for line in lines:
                 line = line.strip()
