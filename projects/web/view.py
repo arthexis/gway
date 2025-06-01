@@ -181,7 +181,6 @@ def register(**kwargs):
     import os
     import secrets
     from datetime import datetime
-    from bottle import request
     from gway import gw
 
     registry_path = ("work", "node", "registry.cdv")
@@ -304,3 +303,9 @@ Deny:
         return f"<p class='error'>Failed to send email: {e}</p>"
 
     return f"<p>Registration for <code>{node_key}</code> submitted.</p>"
+
+# TODO: Create an auth function to returns true if the current request
+# comes from a registered node, and redirect to /register otherwise. 
+# A minimal role can be specified, defaulting to 'ADMIN'.
+# To validate the node, it should check the secret_key provided in the 
+# header or query params against the stored secret_key for that node_key.

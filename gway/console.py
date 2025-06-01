@@ -10,9 +10,11 @@ from typing import get_origin, get_args, Literal, Union
 
 from .logging import setup_logging
 from .builtins import abort
-from .envs import get_base_client, get_base_server, load_env
-from .gateway import Gateway, gw  # Note: we’ll still import gw in case someone refers to it elsewhere.
+from .gateway import Gateway, gw  
 
+# TODO: When the command doesn't match any known builtin project or function,
+# Check if its a .gwr recipe file in the recipes/ directory or the current directory.
+# Finally, if nothing, show available projects.
 
 def cli_main():
     """Main CLI entry point."""
@@ -37,20 +39,16 @@ def cli_main():
     setup_logging(logfile="gway.log", loglevel=loglevel)
     start_time = time.time() if args.timed else None
 
-    # 2) Determine client/server names (fall back to defaults if not provided)
-    client_name = args.client or get_base_client()
-    server_name = args.server or get_base_server()
-
-    # 3) Instantiate a local Gateway (this now loads the environments in __init__)
+    # 2) Instantiate a local Gateway (this now loads the environments in __init__)
     gw_local = Gateway(
-        client=client_name,
-        server=server_name,
+        client=args.client,
+        server=args.server,
         verbose=args.verbose or args.debug,
         name=args.name or "gw",
         _debug=args.debug
     )
 
-    # 4) Handle a .gwr recipe or direct commands
+    # 3) Handle a .gwr recipe or direct commands
     if args.recipe:
         command_sources, comments = load_recipe(args.recipe)
         gw_local.info(f"Comments in recipe:\n{chr(10).join(comments)}")
@@ -60,14 +58,14 @@ def cli_main():
             sys.exit(1)
         command_sources = chunk_command(args.commands)
 
-    # 5) Execute commands (with or without a callback)
+    # 4) Execute commands (with or without a callback)
     if args.callback:
         callback = gw_local[args.callback]
         all_results, last_result = process_commands(command_sources, callback=callback)
     else:
         all_results, last_result = process_commands(command_sources)
 
-    # 6) If --all is set, print every result immediately
+    # 5) If --all is set, print every result immediately
     if args.all:
         for result in all_results:
             if args.json:
@@ -81,10 +79,10 @@ def cli_main():
                 gw_local.info(f"Result:\n{result}")
                 print(result)
 
-    # 7) Resolve final "expression" if requested
+    # 6) Resolve final "expression" if requested
     output = Gateway(**last_result).resolve(args.expression) if args.expression else last_result
 
-    # 8) If not --all, print just the final output (JSON or plain)
+    # 7) If not --all, print just the final output (JSON or plain)
     if not args.all:
         if args.json:
             json_output = json.dumps(output, indent=2, default=str)
@@ -99,7 +97,7 @@ def cli_main():
         else:
             gw_local.info("No results returned.")
 
-    # 9) Print timing if requested
+    # 8) Print timing if requested
     if start_time:
         print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
 

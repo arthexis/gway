@@ -12,6 +12,9 @@ from gway import gw
 
 def report(**kwargs):
     """Generate a system report with platform info and recent logs."""
+
+    # TODO: Add the unique node identifier to the report from identify()
+
     try:
         log_path = gw.resource("logs", "gway.log")
         with open(log_path, "r", encoding="utf-8", errors="replace") as f:
@@ -57,7 +60,8 @@ def register(
         role (str, optional): Role for this node (e.g., 'ADMIN', 'NODE'). Defaults to 'ADMIN'.
     """
 
-    # TODO: 
+    # TODO: Allow server to be optional, default to os.environ["SERVER_URL"]
+    # TODO: Create new "message" parameter to send a custom message with registration
 
     # Validate required arguments
     if not server or not node_key:

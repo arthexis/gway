@@ -9,54 +9,29 @@ import asyncio
 import threading
 import importlib
 import functools
-from types import SimpleNamespace
 
 from .envs import load_env, get_base_client, get_base_server
 from .sigils import Resolver
-from .structs import Results
-
-class ProjectStub(SimpleNamespace):
-    def __init__(self, name, funcs, gateway):
-        """
-        A stub representing a project namespace. Holds available functions
-        and raises an error when called without an explicit function.
-        """
-        super().__init__(**funcs)
-        self._gateway = gateway
-        self._name = name
-        # _default_func is no longer used for guessing
-        self._default_func = None
-
-    def __call__(self, *args, **kwargs):
-        """
-        When the project object itself is invoked, list all available
-        functions and abort with an informative error, instead of guessing.
-        """
-        from gway.console import show_functions
-
-        # Gather all callables in this namespace
-        functions = {
-            name: func
-            for name, func in self.__dict__.items()
-            if callable(func)
-        }
-
-        # Display available functions to the user
-        show_functions(functions)
-
-        # Abort with a clear message
-        gw.abort(f"Invalid function specified for project '{self._name}'")
+from .structs import Results, Project
 
 
 class Gateway(Resolver):
-    _builtin_cache = None
+    _builtins = None
     _thread_local = threading.local()
 
-    def __init__(self, *, client=None, server=None, verbose=False, name="gw", _debug=False, **kwargs):
+    # TODO: Store all available projects in self._projects
+    # Then create a method to list them called projects()
+    # Similarly, create a method builtins() to list all available builtins
+
+    def __init__(self, *, 
+                client=None, server=None, verbose=False, 
+                name="gw", _debug=False, **kwargs
+    ):
         # Basic initialization
         self._cache = {}
         self._async_threads = []
         self._debug = _debug
+        self._projects = []
         self.uuid = uuid.uuid4()
         self.base_path = os.path.dirname(os.path.dirname(__file__))
         self.name = name
@@ -96,9 +71,9 @@ class Gateway(Resolver):
         load_env("server", server_name, env_root)
 
         # Populate the builtin-function cache on first instantiation
-        if Gateway._builtin_cache is None:
+        if Gateway._builtins is None:
             builtins_module = importlib.import_module("gway.builtins")
-            Gateway._builtin_cache = {
+            Gateway._builtins = {
                 name: obj
                 for name, obj in inspect.getmembers(builtins_module)
                 if inspect.isfunction(obj)
@@ -106,7 +81,13 @@ class Gateway(Resolver):
                 and inspect.getmodule(obj) == builtins_module
             }
 
-        self._builtin_functions = Gateway._builtin_cache.copy()
+        self._builtin_functions = Gateway._builtins.copy()
+
+    def projects(self):
+        return sorted(self._projects)
+
+    def builtins(self):
+        return sorted(self._builtins)
 
     def success(self, message):
         print(message)
@@ -277,7 +258,7 @@ class Gateway(Resolver):
             for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                 if not fname.startswith("_"):
                     funcs[fname] = self._wrap_callable(f"{dotted}.{fname}", obj)
-            ns = ProjectStub(dotted, funcs, self)
+            ns = Project(dotted, funcs, self)
             self._cache[dotted] = ns
             return ns
 
@@ -318,11 +299,11 @@ class Gateway(Resolver):
                 for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                     if not fname.startswith("_"):
                         sub_funcs[fname] = self._wrap_callable(f"{dotted}.{fname}", obj)
-                funcs[subname] = ProjectStub(dotted, sub_funcs, self)
+                funcs[subname] = Project(dotted, sub_funcs, self)
             elif os.path.isdir(full) and not entry.startswith("__"):
                 dotted = f"{dotted_prefix}.{entry}"
                 funcs[entry] = self.recurse_namespace(full, dotted)
-        ns = ProjectStub(dotted_prefix, funcs, self)
+        ns = Project(dotted_prefix, funcs, self)
         self._cache[dotted_prefix] = ns
         return ns
     

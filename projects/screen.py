@@ -83,6 +83,11 @@ def take_screenshot() -> str:
     Returns:
         The full path to the saved screenshot file.
     """
+
+    # TODO: Implement a new mode param that defaults to "full"
+    # with the current behavior, but allows for
+    # "active" or "window" to only capture the active window instead of the full screen.
+
     # 1. Determine screenshots directory via GWAY’s resource helper
     screenshots_dir = gw.resource("work", "screenshots")
     os.makedirs(screenshots_dir, exist_ok=True)

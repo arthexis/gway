@@ -1,5 +1,6 @@
 import threading
 import collections
+from types import SimpleNamespace
 
 
 class Results(collections.ChainMap):
@@ -47,3 +48,36 @@ class Results(collections.ChainMap):
         """Return the current results stored for the thread."""
         return self.maps[0]
     
+
+class Project(SimpleNamespace):
+    def __init__(self, name, funcs, gateway):
+        """
+        A stub representing a project namespace. Holds available functions
+        and raises an error when called without an explicit function.
+        """
+        super().__init__(**funcs)
+        self._gateway = gateway
+        self._name = name
+        # _default_func is no longer used for guessing
+        self._default_func = None
+
+    def __call__(self, *args, **kwargs):
+        """
+        When the project object itself is invoked, list all available
+        functions and abort with an informative error, instead of guessing.
+        """
+        from gway.console import show_functions
+
+        # Gather all callables in this namespace
+        functions = {
+            name: func
+            for name, func in self.__dict__.items()
+            if callable(func)
+        }
+
+        # Display available functions to the user
+        show_functions(functions)
+
+        # Abort with a clear message
+        gw.abort(f"Invalid function specified for project '{self._name}'")
+

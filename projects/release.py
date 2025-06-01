@@ -7,10 +7,6 @@ from pathlib import Path
 
 from gway import gw
 
-# TODO: When the PYPI credentials are not found this error is shown:
-# Halting: Unhandled ValueError in build
-# Instead gw.abort with a more helpful message
-# Handle similar errors in other places too
 
 def build(*,
     bump: bool = False,
