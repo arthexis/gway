@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from gway import gw
 
 
-def extract(data_dir, *, 
+def extract_records(data_dir, *, 
         add_days=0, output_csv=None, after=None, before=None, batch=None):
     r"""Load data from EV IOCHARGER to CSV format.
         > gsol etron extract-records "work\etron\san_pedro" 
