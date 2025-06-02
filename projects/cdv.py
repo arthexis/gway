@@ -59,7 +59,7 @@ def find(*paths, **patterns):
     return None
 
 
-def store(*paths, sep='=', value):
+def store(*paths, sep='=', **value):
     if len(paths) < 2:
         raise ValueError("At least two path elements are required: file path(s) and key")
 
@@ -70,15 +70,7 @@ def store(*paths, sep='=', value):
 
     cdv_file = gw.resource(*file_parts)
     cdv_file.parent.mkdir(parents=True, exist_ok=True)
-
-    if isinstance(value, bool):
-        val_str = ''
-    elif isinstance(value, (tuple, list, set)):
-        val_str = ':'.join(str(v) for v in value)
-    elif isinstance(value, dict):
-        val_str = ':'.join(f'{k}{sep}{v}' for k, v in value.items())
-    else:
-        val_str = str(value)
+    val_str = ':'.join(f'{k}{sep}{v}' for k, v in value.items())
 
     with open(cdv_file, 'a') as f:
         f.write(f"{key}:{val_str}\n")

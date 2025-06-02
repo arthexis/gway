@@ -1,3 +1,5 @@
+# projects/mail.py
+
 import os
 from gway import gw
 import imaplib
@@ -6,36 +8,46 @@ from email.mime.text import MIMEText
 from email import message_from_bytes
 
 
-def send(*subject, message=None, to=None, **kwargs):
+def send(subject, body=None, to=None, **kwargs):
     """
-    Send an email with the specified subject and message, using defaults from env if available.
-    If message is None, send system info and recent logs.
+    Send an email with the specified subject and body, using defaults from env if available.
+    If body is None, send system info and recent logs (via gw.node.report(**kwargs)).
+    
+    Parameters:
+    - subject: the email subject (string)
+    - body:    the plain-text body (string). If omitted, gw.node.report(**kwargs) will be used.
+    - to:      recipient address (string). Defaults to ADMIN_EMAIL from the environment.
+    - **kwargs: passed into gw.node.report() when body is None.
     """
+    # Determine recipient
     to = to or os.environ.get("ADMIN_EMAIL")
-    subject = gw.resolve(" ".join(subject))
     gw.debug(f"Preparing to send email to {to}: {subject}")
 
-    sender_email = os.environ.get("MAIL_SENDER")
+    # Load SMTP configuration from environment
+    sender_email    = os.environ.get("MAIL_SENDER")
     sender_password = os.environ.get("MAIL_PASSWORD")
-    smtp_server = os.environ.get("SMTP_SERVER")
-    smtp_port = os.environ.get("SMTP_PORT")
+    smtp_server     = os.environ.get("SMTP_SERVER")
+    smtp_port       = os.environ.get("SMTP_PORT")
 
     gw.debug(f"MAIL_SENDER: {sender_email}")
     gw.debug(f"SMTP_SERVER: {smtp_server}")
     gw.debug(f"SMTP_PORT: {smtp_port}")
     gw.debug("Environment variables loaded.")
 
+    # If any required piece is missing, bail out
     if not all([sender_email, sender_password, smtp_server, smtp_port]):
         gw.debug("Missing one or more required email configuration details.")
         return "Missing email configuration details."
 
-    if message is None:
-        message = gw.node.report(**kwargs)
+    # If no explicit body was passed, ask gw.node.report() to build one
+    if body is None:
+        body = gw.node.report(**kwargs)
 
-    msg = MIMEText(message)
-    msg['Subject'] = subject
-    msg['From'] = sender_email
-    msg['To'] = to
+    # Construct the MIMEText message
+    msg = MIMEText(body)
+    msg['Subject'] = gw.resolve(subject)
+    msg['From']    = sender_email
+    msg['To']      = to
 
     gw.debug("Email MIME message constructed.")
     gw.debug(f"Email headers: From={msg['From']}, To={msg['To']}, Subject={msg['Subject']}")

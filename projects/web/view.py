@@ -177,17 +177,36 @@ def register(**kwargs):
     - credits: optional int
     - role: optional str, defaults to 'ADMIN'
     - response: optional approval response via approve:secret or deny:secret
+    - cancel: optional node_key to cancel a pending registration
     """
     import os
     import secrets
     from datetime import datetime
     from gway import gw
 
-    registry_path = ("work", "node", "registry.cdv")
-    
-    response = kwargs.get("response")
+    registry_path = ("work", "registry.cdv")
     now = datetime.now().isoformat()
 
+    # Handle cancellation
+    cancel_key = kwargs.get("cancel")
+    if cancel_key:
+        gw.cdv.remove(*registry_path, cancel_key)
+        return """
+        <p>Registration cancelled.</p>
+        <h1>Register Node</h1>
+        <form method='post'>
+            <label>Node Key: <input name='node_key' required></label><br>
+            <label>Secret Key: <input name='secret_key' required></label><br>
+            <label>Start (optional): <input name='start' placeholder='YYYY-MM-DD'></label><br>
+            <label>End (optional): <input name='end' placeholder='YYYY-MM-DD'></label><br>
+            <label>Credits (optional): <input name='credits' type='number'></label><br>
+            <label>Role (optional): <input name='role' placeholder='ADMIN'></label><br>
+            <button type='submit'>Submit</button>
+        </form>
+        """
+
+    # Handle approval or denial
+    response = kwargs.get("response")
     if response:
         action, req_secret = response.split(":", 1)
         match = gw.cdv.find(*registry_path, req_secret, node_key=".*")
@@ -214,6 +233,7 @@ def register(**kwargs):
         else:
             return "<p class='error'>Unknown response action.</p>"
 
+    # Show form if no input
     if not kwargs:
         return """
         <h1>Register Node</h1>
@@ -228,6 +248,7 @@ def register(**kwargs):
         </form>
         """
 
+    # Process form submission
     node_key = kwargs.get("node_key")
     secret_key = kwargs.get("secret_key")
     start = kwargs.get("start") or now
@@ -240,16 +261,19 @@ def register(**kwargs):
 
     req_secret = secrets.token_urlsafe(16)
 
-    # Check for existing
+    # Check for existing request
     existing = gw.cdv.find(*registry_path, node_key)
     if existing:
         if "approved" in existing:
             return f"<p>Node <code>{node_key}</code> already approved.</p>"
         if "denied" in existing:
             return f"<p>Node <code>{node_key}</code> has been denied.</p>"
-        return f"<p>Node <code>{node_key}</code> registration is pending.</p>"
+        return f"""
+        <p>Node <code>{node_key}</code> registration is pending.</p>
+        <p><a href='?cancel={node_key}'>Cancel this registration</a></p>
+        """
 
-    # Store request
+    # Store new request
     record = {
         "secret_key": secret_key,
         "request_secret": req_secret,
@@ -263,12 +287,12 @@ def register(**kwargs):
 
     gw.cdv.store(*registry_path, node_key, **record)
 
-    # Lookup email
+    # Lookup admin email
     email_key = f"{role}_EMAIL"
     admin_email = os.environ.get(email_key) or os.environ.get("ADMIN_EMAIL")
 
     if not admin_email:
-        return """
+        return f"""
         <p class='error'>No admin email found for role. Please set ADMIN_EMAIL or {role}_EMAIL in your environment or in [client].env or [server].env.</p>
         """
 
@@ -304,10 +328,3 @@ Deny:
 
     return f"<p>Registration for <code>{node_key}</code> submitted.</p>"
 
-# TODO: Create an remote view function that can run a remote command on this node
-# This would use the node_key and secret_key to authenticate
-# Only run the command if the node is registered and approved.
-# The command would be sent to the node via a POST request and include
-# all args and kwargs as JSON (passed in as kwargs).
-# Return the result of the command execution as JSON.
-# The role of the node should be ADMIN for the command to be allowed.

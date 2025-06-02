@@ -228,3 +228,71 @@ def identify() -> str:
         return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{mac}-{host}"))
     except Exception:
         return "UNKNOWN"
+
+
+def manage(*,
+    list_all: bool = False,
+    node_key: str = None,
+    role: str = None,
+    revoke: bool = False,
+    compact: bool = False,
+):
+    """
+    Manage approved node registrations stored in work/registry.cdv.
+
+    Options:
+    --list_all         List all approved (and optionally pending) nodes.
+    --node_key=...     Filter by specific node_key.
+    --role=...         Filter by role.
+    --revoke           Revoke (delete) approval for a given node_key.
+    --compact          Return only node_keys (for scripting).
+    """
+    from gway import gw
+
+    registry_path = ("work", "registry.cdv")
+    entries = []
+
+    cdv_file = gw.resource(*registry_path)
+    if not cdv_file.exists():
+        return "No registry file found."
+
+    with open(cdv_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            key, *rest = line.split(':')
+            rec = {"node_key": key}
+            for part in rest:
+                if '=' in part:
+                    k, v = part.split('=', 1)
+                    rec[k] = v
+            entries.append(rec)
+
+    # Filter approved entries only
+    approved = [e for e in entries if 'approved' in e]
+
+    if node_key:
+        approved = [e for e in approved if e["node_key"] == node_key]
+    if role:
+        approved = [e for e in approved if e.get("role", "").upper() == role.upper()]
+
+    if revoke:
+        if not node_key:
+            return "Error: --revoke requires --node_key."
+        # Rewrite the cdv file, omitting revoked entry
+        remaining = [e for e in entries if e["node_key"] != node_key]
+        with open(cdv_file, 'w') as f:
+            for rec in remaining:
+                parts = [rec["node_key"]] + [f"{k}={v}" for k, v in rec.items() if k != "node_key"]
+                f.write(":".join(parts) + "\n")
+        return f"Revoked node: {node_key}"
+
+    if compact:
+        return [e["node_key"] for e in approved]
+
+    if list_all or node_key or role:
+        return approved
+
+    return f"{len(approved)} approved node(s). Use --list_all to view details."
+

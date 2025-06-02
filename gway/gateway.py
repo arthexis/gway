@@ -102,6 +102,7 @@ class Gateway(Resolver):
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
 
+                # Resolve “[...]” placeholder defaults from context
                 for param in sig.parameters.values():
                     if (param.name not in bound_args.arguments
                         and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)):
@@ -111,11 +112,13 @@ class Gateway(Resolver):
                             and default_value.endswith("]")):
                             bound_args.arguments[param.name] = self.resolve(default_value)
 
+                # Resolve any string arguments via self.resolve, and inject into context
                 for key, value in bound_args.arguments.items():
                     if isinstance(value, str):
                         bound_args.arguments[key] = self.resolve(value)
                     self.context[key] = bound_args.arguments[key]
 
+                # Separate positional vs keyword for final call
                 args_to_pass = []
                 kwargs_to_pass = {}
                 for param in sig.parameters.values():
@@ -125,6 +128,7 @@ class Gateway(Resolver):
                         kwargs_to_pass.update(bound_args.arguments.get(param.name, {}))
                     elif param.name in bound_args.arguments:
                         val = bound_args.arguments[param.name]
+                        # If the argument still equals its default, try to override from context
                         if param.default == val:
                             found = self.find_value(param.name)
                             if found is not None and found != val:
@@ -132,6 +136,7 @@ class Gateway(Resolver):
                                 val = found
                         kwargs_to_pass[param.name] = val
 
+                # If function is async, start thread to run it
                 if inspect.iscoroutinefunction(func_obj):
                     thread = threading.Thread(
                         target=self._run_coroutine,
@@ -142,8 +147,10 @@ class Gateway(Resolver):
                     thread.start()
                     return f"[async task started for {func_name}]"
 
+                # Call the function synchronously
                 result = func_obj(*args_to_pass, **kwargs_to_pass)
 
+                # If it returns a coroutine, run that in a thread
                 if inspect.iscoroutine(result):
                     thread = threading.Thread(
                         target=self._run_coroutine,
@@ -154,6 +161,7 @@ class Gateway(Resolver):
                     thread.start()
                     return f"[async coroutine started for {func_name}]"
 
+                # At this point, `result` is a concrete return value
                 if result is not None:
                     parts = func_name.split(".")
                     project = parts[-2] if len(parts) > 1 else parts[-1]
@@ -163,7 +171,6 @@ class Gateway(Resolver):
                         return re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', name.replace("_", " "))
 
                     words = split_words(func)
-
                     if len(words) == 1:
                         sk = project
                     else:
@@ -171,7 +178,21 @@ class Gateway(Resolver):
 
                     lk = ".".join([project] + words[1:]) if len(words) > 1 else project
 
-                    self.info(f"Stored {result=} into {sk=} {lk=}")
+                    # — if the repr of result is very long, truncate it —
+                    repr_result = repr(result)
+                    if len(repr_result) > 100:
+                        short_result = repr_result[:100] + "...[truncated]"
+                    else:
+                        short_result = repr_result
+
+                    # — if the storage key looks sensitive, censor it —
+                    sensitive_keywords = ("password", "secret", "token", "key")
+                    if any(word.lower() in sk.lower() for word in sensitive_keywords):
+                        log_value = "<censored>"
+                    else:
+                        log_value = short_result
+
+                    self.info(f"Stored result={log_value} into sk={sk} lk={lk}")
                     self.results.insert(sk, result)
                     if lk != sk:
                         self.results.insert(lk, result)
