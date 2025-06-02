@@ -487,9 +487,6 @@ INCLUDED PROJECTS
   > ``gway screen take-screenshot``
 
 
-.. rubric:: service
-
-
 .. rubric:: sql
 
 - ``connect`` — Connects to a SQLite database using a context manager.
