@@ -1,3 +1,5 @@
+# projects/gif.py
+
 import re, glob, time, os
 from PIL import Image
 import pygame

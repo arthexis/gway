@@ -221,251 +221,270 @@ Recipes make Gway scripting modular and composable. Include them in your automat
 INCLUDED PROJECTS
 =================
 
+.. rubric:: approval
+
+- ``generate_key`` — Generate a unique approval key.
+
+  > ``gway approval generate-key``
+
+- ``request`` — Store an approval request and optionally send an approval email.
+
+  > ``gway approval request``
+
+- ``resolve`` — Resolve a response string of the form 'approve:key' or 'deny:key'.
+
+  > ``gway approval resolve``
+
+
 .. rubric:: awg
 
 - ``find_cable`` — Calculate the type of cable needed for an electrical system.
 
-  Example CLI: ``gway awg find cable``
+  > ``gway awg find-cable``
 
 - ``find_conduit`` — Calculate the kind of conduit required for a set of cables.
 
-  Example CLI: ``gway awg find conduit``
+  > ``gway awg find-conduit``
 
 
 .. rubric:: cdv
 
 - ``find`` — (no description)
 
-  Example CLI: ``gway cdv find``
+  > ``gway cdv find``
 
 - ``pop`` — (no description)
 
-  Example CLI: ``gway cdv pop``
+  > ``gway cdv pop``
 
 - ``remove`` — (no description)
 
-  Example CLI: ``gway cdv remove``
+  > ``gway cdv remove``
 
 - ``store`` — (no description)
 
-  Example CLI: ``gway cdv store``
+  > ``gway cdv store``
 
 
 .. rubric:: clip
 
 - ``copy`` — Extracts the contents of the clipboard and returns it.
 
-  Example CLI: ``gway clip copy``
+  > ``gway clip copy``
 
 
 .. rubric:: etron
 
 - ``extract_records`` — Load data from EV IOCHARGER to CSV format.
 
-  Example CLI: ``gway etron extract records``
+  > ``gway etron extract-records``
 
 
 .. rubric:: gif
 
 - ``animate`` — (no description)
 
-  Example CLI: ``gway gif animate``
+  > ``gway gif animate``
 
 
 .. rubric:: gui
 
 - ``lookup_font`` — Look up fonts installed on a Windows system by partial name (prefix).
 
-  Example CLI: ``gway gui lookup font``
+  > ``gway gui lookup-font``
 
 - ``notify`` — Show a user interface notification with the specified title and message.
 
-  Example CLI: ``gway gui notify``
+  > ``gway gui notify``
 
 
 .. rubric:: job
 
 - ``schedule`` — Schedule a recipe to run.
 
-  Example CLI: ``gway job schedule``
+  > ``gway job schedule``
 
 
 .. rubric:: mail
 
 - ``message_from_bytes`` — Parse a bytes string into a Message object model.
 
-  Example CLI: ``gway mail message from bytes``
+  > ``gway mail message-from-bytes``
 
 - ``search`` — Search emails by subject and optionally body. Use "*" to match any subject.
 
-  Example CLI: ``gway mail search``
+  > ``gway mail search``
 
-- ``send`` — Send an email with the specified subject and message, using defaults from env if available.
+- ``send`` — Send an email with the specified subject and body, using defaults from env if available.
 
-  Example CLI: ``gway mail send``
+  > ``gway mail send``
 
 
 .. rubric:: net
 
 - ``export_connections`` — Export NetworkManager connections into a JSON-serializable list of dicts.
 
-  Example CLI: ``gway net export connections``
+  > ``gway net export-connections``
 
 
 .. rubric:: node
 
 - ``check`` — Check registration status for this node.
 
-  Example CLI: ``gway node check``
+  > ``gway node check``
 
 - ``identify`` — Returns a unique identifier for this system.
 
-  Example CLI: ``gway node identify``
+  > ``gway node identify``
+
+- ``manage`` — Manage approved node registrations stored in work/registry.cdv.
+
+  > ``gway node manage``
 
 - ``register`` — Register this node with the given server's register endpoint.
 
-  Example CLI: ``gway node register``
+  > ``gway node register``
 
 - ``report`` — Generate a system report with platform info and recent logs.
 
-  Example CLI: ``gway node report``
+  > ``gway node report``
 
 
 .. rubric:: ocpp
 
 - ``setup_csms_app`` — OCPP 1.6 CSMS implementation with RFID authorization.
 
-  Example CLI: ``gway ocpp setup csms app``
+  > ``gway ocpp setup-csms-app``
 
 - ``setup_sink_app`` — Basic OCPP passive sink for messages, acting as a dummy CSMS server.
 
-  Example CLI: ``gway ocpp setup sink app``
+  > ``gway ocpp setup-sink-app``
 
 
 .. rubric:: odoo
 
 - ``Form`` — (no description)
 
-  Example CLI: ``gway odoo Form``
+  > ``gway odoo Form``
 
 - ``asynccontextmanager`` — @asynccontextmanager decorator.
 
-  Example CLI: ``gway odoo asynccontextmanager``
+  > ``gway odoo asynccontextmanager``
 
 - ``create_quote`` — Create a new quotation using a specified template and customer name.
 
-  Example CLI: ``gway odoo create quote``
+  > ``gway odoo create-quote``
 
 - ``execute`` — A generic function to directly interface with Odoo's execute_kw method.
 
-  Example CLI: ``gway odoo execute``
+  > ``gway odoo execute``
 
 - ``fetch_customers`` — Fetch customers from Odoo with optional filters.
 
-  Example CLI: ``gway odoo fetch customers``
+  > ``gway odoo fetch-customers``
 
 - ``fetch_order`` — Fetch the details of a specific order by its ID from Odoo, including all line details.
 
-  Example CLI: ``gway odoo fetch order``
+  > ``gway odoo fetch-order``
 
 - ``fetch_products`` — Fetch the list of non-archived products from Odoo.
 
-  Example CLI: ``gway odoo fetch products``
+  > ``gway odoo fetch-products``
 
 - ``fetch_quotes`` — Fetch quotes/quotations from Odoo with optional filters.
 
-  Example CLI: ``gway odoo fetch quotes``
+  > ``gway odoo fetch-quotes``
 
 - ``fetch_templates`` — Fetch available quotation templates from Odoo with optional filters.
 
-  Example CLI: ``gway odoo fetch templates``
+  > ``gway odoo fetch-templates``
 
 - ``get_user_info`` — Retrieve Odoo user information by username.
 
-  Example CLI: ``gway odoo get user info``
+  > ``gway odoo get-user-info``
 
 - ``read_chat`` — Read chat messages from an Odoo user by username.
 
-  Example CLI: ``gway odoo read chat``
+  > ``gway odoo read-chat``
 
 - ``send_chat`` — Send a chat message to an Odoo user by username.
 
-  Example CLI: ``gway odoo send chat``
+  > ``gway odoo send-chat``
 
 - ``setup_chatbot_app`` — Create a FastAPI app (or append to existing ones) serving a chatbot UI and logic.
 
-  Example CLI: ``gway odoo setup chatbot app``
+  > ``gway odoo setup-chatbot-app``
 
 
 .. rubric:: qr
 
 - ``generate_b64data`` — Generate a QR code image from the given value and return it as a base64-encoded PNG string.
 
-  Example CLI: ``gway qr generate b64data``
+  > ``gway qr generate-b64data``
 
 - ``generate_image`` — Generate a QR code image from the given value and save it to the specified path.
 
-  Example CLI: ``gway qr generate image``
+  > ``gway qr generate-image``
 
 - ``generate_img`` — Generate a QR code image from the given value and save it to the specified path.
 
-  Example CLI: ``gway qr generate img``
+  > ``gway qr generate-img``
 
 - ``generate_url`` — Return the local URL to a QR code with the given value. 
 
-  Example CLI: ``gway qr generate url``
+  > ``gway qr generate-url``
 
 - ``scan_image`` — Scan the given image (file‑path or PIL.Image) for QR codes and return
 
-  Example CLI: ``gway qr scan image``
+  > ``gway qr scan-image``
 
 - ``scan_img`` — Scan the given image (file‑path or PIL.Image) for QR codes and return
 
-  Example CLI: ``gway qr scan img``
+  > ``gway qr scan-img``
 
 
 .. rubric:: readme
 
 - ``collect_projects`` — Scan `project_dir` for all modules/packages, collect public functions,
 
-  Example CLI: ``gway readme collect projects``
+  > ``gway readme collect-projects``
 
 
 .. rubric:: recipe
 
 - ``register_gwr`` — Register the .gwr file extension so that double-click launches:
 
-  Example CLI: ``gway recipe register gwr``
+  > ``gway recipe register-gwr``
 
 - ``run`` — (no description)
 
-  Example CLI: ``gway recipe run``
+  > ``gway recipe run``
 
 
 .. rubric:: release
 
 - ``build`` — Build the project and optionally upload to PyPI.
 
-  Example CLI: ``gway release build``
+  > ``gway release build``
 
 - ``build_help`` — (no description)
 
-  Example CLI: ``gway release build help``
+  > ``gway release build-help``
 
 - ``extract_todos`` — (no description)
 
-  Example CLI: ``gway release extract todos``
+  > ``gway release extract-todos``
 
 
 .. rubric:: screen
 
 - ``shot`` — Take a screenshot in the specified mode and save it under:
 
-  Example CLI: ``gway screen shot``
+  > ``gway screen shot``
 
 - ``take_screenshot`` — Take a screenshot in the specified mode and save it under:
 
-  Example CLI: ``gway screen take screenshot``
+  > ``gway screen take-screenshot``
 
 
 .. rubric:: service
@@ -475,57 +494,57 @@ INCLUDED PROJECTS
 
 - ``connect`` — Connects to a SQLite database using a context manager.
 
-  Example CLI: ``gway sql connect``
+  > ``gway sql connect``
 
 - ``contextmanager`` — @contextmanager decorator.
 
-  Example CLI: ``gway sql contextmanager``
+  > ``gway sql contextmanager``
 
 - ``infer_type`` — Infer SQL type from a sample value.
 
-  Example CLI: ``gway sql infer type``
+  > ``gway sql infer-type``
 
 
 .. rubric:: t
 
 - ``minus`` — Return current datetime plus given seconds.
 
-  Example CLI: ``gway t minus``
+  > ``gway t minus``
 
 - ``now`` — Return the current datetime object.
 
-  Example CLI: ``gway t now``
+  > ``gway t now``
 
 - ``plus`` — Return current datetime plus given seconds.
 
-  Example CLI: ``gway t plus``
+  > ``gway t plus``
 
 - ``to_download`` — Prompt: Create a python function that takes a file size such as 100 MB or 1.76 GB 
 
-  Example CLI: ``gway t to download``
+  > ``gway t to-download``
 
 - ``ts`` — Return the current timestamp in ISO-8601 format.
 
-  Example CLI: ``gway t ts``
+  > ``gway t ts``
 
 
 .. rubric:: tests
 
 - ``dummy_function`` — Dummy function for testing.
 
-  Example CLI: ``gway tests dummy function``
+  > ``gway tests dummy-function``
 
 - ``variadic_both`` — (no description)
 
-  Example CLI: ``gway tests variadic both``
+  > ``gway tests variadic-both``
 
 - ``variadic_keyword`` — (no description)
 
-  Example CLI: ``gway tests variadic keyword``
+  > ``gway tests variadic-keyword``
 
 - ``variadic_positional`` — (no description)
 
-  Example CLI: ``gway tests variadic positional``
+  > ``gway tests variadic-positional``
 
 
 

@@ -1,3 +1,5 @@
+# gway/structs.py
+
 import threading
 import collections
 from types import SimpleNamespace

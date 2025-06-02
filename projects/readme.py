@@ -43,7 +43,7 @@ def collect_projects(project_dir: str, readme: str = "README.rst"):
                 continue
             doc = inspect.getdoc(obj) or "(no description)"
             cli_path = ' '.join(name.replace('_', ' ').split('.'))
-            cli_func = fname.replace('_', ' ')
+            cli_func = fname.replace('_', '-')
             funcs.append({
                 "name": fname,
                 "doc": doc,
@@ -57,7 +57,7 @@ def collect_projects(project_dir: str, readme: str = "README.rst"):
         lines.append(f".. rubric:: {name}\n\n")
         for f in funcs:
             lines.append(f"- ``{f['name']}`` — {f['doc'].splitlines()[0]}\n\n")
-            lines.append(f"  Example CLI: ``{f['cli']}``\n\n")
+            lines.append(f"  > ``{f['cli']}``\n\n")
         lines.append("\n")
 
     # 3) Read existing README and locate section boundaries

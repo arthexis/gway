@@ -1,6 +1,8 @@
+# projects/tests.py
+
 # This module contains functions that are useful to test against
 # However, it doesn't implement the test runner functionality itself
-# See the builtins module for run_tests instead
+# See the builtins module for test() instead
 
 
 # A dummy function for testing dynamic loading

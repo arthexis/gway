@@ -1,3 +1,5 @@
+# gway/sigils.py
+
 import re
 import os
 

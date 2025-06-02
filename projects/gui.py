@@ -1,3 +1,5 @@
+# projects/gui.py
+
 from gway import gw
 
 

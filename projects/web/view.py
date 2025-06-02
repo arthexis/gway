@@ -166,8 +166,8 @@ def view_awg_finder(
 
 def view_register(**kwargs):
     """
-    Register a node using .cdv-based storage with optional approval by role-based email.
-    
+    Register a node using .cdv-based storage with approval handled by gw.approval.
+
     Accepts:
     - node_key: str
     - secret_key: str
@@ -176,63 +176,68 @@ def view_register(**kwargs):
     - credits: optional int
     - role: optional str, defaults to 'ADMIN'
     - message: optional str, included in approval email
-    - response: optional approval response via approve:secret or deny:secret
+    - response: optional 'approve:<key>' or 'deny:<key>'
     """
-    # View function for endpoint at [SERVER_URL]/gway/register
-
-    # TODO: Fix -> Invalid or expired approval token. (response from approval)
-    # Potential solution is to keep a separate cdv named work/pending.cdv
-    # In which the secret_key which is sent with the approval is the first column
-    # and the second is the node_key from the registry.cdv, since find only searches by first column?
-    # Make sure we understand the interface of gw.cdv.find 
-
     import os
-    import secrets
     from datetime import datetime
     from gway import gw
 
     registry_path = ("work", "registry.cdv")
-    
+    now_iso = datetime.now().isoformat()
+
+    # 1) If this request has a response parameter, resolve it via gw.approval.resolve()
     response = kwargs.get("response")
-    now = datetime.now().isoformat()
-
     if response:
-        action, req_secret = response.split(":", 1)
+        status, details = gw.approval.resolve(response)
 
-        # TODO: We are getting this error but the real issue is that find is not being
-        # used properly, because find only searches for the value in the first column
-        # and that is always the node_key, this assumes req_secret matches the first column:
-        # We should propose a new version of find that lets us be more versatile about
-        # column to search in first, and the use that new interface here.
+        if status == "error":
+            return f"<p class='error'>{details}</p>"
 
-        match = gw.cdv.find(*registry_path, req_secret, node_key=".*")
-        if not match:
-            return "<p class='error'>Invalid or expired approval token.</p>"
+        # details is the original payload dict we passed to request()
+        payload = details
+        node_key   = payload.get("node_key")
+        secret_key = payload.get("secret_key")
+        start      = payload.get("start")
+        end        = payload.get("end")
+        credits    = payload.get("credits")
+        role       = payload.get("role")
 
-        node_key = match.get("node_key")
-        secret_key = match.get("secret_key")
-        start = match.get("start")
-        end = match.get("end")
+        if status == "approved":
+            # Store into registry.cdv under node_key
+            record = {
+                "secret_key": secret_key,
+                "start":      start,
+            }
+            if end:
+                record["end"] = end
+            if credits:
+                record["credits"] = str(credits)
+            record["role"] = role
 
-        if action == "approve":
-            start_ok = not start or start <= now
-            end_ok = not end or end > now
-            if not start_ok or not end_ok:
-                return "<p class='error'>Request outside valid date range.</p>"
-            gw.cdv.store(*registry_path, node_key, secret_key=secret_key, approved=req_secret)
+            gw.cdv.store(*registry_path, node_key, **record)
             return f"<p>Node <code>{node_key}</code> approved.</p>"
 
-        elif action == "deny":
-            gw.cdv.store(*registry_path, node_key, secret_key=secret_key, denied=req_secret)
+        elif status == "denied":
+            # Mark denied in registry.cdv (optional)
+            record = {
+                "secret_key": secret_key,
+                "denied":     now_iso,
+                "start":      start,
+            }
+            if end:
+                record["end"] = end
+            if credits:
+                record["credits"] = str(credits)
+            record["role"] = role
+
+            gw.cdv.store(*registry_path, node_key, **record)
             return f"<p>Node <code>{node_key}</code> denied.</p>"
 
-        else:
-            return "<p class='error'>Unknown response action.</p>"
-
+    # 2) If no kwargs provided at all, render the HTML form
     if not kwargs:
         return """
         <h1>Register Node</h1>
-        <p>This form is intended for existing customers and local development.
+        <p>This form is intended for existing customers and local development.</p>
         <form method='post'>
             <label>Node Key: <input name='node_key' required></label><br>
             <label>Secret Key: <input name='secret_key' required></label><br>
@@ -247,88 +252,48 @@ def view_register(**kwargs):
         </form>
         """
 
-    node_key = kwargs.get("node_key")
+    # 3) Otherwise, process a new registration submission
+    node_key   = kwargs.get("node_key")
     secret_key = kwargs.get("secret_key")
-    start = kwargs.get("start") or now
-    end = kwargs.get("end")
-    credits = kwargs.get("credits")
-    role = (kwargs.get("role") or "ADMIN").upper()
-    message = kwargs.get("message", "").strip()
+    start      = kwargs.get("start") or now_iso
+    end        = kwargs.get("end")
+    credits    = kwargs.get("credits")
+    role       = (kwargs.get("role") or "ADMIN").upper()
+    message    = kwargs.get("message", "").strip()
 
     if not node_key or not secret_key:
         return "<p class='error'>Missing node_key or secret_key.</p>"
 
-    req_secret = secrets.token_urlsafe(16)
-
-    # Check for existing
+    # 3a) Check if this node_key already exists in registry.cdv
     existing = gw.cdv.find(*registry_path, node_key)
     if existing:
-        if "approved" in existing:
-            return f"<p>Node <code>{node_key}</code> already approved.</p>"
-        if "denied" in existing:
+        if "start" in existing and "end" in existing and not existing.get("denied"):
+            return f"<p>Node <code>{node_key}</code> already registered.</p>"
+        if existing.get("denied"):
             return f"<p>Node <code>{node_key}</code> has been denied.</p>"
-        return f"<p>Node <code>{node_key}</code> registration is pending.</p>"
+        return f"<p>Node <code>{node_key}</code> registration is pending approval.</p>"
 
-    # Store request
-    record = {
+    # 3b) Build the payload for approval
+    payload = {
+        "node_key":   node_key,
         "secret_key": secret_key,
-        "request_secret": req_secret,
-        "start": start,
+        "start":      start,
+        "end":        end,
+        "credits":    credits,
+        "role":       role,
     }
-    if end:
-        record["end"] = end
-    if credits:
-        record["credits"] = str(credits)
-    record["role"] = role
-
-    gw.cdv.store(*registry_path, node_key, **record)
-
-    # Lookup email
-    email_key = f"{role}_EMAIL"
-    admin_email = os.environ.get(email_key) or os.environ.get("ADMIN_EMAIL")
-
-    if not admin_email:
-        return f"""
-        <p class='error'>No admin email found for role. Please set ADMIN_EMAIL or {role}_EMAIL in your environment or in [client].env or [server].env.</p>
-        """
-    
-    server_url = os.environ.get("BASE_URL", "").rstrip("/")
-    base_url = f"{server_url}{gw.web.app_url('register')}"
-    approve_link = f"{base_url}?response=approve:{req_secret}"
-    deny_link = f"{base_url}?response=deny:{req_secret}"
-
-    # Build email body, including message if provided
-    email_body = f"""
-A new node registration request was received:
-
-Node Key: {node_key}
-Role: {role}
-Credits: {credits or 'N/A'}
-Start: {start}
-End: {end or 'N/A'}
-"""
-
     if message:
-        email_body += f"\nMessage from registrant:\n{message}\n"
+        payload["message"] = message
 
-    email_body += f"""
-
-Approve:
-{approve_link}
-
-Deny:
-{deny_link}
-"""
-
-    email_subject = f"Registration Request: {node_key}"
-
+    # 3c) Request approval via gw.approval.request()
     try:
-        gw.mail.send(
-            to=admin_email,
-            subject=email_subject,
-            body=email_body
+        gw.approval.request(
+            category="register",
+            data=payload,
+            role=role,
+            send_email=True
         )
     except Exception as e:
-        return f"<p class='error'>Failed to send email: {e}</p>"
+        return f"<p class='error'>Failed to queue approval request: {e}</p>"
 
-    return f"<p>Registration for <code>{node_key}</code> submitted.</p>"
+    return f"<p>Registration for <code>{node_key}</code> submitted. An admin will review soon.</p>"

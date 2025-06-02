@@ -1,3 +1,5 @@
+# projects/clip.py
+
 from gway import gw
 
 

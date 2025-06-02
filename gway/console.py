@@ -1,4 +1,4 @@
-# File: gway/console.py
+# gway/console.py
 
 import os
 import sys

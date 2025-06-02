@@ -1,4 +1,5 @@
-# web/forms.py
+# projects/web/forms.py
+
 """
 GWAY web module to build HTML forms for GWAY commands dynamically.
 

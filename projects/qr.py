@@ -1,3 +1,6 @@
+
+# projects/qr.py
+
 import os
 import uuid
 import base64
