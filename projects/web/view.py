@@ -178,6 +178,14 @@ def view_register(**kwargs):
     - message: optional str, included in approval email
     - response: optional approval response via approve:secret or deny:secret
     """
+    # View function for endpoint at [SERVER_URL]/gway/register
+
+    # TODO: Fix -> Invalid or expired approval token. (response from approval)
+    # Potential solution is to keep a separate cdv named work/pending.cdv
+    # In which the secret_key which is sent with the approval is the first column
+    # and the second is the node_key from the registry.cdv, since find only searches by first column?
+    # Make sure we understand the interface of gw.cdv.find 
+
     import os
     import secrets
     from datetime import datetime
@@ -190,6 +198,13 @@ def view_register(**kwargs):
 
     if response:
         action, req_secret = response.split(":", 1)
+
+        # TODO: We are getting this error but the real issue is that find is not being
+        # used properly, because find only searches for the value in the first column
+        # and that is always the node_key, this assumes req_secret matches the first column:
+        # We should propose a new version of find that lets us be more versatile about
+        # column to search in first, and the use that new interface here.
+
         match = gw.cdv.find(*registry_path, req_secret, node_key=".*")
         if not match:
             return "<p class='error'>Invalid or expired approval token.</p>"
@@ -217,6 +232,7 @@ def view_register(**kwargs):
     if not kwargs:
         return """
         <h1>Register Node</h1>
+        <p>This form is intended for existing customers and local development.
         <form method='post'>
             <label>Node Key: <input name='node_key' required></label><br>
             <label>Secret Key: <input name='secret_key' required></label><br>
@@ -275,8 +291,9 @@ def view_register(**kwargs):
         return f"""
         <p class='error'>No admin email found for role. Please set ADMIN_EMAIL or {role}_EMAIL in your environment or in [client].env or [server].env.</p>
         """
-
-    base_url = gw.web.app_url("register-node")
+    
+    server_url = os.environ.get("BASE_URL", "").rstrip("/")
+    base_url = f"{server_url}{gw.web.app_url('register')}"
     approve_link = f"{base_url}?response=approve:{req_secret}"
     deny_link = f"{base_url}?response=deny:{req_secret}"
 

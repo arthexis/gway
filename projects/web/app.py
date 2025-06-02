@@ -5,7 +5,6 @@ from collections.abc import Iterable
 from gway import gw
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 
-
 def setup(
     *apps,
     app=None,
@@ -20,10 +19,26 @@ def setup(
     Configure one or more Bottle apps to work with GWAY.
     Accepts either `app=` keyword, `*apps` positional, or both.
     If multiple Bottle apps are passed, a tuple is returned.
+    This version allows `project` to be either a string or an iterable of project names.
     """
 
+    # Normalize `project` into a list of project names
+    if isinstance(project, str):
+        projects = [project]
+    else:
+        try:
+            projects = list(project)
+        except TypeError:
+            # Fallback: treat as single string if not iterable
+            projects = [str(project)]
+
+    # Determine default `path` if not provided
     if path is None:
-        path = project.replace(".", "/") if project != "web.view" else "gway"
+        first_proj = projects[0]
+        if first_proj == "web.view":
+            path = "gway"
+        else:
+            path = first_proj.replace(".", "/")
 
     version = gw.version()
     candidates = []
@@ -46,7 +61,10 @@ def setup(
 
         _first_setup = not hasattr(app, "_gway_paths")
         if _first_setup:
-            app._gway_paths = {path: project}
+            # Store the list of projects under this path
+            app._gway_paths = {path: projects}
+
+            # Define URL-building helpers
             gw.web.static_url = lambda *args, **kwargs: build_url(static, *args, **kwargs)
             gw.web.work_url = lambda *args, **kwargs: build_url(work, *args, **kwargs)
             gw.web.app_url = lambda *args, **kwargs: build_url(path, *args, **kwargs)
@@ -55,31 +73,33 @@ def setup(
             def security_middleware(app):
                 def wrapped_app(environ, start_response):
                     def custom_start_response(status, headers, exc_info=None):
-                        headers = [(k, v) for k, v in headers if k.lower() != 'server']
+                        headers = [(k, v) for k, v in headers if k.lower() != "server"]
                         headers += [
                             ("Cache-Control", "no-cache"),
                             ("X-Content-Type-Options", "nosniff"),
-                            ("Server", f"GWAY v{version}")
+                            ("Server", f"GWAY v{version}"),
                         ]
                         return start_response(status, headers, exc_info)
+
+                    original_set_cookie = response.set_cookie
+
+                    @wraps(original_set_cookie)
+                    def secure_set_cookie(name, value, **kwargs):
+                        is_secure = request.urlparts.scheme == "https"
+                        kwargs.setdefault("secure", is_secure)
+                        kwargs.setdefault("httponly", True)
+                        kwargs.setdefault("samesite", "Lax")
+                        kwargs.setdefault("path", "/")
+                        return original_set_cookie(name, value, **kwargs)
+
+                    response.set_cookie = secure_set_cookie
                     return app(environ, custom_start_response)
 
-                original_set_cookie = response.set_cookie
-
-                @wraps(original_set_cookie)
-                def secure_set_cookie(name, value, **kwargs):
-                    is_secure = request.urlparts.scheme == "https"
-                    kwargs.setdefault("secure", is_secure)
-                    kwargs.setdefault("httponly", True)
-                    kwargs.setdefault("samesite", "Lax")
-                    kwargs.setdefault("path", "/")
-                    return original_set_cookie(name, value, **kwargs)
-
-                response.set_cookie = secure_set_cookie
                 return wrapped_app
 
         else:
-            app._gway_paths[path] = project
+            # If already initialized, just append/override the mapping for this path
+            app._gway_paths[path] = projects
 
         def cookies_enabled():
             return request.get_cookie("cookies_accepted") == "yes"
@@ -100,7 +120,7 @@ def setup(
                 visited = ["readme"]
 
             links = "".join(
-                f'<li><a href="/{path}/{b.replace("_", "-")}">' 
+                f'<li><a href="/{path}/{b.replace("_", "-")}">'
                 f'{b.replace("_", " ").replace("-", " ").title()}</a></li>'
                 for b in sorted(visited) if b
             )
@@ -209,14 +229,24 @@ def setup(
                         kwargs.update(request.forms.decode())
                 except Exception as e:
                     return redirect_error(e, note="Error loading JSON payload")
-            try:
-                source = gw[project]
-            except Exception as e:
-                return redirect_error(e, note=f"Project '{project}' not found via gw['{project}']")
 
-            view_func = getattr(source, f"{prefix}_{view_name}", None)
-            if not callable(view_func):
-                return redirect_error(note=f"View '{prefix}_{view_name}' not found in project '{project}'")
+            # Attempt to dispatch the view across all specified projects
+            sources = []
+            for proj_name in projects:
+                try:
+                    sources.append(gw[proj_name])
+                except Exception as e:
+                    # Skip projects that fail to load, but you could also log/warn here
+                    continue
+
+            for source in sources:
+                view_func = getattr(source, f"{prefix}_{view_name}", None)
+                if callable(view_func):
+                    break
+            else:
+                return redirect_error(
+                    note=f"View '{prefix}_{view_name}' not found in any project: {projects}"
+                )
 
             try:
                 gw.info(f"Dispatching to view {view_func.__name__} (args={args}, kwargs={kwargs})")
