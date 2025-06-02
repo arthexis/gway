@@ -320,13 +320,6 @@ INCLUDED PROJECTS
   > ``gway mail send``
 
 
-.. rubric:: net
-
-- ``export_connections`` — Export NetworkManager connections into a JSON-serializable list of dicts.
-
-  > ``gway net export-connections``
-
-
 .. rubric:: node
 
 - ``check`` — Check registration status for this node.
@@ -348,6 +341,10 @@ INCLUDED PROJECTS
 - ``report`` — Generate a system report with platform info and recent logs.
 
   > ``gway node report``
+
+- ``view_register`` — Register a node using .cdv-based storage with approval handled by gw.approval.
+
+  > ``gway node view-register``
 
 
 .. rubric:: ocpp
