@@ -10,7 +10,7 @@ from bottle import request, response, redirect
 from gway import gw
 
 
-def readme(*args, **kwargs):
+def view_readme(*args, **kwargs):
     """Render the README.rst file as HTML."""
 
     readme_path = gw.resource("README.rst")
@@ -21,7 +21,7 @@ def readme(*args, **kwargs):
     return html_parts["html_body"]
 
 
-def help(topic="", *args, **kwargs):
+def view_help(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
 
     # 
@@ -85,7 +85,7 @@ def _help_section(info, use_query_links=False, *args, **kwargs):
     return f"<article class='help-entry'>{''.join(rows)}</article>"
 
 
-def qr_code(*args, value=None, **kwargs):
+def view_qr_code(*args, value=None, **kwargs):
     """Generate a QR code for a given value and serve it from cache if available."""
     if not value:
         return '''
@@ -105,7 +105,7 @@ def qr_code(*args, value=None, **kwargs):
     """
 
 
-def awg_finder(
+def view_awg_finder(
     *args, meters=None, amps="40", volts="220", material="cu", 
     max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
 ):
@@ -164,8 +164,7 @@ def awg_finder(
 
 ...
 
-
-def register(**kwargs):
+def view_register(**kwargs):
     """
     Register a node using .cdv-based storage with optional approval by role-based email.
     
@@ -176,8 +175,8 @@ def register(**kwargs):
     - end: optional ISO date string
     - credits: optional int
     - role: optional str, defaults to 'ADMIN'
+    - message: optional str, included in approval email
     - response: optional approval response via approve:secret or deny:secret
-    - cancel: optional node_key to cancel a pending registration
     """
     import os
     import secrets
@@ -185,28 +184,10 @@ def register(**kwargs):
     from gway import gw
 
     registry_path = ("work", "registry.cdv")
+    
+    response = kwargs.get("response")
     now = datetime.now().isoformat()
 
-    # Handle cancellation
-    cancel_key = kwargs.get("cancel")
-    if cancel_key:
-        gw.cdv.remove(*registry_path, cancel_key)
-        return """
-        <p>Registration cancelled.</p>
-        <h1>Register Node</h1>
-        <form method='post'>
-            <label>Node Key: <input name='node_key' required></label><br>
-            <label>Secret Key: <input name='secret_key' required></label><br>
-            <label>Start (optional): <input name='start' placeholder='YYYY-MM-DD'></label><br>
-            <label>End (optional): <input name='end' placeholder='YYYY-MM-DD'></label><br>
-            <label>Credits (optional): <input name='credits' type='number'></label><br>
-            <label>Role (optional): <input name='role' placeholder='ADMIN'></label><br>
-            <button type='submit'>Submit</button>
-        </form>
-        """
-
-    # Handle approval or denial
-    response = kwargs.get("response")
     if response:
         action, req_secret = response.split(":", 1)
         match = gw.cdv.find(*registry_path, req_secret, node_key=".*")
@@ -233,7 +214,6 @@ def register(**kwargs):
         else:
             return "<p class='error'>Unknown response action.</p>"
 
-    # Show form if no input
     if not kwargs:
         return """
         <h1>Register Node</h1>
@@ -244,36 +224,36 @@ def register(**kwargs):
             <label>End (optional): <input name='end' placeholder='YYYY-MM-DD'></label><br>
             <label>Credits (optional): <input name='credits' type='number'></label><br>
             <label>Role (optional): <input name='role' placeholder='ADMIN'></label><br>
+            <label>Message (optional): <br>
+                <textarea name='message' rows='4' cols='40' placeholder='Add any message to the admin'></textarea>
+            </label><br>
             <button type='submit'>Submit</button>
         </form>
         """
 
-    # Process form submission
     node_key = kwargs.get("node_key")
     secret_key = kwargs.get("secret_key")
     start = kwargs.get("start") or now
     end = kwargs.get("end")
     credits = kwargs.get("credits")
     role = (kwargs.get("role") or "ADMIN").upper()
+    message = kwargs.get("message", "").strip()
 
     if not node_key or not secret_key:
         return "<p class='error'>Missing node_key or secret_key.</p>"
 
     req_secret = secrets.token_urlsafe(16)
 
-    # Check for existing request
+    # Check for existing
     existing = gw.cdv.find(*registry_path, node_key)
     if existing:
         if "approved" in existing:
             return f"<p>Node <code>{node_key}</code> already approved.</p>"
         if "denied" in existing:
             return f"<p>Node <code>{node_key}</code> has been denied.</p>"
-        return f"""
-        <p>Node <code>{node_key}</code> registration is pending.</p>
-        <p><a href='?cancel={node_key}'>Cancel this registration</a></p>
-        """
+        return f"<p>Node <code>{node_key}</code> registration is pending.</p>"
 
-    # Store new request
+    # Store request
     record = {
         "secret_key": secret_key,
         "request_secret": req_secret,
@@ -287,7 +267,7 @@ def register(**kwargs):
 
     gw.cdv.store(*registry_path, node_key, **record)
 
-    # Lookup admin email
+    # Lookup email
     email_key = f"{role}_EMAIL"
     admin_email = os.environ.get(email_key) or os.environ.get("ADMIN_EMAIL")
 
@@ -300,7 +280,7 @@ def register(**kwargs):
     approve_link = f"{base_url}?response=approve:{req_secret}"
     deny_link = f"{base_url}?response=deny:{req_secret}"
 
-    email_subject = f"Registration Request: {node_key}"
+    # Build email body, including message if provided
     email_body = f"""
 A new node registration request was received:
 
@@ -309,13 +289,21 @@ Role: {role}
 Credits: {credits or 'N/A'}
 Start: {start}
 End: {end or 'N/A'}
+"""
+
+    if message:
+        email_body += f"\nMessage from registrant:\n{message}\n"
+
+    email_body += f"""
 
 Approve:
 {approve_link}
 
 Deny:
 {deny_link}
-    """
+"""
+
+    email_subject = f"Registration Request: {node_key}"
 
     try:
         gw.mail.send(
@@ -327,4 +315,3 @@ Deny:
         return f"<p class='error'>Failed to send email: {e}</p>"
 
     return f"<p>Registration for <code>{node_key}</code> submitted.</p>"
-

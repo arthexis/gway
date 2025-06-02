@@ -47,6 +47,7 @@ def send(subject, body=None, to=None, **kwargs):
     msg = MIMEText(body)
     msg['Subject'] = gw.resolve(subject)
     msg['From']    = sender_email
+    
     msg['To']      = to
 
     gw.debug("Email MIME message constructed.")

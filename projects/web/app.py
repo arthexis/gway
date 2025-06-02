@@ -214,17 +214,9 @@ def setup(
             except Exception as e:
                 return redirect_error(e, note=f"Project '{project}' not found via gw['{project}']")
 
-            tried_names = []
-            if prefix:
-                tried_names.append(f"{prefix}_{view_name}")
-            tried_names += [view_name, f"view_{view_name}", f"view_index", f"view_home"]
-            view_func = None
-            for name in tried_names:
-                view_func = getattr(source, name, None)
-                if callable(view_func):
-                    break
+            view_func = getattr(source, f"{prefix}_{view_name}", None)
             if not callable(view_func):
-                return redirect_error(note=f"View '{view_name}' not found in project '{project}'")
+                return redirect_error(note=f"View '{prefix}_{view_name}' not found in project '{project}'")
 
             try:
                 gw.info(f"Dispatching to view {view_func.__name__} (args={args}, kwargs={kwargs})")
