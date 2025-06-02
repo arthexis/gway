@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gway"
-version = "0.2.27"
+version = "0.2.28"
 description = "Software Project Infrastructure by https://www.gelectriic.com"
 requires-python = ">=3.7"
 license = "MIT"
