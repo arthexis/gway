@@ -7,6 +7,12 @@ from collections.abc import Iterable
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
+# TODO: It is possible for a user to visit a similar ending path twice, such as
+# gway/register being replaced by node/register. Their navbar shows REGISTER just once
+# which is correct, but the old stays in place, maybe gway/ is hardcoded?
+# Even if only the function name itself is shown in the navbar, the underlying link
+# should contain the path leading up to it, the latest version visited if multiple.
+
 def setup(*,
     app=None,
     project="web.site",
@@ -92,21 +98,31 @@ def setup(*,
             return []
         raw = request.get_cookie(cookie_name, "")
         visited = raw.split("|") if raw else []
-        if current not in visited:
-            visited.append(current)
+
+        title = current.replace("-", " ").replace("_", " ").title()
+        visited = [v for v in visited if not v.startswith(f"{title}=")]
+        route = request.fullpath.lstrip("/")
+        visited.append(f"{title}={route}")
+
         cookie_value = "|".join(visited)
         response.set_cookie(cookie_name, cookie_value)
         return visited
 
     def render_navbar(visited, current_url=None):
         if not cookies_enabled() or len(visited) < 1:
-            visited = ["readme"]
+            visited = ["Readme=readme"]
 
-        links = "".join(
-            f'<li><a href="/{path}/{b.replace("_", "-")}">'
-            f'{b.replace("_", " ").replace("-", " ").title()}</a></li>'
-            for b in sorted(visited) if b
-        )
+        links = ""
+        seen = set()
+        for entry in reversed(visited):
+            if "=" not in entry:
+                continue
+            title, route = entry.split("=", 1)
+            if title in seen:
+                continue
+            seen.add(title)
+            links += f'<li><a href="/{route}">{title}</a></li>'
+
         search_box = f'''
             <form action="/{path}/help" method="get" class="navbar">
                 <input type="text" name="topic" placeholder="Search GWAY" class="help" />

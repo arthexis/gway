@@ -9,6 +9,7 @@ import importlib.util
 import inspect
 from gway import gw
 
+
 def collect_projects(project_dir: str, readme: str = "README.rst"):
     """
     Scan `project_dir` for all modules/packages, collect public functions,

@@ -21,7 +21,7 @@ def register(
         role: str = "ADMIN",
         message: str = None,
         manual: bool = False,
-        endpoint: str = "/gway/register",
+        endpoint: str = "/node/register",
     ):
     """
     Register this node with the given server's register endpoint.
@@ -99,7 +99,10 @@ def register(
 
 
 def report(**kwargs):
-    """Generate a system report with platform info and recent logs."""
+    """
+    Generate a system report with platform info and recent logs.
+    Warning: this report can duplicate a large amount of logging data.
+    """
 
     # Include the unique node identifier
     node_id = identify()
@@ -107,7 +110,7 @@ def report(**kwargs):
     try:
         log_path = gw.resource("logs", "gway.log")
         with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-            last_lines = f.readlines()[-100:]
+            last_lines = f.readlines()[-20:]
     except Exception as e:
         last_lines = [f"<Could not read log file: {e}>"]
 
@@ -126,7 +129,7 @@ def report(**kwargs):
     )
 
 
-def check(server: str, node_key: str, endpoint: str = "/gway/register") -> str:
+def check(server: str, node_key: str, endpoint: str = "/node/register") -> str:
     """
     Check registration status for this node.
 
