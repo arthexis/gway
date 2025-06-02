@@ -39,12 +39,12 @@ def request(category, data: dict, role=None, send_email=True):
     gw.cdv.store(*approvals_path, approval_key, **record)
 
     if send_email and role:
-        _send_email(approval_key, category, data, role)
+        _send_approval_email(approval_key, category, data, role)
 
     return approval_key
 
 
-def _send_email(approval_key, category, data, role):
+def _send_approval_email(approval_key, category, data, role):
     """
     Internal: Send a basic approval/deny email for a role-based approval.
     You can customize per `category` later if needed.
@@ -87,7 +87,7 @@ def resolve(response: str):
         return "error", "Invalid response format."
 
     action, key = response.split(":", 1)
-    record = gw.cdv.find(*approvals_path, key)
+    record = gw.cdv.find(*approvals_path, key, status="status=")
 
     if not record:
         return "error", "Invalid or expired approval key."

@@ -18,18 +18,19 @@ from .gateway import Gateway, gw
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
-    parser.add_argument("-a", dest="all", action="store_true", help="Show all results, not just the last")
+    parser.add_argument("-a", dest="all", action="store_true", help="Show all text results, not just the last")
+    parser.add_argument("-b", dest="base_path", type=str, help="Specify a different base path for GWAY.")
     parser.add_argument("-c", dest="client", type=str, help="Specify client environment")
     parser.add_argument("-d", dest="debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-e", dest="expression", type=str, help="Return resolved sigil at the end")
-    parser.add_argument("-j", dest="json", nargs="?", const=True, default=False,
-                        help="Output result(s) as JSON")
-    parser.add_argument("-n", dest="name", type=str, help="Name for the app instance and logger.")
-    parser.add_argument("-o", dest="outfile", type=str, help="Write output to this file")
+    parser.add_argument("-j", dest="json", nargs="?", const=True, default=False, help="Output result(s) as JSON")
+    parser.add_argument("-n", dest="name", type=str, help="Name for app instances and logger (default: gw).")
+    parser.add_argument("-o", dest="outfile", type=str, help="Write text output(s) to this file")
+    parser.add_argument("-p", dest="project_path", type=str, help="Root project path for custom functions.")
     parser.add_argument("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
-    parser.add_argument("-s", dest="server", type=str, help="Specify server environment")
-    parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode")
+    parser.add_argument("-s", dest="server", type=str, help="Override server environment configuration")
+    parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing of operations")
+    parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode (where supported)")
     parser.add_argument("-x", dest="callback", type=str, help="Execute a callback per command or standalone")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
@@ -43,7 +44,9 @@ def cli_main():
         server=args.server,
         verbose=args.verbose or args.debug,
         name=args.name or "gw",
-        _debug=args.debug
+        project_path=args.project_path,
+        base_path=args.base_path,
+        _debug=args.debug,
     )
 
     if args.recipe:

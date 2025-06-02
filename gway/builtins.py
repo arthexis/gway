@@ -3,9 +3,10 @@
 import os
 import ast
 import pathlib
-import textwrap
+import inspect
 from collections.abc import Iterable
-from typing import Any, Callable, List, Optional
+from types import FunctionType
+from typing import Any, Callable, List, Optional, Type
 
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
@@ -335,3 +336,53 @@ def filter_apps(
 
     return candidates
 
+
+def unwrap(obj: Any, expected_type: Optional[Type] = None) -> Any:
+    """
+    Enhanced unwrap that digs through __wrapped__, iterables, and closures.
+    """
+    def unwrap_closure(fn: FunctionType, expected_type: Type) -> Optional[Any]:
+        if fn.__closure__:
+            for cell in fn.__closure__:
+                val = cell.cell_contents
+                result = unwrap(val, expected_type)
+                if result is not None:
+                    return result
+        return None
+
+    if expected_type is not None:
+        if isinstance(obj, expected_type):
+            return obj
+
+        if callable(obj):
+            # First try inspect.unwrap
+            try:
+                unwrapped = inspect.unwrap(obj)
+            except Exception:
+                unwrapped = obj
+
+            if isinstance(unwrapped, expected_type):
+                return unwrapped
+
+            # Then search closure variables
+            found = unwrap_closure(unwrapped, expected_type)
+            if found is not None:
+                return found
+
+        # If obj is a container, scan recursively
+        if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes, bytearray)):
+            for item in obj:
+                found = unwrap(item, expected_type)
+                if found is not None:
+                    return found
+
+        return None
+
+    # expected_type not provided → default unwrap
+    if callable(obj):
+        try:
+            return inspect.unwrap(obj)
+        except Exception:
+            return obj
+
+    return obj

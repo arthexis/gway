@@ -21,21 +21,18 @@ class Gateway(Resolver):
     _builtins = None
     _thread_local = threading.local()
 
-    # TODO: Store all available projects in self._projects
-    # Then create a method to list them called projects()
-    # Similarly, create a method builtins() to list all available builtins
-
     def __init__(self, *, 
                 client=None, server=None, verbose=False, 
-                name="gw", _debug=False, **kwargs
+                name="gw", base_path=None, project_path=None,
+                _debug=False, **kwargs
     ):
         # Basic initialization
         self._cache = {}
         self._async_threads = []
         self._debug = _debug
-        self._projects = []
         self.uuid = uuid.uuid4()
-        self.base_path = os.path.dirname(os.path.dirname(__file__))
+        self.base_path = base_path or os.path.dirname(os.path.dirname(__file__))
+        self.project_path = project_path
         self.name = name
         self.logger = logging.getLogger(name)
 
@@ -86,7 +83,27 @@ class Gateway(Resolver):
         self._builtin_functions = Gateway._builtins.copy()
 
     def projects(self):
-        return sorted(self._projects)
+        from pathlib import Path
+
+        def discover_projects(base: Path):
+            result = []
+            if not base.is_dir():
+                return result
+            for entry in base.iterdir():
+                if entry.is_file() and entry.suffix == ".py" and not entry.name.startswith("__"):
+                    result.append(entry.stem)
+                elif entry.is_dir() and not entry.name.startswith("__"):
+                    result.append(entry.name)
+            return result
+
+        base_projects_path = Path(self.base_path) / "projects"
+        result = set(discover_projects(base_projects_path))
+
+        if self.project_path:
+            alt_projects_path = Path(self.project_path)
+            result.update(discover_projects(alt_projects_path))
+
+        return sorted(result)
 
     def builtins(self):
         return sorted(self._builtins)
@@ -270,31 +287,48 @@ class Gateway(Resolver):
             return project_obj
         except Exception as e:
             raise AttributeError(f"Project or builtin '{name}' not found: {e}")
-
+        
     def load_project(self, project_name: str, *, root: str = "projects"):
-        base = gw.resource(root, *project_name.split("."))
-        self.debug(f"Loading {project_name} from {base}")
-
-        def load_module_namespace(py_path: str, dotted: str):
-            mod = self.load_py_file(py_path, dotted)
-            funcs = {}
-            for fname, obj in inspect.getmembers(mod, inspect.isfunction):
-                if not fname.startswith("_"):
-                    funcs[fname] = self._wrap_callable(f"{dotted}.{fname}", obj)
-            ns = Project(dotted, funcs, self)
-            self._cache[dotted] = ns
-            return ns
-
-        if os.path.isdir(base):
-            return self.recurse_namespace(base, project_name)
-
         from pathlib import Path
-        base_path = Path(base)
-        py_file = base_path if base_path.suffix == ".py" else base_path.with_suffix(".py")
-        if py_file.is_file():
-            return load_module_namespace(str(py_file), project_name)
 
-        raise FileNotFoundError(f"Project path not found: {base}")
+        def try_path(base_dir):
+            base = gw.resource(base_dir, *project_name.split("."))
+            self.debug(f"Trying to load {project_name} from {base}")
+
+            def load_module_namespace(py_path: str, dotted: str):
+                mod = self.load_py_file(py_path, dotted)
+                funcs = {}
+                for fname, obj in inspect.getmembers(mod, inspect.isfunction):
+                    if not fname.startswith("_"):
+                        funcs[fname] = self._wrap_callable(f"{dotted}.{fname}", obj)
+                ns = Project(dotted, funcs, self)
+                self._cache[dotted] = ns
+                return ns
+
+            if os.path.isdir(base):
+                return self.recurse_namespace(base, project_name)
+
+            base_path = Path(base)
+            py_file = base_path if base_path.suffix == ".py" else base_path.with_suffix(".py")
+            if py_file.is_file():
+                return load_module_namespace(str(py_file), project_name)
+
+            return None
+
+        # Try the default root
+        result = try_path(root)
+        if result:
+            return result
+
+        # If not found and project_path is set, try loading from it
+        if self.project_path:
+            fallback_root = self.project_path
+            result = try_path(fallback_root)
+            if result:
+                return result
+
+        raise FileNotFoundError(f"Project path not found for '{project_name}' in '{root}' or fallback '{self.project_path}'")
+
 
     def load_py_file(self, path: str, dotted_name: str):
         module_name = dotted_name.replace(".", "_")

@@ -4,7 +4,7 @@ import re
 from gway import gw
 
 
-def find(*paths, **patterns):
+def find(*paths, sep='=', **patterns):
     if len(paths) < 2:
         raise ValueError("At least two path elements are required: file path(s) and key")
 
@@ -15,7 +15,6 @@ def find(*paths, **patterns):
 
     cdv_file = gw.resource(*file_parts)
 
-    # If the .cdv file does not exist, return None instead of raising
     if not cdv_file.exists():
         return None
 
@@ -29,20 +28,29 @@ def find(*paths, **patterns):
             values = parts[1:] if len(parts) > 1 else []
             if record_key != key:
                 continue
+
             if not patterns:
                 if not values:
                     return True
-                elif len(values) == 1:
-                    return values[0]
-                else:
-                    return tuple(values)
+                parsed = {}
+                for val in values:
+                    if sep in val:
+                        k, v = val.split(sep, 1)
+                        parsed[k.strip()] = v.strip()
+                return parsed if parsed else (values[0] if len(values) == 1 else tuple(values))
 
             result = {}
-            compiled = {k: (v if isinstance(v, re.Pattern) else re.compile(str(v)))
-                        for k, v in patterns.items()}
+            compiled = {
+                k: (
+                    v if isinstance(v, re.Pattern)
+                    else re.compile(f"{k}{sep}") if v is True
+                    else re.compile(str(v))
+                ) for k, v in patterns.items()
+            }
+
             for i, val in enumerate(values):
                 for field, regex in compiled.items():
-                    if i == field or str(i) == str(field):
+                    if i == field or str(i) == str(field) or isinstance(field, str):
                         match = regex.search(val)
                         if match:
                             if match.groups():
@@ -58,8 +66,7 @@ def find(*paths, **patterns):
 
     return None
 
-
-def store(*paths, sep='=', **value):
+def store(*paths, sep='=', **values):
     if len(paths) < 2:
         raise ValueError("At least two path elements are required: file path(s) and key")
 
@@ -70,7 +77,14 @@ def store(*paths, sep='=', **value):
 
     cdv_file = gw.resource(*file_parts)
     cdv_file.parent.mkdir(parents=True, exist_ok=True)
-    val_str = ':'.join(f'{k}{sep}{v}' for k, v in value.items())
+
+    # If the caller passed exactly one kwarg whose value is a dict, unpack it
+    if len(values) == 1:
+        (outer_key, outer_val), = values.items()
+        if isinstance(outer_val, dict):
+            values = outer_val
+
+    val_str = ':'.join(f'{k}{sep}{v}' for k, v in values.items())
 
     with open(cdv_file, 'a') as f:
         f.write(f"{key}:{val_str}\n")
