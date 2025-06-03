@@ -232,14 +232,17 @@ def help(*args, full_code=False):
             # fallback: fuzzy search
             if not rows:
                 fuzzy_query = ".".join(norm_args)
-                cur.execute("SELECT * FROM help WHERE help MATCH ?", (fuzzy_query,))
+                cur.execute("SELECT * FROM help WHERE help MATCH ?", (f'"{fuzzy_query}"',))
                 rows = cur.fetchall()
 
         else:
             return {"error": f"Invalid input: {joined_args}"}
 
+        # fallback: fuzzy search with quoted MATCH to avoid FTS5 errors
         if not rows:
-            return {"error": f"No help found for '{joined_args}'."}
+            fuzzy_query = ".".join(norm_args)
+            cur.execute("SELECT * FROM help WHERE help MATCH ?", (f'"{fuzzy_query}"',))
+            rows = cur.fetchall()
 
         results = []
         for row in rows:

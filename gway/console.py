@@ -14,6 +14,9 @@ from .logging import setup_logging
 from .builtins import abort
 from .gateway import Gateway, gw
 
+# TODO: When final output is a generator, execute it to produce the result.
+# TODO: Add a new argument -q that allows to limit the number of items produced by generators.
+# If -q is not provided, the generator may run forever, just continue printing what it yields.
 
 def cli_main():
     """Main CLI entry point."""
@@ -27,6 +30,7 @@ def cli_main():
     parser.add_argument("-n", dest="name", type=str, help="Name for app instances and logger (default: gw).")
     parser.add_argument("-o", dest="outfile", type=str, help="Write text output(s) to this file")
     parser.add_argument("-p", dest="project_path", type=str, help="Root project path for custom functions.")
+    parser.add_argument("-q", dest="quantity", type=int, help="Max items from generator outputs")
     parser.add_argument("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
     parser.add_argument("-s", dest="server", type=str, help="Override server environment configuration")
     parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing of operations")
@@ -35,10 +39,11 @@ def cli_main():
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
 
-    loglevel = "DEBUG" if args.debug else "INFO"
-    setup_logging(logfile="gway.log", loglevel=loglevel)
+    # Setup logging and timer
+    setup_logging(logfile="gway.log", loglevel="DEBUG" if args.debug else "INFO")
     start_time = time.time() if args.timed else None
 
+    # Init Gateway instance
     gw_local = Gateway(
         client=args.client,
         server=args.server,
@@ -49,6 +54,7 @@ def cli_main():
         _debug=args.debug,
     )
 
+    # Load command sources
     if args.recipe:
         command_sources, comments = load_recipe(args.recipe)
         gw_local.info(f"Comments in recipe:\n{chr(10).join(comments)}")
@@ -60,60 +66,56 @@ def cli_main():
         parser.print_help()
         sys.exit(1)
 
+    # Run commands or callback
     if command_sources:
-        if args.callback:
-            callback = gw_local[args.callback]
-            all_results, last_result = process_commands(command_sources, callback=callback)
-        else:
-            all_results, last_result = process_commands(command_sources)
+        callback = gw_local[args.callback] if args.callback else None
+        all_results, last_result = process_commands(command_sources, callback=callback)
     elif args.callback:
-        callback = gw_local[args.callback]
-        output = callback()
-        all_results, last_result = [output], output
+        result = gw_local[args.callback]()
+        all_results, last_result = [result], result
     else:
         all_results, last_result = [], None
 
+    # Apply -e expression if requested
+    if args.expression:
+        output = Gateway(**last_result).resolve(args.expression)
+    else:
+        output = last_result
+
+    # Materialize generators and apply quantity limit
+    def realize(val):
+        if hasattr(val, "__iter__") and not isinstance(val, (str, bytes, dict)):
+            try:
+                return list(val)[:args.quantity] if args.quantity else list(val)
+            except Exception:
+                return val
+        return val
+
+    all_results = [realize(r) for r in all_results]
+    output = realize(output)
+
+    # Output to console
+    def emit(data):
+        if args.json:
+            print(json.dumps(data, indent=2, default=str))
+        elif isinstance(data, list) and data and isinstance(data[0], dict):
+            csv_str = _rows_to_csv(data)
+            print(csv_str or data)
+        elif data is not None:
+            print(data)
+
     if args.all:
         for result in all_results:
-            if args.json:
-                json_output = json.dumps(result, indent=2, default=str)
-                print(json_output)
-            elif isinstance(result, list) and result and isinstance(result[0], dict):
-                csv_output = _rows_to_csv(result)
-                if csv_output:
-                    print(csv_output)
-                else:
-                    gw_local.info(f"Result:\n{result}")
-                    print(result)
-            elif result is not None:
-                gw_local.info(f"Result:\n{result}")
-                print(result)
+            emit(result)
+    else:
+        emit(output)
 
-    output = Gateway(**last_result).resolve(args.expression) if args.expression else last_result
-    output_is_csv = isinstance(output, list) and output and isinstance(output[0], dict)
-
-    if not args.all:
-        if args.json:
-            json_output = json.dumps(output, indent=2, default=str)
-            print(json_output)
-        elif output_is_csv:
-            csv_output = _rows_to_csv(output)
-            if csv_output:
-                print(csv_output)
-            else:
-                gw_local.info(f"Last function result:\n{output}")
-                print(output)
-        elif output is not None:
-            gw_local.info(f"Last function result:\n{output}")
-            print(output)
-        else:
-            gw_local.info("No results returned.")
-
+    # Optionally write to file
     if args.outfile:
         with open(args.outfile, "w") as f:
             if args.json:
-                f.write(json.dumps(all_results if args.all else output, indent=2, default=str))
-            elif output_is_csv:
+                json.dump(all_results if args.all else output, f, indent=2, default=str)
+            elif isinstance(output, list) and output and isinstance(output[0], dict):
                 f.write(_rows_to_csv(output))
             else:
                 f.write(str(output))

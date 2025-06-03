@@ -53,7 +53,7 @@ def build(*,
             gw.abort("Git repository is not clean. Commit or stash changes before building.")
 
     if help_db:
-        build_help()
+        build_help_db()
 
     if projects:
         project_dir = gw.resource("projects")
@@ -204,21 +204,27 @@ def build(*,
         gw.info(f"Committed and pushed: {commit_msg}")
 
 
-def build_help():
+def walk_projects(base="projects"):
+    """Yield all project modules as dotted paths."""
+    for dirpath, _, filenames in os.walk(base):
+        for fname in filenames:
+            if not fname.endswith(".py") or fname.startswith("_"):
+                continue
+            rel_path = os.path.relpath(os.path.join(dirpath, fname), base)
+            dotted = rel_path.replace(os.sep, ".").removesuffix(".py")
+            yield dotted
+
+def build_help_db():
     with gw.sql.connect("data", "help.sqlite") as cursor:
         cursor.execute("DROP TABLE IF EXISTS help")
         cursor.execute("""
             CREATE VIRTUAL TABLE help USING fts5(
-                project, function, signature, docstring, source, todos, tokenize='porter')   
+                project, function, signature, docstring, source, todos, tokenize='porter')
         """)
 
-        projects_dir = os.path.join(gw.base_path, "projects")
-        for entry in os.scandir(projects_dir):
-            if entry.name.startswith("_"):
-                continue
-            name = entry.name[:-3] if entry.name.endswith(".py") else entry.name
+        for dotted_path in walk_projects("projects"):
             try:
-                project_obj = gw.load_project(name)
+                project_obj = gw.load_project(dotted_path)
                 for fname in dir(project_obj):
                     if fname.startswith("_"):
                         continue
@@ -226,18 +232,19 @@ def build_help():
                     if not callable(func):
                         continue
 
-                    # Get original function (unwrap functools.wraps)
                     raw_func = getattr(func, "__wrapped__", func)
-
                     doc = inspect.getdoc(raw_func) or ""
                     sig = str(inspect.signature(raw_func))
-                    source = "".join(inspect.getsourcelines(raw_func)[0])
+                    try:
+                        source = "".join(inspect.getsourcelines(raw_func)[0])
+                    except OSError:
+                        source = ""
                     todos = extract_todos(source)
 
                     cursor.execute("INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)", 
-                                   (name, fname, sig, doc, source, "\n".join(todos)))
+                                   (dotted_path, fname, sig, doc, source, "\n".join(todos)))
             except Exception as e:
-                gw.warning(f"Skipping project {name}: {e}")
+                gw.warning(f"Skipping project {dotted_path}: {e}")
 
         cursor.execute("COMMIT")
 
