@@ -166,10 +166,32 @@ def _strip_types(sig: str) -> str:
     except Exception:
         return sig  # fallback if parsing fails
     
-    
 def help(*args, full_code=False):
     from gway import gw
-    import os, textwrap
+    import os, textwrap, ast
+
+    def extract_gw_refs(source):
+        refs = set()
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return refs
+
+        class GwVisitor(ast.NodeVisitor):
+            def visit_Attribute(self, node):
+                parts = []
+                cur = node
+                while isinstance(cur, ast.Attribute):
+                    parts.append(cur.attr)
+                    cur = cur.value
+                if isinstance(cur, ast.Name) and cur.id == "gw":
+                    parts.append("gw")
+                    full = ".".join(reversed(parts))[3:]  # remove "gw."
+                    refs.add(full)
+                self.generic_visit(node)
+
+        GwVisitor().visit(tree)
+        return refs
 
     db_path = gw.resource("data", "help.sqlite")
     if not os.path.isfile(db_path):
@@ -179,12 +201,10 @@ def help(*args, full_code=False):
 
     with gw.sql.connect(db_path, row_factory=True) as cur:
 
-        # Case: no arguments → list all available projects
         if len(args) == 0:
             cur.execute("SELECT DISTINCT project FROM help")
             return {"Available Projects": sorted([row["project"] for row in cur.fetchall()])}
 
-        # Case: exactly one argument → try exact match first, then fuzzy MATCH
         elif len(args) == 1:
             query = args[0].replace("-", "_")
             parts = query.split(".")
@@ -202,7 +222,6 @@ def help(*args, full_code=False):
             fuzzy_rows = [row for row in cur.fetchall() if row not in exact_rows]
             rows = exact_rows + fuzzy_rows
 
-        # Case: two arguments → interpret as project + function
         elif len(args) == 2:
             project = args[0].replace("-", "_")
             func = args[1].replace("-", "_")
@@ -216,7 +235,6 @@ def help(*args, full_code=False):
             print("Too many arguments.")
             return
 
-        # If no rows matched, return an error
         if not rows:
             return {"error": f"No help found for '{joined_args}'."}
 
@@ -229,6 +247,7 @@ def help(*args, full_code=False):
             }
             if full_code:
                 entry["Full Code"] = row["source"]
+                entry["References"] = sorted(extract_gw_refs(row["source"]))
             else:
                 entry["Signature"] = textwrap.fill(row["signature"], 100).strip()
                 entry["Docstring"] = row["docstring"].strip() if row["docstring"] else None
@@ -236,7 +255,6 @@ def help(*args, full_code=False):
             results.append({k: v for k, v in entry.items() if v})
 
         return results[0] if len(results) == 1 else {"Matches": results}
-
 
 h = help
 
