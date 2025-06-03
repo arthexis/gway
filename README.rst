@@ -221,21 +221,6 @@ Recipes make Gway scripting modular and composable. Include them in your automat
 INCLUDED PROJECTS
 =================
 
-.. rubric:: approval
-
-- ``generate_key`` — Generate a unique approval key.
-
-  > ``gway approval generate-key``
-
-- ``request`` — Store an approval request and optionally send an approval email.
-
-  > ``gway approval request``
-
-- ``resolve`` — Resolve a response string of the form 'approve:key' or 'deny:key'.
-
-  > ``gway approval resolve``
-
-
 .. rubric:: awg
 
 - ``find_cable`` — Calculate the type of cable needed for an electrical system.
@@ -245,25 +230,6 @@ INCLUDED PROJECTS
 - ``find_conduit`` — Calculate the kind of conduit required for a set of cables.
 
   > ``gway awg find-conduit``
-
-
-.. rubric:: cdv
-
-- ``find`` — (no description)
-
-  > ``gway cdv find``
-
-- ``pop`` — (no description)
-
-  > ``gway cdv pop``
-
-- ``remove`` — (no description)
-
-  > ``gway cdv remove``
-
-- ``store`` — (no description)
-
-  > ``gway cdv store``
 
 
 .. rubric:: clip
@@ -318,33 +284,6 @@ INCLUDED PROJECTS
 - ``send`` — Send an email with the specified subject and body, using defaults from env if available.
 
   > ``gway mail send``
-
-
-.. rubric:: node
-
-- ``check`` — Check registration status for this node.
-
-  > ``gway node check``
-
-- ``identify`` — Returns a unique identifier for this system.
-
-  > ``gway node identify``
-
-- ``manage`` — Manage approved node registrations stored in work/registry.cdv.
-
-  > ``gway node manage``
-
-- ``register`` — Register this node with the given server's register endpoint.
-
-  > ``gway node register``
-
-- ``report`` — Generate a system report with platform info and recent logs.
-
-  > ``gway node report``
-
-- ``view_register`` — Register a node using .cdv-based storage with approval handled by gw.approval.
-
-  > ``gway node view-register``
 
 
 .. rubric:: ocpp
@@ -497,6 +436,14 @@ INCLUDED PROJECTS
 - ``infer_type`` — Infer SQL type from a sample value.
 
   > ``gway sql infer-type``
+
+- ``is_sql_snippet`` — (no description)
+
+  > ``gway sql is-sql-snippet``
+
+- ``query`` — Execute a SQL query or script on the work/local.sqlite database by default.
+
+  > ``gway sql query``
 
 
 .. rubric:: t
