@@ -19,15 +19,14 @@ def view_readme(*args, **kwargs):
     html_parts = publish_parts(source=rst_content, writer_name="html")
     return html_parts["html_body"]
 
-
 def view_help(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
-
     from gway import gw
+
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
 
-    if len(parts) == 0:
+    if not parts:
         help_info = gw.help()
         title = "Available Projects"
         content = "<ul>"
@@ -41,14 +40,26 @@ def view_help(topic="", *args, **kwargs):
         help_info = gw.help(project)
         title = f"Help Topics for <code>{project}</code>"
 
-    elif len(parts) == 2:
-
-        project, function = parts
-        help_info = gw.help(project, function, full_code=True)
-        title = f"Help for <code>{project}.{function}</code>"
-
     else:
-        return "<h2>Invalid help subject</h2><p>Use format: <code>project function</code></p>"
+        *project_path, maybe_function = parts
+        obj = gw
+        for segment in project_path:
+            obj = getattr(obj, segment, None)
+            if obj is None:
+                return f"<h2>Not Found</h2><p>Project path invalid at <code>{segment}</code>.</p>"
+
+        project_str = ".".join(project_path)
+
+        if hasattr(obj, maybe_function):
+            function = maybe_function
+            help_info = gw.help(project_str, function, full_code=True)
+            full_name = f"{project_str}.{function}"
+            title = f"Help for <code>{full_name}</code>"
+        else:
+            # It's a project, not a function
+            help_info = gw.help(project_str)
+            full_name = f"{project_str}.{maybe_function}"
+            title = f"Help Topics for <code>{full_name}</code>"
 
     if help_info is None:
         return "<h2>Not Found</h2><p>No help found for the given input.</p>"
@@ -58,7 +69,6 @@ def view_help(topic="", *args, **kwargs):
         return f"<h1>{title}</h1>{''.join(sections)}"
 
     return f"<h1>{title}</h1>{_help_section(help_info, use_query_links=True)}"
-
 
 def _help_section(info, use_query_links=False, *args, **kwargs):
     """Render a help section with clean formatting and route-based query links."""

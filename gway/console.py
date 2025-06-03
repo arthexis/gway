@@ -253,23 +253,18 @@ def chunk_command(args_commands):
 
 def show_functions(functions: dict):
     """Display a formatted view of available functions."""
+    from .builtins import sample_cli
+
     print("Available functions:")
     for name, func in functions.items():
-        args_list = []
-        for param in inspect.signature(func).parameters.values():
-            if param.default != inspect.Parameter.empty:
-                args_list.append(f"--{param.name} {param.default}")
-            else:
-                args_list.append(f"--{param.name} <required>")
-        args_preview = " ".join(args_list)
-
+        name_cli = name.replace("_", "-")
+        sample_cli = sample_cli(func)
         doc = ""
         if func.__doc__:
             doc_lines = [line.strip() for line in func.__doc__.splitlines()]
             doc = next((line for line in doc_lines if line), "")
 
-        name = name.replace("_", "-")
-        print(f"  > {name} {args_preview}")
+        print(f"  > {name_cli} {sample_cli}")
         if doc:
             print(f"      {doc}")
 

@@ -166,6 +166,7 @@ def _strip_types(sig: str) -> str:
     except Exception:
         return sig  # fallback if parsing fails
     
+
 def help(*args, full_code=False):
     from gway import gw
     import os, textwrap, ast
@@ -205,45 +206,50 @@ def help(*args, full_code=False):
             cur.execute("SELECT DISTINCT project FROM help")
             return {"Available Projects": sorted([row["project"] for row in cur.fetchall()])}
 
-        elif len(args) == 1:
-            query = args[0].replace("-", "_")
+        # Normalize project path
+        norm_args = [a.replace("-", "_") for a in args]
+        if len(norm_args) == 1:
+            query = norm_args[0]
             parts = query.split(".")
-            exact_rows = []
-
             if len(parts) == 2:
                 project, function = parts
-                cur.execute(
-                    "SELECT * FROM help WHERE project = ? AND function = ?",
-                    (project, function),
-                )
+                cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", (project, function))
                 exact_rows = cur.fetchall()
-
+            else:
+                exact_rows = []
             cur.execute("SELECT * FROM help WHERE help MATCH ?", (query,))
-            fuzzy_rows = [row for row in cur.fetchall() if row not in exact_rows]
+            fuzzy_rows = [r for r in cur.fetchall() if r not in exact_rows]
             rows = exact_rows + fuzzy_rows
 
-        elif len(args) == 2:
-            project = args[0].replace("-", "_")
-            func = args[1].replace("-", "_")
-            cur.execute(
-                "SELECT * FROM help WHERE project = ? AND function = ?",
-                (project, func),
-            )
+        elif len(norm_args) >= 2:
+            *proj_parts, maybe_func = norm_args
+            project = ".".join(proj_parts)
+            function = maybe_func
+
+            cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", (project, function))
             rows = cur.fetchall()
 
+            # fallback: fuzzy search
+            if not rows:
+                fuzzy_query = ".".join(norm_args)
+                cur.execute("SELECT * FROM help WHERE help MATCH ?", (fuzzy_query,))
+                rows = cur.fetchall()
+
         else:
-            print("Too many arguments.")
-            return
+            return {"error": f"Invalid input: {joined_args}"}
 
         if not rows:
             return {"error": f"No help found for '{joined_args}'."}
 
         results = []
         for row in rows:
+            project = row["project"]
+            function = row["function"]
+            prefix = f"gway {project} {function.replace('_', '-')}"
             entry = {
-                "Project": row["project"],
-                "Function": row["function"],
-                "Sample CLI": f"gway {row['project']} {row['function']}",
+                "Project": project,
+                "Function": function,
+                "Sample CLI": prefix
             }
             if full_code:
                 entry["Full Code"] = row["source"]
@@ -256,7 +262,40 @@ def help(*args, full_code=False):
 
         return results[0] if len(results) == 1 else {"Matches": results}
 
+
 h = help
+
+
+def sample_cli(func):
+    """Generate a sample CLI string for a function."""
+    from gway import gw
+    if not callable(func):
+        func = gw[func]
+    sig = inspect.signature(func)
+    parts = []
+    seen_kw_only = False
+
+    for name, param in sig.parameters.items():
+        kind = param.kind
+
+        if kind == inspect.Parameter.VAR_POSITIONAL:
+            parts.append(f"[{name}1 {name}2 ...]")
+        elif kind == inspect.Parameter.VAR_KEYWORD:
+            parts.append(f"[--{name}1 val1 --{name}2 val2 ...]")
+        elif kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
+            if not seen_kw_only:
+                parts.append(f"<{name}>")
+            else:
+                parts.append(f"--{name.replace('_', '-')} <val>")
+        elif kind == inspect.Parameter.KEYWORD_ONLY:
+            seen_kw_only = True
+            cli_name = f"--{name.replace('_', '-')}"
+            if param.annotation is bool or isinstance(param.default, bool):
+                parts.append(f"[{cli_name} | --no-{name.replace('_', '-')}]")
+            else:
+                parts.append(f"{cli_name} <val>")
+
+    return " ".join(parts)
 
 
 def sigils(*args: str):
