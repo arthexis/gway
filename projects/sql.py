@@ -104,18 +104,55 @@ def connect(
     conn.close()
 
 
-# TODO: Create a query() function that will combine the opening and closing of the conection with the query. 
-# If a SQL query is not provided, it may be passed the name of one or more tables.
-# If so, return them. If 2 or more, use natural joins. If extra kwargs are passed
-# convert them to additional filter clauses. Limit may be specified as a kwarg defaults to None (fetch all lines)
-# Instead of a SQL query, the name to a sql file can be passed and its executed as a script
+def query(*queries, limit=None, **kwargs):
+    """
+    Execute a SQL query or script on the work/local.sqlite database by default.
+    Different kwargs can be passed to sql.connect by prefixing them with _.
+    Otherwise, kwargs can be used to add filters to the query.
+    """
+    filters = {k: v for k, v in kwargs.items() if not k.startswith("_")}
+    connect_kwargs = {k: v for k, v in kwargs.items() if k.startswith("_")}
+    connect_kwargs = {k[1:]: v for k, v in connect_kwargs.items()}
 
-def query(*queries, **kwargs):
-    with connect(**kwargs) as conn:
-        pass
+    with connect(**connect_kwargs) as conn:
+        if len(queries) == 1:
+            q = queries[0]
+            if isinstance(q, str) and q.endswith(".sql"):
+                sql_path = gw.resource("sql", q)
+                with open(sql_path, "r", encoding="utf-8") as f:
+                    sql = f.read()
+            elif isinstance(q, str) and is_sql_snippet(q):
+                sql = q
+            else:
+                tables = [q]
+        else:
+            tables = list(queries)
+
+        if 'tables' in locals():
+            sql = f"SELECT * FROM {' NATURAL JOIN '.join(f'[{t}]' for t in tables)}"
+            if filters:
+                clauses = [f"[{k}] = ?" for k in filters]
+                sql += f" WHERE {' AND '.join(clauses)}"
+            if limit is not None:
+                sql += f" LIMIT {int(limit)}"
+            values = list(filters.values())
+        else:
+            values = []
+
+        cursor = conn
+        cursor.execute(sql, values)
+        rows = cursor.fetchall()
+        if hasattr(cursor, "description") and cursor.description:
+            columns = [col[0] for col in cursor.description]
+            return [dict(zip(columns, row)) for row in rows]
+        return rows
 
 
 ...
+
+
+def is_sql_snippet(text):
+    return any(word in text.lower() for word in ["select", "insert", "update", "delete"])
 
 
 def infer_type(value):

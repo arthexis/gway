@@ -222,18 +222,17 @@ def help(*args, full_code=False):
 
         results = []
         for row in rows:
-            example_code = f"gw.{row['project']}.{row['function']}({_strip_types(row['signature'])})"
             entry = {
                 "Project": row["project"],
                 "Function": row["function"],
-                "Signature": textwrap.fill(row["signature"], 100).strip(),
-                "Docstring": row["docstring"].strip() if row["docstring"] else None,
-                "TODOs": row["todos"].strip() if row["todos"] else None,
-                "Example CLI": f"gway {row['project']} {row['function']}",
-                "Example Code": textwrap.fill(example_code, 100).strip(),
+                "Sample CLI": f"gway {row['project']} {row['function']}",
             }
             if full_code:
                 entry["Full Code"] = row["source"]
+            else:
+                entry["Signature"] = textwrap.fill(row["signature"], 100).strip()
+                entry["Docstring"] = row["docstring"].strip() if row["docstring"] else None
+                entry["TODOs"] = row["todos"].strip() if row["todos"] else None
             results.append({k: v for k, v in entry.items() if v})
 
         return results[0] if len(results) == 1 else {"Matches": results}

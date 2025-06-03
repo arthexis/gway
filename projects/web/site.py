@@ -23,8 +23,6 @@ def view_readme(*args, **kwargs):
 def view_help(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
 
-    # 
-
     from gway import gw
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
@@ -44,8 +42,9 @@ def view_help(topic="", *args, **kwargs):
         title = f"Help Topics for <code>{project}</code>"
 
     elif len(parts) == 2:
+
         project, function = parts
-        help_info = gw.help(project, function)
+        help_info = gw.help(project, function, full_code=True)
         title = f"Help for <code>{project}.{function}</code>"
 
     else:
