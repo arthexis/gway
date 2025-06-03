@@ -1,9 +1,8 @@
-# projects/web/server.py
-
+from numpy import iterable
 from gway import gw
 
 
-def start(*apps,
+def start(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
     debug=False,
@@ -23,17 +22,26 @@ def start(*apps,
     import inspect
     import asyncio
 
+    # TODO: Make sure that all apps run when multiple apps are provided. 
+    # Print the total number of started apps and their types.
+
     def run_server():
         nonlocal app
-
-        # A. Merge positional *apps and app= into one flat list
-        all_apps = gw.filter_apps(*apps, kwarg=app, selector=lambda x: True)
+        all_apps = app if iterable(app) else (app, )
 
         # B. Dispatch multiple apps in threads if we aren't already in a worker
         if not is_worker and len(all_apps) > 1:
             from threading import Thread
             threads = []
+            gw.info(f"Starting {len(all_apps)} apps in parallel threads.")
             for i, sub_app in enumerate(all_apps):
+                try:
+                    from fastapi import FastAPI
+                    app_type = "FastAPI" if isinstance(sub_app, FastAPI) else type(sub_app).__name__
+                except ImportError:
+                    app_type = type(sub_app).__name__
+                gw.info(f"  App {i+1}: type={app_type}, port={int(port) + i}")
+
                 t = Thread(
                     target=gw.web.server.start,
                     kwargs=dict(

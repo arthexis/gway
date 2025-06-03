@@ -1,9 +1,8 @@
-
 # projects/ocpp.py
 
 import json
-import traceback
 import os
+import traceback
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -11,23 +10,23 @@ from fastapi.staticfiles import StaticFiles
 from typing import Dict
 from gway import gw
 
-# These are ports of the functions originally tested on the eTron charger
-# and are used to simulate the CSMS server. Ported from gsol to gway.
+_active_cons: Dict[str, WebSocket] = {}
+
 
 def setup_sink_app(*, 
-            host='[OCPP_CSMS_HOST|0.0.0.0]', 
-            port='[OCPP_CSMS_PORT|9000]', 
-            app=None,
-        ):
+        host='[OCPP_CSMS_HOST|0.0.0.0]', 
+        port='[OCPP_CSMS_PORT|9000]',
+        app=None,
+        base="",
+    ):
     """Basic OCPP passive sink for messages, acting as a dummy CSMS server."""
 
-    import json
-    import traceback
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+    # A - This block ensures we find just the kind of app we need of create one if missing
+    original_app = app
+    if (_is_new_app := not (app := gw.unwrap(app, FastAPI))):
+        app = FastAPI()
 
-    if app is None: app = FastAPI()
-
-    @app.websocket("/{path:path}")
+    @app.websocket(f"{base}/"+"{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
         gw.info(f"[OCPP] New WebSocket connection at /{path}")
         try:
@@ -38,54 +37,42 @@ def setup_sink_app(*,
 
                 try:
                     msg = json.loads(raw)
-
                     if isinstance(msg, list) and len(msg) >= 3 and msg[0] == 2:
-                        # It's a Call message
                         message_id = msg[1]
                         action = msg[2]
                         payload = msg[3] if len(msg) > 3 else {}
 
                         gw.info(f"[OCPP:{path}] -> Action: {action} | Payload: {payload}")
-
-                        # Respond with a CallResult (OCPP type 3)
                         response = [3, message_id, {"status": "Accepted"}]
                         await websocket.send_text(json.dumps(response))
                         gw.info(f"[OCPP:{path}] <- Acknowledged: {response}")
                     else:
-                        # Unknown or non-call message
                         gw.warning(f"[OCPP:{path}] Received non-Call message or malformed")
-
                 except Exception as e:
-                    gw.error(f"[OCPP:{path}] Error parsing message:", str(e))
+                    gw.error(f"[OCPP:{path}] Error parsing message: {e}")
                     gw.debug(traceback.format_exc())
 
         except WebSocketDisconnect:
             gw.info(f"[OCPP:{path}] Disconnected")
         except Exception as e:
-            gw.error(f"[OCPP:{path}] WebSocket error:", str(e))
+            gw.error(f"[OCPP:{path}] WebSocket error: {e}")
             gw.debug(traceback.format_exc())
 
-    gw.info(f"Setup passive OCPP sink on {host}:{port}")
-    return app
-    
+    gw.info(f"Setup passive OCPP sink directly on {host}:{port}/{base}")
 
-# Track active connections
-_active_cons: Dict[str, WebSocket] = {}
+    # B- This return pattern ensures we include our app in the bundle (if any)
+    if _is_new_app:
+        return app if not original_app else (original_app, app)    
+    return original_app
 
 
-def setup_csms_app(*,
-        host='[OCPP_CSMS_HOST|0.0.0.0]', 
-        port='[OCPP_CSMS_PORT|9000]', 
-        app=None,
-        allowlist=None,
-    ):
+def setup_csms_app(*, host='[OCPP_CSMS_HOST|0.0.0.0]', port='[OCPP_CSMS_PORT|9000]', app=None, allowlist=None):
     """
     OCPP 1.6 CSMS implementation with RFID authorization.
     Specify an allowlist file in .cdv format (RFID: [extra fields...])
     """
 
-    if app is None:
-        app = FastAPI()
+    app, original_app = gw.unwrap(app or FastAPI())
 
     static_dir = gw.resource("data", "static")
     templates_dir = gw.resource("data", "ocpp", "templates")
@@ -106,7 +93,8 @@ def setup_csms_app(*,
             with open(path, "r") as f:
                 for lineno, line in enumerate(f, start=1):
                     line = line.strip()
-                    if not line: continue
+                    if not line:
+                        continue
                     parts = line.split(":")
                     rfid = parts[0].strip()
 
@@ -140,7 +128,6 @@ def setup_csms_app(*,
 
                 try:
                     msg = json.loads(raw)
-
                     if isinstance(msg, list) and len(msg) >= 3 and msg[0] == 2:
                         message_id = msg[1]
                         action = msg[2]
@@ -174,24 +161,19 @@ def setup_csms_app(*,
         finally:
             _active_cons.pop(charger_id, None)
 
-    @app.get("/", response_class=HTMLResponse)
-    async def status_page(request: Request):
+        if allowlist:
+            _ = load_allowlist()  # Validates on startup
+            gw.debug("Allowlist loaded without errors.")
+
+        gw.info(f"Setup OCPP 1.6 auth sink on {host}:{port} (allowlist={allowlist})")
+        return original_app or app
+
+...
+
+# Views for the main app
+
+def status_page(request: Request):
         return templates.TemplateResponse("status.html", {
             "request": request,
             "connections": _active_cons.keys()
         })
-
-    @app.post("/disconnect/{charger_id}")
-    async def disconnect_charger(charger_id: str):
-        ws = _active_cons.get(charger_id)
-        if ws:
-            await ws.close(code=1000)
-            return {"status": "disconnected"}
-        return {"status": "not_found"}
-
-    if allowlist:
-        _ = load_allowlist()  # Validates on startup
-        gw.debug("Allowlist loaded without errors.")
-
-    gw.info(f"Setup OCPP 1.6 auth sink on {host}:{port} (allowlist={allowlist})")
-    return app

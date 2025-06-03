@@ -19,6 +19,7 @@ def view_readme(*args, **kwargs):
     html_parts = publish_parts(source=rst_content, writer_name="html")
     return html_parts["html_body"]
 
+
 def view_help(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
     from gway import gw

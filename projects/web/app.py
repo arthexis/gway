@@ -7,11 +7,9 @@ from collections.abc import Iterable
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
-# TODO: It is possible for a user to visit a similar ending path twice, such as
-# gway/register being replaced by node/register. Their navbar shows REGISTER just once
-# which is correct, but the old stays in place, maybe gway/ is hardcoded?
-# Even if only the function name itself is shown in the navbar, the underlying link
-# should contain the path leading up to it, the latest version visited if multiple.
+# TODO: Whenever we would trigger a 404, instead redirect to the home of the 
+# current app. If the current app doesn't have a home or we can't find it,
+# redirect to web.site.readme.
 
 def setup(*,
     app=None,
@@ -49,12 +47,11 @@ def setup(*,
             path = first_proj.replace(".", "/")
 
     version = gw.version()
-    app = gw.unwrap(app, Bottle) if app else None
-    gw.info(f"Unwrapped {app=} from {original_app=}")
-    _is_new_app = not app
+    _is_new_app = not (app := gw.unwrap(app, Bottle) if app else None)
+    gw.info(f"Unwrapped {app=} from {original_app=} ({_is_new_app=})")
 
     if _is_new_app:
-        gw.warn("No Bottle app found; creating a new Bottle app.")
+        gw.info("No Bottle app found; creating a new Bottle app.")
         app = Bottle()
 
         # Define URL-building helpers
@@ -297,7 +294,10 @@ def setup(*,
 
     if _is_new_app:
         app = security_middleware(app)
-        return app
+        if not original_app:
+            return app
+        else:
+            return (original_app, app)
     
     return original_app
 

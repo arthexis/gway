@@ -52,6 +52,7 @@ def cli_main():
         project_path=args.project_path,
         base_path=args.base_path,
         _debug=args.debug,
+        _quantity=args.quantity
     )
 
     # Load command sources

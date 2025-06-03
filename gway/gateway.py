@@ -24,12 +24,13 @@ class Gateway(Resolver):
     def __init__(self, *, 
                 client=None, server=None, verbose=False, 
                 name="gw", base_path=None, project_path=None,
-                _debug=False, **kwargs
+                _debug=False, _quantity=None, **kwargs
     ):
         # Basic initialization
         self._cache = {}
         self._async_threads = []
         self._debug = _debug
+        self._quantity = _quantity
         self.uuid = uuid.uuid4()
         self.base_path = base_path or os.path.dirname(os.path.dirname(__file__))
         self.project_path = project_path
@@ -328,7 +329,6 @@ class Gateway(Resolver):
                 return result
 
         raise FileNotFoundError(f"Project path not found for '{project_name}' in '{root}' or fallback '{self.project_path}'")
-
 
     def load_py_file(self, path: str, dotted_name: str):
         module_name = dotted_name.replace(".", "_")
