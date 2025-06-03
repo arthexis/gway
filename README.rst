@@ -239,6 +239,29 @@ INCLUDED PROJECTS
   > ``gway clip copy``
 
 
+.. rubric:: deck
+
+- ``count`` — (no description)
+
+  > ``gway deck count``
+
+- ``deal`` — (no description)
+
+  > ``gway deck deal``
+
+- ``draw`` — (no description)
+
+  > ``gway deck draw``
+
+- ``mark`` — (no description)
+
+  > ``gway deck mark``
+
+- ``shuffle`` — (no description)
+
+  > ``gway deck shuffle``
+
+
 .. rubric:: etron
 
 - ``extract_records`` — Load data from EV IOCHARGER to CSV format.
@@ -262,6 +285,14 @@ INCLUDED PROJECTS
 - ``notify`` — Show a user interface notification with the specified title and message.
 
   > ``gway gui notify``
+
+- ``screenshot`` — Take a screenshot in the specified mode and save it under:
+
+  > ``gway gui screenshot``
+
+- ``take_screenshot`` — Take a screenshot in the specified mode and save it under:
+
+  > ``gway gui take-screenshot``
 
 
 .. rubric:: job
@@ -295,6 +326,10 @@ INCLUDED PROJECTS
 - ``setup_sink_app`` — Basic OCPP passive sink for messages, acting as a dummy CSMS server.
 
   > ``gway ocpp setup-sink-app``
+
+- ``status_page`` — (no description)
+
+  > ``gway ocpp status-page``
 
 
 .. rubric:: odoo
@@ -414,17 +449,6 @@ INCLUDED PROJECTS
 - ``walk_projects`` — Yield all project modules as dotted paths.
 
   > ``gway release walk-projects``
-
-
-.. rubric:: screen
-
-- ``shot`` — Take a screenshot in the specified mode and save it under:
-
-  > ``gway screen shot``
-
-- ``take_screenshot`` — Take a screenshot in the specified mode and save it under:
-
-  > ``gway screen take-screenshot``
 
 
 .. rubric:: sql
