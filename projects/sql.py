@@ -10,7 +10,7 @@ from gway import gw
 @contextmanager
 def connect(
         *database, sql_engine="sqlite3", load_data=False, force=False, 
-        work_db="local.sqlite", row_factory=False, 
+        work_db="local.sqlite", root="work", row_factory=False, 
     ):
     """
     Connects to a SQLite database using a context manager.
@@ -19,7 +19,7 @@ def connect(
     """
     assert sql_engine == "sqlite3", "Only sqlite3 is supported at the moment."
 
-    if not database: database = ("work", work_db)
+    if not database: database = (root, work_db)
 
     db_path = gw.resource(*database)
     if isinstance(load_data, str):
@@ -104,10 +104,15 @@ def connect(
     conn.close()
 
 
-# TODO: Create a query() function that will combine the opening of the conection and the query. 
+# TODO: Create a query() function that will combine the opening and closing of the conection with the query. 
 # If a SQL query is not provided, it may be passed the name of one or more tables.
 # If so, return them. If 2 or more, use natural joins. If extra kwargs are passed
 # convert them to additional filter clauses. Limit may be specified as a kwarg defaults to None (fetch all lines)
+# Instead of a SQL query, the name to a sql file can be passed and its executed as a script
+
+def query(*queries, **kwargs):
+    with connect(**kwargs) as conn:
+        pass
 
 
 ...
