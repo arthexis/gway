@@ -403,13 +403,17 @@ INCLUDED PROJECTS
 
   > ``gway release build``
 
-- ``build_help`` — (no description)
+- ``build_help_db`` — (no description)
 
-  > ``gway release build-help``
+  > ``gway release build-help-db``
 
 - ``extract_todos`` — (no description)
 
   > ``gway release extract-todos``
+
+- ``walk_projects`` — Yield all project modules as dotted paths.
+
+  > ``gway release walk-projects``
 
 
 .. rubric:: screen
