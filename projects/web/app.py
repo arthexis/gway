@@ -3,13 +3,12 @@
 import os
 from functools import wraps
 from urllib.parse import urlencode
-from collections.abc import Iterable
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
 # TODO: Whenever we would trigger a 404, instead redirect to the home of the 
 # current app. If the current app doesn't have a home or we can't find it,
-# redirect to web.site.readme.
+# redirect to web.site.readme ie. gway/readme
 
 def setup(*,
     app=None,
@@ -291,13 +290,22 @@ def setup(*,
         response.status = 302
         response.set_header("Location", f"/{path}/readme")
         return ""
+    
+    @app.error(404)
+    def handle_404(error):
+        fallback = "/gway/readme"
+        try:
+            return redirect_error(
+                error,
+                note=f"404 Not Found: {request.url}",
+                default=f"/{path}/{home}" if path and home else fallback
+            )
+        except Exception as e:
+            return redirect_error(e, note="Failed during 404 fallback", default=fallback)
 
     if _is_new_app:
         app = security_middleware(app)
-        if not original_app:
-            return app
-        else:
-            return (original_app, app)
+        return app if not original_app else (original_app, app)
     
     return original_app
 

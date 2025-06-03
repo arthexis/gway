@@ -3,15 +3,15 @@
 import json
 import os
 import traceback
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import Dict
 from gway import gw
 
 _active_cons: Dict[str, WebSocket] = {}
 
+
+# Bottle does not support websockets properly, so we need to use FastAPI for OCPP. 
+# However we should still use Bottle for the user interface: don't mix them.
 
 def setup_sink_app(*, 
         host='[OCPP_CSMS_HOST|0.0.0.0]', 
@@ -21,8 +21,8 @@ def setup_sink_app(*,
     ):
     """Basic OCPP passive sink for messages, acting as a dummy CSMS server."""
 
-    # A - This block ensures we find just the kind of app we need of create one if missing
-    original_app = app
+    # A - This block ensures we find just the kind of app we need or create one if missing
+    oapp = app
     if (_is_new_app := not (app := gw.unwrap(app, FastAPI))):
         app = FastAPI()
 
@@ -62,8 +62,9 @@ def setup_sink_app(*,
 
     # B- This return pattern ensures we include our app in the bundle (if any)
     if _is_new_app:
-        return app if not original_app else (original_app, app)    
-    return original_app
+        return app if not oapp else (oapp, app)    
+    return oapp
+
 
 
 def setup_csms_app(*, host='[OCPP_CSMS_HOST|0.0.0.0]', port='[OCPP_CSMS_PORT|9000]', app=None, allowlist=None):
@@ -71,13 +72,10 @@ def setup_csms_app(*, host='[OCPP_CSMS_HOST|0.0.0.0]', port='[OCPP_CSMS_PORT|900
     OCPP 1.6 CSMS implementation with RFID authorization.
     Specify an allowlist file in .cdv format (RFID: [extra fields...])
     """
-
-    app, original_app = gw.unwrap(app or FastAPI())
-
-    static_dir = gw.resource("data", "static")
-    templates_dir = gw.resource("data", "ocpp", "templates")
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-    templates = Jinja2Templates(directory=templates_dir)
+    # A - This block ensures we find just the kind of app we need or create one if missing
+    oapp = app
+    if (_is_new_app := not (app := gw.unwrap(app, FastAPI))):
+        app = FastAPI()
 
     def load_allowlist() -> dict[str, list[str]]:
         if not allowlist:
@@ -166,14 +164,13 @@ def setup_csms_app(*, host='[OCPP_CSMS_HOST|0.0.0.0]', port='[OCPP_CSMS_PORT|900
             gw.debug("Allowlist loaded without errors.")
 
         gw.info(f"Setup OCPP 1.6 auth sink on {host}:{port} (allowlist={allowlist})")
-        return original_app or app
+    
+    # B- This return pattern ensures we include our app in the bundle (if any)
+    return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 
 ...
 
-# Views for the main app
+# Views for the main app (this is a bottle app)
 
-def status_page(request: Request):
-        return templates.TemplateResponse("status.html", {
-            "request": request,
-            "connections": _active_cons.keys()
-        })
+def view_status():
+    return "OCPP Status - Pending"

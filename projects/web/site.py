@@ -71,8 +71,10 @@ def view_help(topic="", *args, **kwargs):
 
     return f"<h1>{title}</h1>{_help_section(help_info, use_query_links=True)}"
 
+
 def _help_section(info, use_query_links=False, *args, **kwargs):
     """Render a help section with clean formatting and route-based query links."""
+    import html
     rows = []
     for key, value in info.items():
         if use_query_links:
@@ -82,7 +84,10 @@ def _help_section(info, use_query_links=False, *args, **kwargs):
                 proj = info.get("Project", "")
                 value = f'<a href="?topic={proj}/{value}">{value}</a>'
 
-        if key in ("Signature", "Example CLI", "Example Code", "Full Code"):
+        if key == "Full Code":
+            escaped = html.escape(value)
+            value = f"<pre><code>{escaped}</code></pre>"
+        elif key in ("Signature", "Example CLI", "Example Code"):
             value = f"<pre><code>{value}</code></pre>"
         elif key in ("Docstring", "TODOs"):
             value = f"<div class='doc'>{value}</div>"
