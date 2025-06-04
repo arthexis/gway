@@ -447,10 +447,6 @@ INCLUDED PROJECTS
 
   > ``gway release build-help-db``
 
-- ``extract_todos`` — (no description)
-
-  > ``gway release extract-todos``
-
 
 .. rubric:: sql
 
