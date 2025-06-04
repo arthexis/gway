@@ -295,13 +295,6 @@ INCLUDED PROJECTS
   > ``gway gui take-screenshot``
 
 
-.. rubric:: job
-
-- ``schedule`` — Schedule a recipe to run.
-
-  > ``gway job schedule``
-
-
 .. rubric:: mail
 
 - ``message_from_bytes`` — Parse a bytes string into a Message object model.
@@ -327,9 +320,9 @@ INCLUDED PROJECTS
 
   > ``gway ocpp setup-sink-app``
 
-- ``status_page`` — (no description)
+- ``view_status`` — (no description)
 
-  > ``gway ocpp status-page``
+  > ``gway ocpp view-status``
 
 
 .. rubric:: odoo
