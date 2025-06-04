@@ -37,12 +37,17 @@ class GatewayTests(unittest.TestCase):
         resolved = gw.resolve("User: [nickname|unknown], Age: [age|0]")
         self.assertEqual(resolved, "User: Alice, Age: 30")
 
-    def test_environment_variable_resolution(self):
+    def test_env_variable_resolution(self):
         os.environ['TEST_ENV'] = 'env_value'
         resolved = gw.resolve("Env: [TEST_ENV|fallback]")
         self.assertEqual(resolved, "Env: env_value")
 
-    def test_missing_environment_variable(self):
+    def test_env_variable_resolution_lower(self):
+        os.environ['TEST_ENV'] = 'env_value'
+        resolved = gw.resolve("Env: [test_env|fallback]")
+        self.assertEqual(resolved, "Env: env_value")
+
+    def test_missing_env_variable(self):
         resolved = gw.resolve("Env: [MISSING_ENV|fallback]")
         self.assertEqual(resolved, "Env: fallback")
 

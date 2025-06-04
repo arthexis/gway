@@ -6,37 +6,54 @@ import hashlib
 import threading
 import requests
 
+def watch_file(*filepaths, on_change, poll_interval=10.0, hash=False, resource=True):
+    from gway import gw
 
-def watch_file(filepath, on_change, *, poll_interval=10.0, hash=False):
+    paths = []
+    for path in filepaths:
+        resolved = gw.resource(path) if resource else path
+        if os.path.isdir(resolved):
+            for root, _, files in os.walk(resolved):
+                for file in files:
+                    paths.append(os.path.join(root, file))
+        else:
+            paths.append(resolved)
+
     stop_event = threading.Event()
 
     def _watch():
-        try:
-            last_mtime = os.path.getmtime(filepath)
-            last_hash = hashlib.md5(open(filepath, 'rb').read()).hexdigest() if hash else None
-        except FileNotFoundError:
-            last_mtime = None
-            last_hash = None
+        last_mtimes = {}
+        last_hashes = {}
 
-        while not stop_event.is_set():
+        for path in paths:
             try:
-                current_mtime = os.path.getmtime(filepath)
+                last_mtimes[path] = os.path.getmtime(path)
                 if hash:
-                    if current_mtime != last_mtime:
-                        with open(filepath, 'rb') as f:
-                            current_hash = hashlib.md5(f.read()).hexdigest()
-                        if last_hash and current_hash != last_hash:
-                            on_change()
-                            os._exit(1)
-                        last_hash = current_hash
-                    last_mtime = current_mtime
-                else:
-                    if last_mtime is not None and current_mtime != last_mtime:
-                        on_change()
-                        os._exit(1)
-                    last_mtime = current_mtime
+                    with open(path, 'rb') as f:
+                        last_hashes[path] = hashlib.md5(f.read()).hexdigest()
             except FileNotFoundError:
                 pass
+
+        while not stop_event.is_set():
+            for path in paths:
+                try:
+                    current_mtime = os.path.getmtime(path)
+                    if hash:
+                        if path not in last_mtimes or current_mtime != last_mtimes[path]:
+                            with open(path, 'rb') as f:
+                                current_hash = hashlib.md5(f.read()).hexdigest()
+                            if path in last_hashes and current_hash != last_hashes[path]:
+                                on_change()
+                                os._exit(1)
+                            last_hashes[path] = current_hash
+                        last_mtimes[path] = current_mtime
+                    else:
+                        if path in last_mtimes and current_mtime != last_mtimes[path]:
+                            on_change()
+                            os._exit(1)
+                        last_mtimes[path] = current_mtime
+                except FileNotFoundError:
+                    pass
             time.sleep(poll_interval)
 
     thread = threading.Thread(target=_watch, daemon=True)

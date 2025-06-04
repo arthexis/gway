@@ -7,6 +7,8 @@ Welcome [Viajante], this is the GWAY project README.rst file and website.
 
 `Our Goal: Lower the barrier to enter a higher-level of systems integration.`
 
+`Our Philosophy: Every function should be a working solution and entry point.`
+
 Fetch the source, changelogs and issues (or submit your own) here:
 
 https://github.com/arthexis/gway/readme
@@ -15,10 +17,10 @@ https://github.com/arthexis/gway/readme
 Features
 --------
 
-- 🔌 Seamless function calling from CLI or code (e.g., ``gway.awg.find_cable()``)
-- ⛓️ CLI chaining support: ``proj 1 func1 - proj2 func2`` (flexible separators)
-- 🧠 Sigil-based context resolution (e.g., ``[result-context-or-env-key|fallback]``)
-- ⚙️ Automatic CLI argument generation, with support for ``*args`` and ``**kwargs``
+- 🔌 Seamless from CLI or code (e.g., ``gw.awg.find_cable()`` is ``gway awg find-cable``)
+- ⛓️ CLI chaining: ``proj1 func1 - proj2 func2`` (implicit parameter passing by name)
+- 🧠 Sigil-based context resolution (e.g., ``[result-context-environ|fallback]``)
+- ⚙️ Automatic CLI generation, with support for ``*``, ``*args`` and ``**kwargs``
 - 🧪 Built-in test runner and self-packaging: ``gway test`` and ``gway release build``
 - 📦 Environment-aware loading (e.g., ``clients`` and ``servers`` .env files)
 
@@ -28,7 +30,7 @@ Examples
 AWG Cable Calculation
 ~~~~~~~~~~~~~~~~~~~~~
 
-Given a project ``awg.py`` containing logic to calculate cable sizes and conduit requirements:
+Given ``projects/awg.py`` containing logic to calculate cable sizes and conduit requirements:
 
 **Call from Python**
 
@@ -66,15 +68,25 @@ https://arthexis.com/gway/awg-finder
 GWAY Website Server
 ~~~~~~~~~~~~~~~~~~~
 
-You can also run a lightweight help/documentation server directly using GWAY:
+You can also run a bundled lightweight help/documentation server using a GWAY Recipe:
 
 .. code-block:: powershell
 
-    > gway -d web server start --daemon - until --lock-pypi
+    > gway -dr website
 
 This launches an interactive web UI that lets you browse your project, inspect help docs, and search callable functions.
 
+
 Visit `http://localhost:8888` once it's running.
+
+
+You can use a similar syntax to lunch any .gwr (GWAY Recipe) files you find. You can register them on your OS for automatic execution with the following command (Administrator/root privileges may be required):
+
+
+.. code-block:: powershell
+
+    > gway recipe register-gwr
+
 
 Online Help & Documentation
 ---------------------------
@@ -174,6 +186,8 @@ Under the hood, recipes are executed using the `run_recipe` function:
 
     # Run a named recipe
     gw.recipe.run("example")
+    # This is exactly the same but is a builtin (no difference otherwise)
+    gw.run_recipe("example")
 
     # Or with extra context:
     # Project and size are assumed to be parameters of the example function.
@@ -185,22 +199,20 @@ If the file isn't found directly, Gway will look in its internal `recipes/` reso
 🌐 Example: `website.gwr`
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-An example recipe named `website.gwr` is already included. It generates a basic web setup using inferred context. Default parameters are taken from client and server .envs where possible automatically. Here's what it contains:
+An example recipe named `dev-website.gwr` is already included. It generates a basic web setup using inferred context. Default parameters are taken from client and server .envs where possible automatically. It goes beyond the basic help website by providing aditional debugging and browser instrumentiation features. Here's what it contains:
 
 .. code-block:: 
 
     # Default GWAY website ingredients
 
-    web app setup
-    web server start --daemon
-    until --lock-file VERSION --lock-pypi
+    [PENDING]
 
 
 You can run it with:
 
 .. code-block:: bash
 
-    gway -r website
+    gway -r dev-website.gwr
 
 
 Or in Python:
@@ -208,7 +220,7 @@ Or in Python:
 .. code-block:: python
 
     from gway import gw
-    gw.run("website")
+    gw.run("dev-website")
 
 
 This script sets up a web application, launches the server in daemon mode, and waits for lock conditions using built-in context.

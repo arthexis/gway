@@ -23,6 +23,13 @@ class GatewayBuiltinsTests(unittest.TestCase):
         except AttributeError as e:
             self.fail(f"AttributeError occurred: {e}")
 
+    def test_list_builtins(self):
+        # Test if the builtins can be accessed directly and are callable
+        builtin_ls = gw.builtins()
+        self.assertIn('help', builtin_ls)
+        self.assertIn('test', builtin_ls)
+        self.assertIn('abort', builtin_ls)
+
     def test_load_qr_code_project(self):
         project = gw.load_project("qr")
         test_url = project.generate_url("test")
@@ -34,6 +41,10 @@ class GatewayBuiltinsTests(unittest.TestCase):
 
         # Check if "Hello, World!" was printed
         self.assertIn("Hello, World!", self.sio.getvalue().strip())
+
+    def test_help_hello_world(self):
+        help_result = gw.help('hello-world')
+        self.assertEqual(help_result['Sample CLI'], 'gway hello-world')
 
     async def test_abort(self):
         """Test that the abort function raises a SystemExit exception."""

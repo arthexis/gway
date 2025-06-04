@@ -367,59 +367,21 @@ def run(*script: str, **context):
     return gw.run_recipe(*script, **context)
 
 
-def filter_apps(
-    *apps: Any,
-    kwarg: Optional[Any] = None,
-    selector: Callable[[Any], bool]
-) -> List[Any]:
+def unwrap(obj: Any, expected: Optional[Type] = None) -> Any:
     """
-    Collects positional *apps and the single `kwarg` value, flattens any
-    iterables (that don’t themselves match selector), and returns only
-    those items for which selector(item) is True.
+    Function unwrapper that digs through __wrapped__, iterables, and closures.
     """
-    candidates: List[Any] = []
-
-    # helper to append one candidate or a sequence of them
-    def _collect(x: Any):
-        if x is None:
-            return
-        # if x itself matches, take it as a single app
-        if selector(x):
-            candidates.append(x)
-        # else if it’s iterable, drill in
-        elif isinstance(x, Iterable):
-            for sub in x:
-                _collect(sub)
-        # otherwise discard it
-        else:
-            return
-
-    # collect from kwarg first (so kwarg= overrides positional if desired)
-    if kwarg is not None:
-        _collect(kwarg)
-
-    # then collect from all the rest
-    for a in apps:
-        _collect(a)
-
-    return candidates
-
-
-def unwrap(obj: Any, expected_type: Optional[Type] = None) -> Any:
-    """
-    Enhanced unwrap that digs through __wrapped__, iterables, and closures.
-    """
-    def unwrap_closure(fn: FunctionType, expected_type: Type) -> Optional[Any]:
+    def unwrap_closure(fn: FunctionType, expected: Type) -> Optional[Any]:
         if fn.__closure__:
             for cell in fn.__closure__:
                 val = cell.cell_contents
-                result = unwrap(val, expected_type)
+                result = unwrap(val, expected)
                 if result is not None:
                     return result
         return None
 
-    if expected_type is not None:
-        if isinstance(obj, expected_type):
+    if expected is not None:
+        if isinstance(obj, expected):
             return obj
 
         if callable(obj):
@@ -429,24 +391,24 @@ def unwrap(obj: Any, expected_type: Optional[Type] = None) -> Any:
             except Exception:
                 unwrapped = obj
 
-            if isinstance(unwrapped, expected_type):
+            if isinstance(unwrapped, expected):
                 return unwrapped
 
             # Then search closure variables
-            found = unwrap_closure(unwrapped, expected_type)
+            found = unwrap_closure(unwrapped, expected)
             if found is not None:
                 return found
 
         # If obj is a container, scan recursively
         if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes, bytearray)):
             for item in obj:
-                found = unwrap(item, expected_type)
+                found = unwrap(item, expected)
                 if found is not None:
                     return found
 
         return None
 
-    # expected_type not provided → default unwrap
+    # expected not provided → default unwrap
     if callable(obj):
         try:
             return inspect.unwrap(obj)
@@ -454,15 +416,4 @@ def unwrap(obj: Any, expected_type: Optional[Type] = None) -> Any:
             return obj
 
     return obj
-
-
-def walk_projects(base="projects"):
-    """Yield all project modules as dotted paths."""
-    for dirpath, _, filenames in os.walk(base):
-        for fname in filenames:
-            if not fname.endswith(".py") or fname.startswith("_"):
-                continue
-            rel_path = os.path.relpath(os.path.join(dirpath, fname), base)
-            dotted = rel_path.replace(os.sep, ".").removesuffix(".py")
-            yield dotted
 
