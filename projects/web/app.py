@@ -19,11 +19,14 @@ def setup(*,
     work="work",
     home: str = "readme",
     prefix: str = "view",
+    navbar: bool = True,
 ):    
     """
     Configure one or more Bottle-based apps. Use web server start-app to launch.
     """
     global _version
+    _version = _version or gw.version() 
+
     # Normalize `project` into a list of project names
     projects = gw.to_list(project, flat=True)
 
@@ -32,9 +35,8 @@ def setup(*,
         first_proj = projects[0]
         path = "gway" if first_proj == "web.site" else first_proj.replace(".", "/")
 
-    version = _version or gw.version() 
     _is_new_app = not (app := gw.unwrap(app, Bottle) if (oapp := app) else None)
-    gw.info(f"Unwrapped {app=} from {oapp=} ({_is_new_app=})")
+    gw.debug(f"Unwrapped {app=} from {oapp=} ({_is_new_app=})")
 
     if _is_new_app:
         gw.info("No Bottle app found; creating a new Bottle app.")
@@ -69,6 +71,7 @@ def setup(*,
 
     @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
+        nonlocal navbar
         segments = [s for s in view.strip("/").split("/") if s]
         if not segments:
             segments = [home]
@@ -103,7 +106,7 @@ def setup(*,
             )
 
         try:
-            gw.info(f"Dispatch to view {view_func.__name__} (args={args}, kwargs={kwargs})")
+            gw.debug(f"Dispatch to {view_func.__name__} (args={args}, kwargs={kwargs})")
             content = view_func(*args, **kwargs)
             if content and not isinstance(content, str):
                 content = gw.to_html(content)
@@ -116,7 +119,8 @@ def setup(*,
         full_url = request.fullpath
         if request.query_string:
             full_url += "?" + request.query_string
-        navbar = render_navbar(visited, path, current_url=full_url)
+        if navbar is True:
+            navbar = render_navbar(visited, path, current_url=full_url)
         if not cookies_enabled():
             consent_box = f"""
                 <div class="consent-box">
@@ -214,7 +218,7 @@ def build_url(prefix, *args, **kwargs):
 
 def render_template(*, title="GWAY", navbar="", content="", static="static", css_files=None):
     global _version
-    version = _version
+    version = _version = _version or gw.version()
     css_files = css_files or ["default.css"]
     css_links = "\n".join(
         f'<link rel="stylesheet" href="/{static}/styles/{css}">' for css in css_files
@@ -249,7 +253,7 @@ def render_template(*, title="GWAY", navbar="", content="", static="static", css
 
 def render_navbar(visited, path, current_url=None):
     if not cookies_enabled() or len(visited) < 1:
-        visited = ["Readme=readme"]
+        visited = ["Readme=gway/readme"]
 
     links = ""
     seen = set()

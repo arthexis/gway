@@ -148,7 +148,7 @@ def query(*queries, limit=None, **kwargs):
         return rows
 
 
-...
+# TODO: Create a 'store' function
 
 
 def is_sql_snippet(text):

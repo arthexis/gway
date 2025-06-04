@@ -367,7 +367,7 @@ def run(*script: str, **context):
     from gway import gw
     # TODO: If args provided for script don't seem to be recipe file 
     # (we could catch the exception), see if we can write them joined by line breaks into 
-    # file at path gw.resource('work', 'run', gw.uuid, 'script.cdv')
+    # file at path gw.resource('work', 'runs', f'{gw.uuid}.gwr')
     return gw.run_recipe(*script, **context)
 
 
