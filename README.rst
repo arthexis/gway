@@ -439,10 +439,6 @@ INCLUDED PROJECTS
 
   > ``gway release extract-todos``
 
-- ``walk_projects`` — Yield all project modules as dotted paths.
-
-  > ``gway release walk-projects``
-
 
 .. rubric:: sql
 
