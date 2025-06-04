@@ -447,6 +447,10 @@ INCLUDED PROJECTS
 
   > ``gway release build-help-db``
 
+- ``loc`` — Counts Python lines of code in the given directories, ignoring hidden files and directories.
+
+  > ``gway release loc``
+
 
 .. rubric:: sql
 
@@ -511,6 +515,10 @@ INCLUDED PROJECTS
 - ``variadic_positional`` — (no description)
 
   > ``gway tests variadic-positional``
+
+- ``view_index`` — (no description)
+
+  > ``gway tests view-index``
 
 
 
