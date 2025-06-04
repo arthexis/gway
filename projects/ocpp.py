@@ -65,7 +65,6 @@ def setup_sink_app(*,
     return oapp
 
 
-
 def setup_csms_app(*, host='[OCPP_CSMS_HOST|0.0.0.0]', port='[OCPP_CSMS_PORT|9000]', app=None, allowlist=None):
     """
     OCPP 1.6 CSMS implementation with RFID authorization.

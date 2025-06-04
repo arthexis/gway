@@ -204,16 +204,6 @@ def build(*,
         gw.info(f"Committed and pushed: {commit_msg}")
 
 
-def walk_projects(base="projects"):
-    """Yield all project modules as dotted paths."""
-    for dirpath, _, filenames in os.walk(base):
-        for fname in filenames:
-            if not fname.endswith(".py") or fname.startswith("_"):
-                continue
-            rel_path = os.path.relpath(os.path.join(dirpath, fname), base)
-            dotted = rel_path.replace(os.sep, ".").removesuffix(".py")
-            yield dotted
-
 def build_help_db():
     with gw.sql.connect("data", "help.sqlite") as cursor:
         cursor.execute("DROP TABLE IF EXISTS help")
@@ -222,7 +212,7 @@ def build_help_db():
                 project, function, signature, docstring, source, todos, tokenize='porter')
         """)
 
-        for dotted_path in walk_projects("projects"):
+        for dotted_path in gw.walk_projects("projects"):
             try:
                 project_obj = gw.load_project(dotted_path)
                 for fname in dir(project_obj):
@@ -231,7 +221,6 @@ def build_help_db():
                     func = getattr(project_obj, fname, None)
                     if not callable(func):
                         continue
-
                     raw_func = getattr(func, "__wrapped__", func)
                     doc = inspect.getdoc(raw_func) or ""
                     sig = str(inspect.signature(raw_func))
@@ -240,11 +229,24 @@ def build_help_db():
                     except OSError:
                         source = ""
                     todos = extract_todos(source)
-
-                    cursor.execute("INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)", 
+                    cursor.execute("INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)",
                                    (dotted_path, fname, sig, doc, source, "\n".join(todos)))
             except Exception as e:
                 gw.warning(f"Skipping project {dotted_path}: {e}")
+
+        # Add builtin functions under synthetic project "builtin"
+        for name, func in gw._builtins.items():
+            raw_func = getattr(func, "__wrapped__", func)
+            doc = inspect.getdoc(raw_func) or ""
+            sig = str(inspect.signature(raw_func))
+            try:
+                source = "".join(inspect.getsourcelines(raw_func)[0])
+            except OSError:
+                source = ""
+            todos = extract_todos(source)
+
+            cursor.execute("INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)",
+                           ("builtin", name, sig, doc, source, "\n".join(todos)))
 
         cursor.execute("COMMIT")
 

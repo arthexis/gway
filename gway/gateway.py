@@ -212,7 +212,7 @@ class Gateway(Resolver):
                     else:
                         log_value = short_result
 
-                    self.info(f"Stored result={log_value} into sk={sk} lk={lk}")
+                    self.debug(f"Stored {log_value} into sk={sk}")
                     self.results.insert(sk, result)
                     if lk != sk:
                         self.results.insert(lk, result)

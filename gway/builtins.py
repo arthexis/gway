@@ -167,9 +167,11 @@ def _strip_types(sig: str) -> str:
         return sig  # fallback if parsing fails
     
 
-def help(*args, full_code=False):
+def help(*args, full=False):
     from gway import gw
     import os, textwrap, ast, sqlite3
+
+    gw.info(f"Help on {' '.join(args)} requested")
 
     def extract_gw_refs(source):
         refs = set()
@@ -199,43 +201,39 @@ def help(*args, full_code=False):
         gw.release.build_help_db()
 
     joined_args = " ".join(args).strip().replace("-", "_")
+    norm_args = [a.replace("-", "_").replace("/", ".") for a in args]
 
     with gw.sql.connect(db_path, row_factory=True) as cur:
-        if len(args) == 0:
+        if not args:
             cur.execute("SELECT DISTINCT project FROM help")
             return {"Available Projects": sorted([row["project"] for row in cur.fetchall()])}
 
-        norm_args = [a.replace("-", "_").replace("/", ".") for a in args]
-
         rows = []
 
-        if len(norm_args) == 1:
-            query = norm_args[0]
-            parts = query.split(".")
-            exact_rows = []
-
-            if len(parts) == 2:
-                project, function = parts
+        # Case 1: help("web.site.view_help")
+        if len(norm_args) == 1 and "." in norm_args[0]:
+            parts = norm_args[0].split(".")
+            if len(parts) >= 2:
+                project = ".".join(parts[:-1])
+                function = parts[-1]
                 cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", (project, function))
-                exact_rows = cur.fetchall()
+                rows = cur.fetchall()
+                if not rows:
+                    try:
+                        cur.execute("SELECT * FROM help WHERE help MATCH ?", (f'"{norm_args[0]}"',))
+                        rows = cur.fetchall()
+                    except sqlite3.OperationalError as e:
+                        gw.warning(f"FTS query failed for {norm_args[0]}: {e}")
+            else:
+                return {"error": f"Could not parse dotted input: {norm_args[0]}"}
 
-            try:
-                cur.execute("SELECT * FROM help WHERE help MATCH ?", (f'"{query}"',))
-                fuzzy_rows = [r for r in cur.fetchall() if r not in exact_rows]
-            except sqlite3.OperationalError as e:
-                gw.warning(f"FTS query failed for {query}: {e}")
-                fuzzy_rows = []
-
-            rows = exact_rows + fuzzy_rows
-
+        # Case 2: help("web", "view_help") or help("builtin", "hello_world")
         elif len(norm_args) >= 2:
             *proj_parts, maybe_func = norm_args
             project = ".".join(proj_parts)
             function = maybe_func
-
             cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", (project, function))
             rows = cur.fetchall()
-
             if not rows:
                 fuzzy_query = ".".join(norm_args)
                 try:
@@ -243,10 +241,12 @@ def help(*args, full_code=False):
                     rows = cur.fetchall()
                 except sqlite3.OperationalError as e:
                     gw.warning(f"FTS fallback failed for {fuzzy_query}: {e}")
-                    rows = []
 
-        else:
-            return {"error": f"Invalid input: {joined_args}"}
+        # Final fallback: maybe it's a builtin like help("hello_world")
+        if not rows and len(norm_args) == 1:
+            name = norm_args[0]
+            cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", ("builtin", name))
+            rows = cur.fetchall()
 
         if not rows:
             fuzzy_query = ".".join(norm_args)
@@ -261,15 +261,15 @@ def help(*args, full_code=False):
         for row in rows:
             project = row["project"]
             function = row["function"]
-            prefix = f"gway {project} {function.replace('_', '-')}"
+            prefix = f"gway {project} {function.replace('_', '-')}" if project != "builtin" else f"gway {function.replace('_', '-')}"
             entry = {
                 "Project": project,
                 "Function": function,
-                "Sample CLI": prefix
+                "Sample CLI": prefix,
+                "References": sorted(extract_gw_refs(row["source"])),
             }
-            if full_code:
+            if full:
                 entry["Full Code"] = row["source"]
-                entry["References"] = sorted(extract_gw_refs(row["source"]))
             else:
                 entry["Signature"] = textwrap.fill(row["signature"], 100).strip()
                 entry["Docstring"] = row["docstring"].strip() if row["docstring"] else None
@@ -454,3 +454,15 @@ def unwrap(obj: Any, expected_type: Optional[Type] = None) -> Any:
             return obj
 
     return obj
+
+
+def walk_projects(base="projects"):
+    """Yield all project modules as dotted paths."""
+    for dirpath, _, filenames in os.walk(base):
+        for fname in filenames:
+            if not fname.endswith(".py") or fname.startswith("_"):
+                continue
+            rel_path = os.path.relpath(os.path.join(dirpath, fname), base)
+            dotted = rel_path.replace(os.sep, ".").removesuffix(".py")
+            yield dotted
+

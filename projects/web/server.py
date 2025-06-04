@@ -1,6 +1,10 @@
 from numpy import iterable
 from gway import gw
 
+# TODO: Add a --reload option for web servers that support development mode reload
+# if True, enable default reload settings. Reload can also take a folder to watch over
+# of a list of comma-separated folders if the backend supports it.
+# You can find the path to each with gw.resource(folder)
 
 def start(*,
     host="[WEBSITE_HOST|127.0.0.1]",

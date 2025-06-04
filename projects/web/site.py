@@ -51,7 +51,7 @@ def view_help(topic="", *args, **kwargs):
 
         if hasattr(obj, maybe_function):
             function = maybe_function
-            help_info = gw.help(project_str, function, full_code=True)
+            help_info = gw.help(project_str, function, full=True)
             full_name = f"{project_str}.{function}"
             title = f"Help for <code>{full_name}</code>"
         else:
