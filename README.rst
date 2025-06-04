@@ -148,7 +148,9 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+-------------------------------------------------------------+
 | logs/          | Runtime logs and outputs                                    |
 +----------------+-------------------------------------------------------------+
-| tests/         | Unit tests for your own projects                            |
+| gway/          | Source code for the core GWAY components.                   |
++----------------+-------------------------------------------------------------+
+| tests/         | Unit tests for code in gway/ and projects/                  |
 +----------------+-------------------------------------------------------------+
 | data/          | Static assets, resources, and other data files              |
 +----------------+-------------------------------------------------------------+

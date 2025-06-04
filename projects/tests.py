@@ -24,4 +24,4 @@ def variadic_both(*args, **kwargs):
 
 
 def view_index():
-    return "Hello World!"
+    return {"greeting": "Hello World!"}

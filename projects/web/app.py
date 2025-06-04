@@ -9,6 +9,10 @@ from gway import gw
 # TODO: Whenever a broken view is visited, before redirecting to the home view,
 # If the current broken view is on the cookies for the navbar, purge it.
 
+# TODO: A special prefix "*" or ... (elipsis) can be used to denote "all functions without prefix"
+# When passed to param prefix. This would allow invoking _all_ functions in a project without
+# checking the prefix at all (watch out for the underscore in the middle of {prefix}_{view_name})
+
 def setup(*,
     app=None,
     project="web.site",
@@ -240,6 +244,8 @@ def setup(*,
         try:
             gw.info(f"Dispatch to view {view_func.__name__} (args={args}, kwargs={kwargs})")
             content = view_func(*args, **kwargs)
+            if content and not isinstance(content, str):
+                content = gw.to_html(content)
             visited = update_visited(view_name)
         except HTTPResponse as resp:
             return resp

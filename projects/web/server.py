@@ -8,7 +8,7 @@ from gway import gw
 # thread but also logged and enumerated so we can audit how many apps we received.
 # We don't care about apps between calls, just the apps provided in the app kwarg.
 
-def start(*,
+def start_app(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
     debug=False,

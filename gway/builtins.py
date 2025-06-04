@@ -2,11 +2,13 @@
 
 import os
 import ast
+import html
 import pathlib
 import inspect
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from types import FunctionType
-from typing import Any, Callable, List, Optional, Type
+from typing import Any, Optional, Type
+
 
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
@@ -417,3 +419,79 @@ def unwrap(obj: Any, expected: Optional[Type] = None) -> Any:
 
     return obj
 
+
+def to_html(obj, **kwargs):
+    """
+    Convert an arbitrary Python object to structured HTML.
+    
+    Args:
+        obj: The object to convert.
+        **kwargs: Optional keyword arguments for customization:
+            - class_prefix: Prefix for HTML class names.
+            - max_depth: Maximum recursion depth.
+            - skip_none: Skip None values.
+            - pretty: Insert newlines/indentation.
+    
+    Returns:
+        A string of HTML representing the object.
+    """
+    class_prefix = kwargs.get("class_prefix", "obj")
+    max_depth = kwargs.get("max_depth", 10)
+    skip_none = kwargs.get("skip_none", False)
+    pretty = kwargs.get("pretty", False)
+
+    def indent(level):
+        return "  " * level if pretty else ""
+
+    def _to_html(o, depth=0):
+        if depth > max_depth:
+            return f'{indent(depth)}<div class="{class_prefix}-max-depth">…</div>'
+
+        if o is None:
+            return "" if skip_none else f'{indent(depth)}<div class="{class_prefix}-none">None</div>'
+
+        elif isinstance(o, bool):
+            return f'{indent(depth)}<div class="{class_prefix}-bool">{o}</div>'
+
+        elif isinstance(o, (int, float)):
+            return f'{indent(depth)}<div class="{class_prefix}-number">{o}</div>'
+
+        elif isinstance(o, str):
+            safe = html.escape(o)
+            return f'{indent(depth)}<div class="{class_prefix}-string">"{safe}"</div>'
+
+        elif isinstance(o, Mapping):
+            html_parts = [f'{indent(depth)}<table class="{class_prefix}-dict">']
+            for k, v in o.items():
+                if v is None and skip_none:
+                    continue
+                key_html = html.escape(str(k))
+                value_html = _to_html(v, depth + 1)
+                html_parts.append(f'{indent(depth+1)}<tr><th>{key_html}</th><td>{value_html}</td></tr>')
+            html_parts.append(f'{indent(depth)}</table>')
+            return "\n".join(html_parts)
+
+        elif isinstance(o, Sequence) and not isinstance(o, (str, bytes)):
+            html_parts = [f'{indent(depth)}<ul class="{class_prefix}-list">']
+            for item in o:
+                item_html = _to_html(item, depth + 1)
+                html_parts.append(f'{indent(depth+1)}<li>{item_html}</li>')
+            html_parts.append(f'{indent(depth)}</ul>')
+            return "\n".join(html_parts)
+
+        elif hasattr(o, "__dict__"):
+            html_parts = [f'{indent(depth)}<div class="{class_prefix}-object">']
+            html_parts.append(f'{indent(depth+1)}<div class="{class_prefix}-class-name">{o.__class__.__name__}</div>')
+            for k, v in vars(o).items():
+                if v is None and skip_none:
+                    continue
+                value_html = _to_html(v, depth + 2)
+                html_parts.append(f'{indent(depth+1)}<div class="{class_prefix}-field"><strong>{html.escape(k)}:</strong> {value_html}</div>')
+            html_parts.append(f'{indent(depth)}</div>')
+            return "\n".join(html_parts)
+
+        else:
+            safe = html.escape(str(o))
+            return f'{indent(depth)}<div class="{class_prefix}-other">{safe}</div>'
+
+    return _to_html(obj)

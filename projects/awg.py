@@ -18,8 +18,8 @@ class AWG(int):
 
 
 def find_cable(
-    meters: Union[int, str, None] = None,
     *,
+    meters: Union[int, str, None] = None,
     amps: Union[int, str] = "40",
     volts: Union[int, str] = "220",
     material: Literal["cu", "al", "?"] = "cu",

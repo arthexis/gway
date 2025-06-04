@@ -1,10 +1,11 @@
 # projects/web/proxy.py
 
+from fastapi import FastAPI
 from gway import gw
 import requests
 
 
-def setup_app(*apps, endpoint: str, app=None, websockets: bool = False, path: str = "/"):
+def setup_app(*, endpoint: str, app=None, websockets: bool = False, path: str = "/"):
     """
     Create an HTTP (and optional WebSocket) proxy to the given endpoint.
     Accepts positional apps, the `app=` kwarg, or both. Flattens any iterables
@@ -22,21 +23,22 @@ def setup_app(*apps, endpoint: str, app=None, websockets: bool = False, path: st
         return hasattr(candidate, "websocket")
 
     # collect apps by type
-    bottle_apps = gw.filter_apps(*apps, kwarg=app, selector=is_bottle_app)
-    fastapi_apps = gw.filter_apps(*apps, kwarg=app, selector=is_fastapi_app)
+    oapp = app
+    bottle_app = gw.unwrap(app, Bottle)
+    fastapi_app = gw.unwrap(app, FastAPI)
 
     prepared = []
 
     # if no matching apps, default to a new Bottle
-    if not bottle_apps and not fastapi_apps:
+    if not bottle_app and not fastapi_app:
         default = Bottle()
         prepared.append(_wire_proxy(default, endpoint, websockets, path))
-    else:
-        for b in bottle_apps:
-            prepared.append(_wire_proxy(b, endpoint, websockets, path))
-        for f in fastapi_apps:
-            prepared.append(_wire_proxy(f, endpoint, websockets, path))
+    elif bottle_app:
+        prepared.append(_wire_proxy(bottle_app, endpoint, websockets, path))
+    elif fastapi_app:
+        prepared.append(_wire_proxy(fastapi_app, endpoint, websockets, path))
 
+    # TODO: Test if this is properly compatible with web.server.start
     return prepared[0] if len(prepared) == 1 else tuple(prepared)
 
 

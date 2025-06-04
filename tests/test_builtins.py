@@ -29,6 +29,19 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('help', builtin_ls)
         self.assertIn('test', builtin_ls)
         self.assertIn('abort', builtin_ls)
+        self.assertIn('to_html', builtin_ls)
+        self.assertIn('unwrap', builtin_ls)
+        self.assertIn('run_recipe', builtin_ls)
+
+    def test_list_projects(self):
+        project_ls = gw.projects()
+        self.assertIn('web', project_ls)
+        self.assertIn('tests', project_ls)
+        self.assertIn('t', project_ls)
+        self.assertIn('sql', project_ls)
+        self.assertIn('mail', project_ls)
+        self.assertIn('readme', project_ls)
+        self.assertIn('awg', project_ls)
 
     def test_load_qr_code_project(self):
         project = gw.load_project("qr")
