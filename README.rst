@@ -253,6 +253,29 @@ INCLUDED PROJECTS
   > ``gway clip copy``
 
 
+.. rubric:: clock
+
+- ``minus`` — Return current datetime plus given seconds.
+
+  > ``gway clock minus``
+
+- ``now`` — Return the current datetime object.
+
+  > ``gway clock now``
+
+- ``plus`` — Return current datetime plus given seconds.
+
+  > ``gway clock plus``
+
+- ``to_download`` — Prompt: Create a python function that takes a file size such as 100 MB or 1.76 GB 
+
+  > ``gway clock to-download``
+
+- ``ts`` — Return the current timestamp in ISO-8601 format.
+
+  > ``gway clock ts``
+
+
 .. rubric:: deck
 
 - ``count`` — (no description)
@@ -475,29 +498,6 @@ INCLUDED PROJECTS
 - ``query`` — Execute a SQL query or script on the work/local.sqlite database by default.
 
   > ``gway sql query``
-
-
-.. rubric:: t
-
-- ``minus`` — Return current datetime plus given seconds.
-
-  > ``gway t minus``
-
-- ``now`` — Return the current datetime object.
-
-  > ``gway t now``
-
-- ``plus`` — Return current datetime plus given seconds.
-
-  > ``gway t plus``
-
-- ``to_download`` — Prompt: Create a python function that takes a file size such as 100 MB or 1.76 GB 
-
-  > ``gway t to-download``
-
-- ``ts`` — Return the current timestamp in ISO-8601 format.
-
-  > ``gway t ts``
 
 
 .. rubric:: tests
