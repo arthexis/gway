@@ -1,10 +1,8 @@
+# projects/web/server.py
+
 from numpy import iterable
 from gway import gw
 
-# TODO: Add a --reload option for web servers that support development mode reload
-# if True, enable default reload settings. Reload can also take a folder to watch over
-# of a list of comma-separated folders if the backend supports it.
-# You can find the path to each with gw.resource(folder)
 
 def start(*,
     host="[WEBSITE_HOST|127.0.0.1]",
@@ -15,6 +13,7 @@ def start(*,
     daemon=False,
     threaded=True,
     is_worker=False,
+    reload=False,
 ):
     """Start an HTTP (WSGI) or ASGI server to host the given application.
 
@@ -22,12 +21,17 @@ def start(*,
     - If `app` is a WSGI app (Bottle, Paste URLMap, or generic WSGI callables), uses Paste+ws4py or Bottle.
     - If `app` is a zero-arg factory, it will be invoked (supporting sync or async factories).
     - If `app` is a list of apps, each will be run in its own thread (each on an incremented port).
+    - If `reload` is True (or a comma-separated string), enables hot reload for ASGI apps via Uvicorn.
     """
     import inspect
     import asyncio
 
-    # TODO: Make sure that all apps run when multiple apps are provided. 
-    # Print the total number of started apps and their types.
+    reload_dirs = None
+    if isinstance(reload, str):
+        reload_dirs = [d.strip() for d in reload.split(",") if d.strip()]
+        reload = True
+    elif isinstance(reload, bool):
+        reload_dirs = None
 
     def run_server():
         nonlocal app
@@ -57,6 +61,7 @@ def start(*,
                         daemon=daemon,
                         threaded=threaded,
                         is_worker=True,
+                        reload=reload,
                     ),
                     daemon=daemon,
                 )
@@ -65,6 +70,7 @@ def start(*,
             if not daemon:
                 for t in threads:
                     t.join()
+            gw.success(f"✔ Launched {len(all_apps)} apps across ports {port}–{int(port) + len(all_apps) - 1}")
             return
 
         # 1. If no apps passed, fallback to default app
@@ -113,7 +119,8 @@ def start(*,
                 port=int(port),
                 log_level="debug" if debug else "info",
                 workers=1,
-                reload=debug,
+                reload=reload,
+                reload_dirs=reload_dirs,
             )
             return
 
@@ -141,6 +148,8 @@ def start(*,
                 threaded=threaded,
             )
         else:
+            if reload:
+                gw.warning("--reload is only supported for ASGI apps via Uvicorn.")
             raise TypeError(f"Unsupported WSGI app type: {type(app)}")
 
     if daemon:

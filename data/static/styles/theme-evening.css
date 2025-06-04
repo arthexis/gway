@@ -1,0 +1,168 @@
+/* theme-evening.css */
+
+body {
+    font-family: "Georgia", serif;
+    background-color: #f5f1e6;
+    color: #3e2f1c;
+    max-width: 1200px;
+    margin: 60px auto;
+    line-height: 1.8;
+    font-size: 1.2em;
+}
+
+aside {
+    float: left;
+    width: 250px;
+    margin-right: 3em;
+    background-color: #e7dbc4;
+    padding: 1em;
+    border-radius: 8px;
+}
+
+main {
+    overflow: hidden;
+}
+
+pre {
+    background-color: #f0e7d4;
+    color: #2c1e12;
+    padding: 1em;
+    overflow-x: auto;
+    border-radius: 6px;
+    font-family: "Courier New", monospace;
+}
+
+li a {
+    text-decoration: none;
+    color: #5b3e2b;
+}
+
+li a:hover {
+    color: #8c6239;
+}
+
+.header-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2em;
+}
+
+h1, h2, h3, h4, h5 {
+    color: #3a2615;
+    margin: 0;
+    padding: 0;
+}
+
+h1 {
+    font-size: 2.2em;
+}
+
+.search-box input[type="text"] {
+    padding: 0.5em;
+    font-size: 1em;
+    width: 220px;
+    border: 1px solid #c0a97f;
+    border-radius: 4px;
+    background-color: #fcf9f2;
+    color: #2d1f15;
+}
+
+footer {
+    font-size: 0.9em;
+    margin-top: 3em;
+    padding-top: 2em;
+    color: #6e5842;
+    border-top: 1px solid #d0c2a2;
+}
+
+aside ul li a {
+    text-transform: uppercase;
+    font-weight: bold;
+    display: block;
+    margin: 0.4em 0;
+}
+
+input.main {
+    width: 70%;
+    padding: 0.6em;
+    margin-right: 0.5em;
+    border-radius: 4px;
+    border: 1px solid #c2b49c;
+    background-color: #fbf6ea;
+    color: #3e2f1c;
+}
+
+input.help {
+    width: 100%;
+    padding: 0.6em;
+    border-radius: 8px;
+    border: 1px solid #c2b49c;
+    background-color: #fdf8ed;
+    color: #3e2f1c;
+}
+
+input.submit {
+    padding: 0.6em 1em;
+    border-radius: 4px;
+    border: none;
+    background-color: #b58d5a;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+input.submit:hover {
+    background-color: #a0784c;
+}
+
+img.qr {
+    max-width: 300px;
+}
+
+img.navbar-qr {
+    max-width: 150px;
+}
+
+p.error {
+    font-weight: bold;
+    color: #8a1c1c;
+}
+
+form.navbar {
+    margin-bottom: 1em;
+}
+
+div.qr {
+    margin-top: 1em;
+    text-align: center;
+}
+
+p.qr {
+    margin-bottom: 0.5em;
+}
+
+@media (max-width: 768px) {
+    body {
+        display: flex;
+        flex-direction: column;
+        margin: 20px;
+    }
+
+    aside {
+        order: 2;
+        width: 100%;
+        margin-right: 0;
+        margin-top: 2em;
+    }
+
+    main {
+        order: 1;
+    }
+
+    .navbar, .navbar-qr {
+        display: block;
+        margin: 0 auto;
+        text-align: center;
+    }
+}

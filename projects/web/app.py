@@ -6,6 +6,8 @@ from urllib.parse import urlencode
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
+# TODO: Whenever a broken view is visited, before redirecting to the home view,
+# If the current broken view is on the cookies for the navbar, purge it.
 
 def setup(*,
     app=None,
