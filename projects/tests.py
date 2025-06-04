@@ -22,3 +22,6 @@ def variadic_keyword(**kwargs):
 def variadic_both(*args, **kwargs):
     return {"args": args, "kwargs": kwargs}
 
+
+def view_index():
+    return "Hello World!"

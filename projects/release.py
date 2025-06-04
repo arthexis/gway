@@ -280,3 +280,37 @@ def _extract_todos(source):
     if current:
         todos.append("\n".join(current))
     return todos
+
+
+def loc(*paths):
+    """
+    Counts Python lines of code in the given directories, ignoring hidden files and directories.
+    Defaults to everything in the current GWAY release.
+    """
+    file_counts = {}
+    total_lines = 0
+
+    paths = paths if paths else ("projects", "gway", "tests")
+    for base_path in paths:
+        base_dir = gw.resource(base_path)
+        for root, dirs, files in os.walk(base_dir):
+            # Modify dirs in-place to skip hidden directories
+            dirs[:] = [d for d in dirs if not d.startswith('.') and not d.startswith('_')]
+            for file in files:
+                if file.startswith('.') or file.startswith('_'):
+                    continue
+                if file.endswith('.py'):
+                    file_path = os.path.join(root, file)
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            lines = f.readlines()
+                            line_count = len(lines)
+                            file_counts[file_path] = line_count
+                            total_lines += line_count
+                    except (UnicodeDecodeError, FileNotFoundError):
+                        # Skip files that can't be read
+                        continue
+
+    file_counts['total'] = total_lines
+    return file_counts
+

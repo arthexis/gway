@@ -4,6 +4,10 @@ from numpy import iterable
 from gway import gw
 
 
+# TODO: Keep track of each app started at once. All apps should be started in their own 
+# thread but also logged and enumerated so we can audit how many apps we received.
+# We don't care about apps between calls, just the apps provided in the app kwarg.
+
 def start(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
@@ -13,7 +17,6 @@ def start(*,
     daemon=False,
     threaded=True,
     is_worker=False,
-    reload=False,
 ):
     """Start an HTTP (WSGI) or ASGI server to host the given application.
 
@@ -21,17 +24,12 @@ def start(*,
     - If `app` is a WSGI app (Bottle, Paste URLMap, or generic WSGI callables), uses Paste+ws4py or Bottle.
     - If `app` is a zero-arg factory, it will be invoked (supporting sync or async factories).
     - If `app` is a list of apps, each will be run in its own thread (each on an incremented port).
-    - If `reload` is True (or a comma-separated string), enables hot reload for ASGI apps via Uvicorn.
     """
     import inspect
     import asyncio
 
-    reload_dirs = None
-    if isinstance(reload, str):
-        reload_dirs = [d.strip() for d in reload.split(",") if d.strip()]
-        reload = True
-    elif isinstance(reload, bool):
-        reload_dirs = None
+    # TODO: Make sure that all apps run when multiple apps are provided. 
+    # Print the total number of started apps and their types.
 
     def run_server():
         nonlocal app
@@ -40,7 +38,9 @@ def start(*,
         # B. Dispatch multiple apps in threads if we aren't already in a worker
         if not is_worker and len(all_apps) > 1:
             from threading import Thread
+            from collections import Counter
             threads = []
+            app_types = []
             gw.info(f"Starting {len(all_apps)} apps in parallel threads.")
             for i, sub_app in enumerate(all_apps):
                 try:
@@ -48,29 +48,34 @@ def start(*,
                     app_type = "FastAPI" if isinstance(sub_app, FastAPI) else type(sub_app).__name__
                 except ImportError:
                     app_type = type(sub_app).__name__
-                gw.info(f"  App {i+1}: type={app_type}, port={int(port) + i}")
+                port_i = int(port) + i
+                gw.info(f"  App {i+1}: type={app_type}, port={port_i}")
+                app_types.append(app_type)
 
                 t = Thread(
                     target=gw.web.server.start,
                     kwargs=dict(
                         host=host,
-                        port=int(port) + i,
+                        port=port_i,
                         debug=debug,
                         proxy=proxy,
                         app=sub_app,
                         daemon=daemon,
                         threaded=threaded,
                         is_worker=True,
-                        reload=reload,
                     ),
                     daemon=daemon,
                 )
                 t.start()
                 threads.append(t)
+
+            type_summary = Counter(app_types)
+            summary_str = ", ".join(f"{count}×{t}" for t, count in type_summary.items())
+            gw.info(f"All {len(all_apps)} apps started. Types: {summary_str}")
+
             if not daemon:
                 for t in threads:
                     t.join()
-            gw.success(f"✔ Launched {len(all_apps)} apps across ports {port}–{int(port) + len(all_apps) - 1}")
             return
 
         # 1. If no apps passed, fallback to default app
@@ -119,8 +124,7 @@ def start(*,
                 port=int(port),
                 log_level="debug" if debug else "info",
                 workers=1,
-                reload=reload,
-                reload_dirs=reload_dirs,
+                reload=debug,
             )
             return
 
@@ -148,9 +152,9 @@ def start(*,
                 threaded=threaded,
             )
         else:
-            if reload:
-                gw.warning("--reload is only supported for ASGI apps via Uvicorn.")
             raise TypeError(f"Unsupported WSGI app type: {type(app)}")
+
+
 
     if daemon:
         return asyncio.to_thread(run_server)
@@ -158,4 +162,3 @@ def start(*,
         run_server()
 
 
-start_app = start
