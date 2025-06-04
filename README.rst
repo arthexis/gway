@@ -11,7 +11,7 @@ Welcome [Viajante], this is the GWAY project README.rst file and website.
 
 Fetch the source, changelogs and issues (or submit your own) here:
 
-https://github.com/arthexis/gway/readme
+https://github.com/arthexis/gway
 
 
 Features

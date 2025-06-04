@@ -1,7 +1,8 @@
-# projects/t.py
-# t is for time (time was taken)
-# Legacy functions have been placed before imports
+# projects/clock.py
 
+import re
+import time
+import requests
 import datetime
 
 
@@ -27,9 +28,7 @@ def ts(*, utc=False) -> str:
     return now(utc=utc).isoformat().replace("+00:00", "Z" if utc else "")
 
 
-import re
-import time
-import requests
+...
 
 
 def to_download(filesize):

@@ -1,10 +1,12 @@
 # gway/builtins.py
 
 import os
+import re
 import ast
 import html
 import pathlib
 import inspect
+import collections.abc
 from collections.abc import Iterable, Mapping, Sequence
 from types import FunctionType
 from typing import Any, Optional, Type
@@ -495,3 +497,46 @@ def to_html(obj, **kwargs):
             return f'{indent(depth)}<div class="{class_prefix}-other">{safe}</div>'
 
     return _to_html(obj)
+
+
+def to_list(obj, flat=False):
+    """
+    Convert, and optionally flatten, any object into a list with a set of intuitive rules.
+    - If `obj` is a string with spaces, commas, colons, or semicolons, split it.
+    - If `obj` is a dict or a view (e.g., bottle view dict), return ["key=value", ...].
+    - If `obj` is a list or tuple, return it as a list.
+    - If `obj` is an iterable, convert to list.
+    - Otherwise, return [obj].
+    """
+    def _flatten(x):
+        for item in x:
+            if isinstance(item, str) or isinstance(item, bytes):
+                yield item
+            elif isinstance(item, collections.abc.Mapping):
+                for k, v in item.items():
+                    yield f"{k}={v}"
+            elif isinstance(item, collections.abc.Iterable):
+                yield from _flatten(item)
+            else:
+                yield item
+
+    # Handle string splitting
+    if isinstance(obj, str):
+        if re.search(r"[ ,;:]", obj):
+            result = re.split(r"[ ,;:]+", obj.strip())
+            return list(_flatten(result)) if flat else result
+        return [obj]
+
+    # Handle mappings (e.g. dicts, views)
+    if isinstance(obj, collections.abc.Mapping):
+        items = [f"{k}={v}" for k, v in obj.items()]
+        return list(_flatten(items)) if flat else items
+
+    # Handle other iterables
+    if isinstance(obj, collections.abc.Iterable):
+        result = list(obj)
+        return list(_flatten(result)) if flat else result
+
+    # Fallback
+    return [obj]
+

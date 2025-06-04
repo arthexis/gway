@@ -5,8 +5,7 @@ from gway import gw
 
 
 # TODO: Keep track of each app started at once. All apps should be started in their own 
-# thread but also logged and enumerated so we can audit how many apps we received.
-# We don't care about apps between calls, just the apps provided in the app kwarg.
+# thread but also logged and enumerated so we can audit how many apps we received and started.
 
 def start_app(*,
     host="[WEBSITE_HOST|127.0.0.1]",
@@ -27,9 +26,6 @@ def start_app(*,
     """
     import inspect
     import asyncio
-
-    # TODO: Make sure that all apps run when multiple apps are provided. 
-    # Print the total number of started apps and their types.
 
     def run_server():
         nonlocal app

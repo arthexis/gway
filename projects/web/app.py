@@ -1,17 +1,15 @@
 # projects/web/app.py
 
+# Web components located here are minimal to build any website, if you remove anything
+# you start to get compatibility issues. So, I decided to put them all in one file.
+
 import os
 from functools import wraps
 from urllib.parse import urlencode
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
-# TODO: Whenever a broken view is visited, before redirecting to the home view,
-# If the current broken view is on the cookies for the navbar, purge it.
-
-# TODO: A special prefix "*" or ... (elipsis) can be used to denote "all functions without prefix"
-# When passed to param prefix. This would allow invoking _all_ functions in a project without
-# checking the prefix at all (watch out for the underscore in the middle of {prefix}_{view_name})
+_version = None
 
 def setup(*,
     app=None,
@@ -23,27 +21,18 @@ def setup(*,
     prefix: str = "view",
 ):    
     """
-    Configure one or more Bottle apps to work with GWAY.
-    Accepts either `app=` keyword, `*apps` positional, or both.
-    If multiple Bottle apps are passed, a tuple is returned.
-    This version allows `project` to be either a string or an iterable of project names.
+    Configure one or more Bottle-based apps. Use web server start-app to launch.
     """
+    global _version
     # Normalize `project` into a list of project names
-    if isinstance(project, str):
-        projects = [project]
-    else:
-        try:
-            projects = list(project)
-        except TypeError:
-            # Fallback: treat as single string if not iterable
-            projects = [str(project)]
+    projects = gw.to_list(project, flat=True)
 
     # Determine default `path` if not provided
     if path is None:
         first_proj = projects[0]
         path = "gway" if first_proj == "web.site" else first_proj.replace(".", "/")
 
-    version = gw.version()
+    version = _version or gw.version() 
     _is_new_app = not (app := gw.unwrap(app, Bottle) if (oapp := app) else None)
     gw.info(f"Unwrapped {app=} from {oapp=} ({_is_new_app=})")
 
@@ -56,134 +45,6 @@ def setup(*,
         gw.web.work_url = lambda *args, **kwargs: build_url(work, *args, **kwargs)
         gw.web.app_url = lambda *args, **kwargs: build_url(path, *args, **kwargs)
         gw.web.redirect_error = redirect_error
-
-        def security_middleware(app):
-            def wrapped_app(environ, start_response):
-                def custom_start_response(status, headers, exc_info=None):
-                    headers = [(k, v) for k, v in headers if k.lower() != "server"]
-                    headers += [
-                        ("Cache-Control", "no-cache"),
-                        ("X-Content-Type-Options", "nosniff"),
-                        ("Server", f"GWAY v{version}"),
-                    ]
-                    return start_response(status, headers, exc_info)
-
-                original_set_cookie = response.set_cookie
-
-                @wraps(original_set_cookie)
-                def secure_set_cookie(name, value, **kwargs):
-                    is_secure = request.urlparts.scheme == "https"
-                    kwargs.setdefault("secure", is_secure)
-                    kwargs.setdefault("httponly", True)
-                    kwargs.setdefault("samesite", "Lax")
-                    kwargs.setdefault("path", "/")
-                    return original_set_cookie(name, value, **kwargs)
-
-                response.set_cookie = secure_set_cookie
-                return app(environ, custom_start_response)
-
-            return wrapped_app
-
-    def cookies_enabled():
-        return request.get_cookie("cookies_accepted") == "yes"
-
-    def update_visited(current, cookie_name="visited"):
-        if not cookies_enabled():
-            return []
-        raw = request.get_cookie(cookie_name, "")
-        visited = raw.split("|") if raw else []
-
-        title = current.replace("-", " ").replace("_", " ").title()
-        visited = [v for v in visited if not v.startswith(f"{title}=")]
-        route = request.fullpath.lstrip("/")
-        visited.append(f"{title}={route}")
-
-        cookie_value = "|".join(visited)
-        response.set_cookie(cookie_name, cookie_value)
-        return visited
-
-    def render_navbar(visited, current_url=None):
-        if not cookies_enabled() or len(visited) < 1:
-            visited = ["Readme=readme"]
-
-        links = ""
-        seen = set()
-        for entry in reversed(visited):
-            if "=" not in entry:
-                continue
-            title, route = entry.split("=", 1)
-            if title in seen:
-                continue
-            seen.add(title)
-            links += f'<li><a href="/{route}">{title}</a></li>'
-
-        search_box = f'''
-            <form action="/{path}/help" method="get" class="navbar">
-                <input type="text" name="topic" placeholder="Search GWAY" class="help" />
-            </form>
-        '''
-        qr_html = ""
-        if current_url:
-            qr_url = gw.qr.generate_url(current_url)
-            qr_html = f'''
-                <div class="qr">
-                    <p class="qr">QR Code for this page:</p>
-                    <img src="{qr_url}" alt="QR Code" class="navbar-qr" />
-                </div>
-            '''
-
-        styles_dir = gw.resource("data", "static", "styles")
-        available_styles = sorted(
-            f for f in os.listdir(styles_dir)
-            if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
-        )
-
-        current_style = request.get_cookie("css") or "default.css"
-        options = "\n".join(
-            f'<option value="{s}"{" selected" if s == current_style else ""}>{s[:-4]}</option>'
-            for s in available_styles
-        )
-        style_selector = f'''
-            <form method="get" class="style-form">
-                <label for="css-style">Style:</label>
-                <select id="css-style" name="css" class="style-selector" onchange="this.form.submit()">
-                    {options}
-                </select>
-                <noscript><button type="submit">Set</button></noscript>
-            </form>
-        '''
-
-        return f"<aside>{search_box}<ul>{links}</ul><br>{qr_html}<br>{style_selector}</aside>"
-
-    def render_template(*, title="GWAY", navbar="", content="", css_files=None):
-        nonlocal version
-        css_files = css_files or ["default.css"]
-        css_links = "\n".join(
-            f'<link rel="stylesheet" href="/{static}/styles/{css}">' for css in css_files
-        )
-        favicon = f'<link rel="icon" href="/{static}/favicon.ico" type="image/x-icon" />'
-        credits = f'''
-            <p>GWAY is powered by <a href="https://www.python.org/">Python 3.13</a>.
-            Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>.</p>
-        '''
-        return template("""<!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8" />
-                <title>{{!title}}</title>
-                {{!css_links}}
-                {{!favicon}}
-                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            </head>
-            <body>
-                {{!navbar}}
-                <main>{{!content}}</main>
-                <br/><footer><p>This website was built, tested and released with GWAY v{{!version}}.</p>
-                {{!credits}}
-                </footer>
-            </body>
-            </html>
-        """, **locals())
 
     @app.route("/accept-cookies", method="POST")
     def accept_cookies():
@@ -221,15 +82,13 @@ def setup(*,
                 elif request.forms:
                     kwargs.update(request.forms.decode())
             except Exception as e:
-                return redirect_error(e, note="Error loading JSON payload")
+                return redirect_error(e, note="Error loading JSON payload", broken_view_name=view_name)
 
-        # Attempt to dispatch the view across all specified projects
         sources = []
         for proj_name in projects:
             try:
                 sources.append(gw[proj_name])
-            except Exception as e:
-                # Skip projects that fail to load, but you could also log/warn here
+            except Exception:
                 continue
 
         for source in sources:
@@ -238,7 +97,9 @@ def setup(*,
                 break
         else:
             return redirect_error(
-                note=f"View '{prefix}_{view_name}' not found in any project: {projects}"
+                note=f"View '{prefix}_{view_name}' not found in any project: {projects}",
+                broken_view_name=view_name,
+                default=f"/{path}/{home}" if path and home else "/gway/readme"
             )
 
         try:
@@ -250,12 +111,12 @@ def setup(*,
         except HTTPResponse as resp:
             return resp
         except Exception as e:
-            return redirect_error(e, note="Error during view execution")
+            return redirect_error(e, note="Error during view execution", broken_view_name=view_name)
 
         full_url = request.fullpath
         if request.query_string:
             full_url += "?" + request.query_string
-        navbar = render_navbar(visited, current_url=full_url)
+        navbar = render_navbar(visited, path, current_url=full_url)
         if not cookies_enabled():
             consent_box = f"""
                 <div class="consent-box">
@@ -313,6 +174,36 @@ def setup(*,
 ...
 
 
+def security_middleware(app):
+    global _version
+    _version = _version or gw.version()
+    def wrapped_app(environ, start_response):
+        def custom_start_response(status, headers, exc_info=None):
+            headers = [(k, v) for k, v in headers if k.lower() != "server"]
+            headers += [
+                ("Cache-Control", "no-cache"),
+                ("X-Content-Type-Options", "nosniff"),
+                ("Server", f"GWAY v{_version}"),
+            ]
+            return start_response(status, headers, exc_info)
+
+        original_set_cookie = response.set_cookie
+
+        @wraps(original_set_cookie)
+        def secure_set_cookie(name, value, **kwargs):
+            is_secure = request.urlparts.scheme == "https"
+            kwargs.setdefault("secure", is_secure)
+            kwargs.setdefault("httponly", True)
+            kwargs.setdefault("samesite", "Lax")
+            kwargs.setdefault("path", "/")
+            return original_set_cookie(name, value, **kwargs)
+
+        response.set_cookie = secure_set_cookie
+        return app(environ, custom_start_response)
+
+    return wrapped_app
+
+
 def build_url(prefix, *args, **kwargs):
     path = "/".join(str(a).strip("/") for a in args if a)
     url = f"/{prefix}/{path}"
@@ -321,7 +212,100 @@ def build_url(prefix, *args, **kwargs):
     return url
 
 
-def redirect_error(error=None, note="", default="/gway/readme"):
+def render_template(*, title="GWAY", navbar="", content="", static="static", css_files=None):
+    global _version
+    version = _version
+    css_files = css_files or ["default.css"]
+    css_links = "\n".join(
+        f'<link rel="stylesheet" href="/{static}/styles/{css}">' for css in css_files
+    )
+    favicon = f'<link rel="icon" href="/{static}/favicon.ico" type="image/x-icon" />'
+    credits = f'''
+        <p>GWAY is powered by <a href="https://www.python.org/">Python 3.13</a>.
+        Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a> 
+        and <a href="https://github.com/arthexis/gway">Github</a>.</p>
+    '''
+    return template("""<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8" />
+            <title>{{!title}}</title>
+            {{!css_links}}
+            {{!favicon}}
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        </head>
+        <body>
+            {{!navbar}}
+            <main>{{!content}}</main>
+            <br/><footer><p>This website was built, tested and released with 
+                    <a href="/gway/readme">GWAY</a> 
+                    <a href="https://pypi.org/project/gway/{{!version}}/">v{{!version}}</a>.</p>
+            {{!credits}}
+            </footer>
+        </body>
+        </html>
+    """, **locals())
+
+
+def render_navbar(visited, path, current_url=None):
+    if not cookies_enabled() or len(visited) < 1:
+        visited = ["Readme=readme"]
+
+    links = ""
+    seen = set()
+    for entry in reversed(visited):
+        if "=" not in entry:
+            continue
+        title, route = entry.split("=", 1)
+        if title in seen:
+            continue
+        seen.add(title)
+        links += f'<li><a href="/{route}">{title}</a></li>'
+
+    search_box = f'''
+        <form action="/{path}/help" method="get" class="navbar">
+            <input type="text" name="topic" placeholder="Search GWAY" class="help" />
+        </form>
+    '''
+    qr_html = ""
+    if current_url:
+        qr_url = gw.qr.generate_url(current_url)
+        qr_html = f'''
+            <div class="qr">
+                <p class="qr">QR Code for this page:</p>
+                <img src="{qr_url}" alt="QR Code" class="navbar-qr" />
+            </div>
+        '''
+
+    styles_dir = gw.resource("data", "static", "styles")
+    available_styles = sorted(
+        f for f in os.listdir(styles_dir)
+        if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
+    )
+
+    current_style = request.get_cookie("css") or "default.css"
+    options = "\n".join(
+        f'<option value="{s}"{" selected" if s == current_style else ""}>{s[:-4]}</option>'
+        for s in available_styles
+    )
+    style_selector = f'''
+        <form method="get" class="style-form">
+            <label for="css-style">Style:</label>
+            <select id="css-style" name="css" class="style-selector" onchange="this.form.submit()">
+                {options}
+            </select>
+            <noscript><button type="submit">Set</button></noscript>
+        </form>
+    '''
+
+    return f"<aside>{search_box}<ul>{links}</ul><br>{qr_html}<br>{style_selector}</aside>"
+
+
+def cookies_enabled():
+    return request.get_cookie("cookies_accepted") == "yes"
+
+
+def redirect_error(error=None, note="", default="/gway/readme", broken_view_name=None):
     from bottle import request, response
     gw.error("Redirecting due to error." + (" " + note if note else ""))
 
@@ -344,6 +328,29 @@ def redirect_error(error=None, note="", default="/gway/readme"):
     if error:
         gw.exception(error)
 
+    if broken_view_name and cookies_enabled():
+        raw = request.get_cookie("visited", "")
+        visited = raw.split("|") if raw else []
+        broken_title = broken_view_name.replace("-", " ").replace("_", " ").title()
+        visited = [v for v in visited if not v.startswith(f"{broken_title}=")]
+        response.set_cookie("visited", "|".join(visited), path="/")
+
     response.status = 302
     response.set_header("Location", default)
     return ""
+
+
+def update_visited(current, cookie_name="visited"):
+    if not cookies_enabled():
+        return []
+    raw = request.get_cookie(cookie_name, "")
+    visited = raw.split("|") if raw else []
+
+    title = current.replace("-", " ").replace("_", " ").title()
+    visited = [v for v in visited if not v.startswith(f"{title}=")]
+    route = request.fullpath.lstrip("/")
+    visited.append(f"{title}={route}")
+
+    cookie_value = "|".join(visited)
+    response.set_cookie(cookie_name, cookie_value)
+    return visited

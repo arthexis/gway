@@ -1,3 +1,5 @@
+# tests/test_builtins.py
+
 import unittest
 import sys
 import io
@@ -44,20 +46,41 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('awg', project_ls)
 
     def test_load_qr_code_project(self):
+        # Normally qr is autoloaded when accessed, but this test ensures we can 
+        # also manually load projects and use the objects directly if we need to.
         project = gw.load_project("qr")
         test_url = project.generate_url("test")
         self.assertTrue(test_url.endswith(".png"))
 
     def test_hello_world(self):
         # Call the hello_world function
+        # Note we don't have to import it, its just a GWAY builtin.
         gw.hello_world()
 
         # Check if "Hello, World!" was printed
         self.assertIn("Hello, World!", self.sio.getvalue().strip())
 
     def test_help_hello_world(self):
+        # Help is a builtin
         help_result = gw.help('hello-world')
         self.assertEqual(help_result['Sample CLI'], 'gway hello-world')
+
+    def test_to_list_basic_and_split(self):
+        self.assertEqual(to_list("a b c"), ["a", "b", "c"])
+        self.assertEqual(to_list("a,b:c;d"), ["a", "b", "c", "d"])
+        self.assertEqual(to_list(["x", "y"]), ["x", "y"])
+        self.assertEqual(to_list(42), [42])
+        self.assertEqual(to_list({"k": 1}), ["k=1"])
+
+    def test_to_list_flattening(self):
+        nested = ["a", ["b", ["c", {"x": 1}]], "d"]
+        flat = to_list(nested, flat=True)
+        gw.debug(f"{flat=}")
+        self.assertIn("x=1", flat)
+        self.assertEqual(flat, ["a", "b", "c", "x=1", "d"])
+
+        # Also ensure strings are not flattened by character
+        self.assertEqual(to_list("hello", flat=True), ["hello"])
 
     async def test_abort(self):
         """Test that the abort function raises a SystemExit exception."""
