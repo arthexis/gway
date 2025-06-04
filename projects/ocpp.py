@@ -21,9 +21,8 @@ def setup_sink_app(*,
     ):
     """Basic OCPP passive sink for messages, acting as a dummy CSMS server."""
 
-    # A - This block ensures we find just the kind of app we need or create one if missing
-    oapp = app
-    if (_is_new_app := not (app := gw.unwrap(app, FastAPI))):
+    # A - This line ensures we find just the kind of app we need or create one if missing
+    if (_is_new_app := not (app := gw.unwrap((oapp := app), FastAPI))):
         app = FastAPI()
 
     @app.websocket(f"{base}/"+"{path:path}")

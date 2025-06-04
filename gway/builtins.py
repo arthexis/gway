@@ -169,7 +169,7 @@ def _strip_types(sig: str) -> str:
 
 def help(*args, full_code=False):
     from gway import gw
-    import os, textwrap, ast
+    import os, textwrap, ast, sqlite3
 
     def extract_gw_refs(source):
         refs = set()
@@ -198,27 +198,34 @@ def help(*args, full_code=False):
     if not os.path.isfile(db_path):
         gw.release.build_help_db()
 
-    joined_args = " ".join(args).strip()
+    joined_args = " ".join(args).strip().replace("-", "_")
 
     with gw.sql.connect(db_path, row_factory=True) as cur:
-
         if len(args) == 0:
             cur.execute("SELECT DISTINCT project FROM help")
             return {"Available Projects": sorted([row["project"] for row in cur.fetchall()])}
 
-        # Normalize project path
-        norm_args = [a.replace("-", "_") for a in args]
+        norm_args = [a.replace("-", "_").replace("/", ".") for a in args]
+
+        rows = []
+
         if len(norm_args) == 1:
             query = norm_args[0]
             parts = query.split(".")
+            exact_rows = []
+
             if len(parts) == 2:
                 project, function = parts
                 cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", (project, function))
                 exact_rows = cur.fetchall()
-            else:
-                exact_rows = []
-            cur.execute("SELECT * FROM help WHERE help MATCH ?", (query,))
-            fuzzy_rows = [r for r in cur.fetchall() if r not in exact_rows]
+
+            try:
+                cur.execute("SELECT * FROM help WHERE help MATCH ?", (f'"{query}"',))
+                fuzzy_rows = [r for r in cur.fetchall() if r not in exact_rows]
+            except sqlite3.OperationalError as e:
+                gw.warning(f"FTS query failed for {query}: {e}")
+                fuzzy_rows = []
+
             rows = exact_rows + fuzzy_rows
 
         elif len(norm_args) >= 2:
@@ -229,20 +236,26 @@ def help(*args, full_code=False):
             cur.execute("SELECT * FROM help WHERE project = ? AND function = ?", (project, function))
             rows = cur.fetchall()
 
-            # fallback: fuzzy search
             if not rows:
                 fuzzy_query = ".".join(norm_args)
-                cur.execute("SELECT * FROM help WHERE help MATCH ?", (f'"{fuzzy_query}"',))
-                rows = cur.fetchall()
+                try:
+                    cur.execute("SELECT * FROM help WHERE help MATCH ?", (f'"{fuzzy_query}"',))
+                    rows = cur.fetchall()
+                except sqlite3.OperationalError as e:
+                    gw.warning(f"FTS fallback failed for {fuzzy_query}: {e}")
+                    rows = []
 
         else:
             return {"error": f"Invalid input: {joined_args}"}
 
-        # fallback: fuzzy search with quoted MATCH to avoid FTS5 errors
         if not rows:
             fuzzy_query = ".".join(norm_args)
-            cur.execute("SELECT * FROM help WHERE help MATCH ?", (f'"{fuzzy_query}"',))
-            rows = cur.fetchall()
+            try:
+                cur.execute("SELECT * FROM help WHERE help MATCH ?", (f'"{fuzzy_query}"',))
+                rows = cur.fetchall()
+            except sqlite3.OperationalError as e:
+                gw.warning(f"FTS final fallback failed for {fuzzy_query}: {e}")
+                return {"error": f"No help found and fallback failed for: {joined_args}"}
 
         results = []
         for row in rows:
@@ -266,14 +279,11 @@ def help(*args, full_code=False):
         return results[0] if len(results) == 1 else {"Matches": results}
 
 
-h = help
-
-
-def sample_cli(func):
+def sample_cli_args(func):
     """Generate a sample CLI string for a function."""
     from gway import gw
     if not callable(func):
-        func = gw[func]
+        func = gw[str(func).replace("-", "_")]
     sig = inspect.signature(func)
     parts = []
     seen_kw_only = False
@@ -355,9 +365,6 @@ def run(*script: str, **context):
     # (we could catch the exception), see if we can write them joined by line breaks into 
     # file at path gw.resource('work', 'run', gw.uuid, 'script.cdv')
     return gw.run_recipe(*script, **context)
-
-
-r = run
 
 
 def filter_apps(

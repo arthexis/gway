@@ -6,9 +6,6 @@ from urllib.parse import urlencode
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
-# TODO: Whenever we would trigger a 404, instead redirect to the home of the 
-# current app. If the current app doesn't have a home or we can't find it,
-# redirect to web.site.readme ie. gway/readme
 
 def setup(*,
     app=None,
@@ -25,8 +22,6 @@ def setup(*,
     If multiple Bottle apps are passed, a tuple is returned.
     This version allows `project` to be either a string or an iterable of project names.
     """
-    original_app = app
-
     # Normalize `project` into a list of project names
     if isinstance(project, str):
         projects = [project]
@@ -40,14 +35,11 @@ def setup(*,
     # Determine default `path` if not provided
     if path is None:
         first_proj = projects[0]
-        if first_proj == "web.site":
-            path = "gway"
-        else:
-            path = first_proj.replace(".", "/")
+        path = "gway" if first_proj == "web.site" else first_proj.replace(".", "/")
 
     version = gw.version()
-    _is_new_app = not (app := gw.unwrap(app, Bottle) if app else None)
-    gw.info(f"Unwrapped {app=} from {original_app=} ({_is_new_app=})")
+    _is_new_app = not (app := gw.unwrap(app, Bottle) if (oapp := app) else None)
+    gw.info(f"Unwrapped {app=} from {oapp=} ({_is_new_app=})")
 
     if _is_new_app:
         gw.info("No Bottle app found; creating a new Bottle app.")
@@ -165,7 +157,7 @@ def setup(*,
         )
         favicon = f'<link rel="icon" href="/{static}/favicon.ico" type="image/x-icon" />'
         credits = f'''
-            <p>GWAY is powered by <a href="https://www.python.org/">Python</a>.
+            <p>GWAY is powered by <a href="https://www.python.org/">Python 3.13</a>.
             Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>.</p>
         '''
         return template("""<!DOCTYPE html>
@@ -244,7 +236,7 @@ def setup(*,
             )
 
         try:
-            gw.info(f"Dispatching to view {view_func.__name__} (args={args}, kwargs={kwargs})")
+            gw.info(f"Dispatch to view {view_func.__name__} (args={args}, kwargs={kwargs})")
             content = view_func(*args, **kwargs)
             visited = update_visited(view_name)
         except HTTPResponse as resp:
@@ -305,9 +297,9 @@ def setup(*,
 
     if _is_new_app:
         app = security_middleware(app)
-        return app if not original_app else (original_app, app)
+        return app if not oapp else (oapp, app)
     
-    return original_app
+    return oapp
 
 
 ...

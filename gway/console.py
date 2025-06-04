@@ -256,18 +256,18 @@ def chunk_command(args_commands):
 
 def show_functions(functions: dict):
     """Display a formatted view of available functions."""
-    from .builtins import sample_cli
+    from .builtins import sample_cli_args
 
     print("Available functions:")
     for name, func in functions.items():
         name_cli = name.replace("_", "-")
-        sample_cli = sample_cli(func)
+        sample_cli_args = sample_cli_args(func)
         doc = ""
         if func.__doc__:
             doc_lines = [line.strip() for line in func.__doc__.splitlines()]
             doc = next((line for line in doc_lines if line), "")
 
-        print(f"  > {name_cli} {sample_cli}")
+        print(f"  > {name_cli} {sample_cli_args}")
         if doc:
             print(f"      {doc}")
 

@@ -22,8 +22,6 @@ def view_readme(*args, **kwargs):
 
 def view_help(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
-    from gway import gw
-
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
 
