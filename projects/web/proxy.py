@@ -23,7 +23,6 @@ def setup_app(*, endpoint: str, app=None, websockets: bool = False, path: str = 
         return hasattr(candidate, "websocket")
 
     # collect apps by type
-    oapp = app
     bottle_app = gw.unwrap(app, Bottle)
     fastapi_app = gw.unwrap(app, FastAPI)
 
@@ -38,7 +37,7 @@ def setup_app(*, endpoint: str, app=None, websockets: bool = False, path: str = 
     elif fastapi_app:
         prepared.append(_wire_proxy(fastapi_app, endpoint, websockets, path))
 
-    # TODO: Test if this is properly compatible with web.server.start
+    # TODO: Test if this is properly compatible with web.server.start_app
     return prepared[0] if len(prepared) == 1 else tuple(prepared)
 
 

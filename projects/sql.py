@@ -1,5 +1,3 @@
-# projects/sql.py
-
 import os
 import csv
 import sqlite3
@@ -65,7 +63,7 @@ def connect(
                         seen_headers.add(header.lower())
 
                     column_types = [
-                        infer_type(sample_row[i]) if i < len(sample_row) else "TEXT"
+                        _infer_type(sample_row[i]) if i < len(sample_row) else "TEXT"
                         for i in range(len(unique_headers))
                     ]
 
@@ -121,7 +119,7 @@ def query(*queries, limit=None, **kwargs):
                 sql_path = gw.resource("sql", q)
                 with open(sql_path, "r", encoding="utf-8") as f:
                     sql = f.read()
-            elif isinstance(q, str) and is_sql_snippet(q):
+            elif isinstance(q, str) and _is_sql_snippet(q):
                 sql = q
             else:
                 tables = [q]
@@ -148,14 +146,127 @@ def query(*queries, limit=None, **kwargs):
         return rows
 
 
-# TODO: Create a 'store' function
+_version = None
 
 
-def is_sql_snippet(text):
+def record(*dest, **cols):
+    global _version
+    _version = _version or gw.version()
+
+    *conn_path, table = dest
+    connect_kwargs = {k[1:]: v for k, v in cols.items() if k.startswith("_")}
+    data_cols = {k: v for k, v in cols.items() if not k.startswith("_")}
+
+    full_cols = {
+        **data_cols,
+        "created_on": gw.now(),
+        "gway_version": _version,
+        "gway_uuid": gw.uuid(),
+    }
+
+    with connect(*conn_path, **connect_kwargs) as cursor:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+        table_exists = cursor.fetchone()
+
+        if table_exists:
+            cursor.execute(f"PRAGMA table_info([{table}])")
+            existing_cols = [row[1] for row in cursor.fetchall()]
+            if not all(col in existing_cols for col in full_cols):
+                backup = f"{table}_bak"
+                cursor.execute(f"ALTER TABLE [{table}] RENAME TO [{backup}]")
+                col_defs = ', '.join(f"[{k}] {_infer_type(v)}" for k, v in full_cols.items())
+                cursor.execute(f"CREATE TABLE [{table}] ({col_defs})")
+                shared = [col for col in existing_cols if col in full_cols]
+                if shared:
+                    cols_str = ', '.join(f"[{col}]" for col in shared)
+                    cursor.execute(f"INSERT INTO [{table}] ({cols_str}) SELECT {cols_str} FROM [{backup}]")
+                cursor.execute(f"DROP TABLE [{backup}]")
+        else:
+            col_defs = ', '.join(f"[{k}] {_infer_type(v)}" for k, v in full_cols.items())
+            cursor.execute(f"CREATE TABLE [{table}] ({col_defs})")
+
+        keys = list(full_cols)
+        values = list(full_cols.values())
+        placeholders = ', '.join('?' for _ in keys)
+        cursor.execute(
+            f"INSERT INTO [{table}] ({', '.join(f'[{k}]' for k in keys)}) VALUES ({placeholders})", 
+            values
+        )
+        cursor.connection.commit()
+
+
+def load(*dest, source=None, _headers=None, **opts):
+    """
+    Bulk load data into a database table.
+    Accepts:
+    - source= a list of dicts
+    - source= a list of lists or tuples with _headers specified
+    - source= a CSV/TSV/CDV file
+    - source= a SQL query (str) to evaluate via `query()`
+    """
+    assert source is not None, "Must provide `source` with a valid source"
+    *conn_path, table = dest
+
+    # Determine the data
+    if isinstance(source, str):
+        if source.endswith(".sql"):
+            rows = query(source, **opts)
+        elif source.endswith(".tsv"):
+            sep = "\t"
+            with open(source, "r", encoding="utf-8") as f:
+                reader = csv.reader(f, delimiter=sep)
+                headers = next(reader)
+                rows = [dict(zip(headers, row)) for row in reader]
+        elif source.endswith(".cdv"):
+            sep = ":"
+            with open(source, "r", encoding="utf-8") as f:
+                reader = csv.reader(f, delimiter=sep)
+                headers = next(reader)
+                rows = [dict(zip(headers, row)) for row in reader]
+        elif source.endswith(".csv"):
+            with open(source, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                headers = next(reader)
+                rows = [dict(zip(headers, row)) for row in reader]
+        else:
+            raise ValueError(f"Unrecognized file format for '{source}'")
+    elif isinstance(source, list):
+        if all(isinstance(row, dict) for row in source):
+            rows = source
+        elif all(isinstance(row, (list, tuple)) for row in source):
+            assert _headers, "Must provide _headers when using list-of-lists"
+            rows = [dict(zip(_headers, row)) for row in source]
+        else:
+            raise TypeError("List must contain dicts or tuples/lists")
+    else:
+        raise TypeError(f"Unsupported type for source: {type(source)}")
+
+    if not rows:
+        gw.warning(f"No data to load into table '{table}'")
+        return
+
+    # Insert into database
+    with connect(*conn_path, **opts) as cursor:
+        columns = list(rows[0])
+        col_defs = ', '.join(f"[{col}] {_infer_type(rows[0][col])}" for col in columns)
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+        exists = cursor.fetchone()
+        if not exists:
+            cursor.execute(f"CREATE TABLE [{table}] ({col_defs})")
+
+        placeholders = ', '.join('?' for _ in columns)
+        insert_sql = f"INSERT INTO [{table}] ({', '.join(f'[{col}]' for col in columns)}) VALUES ({placeholders})"
+        values = [tuple(row[col] for col in columns) for row in rows]
+        cursor.executemany(insert_sql, values)
+        cursor.connection.commit()
+
+
+def _is_sql_snippet(text):
     return any(word in text.lower() for word in ["select", "insert", "update", "delete"])
 
 
-def infer_type(value):
+def _infer_type(value):
     """Infer SQL type from a sample value."""
     try:
         float(value)
@@ -163,3 +274,5 @@ def infer_type(value):
     except ValueError:
         return "TEXT"
 
+# TODO: Use the sql project to implement a simple credit/debit account system
+# 

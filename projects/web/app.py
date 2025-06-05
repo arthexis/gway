@@ -147,6 +147,7 @@ def setup(*,
             title="GWAY - " + view_name.replace("_", " ").title(),
             navbar=navbar,
             content=content,
+            static=static,
             css_files=css_files
         )
 

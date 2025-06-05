@@ -4,9 +4,6 @@ from numpy import iterable
 from gway import gw
 
 
-# TODO: Keep track of each app started at once. All apps should be started in their own 
-# thread but also logged and enumerated so we can audit how many apps we received and started.
-
 def start_app(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
