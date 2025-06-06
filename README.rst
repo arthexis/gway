@@ -251,7 +251,7 @@ INCLUDED PROJECTS
 
 .. rubric:: clip
 
-- ``copy`` — Extracts the contents of the clipboard and returns it.
+- ``copy`` — Extracts or updates the clipboard contents.
 
   > ``gway clip copy``
 
@@ -404,10 +404,6 @@ INCLUDED PROJECTS
 
   > ``gway qr generate-image``
 
-- ``generate_img`` — Generate a QR code image from the given value and save it to the specified path.
-
-  > ``gway qr generate-img``
-
 - ``generate_url`` — Return the local URL to a QR code with the given value. 
 
   > ``gway qr generate-url``
@@ -475,13 +471,9 @@ INCLUDED PROJECTS
 
 .. rubric:: sql
 
-- ``connect`` — Initialize or reuse a database connection.
+- ``close_connection`` — Explicitly close one or all cached database connections.
 
-  > ``gway sql connect``
-
-- ``disconnect`` — Explicitly close one or all cached database connections.
-
-  > ``gway sql disconnect``
+  > ``gway sql close-connection``
 
 - ``execute`` — Execute SQL code or a script resource. If both are given, run script first.
 
@@ -494,6 +486,10 @@ INCLUDED PROJECTS
 - ``load_csv`` — Recursively loads CSVs from a folder into SQLite tables.
 
   > ``gway sql load-csv``
+
+- ``open_connection`` — Initialize or reuse a database connection.
+
+  > ``gway sql open-connection``
 
 
 .. rubric:: tests
@@ -517,6 +513,9 @@ INCLUDED PROJECTS
 - ``view_index`` — (no description)
 
   > ``gway tests view-index``
+
+
+.. rubric:: trigger
 
 
 
