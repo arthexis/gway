@@ -1,8 +1,5 @@
-# gway/sigils.py
-
 import re
 import os
-
 
 class Sigil:
     """
@@ -22,7 +19,7 @@ class Sigil:
 
         self.original = text
 
-    def resolve(self, finder):
+    def _make_lookup(self, finder):
         if isinstance(finder, dict):
             def _lookup(key, fallback):
                 for variant in (key, key.lower(), key.upper()):
@@ -38,29 +35,15 @@ class Sigil:
                 return fallback
         else:
             raise TypeError("Finder must be a callable or a dictionary")
+        return _lookup
 
-        return _replace_sigils(self.original, _lookup, on_missing=None)
-    
+    def resolve(self, finder):
+        return _replace_sigils(self.original, self._make_lookup(finder), on_missing=None)
+
     def redact(self, finder, remanent=None):
         """Redacts missing sigils instead of removing them. Use `remanent` to replace unresolved sigils."""
-        if isinstance(finder, dict):
-            def _lookup(key, fallback):
-                for variant in (key, key.lower(), key.upper()):
-                    if variant in finder:
-                        return finder[variant]
-                return fallback
-        elif callable(finder):
-            def _lookup(key, fallback):
-                for variant in (key, key.lower(), key.upper()):
-                    val = finder(variant, None)
-                    if val is not None:
-                        return val
-                return fallback
-        else:
-            raise TypeError("Finder must be a callable or a dictionary")
+        return _replace_sigils(self.original, self._make_lookup(finder), on_missing=remanent)
 
-        return _replace_sigils(self.original, _lookup, on_missing=remanent)
-    
     def cleave(self):
         """Remove all text between brackets (including the brackets)."""
         return re.sub(self._pattern, '', self.original) or None
