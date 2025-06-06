@@ -1,5 +1,8 @@
 # tests/test_builtins.py
 
+# These tests are for builtins, but to test a project such as sql use:
+# gw.sql.function directly, you don't need to import the project or function.
+
 import unittest
 import sys
 import io

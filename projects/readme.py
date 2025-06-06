@@ -9,6 +9,7 @@ import importlib.util
 import inspect
 from gway import gw
 
+# TODO: Think about new sections we could automate 
 
 def collect_projects(project_dir: str, readme: str = "README.rst"):
     """

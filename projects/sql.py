@@ -9,7 +9,7 @@ from gway import gw
 # GWAY database functions. These can be called from anywhere safely:
 #
 # from gway import gw
-# with gw.sql.connect('[datafile]') as cursor:
+# with gw.sql.gw.sql.open_connection()('[datafile]') as cursor:
 #      ...
 # Or from a recipe:
 #
@@ -18,25 +18,25 @@ from gway import gw
 #
 
 class WrappedConnection:
-    def __init__(self, conn):
-        self._conn = conn
+    def __init__(self, connection):
+        self._connection = connection
         self._cursor = None
 
     def __enter__(self):
-        self._cursor = self._conn.cursor()
+        self._cursor = self._connection.cursor()
         return self._cursor
 
     def __exit__(self, exc_type, *_):
         if exc_type is None:
-            self._conn.commit()
+            self._connection.commit()
             gw.debug("Transaction committed.")
         else:
-            self._conn.rollback()
+            self._connection.rollback()
             gw.warning("Transaction rolled back due to exception.")
         self._cursor = None
 
     def __getattr__(self, name):
-        return getattr(self._conn, name)
+        return getattr(self._connection, name)
 
 
 def infer_type(val):
@@ -47,16 +47,16 @@ def infer_type(val):
     ) or "TEXT"
 
 
-def load_csv(*, conn=None, folder="data", force=False):
+def load_csv(*, connection=None, folder="data", force=False):
     """
     Recursively loads CSVs from a folder into SQLite tables.
     Table names are derived from folder/file paths.
     """
-    assert conn, "Please call connect first."
+    assert connection
     base_path = gw.resource(folder)
 
     def load_folder(path, prefix=""):
-        cursor = conn.cursor()
+        cursor = connection.cursor()
         for item in os.listdir(path):
             full_path = os.path.join(path, item)
             if os.path.isdir(full_path):
@@ -119,7 +119,7 @@ def load_csv(*, conn=None, folder="data", force=False):
                         cursor.execute(create)
                         cursor.execute(insert, sample_row)
                         cursor.executemany(insert, reader)
-                        conn.commit()
+                        connection.commit()
 
                         gw.info(
                             f"Loaded table '{table_name}' with "
@@ -134,7 +134,7 @@ def load_csv(*, conn=None, folder="data", force=False):
 
 _connection_cache = {}
 
-def connect(datafile=None, *, 
+def open_connection(datafile=None, *, 
             sql_engine="sqlite", autoload=False, force=False,
             row_factory=False, **dbopts):
     """
@@ -156,7 +156,7 @@ def connect(datafile=None, *,
     if key in _connection_cache:
         conn = _connection_cache[key]
         if row_factory:
-            gw.warning("Row factory change requires disconnect(). Reconnect manually.")
+            gw.warning("Row factory change requires close_connection(). Reconnect manually.")
         gw.debug(f"Reusing connection: {key}")
         return conn
 
@@ -195,18 +195,19 @@ def connect(datafile=None, *,
     _connection_cache[key] = conn
 
     if autoload and sql_engine == "sqlite":
-        load_csv(conn=conn, force=force)
+        load_csv(connection=conn, force=force)
 
     return conn
 
-def disconnect(datafile=None, *, sql_engine="sqlite", all=False):
+
+def close_connection(datafile=None, *, sql_engine="sqlite", all=False):
     """
     Explicitly close one or all cached database connections.
     """
     if all:
-        for conn in _connection_cache.values():
+        for connection in _connection_cache.values():
             try:
-                conn.close()
+                connection.close()
             except Exception as e:
                 gw.warning(f"Failed to close connection: {e}")
         _connection_cache.clear()
@@ -214,24 +215,31 @@ def disconnect(datafile=None, *, sql_engine="sqlite", all=False):
         return
 
     key = (sql_engine, datafile or "default")
-    conn = _connection_cache.pop(key, None)
-    if conn:
+    connection = _connection_cache.pop(key, None)
+    if connection:
         try:
-            conn.close()
+            connection.close()
             gw.info(f"Closed connection: {key}")
         except Exception as e:
             gw.warning(f"Failed to close {key}: {e}")
 
 
-def execute(sql=None, *, conn=None, script=None):
+def execute(*sql, connection=None, script=None, into=None):
     """
     Execute SQL code or a script resource. If both are given, run script first.
     Returns dict with 'data' (rows, if any) and 'sql' (last statement run).
     """
-    if not conn:
-        conn = connect()
+    if not connection:
+        connection = open_connection()
 
-    cursor = conn.cursor()
+    if sql:
+        sql = " ".join(sql)
+
+    # TODO: Implement "into" as a function or the name of a function we can get with
+    # gw[into] if so, for each row we execute in a select, we pass the extracted data as
+    # kwargs by name to the function, then replace row with the result.
+
+    cursor = connection.cursor()
 
     try:
         if script:

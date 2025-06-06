@@ -141,4 +141,5 @@ def search(subject_fragment, body_fragment=None):
             mail.logout()
 
 # TODO: Use the mail project to create a simple approval request workflow
-# Start with a request_approval function 
+# Start with a request_approval function that takes four values:
+# role='ADMIN', 

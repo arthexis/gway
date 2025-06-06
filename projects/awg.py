@@ -31,7 +31,7 @@ def find_cable(
     """Calculate the type of cable needed for an electrical system."""
     gw.info(f"Calculating AWG for {meters=} {amps=} {volts=} {material=}")
     
-    with gw.sql.connect(autoload=True) as cursor:
+    with gw.sql.open_connection(autoload=True) as cursor:
         # Convert inputs
         amps = int(amps)
         meters = int(meters)
@@ -111,7 +111,7 @@ def find_cable(
 
 def find_conduit(awg, cables, *, conduit="emt"):
     """Calculate the kind of conduit required for a set of cables."""
-    with gw.sql.connect(load_data="awg") as cursor:
+    with gw.sql.open_connection() as cursor:
 
         assert conduit in ("emt", "imc", "rmc", "fmc"), "Allowed: emt, imc, rmc, fmc."
         assert 1 <= cables <= 30, "Valid for 1-30 cables per conduit."
