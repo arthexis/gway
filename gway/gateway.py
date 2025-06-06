@@ -376,13 +376,9 @@ class Gateway(Resolver):
         ns = Project(dotted_prefix, funcs, self)
         self._cache[dotted_prefix] = ns
         return ns
-    
-    @property
-    def debug_mode(self):
-        return bool(self._debug)
 
     def log(self, *args, **kwargs):
-        if self.debug_mode:
+        if self.debug:
             self.debug(*args, **kwargs)
             return "debug"
         self.info(*args, **kwargs)

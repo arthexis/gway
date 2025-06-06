@@ -309,32 +309,6 @@ INCLUDED PROJECTS
   > ``gway etron extract-records``
 
 
-.. rubric:: gif
-
-- ``animate`` — (no description)
-
-  > ``gway gif animate``
-
-
-.. rubric:: gui
-
-- ``lookup_font`` — Look up fonts installed on a Windows system by partial name (prefix).
-
-  > ``gway gui lookup-font``
-
-- ``notify`` — Show a user interface notification with the specified title and message.
-
-  > ``gway gui notify``
-
-- ``screenshot`` — Take a screenshot in the specified mode and save it under:
-
-  > ``gway gui screenshot``
-
-- ``take_screenshot`` — Take a screenshot in the specified mode and save it under:
-
-  > ``gway gui take-screenshot``
-
-
 .. rubric:: mail
 
 - ``message_from_bytes`` — Parse a bytes string into a Message object model.
@@ -379,9 +353,9 @@ INCLUDED PROJECTS
 
   > ``gway odoo create-quote``
 
-- ``execute`` — A generic function to directly interface with Odoo's execute_kw method.
+- ``execute_kw`` — A generic function to directly interface with Odoo's execute_kw method.
 
-  > ``gway odoo execute``
+  > ``gway odoo execute-kw``
 
 - ``fetch_customers`` — Fetch customers from Odoo with optional filters.
 
@@ -438,10 +412,6 @@ INCLUDED PROJECTS
 
   > ``gway qr generate-url``
 
-- ``scan_image`` — Scan the given image (file‑path or PIL.Image) for QR codes and return
-
-  > ``gway qr scan-image``
-
 - ``scan_img`` — Scan the given image (file‑path or PIL.Image) for QR codes and return
 
   > ``gway qr scan-img``
@@ -475,32 +445,55 @@ INCLUDED PROJECTS
 
   > ``gway release build-help-db``
 
+- ``create_shortcut`` — (no description)
+
+  > ``gway release create-shortcut``
+
 - ``loc`` — Counts Python lines of code in the given directories, ignoring hidden files and directories.
 
   > ``gway release loc``
 
 
+.. rubric:: screen
+
+- ``animate_gif`` — (no description)
+
+  > ``gway screen animate-gif``
+
+- ``lookup_font`` — Look up fonts installed on a Windows system by partial name (prefix).
+
+  > ``gway screen lookup-font``
+
+- ``notify`` — Show a user interface notification with the specified title and message.
+
+  > ``gway screen notify``
+
+- ``shot`` — Take a screenshot in the specified mode and save it under:
+
+  > ``gway screen shot``
+
+
 .. rubric:: sql
 
-- ``connect`` — Connects to a SQLite database using a context manager.
+- ``connect`` — Initialize or reuse a database connection.
 
   > ``gway sql connect``
 
-- ``contextmanager`` — @contextmanager decorator.
+- ``disconnect`` — Explicitly close one or all cached database connections.
 
-  > ``gway sql contextmanager``
+  > ``gway sql disconnect``
 
-- ``infer_type`` — Infer SQL type from a sample value.
+- ``execute`` — Execute SQL code or a script resource. If both are given, run script first.
+
+  > ``gway sql execute``
+
+- ``infer_type`` — (no description)
 
   > ``gway sql infer-type``
 
-- ``is_sql_snippet`` — (no description)
+- ``load_csv`` — Recursively loads CSVs from a folder into SQLite tables.
 
-  > ``gway sql is-sql-snippet``
-
-- ``query`` — Execute a SQL query or script on the work/local.sqlite database by default.
-
-  > ``gway sql query``
+  > ``gway sql load-csv``
 
 
 .. rubric:: tests

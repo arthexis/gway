@@ -13,7 +13,7 @@ class FilteredFormatter(logging.Formatter):
     """
     A Formatter that, when an exception is logged, strips out any
     traceback frames whose filename path contains 'gway/gway', counts them,
-    and replaces them with a summary line—unless gw.debug_mode is True.
+    and replaces them with a summary line—unless gw.debug is True.
     """
 
     def formatException(self, ei):
@@ -23,16 +23,16 @@ class FilteredFormatter(logging.Formatter):
         skipped = 0
 
         # Check if debug mode is enabled
-        debug_mode = False
+        debug = False
         try:
             from gway import gw
-            debug_mode = getattr(gw, "debug_mode", False)
+            debug = getattr(gw, "debug", False)
         except Exception:
             pass
 
         for frame in all_frames:
             norm = frame.filename.replace('\\', '/')
-            if '/gway/gway/' in norm and not debug_mode:
+            if '/gway/gway/' in norm and not debug:
                 skipped += 1
             else:
                 kept_frames.append(frame)
@@ -40,7 +40,7 @@ class FilteredFormatter(logging.Formatter):
         formatted = []
         if kept_frames:
             formatted.extend(traceback.format_list(kept_frames))
-        if skipped and not debug_mode:
+        if skipped and not debug:
             formatted.append(f'  <... {skipped} frame(s) in gway internals skipped ...>\n')
         formatted.extend(traceback.format_exception_only(exc_type, exc_value))
         return ''.join(formatted)
