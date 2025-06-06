@@ -80,45 +80,54 @@ def version(check=None) -> str:
         return "unknown"
 
 
-def resource(*parts, touch=False, check=False):
+def resource(*parts, touch=False, check=False, text=False):
     """
     Construct a path relative to the base, or the Gateway root if not specified.
     Assumes last part is a file and creates parent directories along the way.
     Skips base and root if the first element in parts is already an absolute path.
+
+    Args:
+        *parts: Path components, like ("subdir", "file.txt").
+        touch (bool): If True, creates the file if it doesn't exist.
+        check (bool): If True, aborts if the file doesn't exist and touch is False.
+        text (bool): If True, returns the text contents of the file instead of the path.
+
+    Returns:
+        pathlib.Path | str: The constructed path, or file contents if text=True.
     """
+    import pathlib
     from gway import gw
 
-    # If the first part is an absolute path, construct directly from it
+    # Build path
     first = pathlib.Path(parts[0])
     if first.is_absolute():
         path = pathlib.Path(*parts)
     else:
         path = pathlib.Path(gw.base_path, *parts)
 
-    if not touch and check:
-        if not path.exists():
-            gw.abort(f"Required resource {path} missing")
+    # Safety check
+    if not touch and check and not path.exists():
+        gw.abort(f"Required resource {path} missing")
 
+    # Ensure parent directories exist
     path.parent.mkdir(parents=True, exist_ok=True)
-    if touch: path.touch()
+
+    # Optionally create the file
+    if touch:
+        path.touch()
+
+    # Return text contents or path
+    if text:
+        try:
+            return path.read_text()
+        except Exception as e:
+            gw.abort(f"Failed to read {path}: {e}")
     return path
 
 
-def readlines(*parts, unique=False):
-    """Fetch a GWAY resource split by lines. If unique=True, returns a set, otherwise a list."""
-    resource_file = resource(*parts)
-    lines = [] if not unique else set()
-    if os.path.exists(resource_file):
-        with open(resource_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    if unique:
-                        lines.add(line)
-                    else:
-                        lines.append(line)
-    return lines
-                    
+
+...
+
 
 def test(root: str = 'tests', filter=None):
     """Execute all automatically detected test suites."""
@@ -155,21 +164,8 @@ def test(root: str = 'tests', filter=None):
     return result.wasSuccessful()
 
 
-def _strip_types(sig: str) -> str:
-    try:
-        node = ast.parse(f"def _({sig}): pass").body[0]
-        args = node.args
-        param_names = []
-        for arg in args.args:
-            param_names.append(arg.arg)
-        if args.vararg:
-            param_names.append(f"*{args.vararg.arg}")
-        if args.kwarg:
-            param_names.append(f"**{args.kwarg.arg}")
-        return ", ".join(param_names)
-    except Exception:
-        return sig  # fallback if parsing fails
-    
+...
+
 
 def help(*args, full=False):
     from gway import gw
@@ -322,6 +318,27 @@ def sigils(*args: str):
     return Sigil(text).list_sigils()
 
 
+def infer_type(value, default=None, **types):
+    """
+    Try casting `value` to each provided type. If a cast succeeds, 
+    returns the corresponding key (name). If none succeed, returns default.
+    
+    Example:
+        gw.infer_type("42", INTEGER=int, REAL=float)  # => "INTEGER"
+        gw.infer_type("hello", INTEGER=int, default="TEXT")  # => "TEXT"
+    """
+    for name, caster in types.items():
+        try:
+            caster(value)
+            return name
+        except Exception:
+            continue
+    return default
+
+
+...
+
+
 def run_recipe(*script: str, **context):
     """
     Run commands parsed from a .gwr file, falling back to the 'recipes/' resource bundle.
@@ -366,6 +383,9 @@ def run_recipe(*script: str, **context):
 def run(*script: str, **context):
     from gway import gw
     return gw.run_recipe(*script, **context)
+
+
+...
 
 
 def unwrap(obj: Any, expected: Optional[Type] = None) -> Any:
@@ -417,6 +437,9 @@ def unwrap(obj: Any, expected: Optional[Type] = None) -> Any:
             return obj
 
     return obj
+
+
+...
 
 
 def to_html(obj, **kwargs):

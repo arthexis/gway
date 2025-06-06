@@ -81,3 +81,84 @@ class Project(SimpleNamespace):
         # Display available functions to the user
         show_functions(functions)
 
+
+class Null:
+    # aka. The Black Hole Structure
+    def __call__(self, *args, **kwargs):
+        return self
+
+    def __bool__(self):
+        return False
+
+    def __str__(self):
+        return "Null"
+
+    def __repr__(self):
+        return "Null"
+
+    def __getattr__(self, name):
+        return self
+
+    def __setattr__(self, name, value):
+        pass
+
+    def __getitem__(self, key):
+        return self
+
+    def __setitem__(self, key, value):
+        pass
+
+    def __iter__(self):
+        return iter(())
+
+    def __next__(self):
+        raise StopIteration
+
+    def __len__(self):
+        return 0
+
+    def __eq__(self, other):
+        return isinstance(other, Null)
+
+    def __ne__(self, other):
+        return not isinstance(other, Null)
+
+    def __contains__(self, item):
+        return False
+
+    # Absorb arithmetic and other operators
+    def __add__(self, other): return self
+    def __radd__(self, other): return self
+    def __sub__(self, other): return self
+    def __rsub__(self, other): return self
+    def __mul__(self, other): return self
+    def __rmul__(self, other): return self
+    def __truediv__(self, other): return self
+    def __rtruediv__(self, other): return self
+    def __floordiv__(self, other): return self
+    def __rfloordiv__(self, other): return self
+    def __mod__(self, other): return self
+    def __rmod__(self, other): return self
+    def __pow__(self, other): return self
+    def __rpow__(self, other): return self
+
+    # Comparisons
+    def __lt__(self, other): return False
+    def __le__(self, other): return False
+    def __gt__(self, other): return False
+    def __ge__(self, other): return False
+
+    # Context management
+    def __enter__(self): return self
+    def __exit__(self, exc_type, exc_val, exc_tb): return False
+
+    # Async support
+    async def __aenter__(self): return self
+    async def __aexit__(self, exc_type, exc_val, exc_tb): return False
+
+    def __await__(self):
+        async def dummy(): return self
+        return dummy().__await__()
+
+null = Null()
+Null = null

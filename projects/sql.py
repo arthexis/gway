@@ -1,278 +1,238 @@
+# projects/sql.py
+
 import os
 import csv
 import sqlite3
-from contextlib import contextmanager
+import threading
 from gway import gw
 
 
-@contextmanager
-def connect(
-        *database, sql_engine="sqlite3", load_data=False, force=False, 
-        work_db="local.sqlite", root="work", row_factory=False, 
-    ):
+# Wrapping was simplified and improved to return a cursor
+class WrappedConnection:
+    def __init__(self, conn):
+        self._conn = conn
+        self._cursor = None
+
+    def __enter__(self):
+        self._cursor = self._conn.cursor()
+        return self._cursor
+
+    def __exit__(self, exc_type, *_):
+        if exc_type is None:
+            self._conn.commit()
+            gw.debug("Transaction committed.")
+        else:
+            self._conn.rollback()
+            gw.warning("Transaction rolled back due to exception.")
+        self._cursor = None
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def infer_type(val):
+    return gw.infer_type(
+        val,
+        INTEGER=int,
+        REAL=float
+    ) or "TEXT"
+
+
+def load_csv(*, conn=None, folder="data", force=False):
     """
-    Connects to a SQLite database using a context manager.
-    Loads CSV data from the data folder if load_data is True.
-    If force is True, existing tables are dropped and reloaded.
+    Recursively loads CSVs from a folder into SQLite tables.
+    Table names are derived from folder/file paths.
     """
-    assert sql_engine == "sqlite3", "Only sqlite3 is supported at the moment."
+    assert conn, "Please call connect first."
+    base_path = gw.resource(folder)
 
-    if not database: database = (root, work_db)
-
-    db_path = gw.resource(*database)
-    if isinstance(load_data, str):
-        data_path = gw.resource("data", load_data)
-        initial_parent = os.path.basename(load_data.rstrip("/\\"))
-    else:
-        data_path = gw.resource("data")
-        initial_parent = ""
-
-    conn = sqlite3.connect(db_path)
-
-    def load_csv(path, parent_path=""):
+    def load_folder(path, prefix=""):
         cursor = conn.cursor()
         for item in os.listdir(path):
             full_path = os.path.join(path, item)
             if os.path.isdir(full_path):
-                new_parent = item if not parent_path else f"{parent_path}_{item}"
-                load_csv(full_path, new_parent)
+                sub_prefix = f"{prefix}_{item}" if prefix else item
+                load_folder(full_path, sub_prefix)
             elif item.endswith(".csv"):
                 base_name = os.path.splitext(item)[0]
-                name = f"{parent_path}_{base_name}" if parent_path else base_name
-                name = name.replace('-', '_')  # Make SQL-safe
+                table_name = f"{prefix}_{base_name}" if prefix else base_name
+                table_name = table_name.replace("-", "_")
 
-                with open(full_path, 'r', encoding='utf-8') as csvfile:
-                    reader = csv.reader(csvfile)
+                with open(full_path, "r", encoding="utf-8") as f:
+                    reader = csv.reader(f)
                     try:
                         headers = next(reader)
                         sample_row = next(reader)
                     except StopIteration:
-                        gw.warning(f"Skipping empty CSV file: {full_path}")
+                        gw.warning(f"Skipping empty CSV: {full_path}")
                         continue
 
+                    seen = set()
                     unique_headers = []
-                    seen_headers = set()
-                    for header in headers:
-                        base_header = header.strip()
-                        header = base_header
-                        counter = 1
-                        while header.lower() in seen_headers:
-                            header = f"{base_header}_{counter}"
-                            counter += 1
-                        unique_headers.append(header)
-                        seen_headers.add(header.lower())
+                    for h in headers:
+                        h_clean = h.strip()
+                        h_final = h_clean
+                        i = 1
+                        while h_final.lower() in seen:
+                            h_final = f"{h_clean}_{i}"
+                            i += 1
+                        unique_headers.append(h_final)
+                        seen.add(h_final.lower())
 
-                    column_types = [
-                        _infer_type(sample_row[i]) if i < len(sample_row) else "TEXT"
+                    types = [
+                        infer_type(sample_row[i])
+                        if i < len(sample_row) else "TEXT"
                         for i in range(len(unique_headers))
                     ]
 
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,))
-                    table_exists = cursor.fetchone()
+                    cursor.execute(
+                        "SELECT name FROM sqlite_master "
+                        "WHERE type='table' AND name=?", (table_name,)
+                    )
+                    exists = cursor.fetchone()
 
-                    if table_exists and force:
-                        cursor.execute(f"DROP TABLE IF EXISTS [{name}]")
-                        gw.info(f"Dropped existing table '{name}' due to force=True")
+                    if exists and force:
+                        cursor.execute(f"DROP TABLE IF EXISTS [{table_name}]")
+                        gw.info(f"Dropped existing table: {table_name}")
 
-                    if not table_exists or force:
-                        create_table_query = (f"CREATE TABLE [{name}] (" 
-                                              f"{', '.join(f'[{unique_headers[i]}] {column_types[i]}' for i in range(len(unique_headers)))})")
-                        cursor.execute(create_table_query)
-                        insert_query = (f"INSERT INTO [{name}] ({', '.join(f'[{h}]' for h in unique_headers)}) "
-                                        f"VALUES ({', '.join('?' for _ in unique_headers)})")
+                    if not exists or force:
+                        colspec = ", ".join(
+                            f"[{unique_headers[i]}] {types[i]}"
+                            for i in range(len(unique_headers))
+                        )
+                        create = f"CREATE TABLE [{table_name}] ({colspec})"
+                        insert = (
+                            f"INSERT INTO [{table_name}] "
+                            f"({', '.join(f'[{h}]' for h in unique_headers)}) "
+                            f"VALUES ({', '.join('?' for _ in unique_headers)})"
+                        )
 
-                        cursor.execute(insert_query, sample_row)
-                        cursor.executemany(insert_query, reader)
-                        cursor.execute("COMMIT")
-                        gw.info(f"Loaded table '{name}' with columns: {', '.join(unique_headers)}")
+                        cursor.execute(create)
+                        cursor.execute(insert, sample_row)
+                        cursor.executemany(insert, reader)
+                        conn.commit()
+
+                        gw.info(
+                            f"Loaded table '{table_name}' with "
+                            f"{len(unique_headers)} columns"
+                        )
                     else:
-                        gw.info(f"Skipped existing table '{name}' (force=False)")
+                        gw.debug(f"Skipped existing table: {table_name}")
         cursor.close()
 
-    if load_data:
-        load_csv(data_path, parent_path=initial_parent)
-    
-    if callable(row_factory):
-        conn.row_factory = row_factory
-    elif row_factory:
-        conn.row_factory = sqlite3.Row
-
-    cursor = conn.cursor()
-    yield cursor
-    conn.close()
+    load_folder(base_path)
 
 
-def query(*queries, limit=None, **kwargs):
+_connection_cache = {}
+
+def connect(datafile=None, *, 
+            sql_engine="sqlite", autoload=False, force=False,
+            row_factory=False, **dbopts):
     """
-    Execute a SQL query or script on the work/local.sqlite database by default.
-    Different kwargs can be passed to sql.connect by prefixing them with _.
-    Otherwise, kwargs can be used to add filters to the query.
+    Initialize or reuse a database connection.
+    Caches connections by sql_engine, file path, and thread ID (if required).
     """
-    filters = {k: v for k, v in kwargs.items() if not k.startswith("_")}
-    connect_kwargs = {k: v for k, v in kwargs.items() if k.startswith("_")}
-    connect_kwargs = {k[1:]: v for k, v in connect_kwargs.items()}
 
-    with connect(**connect_kwargs) as conn:
-        if len(queries) == 1:
-            q = queries[0]
-            if isinstance(q, str) and q.endswith(".sql"):
-                sql_path = gw.resource("sql", q)
-                with open(sql_path, "r", encoding="utf-8") as f:
-                    sql = f.read()
-            elif isinstance(q, str) and _is_sql_snippet(q):
-                sql = q
-            else:
-                tables = [q]
-        else:
-            tables = list(queries)
+    # Determine base cache key
+    base_key = (sql_engine, datafile or "default")
 
-        if 'tables' in locals():
-            sql = f"SELECT * FROM {' NATURAL JOIN '.join(f'[{t}]' for t in tables)}"
-            if filters:
-                clauses = [f"[{k}] = ?" for k in filters]
-                sql += f" WHERE {' AND '.join(clauses)}"
-            if limit is not None:
-                sql += f" LIMIT {int(limit)}"
-            values = list(filters.values())
-        else:
-            values = []
-
-        cursor = conn
-        cursor.execute(sql, values)
-        rows = cursor.fetchall()
-        if hasattr(cursor, "description") and cursor.description:
-            columns = [col[0] for col in cursor.description]
-            return [dict(zip(columns, row)) for row in rows]
-        return rows
-
-
-_version = None
-
-
-def record(*dest, **cols):
-    global _version
-    _version = _version or gw.version()
-
-    *conn_path, table = dest
-    connect_kwargs = {k[1:]: v for k, v in cols.items() if k.startswith("_")}
-    data_cols = {k: v for k, v in cols.items() if not k.startswith("_")}
-
-    full_cols = {
-        **data_cols,
-        "created_on": gw.now(),
-        "gway_version": _version,
-        "gway_uuid": gw.uuid(),
-    }
-
-    with connect(*conn_path, **connect_kwargs) as cursor:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
-        table_exists = cursor.fetchone()
-
-        if table_exists:
-            cursor.execute(f"PRAGMA table_info([{table}])")
-            existing_cols = [row[1] for row in cursor.fetchall()]
-            if not all(col in existing_cols for col in full_cols):
-                backup = f"{table}_bak"
-                cursor.execute(f"ALTER TABLE [{table}] RENAME TO [{backup}]")
-                col_defs = ', '.join(f"[{k}] {_infer_type(v)}" for k, v in full_cols.items())
-                cursor.execute(f"CREATE TABLE [{table}] ({col_defs})")
-                shared = [col for col in existing_cols if col in full_cols]
-                if shared:
-                    cols_str = ', '.join(f"[{col}]" for col in shared)
-                    cursor.execute(f"INSERT INTO [{table}] ({cols_str}) SELECT {cols_str} FROM [{backup}]")
-                cursor.execute(f"DROP TABLE [{backup}]")
-        else:
-            col_defs = ', '.join(f"[{k}] {_infer_type(v)}" for k, v in full_cols.items())
-            cursor.execute(f"CREATE TABLE [{table}] ({col_defs})")
-
-        keys = list(full_cols)
-        values = list(full_cols.values())
-        placeholders = ', '.join('?' for _ in keys)
-        cursor.execute(
-            f"INSERT INTO [{table}] ({', '.join(f'[{k}]' for k in keys)}) VALUES ({placeholders})", 
-            values
-        )
-        cursor.connection.commit()
-
-
-def load(*dest, source=None, _headers=None, **opts):
-    """
-    Bulk load data into a database table.
-    Accepts:
-    - source= a list of dicts
-    - source= a list of lists or tuples with _headers specified
-    - source= a CSV/TSV/CDV file
-    - source= a SQL query (str) to evaluate via `query()`
-    """
-    assert source is not None, "Must provide `source` with a valid source"
-    *conn_path, table = dest
-
-    # Determine the data
-    if isinstance(source, str):
-        if source.endswith(".sql"):
-            rows = query(source, **opts)
-        elif source.endswith(".tsv"):
-            sep = "\t"
-            with open(source, "r", encoding="utf-8") as f:
-                reader = csv.reader(f, delimiter=sep)
-                headers = next(reader)
-                rows = [dict(zip(headers, row)) for row in reader]
-        elif source.endswith(".cdv"):
-            sep = ":"
-            with open(source, "r", encoding="utf-8") as f:
-                reader = csv.reader(f, delimiter=sep)
-                headers = next(reader)
-                rows = [dict(zip(headers, row)) for row in reader]
-        elif source.endswith(".csv"):
-            with open(source, "r", encoding="utf-8") as f:
-                reader = csv.reader(f)
-                headers = next(reader)
-                rows = [dict(zip(headers, row)) for row in reader]
-        else:
-            raise ValueError(f"Unrecognized file format for '{source}'")
-    elif isinstance(source, list):
-        if all(isinstance(row, dict) for row in source):
-            rows = source
-        elif all(isinstance(row, (list, tuple)) for row in source):
-            assert _headers, "Must provide _headers when using list-of-lists"
-            rows = [dict(zip(_headers, row)) for row in source]
-        else:
-            raise TypeError("List must contain dicts or tuples/lists")
+    # Determine if thread ID should be included in key
+    if sql_engine in {"sqlite"}:
+        thread_key = threading.get_ident()
     else:
-        raise TypeError(f"Unsupported type for source: {type(source)}")
+        thread_key = "*"
 
-    if not rows:
-        gw.warning(f"No data to load into table '{table}'")
+    key = (base_key, thread_key)
+
+    if key in _connection_cache:
+        conn = _connection_cache[key]
+        if row_factory:
+            gw.warning("Row factory change requires disconnect(). Reconnect manually.")
+        gw.debug(f"Reusing connection: {key}")
+        return conn
+
+    # Create connection
+    if sql_engine == "sqlite":
+        path = gw.resource(datafile or "work/data.sqlite")
+        conn = sqlite3.connect(path)
+
+        if row_factory:
+            if row_factory is True:
+                conn.row_factory = sqlite3.Row
+            elif callable(row_factory):
+                conn.row_factory = row_factory
+            elif isinstance(row_factory, str):
+                conn.row_factory = gw[row_factory]
+            gw.debug(f"Configured row_factory: {conn.row_factory}")
+
+        gw.info(f"Opened SQLite connection at {path}")
+
+    elif sql_engine == "duckdb":
+        import duckdb
+        path = gw.resource(datafile or "work/data.duckdb")
+        conn = duckdb.connect(path)
+        gw.info(f"Opened DuckDB connection at {path}")
+
+    elif sql_engine == "postgres":
+        import psycopg2
+        conn = psycopg2.connect(**dbopts)
+        gw.info(f"Connected to Postgres at {dbopts.get('host', 'localhost')}")
+
+    else:
+        raise ValueError(f"Unsupported sql_engine: {sql_engine}")
+
+    # Wrap and cache connection
+    conn = WrappedConnection(conn)
+    _connection_cache[key] = conn
+
+    if autoload and sql_engine == "sqlite":
+        load_csv(conn=conn, force=force)
+
+    return conn
+
+def disconnect(datafile=None, *, sql_engine="sqlite", all=False):
+    """
+    Explicitly close one or all cached database connections.
+    """
+    if all:
+        for conn in _connection_cache.values():
+            try:
+                conn.close()
+            except Exception as e:
+                gw.warning(f"Failed to close connection: {e}")
+        _connection_cache.clear()
+        gw.info("All connections closed.")
         return
 
-    # Insert into database
-    with connect(*conn_path, **opts) as cursor:
-        columns = list(rows[0])
-        col_defs = ', '.join(f"[{col}] {_infer_type(rows[0][col])}" for col in columns)
-
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
-        exists = cursor.fetchone()
-        if not exists:
-            cursor.execute(f"CREATE TABLE [{table}] ({col_defs})")
-
-        placeholders = ', '.join('?' for _ in columns)
-        insert_sql = f"INSERT INTO [{table}] ({', '.join(f'[{col}]' for col in columns)}) VALUES ({placeholders})"
-        values = [tuple(row[col] for col in columns) for row in rows]
-        cursor.executemany(insert_sql, values)
-        cursor.connection.commit()
+    key = (sql_engine, datafile or "default")
+    conn = _connection_cache.pop(key, None)
+    if conn:
+        try:
+            conn.close()
+            gw.info(f"Closed connection: {key}")
+        except Exception as e:
+            gw.warning(f"Failed to close {key}: {e}")
 
 
-def _is_sql_snippet(text):
-    return any(word in text.lower() for word in ["select", "insert", "update", "delete"])
+def execute(sql=None, *, conn=None, script=None):
+    """
+    Execute SQL code or a script resource. If both are given, run script first.
+    Returns dict with 'data' (rows, if any) and 'sql' (last statement run).
+    """
+    if not conn:
+        conn = connect()
 
+    cursor = conn.cursor()
 
-def _infer_type(value):
-    """Infer SQL type from a sample value."""
     try:
-        float(value)
-        return "REAL"
-    except ValueError:
-        return "TEXT"
+        if script:
+            script_text = gw.resource(script, text=True)
+            cursor.executescript(script_text)
+            gw.info(f"Executed script from: {script}")
 
-# TODO: Use the sql project to implement a simple credit/debit account system
-# 
+        if sql:
+            cursor.execute(sql)
+            return cursor.fetchall() if cursor.description else None
+    finally:
+        cursor.close()
+

@@ -14,22 +14,22 @@ import functools
 
 from .envs import load_env, get_base_client, get_base_server
 from .sigils import Resolver
-from .structs import Results, Project
+from .structs import Results, Project, Null
 
 
 class Gateway(Resolver):
     _builtins = None
     _thread_local = threading.local()
+    Null = Null
 
     def __init__(self, *, 
                 client=None, server=None, verbose=False, 
                 name="gw", base_path=None, project_path=None,
-                _debug=False, _quantity=None, **kwargs
+                debug=False, _quantity=None, **kwargs
     ):
         # Basic initialization
         self._cache = {}
         self._async_threads = []
-        self._debug = _debug
         self._quantity = _quantity
         self.uuid = uuid.uuid4()
         self.base_path = base_path or os.path.dirname(os.path.dirname(__file__))
@@ -38,9 +38,13 @@ class Gateway(Resolver):
         self.logger = logging.getLogger(name)
 
         if not verbose:
-            self.verbose = lambda *_, **__: None
+            self.verbose = Null
         elif verbose is True:
             self.verbose = lambda *args, **kwargs: self.info(*args, **kwargs)
+
+        if not debug:
+            self.debug = Null
+        
 
         # Pull out client/server overrides so they don't go into context
         client_name = client or get_base_client()
@@ -112,6 +116,12 @@ class Gateway(Resolver):
     def success(self, message):
         print(message)
         self.info(message)
+
+    # TODO: Whenever we call a wrapped function, check all the actual values being passed to it
+    # and add them to the context with the same param names as context keys. 
+    # If some params are not passed but they have defaults, take the defaul value (after we
+    # resolved the sigils) and add that to the context. The goal is that if we specify a 
+    # param once for a function, it essentually becomes the new default by name. 
 
     def _wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
@@ -197,6 +207,9 @@ class Gateway(Resolver):
                         sk = words[-1]
 
                     lk = ".".join([project] + words[1:]) if len(words) > 1 else project
+
+                    # TODO: To simplify _wrap_callable, refactor the logic from the next two
+                    # checks into a new gw builting called "censor" that has a default truncate=True option.
 
                     # — if the repr of result is very long, truncate it —
                     repr_result = repr(result)

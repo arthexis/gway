@@ -14,9 +14,6 @@ from .logging import setup_logging
 from .builtins import abort
 from .gateway import Gateway, gw
 
-# TODO: When final output is a generator, execute it to produce the result.
-# TODO: Add a new argument -q that allows to limit the number of items produced by generators.
-# If -q is not provided, the generator may run forever, just continue printing what it yields.
 
 def cli_main():
     """Main CLI entry point."""
@@ -39,15 +36,24 @@ def cli_main():
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     args = parser.parse_args()
 
+    # TODO: Add a -l mode with dest=local that does the same thing as base_path but sets
+    # the base_path to the current working directory automatically (local mode.)
+
+    # TODO: Add a -g mode for dest=global reserved for later use.
+
     # Setup logging and timer
     setup_logging(logfile="gway.log", loglevel="DEBUG" if args.debug else "INFO")
     start_time = time.time() if args.timed else None
+
+    # TODO: When both -t and -a, time every individual command and log the duration.
+
+    # TODO: Simplify the signature to Gateway by changing the nature of gw.debug
 
     # Init Gateway instance
     gw_local = Gateway(
         client=args.client,
         server=args.server,
-        verbose=args.verbose or args.debug,
+        verbose=args.verbose,
         name=args.name or "gw",
         project_path=args.project_path,
         base_path=args.base_path,
@@ -58,7 +64,7 @@ def cli_main():
     # Load command sources
     if args.recipe:
         command_sources, comments = load_recipe(args.recipe)
-        gw_local.info(f"Comments in recipe:\n{chr(10).join(comments)}")
+        gw_local.debug(f"Comments in recipe:\n{chr(10).join(comments)}")
     elif args.commands:
         command_sources = chunk_command(args.commands)
     elif args.callback:

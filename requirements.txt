@@ -22,3 +22,5 @@ pyperclip; platform_system == "Windows"
 plyer
 numpy
 pygetwindow; platform_system == "Windows"
+psycopg2
+duckdb

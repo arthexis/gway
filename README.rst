@@ -5,9 +5,9 @@ Welcome [Viajante], this is the GWAY project README.rst file and website.
 
 **GWAY** is an **experimental** CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic sigil & context resolution, argument injection, inversion control, auto-wired recipes, and multi-environment support. GWAY is async-compatible and fully instrumented.
 
-`Our Goal: Lower the barrier to enter a higher-level of systems integration.`
+`Our Goal: Lower the barrier to a higher-level of systems integration.`
 
-`Our Philosophy: Every function should be a working solution and entry point.`
+`Philosophy: Every function should be a solution and entry point.`
 
 Fetch the source, changelogs and issues (or submit your own) here:
 

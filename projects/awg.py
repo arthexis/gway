@@ -29,7 +29,9 @@ def find_cable(
     neutral: Union[int, str] = "1"
 ):
     """Calculate the type of cable needed for an electrical system."""
-    with gw.sql.connect(load_data="awg") as cursor:
+    gw.info(f"Calculating AWG for {meters=} {amps=} {volts=} {material=}")
+    
+    with gw.sql.connect(autoload=True) as cursor:
         # Convert inputs
         amps = int(amps)
         meters = int(meters)

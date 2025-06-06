@@ -11,6 +11,10 @@ from gway import gw
 
 _version = None
 
+# TODO: Fix a subtle issue where the gway/readme doesn't seem to stick to the 
+# navbar. It keeps getting removed or not stored properly.
+# We should add debug logging when adding/removing from the navbar to test.
+
 def setup(*,
     app=None,
     project="web.site",
@@ -68,6 +72,10 @@ def setup(*,
         def send_work(filename):
             filename = filename.replace('-', '_')
             return static_file(filename, root=gw.resource("work", "shared"))
+        
+    # TODO: When passing a param to a view, such as from a form that was left empty by the user
+    # avoid passing None, instead pass "" (empty string) as it may differentiate between a 
+    # form that has not been submitted and one submitted with empty fields.
 
     @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
@@ -334,6 +342,7 @@ def redirect_error(error=None, note="", default="/gway/readme", broken_view_name
         gw.exception(error)
 
     if broken_view_name and cookies_enabled():
+        gw.debug(f"Removing cookie for {broken_view_name=}")
         raw = request.get_cookie("visited", "")
         visited = raw.split("|") if raw else []
         broken_title = broken_view_name.replace("-", " ").replace("_", " ").title()
