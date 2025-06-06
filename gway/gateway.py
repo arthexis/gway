@@ -23,14 +23,13 @@ class Gateway(Resolver):
     Null = Null
 
     def __init__(self, *, 
-                client=None, server=None, verbose=False, 
-                name="gw", base_path=None, project_path=None,
-                debug=False, _quantity=None, **kwargs
+                client=None, server=None, verbose=False, debug=False,
+                name="gw", base_path=None, project_path=None, quantity=None, **kwargs
     ):
         # Basic initialization
         self._cache = {}
         self._async_threads = []
-        self._quantity = _quantity
+        self.quantity = quantity 
         self.uuid = uuid.uuid4()
         self.base_path = base_path or os.path.dirname(os.path.dirname(__file__))
         self.project_path = project_path
@@ -44,8 +43,9 @@ class Gateway(Resolver):
 
         if not debug:
             self.debug = Null
+        else:
+            self.debug = lambda *args, **kwargs: self.logger.debug(*args, **kwargs)
         
-
         # Pull out client/server overrides so they don't go into context
         client_name = client or get_base_client()
         server_name = server or get_base_server()

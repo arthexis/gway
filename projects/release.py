@@ -314,3 +314,34 @@ def loc(*paths):
     file_counts['total'] = total_lines
     return file_counts
 
+
+def create_shortcut(
+    name="Launch GWAY",
+    target=r"gway.bat",
+    hotkey="Ctrl+Alt+G",
+    output_dir=None,
+    icon=None,
+):
+    from win32com.client import Dispatch
+
+    # Resolve paths
+    base_dir = Path(__file__).resolve().parent
+    target_path = base_dir / target
+    output_dir = output_dir or Path.home() / "Desktop"
+    shortcut_path = Path(output_dir) / f"{name}.lnk"
+
+    shell = Dispatch("WScript.Shell")
+    shortcut = shell.CreateShortcut(str(shortcut_path))
+    shortcut.TargetPath = str(target_path)
+    shortcut.WorkingDirectory = str(base_dir)
+    shortcut.WindowStyle = 1  # Normal window
+    if icon:
+        shortcut.IconLocation = str(icon)
+    shortcut.Hotkey = hotkey  # e.g. Ctrl+Alt+G
+    shortcut.Description = "Launch GWAY from anywhere"
+    shortcut.Save()
+
+    print(f"Shortcut created at: {shortcut_path}")
+
+if __name__ == "__main__":
+    create_shortcut()

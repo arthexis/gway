@@ -23,8 +23,6 @@ class Sigil:
         self.original = text
 
     def resolve(self, finder):
-        """Resolve the sigil using the given finder callable or dictionary."""
-
         if isinstance(finder, dict):
             def _lookup(key, fallback):
                 for variant in (key, key.lower(), key.upper()):
@@ -41,19 +39,31 @@ class Sigil:
         else:
             raise TypeError("Finder must be a callable or a dictionary")
 
-        def replacer(match):
-            key = match.group(1).strip()
-            fallback = match.group(2).strip() if match.group(2) is not None else None
+        return _replace_sigils(self.original, _lookup, on_missing=None)
+    
+    def redact(self, finder, remanent=None):
+        """Redacts missing sigils instead of removing them. Use `remanent` to replace unresolved sigils."""
+        if isinstance(finder, dict):
+            def _lookup(key, fallback):
+                for variant in (key, key.lower(), key.upper()):
+                    if variant in finder:
+                        return finder[variant]
+                return fallback
+        elif callable(finder):
+            def _lookup(key, fallback):
+                for variant in (key, key.lower(), key.upper()):
+                    val = finder(variant, None)
+                    if val is not None:
+                        return val
+                return fallback
+        else:
+            raise TypeError("Finder must be a callable or a dictionary")
 
-            if key == "":
-                raise ValueError("Empty key is not allowed")
-            if match.group(2) is not None and fallback == "":
-                raise ValueError(f"Empty fallback is not allowed in [{key}|]")
-
-            resolved = _lookup(key, fallback)
-            return str(resolved) if resolved is not None else ""
-
-        return re.sub(self._pattern, replacer, self.original) or None
+        return _replace_sigils(self.original, _lookup, on_missing=remanent)
+    
+    def cleave(self):
+        """Remove all text between brackets (including the brackets)."""
+        return re.sub(self._pattern, '', self.original) or None
 
     def list_sigils(self):
         """Returns a list of all well-formed [sigils] in the original text (including brackets)."""
@@ -62,6 +72,29 @@ class Sigil:
     def __mod__(self, finder):
         """Allows use of `%` operator for resolution."""
         return self.resolve(finder)
+
+
+def _replace_sigils(text, lookup_fn, on_missing=None):
+    def replacer(match):
+        key = match.group(1).strip()
+        fallback = match.group(2).strip() if match.group(2) is not None else None
+
+        if key == "":
+            raise ValueError("Empty key is not allowed")
+        if match.group(2) is not None and fallback == "":
+            raise ValueError(f"Empty fallback is not allowed in [{key}|]")
+
+        try:
+            resolved = lookup_fn(key, fallback)
+            if resolved is not None:
+                return str(resolved)
+        except Exception:
+            pass
+
+        return str(on_missing) if on_missing is not None else match.group(0)
+
+    return re.sub(Sigil._pattern, replacer, text) or None
+
 
 class Resolver:
     def __init__(self, search_order):
@@ -81,6 +114,22 @@ class Resolver:
         if not isinstance(sigil, Sigil):
             sigil = Sigil(sigil)
         return sigil % self.find_value
+    
+    def redact(self, sigil, remanent=None):
+        """Redact [sigils] in a given string, keeping unresolved ones or replacing with remanent."""
+        if not isinstance(sigil, str):
+            return sigil
+        if not isinstance(sigil, Sigil):
+            sigil = Sigil(sigil)
+        return sigil.redact(self.find_value, remanent=remanent)
+
+    def cleave(self, sigil):
+        """Remove all [sigils] from the given string."""
+        if not isinstance(sigil, str):
+            return sigil
+        if not isinstance(sigil, Sigil):
+            sigil = Sigil(sigil)
+        return sigil.cleave()
     
     def find_value(self, key: str, fallback: str = None) -> str:
         """Find a value from the search sources provided in search_order."""

@@ -10,7 +10,7 @@ import asyncio
 from gway import gw
 
 
-def execute(
+def execute_kw(
         *args, model: str, method: str, 
         url : str = "[ODOO_BASE_URL]", 
         db_name : str = "[ODOO_DB_NAME]",
@@ -93,7 +93,7 @@ def fetch_quotes(
         domain_filter.extend(kwargs)
     fields_to_fetch = ['name', 'amount_total', 'create_date', 'user_id', 'partner_id']
     try:
-        result = gw.odoo.execute(
+        result = execute_kw(
             [domain_filter], {'fields': fields_to_fetch},
             model=model, method=method
         )
@@ -115,7 +115,7 @@ def fetch_products(*, name=None, latest_quotes=None):
         domain_filter.append(('name', 'ilike', name))
     
     fields_to_fetch = ['name', 'list_price']  # Add fields as needed
-    result = gw.odoo.execute(
+    result = execute_kw(
         [domain_filter], {'fields': fields_to_fetch},
         model=model, method=method
     )
@@ -165,7 +165,7 @@ def fetch_customers(
 
     fields_to_fetch = ['name', 'create_date']
     try:
-        result = gw.odoo.execute(
+        result = execute_kw(
             [domain_filter], {'fields': fields_to_fetch},
             model=model, method=method
         )
@@ -190,20 +190,20 @@ def fetch_order(order_id):
     # Check if order_id is a string that starts with 'S' and fetch by name instead of ID
     if isinstance(order_id, str) and order_id.startswith('S'):
         order_domain_filter = [('name', '=', order_id)]
-        order_result = gw.odoo.execute(
+        order_result = execute_kw(
             order_model, 'search_read', [order_domain_filter], {'fields': order_fields})
         if order_result:
             order_id = order_result[0]['id']
         else:
             return {'error': 'Order not found.'}
     else:
-        order_result = gw.odoo.execute(
+        order_result = execute_kw(
             [[order_id]], {'fields': order_fields},
             model=order_model, method=order_method,
         )
 
     line_domain_filter = [('order_id', '=', order_id)]
-    line_result = gw.odoo.execute(
+    line_result = execute_kw(
         [line_domain_filter], {'fields': line_fields},
         model=line_model, method=line_method,
     )
@@ -242,7 +242,7 @@ def fetch_templates(*, name=None, active=True, **kwargs):
     fields_to_fetch = ['name', 'number_of_days', 'active']
     
     try:
-        result = gw.odoo.execute(
+        result = execute_kw(
             [domain_filter], {'fields': fields_to_fetch},
             model=model, method=method
         )
@@ -287,7 +287,7 @@ def create_quote(*, customer, template_id, validity=None, notes=None):
         values['note'] = notes
 
     try:
-        quote_id = gw.odoo.execute(
+        quote_id = execute_kw(
             [values], {},
             model=model, method=method
         )
@@ -303,12 +303,12 @@ def send_chat(message: str, *, username: str = "[ODOO_USERNAME]") -> bool:
     """
     Send a chat message to an Odoo user by username.
     """
-    user_info = gw.odoo.get_user_info(username=username)
+    user_info = get_user_info(username=username)
     if not user_info:
         return False
 
     user_id = user_info["id"]
-    return gw.odoo.execute(
+    return execute_kw(
         model="mail.channel",
         method="message_post",
         kwargs={
@@ -328,7 +328,7 @@ def read_chat(*,
     Read chat messages from an Odoo user by username.
     If unread is True, only return unread messages.
     """
-    user_info = gw.odoo.get_user_info(username=username)
+    user_info = get_user_info(username=username)
     if not user_info: return []
 
     user_id = user_info["id"]
@@ -336,7 +336,7 @@ def read_chat(*,
     if unread:
         domain.append(["message_read", "=", False])
 
-    messages = gw.odoo.execute(
+    messages = execute_kw(
         model="mail.message",
         method="search_read",
         domain=domain,
@@ -347,7 +347,7 @@ def read_chat(*,
 
 def get_user_info(*, username: str) -> dict:
     """Retrieve Odoo user information by username."""
-    user_data = gw.odoo.execute(
+    user_data = execute_kw(
         model="res.users",
         method="search_read",
         domain=[["login", "=", username]],
@@ -382,7 +382,7 @@ def setup_chatbot_app(*,
         async def poll_messages():
             while True:
                 try:
-                    messages = gw.odoo.read_chat(username=username)
+                    messages = read_chat(username=username)
                     for msg in messages:
                         msg_id = msg["id"]
                         if msg_id not in last_seen:
@@ -399,7 +399,7 @@ def setup_chatbot_app(*,
 
     @app.get(path, response_class=HTMLResponse)
     async def ui(request: Request):
-        messages = gw.odoo.read_chat(username=username, unread=False)
+        messages = read_chat(username=username, unread=False)
         html = f"""
         <html>
         <head>
@@ -434,7 +434,7 @@ def setup_chatbot_app(*,
     @app.post(path)
     async def post_message(alias: str = Form(...), body: str = Form(...)):
         if body.strip():
-            gw.odoo.send_chat(body, username=username)
+            send_chat(body, username=username)
             log_msg("out", body)
         return RedirectResponse(url=path, status_code=303)
 

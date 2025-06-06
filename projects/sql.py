@@ -6,8 +6,17 @@ import sqlite3
 import threading
 from gway import gw
 
+# GWAY database functions. These can be called from anywhere safely:
+#
+# from gway import gw
+# with gw.sql.connect('[datafile]') as cursor:
+#      ...
+# Or from a recipe:
+#
+# sql connect
+# sql execute "<SQL>"
+#
 
-# Wrapping was simplified and improved to return a cursor
 class WrappedConnection:
     def __init__(self, conn):
         self._conn = conn

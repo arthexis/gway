@@ -21,7 +21,7 @@ def generate_img(value, *, path=None):
         path = gw.resource("work", "shared", "qr_codes", str(uuid.uuid4()) + ".png")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     img.save(path)
-    return {"image": img, "path": path}
+    return path
 
 
 generate_image = generate_img
@@ -49,7 +49,7 @@ def generate_b64data(value):
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def scan_image(source):
+def scan_img(source):
     """
     Scan the given image (file‑path or PIL.Image) for QR codes and return
     a list of decoded string values. Returns [] if nothing’s found.
@@ -83,5 +83,3 @@ def scan_image(source):
 
     return []
 
-
-scan_img = scan_image

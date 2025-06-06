@@ -18,6 +18,8 @@ from .gateway import Gateway, gw
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
+
+    # Primary behavior flags
     parser.add_argument("-a", dest="all", action="store_true", help="Show all text results, not just the last")
     parser.add_argument("-b", dest="base_path", type=str, help="Specify a different base path for GWAY.")
     parser.add_argument("-c", dest="client", type=str, help="Specify client environment")
@@ -27,27 +29,50 @@ def cli_main():
     parser.add_argument("-n", dest="name", type=str, help="Name for app instances and logger (default: gw).")
     parser.add_argument("-o", dest="outfile", type=str, help="Write text output(s) to this file")
     parser.add_argument("-p", dest="project_path", type=str, help="Root project path for custom functions.")
-    parser.add_argument("-q", dest="quantity", type=int, help="Max items from generator outputs")
+    parser.add_argument("-q", dest="quantity", type=int, default=1, help="Max items from generator outputs")
     parser.add_argument("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
     parser.add_argument("-s", dest="server", type=str, help="Override server environment configuration")
     parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing of operations")
     parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode (where supported)")
     parser.add_argument("-x", dest="callback", type=str, help="Execute a callback per command or standalone")
+    parser.add_argument("-l", dest="local", action="store_true", help="Set base_path to current directory")
+    parser.add_argument("-g", dest="global_mode", action="store_true", help="Reserved for future global mode")
+    parser.add_argument("-m", dest="memory", action="store_true", help="Memory mode: Save or reuse last arguments")
+    parser.add_argument("-f", dest="fuzzy", action="store_true", help="Reserved for fuzzy matching")
+    parser.add_argument("-i", dest="interact", action="store_true", help="Reserved for interactive shell mode")
     parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
+
     args = parser.parse_args()
 
-    # TODO: Add a -l mode with dest=local that does the same thing as base_path but sets
-    # the base_path to the current working directory automatically (local mode.)
+    memory_file = "work/memory.txt"
 
-    # TODO: Add a -g mode for dest=global reserved for later use.
+    # Handle memory mode: clear, save, or restore
+    if args.memory:
+        if not args.commands and not args.callback:
+            if os.path.exists(memory_file):
+                os.remove(memory_file)
+                print("Memory cleared.")
+            else:
+                print("Memory already clear.")
+            sys.exit(0)
+        else:
+            os.makedirs(os.path.dirname(memory_file), exist_ok=True)
+            with open(memory_file, "w") as f:
+                f.write(" ".join(sys.argv[1:]))
 
-    # Setup logging and timer
+    elif not args.commands and not args.callback and os.path.exists(memory_file):
+        with open(memory_file) as f:
+            saved_args = f.read().strip().split()
+        sys.argv.extend(saved_args)
+        return cli_main()  # Restart CLI with extended arguments
+
+    # Handle local mode: override base_path to current dir
+    if args.local:
+        args.base_path = os.getcwd()
+
+    # Setup logging
     setup_logging(logfile="gway.log", loglevel="DEBUG" if args.debug else "INFO")
     start_time = time.time() if args.timed else None
-
-    # TODO: When both -t and -a, time every individual command and log the duration.
-
-    # TODO: Simplify the signature to Gateway by changing the nature of gw.debug
 
     # Init Gateway instance
     gw_local = Gateway(
@@ -57,8 +82,8 @@ def cli_main():
         name=args.name or "gw",
         project_path=args.project_path,
         base_path=args.base_path,
-        _debug=args.debug,
-        _quantity=args.quantity
+        debug=args.debug,
+        quantity=args.quantity,
     )
 
     # Load command sources
@@ -83,13 +108,13 @@ def cli_main():
     else:
         all_results, last_result = [], None
 
-    # Apply -e expression if requested
+    # Resolve expression if requested
     if args.expression:
         output = Gateway(**last_result).resolve(args.expression)
     else:
         output = last_result
 
-    # Materialize generators and apply quantity limit
+    # Convert generators to lists
     def realize(val):
         if hasattr(val, "__iter__") and not isinstance(val, (str, bytes, dict)):
             try:
@@ -101,7 +126,7 @@ def cli_main():
     all_results = [realize(r) for r in all_results]
     output = realize(output)
 
-    # Output to console
+    # Emit result(s)
     def emit(data):
         if args.json:
             print(json.dumps(data, indent=2, default=str))
@@ -117,7 +142,7 @@ def cli_main():
     else:
         emit(output)
 
-    # Optionally write to file
+    # Write to file if needed
     if args.outfile:
         with open(args.outfile, "w") as f:
             if args.json:

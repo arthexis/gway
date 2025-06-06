@@ -13,6 +13,9 @@ Fetch the source, changelogs and issues (or submit your own) here:
 
 https://github.com/arthexis/gway
 
+Watch the live demo here (if you aren't there already):
+
+https://arthexis.com/gway/readme
 
 Features
 --------
