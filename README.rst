@@ -464,6 +464,10 @@ INCLUDED PROJECTS
 
   > ``gway screen notify``
 
+- ``reminder`` — (no description)
+
+  > ``gway screen reminder``
+
 - ``shot`` — Take a screenshot in the specified mode and save it under:
 
   > ``gway screen shot``
