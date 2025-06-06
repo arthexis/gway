@@ -106,7 +106,9 @@ def _sanitize_filename(name: str) -> str:
     return cleaned.replace(" ", "_").strip("_") or "window"
 
 
-def shot(mode: str = "full") -> str:
+# TODO: Allow the screenshot to be named (overrides the date pattern)
+
+def shot(*, name: str = None, mode: str = "full") -> str:
     """
     Take a screenshot in the specified mode and save it under:
         gw.resource("work", "screenshots")
@@ -150,6 +152,21 @@ def shot(mode: str = "full") -> str:
 
     return filepath
 
+# TODO: Create a render_text function that will render a message using 
+# the largest possible font. Make the prototype work by starting with 
+# a very large font and scaling down until it fits in the image. 
+# If the text starts very large, we can start with a smaller font.
+
+# TODO: Create a reminder function that may run as a daemonized thread
+# that will take a screenshot every interval seconds and compare it with
+# the previous one. If no movement was detected (changes of any kind) since the 
+# last check render_text the message on that last image and display it until
+# the user moves anything, which dismisses the message. 
+
+def reminder(message, *, interval=20.0, margin=40, daemon=False):
+    raise NotImplementedError
+
+# TODO: Use standard names for reminder imgs: work/reminder/original|next|rendered.png
 
 def animate_gif(pattern, *, output_gif=None):
     resolved = gw.resource(pattern)

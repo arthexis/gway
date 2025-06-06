@@ -117,12 +117,6 @@ class Gateway(Resolver):
         print(message)
         self.info(message)
 
-    # TODO: Whenever we call a wrapped function, check all the actual values being passed to it
-    # and add them to the context with the same param names as context keys. 
-    # If some params are not passed but they have defaults, take the defaul value (after we
-    # resolved the sigils) and add that to the context. The goal is that if we specify a 
-    # param once for a function, it essentually becomes the new default by name. 
-
     def _wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
@@ -132,7 +126,7 @@ class Gateway(Resolver):
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
 
-                # Resolve “[...]” placeholder defaults from context
+                # Step 1: Resolve placeholder defaults from context, if not provided
                 for param in sig.parameters.values():
                     if (param.name not in bound_args.arguments
                         and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)):
@@ -140,15 +134,17 @@ class Gateway(Resolver):
                         if (isinstance(default_value, str)
                             and default_value.startswith("[")
                             and default_value.endswith("]")):
-                            bound_args.arguments[param.name] = self.resolve(default_value)
+                            resolved = self.resolve(default_value)
+                            bound_args.arguments[param.name] = resolved
+                            self.context[param.name] = resolved  # Store resolved default
 
-                # Resolve any string arguments via self.resolve, and inject into context
+                # Step 2: Resolve any argument values and inject into context
                 for key, value in bound_args.arguments.items():
-                    if isinstance(value, str):
-                        bound_args.arguments[key] = self.resolve(value)
-                    self.context[key] = bound_args.arguments[key]
+                    resolved_value = self.resolve(value) if isinstance(value, str) else value
+                    bound_args.arguments[key] = resolved_value
+                    self.context[key] = resolved_value
 
-                # Separate positional vs keyword for final call
+                # Step 3: Prepare final call args/kwargs
                 args_to_pass = []
                 kwargs_to_pass = {}
                 for param in sig.parameters.values():
@@ -158,15 +154,16 @@ class Gateway(Resolver):
                         kwargs_to_pass.update(bound_args.arguments.get(param.name, {}))
                     elif param.name in bound_args.arguments:
                         val = bound_args.arguments[param.name]
-                        # If the argument still equals its default, try to override from context
+                        # If argument is still the default, try to override from context
                         if param.default == val:
                             found = self.find_value(param.name)
                             if found is not None and found != val:
                                 self.info(f"Injected {param.name}={found} overrides default {val=}")
                                 val = found
+                                self.context[param.name] = val
                         kwargs_to_pass[param.name] = val
 
-                # If function is async, start thread to run it
+                # Step 4: Call the function (async or sync)
                 if inspect.iscoroutinefunction(func_obj):
                     thread = threading.Thread(
                         target=self._run_coroutine,
@@ -177,10 +174,8 @@ class Gateway(Resolver):
                     thread.start()
                     return f"[async task started for {func_name}]"
 
-                # Call the function synchronously
                 result = func_obj(*args_to_pass, **kwargs_to_pass)
 
-                # If it returns a coroutine, run that in a thread
                 if inspect.iscoroutine(result):
                     thread = threading.Thread(
                         target=self._run_coroutine,
@@ -191,7 +186,7 @@ class Gateway(Resolver):
                     thread.start()
                     return f"[async coroutine started for {func_name}]"
 
-                # At this point, `result` is a concrete return value
+                # Step 5: Store result into results/context if not None
                 if result is not None:
                     parts = func_name.split(".")
                     project = parts[-2] if len(parts) > 1 else parts[-1]
@@ -208,17 +203,12 @@ class Gateway(Resolver):
 
                     lk = ".".join([project] + words[1:]) if len(words) > 1 else project
 
-                    # TODO: To simplify _wrap_callable, refactor the logic from the next two
-                    # checks into a new gw builting called "censor" that has a default truncate=True option.
-
-                    # — if the repr of result is very long, truncate it —
                     repr_result = repr(result)
                     if len(repr_result) > 100:
                         short_result = repr_result[:100] + "...[truncated]"
                     else:
                         short_result = repr_result
 
-                    # — if the storage key looks sensitive, censor it —
                     sensitive_keywords = ("password", "secret", "token", "key")
                     if any(word.lower() in sk.lower() for word in sensitive_keywords):
                         log_value = "<censored>"

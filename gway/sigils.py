@@ -109,26 +109,20 @@ class Resolver:
 
     def resolve(self, sigil):
         """Resolve [sigils] in a given string, using find_value()."""
-        if not isinstance(sigil, str):
-            return sigil
         if not isinstance(sigil, Sigil):
-            sigil = Sigil(sigil)
+            sigil = Sigil(str(sigil))
         return sigil % self.find_value
     
     def redact(self, sigil, remanent=None):
         """Redact [sigils] in a given string, keeping unresolved ones or replacing with remanent."""
-        if not isinstance(sigil, str):
-            return sigil
         if not isinstance(sigil, Sigil):
-            sigil = Sigil(sigil)
+            sigil = Sigil(str(sigil))
         return sigil.redact(self.find_value, remanent=remanent)
 
     def cleave(self, sigil):
         """Remove all [sigils] from the given string."""
-        if not isinstance(sigil, str):
-            return sigil
         if not isinstance(sigil, Sigil):
-            sigil = Sigil(sigil)
+            sigil = Sigil(str(sigil))
         return sigil.cleave()
     
     def find_value(self, key: str, fallback: str = None) -> str:

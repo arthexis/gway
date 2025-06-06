@@ -7,6 +7,10 @@ from pathlib import Path
 from gway import gw
 
 
+def run(*script: str, **context):
+    return gw.run_recipe(*script, **context)
+
+
 def register_gwr():
     """
     Register the .gwr file extension so that double-click launches:
@@ -86,5 +90,3 @@ Icon=accessories-text-editor
     gw.info(".gwr association registered in your Linux desktop environment.")
 
 
-def run(*script: str, **context):
-    return gw.run_recipe(*script, **context)
