@@ -272,6 +272,9 @@ Beyond that, you're just multiplying uncertainty.
 INCLUDED PROJECTS
 =================
 
+.. rubric:: admin
+
+
 .. rubric:: awg
 
 - ``find_cable`` — Calculate the type of cable needed for an electrical system.
@@ -360,6 +363,10 @@ INCLUDED PROJECTS
 
 .. rubric:: ocpp
 
+- ``render_status_view`` — (no description)
+
+  > ``gway ocpp render-status-view``
+
 - ``setup_csms_app`` — OCPP 1.6 CSMS implementation with RFID authorization.
 
   > ``gway ocpp setup-csms-app``
@@ -367,10 +374,6 @@ INCLUDED PROJECTS
 - ``setup_sink_app`` — Basic OCPP passive sink for messages, acting as a dummy CSMS server.
 
   > ``gway ocpp setup-sink-app``
-
-- ``view_status`` — (no description)
-
-  > ``gway ocpp view-status``
 
 
 .. rubric:: odoo
@@ -498,9 +501,13 @@ INCLUDED PROJECTS
 
   > ``gway screen notify``
 
-- ``reminder`` — (no description)
+- ``reminder`` — Starts a thread that periodically takes screenshots.
 
   > ``gway screen reminder``
+
+- ``render_text`` — (no description)
+
+  > ``gway screen render-text``
 
 - ``shot`` — Take a screenshot in the specified mode and save it under:
 
