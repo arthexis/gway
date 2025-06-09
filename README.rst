@@ -235,6 +235,40 @@ This script sets up a web application, launches the server in daemon mode, and w
 Recipes make Gway scripting modular and composable. Include them in your automation flows for maximum reuse and clarity.
 
 
+Design Philosophy
+=================
+
+This section contains notes from the author on the nature of the code that may provide insight and guidance to future developers.
+
+
+On Comments
+-----------
+
+Comments and code are like DNA — they reflect each other.
+
+This reflection creates a form of internal consistency and safety.
+When code and its comments are in alignment, they mutually verify each other.
+When they diverge, the inconsistency acts as a warning sign: something is broken, outdated, or misunderstood.
+
+Treat comments not as annotations, but as the complementary strand of the code itself.
+Keep them synchronized.
+A mismatch is not a small issue — it's a mutation worth investigating.
+
+
+The Rule of Three (aka. The Holy Hand Grenade Procedure)
+--------------------------------------------------------
+
+If there is *not* only one good way to do it, then you should have **three**.
+
+**Five is right out.**
+
+One way implies clarity. Two implies division. Three implies depth. Five implies confusion, and confusion leads to bugs.
+
+When offering choices — in interface, design, or abstraction — ensure there are no more than three strong forms. The third may be unexpected, but it must still be necessary.
+
+Beyond that, you're just multiplying uncertainty.
+
+
 INCLUDED PROJECTS
 =================
 

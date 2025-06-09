@@ -6,12 +6,14 @@ import sqlite3
 import threading
 from gway import gw
 
-# GWAY database functions. These can be called from anywhere safely:
+# # GWAY database functions. These can be called from anywhere safely:
 #
 # from gway import gw
-# with gw.sql.gw.sql.open_connection()('[datafile]') as cursor:
-#      ...
-# Or from a recipe:
+#
+# with gw.sql.open_connection() as cursor:
+#      gq.sql.execute(query)
+#
+# # Or from a recipe:
 #
 # sql connect
 # sql execute "<SQL>"
@@ -224,20 +226,14 @@ def close_connection(datafile=None, *, sql_engine="sqlite", all=False):
             gw.warning(f"Failed to close {key}: {e}")
 
 
-def execute(*sql, connection=None, script=None, into=None):
+def execute(*sql, connection=None, script=None, sep='; '):
     """
     Execute SQL code or a script resource. If both are given, run script first.
-    Returns dict with 'data' (rows, if any) and 'sql' (last statement run).
     """
-    if not connection:
-        connection = open_connection()
+    assert execute, "Call gw.sql.open_connection first()"
 
     if sql:
-        sql = " ".join(sql)
-
-    # TODO: Implement "into" as a function or the name of a function we can get with
-    # gw[into] if so, for each row we execute in a select, we pass the extracted data as
-    # kwargs by name to the function, then replace row with the result.
+        sql = sep.join(sql)
 
     cursor = connection.cursor()
 

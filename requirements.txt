@@ -25,4 +25,3 @@ pygetwindow; platform_system == "Windows"
 psycopg2; platform_system != "Windows"
 duckdb
 pywin32L; platform_system == "Windows"
-

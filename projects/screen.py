@@ -1,5 +1,6 @@
 # projects/gui.py
 
+import sys
 import platform
 import subprocess
 import re, glob, time, os
@@ -35,6 +36,8 @@ def lookup_font(*prefix):
     """
     import winreg
     font_prefix = " ".join(prefix)
+
+    # TODO: Make this compatible with linux or throw an error 
 
     try:
         font_key_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
@@ -152,21 +155,138 @@ def shot(*, name: str = None, mode: str = "full") -> str:
 
     return filepath
 
-# TODO: Create a render_text function that will render a message using 
-# the largest possible font. Make the prototype work by starting with 
-# a very large font and scaling down until it fits in the image. 
-# If the text starts very large, we can start with a smaller font.
 
-# TODO: Create a reminder function that may run as a daemonized thread
-# that will take a screenshot every interval seconds and compare it with
-# the previous one. If no movement was detected (changes of any kind) since the 
-# last check render_text the message on that last image and display it until
-# the user moves anything, which dismisses the message. 
+def reminder(message, *, interval: float = 20.0, daemon=False, lines: int = 2):
+    """
+    Starts a thread that periodically takes screenshots.
+    If the screen hasn't changed between intervals, overlays a reminder
+    message and waits for user interaction before resuming.
+    """
+    import threading
+    from PIL import ImageChops
+    import pygame
+    import ctypes
 
-def reminder(message, *, interval=20.0, margin=40, daemon=False):
-    raise NotImplementedError
+    def images_equal(img1, img2, threshold=5):
+        diff = ImageChops.difference(img1.convert("L"), img2.convert("L"))
+        bbox = diff.getbbox()
+        if not bbox:
+            return True
+        stat = diff.crop(bbox).getextrema()
+        return stat[1] < threshold
 
-# TODO: Use standard names for reminder imgs: work/reminder/original|next|rendered.png
+    def bring_to_front():
+        if sys.platform == "win32":
+            hwnd = pygame.display.get_wm_info()["window"]
+            ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 1 | 2)
+
+    def get_screen_size():
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        width = root.winfo_screenwidth()
+        height = root.winfo_screenheight()
+        root.destroy()
+        return (width, height)
+
+    def show_reminder(bg_img: Image.Image):
+        import tkinter as tk
+        from PIL import ImageTk
+
+        screen_size = get_screen_size()
+        reminder_img = render_text(message, size=screen_size, bg=bg_img, lines=lines)
+
+        root = tk.Tk()
+        root.title("Reminder")
+        root.attributes("-fullscreen", True)
+        root.configure(background='black')
+        root.focus_force()
+
+        img_tk = ImageTk.PhotoImage(reminder_img)
+        label = tk.Label(root, image=img_tk)
+        label.pack()
+
+        root.bind("<Key>", lambda e: root.destroy())
+        root.bind("<Button>", lambda e: root.destroy())
+        root.bind("<Motion>", lambda e: root.destroy())
+
+        root.mainloop()
+
+    def loop():
+        reminder_dir = gw.resource("work", "reminder")
+        os.makedirs(reminder_dir, exist_ok=True)
+        last_img = None
+
+        while True:
+            current = ImageGrab.grab()
+            current.save(os.path.join(reminder_dir, "next.png"))
+
+            if last_img and images_equal(current, last_img):
+                current.save(os.path.join(reminder_dir, "original.png"))
+                show_reminder(current)
+
+            last_img = current
+            time.sleep(float(interval))
+
+    thread = threading.Thread(target=loop, daemon=daemon)
+    thread.start()
+
+    if not daemon:
+        try:
+            while thread.is_alive():
+                thread.join(timeout=1)
+        except (KeyboardInterrupt, EOFError):
+            print("Exiting reminder.")
+            return
+
+    return thread
+
+
+def render_text(text, *, size=(800, 600), bg=None, fg=(255, 255, 255), font_name=None, lines=2) -> Image.Image:
+    import pygame
+    import textwrap
+    pygame.font.init()  # Only init what we need
+
+    width, height = size
+    MARGIN = 40
+
+    # Natural wrapping
+    wrapped = textwrap.wrap(text, width=30)[:int(lines)]
+
+    img = pygame.Surface(size)
+    if isinstance(bg, tuple):
+        img.fill(bg)
+    elif isinstance(bg, Image.Image):
+        bg = bg.resize(size)
+        bg_data = pygame.image.fromstring(bg.tobytes(), size, bg.mode)
+        img.blit(bg_data, (0, 0))
+    else:
+        img.fill((0, 0, 0))
+
+    font_size = 200
+    while font_size > 10:
+        font = pygame.font.SysFont(font_name, font_size)
+        rendered = [font.render(line, True, fg) for line in wrapped]
+        max_width = max((r.get_width() for r in rendered), default=0)
+        total_height = sum(r.get_height() for r in rendered) + MARGIN * (len(rendered) - 1)
+
+        if max_width <= width - 2 * MARGIN and total_height <= height - 2 * MARGIN:
+            break
+        font_size -= 2
+
+    # Center vertically
+    y = (height - total_height) // 2
+    for r in rendered:
+        x = (width - r.get_width()) // 2
+        img.blit(r, (x, y))
+        y += r.get_height() + MARGIN
+
+    pygame.font.quit()  # Clean up
+
+    return Image.frombytes("RGB", size, pygame.image.tostring(img, "RGB"))
+
+...
+
 
 def animate_gif(pattern, *, output_gif=None):
     resolved = gw.resource(pattern)

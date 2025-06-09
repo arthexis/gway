@@ -9,7 +9,7 @@ import inspect
 import collections.abc
 from collections.abc import Iterable, Mapping, Sequence
 from types import FunctionType
-from typing import Any, Optional, Type
+from typing import Any, Optional, Type, List
 
 
 
@@ -80,7 +80,11 @@ def version(check=None) -> str:
         return "unknown"
 
 
-def resource(*parts, touch=False, check=False, text=False):
+def normalize_ext(e):
+    return e if e.startswith('.') else f'.{e}'
+
+
+def resource(*parts, touch=False, check=False, text=False, ext=None):
     """
     Construct a path relative to the base, or the Gateway root if not specified.
     Assumes last part is a file and creates parent directories along the way.
@@ -91,6 +95,8 @@ def resource(*parts, touch=False, check=False, text=False):
         touch (bool): If True, creates the file if it doesn't exist.
         check (bool): If True, aborts if the file doesn't exist and touch is False.
         text (bool): If True, returns the text contents of the file instead of the path.
+        ext (str): Optional extension (like "txt"). If set, tries to locate a file
+                   with or without the extension, and ensures created files use it.
 
     Returns:
         pathlib.Path | str: The constructed path, or file contents if text=True.
@@ -98,12 +104,35 @@ def resource(*parts, touch=False, check=False, text=False):
     import pathlib
     from gway import gw
 
-    # Build path
+    ext = normalize_ext(ext) if ext else None
+
+    # Build base path
     first = pathlib.Path(parts[0])
-    if first.is_absolute():
-        path = pathlib.Path(*parts)
+    raw_path = pathlib.Path(*parts) if first.is_absolute() else pathlib.Path(gw.base_path, *parts)
+
+    # Apply ext resolution
+    candidates = []
+    if ext:
+        if raw_path.suffix == ext:
+            candidates = [raw_path, raw_path.with_suffix('')]  # e.g., file.txt and file
+        elif raw_path.suffix:
+            candidates = [raw_path, raw_path.with_suffix(ext)]  # e.g., file.data -> try file.data, file.txt
+        else:
+            candidates = [raw_path.with_suffix(ext), raw_path]  # e.g., file -> try file.txt, file
     else:
-        path = pathlib.Path(gw.base_path, *parts)
+        candidates = [raw_path]
+
+    # Pick first existing candidate
+    for candidate in candidates:
+        if candidate.exists():
+            path = candidate
+            break
+    else:
+        # None exist → pick preferred path
+        if ext and not raw_path.suffix:
+            path = raw_path.with_suffix(ext)
+        else:
+            path = raw_path
 
     # Safety check
     if not touch and check and not path.exists():
@@ -113,7 +142,7 @@ def resource(*parts, touch=False, check=False, text=False):
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Optionally create the file
-    if touch:
+    if touch and not path.exists():
         path.touch()
 
     # Return text contents or path
@@ -123,7 +152,6 @@ def resource(*parts, touch=False, check=False, text=False):
         except Exception as e:
             gw.abort(f"Failed to read {path}: {e}")
     return path
-
 
 
 ...
@@ -387,56 +415,70 @@ def run(*script: str, **context):
 
 ...
 
+# Unwrapping is useful for handling one or multiple apps, or other
+# objects passed between GWAY functions, using a simplified scheme.
 
-def unwrap(obj: Any, expected: Optional[Type] = None) -> Any:
+def unwrap_one(obj: Any, expected: Optional[Type] = None) -> Any:
     """
-    Function unwrapper that digs through __wrapped__, iterables, and closures.
+    Returns the first matching unwrapped value from obj.
     """
-    def unwrap_closure(fn: FunctionType, expected: Type) -> Optional[Any]:
+    return next(_unwrap(obj, expected, first_only=True), None)
+
+
+def unwrap_all(obj: Any, expected: Optional[Type] = None) -> List[Any]:
+    """
+    Returns a list of all matching unwrapped values from obj.
+    """
+    return list(_unwrap(obj, expected, first_only=False))
+
+
+# Internal recursive helper that yields all matches
+def _unwrap(obj: Any, expected: Optional[Type], first_only: bool = True):
+    """
+    Internal generator that recursively searches through obj.
+    If first_only is True, yields the first match and stops.
+    """
+    def unwrap_closure(fn: FunctionType):
         if fn.__closure__:
             for cell in fn.__closure__:
                 val = cell.cell_contents
-                result = unwrap(val, expected)
-                if result is not None:
-                    return result
-        return None
+                yield from _unwrap(val, expected, first_only)
 
     if expected is not None:
         if isinstance(obj, expected):
-            return obj
+            yield obj
+            if first_only:
+                return
 
         if callable(obj):
-            # First try inspect.unwrap
             try:
                 unwrapped = inspect.unwrap(obj)
             except Exception:
                 unwrapped = obj
 
             if isinstance(unwrapped, expected):
-                return unwrapped
+                yield unwrapped
+                if first_only:
+                    return
 
-            # Then search closure variables
-            found = unwrap_closure(unwrapped, expected)
-            if found is not None:
-                return found
+            yield from unwrap_closure(unwrapped)
+            if first_only:
+                return
 
-        # If obj is a container, scan recursively
         if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes, bytearray)):
             for item in obj:
-                found = unwrap(item, expected)
-                if found is not None:
-                    return found
-
-        return None
-
-    # expected not provided → default unwrap
-    if callable(obj):
-        try:
-            return inspect.unwrap(obj)
-        except Exception:
-            return obj
-
-    return obj
+                yield from _unwrap(item, expected, first_only)
+                if first_only:
+                    return
+    else:
+        # No expected type, just unwrap callable if possible
+        if callable(obj):
+            try:
+                yield inspect.unwrap(obj)
+            except Exception:
+                yield obj
+        else:
+            yield obj
 
 
 ...

@@ -9,9 +9,11 @@ from gway import gw
 
 _active_cons: Dict[str, WebSocket] = {}
 
+# Both setup_sink_app and setup_csms_app support receiving an app argument
+# which may be a single app or a collection of apps. 
 
 # Bottle does not support websockets properly, so we need to use FastAPI for OCPP. 
-# However we should still use Bottle for the user interface: don't mix them.
+# However we still use Bottle for the user interface (see view section down below)
 
 def setup_sink_app(*, 
         host='[OCPP_CSMS_HOST|0.0.0.0]', 
@@ -22,7 +24,7 @@ def setup_sink_app(*,
     """Basic OCPP passive sink for messages, acting as a dummy CSMS server."""
 
     # A - This line ensures we find just the kind of app we need or create one if missing
-    if (_is_new_app := not (app := gw.unwrap((oapp := app), FastAPI))):
+    if (_is_new_app := not (app := gw.unwrap_one((oapp := app), FastAPI))):
         app = FastAPI()
 
     @app.websocket(f"{base}/"+"{path:path}")
@@ -72,7 +74,7 @@ def setup_csms_app(*, host='[OCPP_CSMS_HOST|0.0.0.0]', port='[OCPP_CSMS_PORT|900
     """
     # A - This block ensures we find just the kind of app we need or create one if missing
     oapp = app
-    if (_is_new_app := not (app := gw.unwrap(app, FastAPI))):
+    if (_is_new_app := not (app := gw.unwrap_one(app, FastAPI))):
         app = FastAPI()
 
     def load_allowlist() -> dict[str, list[str]]:
@@ -168,7 +170,8 @@ def setup_csms_app(*, host='[OCPP_CSMS_HOST|0.0.0.0]', port='[OCPP_CSMS_PORT|900
 
 ...
 
-# Views for the main app (this is a bottle app)
+# Views for the main app. These will be used by the main bottle app when we do:
+# web app setup - web server start-app
 
-def view_status():
+def render_status_view():  # /ocpp/status
     return "OCPP Status - Pending"

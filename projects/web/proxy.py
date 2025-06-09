@@ -4,27 +4,34 @@ from fastapi import FastAPI
 from gway import gw
 import requests
 
+# TODO: Test that setup_fallback_app will work with our OCPP apps.
 
-def setup_app(*, endpoint: str, app=None, websockets: bool = False, path: str = "/"):
+
+def setup_fallback_app(*, 
+        endpoint: str, app=None, websockets: bool = False, path: str = "/",
+        mode: str = "extend", callback=None,
+    ):
     """
-    Create an HTTP (and optional WebSocket) proxy to the given endpoint.
-    Accepts positional apps, the `app=` kwarg, or both. Flattens any iterables
-    and selects apps by type using gw.filter_apps.
-
-    Returns a single app if one is provided, otherwise a tuple of apps.
+    Create an HTTP (and optional WebSocket) fallback to the given endpoint.
+    This asumes the given endpoint will replicate or provide missing functionality
+    or the entire service if it can't be provided locally. 
     """
     # selectors for app types
     from bottle import Bottle
 
-    def is_bottle_app(candidate) -> bool:
-        return isinstance(candidate, Bottle)
+    # TODO: Implement a mode kwarg that defaults to "extend" and functions like this:
+    # replace: Replace all paths in the received apps with the proxied endpoint.
+    # extend: Redirect all paths not already configured to the proxy.
+    # errors: Catch errors thrown by the app and redirect the failed calls to the proxy.
+    # trigger: Use a callback function to check. Redirects when result is True.
+    # Move this explanation to the docstring.
 
-    def is_fastapi_app(candidate) -> bool:
-        return hasattr(candidate, "websocket")
+    # TODO: We need to use gw.unwrap_all instead and apply the proxy mode to each of the
+    #       apps found there, then we need to return all those apps in a collection.
 
     # collect apps by type
-    bottle_app = gw.unwrap(app, Bottle)
-    fastapi_app = gw.unwrap(app, FastAPI)
+    bottle_app = gw.unwrap_one(app, Bottle)
+    fastapi_app = gw.unwrap_one(app, FastAPI)
 
     prepared = []
 
@@ -37,14 +44,15 @@ def setup_app(*, endpoint: str, app=None, websockets: bool = False, path: str = 
     elif fastapi_app:
         prepared.append(_wire_proxy(fastapi_app, endpoint, websockets, path))
 
-    # TODO: Test if this is properly compatible with web.server.start_app
+    # TODO: Test that this return is properly compatible with web.server.start_app after the fixes
+
     return prepared[0] if len(prepared) == 1 else tuple(prepared)
 
 
 def _wire_proxy(app, endpoint: str, websockets: bool, path: str):
     """
     Internal: attach HTTP and optional WS proxy routes
-    to Bottle or FastAPI-compatible app.
+    to Bottle or FastAPI-compatible app. Both content and headers are proxied.
     """
     # detect FastAPI-like
     is_fastapi = hasattr(app, "websocket")

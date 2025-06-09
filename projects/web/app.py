@@ -1,7 +1,7 @@
 # projects/web/app.py
 
 # Web components located here are minimal to build any website, if you remove anything
-# you start to get compatibility issues. So, I decided to put them all in one file.
+# you start to get compatibility issues. So, I decided to put them all in one bagel.
 
 import os
 from functools import wraps
@@ -11,9 +11,6 @@ from gway import gw
 
 _version = None
 
-# TODO: Fix a subtle issue where the gway/readme doesn't seem to stick to the 
-# navbar. It keeps getting removed or not stored properly.
-# We should add debug logging when adding/removing from the navbar to test.
 
 def setup(*,
     app=None,
@@ -26,7 +23,15 @@ def setup(*,
     navbar: bool = True,
 ):    
     """
-    Configure one or more Bottle-based apps. Use web server start-app to launch.
+    Configure one or more Bottle-based apps. Use "web server start-app" to launch.
+
+    This app will give web user access to any functions in the given project that
+    follow any of these naming conventions, encapsulating them in a simple UI.
+
+        1. {prefix}_{view_name}
+        2. render_{view_name}_{prefix}      
+        3. build_{view_name}_{prefix}
+        4. {view_name}_to_html
     """
     global _version
     _version = _version or gw.version() 
@@ -39,7 +44,7 @@ def setup(*,
         first_proj = projects[0]
         path = "gway" if first_proj == "web.site" else first_proj.replace(".", "/")
 
-    _is_new_app = not (app := gw.unwrap(app, Bottle) if (oapp := app) else None)
+    _is_new_app = not (app := gw.unwrap_one(app, Bottle) if (oapp := app) else None)
     gw.debug(f"Unwrapped {app=} from {oapp=} ({_is_new_app=})")
 
     if _is_new_app:
@@ -72,10 +77,6 @@ def setup(*,
         def send_work(filename):
             filename = filename.replace('-', '_')
             return static_file(filename, root=gw.resource("work", "shared"))
-        
-    # TODO: When passing a param to a view, such as from a form that was left empty by the user
-    # avoid passing None, instead pass "" (empty string) as it may differentiate between a 
-    # form that has not been submitted and one submitted with empty fields.
 
     @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
@@ -103,22 +104,33 @@ def setup(*,
                 continue
 
         for source in sources:
-            view_func = getattr(source, f"{prefix}_{view_name}", None)
-            if callable(view_func):
-                break
+            candidates = [
+                f"{prefix}_{view_name}",             
+                f"render_{view_name}_{prefix}",      
+                f"build_{view_name}_{prefix}",
+                f"{view_name}_to_html",
+            ]
+            for name in candidates:
+                view_func = getattr(source, name, None)
+                if callable(view_func):
+                    break
+            else:
+                continue  # try next source
+            break  # found callable
         else:
             return redirect_error(
-                note=f"View '{prefix}_{view_name}' not found in any project: {projects}",
+                note=f"View '{view_name}' not found using any naming convention in: {projects}",
                 broken_view_name=view_name,
                 default=f"/{path}/{home}" if path and home else "/gway/readme"
             )
+
 
         try:
             gw.debug(f"Dispatch to {view_func.__name__} (args={args}, kwargs={kwargs})")
             content = view_func(*args, **kwargs)
             if content and not isinstance(content, str):
                 content = gw.to_html(content)
-            visited = update_visited(view_name)
+            visited = _update_visited_cookie(view_name)
         except HTTPResponse as resp:
             return resp
         except Exception as e:
@@ -129,7 +141,7 @@ def setup(*,
             full_url += "?" + request.query_string
         if navbar is True:
             navbar = render_navbar(visited, path, current_url=full_url)
-        if not cookies_enabled():
+        if not _cookies_enabled():
             consent_box = f"""
                 <div class="consent-box">
                 <form action="/accept-cookies" method="post">
@@ -186,6 +198,7 @@ def setup(*,
 
 ...
 
+# Helpers for middleware and routing
 
 def security_middleware(app):
     global _version
@@ -225,6 +238,10 @@ def build_url(prefix, *args, **kwargs):
     return url
 
 
+...
+
+# Render minimal html components 
+
 def render_template(*, title="GWAY", navbar="", content="", static="static", css_files=None):
     global _version
     version = _version = _version or gw.version()
@@ -261,7 +278,7 @@ def render_template(*, title="GWAY", navbar="", content="", static="static", css
 
 
 def render_navbar(visited, path, current_url=None):
-    if not cookies_enabled() or len(visited) < 1:
+    if not _cookies_enabled() or len(visited) < 1:
         visited = ["Readme=gway/readme"]
 
     links = ""
@@ -314,10 +331,6 @@ def render_navbar(visited, path, current_url=None):
     return f"<aside>{search_box}<ul>{links}</ul><br>{qr_html}<br>{style_selector}</aside>"
 
 
-def cookies_enabled():
-    return request.get_cookie("cookies_accepted") == "yes"
-
-
 def redirect_error(error=None, note="", default="/gway/readme", broken_view_name=None):
     from bottle import request, response
     gw.error("Redirecting due to error." + (" " + note if note else ""))
@@ -341,7 +354,7 @@ def redirect_error(error=None, note="", default="/gway/readme", broken_view_name
     if error:
         gw.exception(error)
 
-    if broken_view_name and cookies_enabled():
+    if broken_view_name and _cookies_enabled():
         gw.debug(f"Removing cookie for {broken_view_name=}")
         raw = request.get_cookie("visited", "")
         visited = raw.split("|") if raw else []
@@ -353,9 +366,16 @@ def redirect_error(error=None, note="", default="/gway/readme", broken_view_name
     response.set_header("Location", default)
     return ""
 
+...
 
-def update_visited(current, cookie_name="visited"):
-    if not cookies_enabled():
+# Handling of cookies
+
+def _cookies_enabled():
+    return request.get_cookie("cookies_accepted") == "yes"
+
+
+def _update_visited_cookie(current, cookie_name="visited"):
+    if not _cookies_enabled():
         return []
     raw = request.get_cookie(cookie_name, "")
     visited = raw.split("|") if raw else []
