@@ -24,7 +24,7 @@ class FilteredFormatter(logging.Formatter):
         debug = False
         try:
             from gway import gw
-            debug = getattr(gw, "debug", False)
+            debug = gw.debug
         except Exception:
             pass
 
@@ -45,7 +45,7 @@ class FilteredFormatter(logging.Formatter):
 
 
 def setup_logging(*,
-                  logfile=None, logdir="logs", prog_name="gway",
+                  logfile=None, logdir="logs", prog_name="gway", verbose=False,
                   loglevel="INFO", pattern=None, backup_count=7):
     """Globally configure logging with filtered tracebacks."""
 

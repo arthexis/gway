@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 from gway import gw
 
+# TODO: Clean the files used for testing beforehand
 
 class ResourceTests(unittest.TestCase):
 

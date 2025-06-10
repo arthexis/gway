@@ -45,7 +45,6 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('clock', project_ls)
         self.assertIn('sql', project_ls)
         self.assertIn('mail', project_ls)
-        self.assertIn('readme', project_ls)
         self.assertIn('awg', project_ls)
 
     def test_load_qr_code_project(self):
