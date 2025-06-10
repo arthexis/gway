@@ -5,6 +5,7 @@ import os
 import sys
 import toml
 import inspect
+import importlib
 import subprocess
 from pathlib import Path
 
@@ -57,7 +58,7 @@ def build(*,
 
     if projects:
         project_dir = gw.resource("projects")
-        render_projects_readme(project_dir)
+        collect_projects(project_dir)
 
     project_name = "gway"
     description = "Software Project Infrastructure by https://www.gelectriic.com"
@@ -344,7 +345,7 @@ def create_shortcut(
     print(f"Shortcut created at: {shortcut_path}")
 
 
-def render_projects_readme(project_dir: str, readme: str = "README.rst"):
+def collect_projects(project_dir: str, readme: str = "README.rst"):
     """
     Scan `project_dir` for all modules/packages, collect public functions,
     build an RST section, and insert/update it in `readme` before the LICENSE heading.
