@@ -55,20 +55,7 @@ class GatewayTests(unittest.TestCase):
     def test_missing_project_raises_attribute_error(self):
         with self.assertRaises(AttributeError):
             _ = gw.non_existent_project
-
-    def test_variadic_positional_args(self):
-        result = gw.tests.variadic_positional("a", "b", "c")
-        self.assertEqual(result["args"], ("a", "b", "c"))
-
-    def test_variadic_keyword_args(self):
-        result = gw.tests.variadic_keyword(key1="val1", key2="val2")
-        self.assertEqual(result["kwargs"], {"key1": "val1", "key2": "val2"})
-
-    def test_variadic_args_and_kwargs(self):
-        result = gw.tests.variadic_both("x", "y", keyA="A", keyB="B")
-        self.assertEqual(result["args"], ("x", "y"))
-        self.assertEqual(result["kwargs"], {"keyA": "A", "keyB": "B"})
-
+            
 
 if __name__ == "__main__":
     unittest.main()

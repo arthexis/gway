@@ -94,8 +94,17 @@ def render_history_view(*, selection: list=None, copy: bool=True, purge: bool=Tr
     raise NotImplementedError
 
 
-# TODO: Create a purge() function that deletes the current contents of the clipbord
-
 def purge(*, history=False):
-    # TODO: If history, remove the contents of history.txt
-    raise NotImplementedError
+    """Clears clipboard and optionally wipes history file."""
+    import pyperclip
+    import os
+
+    pyperclip.copy("")  # Clear clipboard
+    gw.info("Clipboard contents purged.")
+
+    if history:
+        history_path = gw.resource('work', 'clip', 'history.txt')
+        if os.path.exists(history_path):
+            with open(history_path, 'w', encoding='utf-8') as f:
+                f.write('')
+            gw.info("Clipboard history purged.")
