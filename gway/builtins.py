@@ -85,7 +85,7 @@ def normalize_ext(e):
 
 
 
-def resource(*parts, touch=False, check=False, text=False, ext=None):
+def resource(*parts, touch=False, check=False, text=False):
     """
     Construct a path relative to the base, or the Gateway root if not specified.
     Assumes last part is a file and creates parent directories along the way.
@@ -96,8 +96,6 @@ def resource(*parts, touch=False, check=False, text=False, ext=None):
         touch (bool): If True, creates the file if it doesn't exist.
         check (bool): If True, aborts if the file doesn't exist and touch is False.
         text (bool): If True, returns the text contents of the file instead of the path.
-        ext (str): Optional extension (like "txt"). If set, tries to locate a file
-                   with or without the extension, and ensures created files use it.
 
     Returns:
         pathlib.Path | str: The constructed path, or file contents if text=True.
@@ -105,35 +103,12 @@ def resource(*parts, touch=False, check=False, text=False, ext=None):
     import pathlib
     from gway import gw
 
-    ext = normalize_ext(ext) if ext else None
-
-    # Build base path
+    # Build path
     first = pathlib.Path(parts[0])
-    raw_path = pathlib.Path(*parts) if first.is_absolute() else pathlib.Path(gw.base_path, *parts)
-
-    # Apply ext resolution
-    candidates = []
-    if ext:
-        if raw_path.suffix == ext:
-            candidates = [raw_path, raw_path.with_suffix('')]  # e.g., file.txt and file
-        elif raw_path.suffix:
-            candidates = [raw_path, raw_path.with_suffix(ext)]  # e.g., file.data -> try file.data, file.txt
-        else:
-            candidates = [raw_path.with_suffix(ext), raw_path]  # e.g., file -> try file.txt, file
+    if first.is_absolute():
+        path = pathlib.Path(*parts)
     else:
-        candidates = [raw_path]
-
-    # Pick first existing candidate
-    for candidate in candidates:
-        if candidate.exists():
-            path = candidate
-            break
-    else:
-        # None exist → pick preferred path
-        if ext and not raw_path.suffix:
-            path = raw_path.with_suffix(ext)
-        else:
-            path = raw_path
+        path = pathlib.Path(gw.base_path, *parts)
 
     # Safety check
     if not touch and check and not path.exists():
@@ -143,7 +118,7 @@ def resource(*parts, touch=False, check=False, text=False, ext=None):
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Optionally create the file
-    if touch and not path.exists():
+    if touch:
         path.touch()
 
     # Return text contents or path
@@ -153,7 +128,6 @@ def resource(*parts, touch=False, check=False, text=False, ext=None):
         except Exception as e:
             gw.abort(f"Failed to read {path}: {e}")
     return path
-
 
 ...
 
