@@ -1,4 +1,5 @@
 # projects/tests.py
+from gway import gw
 
 # This module contains functions that are useful to test against
 # However, it doesn't implement the test runner functionality itself
@@ -23,5 +24,5 @@ def variadic_both(*args, **kwargs):
     return {"args": args, "kwargs": kwargs}
 
 
-def view_index():
-    return {"greeting": "Hello World!"}
+def render_index_view():
+    return gw.to_html({"greeting": "Hello World!"})

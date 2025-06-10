@@ -9,7 +9,7 @@ from bottle import request, response, redirect
 from gway import gw
 
 
-def view_readme(*args, **kwargs):
+def render_readme_view(*args, **kwargs):
     """Render the README.rst file as HTML."""
 
     readme_path = gw.resource("README.rst")
@@ -20,7 +20,7 @@ def view_readme(*args, **kwargs):
     return html_parts["html_body"]
 
 
-def view_help(topic="", *args, **kwargs):
+def render_help_view(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
@@ -64,13 +64,13 @@ def view_help(topic="", *args, **kwargs):
         return "<h2>Not Found</h2><p>No help found for the given input.</p>"
 
     if "Matches" in help_info:
-        sections = [_help_section(match, use_query_links=True) for match in help_info["Matches"]]
+        sections = [_render_help_section(match, use_query_links=True) for match in help_info["Matches"]]
         return f"<h1>{title}</h1>{''.join(sections)}"
 
-    return f"<h1>{title}</h1>{_help_section(help_info, use_query_links=True)}"
+    return f"<h1>{title}</h1>{_render_help_section(help_info, use_query_links=True)}"
 
 
-def _help_section(info, use_query_links=False, *args, **kwargs):
+def _render_help_section(info, use_query_links=False, *args, **kwargs):
     """Render a help section with clean formatting and route-based query links."""
     import html
     rows = []
@@ -97,7 +97,7 @@ def _help_section(info, use_query_links=False, *args, **kwargs):
     return f"<article class='help-entry'>{''.join(rows)}</article>"
 
 
-def view_qr_code(*args, value=None, **kwargs):
+def render_qr_code_view(*args, value=None, **kwargs):
     """Generate a QR code for a given value and serve it from cache if available."""
     if not value:
         return '''
@@ -117,7 +117,7 @@ def view_qr_code(*args, value=None, **kwargs):
     """
 
 
-def view_awg_finder(
+def render_awg_finder_view(
     *args, meters=None, amps="40", volts="220", material="cu", 
     max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
 ):

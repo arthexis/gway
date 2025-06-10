@@ -20,30 +20,34 @@ def cli_main():
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
 
     # Primary behavior flags
-    parser.add_argument("-a", dest="all", action="store_true", help="Show all text results, not just the last")
-    parser.add_argument("-b", dest="base_path", type=str, help="Specify a different base path for GWAY.")
-    parser.add_argument("-c", dest="client", type=str, help="Specify client environment")
-    parser.add_argument("-d", dest="debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("-e", dest="expression", type=str, help="Return resolved sigil at the end")
-    parser.add_argument("-j", dest="json", nargs="?", const=True, default=False, help="Output result(s) as JSON")
-    parser.add_argument("-n", dest="name", type=str, help="Name for app instances and logger (default: gw).")
-    parser.add_argument("-o", dest="outfile", type=str, help="Write text output(s) to this file")
-    parser.add_argument("-p", dest="project_path", type=str, help="Root project path for custom functions.")
-    parser.add_argument("-q", dest="quantity", type=int, default=1, help="Max items from generator outputs")
-    parser.add_argument("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
-    parser.add_argument("-s", dest="server", type=str, help="Override server environment configuration")
-    parser.add_argument("-t", dest="timed", action="store_true", help="Enable timing of operations")
-    parser.add_argument("-v", dest="verbose", action="store_true", help="Verbose mode (where supported)")
-    parser.add_argument("-x", dest="callback", type=str, help="Execute a callback per command or standalone")
-    parser.add_argument("-l", dest="local", action="store_true", help="Set base_path to current directory")
-    parser.add_argument("-g", dest="global_mode", action="store_true", help="Reserved for future global mode")
-    parser.add_argument("-m", dest="memory", action="store_true", help="Memory mode: Save or reuse last arguments")
-    parser.add_argument("-f", dest="fuzzy", action="store_true", help="Reserved for fuzzy matching")
-    parser.add_argument("-i", dest="interact", action="store_true", help="Reserved for interactive shell mode")
-    parser.add_argument("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
-
+    add = parser.add_argument
+    add("-a", dest="all", action="store_true", help="Show all text results, not just the last")
+    add("-b", dest="base_path", type=str, help="Specify a different base path for GWAY.")
+    add("-c", dest="client", type=str, help="Specify client environment")
+    add("-d", dest="debug", action="store_true", help="Enable debug logging")
+    add("-e", dest="expression", type=str, help="Return resolved sigil at the end")
+    add("-f", dest="fuzzy", action="store_true", help="Reserved for fuzzy matching")
+    add("-g", dest="global_mode", action="store_true", help="Reserved for future global_mode")
+    # -h is reserved for --help by argparse, and we leave it like that
+    add("-i", dest="interact", action="store_true", help="Reserved for interactive shell mode")
+    add("-j", dest="json", nargs="?", const=True, default=False, help="Output result(s) as JSON")
+    add("-l", dest="local", action="store_true", help="Set base_path to current directory")
+    add("-m", dest="memory", action="store_true", help="Memory mode: Save or reuse last arguments")
+    add("-n", dest="name", type=str, help="Name for app instances and logger (default: gw).")
+    add("-o", dest="outfile", type=str, help="Write text output(s) to this file")
+    add("-p", dest="project_path", type=str, help="Root project path for custom functions.")
+    add("-q", dest="quantity", type=int, default=1, help="Max items from generator outputs")
+    add("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
+    add("-s", dest="server", type=str, help="Override server environment configuration")
+    add("-t", dest="timed", action="store_true", help="Enable timing of operations")
+    # There is no -u in team (until implemented)
+    add("-v", dest="verbose", action="store_true", help="Verbose mode (where supported)")
+    add("-w", dest="wizard", action="store_true", help="Request wizard mode if available")
+    add("-x", dest="callback", type=str, help="Execute a callback per command or standalone")
+    add("-z", dest="silent", action="store_true", help="Suppress all non-critical output")
+    add("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
+    
     args = parser.parse_args()
-
     memory_file = "work/memory.txt"
 
     # Handle memory mode: clear, save, or restore
@@ -74,17 +78,23 @@ def cli_main():
     setup_logging(logfile="gway.log", loglevel="DEBUG" if args.debug else "INFO")
     start_time = time.time() if args.timed else None
 
+    # Silent and verbose are allowed together. It means:
+    # Suppress all non-critical output; but if its critical, explain as much as possible.
+
     # Init Gateway instance
     gw_local = Gateway(
         client=args.client,
         server=args.server,
         verbose=args.verbose,
+        silent=args.silent,
         name=args.name or "gw",
         project_path=args.project_path,
         base_path=args.base_path,
         debug=args.debug,
         quantity=args.quantity,
     )
+
+    gw_local.verbose(f"Saving detailed logs to logs/gway.log") 
 
     # Load command sources
     if args.recipe:
@@ -154,6 +164,7 @@ def cli_main():
 
     if start_time:
         print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
+
 
 
 def process_commands(command_sources, callback=None, **context):
@@ -415,6 +426,9 @@ def get_arg_options(arg_name, param, gw=None):
 
 
 ...
+
+# We keep recipe functions in console.py because anything that changes cli_main
+# typically has an impact in the recipe parsing, and must be reviewed together.
 
 
 def load_recipe(recipe_filename):

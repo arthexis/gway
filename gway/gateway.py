@@ -23,7 +23,7 @@ class Gateway(Resolver):
     Null = Null
 
     def __init__(self, *, 
-                client=None, server=None, verbose=False, debug=False,
+                client=None, server=None, verbose=False, silent=False, debug=False,
                 name="gw", base_path=None, project_path=None, quantity=None, **kwargs
     ):
         # Basic initialization
@@ -36,45 +36,55 @@ class Gateway(Resolver):
         self.name = name
         self.logger = logging.getLogger(name)
 
+        # Implement scoped verbose logging based on a partial function name or always-on
         if not verbose:
-            self.verbose = Null
+            scoped_logger = Null
         elif verbose is True:
-            self.verbose = lambda *args, **kwargs: self.info(*args, **kwargs)
+            def scoped_logger(msg, *, func=None):
+                if func and verbose in func:
+                    if silent: self.critical(msg)
+                    else: self.info(msg)
+        elif isinstance(verbose, str):
+            def scoped_logger(msg, *, func=None):
+                if func and verbose in func:
+                    if silent: self.critical(msg)
+                    else: self.info(msg)            
+        else:
+            raise ValueError(f"Invalid {verbose=}: must be False, True, or a function name to focus")
+
+        self.verbose = scoped_logger
+
+        if not silent:
+            self.silent = Null
+        elif silent is True:
+            self.silent = lambda *args, **kwargs: self.critical(*args, **kwargs)
 
         if not debug:
             self.debug = Null
         else:
             self.debug = lambda *args, **kwargs: self.logger.debug(*args, **kwargs)
-        
-        # Pull out client/server overrides so they don't go into context
+
         client_name = client or get_base_client()
         server_name = server or get_base_server()
 
-        # Ensure thread-local context/results exist
         if not hasattr(Gateway._thread_local, "context"):
             Gateway._thread_local.context = {}
         if not hasattr(Gateway._thread_local, "results"):
             Gateway._thread_local.results = Results()
 
-        # Merge any extra kwargs into the shared context
-        Gateway._thread_local.context.update(kwargs)
-
         self.context = Gateway._thread_local.context
         self.results = Gateway._thread_local.results
 
-        # Initialize the Resolver with "results", "context", and the real OS environment
         super().__init__([
             ('results', self.results),
             ('context', self.context),
             ('env', os.environ),
         ])
 
-        # === Moved load_env here so every Gateway always loads env correctly ===
         env_root = os.path.join(self.base_path, "envs")
         load_env("client", client_name, env_root)
         load_env("server", server_name, env_root)
 
-        # Populate the builtin-function cache on first instantiation
         if Gateway._builtins is None:
             builtins_module = importlib.import_module("gway.builtins")
             Gateway._builtins = {
@@ -108,7 +118,9 @@ class Gateway(Resolver):
             alt_projects_path = Path(self.project_path)
             result.update(discover_projects(alt_projects_path))
 
-        return sorted(result)
+        sorted_result = sorted(result)
+        self.verbose(f"Discovered projects: {sorted_result}", func="projects")
+        return sorted_result
 
     def builtins(self):
         return sorted(self._builtins)
@@ -117,7 +129,7 @@ class Gateway(Resolver):
         print(message)
         self.info(message)
 
-    def _wrap_callable(self, func_name, func_obj):
+    def wrap_callable(self, func_name, func_obj):
         @functools.wraps(func_obj)
         def wrapped(*args, **kwargs):
             try:
@@ -158,7 +170,8 @@ class Gateway(Resolver):
                         if param.default == val:
                             found = self.find_value(param.name)
                             if found is not None and found != val:
-                                self.info(f"Injected {param.name}={found} overrides default {val=}")
+                                if not self.silent:
+                                    self.info(f"Injected {param.name}={found} overrides default {val=}")
                                 val = found
                                 self.context[param.name] = val
                         kwargs_to_pass[param.name] = val
@@ -166,7 +179,7 @@ class Gateway(Resolver):
                 # Step 4: Call the function (async or sync)
                 if inspect.iscoroutinefunction(func_obj):
                     thread = threading.Thread(
-                        target=self._run_coroutine,
+                        target=self.run_coroutine,
                         args=(func_name, func_obj, args_to_pass, kwargs_to_pass),
                         daemon=True
                     )
@@ -178,7 +191,7 @@ class Gateway(Resolver):
 
                 if inspect.iscoroutine(result):
                     thread = threading.Thread(
-                        target=self._run_coroutine,
+                        target=self.run_coroutine,
                         args=(func_name, result),
                         daemon=True
                     )
@@ -222,7 +235,7 @@ class Gateway(Resolver):
                     if isinstance(result, dict):
                         self.context.update(result)
                 else:
-                    self.debug("Result is None, skip storing.")
+                    self.debug("Returned {result=}, skip storing.")
 
                 return result
 
@@ -232,7 +245,8 @@ class Gateway(Resolver):
 
         return wrapped
 
-    def _run_coroutine(self, func_name, coro_or_func, args=None, kwargs=None):
+    def run_coroutine(self, func_name, coro_or_func, args=None, kwargs=None):
+        gw.verbose(f"Prep run_couroutine with '{func_name}' {args=} {kwargs=}")
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -280,7 +294,7 @@ class Gateway(Resolver):
             return getattr(self.logger, name)
 
         if name in self._builtin_functions:
-            func = self._wrap_callable(name, self._builtin_functions[name])
+            func = self.wrap_callable(name, self._builtin_functions[name])
             setattr(self, name, func)
             return func
 
@@ -290,21 +304,22 @@ class Gateway(Resolver):
             project_obj = self.load_project(project_name=name)
             return project_obj
         except Exception as e:
-            raise AttributeError(f"Project or builtin '{name}' not found: {e}")
+            self.exception(e)
+            raise AttributeError(f"Unable to find GWAY attribute ({str(e)})")
         
     def load_project(self, project_name: str, *, root: str = "projects"):
         from pathlib import Path
 
         def try_path(base_dir):
             base = gw.resource(base_dir, *project_name.split("."))
-            self.debug(f"Trying to load {project_name} from {base}")
+            self.verbose(f"Trying to load {project_name} from {base}")
 
-            def load_module_namespace(py_path: str, dotted: str):
+            def load_module_ns(py_path: str, dotted: str):
                 mod = self.load_py_file(py_path, dotted)
                 funcs = {}
                 for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                     if not fname.startswith("_"):
-                        funcs[fname] = self._wrap_callable(f"{dotted}.{fname}", obj)
+                        funcs[fname] = self.wrap_callable(f"{dotted}.{fname}", obj)
                 ns = Project(dotted, funcs, self)
                 self._cache[dotted] = ns
                 return ns
@@ -315,7 +330,7 @@ class Gateway(Resolver):
             base_path = Path(base)
             py_file = base_path if base_path.suffix == ".py" else base_path.with_suffix(".py")
             if py_file.is_file():
-                return load_module_namespace(str(py_file), project_name)
+                return load_module_ns(str(py_file), project_name)
 
             return None
 
@@ -331,7 +346,8 @@ class Gateway(Resolver):
             if result:
                 return result
 
-        raise FileNotFoundError(f"Project path not found for '{project_name}' in '{root}' or fallback '{self.project_path}'")
+        raise FileNotFoundError(
+            f"Project path not found for '{project_name}' in '{root}' or fallback '{self.project_path}'")
 
     def load_py_file(self, path: str, dotted_name: str):
         module_name = dotted_name.replace(".", "_")
@@ -358,7 +374,7 @@ class Gateway(Resolver):
                 sub_funcs = {}
                 for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                     if not fname.startswith("_"):
-                        sub_funcs[fname] = self._wrap_callable(f"{dotted}.{fname}", obj)
+                        sub_funcs[fname] = self.wrap_callable(f"{dotted}.{fname}", obj)
                 funcs[subname] = Project(dotted, sub_funcs, self)
             elif os.path.isdir(full) and not entry.startswith("__"):
                 dotted = f"{dotted_prefix}.{entry}"
@@ -368,11 +384,13 @@ class Gateway(Resolver):
         return ns
 
     def log(self, *args, **kwargs):
-        if self.debug:
-            self.debug(*args, **kwargs)
-            return "debug"
-        self.info(*args, **kwargs)
-        return "info"
+        # TODO: Consider if we should auto-add something when self.verbose
+        if not self.silent:
+            if self.debug:
+                self.debug(*args, **kwargs)
+                return "debug"
+            self.info(*args, **kwargs)
+            return "info"
 
 
 # This line allows using "from gway import gw" everywhere else

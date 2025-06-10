@@ -23,7 +23,7 @@ def minus(*, seconds=0, utc=False) -> "datetime":
     return base - datetime.timedelta(seconds=seconds)
 
 
-def ts(*, utc=False) -> str:
+def timestamp(*, utc=False) -> str:
     """Return the current timestamp in ISO-8601 format."""
     return now(utc=utc).isoformat().replace("+00:00", "Z" if utc else "")
 

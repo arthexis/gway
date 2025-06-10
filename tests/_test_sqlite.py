@@ -10,7 +10,7 @@ class GatewaySQLTests(unittest.TestCase):
     def setUp(self):
         self.db_fd, self.db_path = tempfile.mkstemp(suffix=".sqlite")
         self.db_name = os.path.basename(self.db_path)
-        self.db_key = f"temp/{self.db_name}"
+        self.db_key = f"work/test/{self.db_name}"
         self.csv_dir = "data/test_csv"
         os.makedirs(self.csv_dir, exist_ok=True)
         with open(f"{self.csv_dir}/sample.csv", "w") as f:

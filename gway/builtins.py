@@ -84,7 +84,9 @@ def normalize_ext(e):
     return e if e.startswith('.') else f'.{e}'
 
 
-def resource(*parts, touch=False, check=False, text=False, ext=None):
+def resource(*parts, 
+             touch: bool = False, check: str = False, text :bool = False, 
+             ext: str = None, truncate: bool = False, lines: bool = False):
     """
     Construct a path relative to the base, or the Gateway root if not specified.
     Assumes last part is a file and creates parent directories along the way.
@@ -97,14 +99,25 @@ def resource(*parts, touch=False, check=False, text=False, ext=None):
         text (bool): If True, returns the text contents of the file instead of the path.
         ext (str): Optional extension (like "txt"). If set, tries to locate a file
                    with or without the extension, and ensures created files use it.
+        truncate (bool): If True, empties the file before returning its path.
+        lines (bool): If True, returns file contents as a list of lines (implies text=True).
 
     Returns:
-        pathlib.Path | str: The constructed path, or file contents if text=True.
+        pathlib.Path | str | list[str]: Path, or file contents, or list of lines.
     """
     import pathlib
     from gway import gw
 
+    # TODO: Fix the cause of this error during testing ->
+    #   File "C:\Users\arthe\Repos\gway\tests\test_resource.py", line 48, in test_truncate_clears_file_contents
+    #     path.write_text("not empty")
+    #     ^^^^^^^^^^^^^^^
+    # AttributeError: 'list' object has no attribute 'write_text'
+    # 
+
     ext = normalize_ext(ext) if ext else None
+    if lines:
+        text = True  # lines implies text
 
     # Build base path
     first = pathlib.Path(parts[0])
@@ -145,12 +158,21 @@ def resource(*parts, touch=False, check=False, text=False, ext=None):
     if touch and not path.exists():
         path.touch()
 
+    # Truncate if requested
+    if truncate:
+        try:
+            path.write_text("")
+        except Exception as e:
+            gw.abort(f"Failed to truncate {path}: {e}")
+
     # Return text contents or path
     if text:
         try:
-            return path.read_text()
+            content = path.read_text()
+            return content.splitlines() if lines else content
         except Exception as e:
             gw.abort(f"Failed to read {path}: {e}")
+
     return path
 
 
@@ -161,6 +183,8 @@ def test(root: str = 'tests', filter=None):
     """Execute all automatically detected test suites."""
     import unittest
     from gway import gw
+
+    # TODO: Capture all stdout and stderror to a file at gw.resource('work/test/run_[timestamp].')
 
     print("Running the test suite...")
 

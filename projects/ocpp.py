@@ -2,7 +2,9 @@
 
 import json
 import os
+import time
 import traceback
+from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import Dict
 from gway import gw
@@ -16,12 +18,17 @@ _active_cons: Dict[str, WebSocket] = {}
 # However we still use Bottle for the user interface (see view section down below)
 
 def setup_sink_app(*, 
+        app=None,
         host='[OCPP_CSMS_HOST|0.0.0.0]', 
         port='[OCPP_CSMS_PORT|9000]',
-        app=None,
         base="",
     ):
-    """Basic OCPP passive sink for messages, acting as a dummy CSMS server."""
+    """
+    Basic OCPP passive sink for messages, acting as a dummy CSMS server.
+    This won't pass compliance or provide authentication. It just accepts and logs all.
+    Note: This version of the app was tested at the EVCS with real EVs.
+    """
+
 
     # A - This line ensures we find just the kind of app we need or create one if missing
     if (_is_new_app := not (app := gw.unwrap_one((oapp := app), FastAPI))):
@@ -67,10 +74,16 @@ def setup_sink_app(*,
     return oapp
 
 
-def setup_csms_app(*, host='[OCPP_CSMS_HOST|0.0.0.0]', port='[OCPP_CSMS_PORT|9000]', app=None, allowlist=None):
+def setup_csms_v01_app(*, 
+        app=None, 
+        host='[OCPP_CSMS_HOST|0.0.0.0]', 
+        port='[OCPP_CSMS_PORT|9000]', 
+        allowlist=None,
+    ):
     """
     OCPP 1.6 CSMS implementation with RFID authorization.
     Specify an allowlist file in .cdv format (RFID: [extra fields...])
+    Note: This version of the app was tested at the EVCS with real EVs.
     """
     # A - This block ensures we find just the kind of app we need or create one if missing
     oapp = app
@@ -166,6 +179,150 @@ def setup_csms_app(*, host='[OCPP_CSMS_HOST|0.0.0.0]', port='[OCPP_CSMS_PORT|900
         gw.info(f"Setup OCPP 1.6 auth sink on {host}:{port} (allowlist={allowlist})")
     
     # B- This return pattern ensures we include our app in the bundle (if any)
+    return (app if not oapp else (oapp, app)) if _is_new_app else oapp
+
+
+...
+
+
+# OCPP Compliant v1.6 Prototype
+
+def setup_csms_v16_app(*, 
+        app=None, 
+        host='[OCPP_CSMS_HOST|0.0.0.0]', 
+        port='[OCPP_CSMS_PORT|9000]', 
+        allowlist=None,
+        authlist=None,
+    ):
+    """
+    Minimal OCPP 1.6 CSMS implementation for conformance testing.
+    Supports required Core actions, logs all requests, and accepts all.
+    Optional RFID allowlist enables restricted access on Authorize.
+    Optional authlist enables token-based WebSocket authentication.
+    """
+    oapp = app
+    if (_is_new_app := not (app := gw.unwrap_one(app, FastAPI))):
+        app = FastAPI()
+
+    def load_kv_file(pathlike: str, label: str) -> dict[str, list[str]]:
+        if not pathlike:
+            return {}
+        try:
+            path = gw.resource(pathlike)
+            if not os.path.exists(path):
+                gw.error(f"[OCPP] {label} file not found: {path}")
+                return {}
+            result = {}
+            with open(path, "r") as f:
+                for lineno, line in enumerate(f, start=1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split(":")
+                    key = parts[0].strip()
+                    extra = [p.strip() for p in parts[1:]]
+                    result[key] = extra
+            return result
+        except Exception as e:
+            gw.abort(f"[OCPP] Failed to read {label} '{pathlike}': {e}")
+
+    _rfid_map = load_kv_file(allowlist, "Allowlist") if allowlist else {}
+    _token_map = load_kv_file(authlist, "Authlist") if authlist else {}
+
+    def is_authorized_rfid(rfid: str) -> bool:
+        return True if not _rfid_map else rfid in _rfid_map
+
+    def is_authorized_token(token: str | None) -> bool:
+        return True if not _token_map else token in _token_map
+
+    @app.websocket("/{path:path}")
+    async def websocket_ocpp(websocket: WebSocket, path: str):
+        charger_id = path.strip("/").split("/")[-1]
+        token = websocket.query_params.get("token")
+
+        if not is_authorized_token(token):
+            gw.warn(f"[OCPP] Rejected WebSocket for charger={charger_id}: invalid or missing token")
+            await websocket.close(code=4001)
+            return
+
+        gw.info(f"[OCPP] WebSocket connected: charger_id={charger_id}, token={token}")
+        try:
+            await websocket.accept(subprotocol="ocpp1.6")
+            _active_cons[charger_id] = websocket
+
+            while True:
+                raw = await websocket.receive_text()
+                gw.info(f"[OCPP:{charger_id}] → {raw}")
+
+                try:
+                    msg = json.loads(raw)
+                    if isinstance(msg, list) and msg[0] == 2:
+                        message_id = msg[1]
+                        action = msg[2]
+                        payload = msg[3] if len(msg) > 3 else {}
+                        gw.debug(f"[OCPP:{charger_id}] Action={action} Payload={payload}")
+
+                        response_payload = {}
+
+                        if action == "Authorize":
+                            id_tag = payload.get("idTag")
+                            status = "Accepted" if is_authorized_rfid(id_tag) else "Rejected"
+                            response_payload = {"idTagInfo": {"status": status}}
+
+                        elif action == "BootNotification":
+                            response_payload = {
+                                "currentTime": datetime.utcnow().isoformat() + "Z",
+                                "interval": 300,
+                                "status": "Accepted"
+                            }
+
+                        elif action == "Heartbeat":
+                            response_payload = {
+                                "currentTime": datetime.utcnow().isoformat() + "Z"
+                            }
+
+                        elif action == "StartTransaction":
+                            response_payload = {
+                                "transactionId": int(time.time()),
+                                "idTagInfo": {"status": "Accepted"}
+                            }
+
+                        elif action == "StopTransaction":
+                            response_payload = {
+                                "idTagInfo": {"status": "Accepted"}
+                            }
+
+                        elif action == "StatusNotification":
+                            response_payload = {}  # No response fields required
+
+                        else:
+                            response_payload = {"status": "Accepted"}
+
+                        response = [3, message_id, response_payload]
+                        gw.info(f"[OCPP:{charger_id}] ← {action} => {response_payload}")
+                        await websocket.send_text(json.dumps(response))
+                    else:
+                        gw.warn(f"[OCPP:{charger_id}] Invalid or unsupported message format")
+
+                except Exception as e:
+                    gw.error(f"[OCPP:{charger_id}] Message parse error: {e}")
+                    gw.debug(traceback.format_exc())
+
+        except WebSocketDisconnect:
+            gw.info(f"[OCPP:{charger_id}] WebSocket disconnected")
+        except Exception as e:
+            gw.error(f"[OCPP:{charger_id}] WebSocket failure: {e}")
+            gw.debug(traceback.format_exc())
+        finally:
+            _active_cons.pop(charger_id, None)
+
+    if allowlist:
+        gw.info(f"[OCPP] Loaded allowlist with {len(_rfid_map)} RFID tags")
+    if authlist:
+        gw.info(f"[OCPP] Loaded authlist with {len(_token_map)} tokens")
+
+    gw.info(f"[OCPP] CSMS v1.6 ready on ws://{host}:{port} (authlist={authlist})")
+
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 
 ...

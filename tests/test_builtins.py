@@ -42,7 +42,6 @@ class GatewayBuiltinsTests(unittest.TestCase):
     def test_list_projects(self):
         project_ls = gw.projects()
         self.assertIn('web', project_ls)
-        self.assertIn('tests', project_ls)
         self.assertIn('clock', project_ls)
         self.assertIn('sql', project_ls)
         self.assertIn('mail', project_ls)

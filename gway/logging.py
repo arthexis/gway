@@ -6,8 +6,6 @@ import logging
 import logging.handlers
 import traceback
 
-# TODO: All logs are being duplicated printed to the console, which is undesired
-# Fix the logging configuration so that all logging happens to gway.log
 
 class FilteredFormatter(logging.Formatter):
     """
@@ -58,7 +56,7 @@ def setup_logging(*,
         if not os.path.isabs(logfile):
             logfile = os.path.join(os.getcwd(), logdir, logfile)
 
-    pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(filename)s:%(lineno)d - %(message)s'
+    pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(filename)s:%(lineno)d  # %(message)s'
 
     root = logging.getLogger()
     for h in root.handlers[:]:
@@ -79,9 +77,9 @@ def setup_logging(*,
         file_h.setFormatter(formatter)
         root.addHandler(file_h)
 
-    sep = "-" * 70
+    sep = "-" * len(' '.join(sys.argv[1:])) + "-------"
     cmd_args = " ".join(sys.argv[1:])
-    root.info(f"\n{sep}\n> {prog_name} {cmd_args}\n{sep}")
+    root.info(f"\n\n> {prog_name} {cmd_args}\n{sep}")
     root.info(f"Loglevel set to {loglevel} ({logging.getLevelName(loglevel)})")
 
     return root

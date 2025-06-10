@@ -10,7 +10,7 @@ from PIL import Image, ImageGrab
 from gway import gw
 
 
-def notify(message, *, title="GWAY Notice", timeout=10):
+def notify(message, *, title="GWAY Notice", timeout: int=10):
     """
     Show a user interface notification with the specified title and message.
     Falls back to a visible console printout if GUI notification fails.
@@ -30,14 +30,20 @@ def notify(message, *, title="GWAY Notice", timeout=10):
         gw.critical(f"Notification fallback: {fallback} (Error: {e})")
 
 
+def instruct(steps, *, title="GWAY Next Steps", timeout: int=300, **kwargs):
+    """Display a series of steps using a notify box."""
+    split_steps = '\n'.join(steps).split('\n')
+    num_steps = [f"{n+1}. {step}" for n, step in enumerate(steps) if steps.strip()]
+    instructions = '\n'.join(num_steps)
+    return notify(message=instructions, title=title, timeout=timeout, **kwargs)
+
+
 def lookup_font(*prefix):
     """Look up fonts installed on a Windows system by partial name (prefix).
     >> gway font lookup Ari
     """
     import winreg
     font_prefix = " ".join(prefix)
-
-    # TODO: Make this compatible with linux or throw an error 
 
     try:
         font_key_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"

@@ -6,6 +6,7 @@ import hashlib
 import threading
 import requests
 
+
 def watch_file(*filepaths, on_change, poll_interval=10.0, hash=False, resource=True):
     from gway import gw
 
