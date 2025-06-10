@@ -31,30 +31,11 @@ class ResourceTests(unittest.TestCase):
         with self.assertRaises(SystemExit):  # from gw.abort
             gw.resource(str(missing), check=True)
 
-    def test_ext_inference_applied(self):
-        path = gw.resource("file", ext=".txt", touch=True)
-        self.assertTrue(str(path).endswith(".txt"))
-        self.assertTrue(path.exists())
-
-    def test_ext_inference_prioritizes_existing(self):
-        raw = self.base_path / "existing"
-        raw_txt = raw.with_suffix(".txt")
-        raw_txt.write_text("hello")
-        result = gw.resource("existing", ext=".txt")
-        self.assertEqual(result.read_text(), "hello")
-
     def test_text_mode_returns_string(self):
         path = gw.resource("textfile.txt", touch=True)
         path.write_text("some text")
         result = gw.resource("textfile.txt", text=True)
         self.assertEqual(result, "some text")
-
-    def test_fallback_to_non_ext_if_exists(self):
-        noext = self.base_path / "datafile"
-        noext.write_text("raw")
-        result = gw.resource("datafile", ext=".txt")
-        self.assertEqual(result.read_text(), "raw")
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -202,7 +202,7 @@ def config_external(template=None, *,
     ssl_cert = gw.resolve(ssl_certificate)
     ssl_key = gw.resolve(ssl_certificate_key)
 
-    template_code = gw.resource('data', 'nginx', template, text=True, ext=".conf")
+    template_code = gw.resource('data', 'nginx', f"{template}.conf", text=True)
     resolved_code = gw.resolve(template_code)
 
     gw.info(f"{log_prefix()}Resolved nginx template:\n{resolved_code[:240]}{'...' if len(resolved_code) > 240 else ''}")
