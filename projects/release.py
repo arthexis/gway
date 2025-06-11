@@ -345,7 +345,7 @@ def create_shortcut(
     print(f"Shortcut created at: {shortcut_path}")
 
 
-def collect_projects(*, project_dir: str = 'projects', readme: str = "README.rst"):
+def collect_projects(project_dir: str = 'projects', *, readme: str = "README.rst"):
     """
     Recursively scan `project_dir` for all valid modules and packages,
     collect public functions, and update the INCLUDED PROJECTS section of `readme`.
