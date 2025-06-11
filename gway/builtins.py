@@ -83,12 +83,15 @@ def version(check=None) -> str:
 def normalize_ext(e):
     return e if e.startswith('.') else f'.{e}'
 
+...
 
 
 def resource(*parts, touch=False, check=False, text=False):
     """
-    Construct a path relative to the base, or the Gateway root if not specified.
-    Assumes last part is a file and creates parent directories along the way.
+    Construct a pathlib.Path relative to the base, or Gateway root if unspecified.
+    (Getting a file from your root is called "resourcing it" in GWAY parlance.)
+
+    Assumes the last part is a filename and creates parent directories along the way.
     Skips base and root if the first element in parts is already an absolute path.
 
     Args:
@@ -128,6 +131,49 @@ def resource(*parts, touch=False, check=False, text=False):
         except Exception as e:
             gw.abort(f"Failed to read {path}: {e}")
     return path
+
+
+def resource_list(*parts, ext=None, prefix=None, suffix=None):
+    """
+    List all files in a resourced directory that match optional filters.
+
+    This builds a path just like `resource`, but treats it as a directory,
+    then lists all files inside that match the given extension, prefix, and/or suffix.
+
+    Args:
+        *parts: Path components like ("subdir",).
+        ext (str): Optional file extension to match, e.g., ".txt".
+        prefix (str): Optional filename prefix to match.
+        suffix (str): Optional filename suffix to match.
+
+    Returns:
+        list[pathlib.Path]: Sorted list of matching files by creation time (oldest first).
+    """
+    from gway import gw
+
+    # Build the base directory path using resource
+    base_dir = resource(*parts)
+    if not base_dir.exists() or not base_dir.is_dir():
+        gw.abort(f"Resource directory {base_dir} does not exist or is not a directory")
+
+    # Gather matching files
+    matches = []
+    for item in base_dir.iterdir():
+        if not item.is_file():
+            continue
+        name = item.name
+        if ext and not name.endswith(ext):
+            continue
+        if prefix and not name.startswith(prefix):
+            continue
+        if suffix and not name.endswith(suffix):
+            continue
+        matches.append(item)
+
+    # Sort by creation time (ascending)
+    matches.sort(key=lambda p: p.stat().st_ctime)
+    return matches
+
 
 ...
 

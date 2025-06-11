@@ -78,7 +78,7 @@ def setup(*,
             filename = filename.replace('-', '_')
             return static_file(filename, root=gw.resource("work", "shared"))
 
-    @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
+    @app.route(f"/{path}/<view:path>", method=["GET", "POST", "PUT"])
     def view_dispatch(view):
         nonlocal navbar
         segments = [s for s in view.strip("/").split("/") if s]
@@ -87,7 +87,7 @@ def setup(*,
         view_name = segments[0].replace("-", "_")
         args = segments[1:]
         kwargs = dict(request.query)
-        if request.method == "POST":
+        if request.method in ("POST", "PUT"):
             try:
                 if request.json:
                     kwargs.update(request.json)
