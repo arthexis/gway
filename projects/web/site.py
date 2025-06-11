@@ -206,7 +206,7 @@ def _cleanup_boxes():
                     print(f"[UPLOAD] Cleanup error for box {bid}: {e}")
         time.sleep(60)
 
-        
+
 def render_upload_view(box_id: str = None, *, timeout: int = 60, **kwargs):
     """
     GET: Display upload interface or create a new upload box.
@@ -242,8 +242,11 @@ def render_upload_view(box_id: str = None, *, timeout: int = 60, **kwargs):
             try:
                 f.save(save_path)
                 results.append(f"Uploaded {f.filename}")
+                gw.info(f"Uploaded {f.filename} to {short}")
             except Exception as e:
                 results.append(f"Error uploading {f.filename}: {e}")
+                gw.error(f"Issue uploading {f.filename} to {short}")
+                gw.exception(e)
 
         return (
             "<pre>" + "\n".join(results) + "</pre>" +
@@ -265,7 +268,9 @@ def render_upload_view(box_id: str = None, *, timeout: int = 60, **kwargs):
                 _open_boxes[full_id] = now + timeout * 60
                 os.makedirs(gw.resource("work", "uploads", short), exist_ok=True)
                 url = gw.web.app_url("upload", box_id=full_id)
-                print(f"[UPLOAD] Upload box created (expires in {timeout} min): {url}")
+                message = f"[UPLOAD] Upload box created (expires in {timeout} min): {url}"
+                print(("-" * 70) + '\n' + message + '\n' + ("-" * 70))
+                gw.warning(message)
 
         return """
             <h1>Upload Box Ready</h1>
