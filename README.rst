@@ -272,49 +272,6 @@ Beyond that, you're just multiplying uncertainty.
 INCLUDED PROJECTS
 =================
 
-.. rubric:: web.app
-
-- ``build_url`` — (no description)
-
-  > ``gway web app build-url``
-
-- ``redirect_error`` — (no description)
-
-  > ``gway web app redirect-error``
-
-- ``render_navbar`` — (no description)
-
-  > ``gway web app render-navbar``
-
-- ``render_template`` — (no description)
-
-  > ``gway web app render-template``
-
-- ``security_middleware`` — (no description)
-
-  > ``gway web app security-middleware``
-
-- ``setup`` — Configure one or more Bottle-based apps. Use "web server start-app" to launch.
-
-  > ``gway web app setup``
-
-- ``static_file`` — Open a file in a safe way and return an instance of :exc:`HTTPResponse`
-
-  > ``gway web app static-file``
-
-- ``template`` — Get a rendered template as a string iterator.
-
-  > ``gway web app template``
-
-- ``urlencode`` — Encode a dict or sequence of two-element tuples into a URL query string.
-
-  > ``gway web app urlencode``
-
-- ``wraps`` — Decorator factory to apply update_wrapper() to a wrapper function
-
-  > ``gway web app wraps``
-
-
 
 License
 -------
