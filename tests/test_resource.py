@@ -1,10 +1,12 @@
-import os
+# tests/test_resource.py
+
 import unittest
 import tempfile
 from pathlib import Path
 from gway import gw
 
 # TODO: Clean the files used for testing beforehand
+# TODO: Check that we are very thoroughly protecting gw.resource from regressions
 
 class ResourceTests(unittest.TestCase):
 
@@ -37,6 +39,43 @@ class ResourceTests(unittest.TestCase):
         path.write_text("some text")
         result = gw.resource("textfile.txt", text=True)
         self.assertEqual(result, "some text")
+
+    def test_creates_intermediate_directories(self):
+        path = gw.resource("a", "b", "c", "file.txt", touch=True)
+        self.assertTrue(path.exists())
+        self.assertTrue((self.base_path / "a" / "b" / "c").is_dir())
+
+    def test_does_not_create_file_if_touch_false(self):
+        path = gw.resource("nontouched.txt", touch=False)
+        self.assertFalse(path.exists())
+
+    def test_check_and_touch_together_creates_file(self):
+        # Should NOT raise because touch=True allows creation
+        path = gw.resource("create_and_check.txt", check=True, touch=True)
+        self.assertTrue(path.exists())
+
+    def test_text_mode_with_nonexistent_file_aborts(self):
+        with self.assertRaises(SystemExit):  # Should fail reading
+            gw.resource("no_such_file.txt", text=True)
+
+    def test_returns_absolute_path_even_when_given_relative(self):
+        result = gw.resource("relative.txt")
+        self.assertTrue(result.is_absolute())
+        self.assertTrue(str(result).startswith(str(self.base_path)))
+
+    def test_read_text_works_with_unicode(self):
+        path = gw.resource("unicode.txt", touch=True)
+        content = "🎲🐍文字"
+        path.write_text(content, encoding="utf-8")
+        result = gw.resource("unicode.txt", text=True)
+        self.assertEqual(result, content)
+
+    def test_touch_then_text_returns_empty_string(self):
+        # File exists but is empty
+        path = gw.resource("empty.txt", touch=True)
+        result = gw.resource("empty.txt", text=True)
+        self.assertEqual(result, "")
+
 
 if __name__ == "__main__":
     unittest.main()

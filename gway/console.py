@@ -75,7 +75,7 @@ def cli_main():
         args.base_path = os.getcwd()
 
     # Setup logging
-    setup_logging(logfile="gway.log", loglevel="DEBUG" if args.debug else "INFO")
+    setup_logging(logfile="gway.log", loglevel="DEBUG" if args.debug else "INFO", debug=args.debug)
     start_time = time.time() if args.timed else None
 
     # Silent and verbose are allowed together. It means:

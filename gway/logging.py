@@ -6,10 +6,6 @@ import logging
 import logging.handlers
 import traceback
 
-# TODO: Checking debug doesn't work at the time setup_logging is called
-#       Instead of checking gw.debug, we will pass  verbose flag to the func
-#       when true, don't hide internal frames
-
 
 class FilteredFormatter(logging.Formatter):
     """
@@ -18,9 +14,9 @@ class FilteredFormatter(logging.Formatter):
     and replaces them with a summary line—unless gw.debug is True.
     """
     
-    def __init__(self, *args, verbose=False, **kwargs):
+    def __init__(self, *args, debug=False, **kwargs):
         super().__init__(*args, **kwargs)
-        self.verbose = verbose
+        self.debug = debug
 
     def formatException(self, ei):
         exc_type, exc_value, tb = ei
@@ -30,7 +26,7 @@ class FilteredFormatter(logging.Formatter):
 
         for frame in all_frames:
             norm = frame.filename.replace('\\', '/')
-            if '/gway/gway/' in norm and not self.verbose:
+            if '/gway/gway/' in norm and not self.debug:
                 skipped += 1
             else:
                 kept_frames.append(frame)
@@ -38,14 +34,14 @@ class FilteredFormatter(logging.Formatter):
         formatted = []
         if kept_frames:
             formatted.extend(traceback.format_list(kept_frames))
-        if skipped and not self.verbose:
+        if skipped and not self.debug:
             formatted.append(f'  <... {skipped} frame(s) in gway internals skipped ...>\n')
         formatted.extend(traceback.format_exception_only(exc_type, exc_value))
         return ''.join(formatted)
 
 
 def setup_logging(*,
-                  logfile=None, logdir="logs", prog_name="gway", verbose=False,
+                  logfile=None, logdir="logs", prog_name="gway", debug=False,
                   loglevel="INFO", pattern=None, backup_count=7):
     """Globally configure logging with filtered tracebacks."""
 
@@ -66,7 +62,7 @@ def setup_logging(*,
     # Prevent console output if not explicitly wanted
     root.addHandler(logging.NullHandler())
 
-    formatter = FilteredFormatter(pattern, datefmt='%H:%M:%S', verbose=verbose)
+    formatter = FilteredFormatter(pattern, datefmt='%H:%M:%S', debug=debug)
 
     if logfile:
         file_h = logging.handlers.TimedRotatingFileHandler(

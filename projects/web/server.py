@@ -240,7 +240,7 @@ def config_external(template=None, *,
     if use_ssl:
         cert_ok = os.path.exists(ssl_cert) and os.path.exists(ssl_key)
         if not cert_ok:
-            gw.error("SSL certificate missing. Try: `sudo certbot --nginx -d yourdomain.com -d '*.yourdomain.com'`")
+            gw.error("SSL cert missing. Try: `sudo certbot --nginx -d yourdomain.com -d '*.yourdomain.com'`")
             return
         gw.info(f"{log_prefix()}SSL certificate and key found.")
         if not dry_run:

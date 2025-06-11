@@ -124,7 +124,7 @@ def resource(*parts, touch=False, check=False, text=False):
     # Return text contents or path
     if text:
         try:
-            return path.read_text()
+            return path.read_text(encoding="utf-8")
         except Exception as e:
             gw.abort(f"Failed to read {path}: {e}")
     return path
