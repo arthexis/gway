@@ -5,8 +5,6 @@ import tempfile
 from pathlib import Path
 from gway import gw
 
-# TODO: Clean the files used for testing beforehand
-# TODO: Check that we are very thoroughly protecting gw.resource from regressions
 
 class ResourceTests(unittest.TestCase):
 
