@@ -207,7 +207,7 @@ def _cleanup_boxes():
         time.sleep(60)
 
 
-def render_upload_view(box_id: str = None, *, timeout: int = 60, **kwargs):
+def render_upload_view(box_id: str = None, *, timeout: int = 60, files: int = 6, **kwargs):
     """
     GET: Display upload interface or create a new upload box.
     POST: Handle uploaded files to a specific box_id.
@@ -289,10 +289,15 @@ def render_upload_view(box_id: str = None, *, timeout: int = 60, **kwargs):
     except ValueError:
         return "<h1>Invalid box_id format</h1><p>Expected form: <code>short.long</code>.</p>"
 
+    # Generate N file input fields
+    file_inputs = "\n".join(
+        f'<input type="file" name="file">' for _ in range(max(1, files))
+    )
+
     return f"<h1>Upload to Box: {short}</h1>" + f"""
         <form method="POST" enctype="multipart/form-data">
-            <input type="file" name="file" multiple />
-            <button type="submit">Upload</button>
+            {file_inputs}
+            <br><button type="submit">Upload</button>
         </form>
         <p>Files will be stored in <code>work/uploads/{short}/</code></p>
     """
