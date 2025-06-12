@@ -7,12 +7,12 @@ from datetime import datetime, timedelta
 from gway import gw
 
 
-def report(data_dir, *, 
+def extract_records(data_dir, *, 
         add_days=0, after=None, before=None, batch=None):
     r"""Load data from EV IOCHARGER .json files to CSV format.
-        > gway etron report san-pedro
-        > gway etron report calzada-del-valle
-        > gway etron report porsche-centre
+        > gway etron extract_records san-pedro
+        > gway etron extract_records calzada-del-valle
+        > gway etron extract_records porsche-centre
         This assumes the files are at work/etron/records/<location>.
     """
     # This function has been tested with real eTRON EVCS OCPP 1.6 for CSS2 (modify with care.)
@@ -104,3 +104,7 @@ def report(data_dir, *,
 
     gw.info(f"Data successfully written to {output_csv}")
     return {"status": "success", "output_csv": output_csv}
+
+
+# TODO: Create extract_1768 to extract the power consumption logs
+

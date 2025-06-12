@@ -1,6 +1,3 @@
-# projects/clip.py
-
-from re import L
 import time
 from gway import gw
 
@@ -51,7 +48,7 @@ def track_history(interval: int = 5, *, stop_after=None, notify=True):
         interval (int): Seconds to wait between checks. Default is 5 seconds.
         stop_after (int | None): Optional maximum duration (in seconds) before stopping.
         notify (bool): Whether to show GUI notifications for new entries.
-    
+
     Writes:
         Appends new clipboard entries to 'work/clip/history.txt', separated by '\n...\n'.
     """
@@ -68,25 +65,34 @@ def track_history(interval: int = 5, *, stop_after=None, notify=True):
     try:
         while True:
             current = pyperclip.paste()
-            if current != last_value:
-                with open(history_path, 'a', encoding='utf-8') as f:
-                    if last_value is not None:
-                        f.write("\n...\n")
-                    f.write(current)
-                last_value = current
-                if notify:
-                    summary = current if len(current) <= 60 else current[:57] + "..."
-                    gw.screen.notify("Clipboard captured: " + summary)
-                gw.debug("New clipboard entry recorded.")
+            clean_current = current.strip()
+
+            if not clean_current or clean_current == last_value:
+                time.sleep(interval)
+                continue
+
+            normalized = current.replace('\r\n', '\n').replace('\r', '\n').rstrip() + '\n'
+            with open(history_path, 'a', encoding='utf-8') as f:
+                if last_value is not None:
+                    f.write("\n...\n")
+                f.write(normalized)
+
+            last_value = clean_current
+            if notify:
+                summary = clean_current if len(clean_current) <= 60 else clean_current[:57] + "..."
+                gw.screen.notify("Clipboard captured: " + summary)
+            gw.debug("New clipboard entry recorded.")
+
             if stop_after and (time.time() - start_time) > stop_after:
                 gw.info("Clipboard tracking stopped after timeout.")
                 break
+
             time.sleep(interval)
     except KeyboardInterrupt:
         gw.warning("Clipboard tracking manually interrupted.")
 
 
-def render_history_view(*, selection: list=None, copy: bool=True, purge: bool=True):
+def render_history_view(*, selection: list = None, copy: bool = True, purge: bool = True):
     gw.verbose(f"Received {selection=}")
     selection = gw.to_list(selection) if selection else selection
     # TODO: If copy, concatenate selection, copy to clipboard

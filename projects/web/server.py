@@ -13,7 +13,7 @@ def start_app(*,
     debug=False,
     proxy=None,
     app=None,
-    daemon=False,
+    daemon=True,
     threaded=True,
     is_worker=False,
 ):
@@ -49,7 +49,7 @@ def start_app(*,
                 app_types.append(app_type)
 
                 t = Thread(
-                    target=gw.web.server.start,
+                    target=gw.web.server.start_app,
                     kwargs=dict(
                         host=host,
                         port=port_i,

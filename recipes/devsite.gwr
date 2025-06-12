@@ -1,7 +1,0 @@
-# Minimal GWAY website ingredients
-
-web app setup --project web.site --home readme --path gway
-web app setup --project ocpp --home status --path ocpp
-web app setup --project tests --home index --path dev
-web server start-app --daemon --host [WEBSITE_HOST|127.0.0.1] --port [WEBSITE_PORT|8888]
-until --lock-file VERSION --lock-pypi

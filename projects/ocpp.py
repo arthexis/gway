@@ -189,8 +189,6 @@ def setup_csms_v01_app(*,
 
 def setup_csms_v16_app(*, 
         app=None, 
-        host='[OCPP_CSMS_HOST|0.0.0.0]', 
-        port='[OCPP_CSMS_PORT|9000]', 
         allowlist=None,
         authlist=None,
     ):
@@ -321,9 +319,10 @@ def setup_csms_v16_app(*,
     if authlist:
         gw.info(f"[OCPP] Loaded authlist with {len(_token_map)} tokens")
 
-    gw.info(f"[OCPP] CSMS v1.6 ready on ws://{host}:{port} (authlist={authlist})")
-
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
+
+
+setup_csms_app = setup_csms_v16_app 
 
 ...
 

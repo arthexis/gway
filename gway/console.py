@@ -33,14 +33,14 @@ def cli_main():
     add("-j", dest="json", nargs="?", const=True, default=False, help="Output result(s) as JSON")
     add("-l", dest="local", action="store_true", help="Set base_path to current directory")
     add("-m", dest="memory", action="store_true", help="Memory mode: Save or reuse last arguments")
-    add("-n", dest="name", type=str, help="Name for app instances and logger (default: gw).")
+    add("-n", dest="namespace", type=str, help="Default unknown functions to this project")
     add("-o", dest="outfile", type=str, help="Write text output(s) to this file")
     add("-p", dest="project_path", type=str, help="Root project path for custom functions.")
     add("-q", dest="quantity", type=int, default=1, help="Max items from generator outputs")
     add("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
     add("-s", dest="server", type=str, help="Override server environment configuration")
     add("-t", dest="timed", action="store_true", help="Enable timing of operations")
-    # There is no -u in team (until implemented)
+    add("-u", dest="username", type=str, help="Operate as the given end-user account.")
     add("-v", dest="verbose", action="store_true", help="Verbose mode (where supported)")
     add("-w", dest="wizard", action="store_true", help="Request wizard mode if available")
     add("-x", dest="callback", type=str, help="Execute a callback per command or standalone")
@@ -75,7 +75,8 @@ def cli_main():
         args.base_path = os.getcwd()
 
     # Setup logging
-    setup_logging(logfile="gway.log", loglevel="DEBUG" if args.debug else "INFO", debug=args.debug)
+    logfile = f"{args.username}.log" if args.username else "gway.log"
+    setup_logging(logfile=logfile, loglevel="DEBUG" if args.debug else "INFO", debug=args.debug)
     start_time = time.time() if args.timed else None
 
     # Silent and verbose are allowed together. It means:
@@ -87,7 +88,7 @@ def cli_main():
         server=args.server,
         verbose=args.verbose,
         silent=args.silent,
-        name=args.name or "gw",
+        name=args.username or "gw",
         project_path=args.project_path,
         base_path=args.base_path,
         debug=args.debug,
@@ -303,13 +304,13 @@ def show_functions(functions: dict):
     print("Available functions:")
     for name, func in functions.items():
         name_cli = name.replace("_", "-")
-        sample_cli_args = sample_cli_args(func)
+        cli_args = sample_cli_args(func)
         doc = ""
         if func.__doc__:
             doc_lines = [line.strip() for line in func.__doc__.splitlines()]
             doc = next((line for line in doc_lines if line), "")
 
-        print(f"  > {name_cli} {sample_cli_args}")
+        print(f"  > {name_cli} {cli_args}")
         if doc:
             print(f"      {doc}")
 

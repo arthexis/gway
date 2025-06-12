@@ -6,11 +6,12 @@
 import os
 from functools import wraps
 from urllib.parse import urlencode
+import bottle
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
 _version = None
-
+_url_stack = []  # Stack of (project, path) tuples
 
 def setup(*,
     app=None,
@@ -21,7 +22,8 @@ def setup(*,
     home: str = "readme",
     prefix: str = "view",
     navbar: bool = True,
-):    
+    upload_mb: int = 100,
+):
     """
     Configure one or more Bottle-based apps. Use "web server start-app" to launch.
 
@@ -33,39 +35,35 @@ def setup(*,
         3. build_{view_name}_{prefix}
         4. {view_name}_to_html
     """
-    global _version
-    _version = _version or gw.version() 
+    global _version, _url_stack
+    _version = _version or gw.version()
+    bottle.BaseRequest.MEMFILE_MAX = upload_mb * 1024 * 1024
 
-    # Normalize `project` into a list of project names
     projects = gw.to_list(project, flat=True)
-
-    # Determine default `path` if not provided
     if path is None:
-        first_proj = projects[0]
-        path = "gway" if first_proj == "web.site" else first_proj.replace(".", "/")
+        path = "gway" if projects[0] == "web.site" else projects[0].split(".")[0]
 
-    _is_new_app = not (app := gw.unwrap_one(app, Bottle) if (oapp := app) else None)
+    _url_stack.append((projects[0], path))  # Push onto stack
+
+    oapp = app
+    _is_new_app = not (app := gw.unwrap_one(app, Bottle) if oapp else None)
     gw.debug(f"Unwrapped {app=} from {oapp=} ({_is_new_app=})")
 
     if _is_new_app:
         gw.info("No Bottle app found; creating a new Bottle app.")
         app = Bottle()
 
-        # Define URL-building helpers
-        gw.web.static_url = lambda *args, **kwargs: build_url(static, *args, **kwargs)
-        gw.web.work_url = lambda *args, **kwargs: build_url(work, *args, **kwargs)
-        gw.web.app_url = lambda *args, **kwargs: build_url(path, *args, **kwargs)
-        gw.web.redirect_error = redirect_error
-
-    @app.route("/accept-cookies", method="POST")
-    def accept_cookies():
-        response.set_cookie("cookies_accepted", "yes")
-        redirect_url = request.forms.get("next", "/readme")
-        response.status = 303
-        if not redirect_url.startswith("/"):
-            redirect_url = f"/{redirect_url}"
-        response.set_header("Location", f"/{path}{redirect_url}")
-        return ""
+    # Assign to gw.web only for the first declared app
+    if _is_new_app:
+      @app.route("/accept-cookies", method="POST")
+      def accept_cookies():
+          response.set_cookie("cookies_accepted", "yes")
+          redirect_url = request.forms.get("next", "/readme")
+          response.status = 303
+          if not redirect_url.startswith("/"):
+              redirect_url = f"/{redirect_url}"
+          response.set_header("Location", build_url(redirect_url.strip("/")))
+          return ""
 
     if static:
         @app.route(f"/{static}/<filename:path>")
@@ -80,19 +78,20 @@ def setup(*,
 
     @app.route(f"/{path}/<view:path>", method=["GET", "POST", "PUT"])
     def view_dispatch(view):
-        nonlocal navbar
+        nonlocal navbar, home
         segments = [s for s in view.strip("/").split("/") if s]
         if not segments:
             segments = [home]
         view_name = segments[0].replace("-", "_")
         args = segments[1:]
         kwargs = dict(request.query)
+
         if request.method in ("POST", "PUT"):
             try:
                 if request.json:
                     kwargs.update(request.json)
                 elif request.forms:
-                    kwargs.update(request.forms.decode())
+                    kwargs.update(dict(request.forms))
             except Exception as e:
                 return redirect_error(e, note="Error loading JSON payload", broken_view_name=view_name)
 
@@ -105,8 +104,8 @@ def setup(*,
 
         for source in sources:
             candidates = [
-                f"{prefix}_{view_name}",             
-                f"render_{view_name}_{prefix}",      
+                f"{prefix}_{view_name}",
+                f"render_{view_name}_{prefix}",
                 f"build_{view_name}_{prefix}",
                 f"{view_name}_to_html",
             ]
@@ -115,15 +114,14 @@ def setup(*,
                 if callable(view_func):
                     break
             else:
-                continue  # try next source
-            break  # found callable
+                continue
+            break
         else:
             return redirect_error(
                 note=f"View '{view_name}' not found using any naming convention in: {projects}",
                 broken_view_name=view_name,
                 default=f"/{path}/{home}" if path and home else "/gway/readme"
             )
-
 
         try:
             gw.debug(f"Dispatch to {view_func.__name__} (args={args}, kwargs={kwargs})")
@@ -176,7 +174,7 @@ def setup(*,
         response.status = 302
         response.set_header("Location", f"/{path}/readme")
         return ""
-    
+
     @app.error(404)
     def handle_404(error):
         fallback = "/gway/readme"
@@ -191,14 +189,10 @@ def setup(*,
 
     if _is_new_app:
         app = security_middleware(app)
-        return app if not oapp else (oapp, app)
-    
-    return oapp
 
+    _url_stack.pop()  # Pop off after setup completes
 
-...
-
-# Helpers for middleware and routing
+    return oapp if oapp else app
 
 def security_middleware(app):
     global _version
@@ -230,12 +224,21 @@ def security_middleware(app):
     return wrapped_app
 
 
-def build_url(prefix, *args, **kwargs):
+def build_url(*args, **kwargs):
     path = "/".join(str(a).strip("/") for a in args if a)
-    url = f"/{prefix}/{path}"
+    if _url_stack:
+        _, prefix = _url_stack[-1]
+        url = f"/{prefix}/{path}"
+    else:
+        url = f"/{path}"
     if kwargs:
         url += "?" + urlencode(kwargs)
     return url
+
+
+def build_full_url(*args, **kwargs):
+    domain = os.environ('BASE_URL', 'http://0.0.0.0:8888')
+    return domain + build_url(*args, **kwargs)
 
 
 ...

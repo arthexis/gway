@@ -4,16 +4,9 @@
 # Views receive the query params and json payload merged into kwargs.
 # Don't use inline CSS ever, each user can have their own style sheets.
 
-import os
-import time
-import shutil
-import threading
-import secrets
-import hashlib
 from bottle import request, response
 from gway import gw
 from docutils.core import publish_parts
-from bottle import request, response, redirect
 from gway import gw
 
 
@@ -182,122 +175,3 @@ def render_awg_finder_view(
     """
 
 ...
-
-
-_open_boxes = {}  # box_id -> expire_timestamp
-_lock = threading.Lock()
-_cleanup_thread_started = False
-
-
-def _cleanup_boxes():
-    """Background cleanup of expired box_ids and their empty folders."""
-    while True:
-        with _lock:
-            now = time.time()
-            expired = [bid for bid, exp in _open_boxes.items() if exp < now]
-            for bid in expired:
-                del _open_boxes[bid]
-                try:
-                    short, _ = bid.split(".", 1)
-                    folder = gw.resource("work", "uploads", short)
-                    if os.path.isdir(folder) and not os.listdir(folder):
-                        shutil.rmtree(folder)
-                except Exception as e:
-                    print(f"[UPLOAD] Cleanup error for box {bid}: {e}")
-        time.sleep(60)
-
-
-def render_upload_view(box_id: str = None, *, timeout: int = 60, files: int = 6, **kwargs):
-    """
-    GET: Display upload interface or create a new upload box.
-    POST: Handle uploaded files to a specific box_id.
-    """
-    global _cleanup_thread_started
-    if not _cleanup_thread_started:
-        threading.Thread(target=_cleanup_boxes, daemon=True).start()
-        _cleanup_thread_started = True
-
-    # Handle file upload (POST)
-    if request.method == 'POST':
-        if not box_id:
-            return "<h1>Missing box_id</h1><p>You must provide a box_id in the query string.</p>"
-
-        with _lock:
-            expire = _open_boxes.get(box_id)
-            if not expire or expire < time.time():
-                return "<h1>Upload Box Expired or Not Found</h1><p>Please regenerate a new box_id.</p>"
-
-        try:
-            short, _ = box_id.split(".", 1)
-        except ValueError:
-            return "<h1>Invalid box_id format</h1><p>Expected form: <code>short.long</code>.</p>"
-
-        upload_dir = gw.resource("work", "uploads", short)
-        os.makedirs(upload_dir, exist_ok=True)
-
-        uploaded_files = request.files.getlist("file")
-        results = []
-        for f in uploaded_files:
-            save_path = os.path.join(upload_dir, f.filename)
-            try:
-                f.save(save_path)
-                results.append(f"Uploaded {f.filename}")
-                gw.info(f"Uploaded {f.filename} to {short}")
-            except Exception as e:
-                results.append(f"Error uploading {f.filename}: {e}")
-                gw.error(f"Issue uploading {f.filename} to {short}")
-                gw.exception(e)
-
-        return (
-            "<pre>" + "\n".join(results) + "</pre>" +
-            f"<p><a href='?box_id={box_id}'>Upload more files to this box</a></p>"
-        )
-
-    # Handle UI display (GET)
-    if not box_id:
-        # Deterministic box_id generation based on user info
-        short = secrets.token_urlsafe(8)
-        identity = (request.remote_addr or '') + (request.headers.get('User-Agent') or '') + short
-        hash_digest = hashlib.sha256(identity.encode()).hexdigest()
-        full_id = f"{short}.{hash_digest[:40]}"
-
-        with _lock:
-            now = time.time()
-            expires = _open_boxes.get(full_id)
-            if not expires or expires < now:
-                _open_boxes[full_id] = now + timeout * 60
-                os.makedirs(gw.resource("work", "uploads", short), exist_ok=True)
-                url = gw.web.app_url("upload", box_id=full_id)
-                message = f"[UPLOAD] Upload box created (expires in {timeout} min): {url}"
-                print(("-" * 70) + '\n' + message + '\n' + ("-" * 70))
-                gw.warning(message)
-
-        return """
-            <h1>Upload Box Ready</h1>
-            <p>We've prepared an upload box for you. Check the console for the access URL.</p>
-            <p>To use it, go to <code>?box_id=…</code> and upload your files there.</p>
-        """
-
-    # Validate and show upload UI
-    with _lock:
-        expire = _open_boxes.get(box_id)
-        if not expire or expire < time.time():
-            return "<h1>Upload Box Expired or Not Found</h1><p>Please regenerate a new box_id.</p>"
-
-    try:
-        short, _ = box_id.split(".", 1)
-    except ValueError:
-        return "<h1>Invalid box_id format</h1><p>Expected form: <code>short.long</code>.</p>"
-
-    # Generate N file input fields
-    file_inputs = "\n".join(
-        f'<input type="file" name="file">' for _ in range(max(1, files))
-    )
-
-    return f"<h1>Upload to Box: {short}</h1>" + f"""
-        <form method="POST" enctype="multipart/form-data">
-            {file_inputs}
-            <br><button type="submit">Upload</button>
-        </form>
-        <p>Files will be stored in <code>work/uploads/{short}/</code></p>
-    """
