@@ -1,2 +1,2 @@
-FFFFFFFF:Test:100
-8505010F:Admin:50
+FFFFFFFF:user=test:balance=100
+8505010F:user=admin:balance=50
