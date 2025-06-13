@@ -22,7 +22,7 @@ def extract_records(data_dir, *,
     output_csv = gw.resource("work", "etron", "reports", f"{dir_name}_records.csv")
     gw.info(f"Reading data files from {data_dir}")
 
-    columns = ["LOCACION", "CONECTOR",  # "FECHA INICIO", "FECHA FINAL", 
+    columns = ["LOCACION", "CONECTOR", "FECHA INICIO", "FECHA FINAL", 
                "WH INICIO", "WH FINAL", "WH USADOS", 
                r"% INICIAL", r"% FINAL", "RAZON FINAL", 
                "FECHA REGISTRO", "ARCHIVO FUENTE",  # "SISTEMA ORIGEN", "LOTE"
@@ -80,8 +80,8 @@ def extract_records(data_dir, *,
                     record = {
                         "LOCACION": dir_name.title(),
                         "CONECTOR": data.get("connectorId", ""),
-                        # "FECHA INICIO": formatted_start_time,
-                        # "FECHA FINAL": formatted_stop_time,
+                        "FECHA INICIO": formatted_start_time,
+                        "FECHA FINAL": formatted_stop_time,
                         "WH INICIO": data.get("meterStart", 0),
                         "WH FINAL": data.get("meterStop", 0),
                         "WH USADOS": data.get("meterStop", 0) - data.get("meterStart", 0),
@@ -104,7 +104,4 @@ def extract_records(data_dir, *,
 
     gw.info(f"Data successfully written to {output_csv}")
     return {"status": "success", "output_csv": output_csv}
-
-
-# TODO: Create extract_1768 to extract the power consumption logs
 

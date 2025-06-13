@@ -625,3 +625,10 @@ def to_list(obj, flat=False):
     # Fallback
     return [obj]
 
+
+def build_url(*args, **kwargs):
+    from gway import gw
+    try:
+        return gw.web.app.build_url(*args, **kwargs)
+    except AttributeError:
+        return '/'.join(args) 

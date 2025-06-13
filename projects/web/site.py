@@ -4,7 +4,6 @@
 # Views receive the query params and json payload merged into kwargs.
 # Don't use inline CSS ever, each user can have their own style sheets.
 
-from bottle import request, response
 from gway import gw
 from docutils.core import publish_parts
 from gway import gw
