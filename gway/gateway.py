@@ -20,13 +20,16 @@ from .structs import Results, Project, Null
 class Gateway(Resolver):
     _builtins = None
     _thread_local = threading.local()
+    _debug = False
     Null = Null
 
     def __init__(self, *, 
-                client=None, server=None, verbose=False, silent=False, debug=False,
+                client=None, server=None, verbose=False, silent=False, debug=None,
                 name="gw", base_path=None, project_path=None, quantity=None, **kwargs
     ):
         # Basic initialization
+        debug = Gateway._debug if debug is None else debug
+        Gateway._debug = debug
         self._cache = {}
         self._async_threads = []
         self.quantity = quantity 
@@ -395,3 +398,5 @@ class Gateway(Resolver):
 
 # This line allows using "from gway import gw" everywhere else
 gw = Gateway()
+
+# TIP: It's a good idea to keep project files between 300 and 600 lines long.

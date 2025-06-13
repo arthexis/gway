@@ -12,7 +12,6 @@ from types import FunctionType
 from typing import Any, Optional, Type, List
 
 
-
 # Avoid importing Gateway at the top level in this file specifically (circular import)
 # Instead, use "from gway import gw" inside the function definitions themselves
     
@@ -174,7 +173,6 @@ def resource_list(*parts, ext=None, prefix=None, suffix=None):
     matches.sort(key=lambda p: p.stat().st_ctime)
     return matches
 
-
 ...
 
 
@@ -213,7 +211,6 @@ def test(root: str = 'tests', filter=None):
     result = runner.run(test_suite)
     gw.info(f"Test results: {str(result).strip()}")
     return result.wasSuccessful()
-
 
 ...
 
@@ -386,7 +383,6 @@ def infer_type(value, default=None, **types):
             continue
     return default
 
-
 ...
 
 
@@ -434,7 +430,6 @@ def run_recipe(*script: str, **context):
 def run(*script: str, **context):
     from gway import gw
     return gw.run_recipe(*script, **context)
-
 
 ...
 
@@ -503,8 +498,10 @@ def _unwrap(obj: Any, expected: Optional[Type], first_only: bool = True):
         else:
             yield obj
 
-
 ...
+
+# TODO: Remove these functions from gway/builtins.py and relocate them
+# to methods of a new class Apeiron in the structs module.
 
 
 def to_html(obj, **kwargs):
@@ -627,8 +624,13 @@ def to_list(obj, flat=False):
 
 
 def build_url(*args, **kwargs):
+    """Build a fully-qualified context-aware URL given a path sequence and query params."""
     from gway import gw
+    domain = os.environ.get('BASE_URL', None)
+    if not domain:
+        default = gw.resolve('http://[WEBSITE_PORT|0.0.0.0]:[WEBSITE_PORT|8888]')
+        domain = os.environ.get('SERVER_URL', default)
     try:
-        return gw.web.app.build_url(*args, **kwargs)
+        return domain + gw.web.app.build_url(*args, **kwargs)
     except AttributeError:
-        return '/'.join(args) 
+        return domain + '/'.join(args) 

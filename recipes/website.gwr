@@ -1,6 +1,5 @@
 # recipes/website.gwr
-
-# Minimal GWAY website ingredients:
+# Minimal GWAY website ingredients
 
 web app setup  
 web app setup --project box --home upload

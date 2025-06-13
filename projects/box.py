@@ -108,7 +108,8 @@ def render_upload_view(box_id: str = None, *, timeout: int = 60, files: int = 4,
             if not expires or expires < now:
                 _open_boxes[full_id] = now + timeout * 60
                 os.makedirs(gw.resource("work", "uploads", short), exist_ok=True)
-                url = gw.web.app.build_url("upload", box_id=full_id)
+                # TODO: Investigate why its not getting the correct url with /box ?
+                url = gw.build_url("upload", box_id=full_id)
                 message = f"[UPLOAD] Upload box created (expires in {timeout} min): {url}"
                 print(("-" * 70) + '\n' + message + '\n' + ("-" * 70))
                 gw.warning(message)
@@ -134,7 +135,7 @@ def render_upload_view(box_id: str = None, *, timeout: int = 60, files: int = 4,
     file_inputs = "\n".join(
         f'<input type="file" name="file">' for _ in range(max(1, files))
     )
-    download_url = gw.web.app.build_url("download", box_id=box_id)
+    download_url = gw.build_url("download", box_id=box_id)
 
     return f"<h1>Upload to Box: {short}</h1>" + f"""
         <form method="POST" enctype="multipart/form-data">
@@ -186,6 +187,8 @@ def render_download_view(box_id: str = None, *hashes: tuple[str], **kwargs):
         selected = [h for h in hashes if h in file_map]
         if not selected:
             return "<h1>No matching files</h1><p>None of the provided hashes match files in this box.</p>"
+        
+        # TODO: Remove the zip bundle functionality completely.
 
         if len(selected) == 1:
             # Serve single file

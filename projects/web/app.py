@@ -11,7 +11,8 @@ from bottle import Bottle, static_file, request, response, template, HTTPRespons
 from gway import gw
 
 _version = None
-_url_stack = []  # Stack of (project, path) tuples
+
+# TODO: 
 
 def setup(*,
     app=None,
@@ -35,26 +36,24 @@ def setup(*,
         3. build_{view_name}_{prefix}
         4. {view_name}_to_html
     """
-    global _version, _url_stack
+    global _version
     _version = _version or gw.version()
     bottle.BaseRequest.MEMFILE_MAX = upload_mb * 1024 * 1024
 
     projects = gw.to_list(project, flat=True)
     if path is None:
-        path = "gway" if projects[0] == "web.site" else projects[0].split(".")[0]
-
-    _url_stack.append((projects[0], path))  # Push onto stack
+        path = "gway" if projects[0] == "web.site" else projects[0].replace('.', '/')
 
     oapp = app
-    _is_new_app = not (app := gw.unwrap_one(app, Bottle) if oapp else None)
-    gw.debug(f"Unwrapped {app=} from {oapp=} ({_is_new_app=})")
+    is_new_app = not (app := gw.unwrap_one(app, Bottle) if oapp else None)
+    gw.debug(f"Unwrapped {app=} from {oapp=} ({is_new_app=})")
 
-    if _is_new_app:
+    if is_new_app:
         gw.info("No Bottle app found; creating a new Bottle app.")
         app = Bottle()
 
     # Assign to gw.web only for the first declared app
-    if _is_new_app:
+    if is_new_app:
       @app.route("/accept-cookies", method="POST")
       def accept_cookies():
           response.set_cookie("cookies_accepted", "yes")
@@ -102,7 +101,7 @@ def setup(*,
             except Exception:
                 continue
 
-        for source in sources:
+        for source in sources:  
             candidates = [
                 f"{prefix}_{view_name}",
                 f"render_{view_name}_{prefix}",
@@ -112,6 +111,10 @@ def setup(*,
             for name in candidates:
                 view_func = getattr(source, name, None)
                 if callable(view_func):
+                    if 'url_stack' not in gw.context:
+                        gw.context['url_stack'] = []
+                    (url_stack := gw.context['url_stack']).append((project, path))
+                    gw.warning(f"For {source=} in sources @ view_dispatch {url_stack=}")
                     break
             else:
                 continue
@@ -161,13 +164,16 @@ def setup(*,
             css_cookie = request.get_cookie("css", "")
             css_files = ["default.css"] + [c.strip() for c in css_cookie.split(",") if c.strip()]
 
-        return render_template(
-            title="GWAY - " + view_name.replace("_", " ").title(),
-            navbar=navbar,
-            content=content,
-            static=static,
-            css_files=css_files
-        )
+        try:
+            return render_template(
+                title="GWAY - " + view_name.replace("_", " ").title(),
+                navbar=navbar,
+                content=content,
+                static=static,
+                css_files=css_files
+            )
+        finally:
+            url_stack.pop()
 
     @app.route("/", method=["GET", "POST"])
     def index():
@@ -187,10 +193,8 @@ def setup(*,
         except Exception as e:
             return redirect_error(e, note="Failed during 404 fallback", default=fallback)
 
-    if _is_new_app:
+    if is_new_app:
         app = security_middleware(app)
-
-    _url_stack.pop()  # Pop off after setup completes
 
     return oapp if oapp else app
 
@@ -225,20 +229,20 @@ def security_middleware(app):
 
 
 def build_url(*args, **kwargs):
+    """
+    Dynamically construct an URL to the local applications.
+    """
     path = "/".join(str(a).strip("/") for a in args if a)
-    if _url_stack:
-        _, prefix = _url_stack[-1]
+    gw.warning(f"Build_url {path=} {gw.context=}")
+    if 'url_stack' in gw.context and (url_stack := gw.context['url_stack']):
+        gw.warning(f"@ build_url {url_stack=}")
+        _, prefix = url_stack[-1]
         url = f"/{prefix}/{path}"
     else:
         url = f"/{path}"
     if kwargs:
         url += "?" + urlencode(kwargs)
     return url
-
-
-def build_full_url(*args, **kwargs):
-    domain = os.environ('BASE_URL', 'http://0.0.0.0:8888')
-    return domain + build_url(*args, **kwargs)
 
 
 ...

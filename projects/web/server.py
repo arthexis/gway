@@ -16,6 +16,7 @@ def start_app(*,
     daemon=True,
     threaded=True,
     is_worker=False,
+    workers=None,
 ):
     """Start an HTTP (WSGI) or ASGI server to host the given application.
 
@@ -76,8 +77,9 @@ def start_app(*,
 
         # 1. If no apps passed, fallback to default app
         if not all_apps:
-            gw.warning(
-                "Building default app (app is None). Run with --app default to silence.")
+            # TODO: Only show this warning if the default app is being built twice which may indicate
+            #       and error in the configuration or recipe. Building it once is not a warning.
+            gw.warning("Building default app (app is None). Run with --app default to silence.")
             app = gw.web.app.setup(app=None)
         else:
             app = all_apps[0]  # Run the first (or only) app normally
@@ -119,7 +121,7 @@ def start_app(*,
                 host=host,
                 port=int(port),
                 log_level="debug" if debug else "info",
-                workers=1,
+                workers=workers or 1,
                 reload=debug,
             )
             return
@@ -138,7 +140,10 @@ def start_app(*,
             ws4py_available = False
 
         if httpserver:
-            httpserver.serve(app, host=host, port=int(port))
+            httpserver.serve(
+                app, host=host, port=int(port), 
+                threadpool_workers=(workers or 5), 
+            )
         elif isinstance(app, Bottle):
             bottle_run(
                 app,

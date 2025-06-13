@@ -142,7 +142,7 @@ class Resolver:
         if value is None:
             raise KeyError(f"Cannot resolve key '{key}'")
         return value
-
+    
     def __contains__(self, sigil_text):
         try:
             sigil = Sigil(sigil_text)
@@ -158,3 +158,10 @@ class Resolver:
             if self._resolve_key(key, fallback) is None:
                 return False
         return True
+    
+    def get(self, key, default=None):
+        return self._resolve_key(key, fallback=default)
+
+    def keys(self):
+        return {key for _, source in self._search_order if isinstance(source, dict) for key in source}
+
