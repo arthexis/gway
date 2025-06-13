@@ -241,12 +241,12 @@ Design Philosophy
 This section contains notes from the author on the nature of the code that may provide insight and guidance to future developers.
 
 
-On Comments
------------
+On Comments and the Code that Binds Them
+----------------------------------------
 
 Comments and code are like DNA — they reflect each other.
 
-This reflection creates a form of internal consistency and safety.
+This reflection creates a form of internal consistency and safety. 
 When code and its comments are in alignment, they mutually verify each other.
 When they diverge, the inconsistency acts as a warning sign: something is broken, outdated, or misunderstood.
 
@@ -255,8 +255,8 @@ Keep them synchronized.
 A mismatch is not a small issue — it's a mutation worth investigating.
 
 
-The Rule of Three (aka. The Holy Hand Grenade Procedure)
---------------------------------------------------------
+The Holy Hand of Antioch Grenade Procedure
+------------------------------------------
 
 If there is *not* only one good way to do it, then you should have **three**.
 
@@ -267,10 +267,6 @@ One way implies clarity. Two implies division. Three implies depth. Five implies
 When offering choices — in interface, design, or abstraction — ensure there are no more than three strong forms. The third may be unexpected, but it must still be necessary.
 
 Beyond that, you're just multiplying uncertainty.
-
-
-INCLUDED PROJECTS
-=================
 
 
 License

@@ -58,7 +58,6 @@ def build(*,
 
     if projects:
         project_dir = gw.resource("projects")
-        collect_projects(project_dir)
 
     project_name = "gway"
     description = "Software Project Infrastructure by https://www.gelectriic.com"
@@ -343,88 +342,6 @@ def create_shortcut(
     shortcut.Save()
 
     print(f"Shortcut created at: {shortcut_path}")
-
-
-def collect_projects(project_dir: str = 'projects', *, readme: str = "README.rst"):
-    """
-    Recursively scan `project_dir` for all valid modules and packages,
-    collect public functions, and update the INCLUDED PROJECTS section of `readme`.
-
-    Args:
-        project_dir: path to the GWAY projects directory.
-        readme: path to the README file to update.
-    """
-    projects = {}
-    base_path = str(gw.resource(project_dir))
-    base_path_len = len(base_path.rstrip(os.sep)) + 1  # for dotted module name
-
-    for root, dirs, files in os.walk(base_path):
-        # Skip hidden dirs
-        dirs[:] = [d for d in dirs if not d.startswith("_")]
-
-        # Detect __init__.py (package)
-        if "__init__.py" in files:
-            rel_path = root[base_path_len:]
-            modname = rel_path.replace(os.sep, ".")
-            module_file = os.path.join(root, "__init__.py")
-        else:
-            # Detect individual .py modules
-            py_files = [f for f in files if f.endswith(".py") and not f.startswith("_")]
-            for py_file in py_files:
-                rel_path = os.path.join(root, py_file)[base_path_len:]
-                modname = rel_path[:-3].replace(os.sep, ".")
-                module_file = os.path.join(root, py_file)
-                break  # handle each .py individually
-            else:
-                continue  # no usable .py files here
-
-        try:
-            spec = importlib.util.spec_from_file_location(modname, module_file)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-        except Exception as e:
-            gw.warning(f"Skipping project {modname}: failed to import: {e}")
-            continue
-
-        funcs = []
-        for fname, obj in inspect.getmembers(module, inspect.isfunction):
-            if fname.startswith("_"):
-                continue
-            doc = inspect.getdoc(obj) or "(no description)"
-            cli_path = ' '.join(modname.replace('_', ' ').split('.'))
-            cli_func = fname.replace('_', '-')
-            funcs.append({
-                "name": fname,
-                "doc": doc,
-                "cli": f"gway {cli_path} {cli_func}"
-            })
-        if funcs:
-            projects[modname] = funcs
-
-    # Build RST
-    lines = ["INCLUDED PROJECTS\n", "=================\n\n"]
-    for name, funcs in sorted(projects.items()):
-        lines.append(f".. rubric:: {name}\n\n")
-        for f in funcs:
-            lines.append(f"- ``{f['name']}`` — {f['doc'].splitlines()[0]}\n\n")
-            lines.append(f"  > ``{f['cli']}``\n\n")
-        lines.append("\n")
-
-    # Replace section in README
-    with open(readme, 'r', encoding='utf-8') as f:
-        content = f.readlines()
-
-    license_idx = next((i for i, l in enumerate(content) if l.strip().upper() == 'LICENSE'), len(content))
-    start_idx = next((i for i, l in enumerate(content) if l.strip() == 'INCLUDED PROJECTS'), None)
-    if start_idx is not None:
-        content = content[:start_idx] + content[license_idx:]
-        license_idx = start_idx
-
-    new_content = content[:license_idx] + lines + ['\n'] + content[license_idx:]
-    with open(readme, 'w', encoding='utf-8') as f:
-        f.writelines(new_content)
-
-    gw.log(f"Updated {readme} with {len(projects)} projects.")
 
 
 if __name__ == "__main__":
