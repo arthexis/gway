@@ -12,6 +12,7 @@ from gway import gw
 
 _version = None
 
+
 def setup(*,
     app=None,
     project="web.site",
@@ -79,10 +80,17 @@ def setup(*,
     def view_dispatch(view):
         nonlocal navbar, home
         segments = [s for s in view.strip("/").split("/") if s]
+        
+        # Use fallback sequence if no view specified and home is None
         if not segments:
-            segments = [home]
-        view_name = segments[0].replace("-", "_")
-        args = segments[1:]
+            fallback_names = (
+                [home] if home else
+                ["index", "readme", "status", "local", "main", "start", "first", "setup", "begin", "wizard", "home"]
+            )
+        else:
+            fallback_names = [segments[0].replace("-", "_")]
+
+        args = segments[1:] if segments else []
         kwargs = dict(request.query)
 
         if request.method in ("POST", "PUT"):
@@ -92,7 +100,7 @@ def setup(*,
                 elif request.forms:
                     kwargs.update(dict(request.forms))
             except Exception as e:
-                return redirect_error(e, note="Error loading JSON payload", broken_view_name=view_name)
+                return redirect_error(e, note="Error loading JSON payload", broken_view_name=fallback_names[0])
 
         sources = []
         for proj_name in projects:
@@ -101,28 +109,31 @@ def setup(*,
             except Exception:
                 continue
 
-        for source in sources:  
-            candidates = [
-                f"{prefix}_{view_name}",
-                f"render_{view_name}_{prefix}",
-                f"build_{view_name}_{prefix}",
-                f"{view_name}_to_html",
-            ]
-            for name in candidates:
-                view_func = getattr(source, name, None)
-                if callable(view_func):
-                    if 'url_stack' not in gw.context:
-                        gw.context['url_stack'] = []
-                    (url_stack := gw.context['url_stack']).append((project, path))
+        view_func = None
+        for view_name in fallback_names:
+            for source in sources:
+                candidates = [
+                    f"{prefix}_{view_name}",
+                    f"render_{view_name}_{prefix}",
+                    f"build_{view_name}_{prefix}",
+                    f"{view_name}_to_html",
+                ]
+                for name in candidates:
+                    view_func = getattr(source, name, None)
+                    if callable(view_func):
+                        if 'url_stack' not in gw.context:
+                            gw.context['url_stack'] = []
+                        (url_stack := gw.context['url_stack']).append((project, path))
+                        break
+                if view_func:
                     break
-            else:
-                continue
-            break
+            if view_func:
+                break
         else:
             return redirect_error(
-                note=f"View '{view_name}' not found using any naming convention in: {projects}",
-                broken_view_name=view_name,
-                default=f"/{path}/{home}" if path and home else "/gway/readme"
+                note=f"View not found using any naming convention for names {fallback_names} in: {projects}",
+                broken_view_name=fallback_names[0],
+                default=f"/{path}/readme" if path else "/gway/readme"
             )
 
         try:
@@ -130,11 +141,11 @@ def setup(*,
             content = view_func(*args, **kwargs)
             if content and not isinstance(content, str):
                 content = gw.to_html(content)
-            visited = _update_visited_cookie(view_name)
+            visited = _update_visited_cookie(view_func.__name__.replace(f"{prefix}_", ""))
         except HTTPResponse as resp:
             return resp
         except Exception as e:
-            return redirect_error(e, note="Error during view execution", broken_view_name=view_name)
+            return redirect_error(e, note="Error during view execution", broken_view_name=view_func.__name__)
 
         full_url = request.fullpath
         if request.query_string:
@@ -165,7 +176,7 @@ def setup(*,
 
         try:
             return render_template(
-                title="GWAY - " + view_name.replace("_", " ").title(),
+                title="GWAY - " + view_func.__name__.replace("_", " ").title(),
                 navbar=navbar,
                 content=content,
                 static=static,

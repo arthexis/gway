@@ -1,3 +1,5 @@
+# tests/test_etron_ws.py
+
 import unittest
 import subprocess
 import time

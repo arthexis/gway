@@ -20,16 +20,19 @@ from .structs import Results, Project, Null
 class Gateway(Resolver):
     _builtins = None
     _thread_local = threading.local()
-    _debug = False
-    Null = Null
+    
+    Null = Null  # Null is a black-hole, assign with care.
+
+    # Global state (typically set from CLI)
+    debug = False
+    silent = False
+    verbose = False
 
     def __init__(self, *, 
                 client=None, server=None, verbose=False, silent=False, debug=None,
                 name="gw", base_path=None, project_path=None, quantity=None, **kwargs
     ):
-        # Basic initialization
-        debug = Gateway._debug if debug is None else debug
-        Gateway._debug = debug
+
         self._cache = {}
         self._async_threads = []
         self.quantity = quantity 
@@ -39,33 +42,12 @@ class Gateway(Resolver):
         self.name = name
         self.logger = logging.getLogger(name)
 
-        # Implement scoped verbose logging based on a partial function name or always-on
-        if not verbose:
-            scoped_logger = Null
-        elif verbose is True:
-            def scoped_logger(msg, *, func=None):
-                if func and verbose in func:
-                    if silent: self.critical(msg)
-                    else: self.info(msg)
-        elif isinstance(verbose, str):
-            def scoped_logger(msg, *, func=None):
-                if func and verbose in func:
-                    if silent: self.critical(msg)
-                    else: self.info(msg)            
-        else:
-            raise ValueError(f"Invalid {verbose=}: must be False, True, or a function name to focus")
-
-        self.verbose = scoped_logger
-
-        if not silent:
-            self.silent = Null
-        elif silent is True:
-            self.silent = lambda *args, **kwargs: self.critical(*args, **kwargs)
-
-        if not debug:
-            self.debug = Null
-        else:
-            self.debug = lambda *args, **kwargs: self.logger.debug(*args, **kwargs)
+        if debug is not None:
+            Gateway.debug = (lambda self, msg: self.logger.debug(msg)) if debug else Null
+        if silent is not None:
+            Gateway.silent = (lambda self, msg: self.logger.info(msg)) if silent else Null
+        if verbose is not None:
+            Gateway.verbose = (lambda self, msg: self.logger.info(msg)) if verbose else Null
 
         client_name = client or get_base_client()
         server_name = server or get_base_server()

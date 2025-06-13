@@ -21,8 +21,13 @@ def hello_world(name: str = "World", *, greeting: str = "Hello"):
     from gway import gw
 
     message = f"{greeting.title()}, {name.title()}!"
-    if hasattr(gw, "hello_world"): print(message)
-    else: print("Greeting protocol not found ((serious smoke)).")
+    if hasattr(gw, "hello_world"): 
+        if not gw.silent:
+            print(message)
+        else:
+            print(f"{gw.silent=}")
+    else: 
+        print("Greeting protocol not found ((serious smoke)).")
     return locals()
 
 
@@ -180,7 +185,7 @@ def test(root: str = 'tests', filter=None):
     """Execute all automatically detected test suites."""
     import unittest
     from gway import gw
-    
+
     print("Running the test suite...")
 
     # Define a custom pattern to include files matching the filter

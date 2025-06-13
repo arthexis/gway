@@ -119,12 +119,12 @@ def add_rfid(rfid: str, fields: dict[str, str], allowlist_path: str):
     gw.info(f"[OCPP] Updated allowlist with RFID={rfid}")
 
 
-# TODO: Let's change how authorize funtions and authorize_balance work
-#       by using **kwargs insteas of passing in a record as a positional param
-
 def authorize_balance(**record) -> bool:
     """Allow only if the RFID record has a balance >= 1."""
-    # TODO: Here we perform additional checks 
+    # TODO: Here we may perform additional checks later (pending customer)
+    #       For example, we can make a request to our upstream gway server,
+    #       to an Odoo endpoint, or something else.
+    #       We could use the balance of the rfids.cdv file only as fallback.
     try:
         return float(record.get("balance", "0")) >= 1
     except ValueError:
@@ -146,11 +146,6 @@ def setup_csms_v16_app(*,
 
     _rfid_map = load_allowlist(allowlist) if allowlist else {}
 
-    # TODO: Move all the allowlist logic to our sample authorization function. 
-    # This means we will no longer pass in allowlist at all, we just call authorize
-    # and authorize encapsulates the authlist logic and standarizes the rfid.cdv 
-    # location to: data/etron/auth/rfids.cdv
-
     if isinstance(authorize, str):
         authorize = gw[authorize]
     elif not callable(authorize):
@@ -158,7 +153,10 @@ def setup_csms_v16_app(*,
 
     def is_authorized_rfid(rfid: str) -> bool:
         if not _rfid_map:
-            return True
+            # Strict: If no allowlist loaded, reject all tags
+            gw.warn("[OCPP] No RFID allowlist loaded — rejecting all authorization requests.")
+            return False
+        
         record = _rfid_map.get(rfid)
         if not record:
             return False
