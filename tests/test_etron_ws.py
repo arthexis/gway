@@ -66,7 +66,7 @@ class EtronWebSocketTests(unittest.TestCase):
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
                 message_id = "auth-valid"
                 payload = {
-                    "idTag": "FFFFFFFF"  # Replace with known-good tag in rfid.txt
+                    "idTag": "FFFFFFFF"  # This is a known-good tag in data/etron/auth/rfid.cdv
                 }
                 authorize_msg = [2, message_id, "Authorize", payload]
                 await websocket.send(json.dumps(authorize_msg))

@@ -1,0 +1,229 @@
+/* data/static/styles/base.css */ 
+/* Default base stylesheet for GWAY help and dashboard pages */
+
+* {
+    box-sizing: border-box;
+    scroll-behavior: smooth;
+}
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    font-family: sans-serif;
+    background-color: var(--bg, #fff);
+    color: var(--fg, #000);
+    line-height: 1.6;
+}
+
+.layout {
+    display: flex;
+    flex-direction: row;
+    flex: 1 0 auto;
+    width: 100%;
+}
+
+/* Sidebar */
+aside {
+    width: 240px;
+    padding: 2rem 1rem;
+    flex-shrink: 0;
+    background-color: var(--bg-alt, #f0f0f0);
+    border-right: 1px solid #ccc;
+    /* removed height: 100vh and overflow */
+}
+
+/* Main content */
+main {
+    flex: 1;
+    padding: 2rem;
+    min-width: 0;
+    overflow-x: auto;
+}
+
+/* Footer (sticky bottom) */
+footer {
+    flex-shrink: 0;
+    font-size: 0.8em;
+    padding: 1em;
+    color: var(--muted, #666);
+    border-top: 1px solid #ccc;
+    text-align: center;
+}
+
+
+aside ul {
+    list-style: none;
+    padding: 0;
+}
+
+aside ul li a {
+    display: block;
+    padding: 0.5em 0;
+    text-decoration: none;
+    text-transform: uppercase;
+    color: var(--fg, #000);
+}
+
+aside ul li a:hover,
+aside ul li a.active {
+    font-weight: bold;
+    color: var(--accent, #007bff);
+}
+
+h1, h2, h3, h4 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+}
+
+p {
+    margin: 1em 0;
+}
+
+pre {
+    background-color: #111827;
+    color: #a5f3fc;
+    padding: 1rem;
+    margin: 1.5em 0;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    font-family: 'Fira Code', monospace;
+}
+
+/* Buttons & inputs */
+button,
+input[type="submit"],
+input[type="button"] {
+    background-color: var(--accent-alt, #007bff);
+    color: white;
+    padding: 0.6em 1.2em;
+    font-size: 1em;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+button:hover,
+input[type="submit"]:hover {
+    background-color: var(--accent, #0056b3);
+    transform: scale(1.03);
+}
+
+button:active,
+input[type="submit"]:active {
+    background-color: #004494;
+    transform: scale(0.97);
+}
+
+input,
+textarea {
+    width: 100%;
+    padding: 0.5em;
+    font-size: 1em;
+    margin-bottom: 1em;
+    border-radius: 0.5rem;
+    border: 1px solid var(--muted, #ccc);
+}
+
+/* QR and navbar elements */
+img.navbar-qr {
+    max-width: 180px;
+    height: auto;
+    margin: 1em auto 0 auto;
+    display: block;
+}
+
+
+form.navbar {
+    margin-bottom: 1em;
+}
+
+div.navbar-qr {
+    margin-top: 1em;
+    text-align: center;
+}
+
+p.navbar-qr {
+    margin-bottom: 0.5em;
+}
+
+/* Headers and layout blocks */
+.header-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5em;
+}
+
+h1 {
+    margin: 0;
+    font-size: 2.2em;
+}
+
+
+/* Search bar */
+.search-box input[type="text"] {
+    padding: 0.4em;
+    font-size: 1em;
+    width: 200px;
+    border-radius: 0.5rem;
+    border: 1px solid var(--muted, #ccc);
+}
+
+/* Error message */
+p.error,
+.error {
+    font-weight: bold;
+    color: var(--error, red);
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+    .layout {
+        flex-direction: column;
+    }
+
+    aside {
+        width: 100%;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid #ccc;
+    }
+
+    main {
+        padding: 1rem;
+    }
+
+    nav,
+    .navbar-qr {
+        text-align: center;
+    }
+}
+
+/* Print-friendly: remove sidebar and colors */
+@media print {
+    aside {
+        display: none;
+    }
+
+    body {
+        background: white;
+        color: black;
+    }
+
+    main {
+        padding: 0;
+    }
+
+    pre {
+        background: #f0f0f0;
+        color: black;
+    }
+}

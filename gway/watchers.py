@@ -1,11 +1,10 @@
-# gway/watchers.py
-
 import os
 import time
 import hashlib
 import threading
 import requests
 
+# TODO resolved: All network-facing watchers now retry safely and log the events.
 
 def watch_file(*filepaths, on_change, poll_interval=10.0, hash=False, resource=True):
     from gway import gw
@@ -62,69 +61,73 @@ def watch_file(*filepaths, on_change, poll_interval=10.0, hash=False, resource=T
     return stop_event
 
 
+def _retry_loop(fn, *, interval, stop_event, label):
+    """Retry wrapper that logs and silently recovers from errors."""
+    from gway import gw
+    while not stop_event.is_set():
+        try:
+            fn()
+        except Exception as e:
+            gw.warn(f"[Watcher] {label} error: {e}")
+        time.sleep(interval)
+
+
 def watch_url(url, on_change, *, 
               poll_interval=60.0, event="change", resend=False, value=None):
     stop_event = threading.Event()
 
-    def _watch():
-        last_hash = None
-        while not stop_event.is_set():
-            try:
-                response = requests.get(url, timeout=5)
-                content = response.content
-                status_ok = 200 <= response.status_code < 400
+    def _check():
+        response = requests.get(url, timeout=5)
+        content = response.content
+        status_ok = 200 <= response.status_code < 400
 
-                if event == "up":
-                    if status_ok:
-                        on_change()
-                        os._exit(1)
-                elif event == "down":
-                    if not status_ok:
-                        on_change()
-                        os._exit(1)
-                elif event == "has" and isinstance(value, str):
-                    if value.lower() in content.decode(errors="ignore").lower():
-                        on_change()
-                        os._exit(1)
-                elif event == "lacks" and isinstance(value, str):
-                    if value.lower() not in content.decode(errors="ignore").lower():
-                        on_change()
-                        os._exit(1)
-                else:  # event == "change"
-                    response.raise_for_status()
-                    current_hash = hashlib.sha256(content).hexdigest()
-                    if last_hash is not None and current_hash != last_hash:
-                        on_change()
-                        os._exit(1)
-                    last_hash = current_hash
-            except Exception:
-                pass
-            time.sleep(poll_interval)
+        if event == "up":
+            if status_ok:
+                on_change()
+                os._exit(1)
+        elif event == "down":
+            if not status_ok:
+                on_change()
+                os._exit(1)
+        elif event == "has" and isinstance(value, str):
+            if value.lower() in content.decode(errors="ignore").lower():
+                on_change()
+                os._exit(1)
+        elif event == "lacks" and isinstance(value, str):
+            if value.lower() not in content.decode(errors="ignore").lower():
+                on_change()
+                os._exit(1)
+        else:  # event == "change"
+            response.raise_for_status()
+            nonlocal last_hash
+            current_hash = hashlib.sha256(content).hexdigest()
+            if last_hash is not None and current_hash != last_hash:
+                on_change()
+                os._exit(1)
+            last_hash = current_hash
 
-    thread = threading.Thread(target=_watch, daemon=True)
+    last_hash = None
+    thread = threading.Thread(target=lambda: _retry_loop(_check, interval=poll_interval, stop_event=stop_event, label=f"url:{url}"), daemon=True)
     thread.start()
     return stop_event
 
 
 def watch_pypi_package(package_name, on_change, *, poll_interval=2500.0):
-    url = f"https://pypi.org/pypi/{package_name}/json"
     stop_event = threading.Event()
+    url = f"https://pypi.org/pypi/{package_name}/json"
 
-    def _watch():
-        last_version = None
-        while not stop_event.is_set():
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            current_version = data["info"]["version"]
+    def _check():
+        nonlocal last_version
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        current_version = data["info"]["version"]
+        if last_version is not None and current_version != last_version:
+            on_change()
+            os._exit(1)
+        last_version = current_version
 
-            if last_version is not None and current_version != last_version:
-                on_change()
-                os._exit(1)
-
-            last_version = current_version
-            time.sleep(poll_interval)
-
-    thread = threading.Thread(target=_watch, daemon=True)
+    last_version = None
+    thread = threading.Thread(target=lambda: _retry_loop(_check, interval=poll_interval, stop_event=stop_event, label=f"pypi:{package_name}"), daemon=True)
     thread.start()
     return stop_event

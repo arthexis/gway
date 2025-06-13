@@ -158,10 +158,10 @@ def setup(*,
             if not style_param.endswith(".css"):
                 style_param += ".css"
             response.set_cookie("css", style_param, path="/")
-            css_files = ["default.css", style_param]
+            css_files = ["base.css", style_param]
         else:
             css_cookie = request.get_cookie("css", "")
-            css_files = ["default.css"] + [c.strip() for c in css_cookie.split(",") if c.strip()]
+            css_files = ["base.css"] + [c.strip() for c in css_cookie.split(",") if c.strip()]
 
         try:
             return render_template(
@@ -249,7 +249,7 @@ def build_url(*args, **kwargs):
 def render_template(*, title="GWAY", navbar="", content="", static="static", css_files=None):
     global _version
     version = _version = _version or gw.version()
-    css_files = css_files or ["default.css"]
+    css_files = css_files or ["base.css"]
     css_links = "\n".join(
         f'<link rel="stylesheet" href="/{static}/styles/{css}">' for css in css_files
     )
@@ -269,8 +269,10 @@ def render_template(*, title="GWAY", navbar="", content="", static="static", css
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         </head>
         <body>
+            <div class="layout">
             {{!navbar}}
             <main>{{!content}}</main>
+            </div>
             <br/><footer><p>This website was built, tested and released with 
                     <a href="/gway/readme">GWAY</a> 
                     <a href="https://pypi.org/project/gway/{{!version}}/">v{{!version}}</a>.</p>
@@ -305,8 +307,8 @@ def render_navbar(visited, path, current_url=None):
     if current_url:
         qr_url = gw.qr.generate_url(current_url)
         qr_html = f'''
-            <div class="qr">
-                <p class="qr">QR Code for this page:</p>
+            <div class="navbar-qr">
+                <p class="navbar-qr">QR Code for this page:</p>
                 <img src="{qr_url}" alt="QR Code" class="navbar-qr" />
             </div>
         '''
@@ -317,7 +319,7 @@ def render_navbar(visited, path, current_url=None):
         if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
     )
 
-    current_style = request.get_cookie("css") or "default.css"
+    current_style = request.get_cookie("css") or "base.css"
     options = "\n".join(
         f'<option value="{s}"{" selected" if s == current_style else ""}>{s[:-4]}</option>'
         for s in available_styles

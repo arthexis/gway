@@ -119,9 +119,20 @@ def add_rfid(rfid: str, fields: dict[str, str], allowlist_path: str):
     gw.info(f"[OCPP] Updated allowlist with RFID={rfid}")
 
 
-authorize=None
+# TODO: Let's change how authorize funtions and authorize_balance work
+#       by using **kwargs insteas of passing in a record as a positional param
 
-def setup_csms_v16_app(*, app=None, allowlist=None, location=None):
+def authorize_balance(**record) -> bool:
+    """Allow only if the RFID record has a balance >= 1."""
+    # TODO: Here we perform additional checks 
+    try:
+        return float(record.get("balance", "0")) >= 1
+    except ValueError:
+        return False
+
+
+def setup_csms_v16_app(*, 
+        app=None, allowlist=None, location=None, authorize=authorize_balance):
     """
     Minimal OCPP 1.6 CSMS implementation for conformance testing.
     Supports required Core actions, logs all requests, and accepts all.
@@ -129,12 +140,16 @@ def setup_csms_v16_app(*, app=None, allowlist=None, location=None):
     Optional `authorize` hook can be a callable or gw['name'].
     Optional `location` enables per-txn logging to work/etron/records/{location}/{charger}_{txn_id}.dat
     """
-    global authorize
     oapp = app
     if (_is_new_app := not (app := gw.unwrap_one(app, FastAPI))):
         app = FastAPI()
 
     _rfid_map = load_allowlist(allowlist) if allowlist else {}
+
+    # TODO: Move all the allowlist logic to our sample authorization function. 
+    # This means we will no longer pass in allowlist at all, we just call authorize
+    # and authorize encapsulates the authlist logic and standarizes the rfid.cdv 
+    # location to: data/etron/auth/rfids.cdv
 
     if isinstance(authorize, str):
         authorize = gw[authorize]
@@ -149,7 +164,7 @@ def setup_csms_v16_app(*, app=None, allowlist=None, location=None):
             return False
         if authorize:
             try:
-                return bool(authorize(record))
+                return bool(authorize(**record))
             except Exception as e:
                 gw.error(f"[OCPP] authorize() failed: {e}")
                 return False

@@ -180,9 +180,7 @@ def test(root: str = 'tests', filter=None):
     """Execute all automatically detected test suites."""
     import unittest
     from gway import gw
-
-    # TODO: Capture all stdout and stderror to a file at gw.resource('work/test/run_[timestamp].')
-
+    
     print("Running the test suite...")
 
     # Define a custom pattern to include files matching the filter
