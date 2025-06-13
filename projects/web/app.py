@@ -12,8 +12,6 @@ from gway import gw
 
 _version = None
 
-# TODO: 
-
 def setup(*,
     app=None,
     project="web.site",
@@ -35,6 +33,8 @@ def setup(*,
         2. render_{view_name}_{prefix}      
         3. build_{view_name}_{prefix}
         4. {view_name}_to_html
+
+    You can use gw.web.app.build_url in your views to generate contextual URLs.
     """
     global _version
     _version = _version or gw.version()
@@ -114,7 +114,6 @@ def setup(*,
                     if 'url_stack' not in gw.context:
                         gw.context['url_stack'] = []
                     (url_stack := gw.context['url_stack']).append((project, path))
-                    gw.warning(f"For {source=} in sources @ view_dispatch {url_stack=}")
                     break
             else:
                 continue
@@ -233,9 +232,7 @@ def build_url(*args, **kwargs):
     Dynamically construct an URL to the local applications.
     """
     path = "/".join(str(a).strip("/") for a in args if a)
-    gw.warning(f"Build_url {path=} {gw.context=}")
     if 'url_stack' in gw.context and (url_stack := gw.context['url_stack']):
-        gw.warning(f"@ build_url {url_stack=}")
         _, prefix = url_stack[-1]
         url = f"/{prefix}/{path}"
     else:
@@ -327,13 +324,16 @@ def render_navbar(visited, path, current_url=None):
     )
     style_selector = f'''
         <form method="get" class="style-form">
-            <label for="css-style">Style:</label>
-            <select id="css-style" name="css" class="style-selector" onchange="this.form.submit()">
+            <label for="css-style"> </label>
+            <select id="css-style" name="css" class="style-selector" onchange="this.form.submit()"
+                style="width: 100%">
                 {options}
             </select>
             <noscript><button type="submit">Set</button></noscript>
         </form>
     '''
+
+    # TODO: The style selector should preserve the other query params
 
     return f"<aside>{search_box}<ul>{links}</ul><br>{qr_html}<br>{style_selector}</aside>"
 

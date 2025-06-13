@@ -1,12 +1,8 @@
-# projects/box.py
-
 import os
-import io
 import time
 import shutil
 import secrets
 import hashlib
-import zipfile
 import threading
 from datetime import datetime
 from bottle import request  # Default gway web apps use bottle
@@ -20,7 +16,7 @@ from gway import gw
 
 # It can be deployed in CLI/recipes as:
 # > [gway] web app setup --project box 
-# To deploy it into [BASE_URL]/box/[upload/download] endpoints.
+# To deploy it into [BASE_URL]/box/[upload/download].
 
 
 _open_boxes = {}  # box_id -> expire_timestamp
@@ -46,7 +42,7 @@ def _cleanup_boxes():
         time.sleep(60)
 
 
-def render_upload_view(box_id: str = None, *, timeout: int = 60, files: int = 4, app=None, **kwargs):
+def render_upload_view(*, box_id: str = None, timeout: int = 60, files: int = 4, app=None, **kwargs):
     """
     GET: Display upload interface or create a new upload box.
     POST: Handle uploaded files to a specific box_id.
@@ -87,11 +83,11 @@ def render_upload_view(box_id: str = None, *, timeout: int = 60, files: int = 4,
                 gw.error(f"Issue uploading {f.filename} to {short}")
                 gw.exception(e)
 
-        # ✅ Add a link to the download view for the same box_id
+        download_url = gw.web.app.build_url("download", box_id=box_id)
         return (
             "<pre>" + "\n".join(results) + "</pre>" +
             f"<p><a href='?box_id={box_id}'>Upload more files to this box</a></p>" +
-            f"<p><a href='box/dowload?box_id={box_id}'>Go to download page for this box</a></p>"
+            f"<p><a href='{download_url}'>Go to download page for this box</a></p>"
         )
 
     # Handle UI display (GET)
@@ -108,7 +104,6 @@ def render_upload_view(box_id: str = None, *, timeout: int = 60, files: int = 4,
             if not expires or expires < now:
                 _open_boxes[full_id] = now + timeout * 60
                 os.makedirs(gw.resource("work", "uploads", short), exist_ok=True)
-                # TODO: Investigate why its not getting the correct url with /box ?
                 url = gw.build_url("upload", box_id=full_id)
                 message = f"[UPLOAD] Upload box created (expires in {timeout} min): {url}"
                 print(("-" * 70) + '\n' + message + '\n' + ("-" * 70))
@@ -140,18 +135,19 @@ def render_upload_view(box_id: str = None, *, timeout: int = 60, files: int = 4,
     return f"<h1>Upload to Box: {short}</h1>" + f"""
         <form method="POST" enctype="multipart/form-data">
             {file_inputs}
-            <br><button type="submit">Upload</button>
+            <br><p><button type="submit">Upload</button><p/>
         </form>
         <p>Files will be stored in <code>work/uploads/{short}/</code></p>
         <p><a href="{download_url}">Go to download page for this box</a></p>
     """
 
 
-def render_download_view(box_id: str = None, *hashes: tuple[str], **kwargs):
+def render_download_view(*hashes: tuple[str], box_id: str = None, **kwargs):
     """
     GET: Show list of files in the box (with hash), allow selection/download.
-    If hashes are provided, return the individual file or a ZIP archive.
+    If a single hash is provided, return that file. Multiple hashes are not supported yet.
     """
+    gw.warning(f"Download view: {hashes=} {box_id=} {kwargs=}")
     if not box_id:
         return "<h1>Missing box_id</h1><p>You must provide a box_id in the query string.</p>"
 
@@ -184,79 +180,32 @@ def render_download_view(box_id: str = None, *hashes: tuple[str], **kwargs):
             continue
 
     if hashes:
-        selected = [h for h in hashes if h in file_map]
-        if not selected:
-            return "<h1>No matching files</h1><p>None of the provided hashes match files in this box.</p>"
-        
-        # TODO: Remove the zip bundle functionality completely.
+        if len(hashes) > 1:
+            raise NotImplementedError("Multi-hash downloads are not supported yet.")
+        h = hashes[0]
+        if h not in file_map:
+            return f"<h1>No matching file</h1><p>Hash {h} not found in this box.</p>"
 
-        if len(selected) == 1:
-            # Serve single file
-            path = file_map[selected[0]]
-            name = os.path.basename(path)
-            def _stream():
-                with open(path, "rb") as f:
-                    yield from f
-            return gw.web.send_stream(_stream(), filename=name, content_type="application/octet-stream")
+        path = file_map[h]
+        name = os.path.basename(path)
 
-        # Bundle selected files into a ZIP
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, 'w') as zipf:
-            for h in selected:
-                path = file_map[h]
-                name = os.path.basename(path)
-                zipf.write(path, arcname=name)
-        buffer.seek(0)
+        def _stream():
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
 
-        filename = f"box_{short}_{len(selected)}_files.zip"
-        return gw.web.send_stream(buffer, filename=filename, content_type="application/zip")
+        from bottle import response
+        response.content_type = 'application/octet-stream'
+        response.headers['Content-Disposition'] = f'attachment; filename="{name}"'
+        return _stream()
 
-    # No hashes: show the file list for UI
-    if not file_info:
-        return "<h1>No files found</h1><p>This upload box is empty.</p>"
-
-    rows = []
-    for md5, name, size, mtime in file_info:
-        formatted = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
-        rows.append(f"""
-            <tr>
-                <td><input type="checkbox" value="{md5}" onchange="updateLink()"></td>
-                <td>{name}</td>
-                <td>{size} bytes</td>
-                <td>{formatted}</td>
-                <td><code>{md5}</code></td>
-                <td><a href="?box_id={box_id}&{md5}">Download</a></td>
-            </tr>
-        """)
-
-    html_table = "\n".join(rows)
-    script = f"""
-    <script>
-    function updateLink() {{
-        const checks = document.querySelectorAll('input[type=checkbox]:checked');
-        let hashes = [];
-        checks.forEach(c => hashes.push(c.value));
-        const base = '?box_id={box_id}';
-        const preview = document.getElementById('download-link');
-        if (hashes.length > 0) {{
-            preview.href = base + '&' + hashes.join('&');
-            preview.textContent = 'Download Selected (' + hashes.length + ')';
-        }} else {{
-            preview.href = '#';
-            preview.textContent = 'Download Selected';
-        }}
-    }}
-    </script>
-    """
-
-    return f"""
-        <h1>Download Files from Box: {short}</h1>
-        <form>
-            <table border="1" cellpadding="5">
-                <tr><th>Select</th><th>File</th><th>Size</th><th>Modified</th><th>MD5</th><th>Direct</th></tr>
-                {html_table}
-            </table>
-            <p><a id="download-link" href="#">Download Selected</a></p>
-        </form>
-        {script}
-    """
+    html = "<h1>Download Files</h1><ul>"
+    for h, name, size, mtime in file_info:
+        time_str = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+        link = gw.build_url("download", h, box_id=box_id)
+        html += f'<li><a href="{link}">{name}</a> ({size} bytes, modified {time_str}, MD5: {h})</li>'
+    html += "</ul>"
+    return html

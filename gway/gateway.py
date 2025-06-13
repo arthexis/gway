@@ -328,7 +328,7 @@ class Gateway(Resolver):
                 return ns
 
             if os.path.isdir(base):
-                return self.recurse_namespace(base, project_name)
+                return self.recurse_ns(base, project_name)
 
             base_path = Path(base)
             py_file = base_path if base_path.suffix == ".py" else base_path.with_suffix(".py")
@@ -366,7 +366,7 @@ class Gateway(Resolver):
             raise
         return mod
 
-    def recurse_namespace(self, current_path: str, dotted_prefix: str):
+    def recurse_ns(self, current_path: str, dotted_prefix: str):
         funcs = {}
         for entry in os.listdir(current_path):
             full = os.path.join(current_path, entry)
@@ -381,13 +381,12 @@ class Gateway(Resolver):
                 funcs[subname] = Project(dotted, sub_funcs, self)
             elif os.path.isdir(full) and not entry.startswith("__"):
                 dotted = f"{dotted_prefix}.{entry}"
-                funcs[entry] = self.recurse_namespace(full, dotted)
+                funcs[entry] = self.recurse_ns(full, dotted)
         ns = Project(dotted_prefix, funcs, self)
         self._cache[dotted_prefix] = ns
         return ns
 
     def log(self, *args, **kwargs):
-        # TODO: Consider if we should auto-add something when self.verbose
         if not self.silent:
             if self.debug:
                 self.debug(*args, **kwargs)
