@@ -89,11 +89,16 @@ def authorize_balance(**record):
 
 
 def setup_csms_v16_app(*,
-        app=None, allowlist=None, location=None, authorize=authorize_balance):
+        app=None,
+        allowlist=None,
+        denylist=None,  # New parameter for RFID denylist
+        location=None,
+        authorize=authorize_balance):
     """
     Minimal OCPP 1.6 CSMS implementation for conformance testing.
     Supports required Core actions, logs all requests, and accepts all.
     Optional RFID allowlist enables restricted access on Authorize.
+    Optional denylist enables explicit denial even if present in allowlist.
     Optional `authorize` hook can be a callable or gw['name'].
     Optional `location` enables per-txn logging to work/etron/records/{location}/{charger}_{txn_id}.dat
     """
@@ -110,6 +115,12 @@ def setup_csms_v16_app(*,
 
     # Always check against latest file (never cache), and warn if allowlist missing
     def is_authorized_rfid(rfid: str) -> bool:
+        # --- DENYLIST logic ---
+        if denylist:
+            if gw.cdv.validate(denylist, rfid):
+                gw.info(f"[OCPP] RFID {rfid!r} is present in denylist. Authorization denied.")
+                return False
+        # --- ALLOWLIST logic ---
         if not allowlist:
             gw.warn("[OCPP] No RFID allowlist configured — rejecting all authorization requests.")
             return False

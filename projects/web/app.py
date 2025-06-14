@@ -120,6 +120,8 @@ def setup(*,
         nonlocal navbar, home
         segments = [s for s in view.strip("/").split("/") if s]
         
+        # TODO: The name of the project itself (last segment?) should also be a fallback name
+
         # Use fallback sequence if no view specified and home is None
         if not segments:
             fallback_names = (
