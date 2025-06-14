@@ -5,6 +5,8 @@ import time
 import requests
 import datetime
 
+# TODO: Check that other modules use these functions uniformly
+#       If there is missing functionality we need for other projects, add it.
 
 def now(*, utc=False) -> "datetime":
     """Return the current datetime object."""

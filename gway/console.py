@@ -167,9 +167,9 @@ def cli_main():
         print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
 
 
-
 def process_commands(command_sources, callback=None, **context):
     """Shared logic for executing CLI or recipe commands with optional per-node callback."""
+    import argparse
     from gway import gw as _global_gw, Gateway
     from .builtins import abort
 
@@ -234,10 +234,17 @@ def process_commands(command_sources, callback=None, **context):
                 gw.error(f"Object at path {' '.join(path)} is not callable.")
             abort(f"No project with name '{chunk[0]}'")
 
-        # Parse function arguments
+        # Parse function arguments, using parse_known_args if **kwargs present
         func_parser = argparse.ArgumentParser(prog=".".join(path))
         add_function_args(func_parser, resolved_obj)
-        parsed_args = func_parser.parse_args(func_args)
+
+        var_kw_name = getattr(resolved_obj, "__var_keyword_name__", None)
+        if var_kw_name:
+            parsed_args, unknown = func_parser.parse_known_args(func_args)
+            # stash the raw unknown tokens for prepare_arguments
+            setattr(parsed_args, var_kw_name, unknown)
+        else:
+            parsed_args = func_parser.parse_args(func_args)
 
         # Prepare and invoke
         final_args, final_kwargs = prepare_arguments(parsed_args, resolved_obj)
@@ -259,21 +266,37 @@ def prepare_arguments(parsed_args, func_obj):
     func_kwargs = {}
     extra_kwargs = {}
 
+    sig = inspect.signature(func_obj)
+    params = sig.parameters
+    expected_names = set(params.keys())
+
+    # 1) Pull out any positional / named args that argparse already parsed:
     for name, value in vars(parsed_args).items():
-        param = inspect.signature(func_obj).parameters.get(name)
-        if param is None:
-            continue
-        if param.kind == inspect.Parameter.VAR_POSITIONAL:
-            func_args.extend(value or [])
-        elif param.kind == inspect.Parameter.VAR_KEYWORD:
-            if value:
-                for item in value:
-                    if '=' not in item:
-                        abort(f"Invalid kwarg format '{item}'. Expected key=value.")
-                    k, v = item.split("=", 1)
-                    extra_kwargs[k] = v
-        else:
-            func_kwargs[name] = value
+        if name in expected_names:
+            param = params[name]
+            if param.kind == inspect.Parameter.VAR_POSITIONAL:
+                func_args.extend(value or [])
+            elif param.kind != inspect.Parameter.VAR_KEYWORD:
+                func_kwargs[name] = value
+
+    # 2) Now handle the **kwargs slot (if any) from parse_known_args:
+    var_kw_name = getattr(func_obj, "__var_keyword_name__", None)
+    if var_kw_name:
+        raw_items = getattr(parsed_args, var_kw_name, []) or []
+        it = iter(raw_items)
+        for token in it:
+            # support both “--key=value” and “--key value”
+            if token.startswith("--") and "=" in token:
+                key, val = token[2:].split("=", 1)
+            elif token.startswith("--"):
+                key = token[2:]
+                try:
+                    val = next(it)
+                except StopIteration:
+                    abort(f"Expected a value after `{token}`")
+            else:
+                abort(f"Invalid kwarg format `{token}`; expected `--key[=value]` or `--key value`.")
+            extra_kwargs[key.replace("-", "_")] = val
 
     return func_args, {**func_kwargs, **extra_kwargs}
 
@@ -331,11 +354,7 @@ def add_function_args(subparser, func_obj):
 
         # VAR_KEYWORD: e.g. **kwargs
         elif param.kind == inspect.Parameter.VAR_KEYWORD:
-            subparser.add_argument(
-                '--kwargs',
-                nargs='*',
-                help='Additional keyword arguments as key=value pairs'
-            )
+            func_obj.__var_keyword_name__ = arg_name  # e.g. "fields or kwargs"
 
         # regular args or keyword-only
         else:

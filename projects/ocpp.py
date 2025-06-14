@@ -9,7 +9,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import Dict
 from gway import gw
 
-
 _active_cons: Dict[str, WebSocket] = {}
 
 # Both setup_sink_app and setup_csms_app support receiving an app argument
@@ -77,61 +76,19 @@ def setup_sink_app(*,
 ...
 
 
-def load_allowlist(pathlike: str) -> dict[str, dict[str, str]]:
-    """Load RFID allowlist with fields from colon-separated key=value format."""
-    if not pathlike:
-        return {}
-    try:
-        path = gw.resource(pathlike)
-        if not os.path.exists(path):
-            gw.error(f"[OCPP] Allowlist file not found: {path}")
-            return {}
-        result = {}
-        with open(path, "r") as f:
-            for lineno, line in enumerate(f, start=1):
-                line = line.strip()
-                if not line or ":" not in line:
-                    continue
-                parts = line.split(":")
-                rfid = parts[0].strip()
-                fields = {}
-                for part in parts[1:]:
-                    if "=" in part:
-                        k, v = part.split("=", 1)
-                        fields[k.strip()] = v.strip()
-                result[rfid] = fields
-        return result
-    except Exception as e:
-        gw.abort(f"[OCPP] Failed to read Allowlist '{pathlike}': {e}")
-
-
-def add_rfid(rfid: str, fields: dict[str, str], allowlist_path: str):
-    """Append or update an RFID record in the allowlist file."""
-    if not rfid or not allowlist_path:
-        return
-    path = gw.resource(allowlist_path)
-    records = load_allowlist(path)
-    records[rfid] = fields
-    with open(path, "w") as f:
-        for rfid, fields in records.items():
-            line = rfid + "".join(f":{k}={v}" for k, v in fields.items())
-            f.write(line + "\n")
-    gw.info(f"[OCPP] Updated allowlist with RFID={rfid}")
-
-
-def authorize_balance(**record) -> bool:
-    """Allow only if the RFID record has a balance >= 1."""
-    # TODO: Here we may perform additional checks later (pending customer)
-    #       For example, we can make a request to our upstream gway server,
-    #       to an Odoo endpoint, or something else.
-    #       We could use the balance of the rfids.cdv file only as fallback.
+def authorize_balance(**record):
+    """
+    Default OCPP RFID secondary validator: Only authorize if balance >= 1.
+    This can be passed directly as the default 'authorize' param.
+    The RFID needs to exist already for this to be called in the first place.
+    """
     try:
         return float(record.get("balance", "0")) >= 1
-    except ValueError:
+    except Exception:
         return False
 
 
-def setup_csms_v16_app(*, 
+def setup_csms_v16_app(*,
         app=None, allowlist=None, location=None, authorize=authorize_balance):
     """
     Minimal OCPP 1.6 CSMS implementation for conformance testing.
@@ -144,29 +101,19 @@ def setup_csms_v16_app(*,
     if (_is_new_app := not (app := gw.unwrap_one(app, FastAPI))):
         app = FastAPI()
 
-    _rfid_map = load_allowlist(allowlist) if allowlist else {}
-
+    # Compose the validator: prefer explicit callable, then gw[] ref, else default (balance >= 1)
+    validator = None
     if isinstance(authorize, str):
-        authorize = gw[authorize]
-    elif not callable(authorize):
-        authorize = None
+        validator = gw[authorize]
+    elif callable(authorize):
+        validator = authorize
 
+    # Always check against latest file (never cache), and warn if allowlist missing
     def is_authorized_rfid(rfid: str) -> bool:
-        if not _rfid_map:
-            # Strict: If no allowlist loaded, reject all tags
-            gw.warn("[OCPP] No RFID allowlist loaded — rejecting all authorization requests.")
+        if not allowlist:
+            gw.warn("[OCPP] No RFID allowlist configured — rejecting all authorization requests.")
             return False
-        
-        record = _rfid_map.get(rfid)
-        if not record:
-            return False
-        if authorize:
-            try:
-                return bool(authorize(**record))
-            except Exception as e:
-                gw.error(f"[OCPP] authorize() failed: {e}")
-                return False
-        return True
+        return gw.cdv.validate(allowlist, rfid, validator=validator)
 
     transactions = {}  # charger_id -> dict
 
@@ -259,7 +206,8 @@ def setup_csms_v16_app(*,
                                     "reasonStr": "Local",
                                 })
                                 if location:
-                                    file_path = gw.resource("work", "etron", "records", location, f"{charger_id}_{tx['transactionId']}.dat")
+                                    file_path = gw.resource("work", "etron", "records", location, 
+                                                            f"{charger_id}_{tx['transactionId']}.dat")
                                     os.makedirs(os.path.dirname(file_path), exist_ok=True)
                                     with open(file_path, "w") as f:
                                         json.dump(tx, f, indent=2)
@@ -273,7 +221,8 @@ def setup_csms_v16_app(*,
                                 entries = payload.get("meterValue", [])
                                 for entry in entries:
                                     ts = entry.get("timestamp")
-                                    ts_epoch = int(datetime.fromisoformat(ts.rstrip("Z")).timestamp()) if ts else int(time.time())
+                                    ts_epoch = int(datetime.fromisoformat(
+                                        ts.rstrip("Z")).timestamp()) if ts else int(time.time())
                                     sample = {
                                         "syncMeter": 1,
                                         "timestamp": ts_epoch,
@@ -307,9 +256,6 @@ def setup_csms_v16_app(*,
             gw.debug(traceback.format_exc())
         finally:
             _active_cons.pop(charger_id, None)
-
-    if allowlist:
-        gw.info(f"[OCPP] Loaded allowlist with {len(_rfid_map)} RFID tags")
 
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 

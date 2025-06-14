@@ -2,9 +2,8 @@
 
 import os
 import re
-import ast
 import html
-import pathlib
+import random
 import inspect
 import collections.abc
 from collections.abc import Iterable, Mapping, Sequence
@@ -637,3 +636,20 @@ def build_url(*args, **kwargs):
         return domain + gw.web.app.build_url(*args, **kwargs)
     except AttributeError:
         return domain + '/'.join(args) 
+
+
+# Exclude ambiguous characters: 0, O, 1, I, l
+_EZ_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghikmnopqrstuvwxyz23456789"
+
+def random_id(length: int = 8, alphabet: str = _EZ_ALPHABET) -> str:
+    """
+    Generate a readable random ID, avoiding confusing characters.
+
+    Args:
+        length: Length of the ID (default 8)
+        alphabet: Characters to choose from (default: unambiguous alphanumerics)
+
+    Returns:
+        A visually clear, randomly generated string.
+    """
+    return ''.join(random.choices(alphabet, k=length))

@@ -11,8 +11,12 @@ from pathlib import Path
 
 from gway import gw
 
+# TODO: Create an extra safeguard for release: If the version we would be pushing
+# is identical to what is already in PyPI, abort and let the user know.
+# Provide a force option (not included by all) to push the release anyways.
 
-def build(*,
+def build(
+    *,
     bump: bool = False,
     dist: bool = False,
     twine: bool = False,
@@ -22,19 +26,29 @@ def build(*,
     token: str = "[PYPI_API_TOKEN]",
     projects: bool = False,
     git: bool = False,
-    all: bool = False
+    all: bool = False,
+    force: bool = False
 ) -> None:
-    """Build the project and optionally upload to PyPI.
+    """
+    Build the project and optionally upload to PyPI.
+
     Args:
         bump (bool): Increment patch version if True.
         dist (bool): Build distribution package if True.
         twine (bool): Upload to PyPI if True.
+        force (bool): Skip version-exists check on PyPI if True.
         user (str): PyPI username (default: [PYPI_USERNAME]).
         password (str): PyPI password (default: [PYPI_PASSWORD]).
         token (str): PyPI API token (default: [PYPI_API_TOKEN]).
         git (bool): Require a clean git repo and commit/push after release if True.
         vscode (bool): Build the vscode extension.
     """
+    import xmlrpc.client
+    from pathlib import Path
+    import sys
+    import subprocess
+    import toml
+
     if all:
         bump = True
         dist = True
@@ -165,6 +179,21 @@ def build(*,
         gw.info("Distribution package created in dist/")
 
         if twine:
+            # ======= Safeguard: Abort if version already on PyPI unless --force =======
+            if not force:
+                try:
+                    client = xmlrpc.client.ServerProxy("https://pypi.org/pypi")
+                    releases = client.package_releases(project_name, True)
+                except Exception as e:
+                    gw.warning(f"Could not verify existing PyPI versions: {e}")
+                else:
+                    if new_version in releases:
+                        gw.abort(
+                            f"Version {new_version} is already on PyPI. "
+                            "Use --force to override."
+                        )
+            # ===========================================================================
+
             gw.info("Validating distribution with twine check...")
             check_result = subprocess.run(
                 [sys.executable, "-m", "twine", "check", "dist/*"],

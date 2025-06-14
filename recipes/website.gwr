@@ -1,7 +1,7 @@
 # recipes/website.gwr
 # Minimal GWAY website ingredients
 
-web app setup  
-web app setup --project box --home upload
+web app setup --home readme
+web app setup --project vbox 
 web server start-app --host 127.0.0.1 --port 8888
 until --lock-file VERSION --lock-pypi 

@@ -1,6 +1,7 @@
 import re
 import os
 
+
 class Sigil:
     """
     Represents a resolvable sigil in the format [key] or [key|fallback].
@@ -57,7 +58,27 @@ class Sigil:
         return self.resolve(finder)
 
 
+# Updated _replace_sigils to support exclusion/delay of sigil resolution when prefixed with '%'
+# Note that this is not a method of Sigil, but a standalone function
 def _replace_sigils(text, lookup_fn, on_missing=None):
+    """
+    Replace sigils in `text` using `lookup_fn`, with support for delaying resolution
+    when sigils are prefixed by one or more '%'. Each '%' strips one level of exclusion.
+    """
+    # First, strip one '%' from any sigil prefix without resolving
+    exclusion_pattern = re.compile(r"(%+)(\[[^\[\]|]*(?:\|[^\[\]]*)?\])")
+    def exclusion_replacer(match):
+        prefix = match.group(1)
+        raw = match.group(2)
+        # Remove one '%' from the prefix
+        return prefix[1:] + raw
+
+    stripped = exclusion_pattern.sub(exclusion_replacer, text)
+    # If any exclusion occurred, return the text with one level of '%' removed
+    if stripped != text:
+        return stripped or None
+
+    # No exclusion prefixes: perform normal resolution
     def replacer(match):
         key = match.group(1).strip()
         fallback = match.group(2).strip() if match.group(2) is not None else None

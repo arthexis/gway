@@ -204,20 +204,24 @@ If the file isn't found directly, Gway will look in its internal `recipes/` reso
 🌐 Example: `website.gwr`
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-An example recipe named `dev-website.gwr` is already included. It generates a basic web setup using inferred context. Default parameters are taken from client and server .envs where possible automatically. It goes beyond the basic help website by providing aditional debugging and browser instrumentiation features. Here's what it contains:
+An example recipe at `recipes/website.gwr` is included. It generates a basic web setup using inferred context. Default parameters are taken from client and server .envs where possible automatically. It goes beyond the basic help website by providing aditional debugging and browser instrumentiation features. Here's what it contains:
 
 .. code-block:: 
 
-    # Default GWAY website ingredients
+    # recipes/website.gwr
+    # Minimal GWAY website ingredients
 
-    [PENDING]
+    web app setup  
+    web app setup --project box --home upload
+    web server start-app --host 127.0.0.1 --port 8888
+    until --lock-file VERSION --lock-pypi 
 
 
 You can run it with:
 
 .. code-block:: bash
 
-    gway -r dev-website.gwr
+    gway -r website.gwr
 
 
 Or in Python:
@@ -225,10 +229,10 @@ Or in Python:
 .. code-block:: python
 
     from gway import gw
-    gw.run("dev-website")
+    gw.run("website")
 
 
-This script sets up a web application, launches the server in daemon mode, and waits for lock conditions using built-in context.
+This script sets up a web application, launches the server in daemon mode, and waits for lock conditions to stop.
 
 ---
 
@@ -244,7 +248,7 @@ This section contains notes from the author on the nature of the code that may p
 On Comments and the Code that Binds Them
 ----------------------------------------
 
-Comments and code are like DNA — they reflect each other.
+Comments and code should be like DNA — two strings that reflect each other.
 
 This reflection creates a form of internal consistency and safety. 
 When code and its comments are in alignment, they mutually verify each other.

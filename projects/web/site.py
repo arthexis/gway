@@ -4,8 +4,9 @@
 # Views receive the query params and json payload merged into kwargs.
 # Don't use inline CSS ever, each user can have their own style sheets.
 
-from gway import gw
+import html
 from docutils.core import publish_parts
+from bottle import request
 from gway import gw
 
 
@@ -19,6 +20,59 @@ def render_readme_view(*args, **kwargs):
     html_parts = publish_parts(source=rst_content, writer_name="html")
     return html_parts["html_body"]
 
+
+def render_cookies_view():
+    cookies_ok = gw.web.app.cookies_enabled()
+
+    def describe_cookie(key, value):
+        key = html.escape(key or "")
+        value = html.escape(value or "")
+        if not value:
+            return f"<li><b>{key}</b>: (empty)</li>"
+
+        if key == "visited":
+            items = value.split("|")
+            links = "".join(
+                f"<li><a href='/{html.escape(route)}'>{html.escape(title)}</a></li>"
+                for title_route in items if "=" in title_route
+                for title, route in [title_route.split("=", 1)]
+            )
+            return f"<li><b>{key}</b>:<ul>{links}</ul></li>"
+
+        elif key == "css":
+            return f"<li><b>{key}</b>: {value} (your selected style)</li>"
+
+        return f"<li><b>{key}</b>: {value}</li>"
+
+    if not cookies_ok:
+        return """
+        <h1>All our cookies have been removed</h1>
+        <p>Until you press the "Accept our cookies" button above again, your actions
+        on this site will not be recorded, but your interaction may also be limited.</p>
+        <p>This restriction exists because some functionality (like navigation history,
+        styling preferences, or shopping carts) depends on cookies.</p>
+        <p><a href="javascript:history.back()">← Go back</a></p>
+        """
+    else:
+        stored = []
+        for key in sorted(request.cookies):
+            val = request.get_cookie(key, "")
+            stored.append(describe_cookie(key, val))
+
+        cookies_html = "<ul>" + "".join(stored) + "</ul>" if stored else "<p>No stored cookies found.</p>"
+
+        return f"""
+        <h1>Cookies are enabled for this site</h1>
+        <p>Below is a list of the cookie-based information we are currently storing about you:</p>
+        {cookies_html}
+        <p>We do not sell or share your cookie data beyond the service providers used to host and
+        deliver this website. These include database, CDN, and web infrastructure providers necessary
+        to fulfill your requests.</p>
+        <p>You can remove all stored cookie information at any time by pressing the 
+        "Remove our cookies" button in the navbar.</p>
+        <p><a href="javascript:history.back()">← Go back</a></p>
+        """
+    
 
 def render_help_view(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
