@@ -8,6 +8,7 @@ import asyncio
 import socket
 import json
 import os
+import shutil
 from gway import gw
 
 CDV_PATH = 'data/etron/rfids.cdv'
@@ -15,11 +16,21 @@ KNOWN_GOOD_TAG = "FFFFFFFF"
 ADMIN_TAG = "8505010F"
 UNKNOWN_TAG = "ZZZZZZZZ"
 
+ORIG_CDV_PATH = CDV_PATH + ".orig"
 
 class EtronWebSocketTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Ensure CDV file exists and base tags are there BEFORE server start
+        # Backup the original file (if not already backed up)
+        if os.path.exists(CDV_PATH):
+            shutil.copy2(CDV_PATH, ORIG_CDV_PATH)
+        else:
+            # If file missing, create a minimal valid file and back it up
+            with open(CDV_PATH, "w") as f:
+                pass
+            shutil.copy2(CDV_PATH, ORIG_CDV_PATH)
+
+        # Now operate on the working copy
         gw.cdv.update(CDV_PATH, KNOWN_GOOD_TAG, user="test", balance="100")
         gw.cdv.update(CDV_PATH, ADMIN_TAG, user="Admin", balance="150")
 
@@ -40,6 +51,9 @@ class EtronWebSocketTests(unittest.TestCase):
                 cls.proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 cls.proc.kill()
+        # Restore the original file to avoid extraneous commits
+        if os.path.exists(ORIG_CDV_PATH):
+            shutil.move(ORIG_CDV_PATH, CDV_PATH)
 
     @staticmethod
     def _wait_for_port(port, timeout=10):
@@ -59,7 +73,7 @@ class EtronWebSocketTests(unittest.TestCase):
         """Confirm we can connect to the OCPP server and receive BootNotification response."""
         uri = "ws://localhost:9000/charger123?token=foo"
         async def run_ws_check():
-            async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
+            async with websockets.connect(uri, subprotocols=["ocpp1.6"], open_timeout=15) as websocket:
                 message_id = "boot-test"
                 payload = {
                     "chargePointModel": "FakeModel",

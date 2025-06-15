@@ -91,7 +91,7 @@ def render_box_error(title: str, message: str, *, back_link: bool = True, target
 
 
 
-def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, **kwargs):
+def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, email: str=None, **kwargs):
     """
     GET: Display upload interface or create a new upload box.
     POST: Handle uploaded files to a specific vbid.
@@ -100,6 +100,10 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, *
     if not _gc_thread_on:
         threading.Thread(target=periodic_purge, daemon=True).start()
         _gc_thread_on = True
+
+    # TODO: When email is provided and it matches os.environ('ADMIN_EMAIL') use gw.mail.send
+    #       to send the URL via email to that address in a format that can be read back. 
+    #       Response should show that a copy of the URL was sent to the admin without showing the email.
 
     # Handle file upload (POST)
     if request.method == 'POST':
@@ -143,6 +147,11 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, *
 
     # Handle UI display (GET)
     if not vbid:
+
+        # TODO: Tests indicate visiting the page multiple times in a rows generate multiple
+        # vboxes, so our deterministic process may not be working as intended. 
+        # We should also add a test to make sure it really is deterministic.
+
         # Deterministic vbid generation based on user info
         short = secrets.token_urlsafe(8)
         identity = (request.remote_addr or '') + (request.headers.get('User-Agent') or '') + short
@@ -181,9 +190,6 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, *
     file_inputs = "\n".join(
         f'<input type="file" name="file">' for _ in range(max(1, files))
     )
-
-    # TODO: We don't want to have to share the entire vbid with other users to download
-    # Generate this link with only half of the vbid as per render_download_view
 
     download_url = gw.build_url("download", vbid=vbid)
 
