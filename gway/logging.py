@@ -6,6 +6,7 @@ import logging
 import logging.handlers
 import traceback
 
+# TODO: Fix the file that shows in the log, perhaps should be 2 layers up the stack
 
 class FilteredFormatter(logging.Formatter):
     """

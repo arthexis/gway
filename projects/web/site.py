@@ -73,6 +73,14 @@ def render_cookies_view():
         <p><a href="javascript:history.back()">← Go back</a></p>
         """
     
+# TODO: Improve help display:
+# 1. Put project and function in the same vertical axis to save height.
+# 2. Turn references into links to help topics.
+# 3. Add colorization to python code.
+# 4. Separate signature into a table of positionals and keyword only params.
+# 5. CLI example should be as exhaustive as possible (use all --options?).
+# 6. When getting help for multiple items, wrap them in a div for styling
+#    Suggest CSS we can add to base.css to decorate each help item.
 
 def render_help_view(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
