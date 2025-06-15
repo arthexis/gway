@@ -74,9 +74,13 @@ def cli_main():
     if args.local:
         args.base_path = os.getcwd()
 
-    # Setup logging
+    # Setup logging in a way that makes sense for a CLI app. We send everything to
+    # a log file to keep the console clean except when the user requests output or we halt.
     logfile = f"{args.username}.log" if args.username else "gway.log"
-    setup_logging(logfile=logfile, loglevel="DEBUG" if args.debug else "INFO", debug=args.debug)
+    setup_logging(
+        logfile=logfile, loglevel="DEBUG" if args.debug else "INFO", 
+        debug=args.debug, verbose=args.verbose
+    )
     start_time = time.time() if args.timed else None
 
     # Silent and verbose are allowed together. It means:
@@ -95,7 +99,7 @@ def cli_main():
         quantity=args.quantity,
     )
 
-    gw_local.verbose(f"Saving detailed logs to logs/gway.log") 
+    gw_local.verbose(f"Saving detailed logs to [BASE_PATH]/logs/gway.log (this file)") 
 
     # Load command sources
     if args.recipe:

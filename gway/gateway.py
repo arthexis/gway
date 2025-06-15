@@ -43,12 +43,12 @@ class Gateway(Resolver):
         self.logger = logging.getLogger(name)
 
         if debug is not None:
-            Gateway.debug = (lambda self, msg: self.logger.debug(msg)) if debug else Null
+            Gateway.debug = (lambda self, msg: self.logger.debug(msg, stacklevel=2)) if debug else Null
         if silent is not None:
-            Gateway.silent = (lambda self, msg: self.logger.info(msg)) if silent else Null
+            Gateway.silent = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if debug else Null
         if verbose is not None:
-            Gateway.verbose = (lambda self, msg: self.logger.info(msg)) if verbose else Null
-
+            Gateway.verbose = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if debug else Null
+            
         client_name = client or get_base_client()
         server_name = server or get_base_server()
 

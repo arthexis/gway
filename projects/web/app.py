@@ -430,7 +430,6 @@ def redirect_error(error=None, note="", default="/gway/readme", broken_view_name
 
 def cookies_enabled():
     cookie_value = request.get_cookie("cookies_accepted")
-    gw.debug(f"@ cookies_enabled {cookie_value!r}")
     return cookie_value == "yes"
 
 

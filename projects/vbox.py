@@ -101,21 +101,21 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, e
         _gc_thread_on = True
 
     admin_email = os.environ.get("ADMIN_EMAIL")
-    gw.info(f"[VBOX] Entry: vbid={vbid!r}, timeout={timeout}, files={files}, email={email!r}, method={request.method}")
+    gw.info(f"Entry: vbid={vbid!r}, timeout={timeout}, files={files}, email={email!r}, method={request.method}")
 
     # Handle file upload (POST) with a vbid (the classic file upload case)
     if request.method == 'POST' and vbid:
-        gw.info(f"[VBOX] POST file upload for vbid={vbid}")
+        gw.info(f"POST file upload for vbid={vbid}")
         with _gc_lock:
             expire = _open_boxes.get(vbid)
             if not expire or expire < time.time():
-                gw.warning(f"[VBOX] vbox expired for vbid={vbid}")
+                gw.warning(f"vbox expired for vbid={vbid}")
                 return render_box_error("Upload Box Expired", "Please regenerate a new vbid.")
 
         try:
             short, _ = vbid.split(".", 1)
         except ValueError:
-            gw.error(f"[VBOX] Invalid vbid format: {vbid}")
+            gw.error(f"Invalid vbid format: {vbid}")
             return render_box_error("Invalid vbid format", "Expected form: <code>short.long</code>.")
 
         upload_dir = gw.resource(*VBOX_PATH, short)
@@ -128,15 +128,15 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, e
             try:
                 f.save(save_path)
                 results.append(f"Uploaded {f.filename}")
-                gw.info(f"[VBOX] Uploaded {f.filename} to {short}")
+                gw.info(f"Uploaded {f.filename} to {short}")
             except Exception as e:
                 results.append(f"Error uploading {f.filename}: {e}")
-                gw.error(f"[VBOX] Issue uploading {f.filename} to {short}")
+                gw.error(f"Issue uploading {f.filename} to {short}")
                 gw.exception(e)
 
         download_short_url = gw.web.app.build_url("download", vbid=short)
         download_long_url = gw.web.app.build_url("download", vbid=vbid)
-        gw.info(f"[VBOX] Returning upload result UI for vbid={vbid}")
+        gw.info(f"Returning upload result UI for vbid={vbid}")
         return (
             "<pre>" + "\n".join(results) + "</pre>" +
             f"<p><a href='?vbid={vbid}'>UPLOAD MORE files to this box</a></p>" +
@@ -146,7 +146,7 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, e
 
     # If no vbid: always create/check the vbox and show the email form
     if not vbid:
-        gw.info(f"[VBOX] No vbid present, always creating/checking box.")
+        gw.info(f"No vbid present, always creating/checking box.")
         remote_addr = request.remote_addr or ''
         user_agent = request.headers.get('User-Agent') or ''
         identity = remote_addr + user_agent
@@ -164,26 +164,26 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, e
                 message = f"[UPLOAD] Upload box created (expires in {timeout} min): {url}"
                 print(("-" * 70) + '\n' + message + '\n' + ("-" * 70))
                 gw.warning(message)
-                gw.info(f"[VBOX] Created new box: {full_id}")
+                gw.info(f"Created new box: {full_id}")
             else:
                 url = gw.build_url("upload", vbid=full_id)
-                gw.info(f"[VBOX] Existing box reused: {full_id}")
+                gw.info(f"Existing box reused: {full_id}")
 
         # --- Email notification if email is present (from POST or GET) ---
         # Accept both POST form value and GET param for email
         submitted_email = None
         if request.method == "POST":
             submitted_email = request.forms.get("email", "").strip()
-            gw.info(f"[VBOX] POST email form: submitted_email={submitted_email!r}")
+            gw.info(f"POST email form: submitted_email={submitted_email!r}")
         elif request.method == "GET":
             submitted_email = email or ""
-            gw.info(f"[VBOX] GET param email: submitted_email={submitted_email!r}")
+            gw.info(f"GET param email: submitted_email={submitted_email!r}")
 
         admin_notif = ""
         sent_copy_msg = "<p>A copy of the access URL was sent to the admin.</p>"
         if submitted_email:
             if admin_email and submitted_email.lower() == admin_email.strip().lower():
-                subject = "[VBOX] Upload Box Link"
+                subject = "Upload Box Link"
                 body = (
                     f"A new upload box was created.\n\n"
                     f"Access URL: {url}\n\n"
@@ -191,13 +191,13 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, e
                 )
                 try:
                     gw.mail.send(subject, body=body, to=admin_email)
-                    gw.info(f"[VBOX] Sent upload URL email to admin.")
+                    gw.info(f"Sent upload URL email to admin.")
                 except Exception as e:
-                    gw.error(f"[VBOX] Error sending VBOX notification email: {e}")
+                    gw.error(f"Error sending VBOX notification email: {e}")
                 admin_notif = sent_copy_msg
             else:
                 admin_notif = sent_copy_msg
-                gw.info(f"[VBOX] Pretend email sent: {submitted_email!r} != {admin_email!r}")
+                gw.info(f"Pretend email sent: {submitted_email!r} != {admin_email!r}")
 
         # Show the ready box UI + the optional email form
         email_form_html = (
@@ -219,17 +219,17 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, e
         )
 
     # Validate and show upload UI for an existing vbid
-    gw.info(f"[VBOX] Render upload UI for vbid={vbid!r}")
+    gw.info(f"Render upload UI for vbid={vbid!r}")
     with _gc_lock:
         expire = _open_boxes.get(vbid)
         if not expire or expire < time.time():
-            gw.warning(f"[VBOX] vbox expired for vbid={vbid}")
+            gw.warning(f"vbox expired for vbid={vbid}")
             return render_box_error("Upload Box Expired or Not Found", "Please regenerate a new vbid.")
 
     try:
         short, _ = vbid.split(".", 1)
     except ValueError:
-        gw.error(f"[VBOX] Invalid vbid format: {vbid}")
+        gw.error(f"Invalid vbid format: {vbid}")
         return render_box_error("Invalid vbid format", "Expected form: <code>short.long</code>.")
 
     # Generate N file input fields
@@ -238,7 +238,7 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, e
     )
 
     download_url = gw.build_url("download", vbid=vbid)
-    gw.info(f"[VBOX] Displaying upload form for {short}")
+    gw.info(f"Displaying upload form for {short}")
 
     return f"<h1>Upload to Box: {short}</h1>" + f"""
         <form method="POST" enctype="multipart/form-data">
@@ -268,22 +268,22 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
     # Step 2: Check if already present in CDV
     records = gw.cdv.load_all(cdv_path)
     if b64key in records and records[b64key].get("vbox"):
-        gw.info(f"[VBOX][open_remote] Found existing vbox for {server_url}: {records[b64key]}")
+        gw.info(f"[open_remote] Found existing vbox for {server_url}: {records[b64key]}")
         return records[b64key]
 
     # Step 3: Trigger remote vbox creation (POST to /<path>/upload)
     remote_upload_url = server_url.rstrip("/") + f"/{path}/upload"
-    gw.info(f"[VBOX][open_remote] Posting to remote: {remote_upload_url} with email={email!r}")
+    gw.info(f"[open_remote] Posting to remote: {remote_upload_url} with email={email!r}")
 
     try:
         resp = requests.post(remote_upload_url, data={"email": email}, timeout=10)
-        gw.info(f"[VBOX][open_remote] Remote POST status: {resp.status_code}")
+        gw.info(f"[open_remote] Remote POST status: {resp.status_code}")
     except Exception as e:
-        gw.error(f"[VBOX][open_remote] Remote request failed: {e}")
+        gw.error(f"[open_remote] Remote request failed: {e}")
         return None
 
     # Step 4: Wait for email and search for the upload link
-    subject_fragment = "[VBOX] Upload Box Link"
+    subject_fragment = "Upload Box Link"
     access_url_pattern = r"Access URL: (https?://\S+)"
     found_url = None
     found_vbid = None
@@ -298,19 +298,19 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
                 match = re.search(access_url_pattern, body)
                 if match:
                     found_url = match.group(1)
-                    gw.info(f"[VBOX][open_remote] Found access URL in email: {found_url}")
+                    gw.info(f"[open_remote] Found access URL in email: {found_url}")
                     # Extract vbid parameter from URL
                     vbid_match = re.search(r"vbid=([a-zA-Z0-9._-]+)", found_url)
                     if vbid_match:
                         found_vbid = vbid_match.group(1)
-                        gw.info(f"[VBOX][open_remote] Parsed vbid: {found_vbid}")
+                        gw.info(f"[open_remote] Parsed vbid: {found_vbid}")
                         break
         except Exception as e:
-            gw.error(f"[VBOX][open_remote] Error during mail.search: {e}")
+            gw.error(f"[open_remote] Error during mail.search: {e}")
         time.sleep(poll_interval)
 
     if not (found_url and found_vbid):
-        gw.error(f"[VBOX][open_remote] Could not retrieve upload link from email for {server_url}")
+        gw.error(f"[open_remote] Could not retrieve upload link from email for {server_url}")
         return None
 
     # Step 5: Store in CDV for future reference
@@ -323,7 +323,7 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
         email=email,
         last_updated=str(int(time.time()))
     )
-    gw.info(f"[VBOX][open_remote] Stored remote vbox: server={server_url} vbid={found_vbid}")
+    gw.info(f"[open_remote] Stored remote vbox: server={server_url} vbid={found_vbid}")
 
     # Step 6: Return stored record (for chaining)
     return gw.cdv.load_all(cdv_path).get(b64key)
