@@ -1,11 +1,13 @@
 # projects/vbox.py
 
 import os
-import time
+import re
 import shutil
-import secrets
 import hashlib
+import base64
+import time
 import threading
+import requests
 from datetime import datetime
 from bottle import request, HTTPResponse
 from gway import gw
@@ -248,17 +250,83 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, e
     """
 
 
-# TODO: Create a new function "open_remote" which allows us to create a vbox
-#       on a remote system. It takes a param with the server url and optional alt path
-#       This programatically accesses /<path>/upload to trigger the generation and
-#       provides an email to the endpoint. Then search the given email with gw.mail.search 
-#       to retrieve the secret URL and store it using gw.cdv.store to save it to a CDV file at
-#       gw.resource(*VBOX_PATH, 'remotes.cdv') using the b64 of the server_url as the key
-#       and storing the vbox=vbid in the cdv. The function should check in this file to see if
-#       we already have a vbox set with that remote. 
+def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: str = '[ADMIN_EMAIL]'):
+    """
+    Create a vbox on a remote system, retrieve the upload link from email, and store it locally.
+    - server_url: Base URL of the remote server (e.g., 'https://example.com')
+    - path:       Path on remote server where vbox upload is handled (default 'vbox')
+    - email:      Email address to receive the upload link (should be accessible by local mail.search)
+    
+    Returns: dict of stored record fields, or None if unsuccessful.
+    """
+    from gway import gw
 
-def open_remote(server_url: str='[SERVER_URL]', *, path:str='vbox', email:str='[ADMIN_EMAIL]'):
-    pass
+    # Step 1: Compose the remote CDV record key (base64 of server_url)
+    b64key = base64.urlsafe_b64encode(server_url.encode()).decode().rstrip("=")
+    cdv_path = gw.resource(*VBOX_PATH, 'remotes.cdv')
+
+    # Step 2: Check if already present in CDV
+    records = gw.cdv.load_all(cdv_path)
+    if b64key in records and records[b64key].get("vbox"):
+        gw.info(f"[VBOX][open_remote] Found existing vbox for {server_url}: {records[b64key]}")
+        return records[b64key]
+
+    # Step 3: Trigger remote vbox creation (POST to /<path>/upload)
+    remote_upload_url = server_url.rstrip("/") + f"/{path}/upload"
+    gw.info(f"[VBOX][open_remote] Posting to remote: {remote_upload_url} with email={email!r}")
+
+    try:
+        resp = requests.post(remote_upload_url, data={"email": email}, timeout=10)
+        gw.info(f"[VBOX][open_remote] Remote POST status: {resp.status_code}")
+    except Exception as e:
+        gw.error(f"[VBOX][open_remote] Remote request failed: {e}")
+        return None
+
+    # Step 4: Wait for email and search for the upload link
+    subject_fragment = "[VBOX] Upload Box Link"
+    access_url_pattern = r"Access URL: (https?://\S+)"
+    found_url = None
+    found_vbid = None
+    max_wait = 20
+    poll_interval = 2
+
+    for attempt in range(max_wait // poll_interval):
+        try:
+            result = gw.mail.search(subject_fragment)
+            if result:
+                body, _ = result
+                match = re.search(access_url_pattern, body)
+                if match:
+                    found_url = match.group(1)
+                    gw.info(f"[VBOX][open_remote] Found access URL in email: {found_url}")
+                    # Extract vbid parameter from URL
+                    vbid_match = re.search(r"vbid=([a-zA-Z0-9._-]+)", found_url)
+                    if vbid_match:
+                        found_vbid = vbid_match.group(1)
+                        gw.info(f"[VBOX][open_remote] Parsed vbid: {found_vbid}")
+                        break
+        except Exception as e:
+            gw.error(f"[VBOX][open_remote] Error during mail.search: {e}")
+        time.sleep(poll_interval)
+
+    if not (found_url and found_vbid):
+        gw.error(f"[VBOX][open_remote] Could not retrieve upload link from email for {server_url}")
+        return None
+
+    # Step 5: Store in CDV for future reference
+    gw.cdv.update(
+        cdv_path,
+        b64key,
+        vbox=found_vbid,
+        url=found_url,
+        server=server_url,
+        email=email,
+        last_updated=str(int(time.time()))
+    )
+    gw.info(f"[VBOX][open_remote] Stored remote vbox: server={server_url} vbid={found_vbid}")
+
+    # Step 6: Return stored record (for chaining)
+    return gw.cdv.load_all(cdv_path).get(b64key)
 
 
 def stream_file_response(path: str, filename: str) -> HTTPResponse:

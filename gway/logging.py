@@ -6,7 +6,9 @@ import logging
 import logging.handlers
 import traceback
 
-# TODO: Fix the file that shows in the log, perhaps should be 2 layers up the stack
+# TODO: Fix the <file>.py that shows in the log as the call origin, perhaps should be 2 layers up the stack instead of 1
+#       The problem is caused by Gateway's dynamic logging functions, gw.debug, gw.verbose and gw.silent.
+#       Because they add 1 extra layer to the logging, while gw.info et al. don't, since they are fixed loggers.
 
 class FilteredFormatter(logging.Formatter):
     """
