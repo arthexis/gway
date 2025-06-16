@@ -10,14 +10,7 @@ import asyncio
 from gway import gw
 
 
-def execute_kw(
-        *args, model: str, method: str, 
-        url : str = "[ODOO_BASE_URL]", 
-        db_name : str = "[ODOO_DB_NAME]",
-        username : str = "[ODOO_ADMIN_USER]",
-        password : str = "[ODOO_ADMIN_PASSWORD]",
-        **kwargs
-    ) -> dict:
+def execute_kw(*args, model: str, method: str, **kwargs) -> dict:
     """
     A generic function to directly interface with Odoo's execute_kw method.
 
@@ -30,7 +23,14 @@ def execute_kw(
     Returns:
         dict: The result of the execute_kw call.
     """
+    url = gw.resolve("[ODOO_BASE_URL]")
+    db_name = gw.resolve("[ODOO_DB_NAME]")
+    username = gw.resolve("[ODOO_ADMIN_USER]")
+    password = gw.resolve("[ODOO_ADMIN_PASSWORD]")
+
     gw.info(f"Odoo Execute: {model=} {method=} @ {url=} {db_name=} {username=}")
+    if url.startswith("[") or "ODOO_BASE_URL" in url:
+        gw.abort("Odoo XML-RPC url not configured. Please set ODOO_BASE_URL correctly.")
     try:
         common_client = client.ServerProxy(f"{url}/xmlrpc/2/common")
     except Exception as e:
@@ -328,6 +328,7 @@ def read_chat(*,
     Read chat messages from an Odoo user by username.
     If unread is True, only return unread messages.
     """
+    username = gw.resolve(username) if isinstance(username, str) else username
     user_info = get_user_info(username=username)
     if not user_info: return []
 
@@ -369,6 +370,7 @@ def setup_chatbot_app(*,
     """
 
     last_seen = {}
+    username = gw.resolve(username) if isinstance(username, str) else username
 
     def log_msg(direction, msg):
         chatbot_log.append({
@@ -444,3 +446,101 @@ def setup_chatbot_app(*,
         return apps + [app]
     else:
         return [apps, app]
+
+# projects/odoo.py
+
+def find_quotes(
+    *,
+    product,
+    quantity: int = 1,
+    state: str = 'draft',
+    **kwargs
+):
+    """
+    Find all sale quotes that contain a given product (by id or name substring) with at least the given quantity.
+
+    Parameters:
+        product (str or int): Product ID or partial name.
+        quantity (int): Minimum quantity of the product in the quote. Default is 1.
+        state (str): Odoo sale order state (default: 'draft' for quotations).
+        **kwargs: Additional domain filters for sale.order.
+
+    Returns:
+        list: List of matching sale orders (quotes) with product line details.
+    """
+    gw.info(f"Finding quotes for {product=} {quantity=}")
+    # Step 1: Resolve product id if necessary
+    product_id = None
+
+    # Try converting product to integer (for id)
+    try:
+        product_id = int(product)
+        product_name = None
+    except (ValueError, TypeError):
+        # Search by product name substring
+        results = fetch_products(name=product)
+        if not results:
+            return {"error": f"No products found matching: {product}"}
+        if len(results) > 1:
+            return {
+                "error": f"Ambiguous product name '{product}', matches: " +
+                         ", ".join([f"{p['id']}: {p['name']}" for p in results])
+            }
+        product_id = results[0]['id']
+        product_name = results[0]['name']
+        gw.info(f"Resolved product '{product}' to id {product_id} ('{product_name}')")
+    
+    # Step 2: Find sale order lines matching product + min quantity
+    line_model = 'sale.order.line'
+    line_method = 'search_read'
+    domain_lines = [
+        ('product_id', '=', product_id),
+        ('product_uom_qty', '>=', quantity)
+    ]
+    line_fields = ['order_id', 'product_id', 'product_uom_qty', 'name']
+    sale_lines = execute_kw(
+        [domain_lines],
+        {'fields': line_fields},
+        model=line_model,
+        method=line_method
+    )
+    if not sale_lines:
+        return {"result": [], "info": f"No quotes found with product {product_id} and quantity >= {quantity}"}
+    
+    # Step 3: Collect all order_ids found in lines
+    order_ids = list(set(l['order_id'][0] if isinstance(l['order_id'], (list, tuple)) else l['order_id'] for l in sale_lines))
+    if not order_ids:
+        return {"result": [], "info": f"No matching quotes found."}
+    
+    # Step 4: Fetch quotes for those order_ids with optional state filter
+    order_model = 'sale.order'
+    order_method = 'search_read'
+    domain_orders = [('id', 'in', order_ids)]
+    if state:
+        domain_orders.append(('state', '=', state))
+    # Add any extra filters from kwargs
+    for key, value in kwargs.items():
+        domain_orders.append((key, '=', value))
+    fields_to_fetch = ['name', 'amount_total', 'create_date', 'user_id', 'partner_id', 'state']
+
+    quotes = execute_kw(
+        [domain_orders],
+        {'fields': fields_to_fetch},
+        model=order_model,
+        method=order_method
+    )
+
+    # Step 5: Attach relevant line(s) for each quote
+    quote_lines_by_order = {}
+    for line in sale_lines:
+        oid = line['order_id'][0] if isinstance(line['order_id'], (list, tuple)) else line['order_id']
+        quote_lines_by_order.setdefault(oid, []).append({
+            "product_id": line['product_id'],
+            "qty": line['product_uom_qty'],
+            "line_name": line['name'],
+        })
+    # Attach to each quote
+    for quote in quotes:
+        quote['matching_lines'] = quote_lines_by_order.get(quote['id'], [])
+
+    return quotes

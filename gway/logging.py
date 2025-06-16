@@ -82,7 +82,7 @@ def setup_logging(*,
         if not os.path.isabs(logfile):
             logfile = os.path.join(os.getcwd(), logdir, logfile)
 
-    pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(funcName)s @ %(filename)s:%(lineno)d  # %(message)s '
+    pattern = pattern or '%(asctime)s %(levelname)s [%(name)s] %(funcName)s %(filename)s:%(lineno)d  # %(message)s '
 
     root = logging.getLogger()
     for h in root.handlers[:]:

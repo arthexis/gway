@@ -24,7 +24,7 @@ def _read_table(path):
     if not path:
         return {}
     if not os.path.exists(path):
-        gw.error(f"[CDV] Table file not found: {path}")
+        gw.error(f"Table file not found: {path}")
         return {}
     result = {}
     with open(path, "r") as f:
@@ -59,7 +59,7 @@ def load_all(pathlike: str) -> dict[str, dict[str, str]]:
         path = _resolve_path(pathlike)
         return _read_table(path)
     except Exception as e:
-        gw.abort(f"[CDV] Failed to read table '{pathlike}': {e}")
+        gw.abort(f"Failed to read table '{pathlike}': {e}")
 
 
 def update(table_path: str, entry_id: str, **fields):
@@ -72,7 +72,7 @@ def update(table_path: str, entry_id: str, **fields):
     existing.update(fields)
     records[entry_id] = existing
     _write_table(path, records)
-    gw.info(f"[CDV] Updated table with ID={entry_id}")
+    gw.info(f"Updated table with ID={entry_id}")
 
 
 def validate(table_path: str, entry: str, *, validator=None) -> bool:
@@ -83,7 +83,7 @@ def validate(table_path: str, entry: str, *, validator=None) -> bool:
     path = _resolve_path(table_path)
     table = _read_table(path)
     if not table:
-        gw.warn("[CDV] No table loaded — rejecting validation request.")
+        gw.warn("No table loaded — rejecting validation request.")
         return False
     record = table.get(entry)
     if not record:
@@ -92,7 +92,7 @@ def validate(table_path: str, entry: str, *, validator=None) -> bool:
         try:
             return bool(validator(**record))
         except Exception as e:
-            gw.error(f"[CDV] validator failed: {e}")
+            gw.error(f"validator failed: {e}")
             return False
     return True
 
@@ -102,14 +102,14 @@ def copy(table_path: str, old_entry: str, new_entry: str, **kwargs) -> bool:
     path = _resolve_path(table_path)
     records = _read_table(path)
     if old_entry not in records:
-        gw.warn(f"[CDV] Entry '{old_entry}' does not exist; cannot copy.")
+        gw.warn(f"Entry '{old_entry}' does not exist; cannot copy.")
         return False
     # Shallow copy of fields
     new_fields = records[old_entry].copy()
     new_fields.update(kwargs)
     records[new_entry] = new_fields
     _write_table(path, records)
-    gw.info(f"[CDV] Copied '{old_entry}' to '{new_entry}' with updates: {kwargs}")
+    gw.info(f"Copied '{old_entry}' to '{new_entry}' with updates: {kwargs}")
     return True
 
 
@@ -118,14 +118,14 @@ def move(table_path: str, old_entry: str, new_entry: str, **kwargs) -> bool:
     path = _resolve_path(table_path)
     records = _read_table(path)
     if old_entry not in records:
-        gw.warn(f"[CDV] Entry '{old_entry}' does not exist; cannot move.")
+        gw.warn(f"Entry '{old_entry}' does not exist; cannot move.")
         return False
     new_fields = records[old_entry].copy()
     new_fields.update(kwargs)
     records[new_entry] = new_fields
     del records[old_entry]
     _write_table(path, records)
-    gw.info(f"[CDV] Moved '{old_entry}' to '{new_entry}' with updates: {kwargs}")
+    gw.info(f"Moved '{old_entry}' to '{new_entry}' with updates: {kwargs}")
     return True
 
 
@@ -134,7 +134,7 @@ def credit(table_path: str, entry: str, *, field: str = 'balance', **kwargs) -> 
     path = _resolve_path(table_path)
     records = _read_table(path)
     if entry not in records:
-        gw.warn(f"[CDV] Entry '{entry}' does not exist; cannot credit.")
+        gw.warn(f"Entry '{entry}' does not exist; cannot credit.")
         return False
     try:
         amt = float(kwargs.pop('amount', 1))
@@ -142,10 +142,10 @@ def credit(table_path: str, entry: str, *, field: str = 'balance', **kwargs) -> 
         records[entry][field] = str(prev + amt)
         records[entry].update(kwargs)
         _write_table(path, records)
-        gw.info(f"[CDV] Credited {amt} to '{entry}' field '{field}'. New value: {records[entry][field]}")
+        gw.info(f"Credited {amt} to '{entry}' field '{field}'. New value: {records[entry][field]}")
         return True
     except Exception as e:
-        gw.error(f"[CDV] credit failed: {e}")
+        gw.error(f"credit failed: {e}")
         return False
 
 
@@ -154,7 +154,7 @@ def debit(table_path: str, entry: str, *, field: str = 'balance', **kwargs) -> b
     path = _resolve_path(table_path)
     records = _read_table(path)
     if entry not in records:
-        gw.warn(f"[CDV] Entry '{entry}' does not exist; cannot debit.")
+        gw.warn(f"Entry '{entry}' does not exist; cannot debit.")
         return False
     try:
         amt = float(kwargs.pop('amount', 1))
@@ -162,8 +162,8 @@ def debit(table_path: str, entry: str, *, field: str = 'balance', **kwargs) -> b
         records[entry][field] = str(prev - amt)
         records[entry].update(kwargs)
         _write_table(path, records)
-        gw.info(f"[CDV] Debited {amt} from '{entry}' field '{field}'. New value: {records[entry][field]}")
+        gw.info(f"Debited {amt} from '{entry}' field '{field}'. New value: {records[entry][field]}")
         return True
     except Exception as e:
-        gw.error(f"[CDV] debit failed: {e}")
+        gw.error(f"debit failed: {e}")
         return False

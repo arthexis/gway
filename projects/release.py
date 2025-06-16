@@ -21,9 +21,6 @@ def build(
     dist: bool = False,
     twine: bool = False,
     help_db: bool = True,
-    user: str = "[PYPI_USERNAME]",
-    password: str = "[PYPI_PASSWORD]",
-    token: str = "[PYPI_API_TOKEN]",
     projects: bool = False,
     git: bool = False,
     all: bool = False,
@@ -37,9 +34,6 @@ def build(
         dist (bool): Build distribution package if True.
         twine (bool): Upload to PyPI if True.
         force (bool): Skip version-exists check on PyPI if True.
-        user (str): PyPI username (default: [PYPI_USERNAME]).
-        password (str): PyPI password (default: [PYPI_PASSWORD]).
-        token (str): PyPI API token (default: [PYPI_API_TOKEN]).
         git (bool): Require a clean git repo and commit/push after release if True.
         vscode (bool): Build the vscode extension.
     """
@@ -48,6 +42,10 @@ def build(
     import sys
     import subprocess
     import toml
+
+    user = gw.resolve("[PYPI_USERNAME]")
+    password = gw.resolve("[PYPI_PASSWORD]")
+    token = gw.resolve("[PYPI_API_TOKEN]")
 
     if all:
         bump = True
@@ -373,9 +371,58 @@ def create_shortcut(
     print(f"Shortcut created at: {shortcut_path}")
 
 
+def changes(*, files=None, staged=False, context=3, max_bytes=200_000, clip=False):
+    """
+    Returns a unified diff of all recent textual changes in the git repo.
+
+    - Shows added/removed lines (ignores binary files).
+    - Includes unstaged (working directory) by default. Use staged=True to see only staged.
+    - 'files': Optionally filter by path(s) or file glob(s).
+    - 'context': Number of context lines in the diff (default 3).
+    - 'max_bytes': Truncate diff if too large (default 200,000).
+    """
+    import subprocess
+
+    cmd = ["git", "diff", "--unified=%d" % context]
+    if staged:
+        cmd.insert(2, "--staged")
+    if files:
+        if isinstance(files, str):
+            files = [files]
+        cmd += list(files)
+
+    try:
+        diff = subprocess.check_output(cmd, encoding="utf-8", errors="replace")
+    except subprocess.CalledProcessError as e:
+        return f"[ERROR] Unable to get git diff: {e}"
+    except FileNotFoundError:
+        return "[ERROR] git command not found. Are you in a git repo?"
+
+    # Remove any diff blocks for binary files
+    filtered = []
+    skip = False
+    for line in diff.splitlines(keepends=True):
+        # Exclude blocks marking a binary difference
+        if line.startswith("Binary files "):
+            continue
+        if line.startswith("diff --git"):
+            skip = False  # new file block
+        if "GIT binary patch" in line:
+            skip = True
+        if skip:
+            continue
+        filtered.append(line)
+
+    result = "".join(filtered)
+    if len(result) > max_bytes:
+        return result[:max_bytes] + "\n[...Diff truncated at %d bytes...]" % max_bytes
+    
+    if clip: 
+        gw.clip.copy(result)
+    if not gw.silent:
+        return result or "[No changes detected]"
+
+
 if __name__ == "__main__":
     build()
 
-
-# TODO: Add a function "coverage" that generates test coverage information split into
-# two main categories:/ gway and /projects, then break projects down at top level.

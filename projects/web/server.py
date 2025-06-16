@@ -6,6 +6,8 @@
 from numpy import iterable
 from gway import gw
 
+# --- Track how many times the default app is built to catch likely misconfigurations ---
+_default_app_build_count = 0
 
 def start_app(*,
     host="[WEBSITE_HOST|127.0.0.1]",
@@ -27,6 +29,9 @@ def start_app(*,
     """
     import inspect
     import asyncio
+
+    host = gw.resolve(host) if isinstance(host, str) else host
+    port = gw.resolve(port) if isinstance(port, str) else port
 
     def run_server():
         nonlocal app
@@ -76,10 +81,15 @@ def start_app(*,
             return
 
         # 1. If no apps passed, fallback to default app
-        if not all_apps:
-            # TODO: Only show this warning if the default app is being built twice which may indicate
-            #       and error in the configuration or recipe. Building it once is not a warning.
-            gw.warning("Building default app (app is None). Run with --app default to silence.")
+        global _default_app_build_count
+        if not all_apps or all_apps == (None,):
+            _default_app_build_count += 1
+            if _default_app_build_count > 1:
+                gw.warning(
+                    f"Default app is being built {_default_app_build_count} times! "
+                    "This may indicate a misconfiguration or repeated server setup. "
+                    "Check your recipe/config. Run with --app default to silence."
+                )
             app = gw.web.app.setup(app=None)
         else:
             app = all_apps[0]  # Run the first (or only) app normally
@@ -156,8 +166,6 @@ def start_app(*,
             )
         else:
             raise TypeError(f"Unsupported WSGI app type: {type(app)}")
-
-
 
     if daemon:
         return asyncio.to_thread(run_server)

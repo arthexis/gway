@@ -116,12 +116,11 @@ class Gateway(Resolver):
         print(message)
         self.info(message)
 
-    # Do not show the calling and result storing of gway builtins in the log unless gw.verbose is trueish.
     def wrap_callable(self, func_name, func_obj, *, is_builtin=False):
         @functools.wraps(func_obj)
         def wrap(*args, **kwargs):
             try:
-                kwarg_txt = ', '.join(f"{k}='{v}'" for k,v in kwargs.items())
+                kwarg_txt = ', '.join(f"{k}='{v}'" for k, v in kwargs.items())
                 arg_txt = ', '.join(f"'{x}'" for x in args)
                 if kwarg_txt and arg_txt:
                     arg_txt = f"{arg_txt}, "
@@ -132,25 +131,15 @@ class Gateway(Resolver):
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
 
-                # Step 1: Resolve placeholder defaults from context, if not provided
-                for param in sig.parameters.values():
-                    if (param.name not in bound_args.arguments
-                        and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)):
-                        default_value = param.default
-                        if (isinstance(default_value, str)
-                            and default_value.startswith("[")
-                            and default_value.endswith("]")):
-                            resolved = self.resolve(default_value)
-                            bound_args.arguments[param.name] = resolved
-                            self.context[param.name] = resolved  # Store resolved default
+                # --- Step 1: NO automatic resolution of defaults here ---
+                # (context injection handled by fallback in Step 3)
 
-                # Step 2: Resolve any argument values and inject into context
+                # --- Step 2: NO automatic resolution of argument values ---
+                # Instead, just copy into context
                 for key, value in bound_args.arguments.items():
-                    resolved_value = self.resolve(value) if isinstance(value, str) else value
-                    bound_args.arguments[key] = resolved_value
-                    self.context[key] = resolved_value
+                    self.context[key] = value
 
-                # Step 3: Prepare final call args/kwargs
+                # Step 3: Prepare final call args/kwargs (context fallback intact)
                 args_to_pass = []
                 kwargs_to_pass = {}
                 for param in sig.parameters.values():
