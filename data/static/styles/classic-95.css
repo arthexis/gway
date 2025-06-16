@@ -1,0 +1,122 @@
+/* win95.css — Layered atop base.css */
+
+body {
+    background-color: #c0c0c0;
+    color: #000000;
+    font-family: 'MS Sans Serif', Tahoma, Geneva, Verdana, Arial, sans-serif;
+}
+
+pre {
+    background: #f5f5f5;
+    color: #000000;
+    border: 2px inset #fff;
+    padding: 1em;
+    font-family: 'Consolas', 'Courier New', monospace;
+}
+
+li a {
+    color: #000080;
+    text-decoration: underline;
+}
+
+li a:hover {
+    color: #ff0000;
+    background: #e0e0e0;
+    text-decoration: underline;
+}
+
+h1, h2, h3, h4 {
+    color: #000000;
+    font-family: inherit;
+    font-weight: bold;
+    border-bottom: 2px solid #808080;
+    margin-bottom: 0.5em;
+}
+
+.search-box input[type="text"],
+input[type="text"], input[type="password"], input[type="email"], textarea {
+    background-color: #ffffff;
+    color: #000000;
+    border: 2px inset #fff;
+    border-radius: 0;
+    padding: 0.25em 0.4em;
+    font-family: inherit;
+    outline: none;
+    box-shadow: none;
+}
+
+footer {
+    color: #222;
+    background: #b0b0b0;
+    border-top: 2px solid #808080;
+}
+
+input.main, input.help, select {
+    background-color: #ffffff;
+    color: #000000;
+    border: 2px inset #fff;
+    border-radius: 0;
+    font-family: inherit;
+}
+
+button, input[type="submit"], input[type="button"] {
+    background-color: #e0e0e0;
+    color: #000;
+    border: 2px outset #fff;
+    border-radius: 0;
+    box-shadow: 1px 1px 0 #fff, inset 1px 1px 0 #808080;
+    padding: 0.35em 1.3em;
+    font-family: inherit;
+    font-size: 1em;
+}
+
+button:hover, input[type="submit"]:hover, input[type="button"]:hover {
+    background-color: #d0d0d0;
+    border: 2px inset #fff;
+}
+
+p.error {
+    color: #ff0000;
+    font-weight: bold;
+}
+
+aside {
+    background: #d4d0c8 !important;
+    border-right: 2px solid #808080 !important;
+}
+
+main {
+    background: #fff;
+    border-left: 2px solid #fff;
+    border-top: 2px solid #fff;
+    border-bottom: 2px solid #808080;
+    border-right: 2px solid #808080;
+    margin: 1em 0 1em 0;
+    box-shadow: 1px 1px 0 #fff, 2px 2px 0 #808080;
+}
+
+.current, li a.active {
+    background: #000080;
+    color: #fff !important;
+    font-weight: bold;
+    padding: 0 0.2em;
+}
+
+::-webkit-scrollbar {
+    width: 12px;
+    background: #b0b0b0;
+}
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border: 2px solid #c0c0c0;
+}
+
+@media (max-width: 768px) {
+    aside {
+        border-right: none !important;
+        border-bottom: 2px solid #808080 !important;
+    }
+    main {
+        margin: 0;
+    }
+}

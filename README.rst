@@ -1,13 +1,13 @@
 GWAY
 ====
 
-Welcome [[Viajante]], this is the GWAY project README.rst file and the perfect website for all your [[Hyperlink Blocked]].
+Welcome, this is the GWAY project README file and demo website.
 
-**GWAY** is an **experimental** CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic sigil & context resolution, argument injection, control inversion, auto-wired recipes, and multi-environment support. GWAY is async-compatible and fully instrumented.
+**GWAY** is a CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with automatic sigil & context resolution, argument injection, control inversion, auto-wired recipes and multi-environment support. GWAY is async-compatible and fully instrumented.
 
 `Our Goal: Lower the barrier to a higher-level of systems integration.`
 
-`Philosophy: Every function is both an entry point and a full solution.`
+`Our Approach: Every function is an entry point and can be a full solution.`
 
 Fetch the source, changelogs and issues (or submit your own) here:
 
@@ -99,7 +99,7 @@ Browse built-in and project-level function documentation online at:
 📘 https://arthexis.com/gway/help
 
 - Use the **search box** in the top left to find any callable by name (e.g., ``find_cable``, ``resource``, ``start_server``).
-- You can also navigate directly to: ``https://arthexis.com/gway/help/<project>/<function>`` or ``https://arthexis.com/gway/help/<built-in>``
+- You can also navigate directly to: ``https://arthexis.com/gway/help?topic=<project-or-function>``
 
 This is useful for both the included out-of-the-box GWAY tools and your own projects, assuming they follow the GWAY format.
 
@@ -143,23 +143,23 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+-------------------------------------------------------------+
 | Directory      | Description                                                 |
 +================+=============================================================+
-| envs/clients/  | Per-user environment files (e.g., ``username.env``)         |
+| envs/clients/  | Per-user environment files (e.g., ``username.env``).        |
 +----------------+-------------------------------------------------------------+
-| envs/servers/  | Per-host environment files (e.g., ``hostname.env``)         |
+| envs/servers/  | Per-host environment files (e.g., ``hostname.env``).        |
 +----------------+-------------------------------------------------------------+
-| projects/      | Your own Python modules — callable via GWAY                 |
+| projects/      | Included GWAY python projects. You may add your own.        |
 +----------------+-------------------------------------------------------------+
-| logs/          | Runtime logs and outputs                                    |
+| logs/          | Runtime logs and log backups.                               |
 +----------------+-------------------------------------------------------------+
-| gway/          | Source code for the core GWAY components.                   |
+| gway/          | Source code for core GWAY components.                       |
 +----------------+-------------------------------------------------------------+
-| tests/         | Unit tests for code in gway/ and projects/                  |
+| tests/         | Unit tests for code in gway/ and projects/.                 |
 +----------------+-------------------------------------------------------------+
-| data/          | Static assets, resources, and other data files              |
+| data/          | Static assets, resources, and other included data files.    |
 +----------------+-------------------------------------------------------------+
-| temp/          | Temporary working directory for intermediate output files   |
+| temp/          | Working directory for output files and products.            |
 +----------------+-------------------------------------------------------------+
-| scripts/       | .gws script files (for --batch mode)                        |
+| scripts/       | Included .gwr recipe files (-r mode). You may add more.     |
 +----------------+-------------------------------------------------------------+
 
 
@@ -234,15 +234,23 @@ Or in Python:
 
 This script sets up a web application, launches the server in daemon mode, and waits for lock conditions to stop.
 
----
-
 Recipes make Gway scripting modular and composable. Include them in your automation flows for maximum reuse and clarity.
 
 
-Design Philosophy
-=================
+Design Philosophies
+===================
 
 This section contains notes from the author on the nature of the code that may provide insight and guidance to future developers.
+
+
+Keep a Goal in Mind by Making it a TODO
+---------------------------------------
+
+Before you start writing any code, even if you have already planned the feature in an external system, write a # TODO comment explaining the required changes in as much detail as you need to define it unambiguously.
+
+TODOs should live with the code they intend to affect. They warn that things are going to soon be different. It allows a good feature to be noted instead of lost to priorities. Keeping the tasks in the code itself as TODOs is superior to using an external tool. Those systems should look at the code as the source of truth to determine what TODOs need to be accomplished and make them more visible instead.
+
+You may write the TODO and then dispatch it in the same coding session, or it may live on for many commits until its time comes. Or maybe you change your mind and delete the TODO. You get a space, close to the code, where you can see the effects of what you intend to integrate next.
 
 
 On Comments and the Code that Binds Them
@@ -250,25 +258,20 @@ On Comments and the Code that Binds Them
 
 Comments and code should be like DNA — two strings that reflect each other.
 
-This reflection creates a form of internal consistency and safety. 
-When code and its comments are in alignment, they mutually verify each other.
+This reflection creates a form of internal consistency and safety. When code and its comments are in alignment, they mutually verify each other.
 When they diverge, the inconsistency acts as a warning sign: something is broken, outdated, or misunderstood.
 
-Treat comments not as annotations, but as the complementary strand of the code itself.
-Keep them synchronized.
-A mismatch is not a small issue — it's a mutation worth investigating.
+Treat comments not as annotations, but as the complementary strand of the code itself. Keep them synchronized. A mismatch is not a small issue — it's a mutation worth investigating.
 
 
-The Holy Hand of Antioch Grenade Procedure
+The Holy Hand Grenade of Antioch Procedure
 ------------------------------------------
 
 If there is *not* only one good way to do it, then you should have **three**.
 
 **Five is right out.**
 
-One way implies clarity. Two implies division. Three implies depth. Five implies confusion, and confusion leads to bugs.
-
-When offering choices — in interface, design, or abstraction — ensure there are no more than three strong forms. The third may be unexpected, but it must still be necessary.
+One way implies clarity. Two implies division. Three implies depth. Five implies confusion, and confusion leads to bugs. When offering choices — in interface, design, or abstraction — ensure there are no more than three strong forms. The third may be unexpected, but it must still be necessary.
 
 Beyond that, you're just multiplying uncertainty.
 

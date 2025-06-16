@@ -97,6 +97,7 @@ def cli_main():
         base_path=args.base_path,
         debug=args.debug,
         quantity=args.quantity,
+        wizard=args.wizard
     )
 
     gw_local.verbose(f"Saving detailed logs to [BASE_PATH]/logs/gway.log (this file)") 

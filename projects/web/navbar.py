@@ -76,7 +76,7 @@ def render(*, current_url=None, homes=None):
         qr_url = gw.qr.generate_url(current_url)
         compass = f'''
             <div class="compass">
-                <p class="compass">QR Code for this page:</p>
+                <p class="compass">You are here:</p>
                 <img src="{qr_url}" alt="QR Code" class="compass" />
             </div>
         '''
@@ -84,30 +84,14 @@ def render(*, current_url=None, homes=None):
     # --- Style/theme selector ---
     style_selector = ""
     if cookies_ok:
-        styles_dir = gw.resource("data", "static", "styles")
+        styles_dir = gw.resource("data/static/styles")
         all_styles = [
             f for f in sorted(os.listdir(styles_dir))
             if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
         ]
         css_cookie = gw.web.cookie.get("css")
         main_style = css_cookie if css_cookie in all_styles else (all_styles[0] if all_styles else "base.css")
-        added = set()
-        options = []
-        if main_style:
-            options.append(f'<option value="{main_style}" selected>{main_style[:-4].upper()}</option>')
-            added.add(main_style)
-        for style in all_styles:
-            if style not in added:
-                options.append(f'<option value="{style}">{style[:-4].upper()}</option>')
-        style_selector = f"""
-            <form method="post" action="/nav/styles" class="style-form" style="margin-bottom: 0.5em">
-                <input type="hidden" name="next" value="{html_escape(request.fullpath + ('?' + request.query_string if request.query_string else ''))}">
-                <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="this.form.submit()">
-                    {''.join(options)}
-                </select>
-                <noscript><button type="submit">Set</button></noscript>
-            </form>
-        """
+        style_selector = style_selector_form(request.fullpath, styles_dir, all_styles, main_style)
 
     # --- Remove cookies button ---
     remove_button = ""
@@ -126,6 +110,10 @@ def html_escape(text):
     return html.escape(text or "")
 
 # --- Style view endpoints ---
+
+# TODO: In view_styles when the user selects a style while inside the view (ie, not from the navbar)
+# sometimes the page reloads with the new style as expected, other times I get redirected to
+# another page for unknown reasons. I want to stay on the page when I am using it. 
 
 def view_styles(**kwargs):
     """
@@ -174,15 +162,10 @@ def view_styles(**kwargs):
         f'<option value="{s}"{" selected" if s==style else ""}>{s[:-4].title()}</option>'
         for s in all_styles
     ]
-    selector = f"""
-        <form method="post" action="/nav/styles">
-            <input type="hidden" name="next" value="{html_escape(next_url)}">
-            <select name="css" onchange="this.form.submit()">
-                {''.join(options)}
-            </select>
-            <noscript><button type="submit">Set</button></noscript>
-        </form>
-    """
+    selector = style_selector_form(
+        request.fullpath + ('?' + request.query_string if request.query_string else ''),
+        styles_dir, all_styles, style
+    )
 
     return f"""
         <h1>Select a Site Theme</h1>
@@ -190,4 +173,26 @@ def view_styles(**kwargs):
         {preview_html}
         <h3>CSS Source: {style}</h3>
         <pre style="max-height:400px;overflow:auto;">{html_escape(css_code)}</pre>
+    """
+
+
+def style_selector_form(current_path, styles_dir, all_styles, selected_style):
+    from bottle import request
+    next_url = current_path + ('?' + request.query_string if request.query_string else '')
+    options = []
+    added = set()
+    if selected_style:
+        options.append(f'<option value="{selected_style}" selected>{selected_style[:-4].upper()}</option>')
+        added.add(selected_style)
+    for style in all_styles:
+        if style not in added:
+            options.append(f'<option value="{style}">{style[:-4].upper()}</option>')
+    return f"""
+        <form method="post" action="/nav/styles" class="style-form" style="margin-bottom: 0.5em">
+            <input type="hidden" name="next" value="{html_escape(next_url)}">
+            <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="this.form.submit()">
+                {''.join(options)}
+            </select>
+            <noscript><button type="submit">Set</button></noscript>
+        </form>
     """

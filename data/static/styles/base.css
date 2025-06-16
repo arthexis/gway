@@ -1,24 +1,32 @@
 /* data/static/styles/base.css */
-/* GWAY base layout: classic flex column wrapper */
+/* GWAY base layout */
 
 * {
     box-sizing: border-box;
     scroll-behavior: smooth;
 }
+
 html, body {
     height: 100%;
     margin: 0;
     padding: 0;
+    font-family: system-ui, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, 'Liberation Sans', sans-serif;
+    font-size: 16px;
+    line-height: 1.7;
+    color: #202124;
+    letter-spacing: 0.01em;
 }
 
-/* New wrapper for entire page, excluding footer */
 .page-wrap {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
 }
 
-/* Sidebar + main layout */
+body, .page-wrap {
+    background: var(--bg, #fff);  /* use a CSS variable for easy theme switching */
+}
+
 .layout {
     display: flex;
     flex: 1 0 auto;
@@ -27,16 +35,16 @@ html, body {
     min-height: 0;
 }
 
-/* Sidebar */
 aside {
     width: 240px;
     padding: 2rem 1rem;
     flex-shrink: 0;
     background-color: var(--bg-alt, #f0f0f0);
     border-right: 1px solid #ccc;
+    font-size: 1.08em;
+    font-family: inherit;
 }
 
-/* Main content */
 main {
     flex: 1 1 0;
     padding: 2rem;
@@ -45,16 +53,18 @@ main {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    font-family: inherit;
 }
 
 /* Footer (always after .page-wrap) */
 footer {
-    font-size: 0.8em;
+    font-size: 0.92em;
     padding: 1em;
     color: var(--muted, #666);
     border-top: 1px solid #ccc;
     text-align: center;
-    background: #fff;
+    background: inherit;
+    font-family: inherit;
 }
 
 aside ul {
@@ -67,28 +77,42 @@ aside ul li a {
     text-decoration: none;
     text-transform: uppercase;
     color: var(--fg, #000);
+    letter-spacing: 0.04em;
+    font-weight: 500;
+    font-size: 0.99em;
+    font-family: inherit;
 }
 aside ul li a:hover,
 aside ul li a.active {
-    font-weight: bold;
+    font-weight: 700;
     color: var(--accent, #007bff);
 }
 h1, h2, h3, h4 {
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    font-weight: 600;
+    margin-top: 0.5em;
+    margin-bottom: 0.3em;
+    font-weight: 700;
+    line-height: 1.25;
+    font-family: 'Segoe UI Semibold', 'Roboto Slab', 'Georgia', serif, system-ui;
+    letter-spacing: 0.01em;
 }
+h1 { font-size: 2.2em; }
+h2 { font-size: 1.5em; }
+h3 { font-size: 1.22em; }
+h4 { font-size: 1.08em; }
 p {
     margin: 1em 0;
+    font-family: inherit;
 }
-pre {
+pre, code {
     background-color: #111827;
     color: #a5f3fc;
     padding: 1rem;
     margin: 1.5em 0;
     border-radius: 0.5rem;
     overflow-x: auto;
-    font-family: 'Fira Code', monospace;
+    font-family: 'Fira Mono', 'Fira Code', 'Consolas', 'Menlo', 'Monaco', 'Liberation Mono', monospace;
+    font-size: 0.9em;
+    line-height: 1.6;
 }
 
 /* Buttons & inputs */
@@ -103,6 +127,7 @@ input[type="button"] {
     border-radius: 0.5rem;
     cursor: pointer;
     transition: background-color 0.2s ease, transform 0.1s ease;
+    font-family: inherit;
 }
 button:hover,
 input[type="submit"]:hover {
@@ -122,6 +147,7 @@ textarea {
     margin-bottom: 1em;
     border-radius: 0.5rem;
     border: 1px solid var(--muted, #ccc);
+    font-family: inherit;
 }
 select {
     width: 100%;
@@ -136,9 +162,9 @@ select {
     background-repeat: no-repeat;
     background-position: right 0.7em center;
     background-size: 0.8em;
+    font-family: inherit;
 }
 
-/* QR and navbar elements */
 img.compass {
     max-width: 180px;
     height: auto;
@@ -184,4 +210,8 @@ p.compass {
 .current {
     font-weight: bold;
     text-decoration: underline;
+}
+:root {
+    --bg: #fff;
+    --bg-alt: #f0f0f0;
 }

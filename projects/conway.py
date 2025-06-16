@@ -4,12 +4,12 @@
 import os
 import random
 import html
-from pathlib import Path
 
 from gway import gw
 
 BOARD_SIZE = 64
 BOARD_PATH = None
+
 
 def _ensure_board_path():
     global BOARD_PATH
@@ -60,6 +60,8 @@ def next_generation(board):
          for c,cell in enumerate(row)]
         for r,row in enumerate(board)
     ]
+
+# TODO: Fix Failed to parse board! on initial load only
 
 def view_board(*args, action=None, board=None, **kwargs):
     """

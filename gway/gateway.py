@@ -28,14 +28,14 @@ class Gateway(Resolver):
     debug = False
     silent = False
     verbose = False
+    wizard = False
 
     def __init__(self, *, 
-                client=None, server=None, verbose=False, silent=False, debug=None,
-                name="gw", base_path=None, project_path=None, wizard=None, **kwargs
+                client=None, server=None, name="gw", base_path=None, project_path=None,
+                verbose=False, silent=False, debug=None, wizard=None, **kwargs
     ):
         self._cache = {}
         self._async_threads = []
-        self.wizard = wizard
         self.uuid = uuid.uuid4()
         self.base_path = base_path or os.path.dirname(os.path.dirname(__file__))
         self.project_path = project_path
@@ -49,6 +49,8 @@ class Gateway(Resolver):
             Gateway.silent = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if silent else Null
         if verbose is not None:
             Gateway.verbose = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if verbose else Null
+        if wizard is not None:
+            Gateway.verbose = (lambda self, msg: self.logger.debug(msg, stacklevel=2)) if wizard else Null
 
         client_name = client or get_base_client()
         server_name = server or get_base_server()
@@ -231,6 +233,8 @@ class Gateway(Resolver):
 
             except Exception as e:
                 self.error(f"Error in '{func_name}': {e}")
+                if self.debug:
+                    self.exception(e)
                 raise
 
         return wrap

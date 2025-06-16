@@ -230,7 +230,7 @@ def render_template(*, title="GWAY", navbar="", content="", static="static", css
         css_links += f'<link rel="stylesheet" href="/{static}/styles/{css_file}">\n'
     favicon = f'<link rel="icon" href="/{static}/favicon.ico" type="image/x-icon" />'
     credits = f'''
-        <p>GWAY is powered by <a href="https://www.python.org/">Python 3.13</a>.
+        <p>GWAY is written in <a href="https://www.python.org/">Python 3.13</a>.
         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>, 
         <a href="https://pypi.org">PyPI</a> 
         and <a href="https://github.com/arthexis/gway">Github</a>.</p>
@@ -249,12 +249,13 @@ def render_template(*, title="GWAY", navbar="", content="", static="static", css
                 <div class="layout">
                     {{!navbar}}<main>{{!content}}</main>
                 </div>
+                <footer><p>This website was <strong>built</strong>, <strong>tested</strong> 
+                    and <strong>released</strong> with <a href="https://arthexis.com">GWAY</a> 
+                    <a href="https://pypi.org/project/gway/{{!version}}/">v{{!version}}</a>.</p>
+                    {{!credits}}
+                </footer>
             </div>
-            <footer><p>This website was <strong>built</strong>, <strong>tested</strong> and <strong>released</strong> with 
-                        <a href="https://arthexis.com">GWAY</a> 
-                        <a href="https://pypi.org/project/gway/{{!version}}/">v{{!version}}</a>.</p>
-                {{!credits}}
-            </footer>
+
         </body>
         </html>
     """, **locals())
