@@ -17,19 +17,12 @@ _active_cons: Dict[str, WebSocket] = {}
 # Bottle does not support websockets properly, so we need to use FastAPI for OCPP. 
 # However we still use Bottle for the user interface (see view section down below)
 
-def setup_sink_app(*, 
-        app=None,
-        host='[OCPP_CSMS_HOST|0.0.0.0]', 
-        port='[OCPP_CSMS_PORT|9000]',
-        base="",
-    ):
+def setup_sink_app(*, app=None, base=""):
     """
     Basic OCPP passive sink for messages, acting as a dummy CSMS server.
     This won't pass compliance or provide authentication. It just accepts and logs all.
     Note: This version of the app was tested at the EVCS with real EVs.
     """
-
-
     # A - This line ensures we find just the kind of app we need or create one if missing
     if (_is_new_app := not (app := gw.unwrap_one((oapp := app), FastAPI))):
         app = FastAPI()
@@ -65,8 +58,6 @@ def setup_sink_app(*,
         except Exception as e:
             gw.error(f"[OCPP:{path}] WebSocket error: {e}")
             gw.debug(traceback.format_exc())
-
-    gw.info(f"Setup passive OCPP sink directly on {host}:{port}/{base}")
 
     # B- This return pattern ensures we include our app in the bundle (if any)
     if _is_new_app:
