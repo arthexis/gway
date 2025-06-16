@@ -7,10 +7,7 @@ from bottle import request
 def render(*, current_url=None, homes=None):
     """
     Renders the sidebar navigation.
-    - Homes are shown in the order defined.
-    - Visited links shown most recent first, only if their route is NOT a home route.
-    - The current page is always highlighted.
-    - Fetches `visited` list from cookies on every call.
+    Always highlights and shows the current page, even if not yet in the visited cookie.
     """
     cookies_ok = gw.web.cookie.check_consent()
     gw.debug(f"Render navbar with {homes=} {cookies_ok=}")
@@ -22,39 +19,49 @@ def render(*, current_url=None, homes=None):
         if visited_cookie:
             visited = visited_cookie.split("|")
 
-    links = ""
     current_route = request.fullpath.strip("/")
+    current_title = (current_route.split("/")[-1] or "readme").replace('-', ' ').replace('_', ' ').title()
+
+    # Always ensure current page is in the visited list (for nav rendering only)
+    visited_set = set()
+    entries = []
+    for entry in visited:
+        if "=" not in entry:
+            continue
+        title, route = entry.split("=", 1)
+        canon_route = route.strip("/")
+        if canon_route not in visited_set:
+            entries.append((title, canon_route))
+            visited_set.add(canon_route)
+    # Inject current page if not already present and not a home
     home_routes = set()
     if homes:
         for home_title, home_route in homes:
             home_routes.add(home_route.strip("/"))
+    if cookies_ok and current_route not in home_routes and current_route not in visited_set:
+        entries.append((current_title, current_route))
+        visited_set.add(current_route)
 
-    # --- Homes: always shown, always in declared order ---
+    # --- Build HTML ---
+    links = ""
+    # Homes
     if homes:
         for home_title, home_route in homes:
             route = home_route.strip("/")
             is_current = ' class="current"' if route == current_route else ""
             links += f'<li><a href="/{home_route}"{is_current}>{home_title.upper()}</a></li>'
-
-    # --- Visited links only if cookies are accepted ---
-    if cookies_ok and visited:
-        visited_routes = set()
-        for entry in reversed(visited):  # Most recent first
-            if "=" not in entry:
+    # Visited (most recent first, not already in homes)
+    if cookies_ok and entries:
+        visited_rendered = set()
+        for title, route in reversed(entries):
+            if route in home_routes or route in visited_rendered:
                 continue
-            title, route = entry.split("=", 1)
-            canon_route = route.strip("/")
-            # Only show visited links not already in homes, and avoid visited duplicates
-            if canon_route in home_routes or canon_route in visited_routes:
-                continue
-            visited_routes.add(canon_route)
-            is_current = ' class="current"' if canon_route == current_route else ""
+            visited_rendered.add(route)
+            is_current = ' class="current"' if route == current_route else ""
             links += f'<li><a href="/{route}"{is_current}>{title}</a></li>'
     elif not homes:
         # No homes defined: show only current page as label
-        current_title = (request.fullpath.strip("/").split("/") or ["readme"])
-        title = current_title[-1].replace('-', ' ').replace('_', ' ').title()
-        links += f'<li class="current">{title.upper()}</li>'
+        links += f'<li class="current">{current_title.upper()}</li>'
 
     # --- Search box ---
     search_box = '''
@@ -111,8 +118,7 @@ def render(*, current_url=None, homes=None):
             </form>
         '''
 
-    visited = gw.web.cookie.get("visited")
-    gw.debug(f"Visited cookie raw: {visited}")
+    gw.debug(f"Visited cookie raw: {gw.web.cookie.get('visited')}")
     return f"<aside>{search_box}<ul>{links}</ul><br>{compass}<br>{style_selector}<br>{remove_button}</aside>"
 
 def html_escape(text):

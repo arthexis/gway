@@ -124,7 +124,6 @@ def view_jar():
         on this site will not be recorded, but your interaction may also be limited.</p>
         <p>This restriction exists because some functionality (like navigation history,
         styling preferences, or shopping carts) depends on cookies.</p>
-        <p><a href="javascript:history.back()">← Go back</a></p>
         """
     else:
         stored = []
@@ -143,5 +142,4 @@ def view_jar():
         to fulfill your requests.</p>
         <p>You can remove all stored cookie information at any time by pressing the 
         "Remove our cookies" button in the navbar.</p>
-        <p><a href="javascript:history.back()">← Go back</a></p>
         """
