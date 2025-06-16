@@ -104,9 +104,8 @@ def cli_main():
     # Load command sources
     if args.recipe:
         command_sources, comments = load_recipe(args.recipe)
-        gw_local.debug(f"Comments in recipe:\n{chr(10).join(comments)}")
     elif args.commands:
-        command_sources = chunk_command(args.commands)
+        command_sources = chunk(args.commands)
     elif args.callback:
         command_sources = []
     else:
@@ -116,7 +115,7 @@ def cli_main():
     # Run commands or callback
     if command_sources:
         callback = gw_local[args.callback] if args.callback else None
-        all_results, last_result = process_commands(command_sources, callback=callback)
+        all_results, last_result = process(command_sources, callback=callback)
     elif args.callback:
         result = gw_local[args.callback]()
         all_results, last_result = [result], result
@@ -171,7 +170,7 @@ def cli_main():
         print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
 
 
-def process_commands(command_sources, callback=None, **context):
+def process(command_sources, callback=None, **context):
     """Shared logic for executing CLI or recipe commands with optional per-node callback."""
     import argparse
     from gway import gw as _global_gw, Gateway
@@ -209,7 +208,7 @@ def process_commands(command_sources, callback=None, **context):
         if not chunk:
             continue
 
-        gw.debug(f"Processing chunk: {chunk}")
+        gw.debug(f"Next {chunk=}")
 
         # Invoke callback if provided
         if callback:
@@ -240,18 +239,18 @@ def process_commands(command_sources, callback=None, **context):
 
         # Parse function arguments, using parse_known_args if **kwargs present
         func_parser = argparse.ArgumentParser(prog=".".join(path))
-        add_function_args(func_parser, resolved_obj)
+        add_func_args(func_parser, resolved_obj)
 
         var_kw_name = getattr(resolved_obj, "__var_keyword_name__", None)
         if var_kw_name:
             parsed_args, unknown = func_parser.parse_known_args(func_args)
-            # stash the raw unknown tokens for prepare_arguments
+            # stash the raw unknown tokens for prepare
             setattr(parsed_args, var_kw_name, unknown)
         else:
             parsed_args = func_parser.parse_args(func_args)
 
         # Prepare and invoke
-        final_args, final_kwargs = prepare_arguments(parsed_args, resolved_obj)
+        final_args, final_kwargs = prepare(parsed_args, resolved_obj)
         try:
             result = resolved_obj(*final_args, **final_kwargs)
             last_result = result
@@ -264,7 +263,7 @@ def process_commands(command_sources, callback=None, **context):
     return all_results, last_result
 
 
-def prepare_arguments(parsed_args, func_obj):
+def prepare(parsed_args, func_obj):
     """Prepare *args and **kwargs for a function call."""
     func_args = []
     func_kwargs = {}
@@ -305,7 +304,7 @@ def prepare_arguments(parsed_args, func_obj):
     return func_args, {**func_kwargs, **extra_kwargs}
 
 
-def chunk_command(args_commands):
+def chunk(args_commands):
     """Split args.commands into logical chunks without breaking quoted arguments."""
     chunks = []
     current_chunk = []
@@ -342,7 +341,7 @@ def show_functions(functions: dict):
             print(f"      {doc}")
 
 
-def add_function_args(subparser, func_obj):
+def add_func_args(subparser, func_obj):
     """Add the function's arguments to the CLI subparser."""
     sig = inspect.signature(func_obj)
     seen_kw_only = False
@@ -369,7 +368,7 @@ def add_function_args(subparser, func_obj):
 
             # before the first kw-only marker (*) → positional
             if is_positional:
-                opts = get_arg_options(arg_name, param, gw)
+                opts = get_arg_opts(arg_name, param, gw)
                 # argparse forbids 'required' on positionals:
                 opts.pop('required', None)
 
@@ -407,11 +406,11 @@ def add_function_args(subparser, func_obj):
                     )
                     subparser.set_defaults(**{arg_name: param.default})
                 else:
-                    opts = get_arg_options(arg_name, param, gw)
+                    opts = get_arg_opts(arg_name, param, gw)
                     subparser.add_argument(cli_name, **opts)
 
 
-def get_arg_options(arg_name, param, gw=None):
+def get_arg_opts(arg_name, param, gw=None):
     """Infer argparse options from parameter signature."""
     opts = {}
     annotation = param.annotation
@@ -428,7 +427,7 @@ def get_arg_options(arg_name, param, gw=None):
         non_none = [a for a in args if a is not type(None)]
         if len(non_none) == 1:
             inner_param = type("param", (), {"annotation": non_none[0], "default": default})
-            return get_arg_options(arg_name, inner_param, gw)
+            return get_arg_opts(arg_name, inner_param, gw)
         elif all(a in (str, int, float) for a in non_none):
             inferred_type = str
     elif annotation != inspect.Parameter.empty:

@@ -7,7 +7,7 @@ Welcome [[Viajante]], this is the GWAY project README.rst file and the perfect w
 
 `Our Goal: Lower the barrier to a higher-level of systems integration.`
 
-`Philosophy: Every function should be a solution and entry point.`
+`Philosophy: Every function is both an entry point and a full solution.`
 
 Fetch the source, changelogs and issues (or submit your own) here:
 

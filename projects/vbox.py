@@ -90,7 +90,7 @@ def render_box_error(title: str, message: str, *, back_link: bool = True, target
     return html
 
 
-def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, email: str = None, **kwargs):
+def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: str = None, **kwargs):
     """
     GET: Display upload interface or create a new upload box.
     POST: Handle uploaded files to a specific vbid.
@@ -245,7 +245,7 @@ def render_upload_view(*, vbid: str = None, timeout: int = 60, files: int = 4, e
             {file_inputs}
             <br><p><button type="submit">Upload</button><p/>
         </form>
-        <p>Files will be stored in <code>work/{VBOX_PATH}/{short}/</code></p>
+        <p>Files will be stored in <code>{'/'.join(VBOX_PATH)}/{short}/</code></p>
         <p><a href="{download_url}">Go to download page for this box</a></p>
     """
 
@@ -340,7 +340,7 @@ def stream_file_response(path: str, filename: str) -> HTTPResponse:
     return HTTPResponse(body=body, status=200, headers=headers)
 
 
-def render_download_view(*hashes: tuple[str], vbid: str = None, **kwargs):
+def view_download(*hashes: tuple[str], vbid: str = None, **kwargs):
     """
     GET: Show list of files in the box (with hash), allow selection/download.
     If a single hash is provided, return that file. Multiple hashes are not supported yet.
@@ -404,6 +404,6 @@ def render_download_view(*hashes: tuple[str], vbid: str = None, **kwargs):
     # Only include upload link if full vbid was used
     if "." in vbid:
         upload_url = gw.build_url("upload", vbid=vbid)
-        html += f"<p><a href='{upload_url}'>Add more files to this box</a></p>"
+        html += f"<p><a href='{upload_url}'>UPLOAD MORE files to this box</a></p>"
 
     return html

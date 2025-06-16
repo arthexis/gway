@@ -181,37 +181,41 @@ def resource_list(*parts, ext=None, prefix=None, suffix=None):
 
 
 def test(root: str = 'tests', filter=None):
-    """Execute all automatically detected test suites."""
+    """Execute all automatically detected test suites, logging to logs/test.log."""
     import unittest
+    import os
     from gway import gw
+    from gway.logging import use_logging
 
-    print("Running the test suite...")
+    with use_logging(logfile="test.log", logdir="logs", prog_name="gway",
+                     debug=getattr(gw, "debug", False),
+                     loglevel=getattr(gw, "loglevel", "INFO"),
+                     verbose=getattr(gw, "verbose", False)):
+        print("Running the test suite...")
 
-    # Define a custom pattern to include files matching the filter
-    def is_test_file(file):
-        # If no filter, exclude files starting with '_'
-        if filter:
-            return file.endswith('.py') and filter in file
-        return file.endswith('.py') and not file.startswith('_')
+        def is_test_file(file):
+            if filter:
+                return file.endswith('.py') and filter in file
+            return file.endswith('.py') and not file.startswith('_')
 
-    # List all the test files manually and filter
-    test_files = [
-        os.path.join(root, f) for f in os.listdir(root)
-        if is_test_file(f)
-    ]
+        test_files = [
+            os.path.join(root, f) for f in os.listdir(root)
+            if is_test_file(f)
+        ]
 
-    # Load the test suite manually from the filtered list
-    test_loader = unittest.defaultTestLoader
-    test_suite = unittest.TestSuite()
+        test_loader = unittest.defaultTestLoader
+        test_suite = unittest.TestSuite()
 
-    for test_file in test_files:
-        test_suite.addTests(test_loader.discover(
-            os.path.dirname(test_file), pattern=os.path.basename(test_file)))
-    
-    # Run the tests
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(test_suite)
-    gw.info(f"Test results: {str(result).strip()}")
+        for test_file in test_files:
+            test_suite.addTests(test_loader.discover(
+                os.path.dirname(test_file), pattern=os.path.basename(test_file)))
+
+        runner = unittest.TextTestRunner(verbosity=2)
+        result = runner.run(test_suite)
+        gw.info(f"Test results: {str(result).strip()}")
+
+    # after the block, logs restore to normal!
+
     return result.wasSuccessful()
 
 ...
@@ -393,7 +397,7 @@ def run_recipe(*script: str, **context):
     Run commands parsed from a .gwr file, falling back to the 'recipes/' resource bundle.
     Recipes are gway scripts composed of one command per line with optional comments.
     """
-    from .console import load_recipe, process_commands
+    from .console import load_recipe, process
     from gway import gw
 
     gw.debug(f"run_recipe called with script tuple: {script!r}")
@@ -426,7 +430,7 @@ def run_recipe(*script: str, **context):
     command_sources, comments = load_recipe(script_path)
     if comments:
         gw.debug("Recipe comments:\n" + "\n".join(comments))
-    return process_commands(command_sources, **context)
+    return process(command_sources, **context)
 
 
 def run(*script: str, **context):

@@ -2,7 +2,10 @@
 # Minimal GWAY website ingredients
 
 web app setup --home readme
-web app setup --project vbox 
-web app setup --project conway 
+web app setup --project web.cookie --path cookie
+web app setup --project web.navbar --path nav
+web app setup --project vbox --home upload
+web app setup --project conway --home board --path games/conway
+
 web server start-app --host 127.0.0.1 --port 8888
 until --lock-file VERSION --lock-pypi 

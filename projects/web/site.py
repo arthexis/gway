@@ -6,11 +6,11 @@
 
 import html
 from docutils.core import publish_parts
-from bottle import request
+from bottle import request, response
 from gway import gw
 
 
-def render_readme_view(*args, **kwargs):
+def view_readme(*args, **kwargs):
     """Render the README.rst file as HTML."""
 
     readme_path = gw.resource("README.rst")
@@ -21,58 +21,31 @@ def render_readme_view(*args, **kwargs):
     return html_parts["html_body"]
 
 
-def render_cookies_view():
-    cookies_ok = gw.web.app.cookies_enabled()
+def view_restyle(css=None, next=None):
+    """
+    Sets the css cookie to the requested value and redirects to 'next'.
+    Accepts both GET (query params) and POST (form params).
+    If missing params, show info/debug.
+    """
+    css_val = css or request.forms.get('css') or request.query.get('css')
+    next_val = next or request.forms.get('next') or request.query.get('next')
 
-    def describe_cookie(key, value):
-        key = html.escape(key or "")
-        value = html.escape(value or "")
-        if not value:
-            return f"<li><b>{key}</b>: (empty)</li>"
+    if not css_val or not next_val:
+        response.status = 400
+        return (
+            "<h1>Style Switcher</h1>"
+            "<p>This endpoint is for switching styles. Use the style selector in the navbar.</p>"
+            f"<p>css: <b>{html.escape(str(css_val) if css_val else '')}</b> | next: <b>{html.escape(str(next_val) if next_val else '')}</b></p>"
+        )
 
-        if key == "visited":
-            items = value.split("|")
-            links = "".join(
-                f"<li><a href='/{html.escape(route)}'>{html.escape(title)}</a></li>"
-                for title_route in items if "=" in title_route
-                for title, route in [title_route.split("=", 1)]
-            )
-            return f"<li><b>{key}</b>:<ul>{links}</ul></li>"
+    if gw.web.cookie.check_consent():
+        gw.web.cookie.set("css", css_val)
 
-        elif key == "css":
-            return f"<li><b>{key}</b>: {value} (your selected style)</li>"
+    response.status = 303
+    response.set_header("Location", next_val)
+    return ""
 
-        return f"<li><b>{key}</b>: {value}</li>"
 
-    if not cookies_ok:
-        return """
-        <h1>All our cookies have been removed</h1>
-        <p>Until you press the "Accept our cookies" button above again, your actions
-        on this site will not be recorded, but your interaction may also be limited.</p>
-        <p>This restriction exists because some functionality (like navigation history,
-        styling preferences, or shopping carts) depends on cookies.</p>
-        <p><a href="javascript:history.back()">← Go back</a></p>
-        """
-    else:
-        stored = []
-        for key in sorted(request.cookies):
-            val = request.get_cookie(key, "")
-            stored.append(describe_cookie(key, val))
-
-        cookies_html = "<ul>" + "".join(stored) + "</ul>" if stored else "<p>No stored cookies found.</p>"
-
-        return f"""
-        <h1>Cookies are enabled for this site</h1>
-        <p>Below is a list of the cookie-based information we are currently storing about you:</p>
-        {cookies_html}
-        <p>We do not sell or share your cookie data beyond the service providers used to host and
-        deliver this website. These include database, CDN, and web infrastructure providers necessary
-        to fulfill your requests.</p>
-        <p>You can remove all stored cookie information at any time by pressing the 
-        "Remove our cookies" button in the navbar.</p>
-        <p><a href="javascript:history.back()">← Go back</a></p>
-        """
-    
 # TODO: Improve help display:
 # 1. Put project and function in the same vertical axis to save height.
 # 2. Turn references into links to help topics.
@@ -82,7 +55,7 @@ def render_cookies_view():
 # 6. When getting help for multiple items, wrap them in a div for styling
 #    Suggest CSS we can add to base.css to decorate each help item.
 
-def render_help_view(topic="", *args, **kwargs):
+def view_help(topic="", *args, **kwargs):
     """Render dynamic help based on GWAY introspection and search-style links."""
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
@@ -159,7 +132,7 @@ def _render_help_section(info, use_query_links=False, *args, **kwargs):
     return f"<article class='help-entry'>{''.join(rows)}</article>"
 
 
-def render_qr_code_view(*args, value=None, **kwargs):
+def view_qr_code(*args, value=None, **kwargs):
     """Generate a QR code for a given value and serve it from cache if available."""
     if not value:
         return '''
@@ -179,7 +152,7 @@ def render_qr_code_view(*args, value=None, **kwargs):
     """
 
 
-def render_awg_finder_view(
+def view_awg_finder(
     *args, meters=None, amps="40", volts="220", material="cu", 
     max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
 ):
@@ -234,5 +207,8 @@ def render_awg_finder_view(
         </ul>
         <p><a href="/awg-finder">Calculate again</a></p>
     """
+
+
+
 
 ...

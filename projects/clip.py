@@ -92,7 +92,7 @@ def track_history(interval: int = 5, *, stop_after=None, notify=True):
         gw.warning("Clipboard tracking manually interrupted.")
 
 
-def render_history_view(*, selection: list = None, copy: bool = True, purge: bool = True):
+def view_history(*, selection: list = None, copy: bool = True, purge: bool = True):
     gw.verbose(f"Received {selection=}")
     selection = gw.to_list(selection) if selection else selection
     # TODO: If copy, concatenate selection, copy to clipboard

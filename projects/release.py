@@ -375,3 +375,7 @@ def create_shortcut(
 
 if __name__ == "__main__":
     build()
+
+
+# TODO: Add a function "coverage" that generates test coverage information split into
+# two main categories:/ gway and /projects, then break projects down at top level.

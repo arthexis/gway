@@ -12,15 +12,16 @@ import threading
 import importlib
 import functools
 
+from regex import W
+
 from .envs import load_env, get_base_client, get_base_server
 from .sigils import Resolver
 from .structs import Results, Project, Null
 
-
 class Gateway(Resolver):
-    _builtins = None
+    _builtins = None  # Class-level: stores all discovered builtins only once
     _thread_local = threading.local()
-    
+
     Null = Null  # Null is a black-hole, assign with care.
 
     # Global state (typically set from CLI)
@@ -30,25 +31,25 @@ class Gateway(Resolver):
 
     def __init__(self, *, 
                 client=None, server=None, verbose=False, silent=False, debug=None,
-                name="gw", base_path=None, project_path=None, quantity=None, **kwargs
+                name="gw", base_path=None, project_path=None, wizard=None, **kwargs
     ):
-
         self._cache = {}
         self._async_threads = []
-        self.quantity = quantity 
+        self.wizard = wizard
         self.uuid = uuid.uuid4()
         self.base_path = base_path or os.path.dirname(os.path.dirname(__file__))
         self.project_path = project_path
         self.name = name
         self.logger = logging.getLogger(name)
 
+        # Configure log level helpers
         if debug is not None:
             Gateway.debug = (lambda self, msg: self.logger.debug(msg, stacklevel=2)) if debug else Null
         if silent is not None:
-            Gateway.silent = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if debug else Null
+            Gateway.silent = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if silent else Null
         if verbose is not None:
-            Gateway.verbose = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if debug else Null
-            
+            Gateway.verbose = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if verbose else Null
+
         client_name = client or get_base_client()
         server_name = server or get_base_server()
 
@@ -70,6 +71,7 @@ class Gateway(Resolver):
         load_env("client", client_name, env_root)
         load_env("server", server_name, env_root)
 
+        # Load builtins ONCE, at class level
         if Gateway._builtins is None:
             builtins_module = importlib.import_module("gway.builtins")
             Gateway._builtins = {
@@ -79,8 +81,6 @@ class Gateway(Resolver):
                 and not name.startswith("_")
                 and inspect.getmodule(obj) == builtins_module
             }
-
-        self._builtin_functions = Gateway._builtins.copy()
 
     def projects(self):
         from pathlib import Path
@@ -108,17 +108,24 @@ class Gateway(Resolver):
         return sorted_result
 
     def builtins(self):
-        return sorted(self._builtins)
+        return sorted(Gateway._builtins)
 
     def success(self, message):
         print(message)
         self.info(message)
 
-    def wrap_callable(self, func_name, func_obj):
+    # Do not show the calling and result storing of gway builtins in the log unless gw.verbose is trueish.
+    def wrap_callable(self, func_name, func_obj, *, is_builtin=False):
         @functools.wraps(func_obj)
-        def wrapped(*args, **kwargs):
+        def wrap(*args, **kwargs):
             try:
-                self.debug(f"Call <{func_name}>: {args=} {kwargs=}")
+                kwarg_txt = ', '.join(f"{k}='{v}'" for k,v in kwargs.items())
+                arg_txt = ', '.join(f"'{x}'" for x in args)
+                if kwarg_txt and arg_txt:
+                    arg_txt = f"{arg_txt}, "
+                # Only log call for builtins if verbose; otherwise, always log for non-builtins
+                if not (is_builtin and not self.verbose):
+                    self.debug(f"> {func_name}({arg_txt}{kwarg_txt})")
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
@@ -155,8 +162,6 @@ class Gateway(Resolver):
                         if param.default == val:
                             found = self.find_value(param.name)
                             if found is not None and found != val:
-                                if not self.silent:
-                                    self.info(f"Injected {param.name}={found} overrides default {val=}")
                                 val = found
                                 self.context[param.name] = val
                         kwargs_to_pass[param.name] = val
@@ -170,7 +175,7 @@ class Gateway(Resolver):
                     )
                     self._async_threads.append(thread)
                     thread.start()
-                    return f"[async task started for {func_name}]"
+                    return f"ASYNC task started for {func_name}"
 
                 result = func_obj(*args_to_pass, **kwargs_to_pass)
 
@@ -182,7 +187,7 @@ class Gateway(Resolver):
                     )
                     self._async_threads.append(thread)
                     thread.start()
-                    return f"[async coroutine started for {func_name}]"
+                    return f"ASYNC coroutine started for {func_name}"
 
                 # Step 5: Store result into results/context if not None
                 if result is not None:
@@ -209,18 +214,18 @@ class Gateway(Resolver):
 
                     sensitive_keywords = ("password", "secret", "token", "key")
                     if any(word.lower() in sk.lower() for word in sensitive_keywords):
-                        log_value = "<censored>"
+                        log_value = "<redacted>"
                     else:
                         log_value = short_result
 
-                    self.debug(f"Stored {log_value} into sk={sk}")
+                    # Only log result for builtins if verbose; otherwise, always log for non-builtins
+                    if not (is_builtin and not self.verbose):
+                        self.debug(f"< result['{sk}'] == {log_value}")
                     self.results.insert(sk, result)
                     if lk != sk:
                         self.results.insert(lk, result)
                     if isinstance(result, dict):
                         self.context.update(result)
-                else:
-                    self.debug("Returned {result=}, skip storing.")
 
                 return result
 
@@ -228,10 +233,9 @@ class Gateway(Resolver):
                 self.error(f"Error in '{func_name}': {e}")
                 raise
 
-        return wrapped
+        return wrap
 
     def run_coroutine(self, func_name, coro_or_func, args=None, kwargs=None):
-        gw.verbose(f"Prep run_couroutine with '{func_name}' {args=} {kwargs=}")
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -275,15 +279,18 @@ class Gateway(Resolver):
             os._exit(1)
 
     def __getattr__(self, name):
+        # Pass through standard logger methods if present
         if hasattr(self.logger, name) and callable(getattr(self.logger, name)):
             return getattr(self.logger, name)
 
-        if name in self._builtin_functions:
-            func = self.wrap_callable(name, self._builtin_functions[name])
+        # Use class-level _builtins; never copy per-instance
+        if name in Gateway._builtins:
+            func = self.wrap_callable(name, Gateway._builtins[name], is_builtin=True)
             setattr(self, name, func)
             return func
 
-        if name in self._cache: return self._cache[name]
+        if name in self._cache:
+            return self._cache[name]
 
         try:
             project_obj = self.load_project(project_name=name)
@@ -297,7 +304,7 @@ class Gateway(Resolver):
 
         def try_path(base_dir):
             base = gw.resource(base_dir, *project_name.split("."))
-            self.verbose(f"Trying to load {project_name} from {base}")
+            self.debug(f"{project_name} <- Project('{base}')")
 
             def load_module_ns(py_path: str, dotted: str):
                 mod = self.load_py_file(py_path, dotted)
@@ -332,7 +339,7 @@ class Gateway(Resolver):
                 return result
 
         raise FileNotFoundError(
-            f"Project path not found for '{project_name}' in '{root}' or fallback '{self.project_path}'")
+            f"Project path not found for '{project_name}' in '{root}' or '{self.project_path}'")
 
     def load_py_file(self, path: str, dotted_name: str):
         module_name = dotted_name.replace(".", "_")

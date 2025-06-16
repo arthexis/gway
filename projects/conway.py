@@ -61,7 +61,7 @@ def next_generation(board):
         for r,row in enumerate(board)
     ]
 
-def render_conway_view(*args, action=None, board=None, **kwargs):
+def view_board(*args, action=None, board=None, **kwargs):
     """
     Render the Conway's Game of Life UI.
     - action: new, random, step, clear, toggle
