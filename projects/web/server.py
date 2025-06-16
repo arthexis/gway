@@ -6,9 +6,6 @@
 from numpy import iterable
 from gway import gw
 
-# TODO: Ensure start_app is compatible with applications that use websocket endpoints
-# such as ocpp.setup_csms_v16_app. The ws:// URL should be logged and printed to
-# the console the same way the http:// URL is displayed.
 
 def start_app(*,
     host="[WEBSITE_HOST|127.0.0.1]",

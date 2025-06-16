@@ -173,66 +173,94 @@ After placing your modules under `projects/`, you can immediately invoke them fr
 By default, results get reused as context for future calls made with the same Gateway thread.  
 
 
-🧪 Recipes
-----------
+Recipes and Web Views
+=====================
 
-Gway recipes are lightweight `.gwr` scripts containing one command per line, optionally interspersed with comments. These recipes are executed sequentially, with context and results automatically passed from one step to the next.
+GWAY comes with powerful primitives for building modular web applications out of ordinary Python functions. 
+You can declare site structure and custom views with just a few lines of code, and compose complex sites by chaining projects.
 
-Each line undergoes **sigil resolution** using the evolving context before being executed. This makes recipes ideal for scripting interactive workflows where the result of one command feeds into the next.
+Overview
+--------
 
-🔁 How It Works
-~~~~~~~~~~~~~~~
+- **Views** are simply Python functions in a project (e.g. `projects/web/site.py`) named according to a pattern (by default, `view_{name}`).
+- The `web.app.setup` function registers views from one or more projects and sets up all routing and static file handling.
+- The `web.server.start-app` function launches your site on a local server using Bottle (or FastAPI, for ASGI).
+- All configuration can be scripted using GWAY recipes (`.gwr` files) for full automation.
 
-Under the hood, recipes are executed using the `run_recipe` function:
+Minimal Example
+---------------
+
+Suppose you want to create a website with custom routes:
 
 .. code-block:: python
 
-    from gway import gw
+    # projects/mysite.py
 
-    # Run a named recipe
-    gw.recipe.run("example")
-    # This is exactly the same but is a builtin (no difference otherwise)
-    gw.run_recipe("example")
+    def view_hello():
+        return "<h1>Hello, World!</h1>"
 
-    # Or with extra context:
-    # Project and size are assumed to be parameters of the example function.
-    gw.recipe.run("example", project="Delta", size=12)
+    def view_about():
+        return "<h2>About This Site</h2><p>Powered by GWAY.</p>"
 
-If the file isn't found directly, Gway will look in its internal `recipes/` resource folder.
+Then in your recipe:
 
-
-🌐 Example: `website.gwr`
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-An example recipe at `recipes/website.gwr` is included. It generates a basic web setup using inferred context. Default parameters are taken from client and server .envs where possible automatically. It goes beyond the basic help website by providing aditional debugging and browser instrumentiation features. Here's what it contains:
-
-.. code-block:: 
+.. code-block:: text
 
     # recipes/website.gwr
-    # Minimal GWAY website ingredients
-
-    web app setup  
-    web app setup --project box --home upload
+    web app setup --project mysite --home hello
     web server start-app --host 127.0.0.1 --port 8888
-    until --lock-file VERSION --lock-pypi 
+    until --lock-file VERSION --lock-pypi
 
+Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your views.
 
-You can run it with:
+Composing Sites from Multiple Projects
+--------------------------------------
 
-.. code-block:: bash
+You can chain as many projects as you want; each can define its own set of views and home page. This makes it easy to build modular dashboards or feature-rich portals:
 
-    gway -r website.gwr
+.. code-block:: text
 
+    # recipes/website.gwr
+    web app setup --home readme
+    web app setup --project web.cookie --path cookie
+    web app setup --project web.navbar --path nav
+    web app setup --project vbox --home upload
+    web app setup --project conway --home board --path games/conway
 
-Or in Python:
+    web server start-app --host 127.0.0.1 --port 8888
+    until --lock-file VERSION --lock-pypi
+
+How It Works
+------------
+
+- `web.app.setup` wires up each project, registering all views (functions starting with the given prefix, default `view_`).
+- Each project can declare a "home" view, which becomes the landing page for its route.
+- Static files are served from your `data/static/` directory and are accessible at `/static/filename`.
+- The routing system matches `/project/viewname` to a function named `view_viewname` in the relevant project.
+- Query parameters and POST data are automatically passed as keyword arguments to your view function.
+
+View Example with Arguments
+---------------------------
 
 .. code-block:: python
 
-    from gway import gw
-    gw.run("website")
+    # projects/vbox.py
 
+    def view_upload(filename=None):
+        if filename:
+            return f"<p>File uploaded: {filename}</p>"
+        return "<form method='POST'><input name='filename'><button>Upload</button></form>"
 
-This script sets up a web application, launches the server in daemon mode, and waits for lock conditions to stop.
+This view can be accessed as `/vbox/upload` and will receive POST or GET parameters as arguments.
+
+Advanced Topics
+---------------
+
+- **Dynamic Navigation:** The GWAY navbar system can automatically track visited pages and show navigation links based on user activity. See `web.navbar`.
+- **Custom Paths and Prefixes:** Use `--path` and `--prefix` to fine-tune URL patterns and view function name conventions.
+- **Error Handling:** Any exceptions raised in a view are handled by a unified error redirect page (with stack trace if debug is on).
+- **Multiple Servers:** GWAY can launch several WSGI/ASGI apps in parallel, each on its own port, for advanced use cases.
+
 
 Recipes make Gway scripting modular and composable. Include them in your automation flows for maximum reuse and clarity.
 
