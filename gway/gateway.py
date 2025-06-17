@@ -32,11 +32,12 @@ class Gateway(Resolver):
 
     def __init__(self, *, 
                 client=None, server=None, name="gw", base_path=None, project_path=None,
-                verbose=False, silent=False, debug=None, wizard=None, **kwargs
+                verbose=False, silent=False, debug=None, wizard=None, quantity=1, **kwargs
     ):
         self._cache = {}
         self._async_threads = []
         self.uuid = uuid.uuid4()
+        self.quantity = quantity
         self.base_path = base_path or os.path.dirname(os.path.dirname(__file__))
         self.project_path = project_path
         self.name = name

@@ -75,7 +75,7 @@ You can also run a bundled lightweight help/documentation server using a GWAY Re
 
 .. code-block:: powershell
 
-    > gway -dr website
+    > gway -r website
 
 This launches an interactive web UI that lets you browse your project, inspect help docs, and search callable functions.
 
@@ -157,9 +157,11 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+-------------------------------------------------------------+
 | data/          | Static assets, resources, and other included data files.    |
 +----------------+-------------------------------------------------------------+
-| temp/          | Working directory for output files and products.            |
+| work/          | Working directory for output files and products.            |
 +----------------+-------------------------------------------------------------+
 | scripts/       | Included .gwr recipe files (-r mode). You may add more.     |
++----------------+-------------------------------------------------------------+
+| tools/         | Platform-specific scripts and files.                        |
 +----------------+-------------------------------------------------------------+
 
 
@@ -222,6 +224,8 @@ You can chain as many projects as you want; each can define its own set of views
 
     # recipes/website.gwr
     web app setup --home readme
+        --project web.cookie 
+        --project web.navbar 
         --project vbox --home upload
         --project conway --home board --path games/conway
 
@@ -250,12 +254,14 @@ View Example with Arguments
 
     # projects/vbox.py
 
-    def view_upload(filename=None):
-        if filename:
-            return f"<p>File uploaded: {filename}</p>"
-        return "<form method='POST'><input name='filename'><button>Upload</button></form>"
+    def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: str = None, **kwargs):
+        """
+        GET: Display upload interface or create a new upload box.
+        POST: Handle uploaded files to a specific vbid.
+        """
+        ...
 
-This view can be accessed as `/vbox/upload` and will receive POST or GET parameters as arguments.
+This view can be accessed as `/vbox/upload` and will receive POST or GET parameters as arguments. 
 
 Advanced Topics
 ---------------

@@ -88,8 +88,8 @@ aside ul li a.active {
     color: var(--accent, #007bff);
 }
 h1, h2, h3, h4 {
-    margin-top: 0.5em;
-    margin-bottom: 0.3em;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
     font-weight: 700;
     line-height: 1.25;
     font-family: 'Segoe UI Semibold', 'Roboto Slab', 'Georgia', serif, system-ui;
@@ -103,16 +103,44 @@ p {
     margin: 1em 0;
     font-family: inherit;
 }
-pre, code {
+pre {
     background-color: #111827;
     color: #a5f3fc;
     padding: 1rem;
-    margin: 1.5em 0;
+    margin: 1em 0;
     border-radius: 0.5rem;
     overflow-x: auto;
     font-family: 'Fira Mono', 'Fira Code', 'Consolas', 'Menlo', 'Monaco', 'Liberation Mono', monospace;
     font-size: 0.9em;
     line-height: 1.6;
+}
+pre code {
+    /* Don't add more padding! Just inherit color/font, remove background */
+    background: none;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+    border-radius: 0;
+}
+code {
+    /* For inline code only (not inside pre) */
+    background-color: #111827;
+    color: #a5f3fc;
+    padding: 0.14em 0.32em;
+    border-radius: 0.3em;
+    font-family: 'Fira Mono', 'Fira Code', 'Consolas', 'Menlo', 'Monaco', 'Liberation Mono', monospace;
+    font-size: 0.92em;
+}
+
+
+h1 + pre,
+h2 + pre,
+h3 + pre,
+h4 + pre {
+    margin-top: 0.5em;
+}
+main > h1:first-child {
+    margin-top: 1em; /* Adjust to fit your preferred look */
 }
 
 /* Buttons & inputs */

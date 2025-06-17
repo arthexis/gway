@@ -35,8 +35,8 @@ def cli_main():
     add("-m", dest="memory", action="store_true", help="Memory mode: Save or reuse last arguments")
     add("-n", dest="namespace", type=str, help="Default unknown functions to this project")
     add("-o", dest="outfile", type=str, help="Write text output(s) to this file")
-    add("-p", dest="project_path", type=str, help="Root project path for custom functions.")
-    add("-q", dest="quantity", type=int, default=1, help="Max items from generator outputs")
+    add("-p", dest="projects", type=str, help="Root project path for custom functions.")
+    # -q pending
     add("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
     add("-s", dest="server", type=str, help="Override server environment configuration")
     add("-t", dest="timed", action="store_true", help="Enable timing of operations")
@@ -44,6 +44,7 @@ def cli_main():
     add("-v", dest="verbose", action="store_true", help="Verbose mode (where supported)")
     add("-w", dest="wizard", action="store_true", help="Request wizard mode if available")
     add("-x", dest="callback", type=str, help="Execute a callback per command or standalone")
+    add("-y", dest="yes", type=str, help="Say yes to everything. Don't ask any questions.")
     add("-z", dest="silent", action="store_true", help="Suppress all non-critical output")
     add("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
     
@@ -93,10 +94,9 @@ def cli_main():
         verbose=args.verbose,
         silent=args.silent,
         name=args.username or "gw",
-        project_path=args.project_path,
+        projects=args.projects,
         base_path=args.base_path,
         debug=args.debug,
-        quantity=args.quantity,
         wizard=args.wizard
     )
 
@@ -133,7 +133,7 @@ def cli_main():
     def realize(val):
         if hasattr(val, "__iter__") and not isinstance(val, (str, bytes, dict)):
             try:
-                return list(val)[:args.quantity] if args.quantity else list(val)
+                return list(val)  # Do not limit generator output
             except Exception:
                 return val
         return val
@@ -463,8 +463,8 @@ def load_recipe(recipe_filename):
     
     Example:
         web app setup --home readme
-            --project web.cookie --path cookie
-            --project web.navbar --path nav
+            --project vbox --home upload
+            --project conway --home board --path games/conway
         web server start-app --host 127.0.0.1 --port 8888
 
     This parses the indented lines as continuations of the previous non-indented command.

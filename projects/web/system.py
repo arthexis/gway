@@ -3,12 +3,10 @@
 from gway import gw
 
 
-def config_system(template=None, *,
+def config(template=None, *,
     enable=True,
     sites_enabled="/etc/nginx/sites-enabled/[WEBSITE_DOMAIN].conf",
     sites_available="/etc/nginx/sites-available/[WEBSITE_DOMAIN].conf",
-    host="[WEBSITE_HOST|127.0.0.1]",
-    port="[WEBSITE_PORT|8888]",
     use_ssl=True,
     ssl_certificate="/etc/letsencrypt/live/[WEBSITE_DOMAIN]/fullchain.pem",
     ssl_certificate_key="/etc/letsencrypt/live/[WEBSITE_DOMAIN]/privkey.pem",
