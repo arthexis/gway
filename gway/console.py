@@ -453,13 +453,30 @@ def get_arg_opts(arg_name, param, gw=None):
 
 # We keep recipe functions in console.py because anything that changes cli_main
 # typically has an impact in the recipe parsing, and must be reviewed together.
-
+# projects/console.py
 
 def load_recipe(recipe_filename):
-    """Load commands and comments from a .gwr file."""
+    """Load commands and comments from a .gwr file.
+    
+    Supports indented 'chained' lines: If a line begins with whitespace and its first
+    non-whitespace characters are `--`, prepend the last full non-indented command prefix.
+    
+    Example:
+        web app setup --home readme
+            --project web.cookie --path cookie
+            --project web.navbar --path nav
+        web server start-app --host 127.0.0.1 --port 8888
+
+    This parses the indented lines as continuations of the previous non-indented command.
+    """
+    import os
+    from gway import gw
+
     commands = []
     comments = []
+    recipe_path = None
 
+    # --- Recipe file resolution (unchanged) ---
     if not os.path.isabs(recipe_filename):
         candidate_names = [recipe_filename]
         if not os.path.splitext(recipe_filename)[1]:
@@ -477,13 +494,40 @@ def load_recipe(recipe_filename):
 
     gw.info(f"Loading commands from recipe: {recipe_path}")
 
+    # --- Indented command parsing ---
+    deindented_lines = []
+    last_prefix = ""
     with open(recipe_path) as f:
-        for line in f:
-            stripped_line = line.strip()
+        for raw_line in f:
+            line = raw_line.rstrip("\n")
+            stripped_line = line.lstrip()
+            if not stripped_line:
+                continue  # skip blank lines
             if stripped_line.startswith("#"):
                 comments.append(stripped_line)
-            elif stripped_line:
-                commands.append(stripped_line.split())
+                continue
+            # Detect if line is indented and starts with '--'
+            if line[:1].isspace() and stripped_line.startswith("--"):
+                # Prepend previous prefix if available
+                if last_prefix:
+                    deindented_lines.append(last_prefix + " " + stripped_line)
+                else:
+                    # Malformed: indented line but no previous command
+                    deindented_lines.append(stripped_line)
+            else:
+                # New command: save everything up to the first '--' (including trailing spaces)
+                parts = line.split("--", 1)
+                if len(parts) == 2:
+                    last_prefix = parts[0].rstrip()
+                    deindented_lines.append(line)
+                else:
+                    last_prefix = ""
+                    deindented_lines.append(line)
+
+    # --- Split deindented lines into commands ---
+    for line in deindented_lines:
+        if line.strip() and not line.strip().startswith("#"):
+            commands.append(line.strip().split())
 
     return commands, comments
 

@@ -462,11 +462,17 @@ def _unwrap(obj: Any, expected: Optional[Type], first_only: bool = True):
     Internal generator that recursively searches through obj.
     If first_only is True, yields the first match and stops.
     """
-    def unwrap_closure(fn: FunctionType):
-        if fn.__closure__:
+    def unwrap_closure(fn):
+        # Only unwrap closures for *actual* functions with __closure__
+        if isinstance(fn, FunctionType) and getattr(fn, "__closure__", None):
             for cell in fn.__closure__:
-                val = cell.cell_contents
+                try:
+                    val = cell.cell_contents
+                except Exception:
+                    continue
                 yield from _unwrap(val, expected, first_only)
+                if first_only:
+                    return
 
     if expected is not None:
         if isinstance(obj, expected):
@@ -489,6 +495,7 @@ def _unwrap(obj: Any, expected: Optional[Type], first_only: bool = True):
             if first_only:
                 return
 
+        # Only iterate if it's not a string/bytes/bytearray
         if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes, bytearray)):
             for item in obj:
                 yield from _unwrap(item, expected, first_only)

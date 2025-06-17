@@ -216,24 +216,29 @@ Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your view
 Composing Sites from Multiple Projects
 --------------------------------------
 
-You can chain as many projects as you want; each can define its own set of views and home page. This makes it easy to build modular dashboards or feature-rich portals:
+You can chain as many projects as you want; each can define its own set of views and home page:
 
 .. code-block:: text
 
     # recipes/website.gwr
     web app setup --home readme
-    web app setup --project web.cookie --path cookie
-    web app setup --project web.navbar --path nav
-    web app setup --project vbox --home upload
-    web app setup --project conway --home board --path games/conway
+        --project web.cookie --path cookie
+        --project web.navbar --path nav
+        --project vbox --home upload
+        --project conway --home board --path games/conway
 
     web server start-app --host 127.0.0.1 --port 8888
     until --lock-file VERSION --lock-pypi
+
+
+The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application.
+
 
 How It Works
 ------------
 
 - `web.app.setup` wires up each project, registering all views (functions starting with the given prefix, default `view_`).
+- You call setup multiple times to configure each project. The project/function name can be skipped on repeat lines.
 - Each project can declare a "home" view, which becomes the landing page for its route.
 - Static files are served from your `data/static/` directory and are accessible at `/static/filename`.
 - The routing system matches `/project/viewname` to a function named `view_viewname` in the relevant project.

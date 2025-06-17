@@ -1,17 +1,14 @@
 # projects/web/server.py
 
-# This project supports starting apps using a local server, but also handles
-# the administration of external web servers in one single package.
-
 from numpy import iterable
 from gway import gw
 
-# --- Track how many times the default app is built to catch likely misconfigurations ---
 _default_app_build_count = 0
 
 def start_app(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
+    ws_port="[WEBSOCKETS_PORT|9000]",         
     debug=False,
     proxy=None,
     app=None,
@@ -20,37 +17,54 @@ def start_app(*,
     is_worker=False,
     workers=None,
 ):
-    """Start an HTTP (WSGI) or ASGI server to host the given application.
+    """
+    Start an HTTP (WSGI) or ASGI server to host the given application.
 
-    - If `app` is a FastAPI instance, runs with Uvicorn.
-    - If `app` is a WSGI app (Bottle, Paste URLMap, or generic WSGI callables), uses Paste+ws4py or Bottle.
+    - If `app` is a FastAPI instance, runs with Uvicorn (optionally on ws_port if set).
+    - If `app` is a WSGI app, uses Paste+ws4py or Bottle.
     - If `app` is a zero-arg factory, it will be invoked (supporting sync or async factories).
-    - If `app` is a list of apps, each will be run in its own thread (each on an incremented port).
+    - If `app` is a list of apps, each will be run in its own thread (each on an incremented port; FastAPI uses ws_port if set).
     """
     import inspect
     import asyncio
 
     host = gw.resolve(host) if isinstance(host, str) else host
     port = gw.resolve(port) if isinstance(port, str) else port
+    ws_port = gw.resolve(ws_port) if isinstance(ws_port, str) else ws_port
 
     def run_server():
         nonlocal app
         all_apps = app if iterable(app) else (app, )
 
-        # B. Dispatch multiple apps in threads if we aren't already in a worker
+        # ---- Multi-app mode ----
         if not is_worker and len(all_apps) > 1:
             from threading import Thread
             from collections import Counter
             threads = []
             app_types = []
             gw.info(f"Starting {len(all_apps)} apps in parallel threads.")
+
+            fastapi_count = 0
             for i, sub_app in enumerate(all_apps):
                 try:
                     from fastapi import FastAPI
-                    app_type = "FastAPI" if isinstance(sub_app, FastAPI) else type(sub_app).__name__
+                    is_fastapi = isinstance(sub_app, FastAPI)
+                    app_type = "FastAPI" if is_fastapi else type(sub_app).__name__
                 except ImportError:
+                    is_fastapi = False
                     app_type = type(sub_app).__name__
-                port_i = int(port) + i
+
+                # ---- Use ws_port for the first FastAPI app if provided, else increment port as before ----
+                if is_fastapi and ws_port and fastapi_count == 0:
+                    port_i = int(ws_port)
+                    fastapi_count += 1
+                else:
+                    # Use base port + i, skipping ws_port if it's in the range
+                    port_i = int(port) + i
+                    # Prevent port collision if ws_port == port_i (rare but possible)
+                    if ws_port and port_i == int(ws_port):
+                        port_i += 1
+
                 gw.info(f"  App {i+1}: type={app_type}, port={port_i}")
                 app_types.append(app_type)
 
@@ -59,6 +73,7 @@ def start_app(*,
                     kwargs=dict(
                         host=host,
                         port=port_i,
+                        ws_port=None,  # Only outer thread assigns ws_port!
                         debug=debug,
                         proxy=proxy,
                         app=sub_app,
@@ -80,7 +95,7 @@ def start_app(*,
                     t.join()
             return
 
-        # 1. If no apps passed, fallback to default app
+        # ---- Single-app mode ----
         global _default_app_build_count
         if not all_apps or all_apps == (None,):
             _default_app_build_count += 1
@@ -92,14 +107,14 @@ def start_app(*,
                 )
             app = gw.web.app.setup(app=None)
         else:
-            app = all_apps[0]  # Run the first (or only) app normally
+            app = all_apps[0]
 
-        # 2. Wrap with proxy if requested
+        # Proxy setup (unchanged)
         if proxy:
             from .proxy import setup_app as setup_proxy
             app = setup_proxy(endpoint=proxy, app=app)
 
-        # 3. If app is a zero-arg factory, invoke it
+        # Factory support (unchanged)
         if callable(app):
             sig = inspect.signature(app)
             if len(sig.parameters) == 0:
@@ -111,9 +126,7 @@ def start_app(*,
             else:
                 gw.info(f"Detected callable WSGI/ASGI app: {app}")
 
-        gw.info(f"Starting {app=} @ {host}:{port}")
-
-        # 4. Detect ASGI/FastAPI
+        # ---- Detect ASGI/FastAPI ----
         try:
             from fastapi import FastAPI
             is_asgi = isinstance(app, FastAPI)
@@ -121,7 +134,9 @@ def start_app(*,
             is_asgi = False
 
         if is_asgi:
-            ws_url = f"ws://{host}:{port}"
+            # Use ws_port if provided, else use regular port
+            port_to_use = int(ws_port) if ws_port else int(port)
+            ws_url = f"ws://{host}:{port_to_use}"
             gw.info(f"WebSocket support active @ {ws_url}/<path>?token=...")
             try:
                 import uvicorn
@@ -131,14 +146,14 @@ def start_app(*,
             uvicorn.run(
                 app,
                 host=host,
-                port=int(port),
+                port=port_to_use,
                 log_level="debug" if debug else "info",
                 workers=workers or 1,
                 reload=debug,
             )
             return
 
-        # 5. Fallback to WSGI servers
+        # ---- WSGI fallback (unchanged) ----
         from bottle import run as bottle_run, Bottle
         try:
             from paste import httpserver
