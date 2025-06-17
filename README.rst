@@ -222,8 +222,6 @@ You can chain as many projects as you want; each can define its own set of views
 
     # recipes/website.gwr
     web app setup --home readme
-        --project web.cookie --path cookie
-        --project web.navbar --path nav
         --project vbox --home upload
         --project conway --home board --path games/conway
 
@@ -233,6 +231,7 @@ You can chain as many projects as you want; each can define its own set of views
 
 The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application.
 
+You can disable default basic features by passing --no-navbar and/or --no-cookies to web app setup.
 
 How It Works
 ------------

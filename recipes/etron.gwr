@@ -4,6 +4,7 @@
 web app setup --home readme
     --project web.cookie --path cookie
     --project web.navbar --path nav
+    
 ocpp setup-csms-app  --allowlist data/etron/rfids.cdv
 web server start-app --host 0.0.0.0 --port 8000 --ws-port 9000 
 

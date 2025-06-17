@@ -25,15 +25,34 @@ def setup(*,
     navbar: bool = True,
     static="static",
     work="work",
-    engine=Bottle
+    cookies=True,
+    engine=Bottle,
 ):
+    """
+    Set up the main web app. By default, includes web.cookie and web.navbar unless
+    explicitly disabled with --no-cookies or --no-navbar.
+    """
     global _version, _homes
+
     if not engine is Bottle:
         raise NotImplementedError("Only Bottle is supported at the moment.")
     _version = _version or gw.version()
     bottle.BaseRequest.MEMFILE_MAX = UPLOAD_MB * 1024 * 1024
 
+    # --- 1. Compute project list, append defaults unless disabled ---
     projects = gw.to_list(project, flat=True)
+    normalized = [p.replace("_", ".") for p in projects]
+
+    # Only add default cookie/navbar if not present and not disabled
+    def append_if_included(condition, name):
+        if condition is not False and condition is not None:
+            if name not in normalized:
+                projects.append(name)
+                normalized.append(name)
+
+    append_if_included(cookies, "web.cookie")
+    append_if_included(navbar, "web.navbar")
+
     if path is None:
         path = "gway" if projects[0] == "web.site" else projects[0].replace('.', '/')
         project_path = projects[0].replace('.', '/') if path != "gway" else "gway"
@@ -127,10 +146,8 @@ def setup(*,
             elif not isinstance(content, str):
                 content = gw.to_html(content)
 
-            # ---- Set visited cookie for this page (after rendering view) ----
             cookies_ok = gw.web.cookie.check_consent()
             if cookies_ok:
-                # Use page title and canonical route (as per navbar.py convention)
                 page_title = view_name.replace("-", " ").replace("_", " ").title()
                 page_route = request.fullpath.lstrip("/")
                 gw.web.cookie.append("visited", page_title, page_route)
@@ -144,7 +161,6 @@ def setup(*,
         if request.query_string:
             full_url += "?" + request.query_string
 
-        # --- Navbar: only pass homes, let navbar handle cookies and visited ---
         if navbar is True:
             navbar_html = gw.web.navbar.render(
                 current_url=full_url,
@@ -166,7 +182,6 @@ def setup(*,
             """
             content = consent_box + content
 
-        # --- CSS: Use only a valid, available style, default to base.css ---
         styles_dir = gw.resource("data", "static", "styles")
         all_styles = [
             f for f in sorted(os.listdir(styles_dir))
