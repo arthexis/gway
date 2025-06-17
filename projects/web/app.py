@@ -8,13 +8,9 @@ from gway import gw
 
 _version = None
 _homes = []  # (title, route)
+_enabled = set()
 UPLOAD_MB = 100
 
-def default_home():
-    for title, route in _homes:
-        if route:
-            return "/" + route.lstrip("/")
-    return "/gway/readme"
 
 def setup(*,
     app=None,
@@ -22,25 +18,26 @@ def setup(*,
     path=None,
     home: str = None,
     prefix: str = "view",
-    navbar: bool = True,
     static="static",
     work="work",
-    engine=Bottle,
+    engine="bottle",
 ):
     global _version, _homes
-    if not engine is Bottle:
+    if engine != "bottle":
         raise NotImplementedError("Only Bottle is supported at the moment.")
     _version = _version or gw.version()
     bottle.BaseRequest.MEMFILE_MAX = UPLOAD_MB * 1024 * 1024
 
+    # Handle web sub-projects by removing the web prefix
     projects = gw.to_list(project, flat=True)
     if path is None:
-        path = "gway" if projects[0] == "web.site" else projects[0].replace('.', '/')
+        path = projects[0].replace('.', '/')
         if path.startswith('web/'):
             path = path.removeprefix('web/')
-        project_path = projects[0].replace('.', '/') if path != "gway" else "gway"
-    else:
-        project_path = path
+    for enabled_proj in projects:
+        if enabled_proj.startswith('web.'):
+            enabled_proj = enabled_proj[4:]
+        _enabled.add(enabled_proj)
 
     is_new_app = not (app := gw.unwrap_one(app, Bottle) if (oapp := app) else None)
     if is_new_app:
@@ -49,11 +46,7 @@ def setup(*,
         _homes.clear()
 
     if home:
-        title = home.replace('-', ' ').replace('_', ' ').title()
-        route = f"{project_path}/{home}"
-        if (title, route) not in _homes:
-            _homes.append((title, route))
-            gw.debug(f"Added home: ({title}, {route})")
+        add_home(home, path)
 
     if static:
         @app.route(f"/{static}/<filename:path>")
@@ -68,7 +61,7 @@ def setup(*,
 
     @app.route(f"/{path}/<view:path>", method=["GET", "POST", "PUT"])
     def view_dispatch(view):
-        nonlocal navbar, home, prefix
+        nonlocal home, prefix
         segments = [s for s in view.strip("/").split("/") if s]
         if not segments:
             if home:
@@ -130,12 +123,13 @@ def setup(*,
                 content = gw.to_html(content)
 
             # ---- Set visited cookie for this page (after rendering view) ----
-            cookies_ok = gw.web.cookie.check_consent()
-            if cookies_ok:
-                # Use page title and canonical route (as per navbar.py convention)
-                page_title = view_name.replace("-", " ").replace("_", " ").title()
-                page_route = request.fullpath.lstrip("/")
-                gw.web.cookie.append("visited", page_title, page_route)
+            if is_enabled('cookies'):
+                cookies_ok = gw.web.cookies.check_consent()
+                if cookies_ok:
+                    # Use page title and canonical route (as per navbar.py convention)
+                    page_title = view_name.replace("-", " ").replace("_", " ").title()
+                    page_route = request.fullpath.lstrip("/")
+                    gw.web.cookies.append("visited", page_title, page_route)
 
         except HTTPResponse as resp:
             return resp
@@ -146,46 +140,35 @@ def setup(*,
         if request.query_string:
             full_url += "?" + request.query_string
 
-        # --- Navbar: only pass homes, let navbar handle cookies and visited ---
-        if navbar is True:
-            navbar_html = gw.web.navbar.render(
-                current_url=full_url,
-                homes=_homes
-            )
-        else:
-            navbar_html = ""
-
-        cookies_ok = gw.web.cookie.check_consent()
-        if not cookies_ok:
-            consent_box = f"""
-                <div class="consent-box">
-                <form action="/cookie/accept" method="post">
-                    <input type="hidden" name="next" value="{request.fullpath}{'?' + request.query_string if request.query_string else ''}" />
-                    This application uses cookies to improve your experience.
-                    <button type="submit">Accept our cookies</button>
-                </form>
-                </div>
-            """
-            content = consent_box + content
-
-        # --- CSS: Use only a valid, available style, default to base.css ---
-        styles_dir = gw.resource("data", "static", "styles")
-        all_styles = [
-            f for f in sorted(os.listdir(styles_dir))
-            if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
-        ]
-        css_cookie = gw.web.cookie.get("css")
-        if cookies_ok and css_cookie in all_styles:
-            css_file = css_cookie
-        elif all_styles:
-            css_file = all_styles[0]
-        else:
-            css_file = "base.css"
+        css_file = "base.css"
+        if is_enabled('cookies'):
+            cookies_ok = gw.web.cookies.check_consent()
+            if not cookies_ok:
+                consent_box = f"""
+                    <div class="consent-box">
+                    <form action="/cookies/accept" method="post">
+                        <input type="hidden" name="next" value="{request.fullpath}{'?' + request.query_string if request.query_string else ''}" />
+                        This application uses cookies to improve your experience.
+                        <button type="submit">Accept our cookies</button>
+                    </form>
+                    </div>
+                """
+                content = consent_box + content
+            css_cookie = gw.web.cookies.get("css")
+            styles_dir = gw.resource("data", "static", "styles")
+            all_styles = [
+                f for f in sorted(os.listdir(styles_dir))
+                if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
+            ]
+            if cookies_ok and css_cookie in all_styles:
+                css_file = css_cookie
+            elif all_styles:
+                css_file = all_styles[0]
 
         try:
             return render_template(
                 title="GWAY - " + view_func.__name__.replace("_", " ").title(),
-                navbar=navbar_html,
+                full_url=full_url,
                 content=content,
                 static=static,
                 css_file=css_file
@@ -210,8 +193,9 @@ def setup(*,
         except Exception as e:
             return redirect_error(e, note="Failed during 404 fallback", default=default_home())
 
-    gw.debug(f"Registered homes: {_homes}")
-
+    if gw.verbose:
+        gw.debug(f"Registered homes: {_homes}")
+        debug_routes(app)
     return oapp if oapp else app
 
 def build_url(*args, **kwargs):
@@ -225,7 +209,7 @@ def build_url(*args, **kwargs):
         url += "?" + urlencode(kwargs)
     return url
 
-def render_template(*, title="GWAY", navbar="", content="", static="static", css_file=None):
+def render_template(*, title="GWAY", full_url="", content="", static="static", css_file=None):
     global _version
     version = _version = _version or gw.version()
     css_links = f'<link rel="stylesheet" href="/{static}/styles/base.css">\n'
@@ -238,6 +222,13 @@ def render_template(*, title="GWAY", navbar="", content="", static="static", css
         <a href="https://pypi.org">PyPI</a> 
         and <a href="https://github.com/arthexis/gway">Github</a>.</p>
     '''
+    if is_enabled('navbar'):
+        navbar = gw.web.navbar.render(
+            current_url=full_url,
+            homes=_homes
+        )
+    else:
+        navbar = ""
     return template("""<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -263,6 +254,29 @@ def render_template(*, title="GWAY", navbar="", content="", static="static", css
         </html>
     """, **locals())
 
+
+def default_home():
+    for title, route in _homes:
+        if route:
+            return "/" + route.lstrip("/")
+    return "/site/readme"
+
+def debug_routes(app):
+    for route in app.routes:
+        gw.debug(f"{route.method:6} {route.rule:30} -> {route.callback.__name__}")
+
+def is_enabled(project_name):
+    global _enabled
+    return project_name in _enabled
+
+def add_home(home, path):
+    global _homes
+    title = home.replace('-', ' ').replace('_', ' ').title()
+    route = f"{path}/{home}"
+    if (title, route) not in _homes:
+        _homes.append((title, route))
+        gw.debug(f"Added home: ({title}, {route})")
+
 def redirect_error(error=None, note="", default=None, broken_view_name=None):
     """
     Unified error redirect: in debug mode, show a debug page; otherwise redirect.
@@ -273,13 +287,12 @@ def redirect_error(error=None, note="", default=None, broken_view_name=None):
     import html
 
     debug_enabled = bool(getattr(gw, "debug", False))
-    current_path = request.fullpath.lstrip("/")
-    visited = gw.web.cookie.get("visited", "")
+    visited = gw.web.cookies.get("visited", "")
     visited_items = visited.split("|") if visited else []
 
     # --- Remove broken link from visited on any 404/view-not-found ---
     pruned = False
-    if broken_view_name and gw.web.cookie.check_consent():
+    if broken_view_name and gw.web.cookies.check_consent():
         norm_broken = (broken_view_name or "").replace("-", " ").replace("_", " ").title().lower()
         new_items = []
         for v in visited_items:
@@ -289,7 +302,7 @@ def redirect_error(error=None, note="", default=None, broken_view_name=None):
                 continue
             new_items.append(v)
         if pruned:
-            gw.web.cookie.set("visited", "|".join(new_items))
+            gw.web.cookies.set("visited", "|".join(new_items))
             visited_items = new_items  # reflect the change for UI
 
     # --- DEBUG MODE: show error info as page ---

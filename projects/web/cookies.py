@@ -77,14 +77,14 @@ def append(name: str, label: str, value: str, sep: str = "|") -> list:
     set(name, cookie_value)
     return items
 
-def view_accept(next="/cookie/jar"):
+def view_accept(next="/cookies/cookies"):
     # Only this is allowed to set cookies if not already enabled!
     set("cookies_accepted", "yes")
     response.status = 303
     response.set_header("Location", next)
     return ""
 
-def view_remove(next="/cookie/jar"):
+def view_remove(next="/cookies/cookies"):
     if not check_consent():
         response.status = 303
         response.set_header("Location", next)
@@ -94,7 +94,7 @@ def view_remove(next="/cookie/jar"):
     response.set_header("Location", next)
     return ""
 
-def view_jar():
+def view_cookies():
     cookies_ok = check_consent()
 
     def describe_cookie(key, value):

@@ -9,13 +9,13 @@ def render(*, current_url=None, homes=None):
     Renders the sidebar navigation.
     Always highlights and shows the current page, even if not yet in the visited cookie.
     """
-    cookies_ok = gw.web.cookie.check_consent()
+    cookies_ok = gw.web.app.is_enabled('cookies') and gw.web.cookies.check_consent()
     gw.debug(f"Render navbar with {homes=} {cookies_ok=}")
 
     # Get current visited links directly from the cookie (never from args)
     visited = []
     if cookies_ok:
-        visited_cookie = gw.web.cookie.get("visited", "")
+        visited_cookie = gw.web.cookies.get("visited", "")
         if visited_cookie:
             visited = visited_cookie.split("|")
 
@@ -65,7 +65,7 @@ def render(*, current_url=None, homes=None):
 
     # --- Search box ---
     search_box = '''
-        <form action="/gway/help" method="get" class="navbar">
+        <form action="/site/help" method="get" class="navbar">
             <input type="text" name="topic" placeholder="Search this GWAY" class="help" />
         </form>
     '''
@@ -76,7 +76,7 @@ def render(*, current_url=None, homes=None):
         qr_url = gw.qr.generate_url(current_url)
         compass = f'''
             <div class="compass">
-                <p class="compass">You are here:</p>
+                <p class="compass"><h3>QR Code to Here</h3></p>
                 <img src="{qr_url}" alt="QR Code" class="compass" />
             </div>
         '''
@@ -89,20 +89,18 @@ def render(*, current_url=None, homes=None):
             f for f in sorted(os.listdir(styles_dir))
             if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
         ]
-        css_cookie = gw.web.cookie.get("css")
+        css_cookie = gw.web.cookies.get("css")
         main_style = css_cookie if css_cookie in all_styles else (all_styles[0] if all_styles else "base.css")
         style_selector = style_selector_form(request.fullpath, styles_dir, all_styles, main_style)
 
     # --- Remove cookies button ---
-    remove_button = ""
-    if cookies_ok:
-        remove_button = '''
-            <form method="post" action="/cookie/remove" style="margin-top: 1rem">
-                <button type="submit">Remove our cookies</button>
-            </form>
-        '''
+    remove_button = '''
+        <form method="post" action="/cookies/remove" style="margin-top: 1rem">
+            <button type="submit">Remove our cookies</button>
+        </form>
+    ''' if cookies_ok else ""
 
-    gw.debug(f"Visited cookie raw: {gw.web.cookie.get('visited')}")
+    gw.debug(f"Visited cookie raw: {gw.web.cookies.get('visited')}")
     return f"<aside>{search_box}<ul>{links}</ul><br>{compass}<br>{style_selector}<br>{remove_button}</aside>"
 
 def html_escape(text):
@@ -127,14 +125,14 @@ def view_styles(**kwargs):
         f for f in sorted(os.listdir(styles_dir))
         if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
     ]
-    css_cookie = gw.web.cookie.get("css")
+    css_cookie = gw.web.cookies.get("css")
     main_style = css_cookie if css_cookie in all_styles else (all_styles[0] if all_styles else "base.css")
     next_url = request.forms.get("next") or request.query.get("next") or "/"
 
     if request.method == "POST":
         style = request.forms.get("css")
         if style and style in all_styles:
-            gw.web.cookie.set("css", style)
+            gw.web.cookies.set("css", style)
         response.status = 303
         response.set_header("Location", next_url)
         return ""
@@ -188,7 +186,7 @@ def style_selector_form(current_path, styles_dir, all_styles, selected_style):
         if style not in added:
             options.append(f'<option value="{style}">{style[:-4].upper()}</option>')
     return f"""
-        <form method="post" action="/nav/styles" class="style-form" style="margin-bottom: 0.5em">
+        <form method="post" action="/navbar/styles" class="style-form" style="margin-bottom: 0.5em">
             <input type="hidden" name="next" value="{html_escape(next_url)}">
             <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="this.form.submit()">
                 {''.join(options)}

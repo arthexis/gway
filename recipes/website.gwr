@@ -2,8 +2,8 @@
 # Minimal GWAY website ingredients
 
 web app setup --home readme
-    --project web.cookie 
-    --project web.navbar 
+    --project web.cookies
+    --project web.navbar
     --project vbox --home upload
     --project conway --home board --path games/conway
     
