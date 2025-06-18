@@ -89,12 +89,12 @@ _active_cons: Dict[str, WebSocket] = {}      # charger_id → live WebSocket
 
 
 def setup_csms_v16_app(*,
-        app=None,
-        allowlist=None,
-        denylist=None,  # New parameter for RFID denylist
-        location=None,
-        authorize=authorize_balance,
-    ):
+    app=None,
+    allowlist=None,
+    denylist=None,  # New parameter for RFID denylist
+    location=None,
+    authorize=authorize_balance,
+):
     """
     Minimal OCPP 1.6 CSMS implementation for conformance testing.
     Supports required Core actions, logs all requests, and accepts all.
@@ -105,24 +105,24 @@ def setup_csms_v16_app(*,
     """
     global _transactions, _active_cons
 
+    # Unwrap or create FastAPI app
     oapp = app
-    if (_is_new_app := not (app := gw.unwrap_one(app, FastAPI))):
-        app = FastAPI()
+    from fastapi import FastAPI as _FastAPI
+    if (_is_new_app := not (app := gw.unwrap_one(app, _FastAPI))):
+        app = _FastAPI()
 
-    # Compose the validator: prefer explicit callable, then gw[] ref, else default (balance >= 1)
+    # Compose the validator: prefer explicit callable, then gw[] ref, else default
     validator = None
     if isinstance(authorize, str):
         validator = gw[authorize]
     elif callable(authorize):
         validator = authorize
 
-    # Always check against latest file (never cache), and warn if allowlist missing
     def is_authorized_rfid(rfid: str) -> bool:
         # --- DENYLIST logic ---
-        if denylist:
-            if gw.cdv.validate(denylist, rfid):
-                gw.info(f"[OCPP] RFID {rfid!r} is present in denylist. Authorization denied.")
-                return False
+        if denylist and gw.cdv.validate(denylist, rfid):
+            gw.info(f"[OCPP] RFID {rfid!r} is present in denylist. Authorization denied.")
+            return False
         # --- ALLOWLIST logic ---
         if not allowlist:
             gw.warn("[OCPP] No RFID allowlist configured — rejecting all authorization requests.")
@@ -133,133 +133,133 @@ def setup_csms_v16_app(*,
     async def websocket_ocpp(websocket: WebSocket, path: str):
         global _csms_loop
         _csms_loop = asyncio.get_running_loop()
-        
+
         charger_id = path.strip("/").split("/")[-1]
         gw.info(f"[OCPP] WebSocket connected: charger_id={charger_id}")
 
-        requested_protocols = websocket.headers.get("sec-websocket-protocol", "")
-        requested_protocols = [p.strip() for p in requested_protocols.split(",") if p.strip()]
+        # negotiate subprotocols
+        protos = websocket.headers.get("sec-websocket-protocol", "").split(",")
+        protos = [p.strip() for p in protos if p.strip()]
+        if "ocpp1.6" in protos:
+            await websocket.accept(subprotocol="ocpp1.6")
+        else:
+            await websocket.accept()
+
+        _active_cons[charger_id] = websocket
 
         try:
-            if "ocpp1.6" in requested_protocols:
-                await websocket.accept(subprotocol="ocpp1.6")
-            else:
-                await websocket.accept()
-
-            _active_cons[charger_id] = websocket
-
             while True:
                 raw = await websocket.receive_text()
                 gw.info(f"[OCPP:{charger_id}] → {raw}")
-
                 try:
-                    try:
-                        msg = json.loads(raw)
-                    except json.JSONDecodeError:
-                        gw.warn(f"[OCPP:{charger_id}] Received non-JSON message: {raw!r}")
-                        continue
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    gw.warn(f"[OCPP:{charger_id}] Received non-JSON message: {raw!r}")
+                    continue
 
-                    if isinstance(msg, list) and msg[0] == 2:
-                        message_id = msg[1]
-                        action = msg[2]
-                        payload = msg[3] if len(msg) > 3 else {}
-                        gw.debug(f"[OCPP:{charger_id}] Action={action} Payload={payload}")
+                if isinstance(msg, list) and msg[0] == 2:
+                    message_id, action = msg[1], msg[2]
+                    payload = msg[3] if len(msg) > 3 else {}
+                    gw.debug(f"[OCPP:{charger_id}] Action={action} Payload={payload}")
 
+                    response_payload = {}
+
+                    if action == "Authorize":
+                        status = "Accepted" if is_authorized_rfid(payload.get("idTag")) else "Rejected"
+                        response_payload = {"idTagInfo": {"status": status}}
+
+                    elif action == "BootNotification":
+                        response_payload = {
+                            "currentTime": datetime.utcnow().isoformat() + "Z",
+                            "interval": 300,
+                            "status": "Accepted"
+                        }
+
+                    elif action == "Heartbeat":
+                        response_payload = {"currentTime": datetime.utcnow().isoformat() + "Z"}
+
+                    elif action == "StartTransaction":
+                        now = int(time.time())
+                        transaction_id = now
+                        _transactions[charger_id] = {
+                            "syncStart": 1,
+                            "connectorId": payload.get("connectorId"),
+                            "idTagStart": payload.get("idTag"),
+                            "meterStart": payload.get("meterStart"),
+                            "reservationId": payload.get("reservationId", -1),
+                            "startTime": now,
+                            "startTimeStr": datetime.utcfromtimestamp(now).isoformat() + "Z",
+                            "startMs": int(time.time() * 1000) % 1000,
+                            "transactionId": transaction_id,
+                            "MeterValues": []
+                        }
+                        response_payload = {
+                            "transactionId": transaction_id,
+                            "idTagInfo": {"status": "Accepted"}
+                        }
+
+                    elif action == "MeterValues":
+                        tx = _transactions.get(charger_id)
+                        if tx:
+                            for entry in payload.get("meterValue", []):
+                                ts = entry.get("timestamp")
+                                ts_epoch = (
+                                    int(datetime.fromisoformat(ts.rstrip("Z")).timestamp())
+                                    if ts else int(time.time())
+                                )
+                                sample = {
+                                    "syncMeter": 1,
+                                    "timestamp": ts_epoch,
+                                    "timestampStr": datetime.utcfromtimestamp(ts_epoch).isoformat() + "Z",
+                                    "timeMs": int(time.time() * 1000) % 1000,
+                                }
+                                # Extract actual meter reading
+                                sv_list = entry.get("sampledValue", [])
+                                try:
+                                    meter_val = int(sv_list[0].get("value"))
+                                except Exception:
+                                    meter_val = None
+                                sample["meter"] = meter_val
+                                tx["MeterValues"].append(sample)
                         response_payload = {}
 
-                        if action == "Authorize":
-                            id_tag = payload.get("idTag")
-                            status = "Accepted" if is_authorized_rfid(id_tag) else "Rejected"
-                            response_payload = {"idTagInfo": {"status": status}}
+                    elif action == "StopTransaction":
+                        now = int(time.time())
+                        tx = _transactions.get(charger_id)
+                        if tx:
+                            tx.update({
+                                "syncStop": 1,
+                                "idTagStop": payload.get("idTag"),
+                                "meterStop": payload.get("meterStop"),
+                                "stopTime": now,
+                                "stopTimeStr": datetime.utcfromtimestamp(now).isoformat() + "Z",
+                                "stopMs": int(time.time() * 1000) % 1000,
+                                "reason": 4,
+                                "reasonStr": "Local",
+                            })
+                            if location:
+                                file_path = gw.resource(
+                                    "work", "etron", "records", location,
+                                    f"{charger_id}_{tx['transactionId']}.dat"
+                                )
+                                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                                with open(file_path, "w") as f:
+                                    json.dump(tx, f, indent=2)
+                        response_payload = {"idTagInfo": {"status": "Accepted"}}
 
-                        elif action == "BootNotification":
-                            response_payload = {
-                                "currentTime": datetime.utcnow().isoformat() + "Z",
-                                "interval": 300,
-                                "status": "Accepted"
-                            }
-
-                        elif action == "Heartbeat":
-                            response_payload = {
-                                "currentTime": datetime.utcnow().isoformat() + "Z"
-                            }
-
-                        elif action == "StartTransaction":
-                            now = int(time.time())
-                            transaction_id = now
-                            _transactions[charger_id] = {
-                                "syncStart": 1,
-                                "connectorId": payload.get("connectorId"),
-                                "idTagStart": payload.get("idTag"),
-                                "meterStart": payload.get("meterStart"),
-                                "reservationId": payload.get("reservationId", -1),
-                                "startTime": now,
-                                "startTimeStr": datetime.utcfromtimestamp(now).isoformat() + "Z",
-                                "startMs": int(time.time() * 1000) % 1000,
-                                "transactionId": transaction_id,
-                                "MeterValues": []
-                            }
-                            response_payload = {
-                                "transactionId": transaction_id,
-                                "idTagInfo": {"status": "Accepted"}
-                            }
-
-                        elif action == "StopTransaction":
-                            now = int(time.time())
-                            tx = _transactions.get(charger_id)
-                            if tx:
-                                tx.update({
-                                    "syncStop": 1,
-                                    "idTagStop": payload.get("idTag"),
-                                    "meterStop": payload.get("meterStop"),
-                                    "stopTime": now,
-                                    "stopTimeStr": datetime.utcfromtimestamp(now).isoformat() + "Z",
-                                    "stopMs": int(time.time() * 1000) % 1000,
-                                    "reason": 4,
-                                    "reasonStr": "Local",
-                                })
-                                if location:
-                                    file_path = gw.resource("work", "etron", "records", location,
-                                                            f"{charger_id}_{tx['transactionId']}.dat")
-                                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                                    with open(file_path, "w") as f:
-                                        json.dump(tx, f, indent=2)
-                            response_payload = {"idTagInfo": {"status": "Accepted"}}
-
-
-                        elif action == "MeterValues":
-                            tx = _transactions.get(charger_id)
-                            if tx:
-                                entries = payload.get("meterValue", [])
-                                for entry in entries:
-                                    ts = entry.get("timestamp")
-                                    ts_epoch = int(datetime.fromisoformat(
-                                        ts.rstrip("Z")).timestamp()) if ts else int(time.time())
-                                    sample = {
-                                        "syncMeter": 1,
-                                        "timestamp": ts_epoch,
-                                        "timestampStr": datetime.utcfromtimestamp(ts_epoch).isoformat() + "Z",
-                                        "timeMs": int(time.time() * 1000) % 1000,
-                                    }
-                                    tx["MeterValues"].append(sample)
-                            response_payload = {}
-
-                        elif action == "StatusNotification":
-                            response_payload = {}
-
-                        else:
-                            response_payload = {"status": "Accepted"}
-
-                        response = [3, message_id, response_payload]
-                        gw.info(f"[OCPP:{charger_id}] ← {action} => {response_payload}")
-                        await websocket.send_text(json.dumps(response))
+                    elif action == "StatusNotification":
+                        response_payload = {}
 
                     else:
-                        gw.warn(f"[OCPP:{charger_id}] Invalid or unsupported message format: {msg}")
+                        response_payload = {"status": "Accepted"}
 
-                except Exception as e:
-                    gw.error(f"[OCPP:{charger_id}] Message processing error: {e}")
-                    gw.debug(traceback.format_exc())
+                    # send confirmation
+                    response = [3, message_id, response_payload]
+                    gw.info(f"[OCPP:{charger_id}] ← {action} => {response_payload}")
+                    await websocket.send_text(json.dumps(response))
+
+                else:
+                    gw.warn(f"[OCPP:{charger_id}] Invalid or unsupported message format: {msg}")
 
         except WebSocketDisconnect:
             gw.info(f"[OCPP:{charger_id}] WebSocket disconnected")
@@ -273,6 +273,138 @@ def setup_csms_v16_app(*,
 
 
 setup_csms_app = setup_csms_v16_app
+
+
+async def simulate_evcs(*,
+        host: str = "[WEBSITE_HOST|127.0.0.1]",
+        ws_port: int = "[WEBSOCKET_PORT|9000]",
+        rfid: str = "FFFFFFFF",
+        cp_path: str = "CPX",
+        duration: int = 60,
+        repeat: bool = False,
+    ):
+    """
+    Simulate an EVCS connecting and running charging sessions over OCPP.
+    Keeps a single persistent WebSocket connection and reuses it for each transaction.
+    Logs all incoming CSMS→CP messages, sending confirmations for CALLs,
+    and respects RemoteStopTransaction commands.
+    """
+    import asyncio, json, random, time, websockets
+    from gway import gw
+
+    # Resolve connection parameters
+    host    = gw.resolve(host)
+    ws_port = int(gw.resolve(ws_port))
+    uri     = f"ws://{host}:{ws_port}/{cp_path}"
+
+    stop_event = asyncio.Event()
+
+    async def listen_to_csms(ws):
+        """
+        Background listener for any incoming CSMS messages.
+        Sends empty confirmations for CALL requests and triggers stop_event on RemoteStopTransaction.
+        Logs any unexpected messages or connection closures.
+        """
+        try:
+            while True:
+                raw = await ws.recv()
+                print(f"[Simulator ← CSMS] {raw}")
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    print("[Simulator] Warning: Received non-JSON message")
+                    continue
+                # Confirm any CALL messages
+                if isinstance(msg, list) and msg[0] == 2:
+                    msg_id, action, payload = msg[1], msg[2], (msg[3] if len(msg) > 3 else {})
+                    await ws.send(json.dumps([3, msg_id, {}]))
+                    if action == "RemoteStopTransaction":
+                        print("[Simulator] Received RemoteStopTransaction → stopping transaction")
+                        stop_event.set()
+                else:
+                    # Log unexpected message types
+                    print("[Simulator] Notice: Unexpected message format", msg)
+        except websockets.ConnectionClosed:
+            print("[Simulator] Connection closed by server")
+            stop_event.set()
+
+    async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as ws:
+        print(f"[Simulator] Connected to {uri}")
+        # Start background listener
+        listener = asyncio.create_task(listen_to_csms(ws))
+
+        # Initial handshake: BootNotification and Authorize
+        await ws.send(json.dumps([2, "boot", "BootNotification", {
+            "chargePointModel": "Simulator",
+            "chargePointVendor": "SimVendor"
+        }]))
+        await ws.recv()
+
+        await ws.send(json.dumps([2, "auth", "Authorize", {"idTag": rfid}]))
+        await ws.recv()
+
+        # Main transaction loop
+        while not stop_event.is_set():
+            # Clear stop_event for this cycle
+            stop_event.clear()
+
+            # StartTransaction
+            meter_start = random.randint(1000, 2000)
+            await ws.send(json.dumps([2, "start", "StartTransaction", {
+                "connectorId": 1,
+                "idTag": rfid,
+                "meterStart": meter_start
+            }]))
+            resp = await ws.recv()
+            tx_id = json.loads(resp)[2].get("transactionId")
+            print(f"[Simulator] Transaction {tx_id} started at meter {meter_start}")
+
+            # MeterValues loop with duration variation
+            actual_duration = random.uniform(duration * 0.75, duration * 1.25)
+            interval = actual_duration / 10
+            meter = meter_start
+
+            for _ in range(10):
+                if stop_event.is_set():
+                    print("[Simulator] Stop event triggered—ending meter loop")
+                    break
+                meter += random.randint(50, 150)
+                await ws.send(json.dumps([2, "meter", "MeterValues", {
+                    "connectorId": 1,
+                    "transactionId": tx_id,
+                    "meterValue": [{
+                        "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S') + "Z",
+                        "sampledValue": [{"value": str(meter)}]
+                    }]
+                }]))
+                await asyncio.sleep(interval)
+
+            # StopTransaction
+            await ws.send(json.dumps([2, "stop", "StopTransaction", {
+                "transactionId": tx_id,
+                "idTag": rfid,
+                "meterStop": meter
+            }]))
+            await ws.recv()
+            print(f"[Simulator] Transaction {tx_id} stopped at meter {meter}")
+
+            if not repeat or stop_event.is_set():
+                break
+
+            print(f"[Simulator] Waiting {actual_duration:.1f}s before next cycle")
+            await asyncio.sleep(actual_duration)
+
+        # Cleanup listener
+        listener.cancel()
+        try:
+            await listener
+        except asyncio.CancelledError:
+            pass
+
+        print("[Simulator] Simulation ended.")
+
+
+...
 
 
 # Views for the main app. These are powered by bottle instead of FastAPI and run on another port.
@@ -392,9 +524,6 @@ def view_action(charger_id: str, action: str):
 
     return {"status": "requested", "messageId": msg_id}
 
-...
-
-
 def power_consumed(tx):
     """Calculate power consumed from transaction meter values."""
     if not tx or not tx.get("MeterValues"):
@@ -407,113 +536,4 @@ def power_consumed(tx):
     power_consumed_kWh = (meter_end - meter_start) / 1000  # assuming meter values are in Wh
     return round(power_consumed_kWh, 2)
 
-...
 
-async def simulate_evcs(*,
-        host: str = "[WEBSITE_HOST|127.0.0.1]",
-        ws_port: int = "[WEBSOCKET_PORT|9000]",
-        rfid: str = "FFFFFFFF",
-        cp_path: str = "CPX",
-        duration: int = 60,
-        repeat: bool = False,
-    ):
-    """
-    Simulate an EVCS connecting and running a charging session.
-    Listens & logs all CSMS→CP messages, and respects RemoteStopTransaction.
-    """
-    import asyncio, json, random, time, websockets
-    from gway import gw
-
-    host    = gw.resolve(host)
-    ws_port = int(gw.resolve(ws_port))
-    uri     = f"ws://{host}:{ws_port}/{cp_path}"
-
-    while True:
-        # Will signal if CSMS asked us to stop
-        stop_event = asyncio.Event()
-
-        async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as ws:
-            print(f"[Simulator] Connected to {uri}")
-
-            # ─── listener ─────────────────────────────────────────────
-            async def listen_to_csms():
-                try:
-                    while True:
-                        raw = await ws.recv()
-                        print(f"[Simulator ← CSMS] {raw}")
-                        try:
-                            msg = json.loads(raw)
-                        except json.JSONDecodeError:
-                            continue
-                        # always confirm CALLs
-                        if isinstance(msg, list) and msg[0] == 2:
-                            msg_id, action, payload = msg[1], msg[2], (msg[3] if len(msg)>3 else {})
-                            # send empty Confirmation
-                            await ws.send(json.dumps([3, msg_id, {}]))
-                            if action == "RemoteStopTransaction":
-                                print("[Simulator] Received RemoteStopTransaction → stopping now")
-                                stop_event.set()
-                except websockets.ConnectionClosed:
-                    pass
-
-            listener = asyncio.create_task(listen_to_csms())
-
-            # ─── boot & authorize ─────────────────────────────────────
-            bn = [2, "boot", "BootNotification",
-                  {"chargePointModel":"Simulator","chargePointVendor":"SimVendor"}]
-            await ws.send(json.dumps(bn))
-            await ws.recv()
-
-            auth = [2, "auth", "Authorize", {"idTag": rfid}]
-            await ws.send(json.dumps(auth))
-            await ws.recv()
-
-            # ─── start transaction ────────────────────────────────────
-            meter_start = random.randint(1000, 2000)
-            st = [2, "start", "StartTransaction",
-                  {"connectorId":1, "idTag":rfid, "meterStart":meter_start}]
-            await ws.send(json.dumps(st))
-            resp = await ws.recv()
-            tx_id = json.loads(resp)[2]["transactionId"]
-
-            print(f"[Simulator] Transaction {tx_id} started at meter {meter_start}")
-
-            # ─── meter loop ───────────────────────────────────────────
-            actual_duration = random.uniform(duration*0.75, duration*1.25)
-            interval = actual_duration / 10
-            meter = meter_start
-
-            for _ in range(10):
-                if stop_event.is_set():
-                    print("[Simulator] Stop event triggered—breaking meter loop")
-                    break
-                meter += random.randint(50,150)
-                mv = [2, "meter", "MeterValues", {
-                    "connectorId":1,
-                    "transactionId":tx_id,
-                    "meterValue":[
-                        {"timestamp": time.strftime('%Y-%m-%dT%H:%M:%S')+"Z",
-                         "sampledValue":[{"value":str(meter)}]}
-                    ]
-                }]
-                await ws.send(json.dumps(mv))
-                await asyncio.sleep(interval)
-
-            # ─── stop transaction ─────────────────────────────────────
-            # either natural end or forced
-            stop = [2, "stop", "StopTransaction",
-                    {"transactionId":tx_id, "idTag":rfid, "meterStop":meter}]
-            await ws.send(json.dumps(stop))
-            await ws.recv()
-            print(f"[Simulator] Transaction {tx_id} stopped at meter {meter}")
-
-            # clean up
-            listener.cancel()
-            try: await listener
-            except: pass
-
-        if not repeat:
-            break
-
-        print(f"[Simulator] Waiting {actual_duration:.1f}s before next cycle")
-        await asyncio.sleep(actual_duration)
