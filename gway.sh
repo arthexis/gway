@@ -1,8 +1,10 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Change to the directory where this script is located
-cd "$(dirname "$0")"
+# Resolve the real directory of this script, even if it’s symlinked
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+cd "$SCRIPT_DIR"
 
 # If .venv doesn't exist, create it and install gway in editable mode
 if [ ! -d ".venv" ]; then
