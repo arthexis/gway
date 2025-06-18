@@ -2,7 +2,9 @@
 
 import os
 import re
+import sys
 import html
+import code
 import random
 import inspect
 import collections.abc
@@ -664,3 +666,23 @@ def random_id(length: int = 8, alphabet: str = _EZ_ALPHABET) -> str:
         A visually clear, randomly generated string.
     """
     return ''.join(random.choices(alphabet, k=length))
+
+
+def shell():
+    """Launch an interactive Python shell with 'from gway import gw' preloaded."""
+    # Try to import gw
+    try:
+        from gway import gw
+    except ImportError as e:
+        print(f"Warning: could not import gw from gway ({e})", file=sys.stderr)
+        gw = None
+
+    # Build the locals dict for the shell
+    local_vars = {'gw': gw}
+    banner = (
+        "GWAY interactive shell\n"
+        "  Type exit() or Ctrl-D to quit."
+    )
+
+    # Start the interactive console
+    code.interact(banner=banner, local=local_vars)
