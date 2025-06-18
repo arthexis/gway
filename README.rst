@@ -210,10 +210,11 @@ Then in your recipe:
 
     # recipes/website.gwr
     web app setup --project mysite --home hello
+    web app setup --project navbar
     web server start-app --host 127.0.0.1 --port 8888
     until --lock-file VERSION --lock-pypi
 
-Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your views.
+Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your views, including a handy navbar.
 
 Composing Sites from Multiple Projects
 --------------------------------------
@@ -233,9 +234,11 @@ You can chain as many projects as you want; each can define its own set of views
     until --lock-file VERSION --lock-pypi
 
 
-The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application.
+The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application. 
 
-You can disable default basic features by passing --no-navbar and/or --no-cookies to web app setup.
+The above recipe also shows that you can skip repeated commands. For example, instead of writing "web app setup" multiple times, each line below that doesn't start with a command repeats the last command with new parameters.
+
+
 
 How It Works
 ------------

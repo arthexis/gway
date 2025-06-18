@@ -4,6 +4,7 @@
 web app setup 
     --project web.cookies 
     --project web.navbar 
+    --project vbox --home upload
     --project ocpp --home status
     
 ocpp setup-csms-app --allowlist data/etron/rfids.cdv --location porsche_centre

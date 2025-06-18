@@ -329,6 +329,16 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
     return gw.cdv.load_all(cdv_path).get(b64key)
 
 
+# TODO: Create a poll_remote function that takes a server_url and checks if we
+# have a remote for it, otherwise abort. If we do, setup a loop to check the vbox 
+# for files and download them to target. Overwrite any old files. 
+
+def poll_remote(server_url:str='[SERVER_URL]', *, target='work/vbox/remote', interval=3600):
+    # The local target is a fixed directory not a vbid
+    # For the remove vbox use the info from remotes.cdv
+    pass
+
+
 def stream_file_response(path: str, filename: str) -> HTTPResponse:
     """Return a proper file download response that bypasses HTML templating."""
     headers = {

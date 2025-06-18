@@ -4,9 +4,8 @@ import hashlib
 import threading
 import requests
 
-# TODO resolved: All network-facing watchers now retry safely and log the events.
 
-def watch_file(*filepaths, on_change, poll_interval=10.0, hash=False, resource=True):
+def watch_file(*filepaths, on_change, interval=10.0, hash=False, resource=True):
     from gway import gw
 
     paths = []
@@ -54,7 +53,7 @@ def watch_file(*filepaths, on_change, poll_interval=10.0, hash=False, resource=T
                         last_mtimes[path] = current_mtime
                 except FileNotFoundError:
                     pass
-            time.sleep(poll_interval)
+            time.sleep(interval)
 
     thread = threading.Thread(target=_watch, daemon=True)
     thread.start()
@@ -73,7 +72,7 @@ def _retry_loop(fn, *, interval, stop_event, label):
 
 
 def watch_url(url, on_change, *, 
-              poll_interval=60.0, event="change", resend=False, value=None):
+              interval=60.0, event="change", resend=False, value=None):
     stop_event = threading.Event()
 
     def _check():
@@ -107,12 +106,13 @@ def watch_url(url, on_change, *,
             last_hash = current_hash
 
     last_hash = None
-    thread = threading.Thread(target=lambda: _retry_loop(_check, interval=poll_interval, stop_event=stop_event, label=f"url:{url}"), daemon=True)
+    thread = threading.Thread(target=lambda: _retry_loop(
+        _check, interval=interval, stop_event=stop_event, label=f"url:{url}"), daemon=True)
     thread.start()
     return stop_event
 
 
-def watch_pypi_package(package_name, on_change, *, poll_interval=2500.0):
+def watch_pypi_package(package_name, on_change, *, interval=2500.0):
     stop_event = threading.Event()
     url = f"https://pypi.org/pypi/{package_name}/json"
 
@@ -128,6 +128,7 @@ def watch_pypi_package(package_name, on_change, *, poll_interval=2500.0):
         last_version = current_version
 
     last_version = None
-    thread = threading.Thread(target=lambda: _retry_loop(_check, interval=poll_interval, stop_event=stop_event, label=f"pypi:{package_name}"), daemon=True)
+    thread = threading.Thread(target=lambda: _retry_loop(
+        _check, interval=interval, stop_event=stop_event, label=f"pypi:{package_name}"), daemon=True)
     thread.start()
     return stop_event
