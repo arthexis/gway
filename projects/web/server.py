@@ -8,7 +8,7 @@ _default_app_build_count = 0
 def start_app(*,
     host="[WEBSITE_HOST|127.0.0.1]",
     port="[WEBSITE_PORT|8888]",
-    ws_port="[WEBSOCKETS_PORT|9000]",         
+    ws_port="[WEBSOCKET_PORT|9000]",         
     debug=False,
     proxy=None,
     app=None,

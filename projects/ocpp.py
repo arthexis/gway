@@ -6,18 +6,19 @@ import time
 import traceback
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from bottle import template
 from typing import Dict
 from gway import gw
 
 _active_cons: Dict[str, WebSocket] = {}
 
 # Both setup_sink_app and setup_csms_app support receiving an app argument
-# which may be a single app or a collection of apps. 
+# which may be a single app or a collection of apps, similar to web.app.setup
 
 # Bottle does not support websockets properly, so we need to use FastAPI for OCPP. 
 # However we still use Bottle for the user interface (see view section down below)
 
-def setup_sink_app(*, app=None, base=""):
+def setup_sink_app(*, app=None):
     """
     Basic OCPP passive sink for messages, acting as a dummy CSMS server.
     This won't pass compliance or provide authentication. It just accepts and logs all.
@@ -27,7 +28,7 @@ def setup_sink_app(*, app=None, base=""):
     if (_is_new_app := not (app := gw.unwrap_one((oapp := app), FastAPI))):
         app = FastAPI()
 
-    @app.websocket(f"{base}/"+"{path:path}")
+    @app.websocket("{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
         gw.info(f"[OCPP] New WebSocket connection at /{path}")
         try:
@@ -77,14 +78,21 @@ def authorize_balance(**record):
         return float(record.get("balance", "0")) >= 1
     except Exception:
         return False
+    
+transactions = {}  # charger_id -> dict
 
+# TODO: Keep track of ongoing transactions so that they may be monitored real-time
+#       Keep a tally of the power consumed and the latest SoC % of the EV and other connection info
+#       Maybe we can piggy back off the per-txn logging we are doing
 
 def setup_csms_v16_app(*,
         app=None,
         allowlist=None,
         denylist=None,  # New parameter for RFID denylist
         location=None,
-        authorize=authorize_balance):
+        authorize=authorize_balance,
+        records=None,
+    ):
     """
     Minimal OCPP 1.6 CSMS implementation for conformance testing.
     Supports required Core actions, logs all requests, and accepts all.
@@ -93,6 +101,7 @@ def setup_csms_v16_app(*,
     Optional `authorize` hook can be a callable or gw['name'].
     Optional `location` enables per-txn logging to work/etron/records/{location}/{charger}_{txn_id}.dat
     """
+    global transactions
     oapp = app
     if (_is_new_app := not (app := gw.unwrap_one(app, FastAPI))):
         app = FastAPI()
@@ -117,14 +126,10 @@ def setup_csms_v16_app(*,
             return False
         return gw.cdv.validate(allowlist, rfid, validator=validator)
 
-    transactions = {}  # charger_id -> dict
-
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
         charger_id = path.strip("/").split("/")[-1]
-        token = websocket.query_params.get("token")
-
-        gw.info(f"[OCPP] WebSocket connected: charger_id={charger_id}, token={token}")
+        gw.info(f"[OCPP] WebSocket connected: charger_id={charger_id}")
 
         requested_protocols = websocket.headers.get("sec-websocket-protocol", "")
         requested_protocols = [p.strip() for p in requested_protocols.split(",") if p.strip()]
@@ -268,5 +273,127 @@ setup_csms_app = setup_csms_v16_app
 # Views for the main app. These will be used by the main bottle app when we do:
 # web app setup - web server start-app
 
-def render_status_view():  # /ocpp/status
-    return "OCPP Status - Pending"
+# File: projects/ocpp.py
+
+def view_status():  # /ocpp/status
+    """Simple dashboard listing the active CSMS connections and transactions."""
+    status = []
+    for charger_id, ws in _active_cons.items():
+        tx = transactions.get(charger_id, {})
+        conn_info = {
+            "charger_id": charger_id,
+            "connected": not ws.client_state.name == "DISCONNECTED",
+            "transaction": tx.get("transactionId"),
+            "meter_start": tx.get("meterStart"),
+            "latest_meter": tx.get("MeterValues", [{}])[-1].get("timestampStr", "N/A"),
+            "power_consumed": power_consumed(tx),
+        }
+        status.append(conn_info)
+
+    return template("""
+        <h2>OCPP Status Dashboard</h2>
+        <table border="1">
+            <tr><th>Charger ID</th><th>Connected</th><th>Transaction ID</th><th>Meter Start</th>
+                <th>Latest Meter Reading</th><th>Power Consumed (kWh)</th></tr>
+            % for conn in status:
+                <tr>
+                    <td>{{conn['charger_id']}}</td>
+                    <td>{{conn['connected']}}</td>
+                    <td>{{conn['transaction']}}</td>
+                    <td>{{conn['meter_start']}}</td>
+                    <td>{{conn['latest_meter']}}</td>
+                    <td>{{conn['power_consumed']}}</td>
+                </tr>
+            % end
+        </table>
+    """, status=status)
+
+
+def power_consumed(tx):
+    """Calculate power consumed from transaction meter values."""
+    if not tx or not tx.get("MeterValues"):
+        return 0
+
+    meter_start = tx.get("meterStart", 0)
+    meter_values = tx["MeterValues"]
+    meter_end = meter_values[-1].get("meter", meter_start)
+
+    power_consumed_kWh = (meter_end - meter_start) / 1000  # assuming meter values are in Wh
+    return round(power_consumed_kWh, 2)
+
+
+# Test Client
+
+# etron_client.py
+import asyncio
+import websockets
+import json
+import time
+import random
+
+
+async def simulate_evcs(
+        host: str = "[WEBSITE_HOST|127.0.0.1]",
+        ws_port: int = "[WEBSOCKET_PORT|9000]",
+        rfid: str = "FFFFFFFF", 
+        cp_path: str = "CPX"
+    ):
+
+    host = gw.resolve(host)
+    ws_port = int(gw.resolve(ws_port))
+    uri = f"ws://{host}:{ws_port}/{cp_path}"
+
+    async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
+        print("Connected to OCPP server.")
+
+        # BootNotification
+        boot_notification = [2, "boot", "BootNotification", {
+            "chargePointModel": "Simulator",
+            "chargePointVendor": "SimVendor"
+        }]
+        await websocket.send(json.dumps(boot_notification))
+        await websocket.recv()
+
+        # Authorize
+        authorize_msg = [2, "auth", "Authorize", {"idTag": rfid}]
+        await websocket.send(json.dumps(authorize_msg))
+        await websocket.recv()
+
+        # StartTransaction
+        meter_start = random.randint(1000, 2000)
+        transaction_msg = [2, "start", "StartTransaction", {
+            "connectorId": 1,
+            "idTag": rfid,
+            "meterStart": meter_start
+        }]
+        await websocket.send(json.dumps(transaction_msg))
+        response = await websocket.recv()
+        transaction_id = json.loads(response)[2].get("transactionId")
+
+        # Periodic MeterValues
+        meter = meter_start
+        for _ in range(10):
+            meter += random.randint(50, 150)
+            meter_values_msg = [2, "meter", "MeterValues", {
+                "connectorId": 1,
+                "transactionId": transaction_id,
+                "meterValue": [{
+                    "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S') + "Z",
+                    "sampledValue": [{"value": str(meter)}]
+                }]
+            }]
+            await websocket.send(json.dumps(meter_values_msg))
+            await asyncio.sleep(5)
+
+        # StopTransaction
+        stop_transaction_msg = [2, "stop", "StopTransaction", {
+            "transactionId": transaction_id,
+            "idTag": rfid,
+            "meterStop": meter
+        }]
+        await websocket.send(json.dumps(stop_transaction_msg))
+        await websocket.recv()
+
+        print("Transaction simulation complete.")
+
+

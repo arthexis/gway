@@ -1,11 +1,12 @@
 # recipes/etron.gwr
 # OCPP 1.6 CSMS Recipe with basic RFID auth
 
-web app setup --home readme
-    --project web.cookie --path cookie
-    --project web.navbar --path nav
+web app setup 
+    --project web.cookies 
+    --project web.navbar 
+    --project ocpp --home status
     
-ocpp setup-csms-app  --allowlist data/etron/rfids.cdv
-web server start-app --host 0.0.0.0 --port 8000 --ws-port 9000 
+ocpp setup-csms-app --allowlist data/etron/rfids.cdv --location porsche_centre
 
-until --lock-file VERSION --lock-pypi
+web server start-app --host 0.0.0.0 --port 8000 --ws-port 9000 
+until --lock-file VERSION

@@ -1,6 +1,5 @@
 # projects/web/app.py
 
-import os
 from urllib.parse import urlencode
 import bottle
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
@@ -25,15 +24,23 @@ def setup(*,
     global _version, _homes
     if engine != "bottle":
         raise NotImplementedError("Only Bottle is supported at the moment.")
+
     _version = _version or gw.version()
     bottle.BaseRequest.MEMFILE_MAX = UPLOAD_MB * 1024 * 1024
 
-    # Handle web sub-projects by removing the web prefix
     projects = gw.to_list(project, flat=True)
+    sources = []
+    for proj_name in projects:
+        try:
+            sources.append(gw[proj_name])
+        except Exception:
+            gw.abort(f"Project {proj_name} not found in Gateway during app setup.")
+
     if path is None:
         path = projects[0].replace('.', '/')
         if path.startswith('web/'):
             path = path.removeprefix('web/')
+
     for enabled_proj in projects:
         if enabled_proj.startswith('web.'):
             enabled_proj = enabled_proj[4:]
@@ -63,52 +70,32 @@ def setup(*,
     def view_dispatch(view):
         nonlocal home, prefix
         segments = [s for s in view.strip("/").split("/") if s]
-        if not segments:
-            if home:
-                view_name = home
-            else:
-                return redirect_error(
-                    note="No view specified and no home defined",
-                    broken_view_name=None,
-                    default=default_home()
-                )
-        else:
-            view_name = segments[0].replace("-", "_")
+        view_name = segments[0].replace("-", "_") if segments else home
         args = segments[1:] if segments else []
         kwargs = dict(request.query)
         if request.method in ("POST", "PUT"):
             try:
-                if request.json:
-                    kwargs.update(request.json)
-                elif request.forms:
-                    kwargs.update(dict(request.forms))
+                kwargs.update(request.json or dict(request.forms))
             except Exception as e:
                 return redirect_error(e, note="Error loading JSON payload", broken_view_name=view_name)
-        sources = []
-        for proj_name in projects:
-            try:
-                sources.append(gw[proj_name])
-            except Exception:
-                continue
+
+        target_func_name = f"{prefix}_{view_name}" if prefix else view_name
         view_func = None
-        target_func_name = (
-            f"{prefix}_{view_name}"
-            if prefix not in (None, False, "")
-            else view_name
-        )
         for source in sources:
             view_func = getattr(source, target_func_name, None)
             if callable(view_func):
                 if 'url_stack' not in gw.context:
                     gw.context['url_stack'] = []
-                (url_stack := gw.context['url_stack']).append((project, path))
+                gw.context['url_stack'].append((project, path))
                 break
+
         if not callable(view_func):
             return redirect_error(
                 note=f"View not found: {target_func_name} in {projects}",
                 broken_view_name=view_name,
                 default=default_home()
             )
+
         try:
             content = view_func(*args, **kwargs)
             if isinstance(content, HTTPResponse):
@@ -122,59 +109,16 @@ def setup(*,
             elif not isinstance(content, str):
                 content = gw.to_html(content)
 
-            # ---- Set visited cookie for this page (after rendering view) ----
-            if is_enabled('cookies'):
-                cookies_ok = gw.web.cookies.check_consent()
-                if cookies_ok:
-                    # Use page title and canonical route (as per navbar.py convention)
-                    page_title = view_name.replace("-", " ").replace("_", " ").title()
-                    page_route = request.fullpath.lstrip("/")
-                    gw.web.cookies.append("visited", page_title, page_route)
-
-        except HTTPResponse as resp:
-            return resp
         except Exception as e:
             return redirect_error(e, note="Error during view execution", broken_view_name=view_func.__name__, default=default_home())
 
-        full_url = request.fullpath
-        if request.query_string:
-            full_url += "?" + request.query_string
-
-        css_file = "base.css"
-        if is_enabled('cookies'):
-            cookies_ok = gw.web.cookies.check_consent()
-            if not cookies_ok:
-                consent_box = f"""
-                    <div class="consent-box">
-                    <form action="/cookies/accept" method="post">
-                        <input type="hidden" name="next" value="{request.fullpath}{'?' + request.query_string if request.query_string else ''}" />
-                        This application uses cookies to improve your experience.
-                        <button type="submit">Accept our cookies</button>
-                    </form>
-                    </div>
-                """
-                content = consent_box + content
-            css_cookie = gw.web.cookies.get("css")
-            styles_dir = gw.resource("data", "static", "styles")
-            all_styles = [
-                f for f in sorted(os.listdir(styles_dir))
-                if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
-            ]
-            if cookies_ok and css_cookie in all_styles:
-                css_file = css_cookie
-            elif all_styles:
-                css_file = all_styles[0]
-
-        try:
-            return render_template(
-                title="GWAY - " + view_func.__name__.replace("_", " ").title(),
-                full_url=full_url,
-                content=content,
-                static=static,
-                css_file=css_file
-            )
-        finally:
-            url_stack.pop()
+        return render_template(
+            title="GWAY - " + view_func.__name__.replace("_", " ").title(),
+            full_url=request.fullpath,
+            content=content,
+            static=static,
+            css_file="base.css"
+        )
 
     @app.route("/", method=["GET", "POST"])
     def index():
@@ -184,19 +128,18 @@ def setup(*,
 
     @app.error(404)
     def handle_404(error):
-        try:
-            return redirect_error(
-                error,
-                note=f"404 Not Found: {request.url}",
-                default=default_home()
-            )
-        except Exception as e:
-            return redirect_error(e, note="Failed during 404 fallback", default=default_home())
+        return redirect_error(
+            error,
+            note=f"404 Not Found: {request.url}",
+            default=default_home()
+        )
 
     if gw.verbose:
         gw.debug(f"Registered homes: {_homes}")
         debug_routes(app)
+
     return oapp if oapp else app
+
 
 def build_url(*args, **kwargs):
     path = "/".join(str(a).strip("/") for a in args if a)

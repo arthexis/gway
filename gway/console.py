@@ -452,8 +452,7 @@ def get_arg_opts(arg_name, param, gw=None):
 ...
 
 # We keep recipe functions in console.py because anything that changes cli_main
-# typically has an impact in the recipe parsing, and must be reviewed together.
-# projects/console.py
+# typically has an impact in the recipe parsing process and must be reviewed together.
 
 def load_recipe(recipe_filename):
     """Load commands and comments from a .gwr file.
@@ -493,8 +492,7 @@ def load_recipe(recipe_filename):
             raise FileNotFoundError(f"Recipe not found: {recipe_path}")
 
     gw.info(f"Loading commands from recipe: {recipe_path}")
-
-    # --- Indented command parsing ---
+    
     deindented_lines = []
     last_prefix = ""
     with open(recipe_path) as f:
@@ -519,10 +517,9 @@ def load_recipe(recipe_filename):
                 parts = line.split("--", 1)
                 if len(parts) == 2:
                     last_prefix = parts[0].rstrip()
-                    deindented_lines.append(line)
                 else:
-                    last_prefix = ""
-                    deindented_lines.append(line)
+                    last_prefix = line.rstrip()  # <-- fixed here!
+                deindented_lines.append(line)
 
     # --- Split deindented lines into commands ---
     for line in deindented_lines:
