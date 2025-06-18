@@ -249,6 +249,7 @@ class Gateway(Resolver):
             loop.close()
 
     def until(self, *, lock_file=None, lock_url=None, lock_pypi=False):
+
         from .watchers import watch_file, watch_url, watch_pypi_package
         def shutdown(reason):
             self.warning(f"{reason} triggered async shutdown.")
@@ -271,6 +272,9 @@ class Gateway(Resolver):
         except KeyboardInterrupt:
             self.critical("KeyboardInterrupt received. Exiting immediately.")
             os._exit(1)
+
+    def loop(self): self.until()
+
 
     def __getattr__(self, name):
         # Pass through standard logger methods if present

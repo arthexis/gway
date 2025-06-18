@@ -3,14 +3,17 @@
 import json
 import os
 import time
+import uuid
 import traceback
+import asyncio
+import websockets
+import random
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from bottle import template
-from typing import Dict
+from bottle import template, HTTPError
+from typing import Dict, Optional
 from gway import gw
 
-_active_cons: Dict[str, WebSocket] = {}
 
 # Both setup_sink_app and setup_csms_app support receiving an app argument
 # which may be a single app or a collection of apps, similar to web.app.setup
@@ -79,11 +82,11 @@ def authorize_balance(**record):
     except Exception:
         return False
     
-transactions = {}  # charger_id -> dict
 
-# TODO: Keep track of ongoing transactions so that they may be monitored real-time
-#       Keep a tally of the power consumed and the latest SoC % of the EV and other connection info
-#       Maybe we can piggy back off the per-txn logging we are doing
+_csms_loop: Optional[asyncio.AbstractEventLoop] = None
+_transactions: Dict[str, dict] = {}           # charger_id → latest transaction
+_active_cons: Dict[str, WebSocket] = {}      # charger_id → live WebSocket
+
 
 def setup_csms_v16_app(*,
         app=None,
@@ -91,7 +94,6 @@ def setup_csms_v16_app(*,
         denylist=None,  # New parameter for RFID denylist
         location=None,
         authorize=authorize_balance,
-        records=None,
     ):
     """
     Minimal OCPP 1.6 CSMS implementation for conformance testing.
@@ -101,7 +103,8 @@ def setup_csms_v16_app(*,
     Optional `authorize` hook can be a callable or gw['name'].
     Optional `location` enables per-txn logging to work/etron/records/{location}/{charger}_{txn_id}.dat
     """
-    global transactions
+    global _transactions, _active_cons
+
     oapp = app
     if (_is_new_app := not (app := gw.unwrap_one(app, FastAPI))):
         app = FastAPI()
@@ -128,6 +131,9 @@ def setup_csms_v16_app(*,
 
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
+        global _csms_loop
+        _csms_loop = asyncio.get_running_loop()
+        
         charger_id = path.strip("/").split("/")[-1]
         gw.info(f"[OCPP] WebSocket connected: charger_id={charger_id}")
 
@@ -181,7 +187,7 @@ def setup_csms_v16_app(*,
                         elif action == "StartTransaction":
                             now = int(time.time())
                             transaction_id = now
-                            transactions[charger_id] = {
+                            _transactions[charger_id] = {
                                 "syncStart": 1,
                                 "connectorId": payload.get("connectorId"),
                                 "idTagStart": payload.get("idTag"),
@@ -200,7 +206,7 @@ def setup_csms_v16_app(*,
 
                         elif action == "StopTransaction":
                             now = int(time.time())
-                            tx = transactions.pop(charger_id, None)
+                            tx = _transactions.get(charger_id)
                             if tx:
                                 tx.update({
                                     "syncStop": 1,
@@ -213,17 +219,16 @@ def setup_csms_v16_app(*,
                                     "reasonStr": "Local",
                                 })
                                 if location:
-                                    file_path = gw.resource("work", "etron", "records", location, 
+                                    file_path = gw.resource("work", "etron", "records", location,
                                                             f"{charger_id}_{tx['transactionId']}.dat")
                                     os.makedirs(os.path.dirname(file_path), exist_ok=True)
                                     with open(file_path, "w") as f:
                                         json.dump(tx, f, indent=2)
-                            response_payload = {
-                                "idTagInfo": {"status": "Accepted"}
-                            }
+                            response_payload = {"idTagInfo": {"status": "Accepted"}}
+
 
                         elif action == "MeterValues":
-                            tx = transactions.get(charger_id)
+                            tx = _transactions.get(charger_id)
                             if tx:
                                 entries = payload.get("meterValue", [])
                                 for entry in entries:
@@ -270,43 +275,124 @@ def setup_csms_v16_app(*,
 setup_csms_app = setup_csms_v16_app
 
 
-# Views for the main app. These will be used by the main bottle app when we do:
-# web app setup - web server start-app
+# Views for the main app. These are powered by bottle instead of FastAPI and run on another port.
+# However, by being defined on the same project, data may be shared between both.
 
-# File: projects/ocpp.py
+def view_status():
+    """
+    /ocpp/status
+    Return only the dashboard table fragment; GWAY will wrap this in its page chrome.
+    """
+    all_chargers = set(_active_cons) | set(_transactions)
+    parts = ["<h1>OCPP Status Dashboard</h1>"]
 
-def view_status():  # /ocpp/status
-    """Simple dashboard listing the active CSMS connections and transactions."""
-    status = []
-    for charger_id, ws in _active_cons.items():
-        tx = transactions.get(charger_id, {})
-        conn_info = {
-            "charger_id": charger_id,
-            "connected": not ws.client_state.name == "DISCONNECTED",
-            "transaction": tx.get("transactionId"),
-            "meter_start": tx.get("meterStart"),
-            "latest_meter": tx.get("MeterValues", [{}])[-1].get("timestampStr", "N/A"),
-            "power_consumed": power_consumed(tx),
-        }
-        status.append(conn_info)
+    if not all_chargers:
+        parts.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
+    else:
+        parts.append('<table class="ocpp-status">')
+        parts.append('<thead><tr>')
+        for header in [
+            "Charger ID", "Connected", "Txn ID", "Meter Start",
+            "Latest", "kWh", "Status", "Actions"
+        ]:
+            parts.append(f'<th>{header}</th>')
+        parts.append('</tr></thead><tbody>')
 
-    return template("""
-        <h2>OCPP Status Dashboard</h2>
-        <table border="1">
-            <tr><th>Charger ID</th><th>Connected</th><th>Transaction ID</th><th>Meter Start</th>
-                <th>Latest Meter Reading</th><th>Power Consumed (kWh)</th></tr>
-            % for conn in status:
-                <tr>
-                    <td>{{conn['charger_id']}}</td>
-                    <td>{{conn['connected']}}</td>
-                    <td>{{conn['transaction']}}</td>
-                    <td>{{conn['meter_start']}}</td>
-                    <td>{{conn['latest_meter']}}</td>
-                    <td>{{conn['power_consumed']}}</td>
-                </tr>
-            % end
-        </table>
-    """, status=status)
+        for cid in sorted(all_chargers):
+            ws_live = cid in _active_cons
+            tx      = _transactions.get(cid)
+
+            connected   = '🟢' if ws_live else '🔴'
+            tx_id       = tx.get("transactionId") if tx else '-'
+            meter_start = tx.get("meterStart")       if tx else '-'
+
+            if tx:
+                latest = (
+                    tx.get("meterStop")
+                    if tx.get("meterStop") is not None
+                    else (tx["MeterValues"][-1].get("meter") if tx.get("MeterValues") else '-')
+                )
+                power  = power_consumed(tx)
+                status = "Closed" if tx.get("syncStop") else "Open"
+            else:
+                latest = power = status = '-'
+
+            parts.append('<tr>')
+            for value in [cid, connected, tx_id, meter_start, latest, power, status]:
+                parts.append(f'<td>{value}</td>')
+            parts.append('<td>')
+            parts.append(f'''
+                <form action="/ocpp/action" method="post" class="inline">
+                  <input type="hidden" name="charger_id" value="{cid}">
+                  <select name="action">
+                    <option value="remote_stop">Stop</option>
+                    <option value="change_availability_unavailable">Off</option>
+                    <option value="change_availability_available">On</option>
+                    <option value="reset_soft">Soft Reset</option>
+                    <option value="reset_hard">Hard Reset</option>
+                    <option value="disconnect">Disconnect</option>
+                  </select>
+                  <button type="submit">Send</button>
+                </form>
+                <button type="button"
+                  onclick="document.getElementById('details-{cid}').classList.toggle('hidden')">
+                  Details
+                </button>
+            ''')
+            parts.append('</td></tr>')
+            parts.append(f'''
+            <tr id="details-{cid}" class="hidden">
+              <td colspan="8"><pre>{json.dumps(tx or {}, indent=2)}</pre></td>
+            </tr>
+            ''')
+
+        parts.append('</tbody></table>')
+
+    return "".join(parts)
+
+def view_action(charger_id: str, action: str):
+    """
+    /ocpp/action
+    Single‐endpoint dispatcher for all dropdown actions.
+    """
+    ws = _active_cons.get(charger_id)
+    if not ws:
+        raise HTTPError(404, "No active connection")
+    msg_id = str(uuid.uuid4())
+
+    # build the right OCPP message
+    if action == "remote_stop":
+        tx = _transactions.get(charger_id)
+        if not tx:
+            raise HTTPError(404, "No transaction to stop")
+        coro = ws.send_text(json.dumps([2, msg_id, "RemoteStopTransaction",
+                                        {"transactionId": tx["transactionId"]}]))
+
+    elif action.startswith("change_availability_"):
+        _, _, mode = action.partition("_availability_")
+        coro = ws.send_text(json.dumps([2, msg_id, "ChangeAvailability",
+                                        {"connectorId": 0, "type": mode.capitalize()}]))
+
+    elif action.startswith("reset_"):
+        _, mode = action.split("_", 1)
+        coro = ws.send_text(json.dumps([2, msg_id, "Reset", {"type": mode.capitalize()}]))
+
+    elif action == "disconnect":
+        # schedule a raw close
+        coro = ws.close(code=1000, reason="Admin disconnect")
+
+    else:
+        raise HTTPError(400, f"Unknown action: {action}")
+
+    if _csms_loop:
+        # schedule it on the FastAPI loop
+        _csms_loop.call_soon_threadsafe(lambda: _csms_loop.create_task(coro))
+    else:
+        gw.warn("No CSMS event loop; action not sent")
+
+    return {"status": "requested", "messageId": msg_id}
+
+...
 
 
 def power_consumed(tx):
@@ -321,79 +407,113 @@ def power_consumed(tx):
     power_consumed_kWh = (meter_end - meter_start) / 1000  # assuming meter values are in Wh
     return round(power_consumed_kWh, 2)
 
+...
 
-# Test Client
-
-# etron_client.py
-import asyncio
-import websockets
-import json
-import time
-import random
-
-
-async def simulate_evcs(
+async def simulate_evcs(*,
         host: str = "[WEBSITE_HOST|127.0.0.1]",
         ws_port: int = "[WEBSOCKET_PORT|9000]",
-        rfid: str = "FFFFFFFF", 
-        cp_path: str = "CPX"
+        rfid: str = "FFFFFFFF",
+        cp_path: str = "CPX",
+        duration: int = 60,
+        repeat: bool = False,
     ):
+    """
+    Simulate an EVCS connecting and running a charging session.
+    Listens & logs all CSMS→CP messages, and respects RemoteStopTransaction.
+    """
+    import asyncio, json, random, time, websockets
+    from gway import gw
 
-    host = gw.resolve(host)
+    host    = gw.resolve(host)
     ws_port = int(gw.resolve(ws_port))
-    uri = f"ws://{host}:{ws_port}/{cp_path}"
+    uri     = f"ws://{host}:{ws_port}/{cp_path}"
 
-    async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
-        print("Connected to OCPP server.")
+    while True:
+        # Will signal if CSMS asked us to stop
+        stop_event = asyncio.Event()
 
-        # BootNotification
-        boot_notification = [2, "boot", "BootNotification", {
-            "chargePointModel": "Simulator",
-            "chargePointVendor": "SimVendor"
-        }]
-        await websocket.send(json.dumps(boot_notification))
-        await websocket.recv()
+        async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as ws:
+            print(f"[Simulator] Connected to {uri}")
 
-        # Authorize
-        authorize_msg = [2, "auth", "Authorize", {"idTag": rfid}]
-        await websocket.send(json.dumps(authorize_msg))
-        await websocket.recv()
+            # ─── listener ─────────────────────────────────────────────
+            async def listen_to_csms():
+                try:
+                    while True:
+                        raw = await ws.recv()
+                        print(f"[Simulator ← CSMS] {raw}")
+                        try:
+                            msg = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+                        # always confirm CALLs
+                        if isinstance(msg, list) and msg[0] == 2:
+                            msg_id, action, payload = msg[1], msg[2], (msg[3] if len(msg)>3 else {})
+                            # send empty Confirmation
+                            await ws.send(json.dumps([3, msg_id, {}]))
+                            if action == "RemoteStopTransaction":
+                                print("[Simulator] Received RemoteStopTransaction → stopping now")
+                                stop_event.set()
+                except websockets.ConnectionClosed:
+                    pass
 
-        # StartTransaction
-        meter_start = random.randint(1000, 2000)
-        transaction_msg = [2, "start", "StartTransaction", {
-            "connectorId": 1,
-            "idTag": rfid,
-            "meterStart": meter_start
-        }]
-        await websocket.send(json.dumps(transaction_msg))
-        response = await websocket.recv()
-        transaction_id = json.loads(response)[2].get("transactionId")
+            listener = asyncio.create_task(listen_to_csms())
 
-        # Periodic MeterValues
-        meter = meter_start
-        for _ in range(10):
-            meter += random.randint(50, 150)
-            meter_values_msg = [2, "meter", "MeterValues", {
-                "connectorId": 1,
-                "transactionId": transaction_id,
-                "meterValue": [{
-                    "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S') + "Z",
-                    "sampledValue": [{"value": str(meter)}]
+            # ─── boot & authorize ─────────────────────────────────────
+            bn = [2, "boot", "BootNotification",
+                  {"chargePointModel":"Simulator","chargePointVendor":"SimVendor"}]
+            await ws.send(json.dumps(bn))
+            await ws.recv()
+
+            auth = [2, "auth", "Authorize", {"idTag": rfid}]
+            await ws.send(json.dumps(auth))
+            await ws.recv()
+
+            # ─── start transaction ────────────────────────────────────
+            meter_start = random.randint(1000, 2000)
+            st = [2, "start", "StartTransaction",
+                  {"connectorId":1, "idTag":rfid, "meterStart":meter_start}]
+            await ws.send(json.dumps(st))
+            resp = await ws.recv()
+            tx_id = json.loads(resp)[2]["transactionId"]
+
+            print(f"[Simulator] Transaction {tx_id} started at meter {meter_start}")
+
+            # ─── meter loop ───────────────────────────────────────────
+            actual_duration = random.uniform(duration*0.75, duration*1.25)
+            interval = actual_duration / 10
+            meter = meter_start
+
+            for _ in range(10):
+                if stop_event.is_set():
+                    print("[Simulator] Stop event triggered—breaking meter loop")
+                    break
+                meter += random.randint(50,150)
+                mv = [2, "meter", "MeterValues", {
+                    "connectorId":1,
+                    "transactionId":tx_id,
+                    "meterValue":[
+                        {"timestamp": time.strftime('%Y-%m-%dT%H:%M:%S')+"Z",
+                         "sampledValue":[{"value":str(meter)}]}
+                    ]
                 }]
-            }]
-            await websocket.send(json.dumps(meter_values_msg))
-            await asyncio.sleep(5)
+                await ws.send(json.dumps(mv))
+                await asyncio.sleep(interval)
 
-        # StopTransaction
-        stop_transaction_msg = [2, "stop", "StopTransaction", {
-            "transactionId": transaction_id,
-            "idTag": rfid,
-            "meterStop": meter
-        }]
-        await websocket.send(json.dumps(stop_transaction_msg))
-        await websocket.recv()
+            # ─── stop transaction ─────────────────────────────────────
+            # either natural end or forced
+            stop = [2, "stop", "StopTransaction",
+                    {"transactionId":tx_id, "idTag":rfid, "meterStop":meter}]
+            await ws.send(json.dumps(stop))
+            await ws.recv()
+            print(f"[Simulator] Transaction {tx_id} stopped at meter {meter}")
 
-        print("Transaction simulation complete.")
+            # clean up
+            listener.cancel()
+            try: await listener
+            except: pass
 
+        if not repeat:
+            break
 
+        print(f"[Simulator] Waiting {actual_duration:.1f}s before next cycle")
+        await asyncio.sleep(actual_duration)

@@ -22,14 +22,15 @@ source .venv/bin/activate
 
 # 2) No-arg case: notify installation and usage
 if [[ $# -eq 0 ]]; then
-  echo "GWAY has been set up with local .venv."
-  echo "To install a systemd service for a recipe, run:"  
+  echo "GWAY has been set up in .venv."
+  echo "To install a systemd service for a recipe, run:"
   echo "  sudo ./install.sh <recipe-name>"
   deactivate
   exit 0
 fi
 
-# 3) Recipe-based service install\ nRECIPE="$1"
+# 3) Recipe-based service install
+RECIPE="$1"
 RECIPE_FILE="recipes/${RECIPE}.gwr"
 if [[ ! -f "$RECIPE_FILE" ]]; then
   echo "ERROR: Recipe '$RECIPE' not found at $RECIPE_FILE" >&2

@@ -243,3 +243,25 @@ p.compass {
     --bg: #fff;
     --bg-alt: #f0f0f0;
 }
+
+/* OCPP status dashboard table */
+.ocpp-status {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.ocpp-status th,
+.ocpp-status td {
+  border: 1px solid #ccc;
+  padding: 4px;
+}
+
+/* Keep the form inline next to the button */
+.ocpp-status form.inline {
+  display: inline;
+}
+
+/* Details rows are hidden by default */
+.hidden {
+  display: none;
+}

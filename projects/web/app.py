@@ -248,6 +248,8 @@ def redirect_error(error=None, note="", default=None, broken_view_name=None):
             gw.web.cookies.set("visited", "|".join(new_items))
             visited_items = new_items  # reflect the change for UI
 
+    # TODO: Consider adding an extract from the gway.log when showing the DEBUG screen
+
     # --- DEBUG MODE: show error info as page ---
     if debug_enabled:
         tb_str = ""
