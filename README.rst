@@ -199,7 +199,7 @@ Overview
 Minimal Example
 ---------------
 
-Suppose you want to create a website with custom routes:
+Suppose you want to create a very simple website:
 
 .. code-block:: python
 
@@ -211,17 +211,33 @@ Suppose you want to create a website with custom routes:
     def view_about():
         return "<h2>About This Site</h2><p>Powered by GWAY.</p>"
 
+    def view_user(*, user_id=None):
+        if user_id:
+            # We have a user_id, so greet the user
+            return f"<h1>Welcome {user_id}</h1>"
+        else:
+            # No user_id, so render a form to collect it
+            return '''
+            <form method="get" action="">
+            <label for="user_id">Enter User ID:</label>
+            <input type="text" id="user_id" name="user_id" required />
+            <button type="submit">Submit</button>
+            </form>
+            '''
+
+Note that these views don't need to be decorated and you don't have to return the entire HTML document. You also don't have to specify http methods or where the variables come from (they can be read from a form or passed as a query param.) 
+
 Then in your recipe:
 
 .. code-block:: text
 
     # recipes/website.gwr
     web app setup --project mysite --home hello
-    web app setup --project navbar
+        --project web.navbar
     web server start-app --host 127.0.0.1 --port 8888
-    until --lock-file VERSION --lock-pypi
+    loop
 
-Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your views, including a handy navbar.
+Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your views, including a handy navbar. Press Ctrl+D or close the terminal to end the process.
 
 Composing Sites from Multiple Projects
 --------------------------------------

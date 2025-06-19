@@ -531,7 +531,7 @@ def power_consumed(tx):
 
     meter_start = tx.get("meterStart", 0)
     meter_values = tx["MeterValues"]
-    meter_end = meter_values[-1].get("meter", meter_start)
+    meter_end = meter_values[-1].get("meter", meter_start) or 0
 
     power_consumed_kWh = (meter_end - meter_start) / 1000  # assuming meter values are in Wh
     return round(power_consumed_kWh, 2)
