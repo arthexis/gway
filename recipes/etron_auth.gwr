@@ -1,0 +1,17 @@
+# recipes/etron_auth.gwr
+# OCPP 1.6 CSMS Recipe with basic RFID auth
+
+web app setup 
+    --project web.cookies 
+    --project web.navbar 
+    --project vbox 
+    --project ocpp --home status
+
+# Toggle this version to apply the allowlist  
+ocpp setup-csms-app --allowlist data/etron/rfids.cdv --location porsche_centre
+
+# Without --allowlist all transactions are allowed
+# ocpp setup-csms-app --location porsche_centre
+
+web server start-app --host 0.0.0.0 --port 8000 --ws-port 9000 
+until --lock-file VERSION

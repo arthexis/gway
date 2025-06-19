@@ -22,70 +22,32 @@ def cli_main():
     # Primary behavior flags
     add = parser.add_argument
     add("-a", dest="all", action="store_true", help="Show all text results, not just the last")
-    add("-b", dest="base_path", type=str, help="Specify a different base path for GWAY.")
     add("-c", dest="client", type=str, help="Specify client environment")
     add("-d", dest="debug", action="store_true", help="Enable debug logging")
     add("-e", dest="expression", type=str, help="Return resolved sigil at the end")
-    add("-f", dest="fuzzy", action="store_true", help="Reserved for fuzzy matching")
-    add("-g", dest="global_mode", action="store_true", help="Reserved for future global_mode")
-    # -h is reserved for --help by argparse, and we leave it like that
-    add("-i", dest="interact", action="store_true", help="Reserved for interactive shell mode")
     add("-j", dest="json", nargs="?", const=True, default=False, help="Output result(s) as JSON")
-    add("-l", dest="local", action="store_true", help="Set base_path to current directory")
-    add("-m", dest="memory", action="store_true", help="Memory mode: Save or reuse last arguments")
-    add("-n", dest="namespace", type=str, help="Default unknown functions to this project")
     add("-o", dest="outfile", type=str, help="Write text output(s) to this file")
     add("-p", dest="projects", type=str, help="Root project path for custom functions.")
-    # -q pending
     add("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
     add("-s", dest="server", type=str, help="Override server environment configuration")
     add("-t", dest="timed", action="store_true", help="Enable timing of operations")
     add("-u", dest="username", type=str, help="Operate as the given end-user account.")
     add("-v", dest="verbose", action="store_true", help="Verbose mode (where supported)")
-    add("-w", dest="wizard", action="store_true", help="Request wizard mode if available")
-    add("-x", dest="callback", type=str, help="Execute a callback per command or standalone")
-    add("-y", dest="yes", type=str, help="Say yes to everything. Don't ask any questions.")
+    add("-w", dest="wizard", action="store_true", help="Wizard mode.")
     add("-z", dest="silent", action="store_true", help="Suppress all non-critical output")
     add("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
-    
+
     args = parser.parse_args()
-    memory_file = "work/memory.txt"
 
-    # Handle memory mode: clear, save, or restore
-    if args.memory:
-        if not args.commands and not args.callback:
-            if os.path.exists(memory_file):
-                os.remove(memory_file)
-                print("Memory cleared.")
-            else:
-                print("Memory already clear.")
-            sys.exit(0)
-        else:
-            os.makedirs(os.path.dirname(memory_file), exist_ok=True)
-            with open(memory_file, "w") as f:
-                f.write(" ".join(sys.argv[1:]))
-
-    elif not args.commands and not args.callback and os.path.exists(memory_file):
-        with open(memory_file) as f:
-            saved_args = f.read().strip().split()
-        sys.argv.extend(saved_args)
-        return cli_main()  # Restart CLI with extended arguments
-
-    # Handle local mode: override base_path to current dir
-    if args.local:
-        args.base_path = os.getcwd()
-
-    # Setup logging in a way that makes sense for a CLI app. We send everything to
-    # a log file to keep the console clean except when the user requests output or we halt.
+    # Setup logging
     logfile = f"{args.username}.log" if args.username else "gway.log"
     setup_logging(
-        logfile=logfile, loglevel="DEBUG" if args.debug else "INFO", 
-        debug=args.debug, verbose=args.verbose
+        logfile=logfile,
+        loglevel="DEBUG" if args.debug else "INFO",
+        debug=args.debug,
+        verbose=args.verbose
     )
     start_time = time.time() if args.timed else None
-
-    # Silent and verbose are allowed together. It means:
-    # Suppress all non-critical output; but if its critical, explain as much as possible.
 
     # Init Gateway instance
     gw_local = Gateway(
@@ -95,33 +57,25 @@ def cli_main():
         silent=args.silent,
         name=args.username or "gw",
         projects=args.projects,
-        base_path=args.base_path,
         debug=args.debug,
         wizard=args.wizard
     )
 
-    gw_local.verbose(f"Saving detailed logs to [BASE_PATH]/logs/gway.log (this file)") 
+    gw_local.verbose(
+        f"Saving detailed logs to [BASE_PATH]/logs/gway.log (this file)"
+    )
 
     # Load command sources
     if args.recipe:
         command_sources, comments = load_recipe(args.recipe)
     elif args.commands:
         command_sources = chunk(args.commands)
-    elif args.callback:
-        command_sources = []
     else:
         parser.print_help()
         sys.exit(1)
 
-    # Run commands or callback
-    if command_sources:
-        callback = gw_local[args.callback] if args.callback else None
-        all_results, last_result = process(command_sources, callback=callback)
-    elif args.callback:
-        result = gw_local[args.callback]()
-        all_results, last_result = [result], result
-    else:
-        all_results, last_result = [], None
+    # Run commands
+    all_results, last_result = process(command_sources)
 
     # Resolve expression if requested
     if args.expression:
@@ -133,7 +87,7 @@ def cli_main():
     def realize(val):
         if hasattr(val, "__iter__") and not isinstance(val, (str, bytes, dict)):
             try:
-                return list(val)  # Do not limit generator output
+                return list(val)
             except Exception:
                 return val
         return val

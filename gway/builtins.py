@@ -191,7 +191,6 @@ def test(root: str = 'tests', filter=None):
 
     with use_logging(logfile="test.log", logdir="logs", prog_name="gway",
                      debug=getattr(gw, "debug", False),
-                     loglevel=getattr(gw, "loglevel", "INFO"),
                      verbose=getattr(gw, "verbose", False)):
         print("Running the test suite...")
 
