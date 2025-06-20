@@ -1,25 +1,18 @@
+# TODO: Add a back link after operations are sent
+# TODO: Allow specifying a different uuid based endpoint path on the server side 
+
 # projects/ocpp.py
 
 import json
 import os
 import time
-import uuid
 import traceback
 import asyncio
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
-from bottle import HTTPError
 from typing import Dict, Optional
 from gway import gw
 
-
-# TODO: Add a back link after operations are sent
-# TODO: Allow specifying a different base endpoint path on the server side 
-# TODO: Consider if we have to capture additional query params from the evcs
-
-
-# TODO: Fix the power calculation, seems to show negative numbers, by tracking boot notification and storing in a cdv
-#       Store all received data from the notification as keys in the CDV. See attached code for how gw.cdv.store works
 
 def authorize_balance(**record):
     """
@@ -37,31 +30,42 @@ _csms_loop: Optional[asyncio.AbstractEventLoop] = None
 _transactions: Dict[str, dict] = {}           # charger_id → latest transaction
 _active_cons: Dict[str, WebSocket] = {}      # charger_id → live WebSocket
 
+# --- New: Track abnormal OCPP status notifications/errors here ---
+_abnormal_status: Dict[str, dict] = {}  # charger_id → {"status": ..., "errorCode": ..., "info": ...}
+# Only keep abnormal status; clear when charger sends "normal" (Available/NoError)
+
+
+def is_abnormal_status(status: str, error_code: str) -> bool:
+    """Determine if a status/errorCode is 'abnormal' per OCPP 1.6."""
+    status = (status or "").capitalize()
+    error_code = (error_code or "").capitalize()
+    # Available/NoError or Preparing are 'normal'
+    if status in ("Available", "Preparing") and error_code in ("Noerror", "", None):
+        return False
+    # All Faulted, Unavailable, Suspended, etc. are abnormal
+    if status in ("Faulted", "Unavailable", "Suspendedev", "Suspended", "Removed"):
+        return True
+    if error_code not in ("Noerror", "", None):
+        return True
+    return False
+
 
 def setup_app(*,
     app=None,
     allowlist=None,
-    denylist=None,  # New parameter for RFID denylist
+    denylist=None,
     location=None,
     authorize=authorize_balance,
+    email=None,
 ):
-    """
-    Minimal OCPP 1.6 CSMS implementation for conformance testing.
-    Supports required Core actions, logs all requests, and accepts all.
-    Optional RFID allowlist enables restricted access on Authorize.
-    Optional denylist enables explicit denial even if present in allowlist.
-    Optional `authorize` hook can be a callable or gw['name'].
-    Optional `location` enables per-txn logging to work/etron/records/{location}/{charger}_{txn_id}.dat
-    """
-    global _transactions, _active_cons
+    global _transactions, _active_cons, _abnormal_status
+    email = email if isinstance(email, str) else gw.resolve('[ADMIN_EMAIL]')
 
-    # Unwrap or create FastAPI app
     oapp = app
     from fastapi import FastAPI as _FastAPI
     if (_is_new_app := not (app := gw.unwrap_one(app, _FastAPI))):
         app = _FastAPI()
 
-    # Compose the validator: prefer explicit callable, then gw[] ref, else default
     validator = None
     if isinstance(authorize, str):
         validator = gw[authorize]
@@ -69,11 +73,9 @@ def setup_app(*,
         validator = authorize
 
     def is_authorized_rfid(rfid: str) -> bool:
-        # --- DENYLIST logic ---
         if denylist and gw.cdv.validate(denylist, rfid):
             gw.info(f"[OCPP] RFID {rfid!r} is present in denylist. Authorization denied.")
             return False
-        # --- ALLOWLIST logic ---
         if not allowlist:
             gw.warn("[OCPP] No RFID allowlist configured — rejecting all authorization requests.")
             return False
@@ -81,13 +83,12 @@ def setup_app(*,
 
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
-        global _csms_loop
+        global _csms_loop, _abnormal_status
         _csms_loop = asyncio.get_running_loop()
 
         charger_id = path.strip("/").split("/")[-1]
         gw.info(f"[OCPP] WebSocket connected: charger_id={charger_id}")
 
-        # negotiate subprotocols
         protos = websocket.headers.get("sec-websocket-protocol", "").split(",")
         protos = [p.strip() for p in protos if p.strip()]
         if "ocpp1.6" in protos:
@@ -148,6 +149,20 @@ def setup_app(*,
                             "idTagInfo": {"status": "Accepted"}
                         }
 
+                        if email:
+                            subject = f"OCPP: Charger {charger_id} STARTED transaction {transaction_id}"
+                            body = (
+                                f"Charging session started.\n"
+                                f"Charger: {charger_id}\n"
+                                f"idTag: {payload.get('idTag')}\n"
+                                f"Connector: {payload.get('connectorId')}\n"
+                                f"Start Time: {datetime.utcfromtimestamp(now).isoformat()}Z\n"
+                                f"Transaction ID: {transaction_id}\n"
+                                f"Meter Start: {payload.get('meterStart')}\n"
+                                f"Reservation ID: {payload.get('reservationId', -1)}"
+                            )
+                            gw.mail.send(subject, body, to=email)
+
                     elif action == "MeterValues":
                         tx = _transactions.get(charger_id)
                         if tx:
@@ -157,16 +172,13 @@ def setup_app(*,
                                     int(datetime.fromisoformat(ts.rstrip("Z")).timestamp())
                                     if ts else int(time.time())
                                 )
-                                # Prepare a copy of the sampledValue list, normalizing types
                                 sampled = []
                                 for sv in entry.get("sampledValue", []):
-                                    # Only store values we can parse as float
                                     val = sv.get("value")
                                     unit = sv.get("unit", "")
                                     measurand = sv.get("measurand", "")
                                     try:
                                         fval = float(val)
-                                        # Convert Wh to kWh
                                         if unit == "Wh":
                                             fval = fval / 1000.0
                                         sampled.append({
@@ -210,23 +222,36 @@ def setup_app(*,
                         response_payload = {"idTagInfo": {"status": "Accepted"}}
 
                     elif action == "StatusNotification":
+                        status = payload.get("status")
+                        error_code = payload.get("errorCode")
+                        info = payload.get("info", "")
+                        # Only store if abnormal; remove if cleared
+                        if is_abnormal_status(status, error_code):
+                            _abnormal_status[charger_id] = {
+                                "status": status,
+                                "errorCode": error_code,
+                                "info": info,
+                                "timestamp": datetime.utcnow().isoformat() + "Z"
+                            }
+                            gw.warn(f"[OCPP] Abnormal status for {charger_id}: {status}/{error_code} - {info}")
+                        else:
+                            if charger_id in _abnormal_status:
+                                gw.info(f"[OCPP] Status normalized for {charger_id}: {status}/{error_code}")
+                                _abnormal_status.pop(charger_id, None)
                         response_payload = {}
 
                     else:
                         response_payload = {"status": "Accepted"}
 
-                    # send confirmation
                     response = [3, message_id, response_payload]
                     gw.info(f"[OCPP:{charger_id}] ← {action} => {response_payload}")
                     await websocket.send_text(json.dumps(response))
 
                 elif isinstance(msg, list) and msg[0] == 3:
-                    # This is a CALLRESULT; normally safe to ignore unless you send requests to the client
                     gw.debug(f"[OCPP:{charger_id}] Received CALLRESULT: {msg}")
                     continue
 
                 elif isinstance(msg, list) and msg[0] == 4:
-                    # This is a CALLERROR; log as info/debug
                     gw.info(f"[OCPP:{charger_id}] Received CALLERROR: {msg}")
                     continue
 
@@ -253,9 +278,29 @@ def view_status():
     """
     /ocpp/status
     Return only the dashboard table fragment; GWAY will wrap this in its page chrome.
+    Displays abnormal status/errors at the top if present.
     """
     all_chargers = set(_active_cons) | set(_transactions)
     parts = ["<h1>OCPP Status Dashboard</h1>"]
+
+    # --- Show current abnormal statuses/errors, if any ---
+    if _abnormal_status:
+        parts.append(
+            '<div style="color:#fff;background:#b22;padding:12px;font-weight:bold;margin-bottom:12px">'
+            "⚠️ Abnormal Charger Status Detected:<ul style='margin:0'>"
+        )
+        for cid, err in sorted(_abnormal_status.items()):
+            status = err.get("status", "")
+            error_code = err.get("errorCode", "")
+            info = err.get("info", "")
+            ts = err.get("timestamp", "")
+            msg = f"<b>{cid}</b>: {status}/{error_code}"
+            if info:
+                msg += f" ({info})"
+            if ts:
+                msg += f" <span style='font-size:0.9em;color:#eee'>@{ts}</span>"
+            parts.append(f"<li>{msg}</li>")
+        parts.append("</ul></div>")
 
     if not all_chargers:
         parts.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
@@ -293,7 +338,7 @@ def view_status():
                 parts.append(f'<td>{value}</td>')
             parts.append('<td>')
             parts.append(f'''
-                <form action="/ocpp/action" method="post" class="inline">
+                <form action="/ocpp/csms/action" method="post" class="inline">
                   <input type="hidden" name="charger_id" value="{cid}">
                   <select name="action">
                     <option value="remote_stop">Stop</option>
@@ -320,9 +365,7 @@ def view_status():
     return "".join(parts)
 
 
-# projects/ocpp.py
-
-def extract_latest_meter(tx):
+def extract_meter(tx):
     """
     Return the latest Energy.Active.Import.Register (kWh) from MeterValues or meterStop.
     """
@@ -342,80 +385,6 @@ def extract_latest_meter(tx):
             if sv.get("measurand") == "Energy.Active.Import.Register":
                 return sv.get("value")
     return "-"
-
-
-def view_status():
-    """
-    /ocpp/status
-    Return only the dashboard table fragment; GWAY will wrap this in its page chrome.
-    """
-    all_chargers = set(_active_cons) | set(_transactions)
-    parts = ["<h1>OCPP Status Dashboard</h1>"]
-
-    if not all_chargers:
-        parts.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
-    else:
-        parts.append('<table class="ocpp-status">')
-        parts.append('<thead><tr>')
-        for header in [
-            "Charger ID", "Connected", "Txn ID", "Meter Start",
-            "Latest (kWh)", "kWh Consumed", "Status", "Actions"
-        ]:
-            parts.append(f'<th>{header}</th>')
-        parts.append('</tr></thead><tbody>')
-
-        for cid in sorted(all_chargers):
-            ws_live = cid in _active_cons
-            tx      = _transactions.get(cid)
-
-            connected   = '🟢' if ws_live else '🔴'
-            tx_id       = tx.get("transactionId") if tx else '-'
-            # Always show Meter Start in kWh if possible
-            if tx and tx.get("meterStart") is not None:
-                try:
-                    meter_start = float(tx["meterStart"]) / 1000.0  # assume Wh, convert to kWh
-                except Exception:
-                    meter_start = tx.get("meterStart")
-            else:
-                meter_start = '-'
-
-            if tx:
-                latest = extract_latest_meter(tx)
-                power  = power_consumed(tx)
-                status = "Closed" if tx.get("syncStop") else "Open"
-            else:
-                latest = power = status = '-'
-
-            parts.append('<tr>')
-            for value in [cid, connected, tx_id, meter_start, latest, power, status]:
-                parts.append(f'<td>{value}</td>')
-            parts.append('<td>')
-            parts.append(f'''
-                <form action="/ocpp/action" method="post" class="inline">
-                  <input type="hidden" name="charger_id" value="{cid}">
-                  <select name="action">
-                    <option value="remote_stop">Stop</option>
-                    <option value="reset_soft">Soft Reset</option>
-                    <option value="reset_hard">Hard Reset</option>
-                    <option value="disconnect">Disconnect</option>
-                  </select>
-                  <button type="submit">Send</button>
-                </form>
-                <button type="button"
-                  onclick="document.getElementById('details-{cid}').classList.toggle('hidden')">
-                  Details
-                </button>
-            ''')
-            parts.append('</td></tr>')
-            parts.append(f'''
-            <tr id="details-{cid}" class="hidden">
-              <td colspan="8"><pre>{json.dumps(tx or {}, indent=2)}</pre></td>
-            </tr>
-            ''')
-
-        parts.append('</tbody></table>')
-
-    return "".join(parts)
 
 
 def power_consumed(tx):

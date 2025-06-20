@@ -182,12 +182,17 @@ def resource_list(*parts, ext=None, prefix=None, suffix=None):
 ...
 
 
-def test(root: str = 'tests', filter=None):
+def test(*, root: str = 'tests', filter=None, project=None):
     """Execute all automatically detected test suites, logging to logs/test.log."""
     import unittest
     import os
     from gway import gw
     from gway.logging import use_logging
+
+    projects = gw.to_list(project)
+
+    # TODO: Implement a 'project' mode. Instead of performing the hard-coded GWAY test
+    # suite, run an abstract test battery against the project or collection of projects
 
     with use_logging(logfile="test.log", logdir="logs", prog_name="gway",
                      debug=getattr(gw, "debug", False),

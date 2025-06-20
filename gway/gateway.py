@@ -273,7 +273,7 @@ class Gateway(Resolver):
             self.critical("KeyboardInterrupt received. Exiting immediately.")
             os._exit(1)
 
-    def loop(self): self.until()
+    def forever(self): self.until()
 
 
     def __getattr__(self, name):
@@ -336,8 +336,7 @@ class Gateway(Resolver):
             if result:
                 return result
 
-        # TODO: Testing while installing gway normally from pip:
-        # It seems 
+        # TODO: Testing while installing gway normally from pip, we may need to provide more info
 
         raise FileNotFoundError(
             f"Project path not found for '{project_name}' in '{root}' or '{self.project_path}'")

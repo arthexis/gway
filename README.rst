@@ -314,6 +314,8 @@ Before you start writing any code, even if you have already planned the feature 
 
 TODOs should live with the code they intend to affect. They warn that things are going to soon be different. It allows a good feature to be noted instead of lost to priorities. Keeping the tasks in the code itself as TODOs is superior to using an external tool. Those systems should look at the code as the source of truth to determine what TODOs need to be accomplished and make them more visible instead.
 
+However, if a TODO affects the entire project, put it at the top of the file instead.
+
 You may write the TODO and then dispatch it in the same coding session, or it may live on for many commits until its time comes. Or maybe you change your mind and delete the TODO. You get a space, close to the code, where you can see the effects of what you intend to integrate next.
 
 
