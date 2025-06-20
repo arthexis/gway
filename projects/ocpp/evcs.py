@@ -94,15 +94,22 @@ async def simulate(*,
                     print("[Simulator] Stop event triggered—ending meter loop")
                     break
                 meter += random.randint(50, 150)
+                meter_kwh = meter / 1000.0
                 await ws.send(json.dumps([2, "meter", "MeterValues", {
                     "connectorId": 1,
                     "transactionId": tx_id,
                     "meterValue": [{
                         "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S') + "Z",
-                        "sampledValue": [{"value": str(meter)}]
+                        "sampledValue": [{
+                            "value": f"{meter_kwh:.3f}",
+                            "measurand": "Energy.Active.Import.Register",
+                            "unit": "kWh",
+                            "context": "Sample.Periodic"
+                        }]
                     }]
                 }]))
                 await asyncio.sleep(interval)
+
 
             # StopTransaction
             await ws.send(json.dumps([2, "stop", "StopTransaction", {
