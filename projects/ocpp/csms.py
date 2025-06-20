@@ -6,70 +6,20 @@ import time
 import uuid
 import traceback
 import asyncio
-import websockets
-import random
 from datetime import datetime
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from bottle import template, HTTPError
+from fastapi import WebSocket, WebSocketDisconnect
+from bottle import HTTPError
 from typing import Dict, Optional
 from gway import gw
 
 
-# Both setup_sink_app and setup_csms_app support receiving an app argument
-# which may be a single app or a collection of apps, similar to web.app.setup
+# TODO: Add a back link after operations are sent
+# TODO: Allow specifying a different base endpoint path on the server side 
+# TODO: Consider if we have to capture additional query params from the evcs
 
-# Bottle does not support websockets properly, so we need to use FastAPI for OCPP. 
-# However we still use Bottle for the user interface (see view section down below)
 
-def setup_sink_app(*, app=None):
-    """
-    Basic OCPP passive sink for messages, acting as a dummy CSMS server.
-    This won't pass compliance or provide authentication. It just accepts and logs all.
-    Note: This version of the app was tested at the EVCS with real EVs.
-    """
-    # A - This line ensures we find just the kind of app we need or create one if missing
-    if (_is_new_app := not (app := gw.unwrap_one((oapp := app), FastAPI))):
-        app = FastAPI()
-
-    @app.websocket("{path:path}")
-    async def websocket_ocpp(websocket: WebSocket, path: str):
-        gw.info(f"[OCPP] New WebSocket connection at /{path}")
-        try:
-            await websocket.accept()
-            while True:
-                raw = await websocket.receive_text()
-                gw.info(f"[OCPP:{path}] Message received:", raw)
-
-                try:
-                    msg = json.loads(raw)
-                    if isinstance(msg, list) and len(msg) >= 3 and msg[0] == 2:
-                        message_id = msg[1]
-                        action = msg[2]
-                        payload = msg[3] if len(msg) > 3 else {}
-
-                        gw.info(f"[OCPP:{path}] -> Action: {action} | Payload: {payload}")
-                        response = [3, message_id, {"status": "Accepted"}]
-                        await websocket.send_text(json.dumps(response))
-                        gw.info(f"[OCPP:{path}] <- Acknowledged: {response}")
-                    else:
-                        gw.warning(f"[OCPP:{path}] Received non-Call message or malformed")
-                except Exception as e:
-                    gw.error(f"[OCPP:{path}] Error parsing message: {e}")
-                    gw.debug(traceback.format_exc())
-
-        except WebSocketDisconnect:
-            gw.info(f"[OCPP:{path}] Disconnected")
-        except Exception as e:
-            gw.error(f"[OCPP:{path}] WebSocket error: {e}")
-            gw.debug(traceback.format_exc())
-
-    # B- This return pattern ensures we include our app in the bundle (if any)
-    if _is_new_app:
-        return app if not oapp else (oapp, app)    
-    return oapp
-
-...
-
+# TODO: Fix the power calculation, seems to show negative numbers, by tracking boot notification and storing in a cdv
+#       Store all received data from the notification as keys in the CDV. See attached code for how gw.cdv.store works
 
 def authorize_balance(**record):
     """
@@ -88,7 +38,7 @@ _transactions: Dict[str, dict] = {}           # charger_id → latest transactio
 _active_cons: Dict[str, WebSocket] = {}      # charger_id → live WebSocket
 
 
-def setup_csms_v16_app(*,
+def setup_app(*,
     app=None,
     allowlist=None,
     denylist=None,  # New parameter for RFID denylist
@@ -207,20 +157,32 @@ def setup_csms_v16_app(*,
                                     int(datetime.fromisoformat(ts.rstrip("Z")).timestamp())
                                     if ts else int(time.time())
                                 )
-                                sample = {
-                                    "syncMeter": 1,
+                                # Prepare a copy of the sampledValue list, normalizing types
+                                sampled = []
+                                for sv in entry.get("sampledValue", []):
+                                    # Only store values we can parse as float
+                                    val = sv.get("value")
+                                    unit = sv.get("unit", "")
+                                    measurand = sv.get("measurand", "")
+                                    try:
+                                        fval = float(val)
+                                        # Convert Wh to kWh
+                                        if unit == "Wh":
+                                            fval = fval / 1000.0
+                                        sampled.append({
+                                            "value": fval,
+                                            "unit": "kWh" if unit == "Wh" else unit,
+                                            "measurand": measurand,
+                                            "context": sv.get("context", ""),
+                                        })
+                                    except Exception:
+                                        continue
+                                tx["MeterValues"].append({
                                     "timestamp": ts_epoch,
                                     "timestampStr": datetime.utcfromtimestamp(ts_epoch).isoformat() + "Z",
                                     "timeMs": int(time.time() * 1000) % 1000,
-                                }
-                                # Extract actual meter reading
-                                sv_list = entry.get("sampledValue", [])
-                                try:
-                                    meter_val = int(sv_list[0].get("value"))
-                                except Exception:
-                                    meter_val = None
-                                sample["meter"] = meter_val
-                                tx["MeterValues"].append(sample)
+                                    "sampledValue": sampled,
+                                })
                         response_payload = {}
 
                     elif action == "StopTransaction":
@@ -258,6 +220,16 @@ def setup_csms_v16_app(*,
                     gw.info(f"[OCPP:{charger_id}] ← {action} => {response_payload}")
                     await websocket.send_text(json.dumps(response))
 
+                elif isinstance(msg, list) and msg[0] == 3:
+                    # This is a CALLRESULT; normally safe to ignore unless you send requests to the client
+                    gw.debug(f"[OCPP:{charger_id}] Received CALLRESULT: {msg}")
+                    continue
+
+                elif isinstance(msg, list) and msg[0] == 4:
+                    # This is a CALLERROR; log as info/debug
+                    gw.info(f"[OCPP:{charger_id}] Received CALLERROR: {msg}")
+                    continue
+
                 else:
                     gw.warn(f"[OCPP:{charger_id}] Invalid or unsupported message format: {msg}")
 
@@ -272,143 +244,10 @@ def setup_csms_v16_app(*,
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 
 
-setup_csms_app = setup_csms_v16_app
-
-
-async def simulate_evcs(*,
-        host: str = "[WEBSITE_HOST|127.0.0.1]",
-        ws_port: int = "[WEBSOCKET_PORT|9000]",
-        rfid: str = "FFFFFFFF",
-        cp_path: str = "CPX",
-        duration: int = 60,
-        repeat: bool = False,
-    ):
-    """
-    Simulate an EVCS connecting and running charging sessions over OCPP.
-    Keeps a single persistent WebSocket connection and reuses it for each transaction.
-    Logs all incoming CSMS→CP messages, sending confirmations for CALLs,
-    and respects RemoteStopTransaction commands.
-    """
-    import asyncio, json, random, time, websockets
-    from gway import gw
-
-    # Resolve connection parameters
-    host    = gw.resolve(host)
-    ws_port = int(gw.resolve(ws_port))
-    uri     = f"ws://{host}:{ws_port}/{cp_path}"
-
-    stop_event = asyncio.Event()
-
-    async def listen_to_csms(ws):
-        """
-        Background listener for any incoming CSMS messages.
-        Sends empty confirmations for CALL requests and triggers stop_event on RemoteStopTransaction.
-        Logs any unexpected messages or connection closures.
-        """
-        try:
-            while True:
-                raw = await ws.recv()
-                print(f"[Simulator ← CSMS] {raw}")
-                try:
-                    msg = json.loads(raw)
-                except json.JSONDecodeError:
-                    print("[Simulator] Warning: Received non-JSON message")
-                    continue
-                # Confirm any CALL messages
-                if isinstance(msg, list) and msg[0] == 2:
-                    msg_id, action, payload = msg[1], msg[2], (msg[3] if len(msg) > 3 else {})
-                    await ws.send(json.dumps([3, msg_id, {}]))
-                    if action == "RemoteStopTransaction":
-                        print("[Simulator] Received RemoteStopTransaction → stopping transaction")
-                        stop_event.set()
-                else:
-                    # Log unexpected message types
-                    print("[Simulator] Notice: Unexpected message format", msg)
-        except websockets.ConnectionClosed:
-            print("[Simulator] Connection closed by server")
-            stop_event.set()
-
-    async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as ws:
-        print(f"[Simulator] Connected to {uri}")
-        # Start background listener
-        listener = asyncio.create_task(listen_to_csms(ws))
-
-        # Initial handshake: BootNotification and Authorize
-        await ws.send(json.dumps([2, "boot", "BootNotification", {
-            "chargePointModel": "Simulator",
-            "chargePointVendor": "SimVendor"
-        }]))
-        await ws.recv()
-
-        await ws.send(json.dumps([2, "auth", "Authorize", {"idTag": rfid}]))
-        await ws.recv()
-
-        # Main transaction loop
-        while not stop_event.is_set():
-            # Clear stop_event for this cycle
-            stop_event.clear()
-
-            # StartTransaction
-            meter_start = random.randint(1000, 2000)
-            await ws.send(json.dumps([2, "start", "StartTransaction", {
-                "connectorId": 1,
-                "idTag": rfid,
-                "meterStart": meter_start
-            }]))
-            resp = await ws.recv()
-            tx_id = json.loads(resp)[2].get("transactionId")
-            print(f"[Simulator] Transaction {tx_id} started at meter {meter_start}")
-
-            # MeterValues loop with duration variation
-            actual_duration = random.uniform(duration * 0.75, duration * 1.25)
-            interval = actual_duration / 10
-            meter = meter_start
-
-            for _ in range(10):
-                if stop_event.is_set():
-                    print("[Simulator] Stop event triggered—ending meter loop")
-                    break
-                meter += random.randint(50, 150)
-                await ws.send(json.dumps([2, "meter", "MeterValues", {
-                    "connectorId": 1,
-                    "transactionId": tx_id,
-                    "meterValue": [{
-                        "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S') + "Z",
-                        "sampledValue": [{"value": str(meter)}]
-                    }]
-                }]))
-                await asyncio.sleep(interval)
-
-            # StopTransaction
-            await ws.send(json.dumps([2, "stop", "StopTransaction", {
-                "transactionId": tx_id,
-                "idTag": rfid,
-                "meterStop": meter
-            }]))
-            await ws.recv()
-            print(f"[Simulator] Transaction {tx_id} stopped at meter {meter}")
-
-            if not repeat or stop_event.is_set():
-                break
-
-            print(f"[Simulator] Waiting {actual_duration:.1f}s before next cycle")
-            await asyncio.sleep(actual_duration)
-
-        # Cleanup listener
-        listener.cancel()
-        try:
-            await listener
-        except asyncio.CancelledError:
-            pass
-
-        print("[Simulator] Simulation ended.")
-
-
-...
-
-
-# Views for the main app. These are powered by bottle instead of FastAPI and run on another port.
+# GWAY Views for the main app. These are powered by bottle instead of FastAPI and run on another port.
 # However, by being defined on the same project, data may be shared between both.
+# These views only need to return html fragments and GWAY will render the rest of the needed content.
+# However, they may also return a whole document or a bottle response directly if needed
 
 def view_status():
     """
@@ -458,8 +297,6 @@ def view_status():
                   <input type="hidden" name="charger_id" value="{cid}">
                   <select name="action">
                     <option value="remote_stop">Stop</option>
-                    <option value="change_availability_unavailable">Off</option>
-                    <option value="change_availability_available">On</option>
                     <option value="reset_soft">Soft Reset</option>
                     <option value="reset_hard">Hard Reset</option>
                     <option value="disconnect">Disconnect</option>
@@ -482,58 +319,143 @@ def view_status():
 
     return "".join(parts)
 
-def view_action(charger_id: str, action: str):
+
+# projects/ocpp.py
+
+def extract_latest_meter(tx):
     """
-    /ocpp/action
-    Single‐endpoint dispatcher for all dropdown actions.
+    Return the latest Energy.Active.Import.Register (kWh) from MeterValues or meterStop.
     """
-    ws = _active_cons.get(charger_id)
-    if not ws:
-        raise HTTPError(404, "No active connection")
-    msg_id = str(uuid.uuid4())
+    if not tx:
+        return "-"
+    # Try meterStop first
+    if tx.get("meterStop") is not None:
+        try:
+            return float(tx["meterStop"]) / 1000.0  # assume Wh, convert to kWh
+        except Exception:
+            return tx["meterStop"]
+    # Try MeterValues: last entry, find Energy.Active.Import.Register
+    mv = tx.get("MeterValues", [])
+    if mv:
+        last_mv = mv[-1]
+        for sv in last_mv.get("sampledValue", []):
+            if sv.get("measurand") == "Energy.Active.Import.Register":
+                return sv.get("value")
+    return "-"
 
-    # build the right OCPP message
-    if action == "remote_stop":
-        tx = _transactions.get(charger_id)
-        if not tx:
-            raise HTTPError(404, "No transaction to stop")
-        coro = ws.send_text(json.dumps([2, msg_id, "RemoteStopTransaction",
-                                        {"transactionId": tx["transactionId"]}]))
 
-    elif action.startswith("change_availability_"):
-        _, _, mode = action.partition("_availability_")
-        coro = ws.send_text(json.dumps([2, msg_id, "ChangeAvailability",
-                                        {"connectorId": 0, "type": mode.capitalize()}]))
+def view_status():
+    """
+    /ocpp/status
+    Return only the dashboard table fragment; GWAY will wrap this in its page chrome.
+    """
+    all_chargers = set(_active_cons) | set(_transactions)
+    parts = ["<h1>OCPP Status Dashboard</h1>"]
 
-    elif action.startswith("reset_"):
-        _, mode = action.split("_", 1)
-        coro = ws.send_text(json.dumps([2, msg_id, "Reset", {"type": mode.capitalize()}]))
-
-    elif action == "disconnect":
-        # schedule a raw close
-        coro = ws.close(code=1000, reason="Admin disconnect")
-
+    if not all_chargers:
+        parts.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
     else:
-        raise HTTPError(400, f"Unknown action: {action}")
+        parts.append('<table class="ocpp-status">')
+        parts.append('<thead><tr>')
+        for header in [
+            "Charger ID", "Connected", "Txn ID", "Meter Start",
+            "Latest (kWh)", "kWh Consumed", "Status", "Actions"
+        ]:
+            parts.append(f'<th>{header}</th>')
+        parts.append('</tr></thead><tbody>')
 
-    if _csms_loop:
-        # schedule it on the FastAPI loop
-        _csms_loop.call_soon_threadsafe(lambda: _csms_loop.create_task(coro))
-    else:
-        gw.warn("No CSMS event loop; action not sent")
+        for cid in sorted(all_chargers):
+            ws_live = cid in _active_cons
+            tx      = _transactions.get(cid)
 
-    return {"status": "requested", "messageId": msg_id}
+            connected   = '🟢' if ws_live else '🔴'
+            tx_id       = tx.get("transactionId") if tx else '-'
+            # Always show Meter Start in kWh if possible
+            if tx and tx.get("meterStart") is not None:
+                try:
+                    meter_start = float(tx["meterStart"]) / 1000.0  # assume Wh, convert to kWh
+                except Exception:
+                    meter_start = tx.get("meterStart")
+            else:
+                meter_start = '-'
+
+            if tx:
+                latest = extract_latest_meter(tx)
+                power  = power_consumed(tx)
+                status = "Closed" if tx.get("syncStop") else "Open"
+            else:
+                latest = power = status = '-'
+
+            parts.append('<tr>')
+            for value in [cid, connected, tx_id, meter_start, latest, power, status]:
+                parts.append(f'<td>{value}</td>')
+            parts.append('<td>')
+            parts.append(f'''
+                <form action="/ocpp/action" method="post" class="inline">
+                  <input type="hidden" name="charger_id" value="{cid}">
+                  <select name="action">
+                    <option value="remote_stop">Stop</option>
+                    <option value="reset_soft">Soft Reset</option>
+                    <option value="reset_hard">Hard Reset</option>
+                    <option value="disconnect">Disconnect</option>
+                  </select>
+                  <button type="submit">Send</button>
+                </form>
+                <button type="button"
+                  onclick="document.getElementById('details-{cid}').classList.toggle('hidden')">
+                  Details
+                </button>
+            ''')
+            parts.append('</td></tr>')
+            parts.append(f'''
+            <tr id="details-{cid}" class="hidden">
+              <td colspan="8"><pre>{json.dumps(tx or {}, indent=2)}</pre></td>
+            </tr>
+            ''')
+
+        parts.append('</tbody></table>')
+
+    return "".join(parts)
+
 
 def power_consumed(tx):
-    """Calculate power consumed from transaction meter values."""
-    if not tx or not tx.get("MeterValues"):
-        return 0
+    """Calculate power consumed in kWh from transaction's meter values (Energy.Active.Import.Register)."""
+    if not tx:
+        return 0.0
 
-    meter_start = tx.get("meterStart", 0)
-    meter_values = tx["MeterValues"]
-    meter_end = meter_values[-1].get("meter", meter_start) or 0
+    # Try to use MeterValues if present and well-formed
+    meter_values = tx.get("MeterValues", [])
+    energy_vals = []
+    for entry in meter_values:
+        # entry should be a dict with sampledValue: [...]
+        for sv in entry.get("sampledValue", []):
+            if sv.get("measurand") == "Energy.Active.Import.Register":
+                val = sv.get("value")
+                # Parse value as float (from string), handle missing
+                try:
+                    val_f = float(val)
+                    if sv.get("unit") == "Wh":
+                        val_f = val_f / 1000.0
+                    # else assume kWh
+                    energy_vals.append(val_f)
+                except Exception:
+                    pass
 
-    power_consumed_kWh = (meter_end - meter_start) / 1000  # assuming meter values are in Wh
-    return round(power_consumed_kWh, 2)
+    if energy_vals:
+        start = energy_vals[0]
+        end = energy_vals[-1]
+        return round(end - start, 3)
 
+    # Fallback to meterStart/meterStop if no sampled values
+    meter_start = tx.get("meterStart")
+    meter_stop = tx.get("meterStop")
+    # handle int or float or None
+    try:
+        if meter_start is not None and meter_stop is not None:
+            return round(float(meter_stop) / 1000.0 - float(meter_start) / 1000.0, 3)
+        if meter_start is not None:
+            return 0.0  # no consumption measured
+    except Exception:
+        pass
 
+    return 0.0

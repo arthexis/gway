@@ -336,6 +336,9 @@ class Gateway(Resolver):
             if result:
                 return result
 
+        # TODO: Testing while installing gway normally from pip:
+        # It seems 
+
         raise FileNotFoundError(
             f"Project path not found for '{project_name}' in '{root}' or '{self.project_path}'")
 

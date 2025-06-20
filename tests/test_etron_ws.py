@@ -234,5 +234,116 @@ class EtronWebSocketTests(unittest.TestCase):
                 self.assertEqual(status, "Rejected")
         asyncio.run(run_authorize_check())
 
+    def test_server_ignores_callresult_messages(self):
+        """Server should ignore valid [3, ...] CALLRESULT messages from client."""
+        uri = "ws://localhost:9000/callresult1?token=foo"
+        async def run_ignore_callresult():
+            async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
+                # Send a valid CALLRESULT message (simulating client response)
+                message_id = "irrelevant-id"
+                callresult = [3, message_id, {"some": "result"}]
+                await websocket.send(json.dumps(callresult))
+                # Now send a valid BootNotification to confirm server is still alive
+                boot_message_id = "boot-check"
+                boot_notification = [2, boot_message_id, "BootNotification", {
+                    "chargePointModel": "FakeModel",
+                    "chargePointVendor": "FakeVendor"
+                }]
+                await websocket.send(json.dumps(boot_notification))
+                response = await websocket.recv()
+                parsed = json.loads(response)
+                self.assertEqual(parsed[1], boot_message_id)
+                self.assertIn("currentTime", parsed[2])
+        asyncio.run(run_ignore_callresult())
+
+    def test_server_ignores_callerror_messages(self):
+        """Server should ignore valid [4, ...] CALLERROR messages from client."""
+        uri = "ws://localhost:9000/callerror1?token=foo"
+        async def run_ignore_callerror():
+            async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
+                # Send a valid CALLERROR message (simulating client error response)
+                message_id = "irrelevant-id"
+                callerror = [4, message_id, "SomeErrorCode", "Description", {"errorDetails": "optional"}]
+                await websocket.send(json.dumps(callerror))
+                # Now send a valid BootNotification to confirm server is still alive
+                boot_message_id = "boot-check2"
+                boot_notification = [2, boot_message_id, "BootNotification", {
+                    "chargePointModel": "FakeModel",
+                    "chargePointVendor": "FakeVendor"
+                }]
+                await websocket.send(json.dumps(boot_notification))
+                response = await websocket.recv()
+                parsed = json.loads(response)
+                self.assertEqual(parsed[1], boot_message_id)
+                self.assertIn("currentTime", parsed[2])
+        asyncio.run(run_ignore_callerror())
+
+    def test_power_consumed_and_extract_latest_meter(self):
+        """Test power calculation and latest meter value extraction."""
+
+        # Simulated transaction with MeterValues in kWh
+        tx1 = {
+            "meterStart": 150000,  # Wh
+            "meterStop": 152000,   # Wh
+            "MeterValues": [
+                {"timestamp": 1, "sampledValue": [
+                    {"value": 150.0, "measurand": "Energy.Active.Import.Register", "unit": "kWh"}
+                ]},
+                {"timestamp": 2, "sampledValue": [
+                    {"value": 152.0, "measurand": "Energy.Active.Import.Register", "unit": "kWh"}
+                ]},
+            ]
+        }
+        # Should use MeterValues: 152.0 - 150.0 = 2.0 kWh
+        pc = gw.ocpp.csms.power_consumed(tx1)
+        self.assertAlmostEqual(pc, 2.0, places=2)
+        lm = gw.ocpp.csms.extract_latest_meter(tx1)
+        self.assertAlmostEqual(lm, 152.0, places=2)
+
+        # Simulated transaction with MeterValues in Wh (should convert to kWh)
+        tx2 = {
+            "meterStart": 100000,
+            "meterStop": 102500,
+            "MeterValues": [
+                {"timestamp": 1, "sampledValue": [
+                    {"value": 100000, "measurand": "Energy.Active.Import.Register", "unit": "Wh"}
+                ]},
+                {"timestamp": 2, "sampledValue": [
+                    {"value": 102500, "measurand": "Energy.Active.Import.Register", "unit": "Wh"}
+                ]},
+            ]
+        }
+        # Should use MeterValues: (102500-100000)/1000 = 2.5 kWh
+        pc = gw.ocpp.csms.power_consumed(tx2)
+        self.assertAlmostEqual(pc, 2.5, places=2)
+        lm = gw.ocpp.csms.extract_latest_meter(tx2)
+        self.assertAlmostEqual(lm, 102.5, places=2)
+
+        # Only meterStart/meterStop (no MeterValues)
+        tx3 = {"meterStart": 123000, "meterStop": 124500, "MeterValues": []}
+        # (124500-123000)/1000 = 1.5 kWh
+        pc = gw.ocpp.csms.power_consumed(tx3)
+        self.assertAlmostEqual(pc, 1.5, places=2)
+        lm = gw.ocpp.csms.extract_latest_meter(tx3)
+        self.assertAlmostEqual(lm, 124.5, places=2)
+
+        # Edge: no data
+        pc = gw.ocpp.csms.power_consumed({})
+        self.assertEqual(pc, 0.0)
+        lm = gw.ocpp.csms.extract_latest_meter({})
+        self.assertEqual(lm, "-")
+
+        # Edge: MeterValues present but missing correct measurand
+        tx4 = {"MeterValues": [
+            {"timestamp": 1, "sampledValue": [
+                {"value": 12.34, "measurand": "NotEnergy", "unit": "kWh"}
+            ]}
+        ]}
+        pc = gw.ocpp.csms.power_consumed(tx4)
+        self.assertEqual(pc, 0.0)
+        lm = gw.ocpp.csms.extract_latest_meter(tx4)
+        self.assertEqual(lm, "-")
+
+
 if __name__ == "__main__":
     unittest.main()
