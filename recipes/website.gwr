@@ -4,6 +4,7 @@
 web app setup --home readme
     --project web.cookies 
     --project web.nav
+    --project awg --home cable-finder
     --project vbox 
     --project conway --home board --path games/conway
     

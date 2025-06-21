@@ -144,3 +144,59 @@ def find_conduit(awg, cables, *, conduit="emt"):
         return {
             "size_in": row[0]
         }
+
+
+def view_cable_finder(
+    *args, meters=None, amps="40", volts="220", material="cu", 
+    max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
+):
+    """Page builder for AWG cable finder with HTML form and result."""
+
+    warning = "<p>Warning: This calculator may not be applicable to your use case. It may be completely wrong." \
+              "Consult a LOCAL certified electrician before making real-life cable sizing decisions.</p>"
+    
+    if not meters:
+        return "<h1>AWG Cable Finder</h1>" + warning + '''
+            <form method="post">
+                <label>Meters: <input type="number" name="meters" required min="1" /></label><br/>
+                <label>Amps: <input type="number" name="amps" value="40" /></label><br/>
+                <label>Volts: <input type="number" name="volts" value="220" /></label><br/>
+                <label>Material: 
+                    <select name="material">
+                        <option value="cu">Copper (cu)</option>
+                        <option value="al">Aluminum (al)</option>
+                    </select>
+                </label><br/>
+                <label>Phases: 
+                    <select name="phases">
+                        <option value="1">AC Single Phase (1)</option>
+                        <option value="2">AC Two Phases (2)</option>
+                        <option value="3">AC Three Phases (3)</option>
+                    </select>
+                </label><br/>
+                <label>Max Lines: <input type="number" name="max_lines" value="3" /></label><br/>
+                <button type="submit" class="submit">Find Cable</button>
+            </form>
+        '''
+    try:
+        result = find_cable(
+            meters=meters, amps=amps, volts=volts,
+            material=material, max_lines=max_lines, phases=phases, 
+        )
+    except Exception as e:
+        return f"<p class='error'>Error: {e}</p><p><a href='/awg-finder'>Try again</a></p>"
+
+    return f"""
+        <h1>Recommended Cable</h1>
+        <ul>
+            <li><strong>AWG Size:</strong> {result['awg']}</li>
+            <li><strong>Lines:</strong> {result['lines']}</li>
+            <li><strong>Total Cables:</strong> {result['cables']}</li>
+            <li><strong>Total Length (m):</strong> {result['total_meters']}</li>
+            <li><strong>Voltage Drop:</strong> {result['vdrop']:.2f} V ({result['vdperc']:.2f}%)</li>
+            <li><strong>Voltage at End:</strong> {result['vend']:.2f} V</li>
+        </ul>
+        {warning}
+        <p><a href="/awg/cable-finder">&#8592; Calculate again</a></p>
+    """
+

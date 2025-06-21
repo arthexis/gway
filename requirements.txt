@@ -23,4 +23,6 @@ plyer
 numpy
 pygetwindow; platform_system == "Windows"
 duckdb
-pywin32L; platform_system == "Windows"
+pywin32; platform_system == "Windows"
+selenium 
+webdriver-manager
