@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gway"
-version = "0.3.19"
+version = "0.3.20"
 description = "Software Project Infrastructure by https://www.gelectriic.com"
 requires-python = ">=3.7"
 license = "MIT"
 classifiers = [ "Programming Language :: Python :: 3", "Operating System :: OS Independent",]
-dependencies = [ "toml", "setuptools", "twine", "build", "colorama", "bottle", "paste", "requests", "dateparser", "fastapi", "uvicorn", "docutils", "croniter", "qrcode[pil]", "cryptography", "jinja2", "pygame", "python-multipart", "httpx", "websockets", "pyperclip; platform_system == \"Windows\"", "plyer", "numpy", "pygetwindow; platform_system == \"Windows\"", "duckdb", "pywin32L; platform_system == \"Windows\"",]
+dependencies = [ "toml", "setuptools", "twine", "build", "colorama", "bottle", "paste", "requests", "dateparser", "fastapi", "uvicorn", "docutils", "croniter", "qrcode[pil]", "cryptography", "jinja2", "pygame", "python-multipart", "httpx", "websockets", "pyperclip; platform_system == \"Windows\"", "plyer", "numpy", "pygetwindow; platform_system == \"Windows\"", "duckdb", "pywin32; platform_system == \"Windows\"", "selenium", "webdriver-manager",]
 [[project.authors]]
 name = "Rafael J. Guillén-Osorio"
 email = "tecnologia@gelectriic.com"
