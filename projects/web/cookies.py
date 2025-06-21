@@ -141,5 +141,5 @@ def view_cookies():
         deliver this website. These include database, CDN, and web infrastructure providers necessary
         to fulfill your requests.</p>
         <p>You can remove all stored cookie information at any time by pressing the 
-        "Remove our cookies" button in the navbar.</p>
+        "Remove our cookies" button in the navigation bar.</p>
         """

@@ -3,7 +3,7 @@
 
 web app setup --home readme
     --project web.cookies 
-    --project web.navbar
+    --project web.nav
     --project vbox 
     --project conway --home board --path games/conway
     

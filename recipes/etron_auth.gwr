@@ -3,7 +3,7 @@
 
 web app setup 
     --project web.cookies 
-    --project web.navbar 
+    --project web.nav
     --project vbox 
     --project ocpp.csms --home status
 

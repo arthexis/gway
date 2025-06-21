@@ -2,7 +2,7 @@
 # OCPP 1.6 CSMS Recipe with basic RFID auth
 
 web app setup 
-    --project web.navbar 
+    --project web.nav
     --project vbox 
     --project ocpp.csms --home status 
 
