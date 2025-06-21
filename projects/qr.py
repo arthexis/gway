@@ -1,5 +1,5 @@
 
-# projects/qr.py
+# file: projects/qr.py
 
 import os
 import uuid

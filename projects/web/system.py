@@ -1,4 +1,4 @@
-# projects/web/bridge.py
+# projects/web/system.py
 
 from gway import gw
 

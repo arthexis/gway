@@ -1,13 +1,9 @@
-# TODO: Consider using HTMX for the navbar (but not anywhere else)
-# The idea behind this is that using htmx with arbitrary view output leads to unexpected
-# results. However, the navbar is self-contained. We should try updating the links and compass 
-# in a lightweight manner through htmx. 
-
 # file: projects/web/nav.py
 
 import os
 from gway import gw
 from bottle import request
+
 
 def render(*, current_url=None, homes=None):
     """
@@ -58,20 +54,6 @@ def render(*, current_url=None, homes=None):
         title_count[k] = title_count.get(k, 0) + 1
         title_routes.setdefault(k, []).append(route)
 
-    def disambiguate(title, route):
-        """Append route info if title is duplicated."""
-        k = title.strip().lower()
-        if title_count[k] == 1:
-            return title
-        # Use shortest unique suffix as disambiguator
-        siblings = set(title_routes[k]) - {route}
-        segments = route.split("/")
-        for i in range(1, len(segments)+1):
-            suffix = "/".join(segments[-i:])
-            if all(not s.endswith(suffix) for s in siblings):
-                return f"{title} ({suffix})"
-        return f"{title} ({route})"  # fallback
-
     # --- Build HTML ---
     links = ""
     # Homes
@@ -79,8 +61,7 @@ def render(*, current_url=None, homes=None):
         for home_title, home_route in homes:
             route = home_route.strip("/")
             is_current = ' class="current"' if route == current_route else ""
-            disp_title = disambiguate(home_title, route)
-            links += f'<li><a href="/{home_route}"{is_current}>{disp_title.upper()}</a></li>'
+            links += f'<li><a href="/{home_route}"{is_current}>{home_title.upper()}</a></li>'
     # Visited (most recent first, not already in homes)
     if cookies_ok and entries:
         visited_rendered = set()
@@ -89,8 +70,7 @@ def render(*, current_url=None, homes=None):
                 continue
             visited_rendered.add(route)
             is_current = ' class="current"' if route == current_route else ""
-            disp_title = disambiguate(title, route)
-            links += f'<li><a href="/{route}"{is_current}>{disp_title}</a></li>'
+            links += f'<li><a href="/{route}"{is_current}>{title}</a></li>'
     elif not homes:
         links += f'<li class="current">{current_title.upper()}</li>'
 

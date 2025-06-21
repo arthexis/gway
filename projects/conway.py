@@ -63,6 +63,9 @@ def next_generation(board):
 
 # TODO: Fix Failed to parse board! on initial load only
 
+def view_readme():
+    return "Welcome to Conway's Game of Life!"
+
 def view_board(*args, action=None, board=None, **kwargs):
     """
     Render the Conway's Game of Life UI.

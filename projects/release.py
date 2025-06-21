@@ -1,4 +1,4 @@
-# projects/release.py
+# file: projects/release.py
 
 import os
 import sys
@@ -10,9 +10,6 @@ from pathlib import Path
 
 from gway import gw
 
-# TODO: Create an extra safeguard for release: If the version we would be pushing
-# is identical to what is already in PyPI, abort and let the user know.
-# Provide a force option (not included by all) to push the release anyways.
 
 def build(
     *,

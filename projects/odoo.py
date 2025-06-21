@@ -1,4 +1,4 @@
-# projects/odoo.py
+# file: projects/odoo.py
 
 from xmlrpc import client
 from datetime import datetime, timedelta

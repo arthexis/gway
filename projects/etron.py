@@ -1,4 +1,4 @@
-# projects/etron.py
+# file: projects/etron.py
 
 import os
 import json
@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from gway import gw
 
 
-def extract_records(data_dir, *, 
+def extract_records(location, *, 
         add_days=0, after=None, before=None, batch=None):
     r"""Load data from EV IOCHARGER .json files to CSV format.
         > gway etron extract_records san-pedro
@@ -16,11 +16,11 @@ def extract_records(data_dir, *,
         This assumes the files are at work/etron/records/<location>.
     """
     # This function has been tested with real eTRON EVCS OCPP 1.6 for CSS2 (modify with care.)
-    data_dir = data_dir.replace("-", "_")
-    dir_name = os.path.split(data_dir.strip('/').strip('\\'))[-1]
-    data_dir = gw.resource("work", "etron", "records", data_dir)
+    location = location.replace("-", "_")
+    dir_name = os.path.split(location.strip('/').strip('\\'))[-1]
+    location = gw.resource("work", "etron", "records", location)
     output_csv = gw.resource("work", "etron", "reports", f"{dir_name}_records.csv")
-    gw.info(f"Reading data files from {data_dir}")
+    gw.info(f"Reading data files from {location}")
 
     columns = ["LOCACION", "CONECTOR", "FECHA INICIO", "FECHA FINAL", 
                "WH INICIO", "WH FINAL", "WH USADOS", 
@@ -41,11 +41,11 @@ def extract_records(data_dir, *,
         writer = csv.DictWriter(csvfile, fieldnames=columns)
         writer.writeheader()
 
-        for filename in os.listdir(data_dir):
+        for filename in os.listdir(location):
             if not filename.endswith(".dat"):
                 continue
 
-            file_path = os.path.join(data_dir, filename)
+            file_path = os.path.join(location, filename)
             try:
                 with open(file_path, 'r') as file:
                     data = json.load(file)

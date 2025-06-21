@@ -20,18 +20,6 @@ from .structs import Results, Project, Null
 from .runner import Runner
 
 
-# TODO: Improve the way Gateway handles nested projects. Projects are NOT packages. 
-# This means they have no __init__.py and are expected to work as plain python modules.
-# However, by being in the projects/ path, they get hooked up into the gw structure. 
-# Unfortunately, this means that if there are only two posibilities:
-# a) The project is a single module (one file.) Its name is the same as the filename.
-# b) The project is a directory of subprojects. Each subproject has its own name. ie. web.app, web.server, etc.
-# However, there is no inbetween -- once you go from web.py to web/, you can no longer place
-# functions directly at the root of the web project, you can only put them in the sub-projects.
-# To fix this, we propose allowing a file with the same name as the directory to signify the  
-# contents of that file are at the root of the parent. However, a subproject could override this.
-# (If possible, warn when the override happens.)
-
 class Gateway(Resolver, Runner):
     _builtins = None  # Class-level: stores all discovered builtins only once
     _thread_local = threading.local()
