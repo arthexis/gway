@@ -331,7 +331,8 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
 
 # TODO: Create a poll_remote function that takes a server_url and checks if we
 # have a remote for it, otherwise abort. If we do, setup a loop to check the vbox 
-# for files and download them to target. Overwrite any old files. 
+# for files and download them to target. Overwrite any old files. Avoid downloading old
+# files again by using the modified_since query param in view_download.
 
 def poll_remote(server_url:str='[SERVER_URL]', *, target='work/vbox/remote', interval=3600):
     # The local target is a fixed directory not a vbid
@@ -350,7 +351,7 @@ def stream_file_response(path: str, filename: str) -> HTTPResponse:
     return HTTPResponse(body=body, status=200, headers=headers)
 
 
-def view_download(*hashes: tuple[str], vbid: str = None, **kwargs):
+def view_download(*hashes: tuple[str], vbid: str = None, modified_since=None, **kwargs):
     """
     GET: Show list of files in the box (with hash), allow selection/download.
     If a single hash is provided, return that file. Multiple hashes are not supported yet.
@@ -358,6 +359,10 @@ def view_download(*hashes: tuple[str], vbid: str = None, **kwargs):
     - Allows access via full vbid (short.long) or short-only (just the folder name).
     - If full vbid is used, shows link to upload more files.
     """
+
+    # TODO: Implement modified_since to be a iso date we can parse and only send the 
+    # file if its been updated since then. 
+
     gw.warning(f"Download view: {hashes=} {vbid=} {kwargs=}")
     if not vbid:
         return render_box_error("Missing vbid", "You must provide a vbid in the query string.")

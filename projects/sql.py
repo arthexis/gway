@@ -2,6 +2,7 @@
 
 import os
 import csv
+import queue
 import sqlite3
 import threading
 from gway import gw
@@ -16,8 +17,11 @@ from gway import gw
 # # Or from a recipe:
 #
 # sql connect
-# sql execute "<SQL>"
-#
+#   - execute "<SQL>"
+
+_write_queue = queue.Queue()
+_writer_thread = None
+_writer_shutdown = threading.Event()
 
 class WrappedConnection:
     def __init__(self, connection):
@@ -39,6 +43,18 @@ class WrappedConnection:
 
     def __getattr__(self, name):
         return getattr(self._connection, name)
+
+    def cursor(self):
+        return self._connection.cursor()
+
+    def commit(self):
+        return self._connection.commit()
+
+    def rollback(self):
+        return self._connection.rollback()
+
+    def close(self):
+        return self._connection.close()
 
 
 def infer_type(val):
@@ -134,27 +150,25 @@ def load_csv(*, connection=None, folder="data", force=False):
     load_folder(base_path)
 
 
+# --- Connection Management (Drop-in Replacement) ---
+
 _connection_cache = {}
 
-def open_connection(datafile=None, *, 
-            sql_engine="sqlite", autoload=False, force=False,
-            row_factory=False, **dbopts):
+def open_connection(
+        datafile=None, *, 
+        sql_engine="sqlite", autoload=False, force=False, row_factory=False, **dbopts):
     """
     Initialize or reuse a database connection.
     Caches connections by sql_engine, file path, and thread ID (if required).
+    Starts writer thread for SQLite.
     """
-
-    # Determine base cache key
+    # Build cache key (engine, datafile, thread)
+    _start_writer_thread()
     base_key = (sql_engine, datafile or "default")
-
-    # Determine if thread ID should be included in key
-    if sql_engine in {"sqlite"}:
-        thread_key = threading.get_ident()
-    else:
-        thread_key = "*"
-
+    thread_key = threading.get_ident() if sql_engine == "sqlite" else "*"
     key = (base_key, thread_key)
 
+    # Reuse cached connection if available
     if key in _connection_cache:
         conn = _connection_cache[key]
         if row_factory:
@@ -162,11 +176,11 @@ def open_connection(datafile=None, *,
         gw.debug(f"Reusing connection: {key}")
         return conn
 
-    # Create connection
+    # Create connection per backend
     if sql_engine == "sqlite":
         path = gw.resource(datafile or "work/data.sqlite")
-        conn = sqlite3.connect(path)
-
+        # Note: check_same_thread=False for sharing connections in the writer thread
+        conn = sqlite3.connect(path, check_same_thread=False)
         if row_factory:
             if row_factory is True:
                 conn.row_factory = sqlite3.Row
@@ -175,20 +189,17 @@ def open_connection(datafile=None, *,
             elif isinstance(row_factory, str):
                 conn.row_factory = gw[row_factory]
             gw.debug(f"Configured row_factory: {conn.row_factory}")
-
         gw.info(f"Opened SQLite connection at {path}")
-
+        _start_writer_thread()  # Ensure writer is running
     elif sql_engine == "duckdb":
         import duckdb
         path = gw.resource(datafile or "work/data.duckdb")
         conn = duckdb.connect(path)
         gw.info(f"Opened DuckDB connection at {path}")
-
     elif sql_engine == "postgres":
         import psycopg2
         conn = psycopg2.connect(**dbopts)
         gw.info(f"Connected to Postgres at {dbopts.get('host', 'localhost')}")
-
     else:
         raise ValueError(f"Unsupported sql_engine: {sql_engine}")
 
@@ -205,18 +216,22 @@ def open_connection(datafile=None, *,
 def close_connection(datafile=None, *, sql_engine="sqlite", all=False):
     """
     Explicitly close one or all cached database connections.
+    Shuts down writer thread if all connections closed.
     """
     if all:
-        for connection in _connection_cache.values():
+        for key, connection in list(_connection_cache.items()):
             try:
                 connection.close()
             except Exception as e:
                 gw.warning(f"Failed to close connection: {e}")
-        _connection_cache.clear()
+            _connection_cache.pop(key, None)
+        shutdown_writer()
         gw.info("All connections closed.")
         return
 
-    key = (sql_engine, datafile or "default")
+    base_key = (sql_engine, datafile or "default")
+    thread_key = threading.get_ident() if sql_engine == "sqlite" else "*"
+    key = (base_key, thread_key)
     connection = _connection_cache.pop(key, None)
     if connection:
         try:
@@ -225,27 +240,110 @@ def close_connection(datafile=None, *, sql_engine="sqlite", all=False):
         except Exception as e:
             gw.warning(f"Failed to close {key}: {e}")
 
+def execute(*sql, connection=None, script=None, sep='; ', args=None):
+    """
+    Thread-safe SQL execution.
+    - SELECTs and other read queries run immediately (parallel safe).
+    - DML/DDL statements (INSERT/UPDATE/DELETE/etc) are funneled into the write queue.
+    - Multi-statement scripts are supported via executescript.
+    - All write queue items are always 5-tuple: (sql, args, conn, result_q, is_script)
+    """
+    assert connection, "Pass connection= from gw.sql.open_connection()"
 
-def execute(*sql, connection=None, script=None, sep='; '):
-    """
-    Execute SQL code or a script resource. If both are given, run script first.
-    """
-    assert execute, "Call gw.sql.open_connection first()"
+    if script:
+        script_text = gw.resource(script, text=True)
+        # Recursively call as a multi-statement script
+        return execute(script_text, connection=connection)
 
     if sql:
         sql = sep.join(sql)
+    else:
+        raise ValueError("SQL statement required")
 
-    cursor = connection.cursor()
+    # Detect if this is a multi-statement script (very basic: contains semicolon)
+    # Note: More robust SQL parsing is possible but out of scope here.
+    stripped_sql = sql.strip().rstrip(";")
+    is_script = ";" in stripped_sql
 
-    try:
-        if script:
-            script_text = gw.resource(script, text=True)
-            cursor.executescript(script_text)
-            gw.info(f"Executed script from: {script}")
-
-        if sql:
-            cursor.execute(sql)
+    # If it is a read-only statement and not a script, execute directly
+    if not _is_write_query(sql) and not is_script:
+        cursor = connection.cursor()
+        try:
+            cursor.execute(sql, args or ())
             return cursor.fetchall() if cursor.description else None
-    finally:
-        cursor.close()
+        finally:
+            cursor.close()
+    else:
+        # All writes or scripts are serialized via the queue.
+        result_q = queue.Queue()
+        # Always enqueue a 5-item tuple: (sql, args, conn, result_q, is_script)
+        _write_queue.put((sql, args, connection._connection, result_q, is_script))
+        rows, error = result_q.get()
+        if error:
+            raise error
+        return rows
 
+
+def _process_writes():
+    while not _writer_shutdown.is_set():
+        try:
+            item = _write_queue.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        if item is None:
+            _write_queue.task_done()
+            break
+        sql, args, conn, result_q, is_script = item  # Always expect 5!
+        try:
+            cursor = conn.cursor()
+            if is_script:
+                cursor.executescript(sql)
+                rows = None
+            elif args:
+                cursor.execute(sql, args)
+                rows = cursor.fetchall() if cursor.description else None
+            else:
+                cursor.execute(sql)
+                rows = cursor.fetchall() if cursor.description else None
+            conn.commit()
+            result_q.put((rows, None))
+        except Exception as e:
+            conn.rollback()
+            result_q.put((None, e))
+        finally:
+            cursor.close()
+            _write_queue.task_done()
+
+
+def _is_write_query(sql):
+    sql = sql.strip().lower()
+    # Simple heuristic: treat as write if it starts with DML or DDL
+    return any(sql.startswith(word)
+        for word in ("insert", "update", "delete", "create", "drop", "alter", "replace", "truncate", "vacuum", "attach", "detach"))
+
+
+def _start_writer_thread():
+    global _writer_thread
+    if _writer_thread is None or not _writer_thread.is_alive():
+        _writer_thread = threading.Thread(target=_process_writes, daemon=True)
+        _writer_thread.start()
+
+
+def shutdown_writer():
+    """Signal writer thread to exit and wait for it to finish."""
+    global _writer_thread
+    _writer_shutdown.set()
+    # Put enough poison pills for any possible writer threads (usually 1)
+    _write_queue.put(None)
+    if _writer_thread:
+        _writer_thread.join(timeout=2)
+        _writer_thread = None  # Allow restart
+    # Clean up: clear shutdown flag for future tests
+    _writer_shutdown.clear()
+    # Drain any leftover queue items (to avoid memory leaks between tests)
+    try:
+        while True:
+            _write_queue.get_nowait()
+            _write_queue.task_done()
+    except queue.Empty:
+        pass

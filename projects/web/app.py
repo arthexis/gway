@@ -16,7 +16,8 @@ def setup(*,
     project="web.site",
     path=None,
     home: str = None,
-    prefix: str = "view",
+    views: str = "view",
+    apis: str = "api",
     static="static",
     work="work",
     engine="bottle",
@@ -66,38 +67,74 @@ def setup(*,
             filename = filename.replace('-', '_')
             return static_file(filename, root=gw.resource("work", "shared"))
 
-    @app.route(f"/{path}/<view:path>", method=["GET", "POST", "PUT"])
+    @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
-        nonlocal home, prefix
+        nonlocal home, views, apis
         segments = [s for s in view.strip("/").split("/") if s]
         view_name = segments[0].replace("-", "_") if segments else home
         args = segments[1:] if segments else []
         kwargs = dict(request.query)
-        if request.method in ("POST", "PUT"):
+        if request.method == "POST":
             try:
                 kwargs.update(request.json or dict(request.forms))
             except Exception as e:
                 return redirect_error(e, note="Error loading JSON payload", view_name=view_name)
 
-        target_func_name = f"{prefix}_{view_name}" if prefix else view_name
+        method = request.method.upper()
+
+        # Main view function
         view_func = None
+        target_func_name = f"{views}_{view_name}" if views else view_name
+        found_mode = "view"
+
+        # Try view mode first (classic)
         for source in sources:
-            view_func = getattr(source, target_func_name, None)
-            if callable(view_func):
+            func = getattr(source, target_func_name, None)
+            if callable(func):
+                view_func = func
+                found_mode = "view"
                 if 'url_stack' not in gw.context:
                     gw.context['url_stack'] = []
                 gw.context['url_stack'].append((project, path))
                 break
 
+        # If not found, try API mode (api_<method>_<view>, then api_<view>)
+        if not callable(view_func) and apis:
+            api_func_specific = f"{apis}_{method.lower()}_{view_name}"
+            api_func_generic = f"{apis}_{view_name}"
+            specific_func = None
+            generic_func = None
+            for source in sources:
+                f_specific = getattr(source, api_func_specific, None)
+                f_generic = getattr(source, api_func_generic, None)
+                if callable(f_specific) and not specific_func:
+                    specific_func = f_specific
+                if callable(f_generic) and not generic_func:
+                    generic_func = f_generic
+            # Prefer specific over generic
+            if specific_func:
+                view_func = specific_func
+                found_mode = "api"
+            elif generic_func:
+                view_func = generic_func
+                found_mode = "api"
+
         if not callable(view_func):
             return redirect_error(
-                note=f"View not found: {target_func_name} in {projects}",
+                note=f"View/API not found: {target_func_name} or {apis}_*_{view_name} in {projects}",
                 view_name=view_name,
                 default=default_home()
             )
 
         try:
             content = view_func(*args, **kwargs)
+            # API mode: return JSON unless HTTPResponse
+            if found_mode == "api":
+                if isinstance(content, HTTPResponse):
+                    return content
+                response.content_type = "application/json"
+                return gw.to_json(content)
+            # VIEW mode: regular template handling
             if isinstance(content, HTTPResponse):
                 return content
             elif isinstance(content, bytes):
@@ -144,13 +181,14 @@ def setup(*,
 def build_url(*args, **kwargs):
     path = "/".join(str(a).strip("/") for a in args if a)
     if 'url_stack' in gw.context and (url_stack := gw.context['url_stack']):
-        _, prefix = url_stack[-1]
-        url = f"/{prefix}/{path}"
+        _, views = url_stack[-1]
+        url = f"/{views}/{path}"
     else:
         url = f"/{path}"
     if kwargs:
         url += "?" + urlencode(kwargs)
     return url
+
 
 def render_template(*, title="GWAY", full_url="", content="", static="static", css_file=None):
     global _ver
@@ -162,17 +200,16 @@ def render_template(*, title="GWAY", full_url="", content="", static="static", c
     credits = f'''
         <p>GWAY is written in <a href="https://www.python.org/">Python 3.13</a>.
         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>, 
-        <a href="https://pypi.org">PyPI</a> 
-        and <a href="https://github.com/arthexis/gway">Github</a>.</p>
+        <a href="https://pypi.org">PyPI</a> and <a href="https://github.com/arthexis/gway">Github</a>.</p>
     '''
-    if is_enabled('navbar'):
-        navbar = gw.web.navbar.render(
+    if is_enabled('nav'):
+        nav = gw.web.nav.render(
             current_url=full_url,
             homes=_homes
         )
     else:
-        navbar = ""
-    return template("""<!DOCTYPE html>
+        nav = ""
+    html = template("""<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8" />
@@ -184,7 +221,7 @@ def render_template(*, title="GWAY", full_url="", content="", static="static", c
         <body>
             <div class="page-wrap">
                 <div class="layout">
-                    {{!navbar}}<main>{{!content}}</main>
+                    {{!nav}}<main>{{!content}}</main>
                 </div>
                 <footer><p>This website was <strong>built</strong>, <strong>tested</strong> 
                     and <strong>released</strong> with <a href="https://arthexis.com">GWAY</a> 
@@ -192,10 +229,25 @@ def render_template(*, title="GWAY", full_url="", content="", static="static", c
                     {{!credits}}
                 </footer>
             </div>
-
+            <!-- htmx is auto-injected if needed! -->
         </body>
         </html>
     """, **locals())
+    html = auto_inject_htmx(html)
+    return html
+
+
+def auto_inject_htmx(html):
+    if 'hx-' in html:
+        # CDN link (always check for latest version if production)
+        htmx_script = '<script src="https://unpkg.com/htmx.org@1.9.12"></script>'
+        if '</body>' in html:
+            return html.replace('</body>', htmx_script + '\n</body>')
+        elif '</head>' in html:
+            return html.replace('</head>', htmx_script + '\n</head>')
+        else:
+            return htmx_script + '\n' + html
+    return html
 
 
 def default_home():
@@ -221,10 +273,7 @@ def add_home(home, path):
         gw.debug(f"Added home: ({title}, {route})")
 
 def redirect_error(error=None, note="", default=None, view_name=None):
-    """
-    Unified error redirect: in debug mode, show a debug page; otherwise redirect.
-    The default redirect is the primary home as resolved by default_home().
-    """
+    """Unified error redirect: in debug mode, show a debug page; otherwise redirect."""
     from bottle import request, response
     import traceback
     import html

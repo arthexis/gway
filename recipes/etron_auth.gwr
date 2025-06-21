@@ -10,8 +10,8 @@ web app setup
 # Toggle this version to apply the allow list  
 ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre
 
-# Without --allow, all transactions would be allowed by default
-# ocpp csms setup-app --location porsche_centre
+# Without --allow, all transactions will be allowed by default
+# ocpp csms setup-app --location porsche_centre --deny data/etron/rfids.cdv
 
 web server start-app --host 0.0.0.0 --port 8000 --ws-port 9000 
 until --file VERSION

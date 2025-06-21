@@ -1,4 +1,4 @@
-# projects/web/navbar.py
+# file: projects/web/nav.py
 
 import os
 from gway import gw
@@ -10,9 +10,8 @@ def render(*, current_url=None, homes=None):
     Always highlights and shows the current page, even if not yet in the visited cookie.
     """
     cookies_ok = gw.web.app.is_enabled('cookies') and gw.web.cookies.check_consent()
-    gw.debug(f"Render navbar with {homes=} {cookies_ok=}")
+    gw.debug(f"Render nav with {homes=} {cookies_ok=}")
 
-    # Get current visited links directly from the cookie (never from args)
     visited = []
     if cookies_ok:
         visited_cookie = gw.web.cookies.get("visited", "")
@@ -22,7 +21,6 @@ def render(*, current_url=None, homes=None):
     current_route = request.fullpath.strip("/")
     current_title = (current_route.split("/")[-1] or "readme").replace('-', ' ').replace('_', ' ').title()
 
-    # Always ensure current page is in the visited list (for nav rendering only)
     visited_set = set()
     entries = []
     for entry in visited:
@@ -33,7 +31,7 @@ def render(*, current_url=None, homes=None):
         if canon_route not in visited_set:
             entries.append((title, canon_route))
             visited_set.add(canon_route)
-    # Inject current page if not already present and not a home
+
     home_routes = set()
     if homes:
         for home_title, home_route in homes:
@@ -42,6 +40,33 @@ def render(*, current_url=None, homes=None):
         entries.append((current_title, current_route))
         visited_set.add(current_route)
 
+    # --- New: Build title count mapping for disambiguation ---
+    all_links = []
+    if homes:
+        for home_title, home_route in homes:
+            all_links.append((home_title, home_route.strip("/")))
+    all_links.extend(entries)  # Add visited
+    title_count = {}
+    title_routes = {}
+    for title, route in all_links:
+        k = title.strip().lower()
+        title_count[k] = title_count.get(k, 0) + 1
+        title_routes.setdefault(k, []).append(route)
+
+    def disambiguate(title, route):
+        """Append route info if title is duplicated."""
+        k = title.strip().lower()
+        if title_count[k] == 1:
+            return title
+        # Use shortest unique suffix as disambiguator
+        siblings = set(title_routes[k]) - {route}
+        segments = route.split("/")
+        for i in range(1, len(segments)+1):
+            suffix = "/".join(segments[-i:])
+            if all(not s.endswith(suffix) for s in siblings):
+                return f"{title} ({suffix})"
+        return f"{title} ({route})"  # fallback
+
     # --- Build HTML ---
     links = ""
     # Homes
@@ -49,7 +74,8 @@ def render(*, current_url=None, homes=None):
         for home_title, home_route in homes:
             route = home_route.strip("/")
             is_current = ' class="current"' if route == current_route else ""
-            links += f'<li><a href="/{home_route}"{is_current}>{home_title.upper()}</a></li>'
+            disp_title = disambiguate(home_title, route)
+            links += f'<li><a href="/{home_route}"{is_current}>{disp_title.upper()}</a></li>'
     # Visited (most recent first, not already in homes)
     if cookies_ok and entries:
         visited_rendered = set()
@@ -58,14 +84,16 @@ def render(*, current_url=None, homes=None):
                 continue
             visited_rendered.add(route)
             is_current = ' class="current"' if route == current_route else ""
-            links += f'<li><a href="/{route}"{is_current}>{title}</a></li>'
+            disp_title = disambiguate(title, route)
+            links += f'<li><a href="/{route}"{is_current}>{disp_title}</a></li>'
     elif not homes:
-        # No homes defined: show only current page as label
         links += f'<li class="current">{current_title.upper()}</li>'
+
+    # ... (rest of function unchanged)
 
     # --- Search box ---
     search_box = '''
-        <form action="/site/help" method="get" class="navbar">
+        <form action="/site/help" method="get" class="nav">
             <input type="text" name="topic" placeholder="Search this GWAY" class="help" />
         </form>
     '''
@@ -109,9 +137,6 @@ def html_escape(text):
 
 # --- Style view endpoints ---
 
-# TODO: In view_styles when the user selects a style while inside the view (ie, not from the navbar)
-# sometimes the page reloads with the new style as expected, other times I get redirected to
-# another page for unknown reasons. I want to stay on the page when I am using it. 
 
 def view_styles(**kwargs):
     """
@@ -186,7 +211,7 @@ def style_selector_form(current_path, styles_dir, all_styles, selected_style):
         if style not in added:
             options.append(f'<option value="{style}">{style[:-4].upper()}</option>')
     return f"""
-        <form method="post" action="/navbar/styles" class="style-form" style="margin-bottom: 0.5em">
+        <form method="post" action="/nav/styles" class="style-form" style="margin-bottom: 0.5em">
             <input type="hidden" name="next" value="{html_escape(next_url)}">
             <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="this.form.submit()">
                 {''.join(options)}

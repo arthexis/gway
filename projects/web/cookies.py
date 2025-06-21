@@ -4,6 +4,7 @@ import html
 from bottle import request, response
 from gway import gw
 
+
 def set(name, value, path="/", expires=None, secure=None, httponly=True, samesite="Lax", **kwargs):
     """Set a cookie on the response. Only includes expires if set, to avoid Bottle crash."""
     if not check_consent() and name != "cookies_accepted":
@@ -21,10 +22,12 @@ def set(name, value, path="/", expires=None, secure=None, httponly=True, samesit
         params['expires'] = expires
     response.set_cookie(name, value, **params)
 
+
 def get(name: str, default=None):
     """Get a cookie value from the request. Returns None if blank or unset."""
     val = request.get_cookie(name, default)
     return None if (val is None or val == "") else val
+
 
 def remove(name: str, path="/"):
     """
@@ -36,6 +39,7 @@ def remove(name: str, path="/"):
     response.set_cookie(name, value="", path=path, expires=expires, secure=False)
     response.set_cookie(name, value="", path=path, expires=expires, secure=True)
 
+
 def clear_all(path="/"):
     """
     Remove all cookies in the request, blanking and expiring each.
@@ -45,12 +49,14 @@ def clear_all(path="/"):
     for cookie in list(request.cookies):
         remove(cookie, path=path)
 
+
 def check_consent() -> bool:
     """
     Returns True if the user has accepted cookies (not blank, not None).
     """
     cookie_value = get("cookies_accepted")
     return cookie_value == "yes"
+
 
 def list_all() -> dict:
     """
@@ -59,6 +65,7 @@ def list_all() -> dict:
     if not check_consent():
         return {}
     return {k: v for k, v in request.cookies.items() if v not in (None, "")}
+
 
 def append(name: str, label: str, value: str, sep: str = "|") -> list:
     """
@@ -77,12 +84,14 @@ def append(name: str, label: str, value: str, sep: str = "|") -> list:
     set(name, cookie_value)
     return items
 
+
 def view_accept(next="/cookies/cookies"):
     # Only this is allowed to set cookies if not already enabled!
     set("cookies_accepted", "yes")
     response.status = 303
     response.set_header("Location", next)
     return ""
+
 
 def view_remove(next="/cookies/cookies"):
     if not check_consent():
@@ -93,6 +102,7 @@ def view_remove(next="/cookies/cookies"):
     response.status = 303
     response.set_header("Location", next)
     return ""
+
 
 def view_cookies():
     cookies_ok = check_consent()

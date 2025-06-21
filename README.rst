@@ -339,7 +339,7 @@ If there is *not* only one good way to do it, then you should have **three**.
 
 One way implies clarity. Two implies division. Three implies depth. Five implies confusion, and confusion leads to bugs. When offering choices — in interface, design, or abstraction — ensure there are no more than three strong forms. The third may be unexpected, but it must still be necessary.
 
-Beyond that, you're just multiplying uncertainty.
+Beyond that, you're just multiplying uncertainty. This same principle applies to other aspects of coding. A simple function fits a single IDE screen. A complex one may span three. Five means: refactor this.
 
 
 License
