@@ -1,4 +1,4 @@
-# recipes/website.gwr
+# file: recipes/website.gwr
 # Minimal GWAY website ingredients
 
 web app setup --home readme

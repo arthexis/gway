@@ -256,13 +256,16 @@ def default_home():
             return "/" + route.lstrip("/")
     return "/site/readme"
 
+
 def debug_routes(app):
     for route in app.routes:
         gw.debug(f"{route.method:6} {route.rule:30} -> {route.callback.__name__}")
 
+
 def is_enabled(project_name):
     global _enabled
     return project_name in _enabled
+
 
 def add_home(home, path):
     global _homes
@@ -271,6 +274,7 @@ def add_home(home, path):
     if (title, route) not in _homes:
         _homes.append((title, route))
         gw.debug(f"Added home: ({title}, {route})")
+
 
 def redirect_error(error=None, note="", default=None, view_name=None):
     """Unified error redirect: in debug mode, show a debug page; otherwise redirect."""

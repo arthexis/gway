@@ -1,3 +1,8 @@
+# TODO: Consider using HTMX for the navbar (but not anywhere else)
+# The idea behind this is that using htmx with arbitrary view output leads to unexpected
+# results. However, the navbar is self-contained. We should try updating the links and compass 
+# in a lightweight manner through htmx. 
+
 # file: projects/web/nav.py
 
 import os

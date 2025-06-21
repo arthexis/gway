@@ -5,7 +5,7 @@ import re
 import shutil
 import hashlib
 import base64
-import time
+import time 
 import threading
 import requests
 from datetime import datetime
@@ -81,7 +81,7 @@ def periodic_purge(*, seconds=120):
         time.sleep(seconds)
 
 
-def render_box_error(title: str, message: str, *, back_link: bool = True, target: str="upload") -> str:
+def render_error(title: str, message: str, *, back_link: bool = True, target: str="upload") -> str:
     """Helper for error display with optional link back to upload main page."""
     html = f"<h1>{title}</h1><p>{message}</p>"
     if back_link:
@@ -110,13 +110,13 @@ def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: s
             expire = _open_boxes.get(vbid)
             if not expire or expire < time.time():
                 gw.warning(f"vbox expired for vbid={vbid}")
-                return render_box_error("Upload Box Expired", "Please regenerate a new vbid.")
+                return render_error("Upload Box Expired", "Please regenerate a new vbid.")
 
         try:
             short, _ = vbid.split(".", 1)
         except ValueError:
             gw.error(f"Invalid vbid format: {vbid}")
-            return render_box_error("Invalid vbid format", "Expected form: <code>short.long</code>.")
+            return render_error("Invalid vbid format", "Expected form: <code>short.long</code>.")
 
         upload_dir = gw.resource(*VBOX_PATH, short)
         os.makedirs(upload_dir, exist_ok=True)
@@ -144,7 +144,6 @@ def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: s
             f"<p><a href='{download_long_url}'>Go to HIDDEN WRITE download page for this box</a></p>"
         )
 
-    # If no vbid: always create/check the vbox and show the email form
     if not vbid:
         gw.info(f"No vbid present, always creating/checking box.")
         remote_addr = request.remote_addr or ''
@@ -169,20 +168,10 @@ def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: s
                 url = gw.build_url("upload", vbid=full_id)
                 gw.info(f"Existing box reused: {full_id}")
 
-        # --- Email notification if email is present (from POST or GET) ---
-        # Accept both POST form value and GET param for email
-        submitted_email = None
-        if request.method == "POST":
-            submitted_email = request.forms.get("email", "").strip()
-            gw.info(f"POST email form: submitted_email={submitted_email!r}")
-        elif request.method == "GET":
-            submitted_email = email or ""
-            gw.info(f"GET param email: submitted_email={submitted_email!r}")
-
         admin_notif = ""
         sent_copy_msg = "<p>A copy of the access URL was sent to the admin.</p>"
-        if submitted_email:
-            if admin_email and submitted_email.lower() == admin_email.strip().lower():
+        if email:
+            if admin_email and email.lower() == admin_email.strip().lower():
                 subject = "Upload Box Link"
                 body = (
                     f"A new upload box was created.\n\n"
@@ -197,7 +186,7 @@ def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: s
                 admin_notif = sent_copy_msg
             else:
                 admin_notif = sent_copy_msg
-                gw.info(f"Pretend email sent: {submitted_email!r} != {admin_email!r}")
+                gw.info(f"Pretend email sent: {email!r} != {admin_email!r}")
 
         # Show the ready box UI + the optional email form
         email_form_html = (
@@ -215,7 +204,7 @@ def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: s
             "<p>We've prepared an upload box for you. Check the console for the access URL.</p>"
             "<p>To use it, go to <code>?vbid=…</code> and upload your files there.</p>"
             f"{admin_notif}"
-            f"{form_message if not submitted_email else ''}{email_form_html if not submitted_email else ''}"
+            f"{form_message if not email else ''}{email_form_html if not email else ''}"
         )
 
     # Validate and show upload UI for an existing vbid
@@ -224,13 +213,13 @@ def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: s
         expire = _open_boxes.get(vbid)
         if not expire or expire < time.time():
             gw.warning(f"vbox expired for vbid={vbid}")
-            return render_box_error("Upload Box Expired or Not Found", "Please regenerate a new vbid.")
+            return render_error("Upload Box Expired or Not Found", "Please regenerate a new vbid.")
 
     try:
         short, _ = vbid.split(".", 1)
     except ValueError:
         gw.error(f"Invalid vbid format: {vbid}")
-        return render_box_error("Invalid vbid format", "Expected form: <code>short.long</code>.")
+        return render_error("Invalid vbid format", "Expected form: <code>short.long</code>.")
 
     # Generate N file input fields
     file_inputs = "\n".join(
@@ -329,15 +318,114 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
     return gw.cdv.load_all(cdv_path).get(b64key)
 
 
-# TODO: Create a poll_remote function that takes a server_url and checks if we
-# have a remote for it, otherwise abort. If we do, setup a loop to check the vbox 
-# for files and download them to target. Overwrite any old files. Avoid downloading old
-# files again by using the modified_since query param in view_download.
+def poll_remote(server_url: str = '[SERVER_URL]', *, target='work/vbox/remote', interval=3600):
+    """
+    Poll the remote vbox for files and download new/updated ones to the local target directory.
+    - server_url: Remote GWAY instance base URL
+    - target: Local directory to save downloaded files
+    - interval: Seconds between polls (runs forever unless interval=None)
+    
+    Skips files already downloaded by using the modified_since parameter.
+    """
+    import time
+    from urllib.parse import urlparse, parse_qs
+    from datetime import datetime
+    from gway import gw
 
-def poll_remote(server_url:str='[SERVER_URL]', *, target='work/vbox/remote', interval=3600):
-    # The local target is a fixed directory not a vbid
-    # For the remove vbox use the info from remotes.cdv
-    pass
+    # Step 1: Get the remote vbox info from CDV
+    b64key = base64.urlsafe_b64encode(server_url.encode()).decode().rstrip("=")
+    cdv_path = gw.resource(*VBOX_PATH, 'remotes.cdv')
+    records = gw.cdv.load_all(cdv_path)
+    remote = records.get(b64key)
+    if not (remote and remote.get("vbox")):
+        gw.error(f"[poll_remote] No vbox registered for {server_url}")
+        return
+
+    vbid = remote["vbox"]
+    vbox_url = remote.get("url")
+    # Extract vbid if not present
+    if not vbox_url:
+        vbox_url = server_url.rstrip("/") + "/vbox/download"
+    if not vbid:
+        # Try to extract vbid from url param
+        parts = urlparse(vbox_url)
+        qs = parse_qs(parts.query)
+        vbid = qs.get("vbid", [None])[0]
+        if not vbid:
+            gw.error("[poll_remote] Unable to determine vbid for remote poll")
+            return
+
+    os.makedirs(target, exist_ok=True)
+    # Track modification times of downloaded files: name → mtime (as float)
+    local_mtimes = {}
+
+    def download_listing():
+        # Get file listing from remote (no hashes, just HTML, parse with regex)
+        listing_url = f"{server_url.rstrip('/')}/vbox/download?vbid={vbid}"
+        try:
+            resp = requests.get(listing_url, timeout=15)
+            resp.raise_for_status()
+        except Exception as e:
+            gw.error(f"[poll_remote] Error fetching remote listing: {e}")
+            return []
+        # Parse <li><a href=...>name</a> (..., modified <time>, ...)
+        file_entries = []
+        for m in re.finditer(
+            r'<li><a href="[^"]+">([^<]+)</a> \((\d+) bytes, modified ([^,]+), MD5: ([a-fA-F0-9]+)\)',
+            resp.text
+        ):
+            name, size, time_str, md5 = m.groups()
+            try:
+                mtime = datetime.strptime(time_str.strip(), '%Y-%m-%d %H:%M:%S').timestamp()
+            except Exception:
+                mtime = 0
+            file_entries.append({
+                "name": name,
+                "size": int(size),
+                "mtime": mtime,
+                "md5": md5
+            })
+        return file_entries
+
+    def download_file(md5, name, mtime):
+        # Download if missing or outdated
+        local_path = os.path.join(target, name)
+        # Only download if missing or mtime newer
+        if os.path.exists(local_path):
+            prev = os.path.getmtime(local_path)
+            if prev >= mtime:
+                return False
+        # Fetch using hash as param, with vbid
+        file_url = f"{server_url.rstrip('/')}/vbox/download/{md5}?vbid={vbid}&modified_since={int(mtime)}"
+        try:
+            resp = requests.get(file_url, timeout=30)
+            if resp.status_code == 304:
+                gw.info(f"[poll_remote] Skipped {name}: not modified")
+                return False
+            resp.raise_for_status()
+            with open(local_path, "wb") as f:
+                f.write(resp.content)
+            os.utime(local_path, (mtime, mtime))  # Set mtime to match remote
+            gw.info(f"[poll_remote] Downloaded {name} ({md5})")
+            return True
+        except Exception as e:
+            gw.error(f"[poll_remote] Error downloading {name}: {e}")
+            return False
+
+    # Main polling loop
+    while True:
+        file_entries = download_listing()
+        count = 0
+        for entry in file_entries:
+            name = entry["name"]
+            md5 = entry["md5"]
+            mtime = entry["mtime"]
+            if download_file(md5, name, mtime):
+                count += 1
+        gw.info(f"[poll_remote] Sync complete. Downloaded {count} new/updated files from {server_url} to {target}")
+        if not interval:
+            break
+        time.sleep(interval)
 
 
 def stream_file_response(path: str, filename: str) -> HTTPResponse:
@@ -358,14 +446,12 @@ def view_download(*hashes: tuple[str], vbid: str = None, modified_since=None, **
 
     - Allows access via full vbid (short.long) or short-only (just the folder name).
     - If full vbid is used, shows link to upload more files.
+    - If modified_since is passed (as iso or epoch seconds), only send file if newer, else 304.
     """
-
-    # TODO: Implement modified_since to be a iso date we can parse and only send the 
-    # file if its been updated since then. 
 
     gw.warning(f"Download view: {hashes=} {vbid=} {kwargs=}")
     if not vbid:
-        return render_box_error("Missing vbid", "You must provide a vbid in the query string.")
+        return render_error("Missing vbid", "You must provide a vbid in the query string.")
 
     # Accept full or short vbid
     if "." in vbid:
@@ -375,7 +461,7 @@ def view_download(*hashes: tuple[str], vbid: str = None, modified_since=None, **
 
     folder = gw.resource(*VBOX_PATH, short)
     if not os.path.isdir(folder):
-        return render_box_error("Box not found", "The folder associated with this vbid does not exist.")
+        return render_error("Box not found", "The folder associated with this vbid does not exist.")
 
     file_map = {}  # hash -> full_path
     file_info = []  # tuples for UI: (hash, name, size, mtime)
@@ -406,6 +492,20 @@ def view_download(*hashes: tuple[str], vbid: str = None, modified_since=None, **
 
         path = file_map[h]
         name = os.path.basename(path)
+        file_mtime = os.path.getmtime(path)
+        # Implement modified_since logic
+        if modified_since:
+            try:
+                # Accept both isoformat and epoch seconds
+                try:
+                    since = float(modified_since)
+                except ValueError:
+                    since = datetime.fromisoformat(modified_since).timestamp()
+                if file_mtime <= since:
+                    return HTTPResponse(status=304)
+            except Exception as e:
+                gw.error(f"modified_since parse error: {modified_since} ({e})")
+
         return stream_file_response(path, name)
 
     # Render file listing
