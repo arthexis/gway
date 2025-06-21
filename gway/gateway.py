@@ -1,24 +1,38 @@
-# gway/gateway.py
+# file: gway/gateway.py
 
 import os
 import re
 import sys
-import time
 import uuid
 import inspect
 import logging
-import asyncio
 import threading
 import importlib
 import functools
+import pkg_resources
 
 from regex import W
+from pathlib import Path
 
 from .envs import load_env, get_base_client, get_base_server
 from .sigils import Resolver
 from .structs import Results, Project, Null
+from .runner import Runner
 
-class Gateway(Resolver):
+
+# TODO: Improve the way Gateway handles nested projects. Projects are NOT packages. 
+# This means they have no __init__.py and are expected to work as plain python modules.
+# However, by being in the projects/ path, they get hooked up into the gw structure. 
+# Unfortunately, this means that if there are only two posibilities:
+# a) The project is a single module (one file.) Its name is the same as the filename.
+# b) The project is a directory of subprojects. Each subproject has its own name. ie. web.app, web.server, etc.
+# However, there is no inbetween -- once you go from web.py to web/, you can no longer place
+# functions directly at the root of the web project, you can only put them in the sub-projects.
+# To fix this, we propose allowing a file with the same name as the directory to signify the  
+# contents of that file are at the root of the parent. However, a subproject could override this.
+# (If possible, warn when the override happens.)
+
+class Gateway(Resolver, Runner):
     _builtins = None  # Class-level: stores all discovered builtins only once
     _thread_local = threading.local()
 
@@ -38,6 +52,7 @@ class Gateway(Resolver):
         self._async_threads = []
         self.uuid = uuid.uuid4()
         self.quantity = quantity
+
         self.base_path = base_path or os.path.dirname(os.path.dirname(__file__))
         self.project_path = project_path
         self.name = name
@@ -85,9 +100,44 @@ class Gateway(Resolver):
                 and inspect.getmodule(obj) == builtins_module
             }
 
-    def projects(self):
-        from pathlib import Path
+    def _projects_path(self):
+        """
+        Find the projects directory in source, install, or user-specified locations.
+        Returns the path to the projects directory if found, else raises FileNotFoundError.
+        """
+        # 1. User explicitly passed a project_path
+        if self.project_path:
+            candidate = Path(self.project_path)
+            if candidate.is_dir():
+                return str(candidate)
+        # 2. Check next to base_path (source/venv/dev mode)
+        candidate = Path(self.base_path) / "projects"
+        if candidate.is_dir():
+            return str(candidate)
+        # 3. GWAY_PROJECT_PATH env variable
+        env_path = os.environ.get('GWAY_PROJECT_PATH')
+        if env_path and Path(env_path).is_dir():
+            return env_path
+        # 4. Try site-packages data (pip install, wheel)
+        try:
+            res_path = pkg_resources.resource_filename('gway', '../projects')
+            if os.path.isdir(res_path):
+                return res_path
+        except Exception:
+            pass
+        # 5. Try as data file (if installed via data_files entry)
+        try:
+            res_path = pkg_resources.resource_filename('gway_projects', '')
+            if os.path.isdir(res_path):
+                return res_path
+        except Exception:
+            pass
+        raise FileNotFoundError(
+            "Could not locate 'projects' directory. "
+            "Tried base_path, GWAY_PROJECT_PATH, site-packages, and user data dirs."
+        )
 
+    def projects(self):
         def discover_projects(base: Path):
             result = []
             if not base.is_dir():
@@ -99,16 +149,66 @@ class Gateway(Resolver):
                     result.append(entry.name)
             return result
 
-        base_projects_path = Path(self.base_path) / "projects"
-        result = set(discover_projects(base_projects_path))
+        try:
+            projects_path = Path(self._projects_path())
+        except FileNotFoundError as e:
+            self.warning(f"Could not find 'projects' directory: {e}")
+            return []
 
-        if self.project_path:
-            alt_projects_path = Path(self.project_path)
-            result.update(discover_projects(alt_projects_path))
+        result = set(discover_projects(projects_path))
 
         sorted_result = sorted(result)
         self.verbose(f"Discovered projects: {sorted_result}", func="projects")
         return sorted_result
+
+    def load_project(self, project_name: str, *, root: str = "projects"):
+        """Attempt to load a project by name from all supported project locations."""
+        def try_path(base_dir):
+            base = gw.resource(base_dir, *project_name.split("."))
+            self.debug(f"{project_name} <- Project('{base}')")
+
+            def load_module_ns(py_path: str, dotted: str):
+                mod = self.load_py_file(py_path, dotted)
+                funcs = {}
+                for fname, obj in inspect.getmembers(mod, inspect.isfunction):
+                    if not fname.startswith("_"):
+                        funcs[fname] = self.wrap_callable(f"{dotted}.{fname}", obj)
+                ns = Project(dotted, funcs, self)
+                self._cache[dotted] = ns
+                return ns
+
+            if os.path.isdir(base):
+                return self.recurse_ns(base, project_name)
+
+            base_path = Path(base)
+            py_file = base_path if base_path.suffix == ".py" else base_path.with_suffix(".py")
+            if py_file.is_file():
+                return load_module_ns(str(py_file), project_name)
+
+            return None
+
+        if self.project_path:  # 1. Use user-specified project_path if set
+            result = try_path(self.project_path)
+            if result:
+                return result
+            
+        try:  # 2. Try _projects_path (base_path/projects, site-packages, etc)
+            proj_root = self._projects_path()
+            result = try_path(proj_root)
+            if result:
+                return result
+        except Exception:
+            pass
+
+        result = try_path(root)  # 3. Fallback: try default root (should now rarely hit)
+        if result:
+            return result
+
+        raise FileNotFoundError(
+            f"Project path not found for '{project_name}'. "
+            f"Tried: project_path={self.project_path}, "
+            f"base_path/projects, env var, site-packages, and '{root}'."
+        )
 
     def builtins(self):
         return sorted(Gateway._builtins)
@@ -228,54 +328,7 @@ class Gateway(Resolver):
                 raise
 
         return wrap
-
-    def run_coroutine(self, func_name, coro_or_func, args=None, kwargs=None):
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            if asyncio.iscoroutine(coro_or_func):
-                result = loop.run_until_complete(coro_or_func)
-            else:
-                result = loop.run_until_complete(coro_or_func(*(args or ()), **(kwargs or {})))
-
-            self.results.insert(func_name, result)
-            if isinstance(result, dict):
-                self.context.update(result)
-        except Exception as e:
-            self.error(f"Async error in {func_name}: {e}")
-            self.exception(e)
-        finally:
-            loop.close()
-
-    def until(self, *, lock_file=None, lock_url=None, lock_pypi=False):
-
-        from .watchers import watch_file, watch_url, watch_pypi_package
-        def shutdown(reason):
-            self.warning(f"{reason} triggered async shutdown.")
-            os._exit(1)
-
-        watchers = [
-            (lock_file, watch_file, "Lock file"),
-            (lock_url, watch_url, "Lock url"),
-            (lock_pypi if lock_pypi is not False else None, watch_pypi_package, "PyPI package")
-        ]
-        for target, watcher, reason in watchers:
-            if target:
-                self.info(f"Setup watcher for {reason}")
-                if target is True and lock_pypi:
-                    target = "gway"
-                watcher(target, on_change=lambda r=reason: shutdown(r))
-        try:
-            while any(thread.is_alive() for thread in self._async_threads):
-                time.sleep(0.1)
-        except KeyboardInterrupt:
-            self.critical("KeyboardInterrupt received. Exiting immediately.")
-            os._exit(1)
-
-    def forever(self): self.until()
-
-
+    
     def __getattr__(self, name):
         # Pass through standard logger methods if present
         if hasattr(self.logger, name) and callable(getattr(self.logger, name)):
@@ -298,8 +351,9 @@ class Gateway(Resolver):
             raise AttributeError(f"Unable to find GWAY attribute ({str(e)})")
         
     def load_project(self, project_name: str, *, root: str = "projects"):
-        from pathlib import Path
-
+        """
+        Attempt to load a project by name from all supported project locations.
+        """
         def try_path(base_dir):
             base = gw.resource(base_dir, *project_name.split("."))
             self.debug(f"{project_name} <- Project('{base}')")
@@ -324,22 +378,65 @@ class Gateway(Resolver):
 
             return None
 
-        # Try the default root
-        result = try_path(root)
-        if result:
-            return result
-
-        # If not found and project_path is set, try loading from it
+        # 1. Use user-specified project_path if set
         if self.project_path:
-            fallback_root = self.project_path
-            result = try_path(fallback_root)
-            if result:
-                return result
+            result = try_path(self.project_path)
+            if result: return result
 
-        # TODO: Testing while installing gway normally from pip, we may need to provide more info
+        # 2. Try _projects_path (base_path/projects, site-packages, etc)
+        try:
+            proj_root = self._projects_path()
+            result = try_path(proj_root)
+            if result: return result
+        except Exception:
+            pass
+
+        # 3. Fallback: try default root (should now rarely hit)
+        result = try_path(root)
+        if result: return result
 
         raise FileNotFoundError(
-            f"Project path not found for '{project_name}' in '{root}' or '{self.project_path}'")
+            f"Project path not found for '{project_name}'. "
+            f"Tried: project_path={self.project_path}, "
+            f"base_path/projects, env var, site-packages, and '{root}'."
+        )
+
+    def _projects_path(self):
+        """
+        Find the projects directory in source, install, or user-specified locations.
+        Returns the path to the projects directory if found, else raises FileNotFoundError.
+        """
+        # 1. User explicitly passed a project_path
+        if self.project_path:
+            candidate = Path(self.project_path)
+            if candidate.is_dir():
+                return str(candidate)
+        # 2. Check next to base_path (source/venv/dev mode)
+        candidate = Path(self.base_path) / "projects"
+        if candidate.is_dir():
+            return str(candidate)
+        # 3. GWAY_PROJECT_PATH env variable
+        env_path = os.environ.get('GWAY_PROJECT_PATH')
+        if env_path and Path(env_path).is_dir():
+            return env_path
+        # 4. Try site-packages data (pip install, wheel)
+        try:
+            res_path = pkg_resources.resource_filename('gway', '../projects')
+            if os.path.isdir(res_path):
+                return res_path
+        except Exception:
+            pass
+        # 5. Try as data file (if installed via data_files entry)
+        try:
+            res_path = pkg_resources.resource_filename('gway_projects', '')
+            if os.path.isdir(res_path):
+                return res_path
+        except Exception:
+            pass
+        raise FileNotFoundError(
+            "Could not locate 'projects' directory. "
+            "Tried base_path, GWAY_PROJECT_PATH, site-packages, and user data dirs."
+        )
 
     def load_py_file(self, path: str, dotted_name: str):
         module_name = dotted_name.replace(".", "_")
@@ -356,21 +453,60 @@ class Gateway(Resolver):
         return mod
 
     def recurse_ns(self, current_path: str, dotted_prefix: str):
+        """
+        Recursively loads a project namespace. If a file matching the directory name
+        exists (e.g. 'web/web.py'), its functions become root-level (e.g. gw.web.func).
+        Subprojects (e.g. 'web/app.py') are loaded as gw.web.app.func, possibly
+        shadowing root names (warn on conflicts).
+        """
         funcs = {}
+        subprojects = {}
+        dir_basename = os.path.basename(current_path)
+        root_file = os.path.join(current_path, f"{dir_basename}.py")
+
+        # 1. Load submodules (files and directories)
         for entry in os.listdir(current_path):
             full = os.path.join(current_path, entry)
             if entry.endswith(".py") and not entry.startswith("__"):
                 subname = entry[:-3]
+                if subname == dir_basename:
+                    continue  # defer loading the root file until later
                 dotted = f"{dotted_prefix}.{subname}"
                 mod = self.load_py_file(full, dotted)
                 sub_funcs = {}
                 for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                     if not fname.startswith("_"):
                         sub_funcs[fname] = self.wrap_callable(f"{dotted}.{fname}", obj)
-                funcs[subname] = Project(dotted, sub_funcs, self)
+                subprojects[subname] = Project(dotted, sub_funcs, self)
             elif os.path.isdir(full) and not entry.startswith("__"):
                 dotted = f"{dotted_prefix}.{entry}"
-                funcs[entry] = self.recurse_ns(full, dotted)
+                subprojects[entry] = self.recurse_ns(full, dotted)
+
+        # 2. Load the root file (e.g., web/web.py) if present
+        root_funcs = {}
+        if os.path.isfile(root_file):
+            mod = self.load_py_file(root_file, dotted_prefix)
+            for fname, obj in inspect.getmembers(mod, inspect.isfunction):
+                if not fname.startswith("_"):
+                    root_funcs[fname] = self.wrap_callable(f"{dotted_prefix}.{fname}", obj)
+
+        # 3. Merge root funcs and subprojects; warn on override
+        for k, v in root_funcs.items():
+            if k in subprojects:
+                self.warning(
+                    f"Name conflict in project '{dotted_prefix}': "
+                    f"root-level '{k}' from '{root_file}' is shadowed by subproject '{k}'."
+                )
+            funcs[k] = v
+        # Insert subprojects
+        for k, v in subprojects.items():
+            if k in funcs:
+                self.warning(
+                    f"Name conflict in project '{dotted_prefix}': "
+                    f"subproject '{k}' overrides root-level function '{k}'."
+                )
+            funcs[k] = v
+
         ns = Project(dotted_prefix, funcs, self)
         self._cache[dotted_prefix] = ns
         return ns

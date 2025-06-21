@@ -1,7 +1,5 @@
-# TODO: Add a back link after operations are sent
-# TODO: Allow specifying a different uuid based endpoint path on the server side 
 
-# projects/ocpp.py
+# file: projects/ocpp.py
 
 import json
 import os

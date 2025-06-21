@@ -1,3 +1,5 @@
+# file: gway/watchers.py
+
 import os
 import time
 import hashlib

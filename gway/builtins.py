@@ -1,4 +1,4 @@
-# gway/builtins.py
+# file: gway/builtins.py
 
 import os
 import re
@@ -684,8 +684,8 @@ def shell():
     # Build the locals dict for the shell
     local_vars = {'gw': gw}
     banner = (
-        "GWAY interactive shell\n"
-        "  Type exit() or Ctrl-D to quit."
+        "GWAY interactive shell.\n"
+        "from gway import gw  # Python 3.13 compatible"
     )
 
     # Start the interactive console

@@ -1,4 +1,4 @@
-# gway/structs.py
+# file: gway/structs.py
 
 import threading
 import collections

@@ -278,7 +278,7 @@ class EtronWebSocketTests(unittest.TestCase):
                 self.assertIn("currentTime", parsed[2])
         asyncio.run(run_ignore_callerror())
 
-    def test_power_consumed_and_extract_latest_meter(self):
+    def test_power_consumed_and_extract_meter(self):
         """Test power calculation and latest meter value extraction."""
 
         # Simulated transaction with MeterValues in kWh
@@ -297,7 +297,7 @@ class EtronWebSocketTests(unittest.TestCase):
         # Should use MeterValues: 152.0 - 150.0 = 2.0 kWh
         pc = gw.ocpp.csms.power_consumed(tx1)
         self.assertAlmostEqual(pc, 2.0, places=2)
-        lm = gw.ocpp.csms.extract_latest_meter(tx1)
+        lm = gw.ocpp.csms.extract_meter(tx1)
         self.assertAlmostEqual(lm, 152.0, places=2)
 
         # Simulated transaction with MeterValues in Wh (should convert to kWh)
@@ -316,7 +316,7 @@ class EtronWebSocketTests(unittest.TestCase):
         # Should use MeterValues: (102500-100000)/1000 = 2.5 kWh
         pc = gw.ocpp.csms.power_consumed(tx2)
         self.assertAlmostEqual(pc, 2.5, places=2)
-        lm = gw.ocpp.csms.extract_latest_meter(tx2)
+        lm = gw.ocpp.csms.extract_meter(tx2)
         self.assertAlmostEqual(lm, 102.5, places=2)
 
         # Only meterStart/meterStop (no MeterValues)
@@ -324,13 +324,13 @@ class EtronWebSocketTests(unittest.TestCase):
         # (124500-123000)/1000 = 1.5 kWh
         pc = gw.ocpp.csms.power_consumed(tx3)
         self.assertAlmostEqual(pc, 1.5, places=2)
-        lm = gw.ocpp.csms.extract_latest_meter(tx3)
+        lm = gw.ocpp.csms.extract_meter(tx3)
         self.assertAlmostEqual(lm, 124.5, places=2)
 
         # Edge: no data
         pc = gw.ocpp.csms.power_consumed({})
         self.assertEqual(pc, 0.0)
-        lm = gw.ocpp.csms.extract_latest_meter({})
+        lm = gw.ocpp.csms.extract_meter({})
         self.assertEqual(lm, "-")
 
         # Edge: MeterValues present but missing correct measurand
@@ -341,7 +341,7 @@ class EtronWebSocketTests(unittest.TestCase):
         ]}
         pc = gw.ocpp.csms.power_consumed(tx4)
         self.assertEqual(pc, 0.0)
-        lm = gw.ocpp.csms.extract_latest_meter(tx4)
+        lm = gw.ocpp.csms.extract_meter(tx4)
         self.assertEqual(lm, "-")
 
 

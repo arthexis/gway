@@ -28,3 +28,4 @@ Sponsor = "https://www.gelectriic.com/"
 
 [tool.setuptools]
 packages = [ "gway",]
+include-package-data = true

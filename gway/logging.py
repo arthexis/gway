@@ -1,4 +1,4 @@
-# gway/logging.py
+# file: gway/logging.py
 
 # Avoid using Gateway here at all, if it fails here we won't get any logging!
 

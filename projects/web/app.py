@@ -1,11 +1,11 @@
-# projects/web/app.py
+# file: projects/web/app.py
 
 from urllib.parse import urlencode
 import bottle
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
-_version = None
+_ver = None
 _homes = []  # (title, route)
 _enabled = set()
 UPLOAD_MB = 100
@@ -21,11 +21,11 @@ def setup(*,
     work="work",
     engine="bottle",
 ):
-    global _version, _homes
+    global _ver, _homes
     if engine != "bottle":
         raise NotImplementedError("Only Bottle is supported at the moment.")
 
-    _version = _version or gw.version()
+    _ver = _ver or gw.version()
     bottle.BaseRequest.MEMFILE_MAX = UPLOAD_MB * 1024 * 1024
 
     projects = gw.to_list(project, flat=True)
@@ -77,7 +77,7 @@ def setup(*,
             try:
                 kwargs.update(request.json or dict(request.forms))
             except Exception as e:
-                return redirect_error(e, note="Error loading JSON payload", broken_view_name=view_name)
+                return redirect_error(e, note="Error loading JSON payload", view_name=view_name)
 
         target_func_name = f"{prefix}_{view_name}" if prefix else view_name
         view_func = None
@@ -92,7 +92,7 @@ def setup(*,
         if not callable(view_func):
             return redirect_error(
                 note=f"View not found: {target_func_name} in {projects}",
-                broken_view_name=view_name,
+                view_name=view_name,
                 default=default_home()
             )
 
@@ -110,7 +110,7 @@ def setup(*,
                 content = gw.to_html(content)
 
         except Exception as e:
-            return redirect_error(e, note="Error during view execution", broken_view_name=view_func.__name__, default=default_home())
+            return redirect_error(e, note="Broken view", view_name=view_func.__name__, default=default_home())
 
         return render_template(
             title="GWAY - " + view_func.__name__.replace("_", " ").title(),
@@ -153,8 +153,8 @@ def build_url(*args, **kwargs):
     return url
 
 def render_template(*, title="GWAY", full_url="", content="", static="static", css_file=None):
-    global _version
-    version = _version = _version or gw.version()
+    global _ver
+    version = _ver = _ver or gw.version()
     css_links = f'<link rel="stylesheet" href="/{static}/styles/base.css">\n'
     if css_file and css_file != "base.css":
         css_links += f'<link rel="stylesheet" href="/{static}/styles/{css_file}">\n'
@@ -220,7 +220,7 @@ def add_home(home, path):
         _homes.append((title, route))
         gw.debug(f"Added home: ({title}, {route})")
 
-def redirect_error(error=None, note="", default=None, broken_view_name=None):
+def redirect_error(error=None, note="", default=None, view_name=None):
     """
     Unified error redirect: in debug mode, show a debug page; otherwise redirect.
     The default redirect is the primary home as resolved by default_home().
@@ -235,8 +235,8 @@ def redirect_error(error=None, note="", default=None, broken_view_name=None):
 
     # --- Remove broken link from visited on any 404/view-not-found ---
     pruned = False
-    if broken_view_name and gw.web.cookies.check_consent():
-        norm_broken = (broken_view_name or "").replace("-", " ").replace("_", " ").title().lower()
+    if view_name and gw.web.cookies.check_consent():
+        norm_broken = (view_name or "").replace("-", " ").replace("_", " ").title().lower()
         new_items = []
         for v in visited_items:
             title = v.split("=", 1)[0].strip().lower()
@@ -247,8 +247,6 @@ def redirect_error(error=None, note="", default=None, broken_view_name=None):
         if pruned:
             gw.web.cookies.set("visited", "|".join(new_items))
             visited_items = new_items  # reflect the change for UI
-
-    # TODO: Consider adding the last 20 lines from the gway.log when showing the DEBUG screen
 
     # --- DEBUG MODE: show error info as page ---
     if debug_enabled:

@@ -1,13 +1,12 @@
-# gway/console.py
+# file: gway/console.py
 
-import os
+import io
 import sys
 import json
 import time
 import inspect
 import argparse
 import csv
-import io
 from typing import get_origin, get_args, Literal, Union
 
 from .logging import setup_logging
@@ -498,3 +497,4 @@ def _rows_to_csv(rows):
         return output.getvalue()
     except Exception:
         return None
+    
