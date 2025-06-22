@@ -35,7 +35,7 @@ class EtronWebSocketTests(unittest.TestCase):
         gw.cdv.update(CDV_PATH, ADMIN_TAG, user="Admin", balance="150")
 
         cls.proc = subprocess.Popen(
-            ["gway", "-r", "etron_auth"],
+            ["gway", "-r", "etron/cloud"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

@@ -8,7 +8,7 @@ After=network.target
 Type=simple
 User=arthe
 WorkingDirectory=/home/arthe/gway
-ExecStart=/home/arthe/gway/gway.sh -dr etron                                    
+ExecStart=/home/arthe/gway/gway.sh -dr etron/local                                    
 Restart=on-failure
 Environment=PYTHONUNBUFFERED=1
 StandardOutput=journal

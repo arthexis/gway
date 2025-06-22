@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# It is possible for recipe names to contain slashes, to indicate recipes in sub-folders
+# GWAY can handle recipes with slashes, but the service name should clean them up.
+
 # Resolve real directory of this script (even if symlinked)
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
@@ -38,15 +41,19 @@ if [[ ! -f "$RECIPE_FILE" ]]; then
   exit 1
 fi
 
+# Clean up the service name: replace slashes and illegal chars with '-'
+SERVICE_SAFE_RECIPE="${RECIPE//\//-}"
+SERVICE_SAFE_RECIPE="${SERVICE_SAFE_RECIPE//[^a-zA-Z0-9_-]/-}"
+
+SERVICE_NAME="gway-${SERVICE_SAFE_RECIPE}.service"
+SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
+
 # Determine service user
 if [[ -n "${SUDO_USER-}" && "$SUDO_USER" != "root" ]]; then
   SERVICE_USER="$SUDO_USER"
 else
   SERVICE_USER="$(whoami)"
 fi
-
-SERVICE_NAME="gway-${RECIPE}.service"
-SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
 
 echo "Installing systemd service '$SERVICE_NAME' for recipe '$RECIPE'..."
 
