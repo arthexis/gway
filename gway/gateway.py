@@ -9,7 +9,6 @@ import logging
 import threading
 import importlib
 import functools
-import pkg_resources
 
 from regex import W
 from pathlib import Path
@@ -89,10 +88,6 @@ class Gateway(Resolver, Runner):
             }
 
     def _projects_path(self):
-        """
-        Find the projects directory in source, install, or user-specified locations.
-        Returns the path to the projects directory if found, else raises FileNotFoundError.
-        """
         # 1. User explicitly passed a project_path
         if self.project_path:
             candidate = Path(self.project_path)
@@ -106,23 +101,17 @@ class Gateway(Resolver, Runner):
         env_path = os.environ.get('GWAY_PROJECT_PATH')
         if env_path and Path(env_path).is_dir():
             return env_path
-        # 4. Try site-packages data (pip install, wheel)
+        # 4. Try importlib.resources (Python 3.9+)
         try:
-            res_path = pkg_resources.resource_filename('gway', '../projects')
-            if os.path.isdir(res_path):
-                return res_path
-        except Exception:
-            pass
-        # 5. Try as data file (if installed via data_files entry)
-        try:
-            res_path = pkg_resources.resource_filename('gway_projects', '')
-            if os.path.isdir(res_path):
-                return res_path
+            import importlib.resources as resources
+            with resources.as_file(resources.files('gway').joinpath('projects')) as res_path:
+                if res_path.is_dir():
+                    return str(res_path)
         except Exception:
             pass
         raise FileNotFoundError(
             "Could not locate 'projects' directory. "
-            "Tried base_path, GWAY_PROJECT_PATH, site-packages, and user data dirs."
+            "Tried base_path, GWAY_PROJECT_PATH, and package resources."
         )
 
     def projects(self):

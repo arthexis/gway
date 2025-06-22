@@ -4,6 +4,9 @@ import os
 from gway import gw
 from bottle import request
 
+# TODO: Tests have revealed that even after the css cookie has been set, only the view_style_switcher page itselg
+# shows a different css, but this change should apply to the main template. There may be an error either here on
+# web/app.py (see attached.)
 
 def render(*, current_url=None, homes=None):
     """
@@ -89,66 +92,60 @@ def render(*, current_url=None, homes=None):
         qr_url = gw.qr.generate_url(current_url)
         compass = f'''
             <div class="compass">
-                <p class="compass"><h3>QR Code to Here</h3></p>
                 <img src="{qr_url}" alt="QR Code" class="compass" />
             </div>
         '''
 
-    # --- Style/theme selector ---
-    style_selector = ""
-    if cookies_ok:
-        styles_dir = gw.resource("data/static/styles")
-        all_styles = [
-            f for f in sorted(os.listdir(styles_dir))
-            if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
-        ]
-        css_cookie = gw.web.cookies.get("css")
-        main_style = css_cookie if css_cookie in all_styles else (all_styles[0] if all_styles else "base.css")
-        style_selector = style_selector_form(request.fullpath, styles_dir, all_styles, main_style)
-
-    # --- Remove cookies button ---
-    remove_button = '''
-        <form method="post" action="/cookies/remove" style="margin-top: 1rem">
-            <button type="submit">Remove our cookies</button>
-        </form>
-    ''' if cookies_ok else ""
-
     gw.debug(f"Visited cookie raw: {gw.web.cookies.get('visited')}")
-    return f"<aside>{search_box}<ul>{links}</ul><br>{compass}<br>{style_selector}<br>{remove_button}</aside>"
+    return f"<aside>{search_box}<ul>{links}</ul><br>{compass}</aside>"
 
 def html_escape(text):
     import html
     return html.escape(text or "")
 
+
 # --- Style view endpoints ---
 
-
-def view_styles(**kwargs):
+def view_style_switcher(*, css=None):
     """
-    GET: Shows available styles, lets user choose, displays a preview and raw CSS.
-    POST: Sets style cookie and redirects back to the chosen page.
+    GET/POST: Shows available styles, lets user choose, displays a preview and raw CSS.
+    If cookies are accepted, sets the style via cookie when changed in dropdown (no redirect).
+    If cookies are not accepted, only uses the css param for preview.
     """
-    from bottle import request, response, redirect, template
+    import os
+    from bottle import request, response
 
     styles_dir = gw.resource("data", "static", "styles")
     all_styles = [
         f for f in sorted(os.listdir(styles_dir))
         if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
     ]
+
+    # --- Consent logic ---
+    cookies_enabled = gw.web.app.is_enabled('cookies')
+    cookies_accepted = gw.web.cookies.check_consent() if cookies_enabled else False
+
     css_cookie = gw.web.cookies.get("css")
-    main_style = css_cookie if css_cookie in all_styles else (all_styles[0] if all_styles else "base.css")
-    next_url = request.forms.get("next") or request.query.get("next") or "/"
+    selected_style = None
 
     if request.method == "POST":
-        style = request.forms.get("css")
-        if style and style in all_styles:
-            gw.web.cookies.set("css", style)
-        response.status = 303
-        response.set_header("Location", next_url)
-        return ""
+        # Accept dropdown change immediately if cookies are accepted
+        selected_style = request.forms.get("css")
+        if cookies_enabled and cookies_accepted and selected_style and selected_style in all_styles:
+            gw.web.cookies.set("css", selected_style)
+        # No redirect, just re-render with updated style
 
-    # GET: Show all styles, preview, and code block
-    style = request.query.get("css") or main_style
+    # Pick style: POST > URL param > cookie > default
+    style = (
+        selected_style or
+        css or
+        request.query.get("css") or
+        (css_cookie if (css_cookie in all_styles) else None) or
+        (all_styles[0] if all_styles else "base.css")
+    )
+    if style not in all_styles:
+        style = all_styles[0] if all_styles else "base.css"
+
     preview_html = f"""
         <link rel="stylesheet" href="/static/styles/{style}" />
         <div class="style-preview">
@@ -166,13 +163,11 @@ def view_styles(**kwargs):
     except Exception:
         css_code = "Could not load CSS file."
 
-    options = [
-        f'<option value="{s}"{" selected" if s==style else ""}>{s[:-4].title()}</option>'
-        for s in all_styles
-    ]
     selector = style_selector_form(
-        request.fullpath + ('?' + request.query_string if request.query_string else ''),
-        styles_dir, all_styles, style
+        all_styles=all_styles,
+        selected_style=style,
+        cookies_enabled=cookies_enabled,
+        cookies_accepted=cookies_accepted
     )
 
     return f"""
@@ -184,9 +179,8 @@ def view_styles(**kwargs):
     """
 
 
-def style_selector_form(current_path, styles_dir, all_styles, selected_style):
-    from bottle import request
-    next_url = current_path + ('?' + request.query_string if request.query_string else '')
+def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_accepted):
+    # No confirmation checkbox needed, only dropdown
     options = []
     added = set()
     if selected_style:
@@ -195,12 +189,42 @@ def style_selector_form(current_path, styles_dir, all_styles, selected_style):
     for style in all_styles:
         if style not in added:
             options.append(f'<option value="{style}">{style[:-4].upper()}</option>')
+
+    disabled = "" if (cookies_enabled and cookies_accepted) else " disabled"
+    info = ""
+    if cookies_enabled and not cookies_accepted:
+        info = "<p><b>Accept cookies to save your style preference.</b></p>"
+
     return f"""
-        <form method="post" action="/nav/styles" class="style-form" style="margin-bottom: 0.5em">
-            <input type="hidden" name="next" value="{html_escape(next_url)}">
-            <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="this.form.submit()">
+        {info}
+        <form method="post" action="/nav/style-switcher" class="style-form" style="margin-bottom: 0.5em">
+            <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="this.form.submit()" {disabled}>
                 {''.join(options)}
             </select>
             <noscript><button type="submit">Set</button></noscript>
         </form>
     """
+
+
+def get_style():
+    """
+    Returns the current user's preferred style filename, checking for:
+    - URL ?css=... parameter (for quick-testing themes)
+    - CSS cookie (for accepted preference)
+    - Otherwise, defaults to the first style or 'base.css'.
+    Discovers all available styles automatically.
+    """
+    import os
+    from bottle import request
+    styles_dir = gw.resource("data", "static", "styles")
+    all_styles = [
+        f for f in sorted(os.listdir(styles_dir))
+        if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
+    ]
+    style = request.query.get('css')
+    if style and style in all_styles:
+        return style
+    css_cookie = gw.web.cookies.get("css")
+    if css_cookie and css_cookie in all_styles:
+        return css_cookie
+    return all_styles[0] if all_styles else "base.css"

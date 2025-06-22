@@ -149,12 +149,13 @@ def setup(*,
         except Exception as e:
             return redirect_error(e, note="Broken view", view_name=view_func.__name__, default=default_home())
 
+        css_file = gw.web.nav.get_style() 
         return render_template(
             title="GWAY - " + view_func.__name__.replace("_", " ").title(),
             full_url=request.fullpath,
             content=content,
             static=static,
-            css_file="base.css"
+            css_file=css_file
         )
 
     @app.route("/", method=["GET", "POST"])

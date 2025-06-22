@@ -14,7 +14,7 @@ BOARD_PATH = None
 def _ensure_board_path():
     global BOARD_PATH
     if not BOARD_PATH:
-        BOARD_PATH = gw.resource('data', 'conway.txt', touch=True)
+        BOARD_PATH = gw.resource('work', 'conway.txt', touch=True)
 
 def _new_board(size=BOARD_SIZE, fill=0):
     return [[fill for _ in range(size)] for _ in range(size)]
@@ -66,7 +66,7 @@ def next_generation(board):
 def view_readme():
     return "Welcome to Conway's Game of Life!"
 
-def view_board(*args, action=None, board=None, **kwargs):
+def view_game_of_life(*args, action=None, board=None, **kwargs):
     """
     Render the Conway's Game of Life UI.
     - action: new, random, step, clear, toggle

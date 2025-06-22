@@ -1,4 +1,4 @@
-# projects/web/cookie.py
+# file: projects/web/cookie.py
 
 import html
 from bottle import request, response
@@ -85,7 +85,7 @@ def append(name: str, label: str, value: str, sep: str = "|") -> list:
     return items
 
 
-def view_accept(next="/cookies/cookies"):
+def view_accept(*, next="/cookies/cookie-jar"):
     # Only this is allowed to set cookies if not already enabled!
     set("cookies_accepted", "yes")
     response.status = 303
@@ -93,7 +93,13 @@ def view_accept(next="/cookies/cookies"):
     return ""
 
 
-def view_remove(next="/cookies/cookies"):
+def view_remove(*, next="/cookies/cookie-jar", confirm = False):
+    # Only proceed if the confirmation checkbox was passed in the form
+    if not confirm:
+        # No confirmation; just redirect to the cookie jar
+        response.status = 303
+        response.set_header("Location", next)
+        return ""
     if not check_consent():
         response.status = 303
         response.set_header("Location", next)
@@ -104,7 +110,7 @@ def view_remove(next="/cookies/cookies"):
     return ""
 
 
-def view_cookies():
+def view_cookie_jar():
     cookies_ok = check_consent()
 
     def describe_cookie(key, value):
@@ -129,11 +135,14 @@ def view_cookies():
 
     if not cookies_ok:
         return """
-        <h1>All our cookies have been removed</h1>
-        <p>Until you press the "Accept our cookies" button above again, your actions
+        <h1>You are currently not holding any cookies from this website</h1>
+        <p>Until you press the "Accept our cookies" button below again, your actions
         on this site will not be recorded, but your interaction may also be limited.</p>
         <p>This restriction exists because some functionality (like navigation history,
         styling preferences, or shopping carts) depends on cookies.</p>
+        <form method="POST" action="/cookies/accept" style="margin-top: 2em;">
+            <button type="submit" style="font-size:1.2em; padding:0.5em 2em;">Accept our cookies</button>
+        </form>
         """
     else:
         stored = []
@@ -143,13 +152,28 @@ def view_cookies():
 
         cookies_html = "<ul>" + "".join(stored) + "</ul>" if stored else "<p>No stored cookies found.</p>"
 
+        # Use the /cookies/remove POST form
+        removal_form = """
+            <form method="POST" action="/cookies/remove" style="margin-top:2em;">
+                <div style="display: flex; align-items: center; margin-bottom: 1em; gap: 0.5em;">
+                    <input type="checkbox" id="confirm_remove" name="confirm_remove" value="1" required
+                        style="width:1.2em; height:1.2em; vertical-align:middle; margin:0;" />
+                    <label for="confirm_remove" style="margin:0; cursor:pointer; font-size:1em; line-height:1.2;">
+                        I understand my cookie data cannot be recovered once deleted.
+                    </label>
+                </div>
+                <button type="submit" style="color:white;background:#a00;padding:0.4em 2em;font-size:1em;border-radius:0.4em;border:none;">
+                    Delete all my cookie data
+                </button>
+            </form>
+        """
+
         return f"""
         <h1>Cookies are enabled for this site</h1>
         <p>Below is a list of the cookie-based information we are currently storing about you:</p>
         {cookies_html}
-        <p>We do not sell or share your cookie data beyond the service providers used to host and
-        deliver this website. These include database, CDN, and web infrastructure providers necessary
-        to fulfill your requests.</p>
-        <p>You can remove all stored cookie information at any time by pressing the 
-        "Remove our cookies" button in the navigation bar.</p>
+        <p>We never sell your data. We never share your data beyond the service providers used to host and deliver 
+        this website, including database, CDN, and web infrastructure providers necessary to fulfill your requests.</p>
+        <p>You can remove all stored cookie information at any time by using the form below.</p>
+        {removal_form}
         """

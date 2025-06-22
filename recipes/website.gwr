@@ -2,11 +2,11 @@
 # Minimal GWAY website ingredients
 
 web app setup --home readme
-    --project web.cookies 
-    --project web.nav
+    --project web.cookies --home cookie-jar
+    --project web.nav --home style-switcher
     --project awg --home cable-finder
     --project vbox 
-    --project conway --home board --path games/conway
+    --project conway --home game-of-life 
     
 web server start-app --host 127.0.0.1 --port 8888
 until --file VERSION --pypi 

@@ -3,6 +3,7 @@
 from typing import Literal, Union, Optional
 from gway import gw
 
+
 class AWG(int):
     def __new__(cls, value):
         if isinstance(value, str) and "/" in value:
@@ -14,6 +15,7 @@ class AWG(int):
 
     def __repr__(self):
         return f"AWG({str(self)})"
+
 
 def find_cable(
     *,
@@ -110,7 +112,7 @@ def find_cable(
                         conduit = "emt"
                     fill = find_conduit(awg_res, cables, conduit=conduit)
                     result["conduit"] = conduit
-                    result["pipe_in"] = fill["size_in"]
+                    result["pipe_inch"] = fill["size_inch"]
                 gw.debug(f"Selected cable result: {result}")
                 return result
 
@@ -127,7 +129,6 @@ def find_conduit(awg, cables, *, conduit="emt"):
         assert 1 <= cables <= 30, "Valid for 1-30 cables per conduit."
         
         awg = AWG(awg)
-
         sql = f"""
             SELECT trade_size
             FROM awg_conduit_fill
@@ -141,22 +142,19 @@ def find_conduit(awg, cables, *, conduit="emt"):
         if not row:
             return {"trade_size": "n/a"}
 
-        return {
-            "size_in": row[0]
-        }
+        return {"size_inch": row[0]}
 
 
 def view_cable_finder(
-    *args, meters=None, amps="40", volts="220", material="cu", 
+    *, meters=None, amps="40", volts="220", material="cu", 
     max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
 ):
     """Page builder for AWG cable finder with HTML form and result."""
 
-    warning = "<p>Warning: This calculator may not be applicable to your use case. It may be completely wrong." \
-              "Consult a LOCAL certified electrician before making real-life cable sizing decisions.</p>"
-    
+    # TODO: Complete the interface to also calculate the counduit diameter estimation in one view
+
     if not meters:
-        return "<h1>AWG Cable Finder</h1>" + warning + '''
+        return '''<h1>AWG Cable Finder</h1>
             <form method="post">
                 <label>Meters: <input type="number" name="meters" required min="1" /></label><br/>
                 <label>Amps: <input type="number" name="amps" value="40" /></label><br/>
@@ -169,12 +167,12 @@ def view_cable_finder(
                 </label><br/>
                 <label>Phases: 
                     <select name="phases">
-                        <option value="1">AC Single Phase (1)</option>
                         <option value="2">AC Two Phases (2)</option>
+                        <option value="1">AC Single Phase (1)</option>
                         <option value="3">AC Three Phases (3)</option>
                     </select>
                 </label><br/>
-                <label>Max Lines: <input type="number" name="max_lines" value="3" /></label><br/>
+                <label>Max Lines: <input type="number" name="max_lines" value="1" /></label><br/>
                 <button type="submit" class="submit">Find Cable</button>
             </form>
         '''
@@ -184,7 +182,7 @@ def view_cable_finder(
             material=material, max_lines=max_lines, phases=phases, 
         )
     except Exception as e:
-        return f"<p class='error'>Error: {e}</p><p><a href='/awg-finder'>Try again</a></p>"
+        return f"<p class='error'>Error: {e}</p><p><a href='/awg/cable-finder'>&#8592; Try again</a></p>"
 
     return f"""
         <h1>Recommended Cable</h1>
@@ -196,7 +194,6 @@ def view_cable_finder(
             <li><strong>Voltage Drop:</strong> {result['vdrop']:.2f} V ({result['vdperc']:.2f}%)</li>
             <li><strong>Voltage at End:</strong> {result['vend']:.2f} V</li>
         </ul>
-        {warning}
         <p><a href="/awg/cable-finder">&#8592; Calculate again</a></p>
     """
 

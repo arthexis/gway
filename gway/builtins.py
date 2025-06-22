@@ -93,34 +93,53 @@ def normalize_ext(e):
 
 def resource(*parts, touch=False, check=False, text=False):
     """
-    Construct a pathlib.Path relative to the base, or Gateway root if unspecified.
-    (Getting a file from your root is called "resourcing it" in GWAY parlance.)
+    Locate a resource by searching in:
+    1. Current working directory
+    2. GWAY_ROOT environment variable
+    3. User home directory
 
-    Assumes the last part is a filename and creates parent directories along the way.
-    Skips base and root if the first element in parts is already an absolute path.
-
-    Args:
-        *parts: Path components, like ("subdir", "file.txt").
-        touch (bool): If True, creates the file if it doesn't exist.
-        check (bool): If True, aborts if the file doesn't exist and touch is False.
-        text (bool): If True, returns the text contents of the file instead of the path.
-
-    Returns:
-        pathlib.Path | str: The constructed path, or file contents if text=True.
+    If not found, returns the path in the CWD (which may not exist) unless check=True, in which case aborts.
     """
+    import os
     import pathlib
     from gway import gw
 
-    # Build path
-    first = pathlib.Path(parts[0])
-    if first.is_absolute():
-        path = pathlib.Path(*parts)
+    rel_path = pathlib.Path(*parts)
+    tried = []
+
+    # 1. Current working directory
+    candidate = pathlib.Path.cwd() / rel_path
+    if candidate.exists() or touch:
+        path = candidate
     else:
-        path = pathlib.Path(gw.base_path, *parts)
+        tried.append(str(candidate))
+        # 2. GWAY_ROOT env
+        env_root = os.environ.get("GWAY_ROOT")
+        if env_root:
+            candidate = pathlib.Path(env_root) / rel_path
+            if candidate.exists() or touch:
+                path = candidate
+            else:
+                tried.append(str(candidate))
+                # 3. Home directory
+                candidate = pathlib.Path.home() / rel_path
+                if candidate.exists() or touch:
+                    path = candidate
+                else:
+                    tried.append(str(candidate))
+                    path = pathlib.Path.cwd() / rel_path
+        else:
+            # 3. Home directory
+            candidate = pathlib.Path.home() / rel_path
+            if candidate.exists() or touch:
+                path = candidate
+            else:
+                tried.append(str(candidate))
+                path = pathlib.Path.cwd() / rel_path
 
     # Safety check
     if not touch and check and not path.exists():
-        gw.abort(f"Required resource {path} missing")
+        gw.abort(f"Required resource {path} missing. Tried: {tried}")
 
     # Ensure parent directories exist
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -130,6 +149,10 @@ def resource(*parts, touch=False, check=False, text=False):
         path.touch()
 
     # Return text contents or path
+
+    # TODO: Text is currently boolean-only, but if a string is provide it,
+    # write this text to the file after the previous text has been read off.
+    
     if text:
         try:
             return path.read_text(encoding="utf-8")
