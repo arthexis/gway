@@ -2,9 +2,9 @@
 # Minimal GWAY website ingredients
 
 web app setup --home readme
-    --project web.cookies --home cookie-jar
-    --project web.nav --home style-switcher
     --project awg --home cable-finder
+    --project web.nav --home style-switcher
+    --project web.cookies --home cookie-jar
     --project vbox --home uploads
     --project conway --home game-of-life 
     

@@ -4,6 +4,11 @@ import os
 from gway import gw
 from bottle import request
 
+# TODO: Currently, when cookies have not been accepted, the style switch selection box becomes disabled.
+#       However, as per the message to the user, they should still be able to switch, they just won't be
+#       saved, meaning we reload using the css param to have the css show only here. 
+#       The selection should still work in both modes, using the proper mechanism for each case.
+
 
 def render(*, current_url=None, homes=None):
     """
@@ -196,9 +201,12 @@ def view_style_switcher(*, css=None):
         <pre style="max-height:400px;overflow:auto;">{html_escape(css_code)}</pre>
     """
 
-
 def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_accepted):
-    # No confirmation checkbox needed, only dropdown
+    """
+    Renders the style selector dropdown.
+    - If cookies are accepted, submit as a form (POST).
+    - If not, switch theme using URL ?css=...
+    """
     options = []
     added = set()
     if selected_style:
@@ -208,20 +216,45 @@ def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_acc
         if style not in added:
             options.append(f'<option value="{style}">{style[:-4].upper()}</option>')
 
-    disabled = "" if (cookies_enabled and cookies_accepted) else " disabled"
+    # Info
     info = ""
     if cookies_enabled and not cookies_accepted:
-        info = "<p><b>Accept cookies to save your style preference.</b></p>"
+        info = "<p><b><a href='/cookies/cookie-jar'>Accept cookies to save your style preference.</a></b></p>"
 
-    return f"""
-        {info}
-        <form method="post" action="/nav/style-switcher" class="style-form" style="margin-bottom: 0.5em">
-            <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="this.form.submit()" {disabled}>
+    # JS for non-cookie: redirect on select
+    # We use window.location to append/update the ?css=... param
+    js_redirect = """
+    <script>
+    function styleSelectChanged(sel) {
+        var css = sel.value;
+        var url = window.location.pathname + window.location.search.replace(/([?&])css=[^&]*(&|$)/, '$1').replace(/^\\?|&$/g, '');
+        url += (url.indexOf('?') === -1 ? '?' : '&') + 'css=' + encodeURIComponent(css);
+        window.location = url;
+    }
+    </script>
+    """
+
+    if cookies_enabled and cookies_accepted:
+        # Form submit as POST
+        return f"""
+            {info}
+            <form method="post" action="/nav/style-switcher" class="style-form" style="margin-bottom: 0.5em">
+                <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="this.form.submit()">
+                    {''.join(options)}
+                </select>
+                <noscript><button type="submit">Set</button></noscript>
+            </form>
+        """
+    else:
+        # No submit, only JS redirect
+        return f"""
+            {info}
+            {js_redirect}
+            <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="styleSelectChanged(this)">
                 {''.join(options)}
             </select>
-            <noscript><button type="submit">Set</button></noscript>
-        </form>
-    """
+        """
+
 
 def get_style():
     """

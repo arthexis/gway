@@ -136,7 +136,7 @@ def view_cookie_jar():
     if not cookies_ok:
         return """
         <h1>You are currently not holding any cookies from this website</h1>
-        <p>Until you press the "Accept our cookies" button below again, your actions
+        <p>Until you press the "Accept our cookies" button below, your actions
         on this site will not be recorded, but your interaction may also be limited.</p>
         <p>This restriction exists because some functionality (like navigation history,
         styling preferences, or shopping carts) depends on cookies.</p>
