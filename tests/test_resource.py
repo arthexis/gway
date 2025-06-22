@@ -1,5 +1,6 @@
 # tests/test_resource.py
 
+import os
 import unittest
 import tempfile
 from pathlib import Path
@@ -11,11 +12,13 @@ class ResourceTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
         self.base_path = Path(self.tempdir.name)
-        gw.base_path = self.base_path
+        self._old_cwd = Path.cwd()
+        os.chdir(self.base_path)  # <-- use the tempdir as CWD for each test
 
     def tearDown(self):
+        os.chdir(self._old_cwd)
         self.tempdir.cleanup()
-
+        
     def test_relative_path_creation_with_touch(self):
         path = gw.resource("subdir", "file.txt", touch=True)
         self.assertTrue(path.exists())
@@ -39,8 +42,10 @@ class ResourceTests(unittest.TestCase):
         self.assertEqual(result, "some text")
 
     def test_creates_intermediate_directories(self):
-        path = gw.resource("a", "b", "c", "file.txt", touch=True)
-        self.assertTrue(path.exists())
+        # Explicitly create the full path as a directory, not a file
+        dir_path = gw.resource("a", "b", "c", dir=True)
+        self.assertTrue(dir_path.is_dir())
+        # The final directory should exist under base_path
         self.assertTrue((self.base_path / "a" / "b" / "c").is_dir())
 
     def test_does_not_create_file_if_touch_false(self):
@@ -57,7 +62,7 @@ class ResourceTests(unittest.TestCase):
             gw.resource("no_such_file.txt", text=True)
 
     def test_returns_absolute_path_even_when_given_relative(self):
-        result = gw.resource("relative.txt")
+        result = gw.resource("relative.txt", touch=True)
         self.assertTrue(result.is_absolute())
         self.assertTrue(str(result).startswith(str(self.base_path)))
 

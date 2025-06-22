@@ -91,14 +91,20 @@ def normalize_ext(e):
 ...
 
 
-def resource(*parts, touch=False, check=False, text=False):
+def resource(*parts, touch=False, check=False, text=False, dir=False):
     """
-    Locate a resource by searching in:
+    Locate or create a resource by searching in:
     1. Current working directory
     2. GWAY_ROOT environment variable
     3. User home directory
 
     If not found, returns the path in the CWD (which may not exist) unless check=True, in which case aborts.
+
+    Arguments:
+    - touch: if True, create the file (and parents) if it does not exist.
+    - dir: if True, create the final path as a directory, not a file.
+    - text: if True, return file contents as text, not a Path.
+    - check: if True, abort if resource does not exist.
     """
     import os
     import pathlib
@@ -109,7 +115,7 @@ def resource(*parts, touch=False, check=False, text=False):
 
     # 1. Current working directory
     candidate = pathlib.Path.cwd() / rel_path
-    if candidate.exists() or touch:
+    if candidate.exists() or touch or dir:
         path = candidate
     else:
         tried.append(str(candidate))
@@ -117,13 +123,13 @@ def resource(*parts, touch=False, check=False, text=False):
         env_root = os.environ.get("GWAY_ROOT")
         if env_root:
             candidate = pathlib.Path(env_root) / rel_path
-            if candidate.exists() or touch:
+            if candidate.exists() or touch or dir:
                 path = candidate
             else:
                 tried.append(str(candidate))
                 # 3. Home directory
                 candidate = pathlib.Path.home() / rel_path
-                if candidate.exists() or touch:
+                if candidate.exists() or touch or dir:
                     path = candidate
                 else:
                     tried.append(str(candidate))
@@ -131,34 +137,34 @@ def resource(*parts, touch=False, check=False, text=False):
         else:
             # 3. Home directory
             candidate = pathlib.Path.home() / rel_path
-            if candidate.exists() or touch:
+            if candidate.exists() or touch or dir:
                 path = candidate
             else:
                 tried.append(str(candidate))
                 path = pathlib.Path.cwd() / rel_path
 
     # Safety check
-    if not touch and check and not path.exists():
+    if not (touch or dir) and check and not path.exists():
         gw.abort(f"Required resource {path} missing. Tried: {tried}")
 
-    # Ensure parent directories exist
+    # Ensure parents exist
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Optionally create the file
-    if touch:
-        path.touch()
+    # If dir=True, create final directory (even if doesn't exist)
+    if dir:
+        path.mkdir(parents=True, exist_ok=True)
+    elif touch:
+        # Optionally create the file (not directory)
+        if not path.exists():
+            path.touch()
 
     # Return text contents or path
-
-    # TODO: Text is currently boolean-only, but if a string is provide it,
-    # write this text to the file after the previous text has been read off.
-    
     if text:
         try:
             return path.read_text(encoding="utf-8")
         except Exception as e:
             gw.abort(f"Failed to read {path}: {e}")
-    return path
+    return path.resolve()
 
 
 def resource_list(*parts, ext=None, prefix=None, suffix=None):
