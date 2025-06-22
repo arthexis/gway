@@ -177,3 +177,52 @@ def view_colon_validator(*, text=None):
     # found that would impede the file to be processed as a valid CDV. 
 
     raise NotImplementedError
+
+
+def save_all(pathlike: str, all_records: dict[str, dict[str, str]]):
+    """
+    Replace all records in the CDV file at pathlike with the given dict.
+    """
+    path = _resolve_path(pathlike)
+    _write_table(path, all_records)
+
+
+def read_rows(pathlike: str) -> list[list[str]]:
+    """
+    Read a CDV as a list of rows: [id, k1, v1, ...].
+    """
+    records = load_all(pathlike)
+    rows = []
+    for entry_id, fields in records.items():
+        row = [entry_id]
+        for k, v in fields.items():
+            row += [k, v]
+        rows.append(row)
+    return rows
+
+
+def write_rows(pathlike: str, rows: list[list[str]]):
+    """
+    Write a list of rows: [id, k1, v1, ...] as a CDV file.
+    """
+    recs = {}
+    for row in rows:
+        if not row: continue
+        entry_id = row[0]
+        fields = {row[i]: row[i+1] for i in range(1, len(row)-1, 2)}
+        recs[entry_id] = fields
+    save_all(pathlike, recs)
+
+
+def delete(table_path: str, entry_id: str):
+    """
+    Remove a record by ID from the CDV table.
+    """
+    path = _resolve_path(table_path)
+    records = _read_table(path)
+    if entry_id in records:
+        del records[entry_id]
+        _write_table(path, records)
+        gw.info(f"Deleted record '{entry_id}' from table.")
+        return True
+    return False

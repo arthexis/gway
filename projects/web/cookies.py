@@ -1,9 +1,11 @@
-# file: projects/web/cookie.py
+# file: projects/web/cookies.py
 
+import re
 import html
 from bottle import request, response
 from gway import gw
 
+# --- Core Cookie Utilities ---
 
 def set(name, value, path="/", expires=None, secure=None, httponly=True, samesite="Lax", **kwargs):
     """Set a cookie on the response. Only includes expires if set, to avoid Bottle crash."""
@@ -22,12 +24,10 @@ def set(name, value, path="/", expires=None, secure=None, httponly=True, samesit
         params['expires'] = expires
     response.set_cookie(name, value, **params)
 
-
 def get(name: str, default=None):
     """Get a cookie value from the request. Returns None if blank or unset."""
     val = request.get_cookie(name, default)
     return None if (val is None or val == "") else val
-
 
 def remove(name: str, path="/"):
     """
@@ -39,7 +39,6 @@ def remove(name: str, path="/"):
     response.set_cookie(name, value="", path=path, expires=expires, secure=False)
     response.set_cookie(name, value="", path=path, expires=expires, secure=True)
 
-
 def clear_all(path="/"):
     """
     Remove all cookies in the request, blanking and expiring each.
@@ -49,14 +48,12 @@ def clear_all(path="/"):
     for cookie in list(request.cookies):
         remove(cookie, path=path)
 
-
 def check_consent() -> bool:
     """
     Returns True if the user has accepted cookies (not blank, not None).
     """
     cookie_value = get("cookies_accepted")
     return cookie_value == "yes"
-
 
 def list_all() -> dict:
     """
@@ -65,7 +62,6 @@ def list_all() -> dict:
     if not check_consent():
         return {}
     return {k: v for k, v in request.cookies.items() if v not in (None, "")}
-
 
 def append(name: str, label: str, value: str, sep: str = "|") -> list:
     """
@@ -84,19 +80,17 @@ def append(name: str, label: str, value: str, sep: str = "|") -> list:
     set(name, cookie_value)
     return items
 
+# --- Views ---
 
 def view_accept(*, next="/cookies/cookie-jar"):
-    # Only this is allowed to set cookies if not already enabled!
     set("cookies_accepted", "yes")
     response.status = 303
     response.set_header("Location", next)
     return ""
 
-
 def view_remove(*, next="/cookies/cookie-jar", confirm = False):
     # Only proceed if the confirmation checkbox was passed in the form
     if not confirm:
-        # No confirmation; just redirect to the cookie jar
         response.status = 303
         response.set_header("Location", next)
         return ""
@@ -109,23 +103,19 @@ def view_remove(*, next="/cookies/cookie-jar", confirm = False):
     response.set_header("Location", next)
     return ""
 
-
 def view_cookie_jar(*, eat=None):
     cookies_ok = check_consent()
-
     # Handle eating a cookie (removal via ?eat=)
     if cookies_ok and eat:
         eat_key = str(eat)
         eat_key_norm = eat_key.strip().lower()
         if eat_key_norm not in ("cookies_accepted", "cookies_eaten") and eat_key in request.cookies:
             remove(eat_key)
-            # Update cookies_eaten counter
             try:
                 eaten_count = int(get("cookies_eaten") or "0")
             except Exception:
                 eaten_count = 0
             set("cookies_eaten", str(eaten_count + 1))
-            # Redirect to avoid showing stale cookies (and to clear ?eat param)
             response.status = 303
             response.set_header("Location", "/cookies/cookie-jar")
             return ""
@@ -141,10 +131,8 @@ def view_cookie_jar(*, eat=None):
                 "style='color:#a00;text-decoration:none;font-weight:bold;font-size:1.1em;margin-left:0.5em;' "
                 "title='Remove this cookie' onclick=\"return confirm('Remove cookie: {0}?');\">[X]</a>".format(key)
             )
-
         if not value:
             return f"<li><b>{key}</b>: (empty)</li>"
-
         if key == "visited":
             items = value.split("|")
             links = "".join(
@@ -153,13 +141,10 @@ def view_cookie_jar(*, eat=None):
                 for title, route in [title_route.split('=', 1)]
             )
             return f"<li><b>{key}</b>:{x_link}<ul>{links}</ul></li>"
-
         elif key == "css":
             return f"<li><b>{key}</b>: {value} (your selected style){x_link}</li>"
-
         elif key == "cookies_eaten":
             return f"<li><b>{key}</b>: {value} 🍪 (You have eaten <b>{value}</b> cookies)</li>"
-
         return f"<li><b>{key}</b>: {value}{x_link}</li>"
 
     if not cookies_ok:
@@ -204,4 +189,167 @@ def view_cookie_jar(*, eat=None):
         this website, including database, CDN, and web infrastructure providers necessary to fulfill your requests.</p>
         <p>You can remove all stored cookie information at any time by using the form below.</p>
         {removal_form}
+        <hr>
+        <p>On the other hand, you can make your cookies available in other browsers and devices by configuring an identity.</p>
+        <p><button><a href="/cookies/my-identity">Learn more about identities.</a></button></p>
         """
+
+# --- Identities System ---
+
+def _normalize_identity(identity: str) -> str:
+    """
+    Normalize identity string using slug rules: lowercase, alphanumeric and dashes, no spaces.
+    """
+    identity = identity.strip().lower()
+    identity = re.sub(r"[\s_]+", "-", identity)
+    identity = re.sub(r"[^a-z0-9\-]", "", identity)
+    identity = re.sub(r"\-+", "-", identity)
+    identity = identity.strip("-")
+    return identity
+
+def _identities_path():
+    """Returns the path to the identities.cdv file in work/."""
+    return gw.resource("work", "identities.cdv")
+
+def _read_identities():
+    """Reads identities.cdv as dict of identity -> cookies_dict. Returns {} if not present."""
+    path = _identities_path()
+    try:
+        return gw.cdv.load_all(path)
+    except Exception:
+        return {}
+
+def _write_identities(identity_map):
+    """Writes the given identity_map back to identities.cdv using gw.cdv.save_all."""
+    path = _identities_path()
+    gw.cdv.save_all(path, identity_map)
+
+def _get_current_cookies():
+    """Return a dict of all current cookies (excluding blank/None)."""
+    return {k: v for k, v in request.cookies.items() if v not in (None, "")}
+
+def _restore_cookies(cookie_dict):
+    """Set all cookies in the cookie_dict, skipping cookies_accepted to avoid accidental opt-in."""
+    for k, v in cookie_dict.items():
+        if k == "cookies_accepted":
+            continue
+        set(k, v)
+        
+
+def view_my_identity(*, claim=None, set_identity=None):
+    """
+    View and manage identity linking for cookies.
+    - GET: Shows current identity and allows claim or update.
+    - POST (claim/set_identity): Claim an identity and save/load cookies to/from identities.cdv.
+    
+    If user claims an existing identity AND already has an identity cookie, 
+    ALL existing cookies (except cookies_accepted) are wiped before restoring the claimed identity.
+    No wipe is performed when creating a new identity.
+    """
+    cookies_ok = check_consent()
+    identity = get("identity", "")
+
+    # Handle claiming or setting identity via POST
+    if claim or set_identity:
+        ident = (claim or set_identity or "").strip()
+        norm = _normalize_identity(ident)
+        if not norm:
+            msg = "<b>Identity string is invalid.</b> Please use only letters, numbers, and dashes."
+        else:
+            identity_map = _read_identities()
+            existing = identity_map.get(norm)
+            if not existing:
+                # New identity: Save all current cookies (except identity and cookies_accepted) to record
+                current = _get_current_cookies()
+                filtered = {k: v for k, v in current.items() if k not in ("identity", "cookies_accepted")}
+                identity_map[norm] = filtered
+                _write_identities(identity_map)
+                set("identity", norm)
+                msg = (
+                    f"<b>Identity <code>{html.escape(norm)}</code> claimed and stored!</b> "
+                    "Your cookie data has been saved under this identity. "
+                    "You may now restore it from any device or browser by claiming this identity again."
+                )
+            else:
+                # If user already has an identity, wipe all their cookies (except cookies_accepted) before restoring
+                if identity:
+                    for k in list(request.cookies):
+                        if k not in ("cookies_accepted",):
+                            remove(k)
+                # Restore cookies from identity
+                _restore_cookies(existing)
+                set("identity", norm)
+                # Merge new cookies into record (overwriting with current, but not blanking any missing)
+                merged = existing.copy()
+                for k, v in _get_current_cookies().items():
+                    if k not in ("identity", "cookies_accepted"):
+                        merged[k] = v
+                identity_map[norm] = merged
+                _write_identities(identity_map)
+                msg = (
+                    f"<b>Identity <code>{html.escape(norm)}</code> loaded!</b> "
+                    "All cookies for this identity have been restored and merged with your current data. "
+                    "Future changes to your cookies will update this identity."
+                )
+        # After processing, reload view with message
+        return view_my_identity() + f"<div style='margin:1em 0; color:#080;'>{msg}</div>"
+
+    # GET: Show info, form, and current identity
+    identity_note = (
+        f"<div style='margin:1em 0; color:#005;'><b>Current identity:</b> <code>{html.escape(identity)}</code></div>"
+        if identity else
+        "<div style='margin:1em 0; color:#888;'>You have not claimed an identity yet.</div>"
+    )
+    claim_form = """
+    <form method="POST" style="margin-top:1em;">
+        <label for="identity" style="font-size:1em;">
+            Enter an identity string to claim (letters, numbers, dashes):</label>
+        <input type="text" id="identity" name="set_identity" required pattern="[a-zA-Z0-9\\-]+"
+               style="margin-left:0.5em; font-size:1.1em; width:12em; border-radius:0.3em; border:1px solid #aaa;"/>
+        <button type="submit" style="margin-left:1em; font-size:1em;">Claim / Load</button>
+    </form>
+    """
+    return f"""
+    <h1>Cookie Identities</h1>
+    <p>
+        Identities allow you to copy your cookie data (such as preferences, navigation history, shopping cart, etc)
+        from one device or browser to another, without needing to register an account.
+        Claiming an identity will save a copy of your current cookie data under the identity string you provide.<br>
+        <b>Warning:</b> Anyone who knows this identity string can restore your cookie data, so choose carefully.
+    </p>
+    {identity_note}
+    {claim_form}
+    <p style='margin-top:2em; color:#555; font-size:0.98em;'>
+        To transfer cookies:<br>
+        1. On your main device, claim an identity (e.g. "my-handle-123").<br>
+        2. On another device/browser, visit this page and claim the same identity to restore your data.<br>
+        3. Any changes you make while holding an identity will update the stored copy.
+    </p>
+    """
+
+
+def update_identity_on_cookie_change():
+    """
+    Called when any cookie is set or removed, to update the identity record (if any) in identities.cdv.
+    """
+    identity = get("identity")
+    if identity:
+        norm = _normalize_identity(identity)
+        if not norm:
+            return
+        identity_map = _read_identities()
+        current = {k: v for k, v in _get_current_cookies().items() if k not in ("identity", "cookies_accepted")}
+        identity_map[norm] = current
+        _write_identities(identity_map)
+
+# --- Patch set() and remove() to trigger update_identity_on_cookie_change ---
+
+_orig_set = set
+def set(name, value, *args, **kwargs):
+    _orig_set(name, value, *args, **kwargs)
+    update_identity_on_cookie_change()
+
+_orig_remove = remove
+def remove(name, *args, **kwargs):
+    _orig_remove(name, *args, **kwargs)
+    update_identity_on_cookie_change()

@@ -143,7 +143,7 @@ def view_game_of_life(
     <div>
         <form id="lifeform" method="post" class="game-actions" autocomplete="off" style="margin-bottom:8px;">
             <input type="hidden" name="board" id="boarddata" value="{html.escape(flat_board)}" />
-            <button type="submit" name="action" value="step">{ICONS['step']} Step</button>
+            <button type="submit" name="action" value="step">{ICONS['step']} Step Forward</button>
             <button type="submit" name="action" value="random">{ICONS['random']} Random</button>
             <button type="submit" name="action" value="clear">{ICONS['clear']} Clear</button>
             <a href="/web/conway/download" download class="button">{ICONS['download']} Download</a>
