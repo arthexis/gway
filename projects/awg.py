@@ -150,9 +150,6 @@ def view_cable_finder(
     max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
 ):
     """Page builder for AWG cable finder with HTML form and result."""
-
-    # TODO: Complete the interface to also calculate the counduit diameter estimation in one view
-
     if not meters:
         return '''<h1>AWG Cable Finder</h1>
             <form method="post">
@@ -184,6 +181,14 @@ def view_cable_finder(
     except Exception as e:
         return f"<p class='error'>Error: {e}</p><p><a href='/awg/cable-finder'>&#8592; Try again</a></p>"
 
+    if result.get("awg") == "n/a":
+        return """
+            <h1>No Suitable Cable Found</h1>
+            <p>No cable was found that meets the requirements within a 3% voltage drop.<br>
+            Try adjusting the <b>cable size, amps, length, or material</b> and try again.</p>
+            <p><a href="/awg/cable-finder">&#8592; Calculate again</a></p>
+        """
+
     return f"""
         <h1>Recommended Cable</h1>
         <ul>
@@ -196,4 +201,3 @@ def view_cable_finder(
         </ul>
         <p><a href="/awg/cable-finder">&#8592; Calculate again</a></p>
     """
-

@@ -80,7 +80,6 @@ img.navbar-qr {
 /* Main content area */
 main {
   flex-grow: 1;
-  padding: 2rem;
   background-color: var(--bg);
 }
 

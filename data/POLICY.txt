@@ -1,0 +1,16 @@
+DATA POLICY
+===========
+
+Projects should use the data folder to include data needed to meed their goals.
+
+Each project is allowed to put either:
+1. A single file with the same name as the project and any extension.
+2. A folder with the name of the project.
+
+Projects with nested sub-projects are expected to share a single data folder.
+For example, web.site will have to store their data in web/ or web/site. 
+
+Data includes both private and public data used by the project. For example, 
+when using the web.app site builder, files in <project>/static will be automatically
+shared (images, css, scripts, etc.) while everything else stays unpublished.
+

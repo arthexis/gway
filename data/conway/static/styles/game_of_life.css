@@ -1,0 +1,112 @@
+/* file: data/conway/static/styles/game_of_life.css */
+
+:root {
+    --cell-off-light: #fafafa;
+    --cell-on-light: #222;
+    --cell-border-light: #aaa;
+    --cell-off-dark: #181818;
+    --cell-on-dark: #fafafa;
+    --cell-border-dark: #444;
+    }
+    @media (prefers-color-scheme: dark) {
+    .game-board td.cell-0 { background: var(--cell-off-dark); border: 1px solid var(--cell-border-dark); }
+    .game-board td.cell-1 { background: var(--cell-on-dark); border: 1px solid var(--cell-border-dark); }
+    }
+    @media (prefers-color-scheme: light), (prefers-color-scheme: no-preference) {
+    .game-board td.cell-0 { background: var(--cell-off-light); border: 1px solid var(--cell-border-light); }
+    .game-board td.cell-1 { background: var(--cell-on-light); border: 1px solid var(--cell-border-light); }
+    }
+    .game-board {
+        border-collapse: collapse;
+        margin-top: 1em;
+    }
+    .game-board td {
+        width: 9px;
+        height: 9px;
+        cursor: pointer;
+        transition: background 0.1s;
+        box-sizing: border-box;
+    }
+    @media (max-width: 700px) {
+    .game-board td { width: 7px; height: 7px;}
+    }
+    .game-actions {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+    .game-actions button {
+        border-radius: 4px;
+        border: 1px solid #bbb;
+        padding: 2px 9px 2px 4px;
+        background: #f8f8f8;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        transition: background .12s;
+        color: #005;
+    }
+    .game-actions button:hover {
+        background: #e0e0e0;
+    }
+    .game-actions svg {
+        width: 16px;
+        height: 16px;
+        display: inline-block;
+        vertical-align: middle;
+    }
+    .game-actions label.auto-label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin: 0 3px;
+        cursor: pointer;
+        user-select: none;
+        font-weight: 500;
+        font-size: 1rem;
+        background: none;
+        border: none;
+        padding: 0;
+        line-height: 1.15;
+    }
+    .game-actions label.auto-label input[type="checkbox"] {
+        margin: 0;
+        accent-color: #005;
+        outline: none !important;
+        box-shadow: none !important;
+        border: 1.5px solid #888;
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        display: inline-block;
+    }
+    .game-actions a.button, .game-actions a[download] {
+        color: #04f;
+        background: none;
+        border: none;
+        padding: 0 4px;
+        outline: none;
+        text-decoration: underline;
+        box-shadow: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+        font-size: 1rem;
+        border-radius: 0;
+        transition: none;
+    }
+    .game-actions a.button:hover, .game-actions a[download]:hover {
+        background: none;
+        color: #039;
+        text-decoration: underline;
+    }
+    .game-actions .steps-indicator {
+        margin-left: 6px;
+        font-weight: 400;
+        color: #333;
+        font-size: 90%;
+    }

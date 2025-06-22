@@ -1,5 +1,6 @@
 # file: projects/web/app.py
 
+import os
 from urllib.parse import urlencode
 import bottle
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
@@ -10,12 +11,9 @@ _homes = []  # (title, route)
 _enabled = set()
 UPLOAD_MB = 100
 
-# TODO: Allow per css to be set for all the views dispatched by the configured app to replace base.css
-
-# TODO: In addition to the base and nav styles, allow a 3rd css file: project-based css. When templating
-#       check if the file data/static/style/<project>/<view-name>.css or data/static/style/<project>/base.css
-#       exist. The first of the two gets added. If neither, don't add the 3rd css file.
-
+# --- STATIC MIGRATION: All static is now under data/web/static ---
+STATIC_ROOT = gw.resource("data", "web", "static")  # <--- fix
+STYLES_ROOT = os.path.join(STATIC_ROOT, "styles")   # <--- fix
 
 def setup(*,
     app=None,
@@ -25,10 +23,10 @@ def setup(*,
     views: str = "view",
     apis: str = "api",
     static="static",
-    css: str = 'base.css',
     work="work",
     engine="bottle",
 ):
+    # file: projects/web/app.py
     global _ver, _homes
     if engine != "bottle":
         raise NotImplementedError("Only Bottle is supported at the moment.")
@@ -63,17 +61,46 @@ def setup(*,
     if home:
         add_home(home, path)
 
-    if static:
-        @app.route(f"/{static}/<filename:path>")
-        def send_static(filename):
-            return static_file(filename, root=gw.resource("data", "static"))
-
+    # Serve work files (unchanged)
     if work:
         @app.route(f"/{work}/<filename:path>")
         def send_work(filename):
             filename = filename.replace('-', '_')
             return static_file(filename, root=gw.resource("work", "shared"))
 
+    # --- Global static (styles and scripts) ---
+    @app.route(f"/{static}/styles/<filename:path>")
+    def send_global_style(filename):
+        return static_file(filename, root=gw.resource("data", "web", "static", "styles"))
+
+    @app.route(f"/{static}/scripts/<filename:path>")
+    def send_global_script(filename):
+        return static_file(filename, root=gw.resource("data", "web", "static", "scripts"))
+
+    # --- Project static (styles and scripts) ---
+    @app.route(f"/{static}/<project>/styles/<filename:path>")
+    def send_project_style(project, filename):
+        # Security check
+        if ".." in project or "/" in project or "\\" in project:
+            return HTTPResponse(status=400, body="Bad project name.")
+        static_root = gw.resource("data", project, "static", "styles")
+        return static_file(filename, root=static_root)
+
+    @app.route(f"/{static}/<project>/scripts/<filename:path>")
+    def send_project_script(project, filename):
+        if ".." in project or "/" in project or "\\" in project:
+            return HTTPResponse(status=400, body="Bad project name.")
+        static_root = gw.resource("data", project, "static", "scripts")
+        return static_file(filename, root=static_root)
+
+    # --- Project generic static ---
+    @app.route(f"/{static}/<project>/<filename:path>")
+    def send_project_static(project, filename):
+        if ".." in project or "/" in project or "\\" in project:
+            return HTTPResponse(status=400, body="Bad project name.")
+        static_root = gw.resource("data", project, "static")
+        return static_file(filename, root=static_root)
+    
     @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
         nonlocal home, views, apis
@@ -153,16 +180,35 @@ def setup(*,
             elif not isinstance(content, str):
                 content = gw.to_html(content)
 
+        except HTTPResponse as res:
+            return res
         except Exception as e:
             return redirect_error(e, note="Broken view", view_name=view_func.__name__, default=default_home())
 
-        css_file = gw.web.nav.get_style() 
+        # --- CSS selection ---
+        css_query = request.query.get('css')
+        css_cookie = gw.web.cookies.get("css")
+        css = css_query or css_cookie or 'base.css'
+        project_name = projects[0].split('.')[-1]  # eg 'site'
+        css_files = collect_css_files(
+            static=static, 
+            project=project_name,
+            view_name=view_name,
+            css=css,
+        )
+        js_files = collect_js_files(
+            static=static, 
+            project=project_name,
+            view_name=view_name,
+        )
         return render_template(
             title="GWAY - " + view_func.__name__.replace("_", " ").title(),
             content=content,
             static=static,
-            css_file=css_file
+            css_files=css_files,
+            js_files=js_files,  # <-- add this line
         )
+
 
     @app.route("/", method=["GET", "POST"])
     def index():
@@ -197,25 +243,39 @@ def build_url(*args, **kwargs):
     return url
 
 
-def render_template(*, title="GWAY", content="", static="static", css_file=None):
+def render_template(*, title="GWAY", content="", static="static", css_files=None, js_files=None):
     global _ver
     version = _ver = _ver or gw.version()
-    css_links = f'<link rel="stylesheet" href="/{static}/styles/base.css">\n'
-    if css_file and css_file != "base.css":
-        css_links += f'<link rel="stylesheet" href="/{static}/styles/{css_file}">\n'
+    css_links = ""
+    if not css_files:
+        css_files = [("global", "base.css")]
+    for src, fname in css_files:
+        if src == "global":
+            href = f"/{static}/styles/{fname}"
+        else:
+            href = f"/{static}/{src}/styles/{fname}"
+        css_links += f'<link rel="stylesheet" href="{href}">\n'
+
+    js_links = ""
+    if js_files:
+        for src, fname in js_files:
+            if src == "global":
+                src_path = f"/{static}/scripts/{fname}"
+            else:
+                src_path = f"/{static}/{src}/scripts/{fname}"
+            js_links += f'<script src="{src_path}"></script>\n'
     favicon = f'<link rel="icon" href="/{static}/favicon.ico" type="image/x-icon" />'
     credits = f'''
         <p>GWAY is written in <a href="https://www.python.org/">Python 3.13</a>.
         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>, 
         <a href="https://pypi.org">PyPI</a> and <a href="https://github.com/arthexis/gway">Github</a>.</p>
     '''
-    if is_enabled('nav'):
+    nav = ""
+    if 'gw' in globals() and hasattr(gw, 'web') and hasattr(gw.web, 'nav') and is_enabled('nav'):
         nav = gw.web.nav.render(
             current_url=gw.web.nav.get_current_url(),
             homes=_homes
         )
-    else:
-        nav = ""
     html = template("""<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -237,25 +297,11 @@ def render_template(*, title="GWAY", content="", static="static", css_file=None)
                 </footer>
             </div>
             <!-- htmx is auto-injected if needed! -->
+            {{!js_links}}
         </body>
         </html>
     """, **locals())
-    html = auto_inject_htmx(html)
     return html
-
-
-def auto_inject_htmx(html):
-    if 'hx-' in html:
-        # CDN link (always check for latest version if production)
-        htmx_script = '<script src="https://unpkg.com/htmx.org@1.9.12"></script>'
-        if '</body>' in html:
-            return html.replace('</body>', htmx_script + '\n</body>')
-        elif '</head>' in html:
-            return html.replace('</head>', htmx_script + '\n</head>')
-        else:
-            return htmx_script + '\n' + html
-    return html
-
 
 def default_home():
     for title, route in _homes:
@@ -283,10 +329,7 @@ def add_home(home, path):
         gw.debug(f"Added home: ({title}, {route})")
 
 
-...
-
 def redirect_error(error=None, note="", default=None, view_name=None):
-    """Unified error redirect: in debug mode, show a debug page; otherwise redirect."""
     from bottle import request, response
     import traceback
     import html
@@ -295,7 +338,6 @@ def redirect_error(error=None, note="", default=None, view_name=None):
     visited = gw.web.cookies.get("visited", "")
     visited_items = visited.split("|") if visited else []
 
-    # --- Remove broken link from visited on any 404/view-not-found ---
     pruned = False
     if view_name and gw.web.cookies.check_consent():
         norm_broken = (view_name or "").replace("-", " ").replace("_", " ").title().lower()
@@ -308,9 +350,8 @@ def redirect_error(error=None, note="", default=None, view_name=None):
             new_items.append(v)
         if pruned:
             gw.web.cookies.set("visited", "|".join(new_items))
-            visited_items = new_items  # reflect the change for UI
+            visited_items = new_items
 
-    # --- DEBUG MODE: show error info as page ---
     if debug_enabled:
         tb_str = ""
         if error:
@@ -353,7 +394,65 @@ def redirect_error(error=None, note="", default=None, view_name=None):
         response.content_type = "text/html"
         return debug_content
 
-    # --- NON-DEBUG: just redirect ---
     response.status = 302
     response.set_header("Location", default or default_home())
     return ""
+
+
+def collect_js_files(*, static, project, view_name):
+    """
+    Collect JS files for the current view:
+    - Always include global base.js if exists
+    - Always include project base.js if exists
+    - Always include project <view_name>.js if exists (try both dashed and underscored)
+    """
+    files = []
+    global_base = gw.resource("data", "web", "static", "scripts", "base.js")
+    if os.path.isfile(global_base):
+        files.append(("global", "base.js"))
+
+    proj_base = gw.resource("data", project, "static", "scripts", "base.js")
+    if os.path.isfile(proj_base):
+        files.append((project, "base.js"))
+
+    vnames = set()
+    vnames.add(f"{view_name}.js")
+    vnames.add(f"{view_name.replace('-', '_')}.js")
+    vnames.add(f"{view_name.replace('_', '-')}.js")
+    for candidate in vnames:
+        proj_view = gw.resource("data", project, "static", "scripts", candidate)
+        if os.path.isfile(proj_view):
+            files.append((project, candidate))
+
+    return files
+
+
+def collect_css_files(*, static, project, view_name, css=None):
+    """
+    Collect CSS files for the current view:
+    - Always include global base.css
+    - Always include global selected css (if not base)
+    - Always include project base.css (if exists)
+    - Always include project <view_name>.css (if exists; view_name may have dashes/underscores)
+    """
+    files = [("global", "base.css")]
+    if css and css != "base.css":
+        files.append(("global", css))
+
+    # Always add project base.css if it exists
+    proj_base = gw.resource("data", project, "static", "styles", "base.css")
+    if os.path.isfile(proj_base):
+        files.append((project, "base.css"))
+
+    # Always add project view-specific css if it exists (try both dashed and underscored)
+    vnames = set()
+    vnames.add(f"{view_name}.css")
+    vnames.add(f"{view_name.replace('-', '_')}.css")
+    vnames.add(f"{view_name.replace('_', '-')}.css")  # just in case
+
+    for candidate in vnames:
+        proj_view = gw.resource("data", project, "static", "styles", candidate)
+        if os.path.isfile(proj_view):
+            files.append((project, candidate))
+
+    return files

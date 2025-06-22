@@ -110,12 +110,38 @@ def view_remove(*, next="/cookies/cookie-jar", confirm = False):
     return ""
 
 
-def view_cookie_jar():
+def view_cookie_jar(*, eat=None):
     cookies_ok = check_consent()
+
+    # Handle eating a cookie (removal via ?eat=)
+    if cookies_ok and eat:
+        eat_key = str(eat)
+        eat_key_norm = eat_key.strip().lower()
+        if eat_key_norm not in ("cookies_accepted", "cookies_eaten") and eat_key in request.cookies:
+            remove(eat_key)
+            # Update cookies_eaten counter
+            try:
+                eaten_count = int(get("cookies_eaten") or "0")
+            except Exception:
+                eaten_count = 0
+            set("cookies_eaten", str(eaten_count + 1))
+            # Redirect to avoid showing stale cookies (and to clear ?eat param)
+            response.status = 303
+            response.set_header("Location", "/cookies/cookie-jar")
+            return ""
 
     def describe_cookie(key, value):
         key = html.escape(key or "")
         value = html.escape(value or "")
+        protected = key in ("cookies_accepted", "cookies_eaten")
+        x_link = ""
+        if not protected:
+            x_link = (
+                f" <a href='/cookies/cookie-jar?eat={key}' "
+                "style='color:#a00;text-decoration:none;font-weight:bold;font-size:1.1em;margin-left:0.5em;' "
+                "title='Remove this cookie' onclick=\"return confirm('Remove cookie: {0}?');\">[X]</a>".format(key)
+            )
+
         if not value:
             return f"<li><b>{key}</b>: (empty)</li>"
 
@@ -124,14 +150,17 @@ def view_cookie_jar():
             links = "".join(
                 f"<li><a href='/{html.escape(route)}'>{html.escape(title)}</a></li>"
                 for title_route in items if "=" in title_route
-                for title, route in [title_route.split("=", 1)]
+                for title, route in [title_route.split('=', 1)]
             )
-            return f"<li><b>{key}</b>:<ul>{links}</ul></li>"
+            return f"<li><b>{key}</b>:{x_link}<ul>{links}</ul></li>"
 
         elif key == "css":
-            return f"<li><b>{key}</b>: {value} (your selected style)</li>"
+            return f"<li><b>{key}</b>: {value} (your selected style){x_link}</li>"
 
-        return f"<li><b>{key}</b>: {value}</li>"
+        elif key == "cookies_eaten":
+            return f"<li><b>{key}</b>: {value} 🍪 (You have eaten <b>{value}</b> cookies)</li>"
+
+        return f"<li><b>{key}</b>: {value}{x_link}</li>"
 
     if not cookies_ok:
         return """
@@ -152,7 +181,6 @@ def view_cookie_jar():
 
         cookies_html = "<ul>" + "".join(stored) + "</ul>" if stored else "<p>No stored cookies found.</p>"
 
-        # Use the /cookies/remove POST form
         removal_form = """
             <form method="POST" action="/cookies/remove" style="margin-top:2em;">
                 <div style="display: flex; align-items: center; margin-bottom: 1em; gap: 0.5em;">

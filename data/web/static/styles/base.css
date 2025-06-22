@@ -46,7 +46,7 @@ aside {
 
 main {
     flex: 1 1 0;
-    padding: 2rem;
+    padding: 1rem 2rem;
     min-width: 0;
     overflow-x: auto;
     display: flex;
@@ -251,6 +251,7 @@ textarea.help {
     border: 1px solid var(--muted, #ccc);
     font-family: inherit;
     padding: 0.5em;
+    margin-bottom: 0;
     transition: box-shadow 0.1s;
     box-sizing: border-box;
     min-height: 2.4em;     /* height for one line */

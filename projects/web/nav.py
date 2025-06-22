@@ -4,11 +4,6 @@ import os
 from gway import gw
 from bottle import request
 
-# TODO: Currently, when cookies have not been accepted, the style switch selection box becomes disabled.
-#       However, as per the message to the user, they should still be able to switch, they just won't be
-#       saved, meaning we reload using the css param to have the css show only here. 
-#       The selection should still work in both modes, using the proper mechanism for each case.
-
 
 def render(*, current_url=None, homes=None):
     """
@@ -81,7 +76,7 @@ def render(*, current_url=None, homes=None):
 
     # --- Search box ---
     search_box = '''
-        <form action="/site/help" method="get" class="nav" style="margin-bottom:1.5em;">
+        <form action="/site/help" method="get" class="nav">
             <textarea name="topic" id="help-search"
                 placeholder="Search this GWAY"
                 class="help"
@@ -102,7 +97,20 @@ def render(*, current_url=None, homes=None):
         }}
         window.addEventListener("DOMContentLoaded", function(){{
             var el = document.getElementById('help-search');
-            if (el && el.value.trim() !== "") autoExpand(el);
+            if (el) {{
+                // Auto-expand if pre-filled
+                if (el.value.trim() !== "") autoExpand(el);
+                // Submit on Enter, newline on Shift+Enter
+                el.addEventListener('keydown', function(e) {{
+                    if (e.key === "Enter" && !e.shiftKey) {{
+                        e.preventDefault();
+                        // Find parent form and submit
+                        var form = el.form;
+                        if (form) form.submit();
+                    }}
+                    // If Shift+Enter, allow default (insert newline)
+                }});
+            }}
         }});
         </script>
     '''.format(request.query.get("topic", ""))
@@ -127,20 +135,50 @@ def html_escape(text):
 
 # --- Style view endpoints ---
 
-def view_style_switcher(*, css=None):
+def view_style_switcher(*, css=None, project=None):
     """
-    GET/POST: Shows available styles, lets user choose, displays a preview and raw CSS.
+    GET/POST: Shows available styles (global + project), lets user choose, preview, and see raw CSS.
     If cookies are accepted, sets the style via cookie when changed in dropdown (no redirect).
     If cookies are not accepted, only uses the css param for preview.
     """
     import os
     from bottle import request, response
 
-    styles_dir = gw.resource("data", "static", "styles")
-    all_styles = [
-        f for f in sorted(os.listdir(styles_dir))
-        if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
-    ]
+    # Determine the project from context or fallback if not provided
+    if not project:
+        # Try to infer project from URL or context if possible
+        path = request.fullpath.strip("/").split("/")
+        if path and path[0] in ("conway", "awg", "site", "etron"):
+            project = path[0]
+        else:
+            project = "site"
+
+    # Helper to find all .css styles from both global and project dirs
+    def list_available_styles(project):
+        seen = set()
+        styles = []
+        # Global styles
+        global_dir = gw.resource("data", "web", "static", "styles")
+        if os.path.isdir(global_dir):
+            for f in sorted(os.listdir(global_dir)):
+                if f.endswith(".css") and os.path.isfile(os.path.join(global_dir, f)):
+                    if f not in seen:
+                        styles.append(("global", f))
+                        seen.add(f)
+        # Project styles
+        if project:
+            proj_dir = gw.resource("data", project, "static", "styles")
+            if os.path.isdir(proj_dir):
+                for f in sorted(os.listdir(proj_dir)):
+                    if f.endswith(".css") and os.path.isfile(os.path.join(proj_dir, f)):
+                        if f not in seen:
+                            styles.append((project, f))
+                            seen.add(f)
+        return styles
+
+    styles = list_available_styles(project)
+    all_styles = [fname for _, fname in styles]
+    style_sources = {fname: src for src, fname in styles}
 
     # --- Consent logic ---
     cookies_enabled = gw.web.app.is_enabled('cookies')
@@ -149,11 +187,11 @@ def view_style_switcher(*, css=None):
     css_cookie = gw.web.cookies.get("css")
     selected_style = None
 
+    # Handle POST (change style, persist cookie if possible)
     if request.method == "POST":
         selected_style = request.forms.get("css")
         if cookies_enabled and cookies_accepted and selected_style and selected_style in all_styles:
             gw.web.cookies.set("css", selected_style)
-            # REDIRECT after setting
             response.status = 303
             response.set_header("Location", request.fullpath)
             return ""
@@ -169,16 +207,23 @@ def view_style_switcher(*, css=None):
     if style not in all_styles:
         style = all_styles[0] if all_styles else "base.css"
 
+    # Determine preview link and path for raw CSS
+    if style_sources.get(style) == "global":
+        preview_href = f"/static/styles/{style}"
+        css_path = gw.resource("data", "web", "static", "styles", style)
+    else:
+        preview_href = f"/static/{project}/styles/{style}"
+        css_path = gw.resource("data", project, "static", "styles", style)
+
     preview_html = f"""
-        <link rel="stylesheet" href="/static/styles/{style}" />
+        <link rel="stylesheet" href="{preview_href}" />
         <div class="style-preview">
-            <h2>Theme Preview: {style[:-4].title()}</h2>
+            <h2>Theme Preview: {style[:-4].replace('_', ' ').title()}</h2>
             <p>This is a preview of the <b>{style}</b> theme.</p>
             <button>Sample button</button>
             <pre>code block</pre>
         </div>
     """
-    css_path = os.path.join(styles_dir, style)
     css_code = ""
     try:
         with open(css_path, encoding="utf-8") as f:
@@ -187,10 +232,11 @@ def view_style_switcher(*, css=None):
         css_code = "Could not load CSS file."
 
     selector = style_selector_form(
-        all_styles=all_styles,
+        all_styles=styles,
         selected_style=style,
         cookies_enabled=cookies_enabled,
-        cookies_accepted=cookies_accepted
+        cookies_accepted=cookies_accepted,
+        project=project
     )
 
     return f"""
@@ -201,20 +247,14 @@ def view_style_switcher(*, css=None):
         <pre style="max-height:400px;overflow:auto;">{html_escape(css_code)}</pre>
     """
 
-def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_accepted):
-    """
-    Renders the style selector dropdown.
-    - If cookies are accepted, submit as a form (POST).
-    - If not, switch theme using URL ?css=...
-    """
+
+def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_accepted, project):
     options = []
-    added = set()
-    if selected_style:
-        options.append(f'<option value="{selected_style}" selected>{selected_style[:-4].upper()}</option>')
-        added.add(selected_style)
-    for style in all_styles:
-        if style not in added:
-            options.append(f'<option value="{style}">{style[:-4].upper()}</option>')
+    for src, fname in all_styles:
+        label = fname[:-4].upper()
+        label = f"GLOBAL: {label}" if src == "global" else f"{src.upper()}: {label}"
+        selected = " selected" if fname == selected_style else ""
+        options.append(f'<option value="{fname}"{selected}>{label}</option>')
 
     # Info
     info = ""
@@ -290,3 +330,28 @@ def get_current_url():
     if request.query_string:
         url += "?" + request.query_string
     return url
+
+
+def list_available_styles(project=None):
+    """Return all unique .css files in global and project style dirs as (source, name) pairs."""
+    seen = set()
+    styles = []
+    # Global styles
+    global_dir = gw.resource("data", "web", "static", "styles")
+    if os.path.isdir(global_dir):
+        for f in sorted(os.listdir(global_dir)):
+            if f.endswith(".css") and os.path.isfile(os.path.join(global_dir, f)):
+                if f not in seen:
+                    styles.append(("global", f))
+                    seen.add(f)
+    # Project styles
+    if project:
+        proj_dir = gw.resource("data", project, "static", "styles")
+        if os.path.isdir(proj_dir):
+            for f in sorted(os.listdir(proj_dir)):
+                if f.endswith(".css") and os.path.isfile(os.path.join(proj_dir, f)):
+                    if f not in seen:
+                        styles.append((project, f))
+                        seen.add(f)
+    return styles
+
