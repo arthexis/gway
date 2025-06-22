@@ -81,7 +81,7 @@ def periodic_purge(*, seconds=120):
         time.sleep(seconds)
 
 
-def render_error(title: str, message: str, *, back_link: bool = True, target: str="upload") -> str:
+def render_error(title: str, message: str, *, back_link: bool = True, target: str="uploads") -> str:
     """Helper for error display with optional link back to upload main page."""
     html = f"<h1>{title}</h1><p>{message}</p>"
     if back_link:
@@ -90,7 +90,7 @@ def render_error(title: str, message: str, *, back_link: bool = True, target: st
     return html
 
 
-def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: str = None, **kwargs):
+def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: str = None, **kwargs):
     """
     GET: Display upload interface or create a new upload box.
     POST: Handle uploaded files to a specific vbid.
@@ -159,7 +159,7 @@ def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: s
             if not expires or expires < now:
                 _open_boxes[full_id] = now + timeout * 60
                 os.makedirs(gw.resource(*VBOX_PATH, short), exist_ok=True)
-                url = gw.build_url("upload", vbid=full_id)
+                url = gw.build_url("uploads", vbid=full_id)
                 message = f"[UPLOAD] Upload box created (expires in {timeout} min): {url}"
                 print(("-" * 70) + '\n' + message + '\n' + ("-" * 70))
                 gw.warning(message)
@@ -199,10 +199,16 @@ def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: s
             "<p>If you are a site member, you may request a URL to be sent to your email by entering it here.</p>"
         )
 
+        local_console_info = ""
+        if gw.web.server.is_local():
+            local_console_info = (
+                "<p>We've prepared an upload box for you. Check the console for the access URL.</p>"
+                "<p>To use it, go to <code>?vbid=…</code> and upload your files there.</p>"
+            )
+
         return (
-            "<h1>Upload Box Ready</h1>"
-            "<p>We've prepared an upload box for you. Check the console for the access URL.</p>"
-            "<p>To use it, go to <code>?vbid=…</code> and upload your files there.</p>"
+            "<h1>Upload to Virtual Box</h1>"
+            f"{local_console_info}"
             f"{admin_notif}"
             f"{form_message if not email else ''}{email_form_html if not email else ''}"
         )
@@ -345,7 +351,7 @@ def poll_remote(server_url: str = '[SERVER_URL]', *, target='work/vbox/remote', 
     vbox_url = remote.get("url")
     # Extract vbid if not present
     if not vbox_url:
-        vbox_url = server_url.rstrip("/") + "/vbox/download"
+        vbox_url = server_url.rstrip("/") + "/vbox/downloads"
     if not vbid:
         # Try to extract vbid from url param
         parts = urlparse(vbox_url)
@@ -361,7 +367,7 @@ def poll_remote(server_url: str = '[SERVER_URL]', *, target='work/vbox/remote', 
 
     def download_listing():
         # Get file listing from remote (no hashes, just HTML, parse with regex)
-        listing_url = f"{server_url.rstrip('/')}/vbox/download?vbid={vbid}"
+        listing_url = f"{server_url.rstrip('/')}/vbox/downloads?vbid={vbid}"
         try:
             resp = requests.get(listing_url, timeout=15)
             resp.raise_for_status()
@@ -396,7 +402,7 @@ def poll_remote(server_url: str = '[SERVER_URL]', *, target='work/vbox/remote', 
             if prev >= mtime:
                 return False
         # Fetch using hash as param, with vbid
-        file_url = f"{server_url.rstrip('/')}/vbox/download/{md5}?vbid={vbid}&modified_since={int(mtime)}"
+        file_url = f"{server_url.rstrip('/')}/vbox/downloads/{md5}?vbid={vbid}&modified_since={int(mtime)}"
         try:
             resp = requests.get(file_url, timeout=30)
             if resp.status_code == 304:
@@ -439,9 +445,9 @@ def stream_file_response(path: str, filename: str) -> HTTPResponse:
     return HTTPResponse(body=body, status=200, headers=headers)
 
 
-def view_download(*hashes: tuple[str], vbid: str = None, modified_since=None, **kwargs):
+def view_downloads(*hashes: tuple[str], vbid: str = None, modified_since=None, **kwargs):
     """
-    GET: Show list of files in the box (with hash), allow selection/download.
+    GET: Show list of files in the box (with hash), allow selection/downloads.
     If a single hash is provided, return that file. Multiple hashes are not supported yet.
 
     - Allows access via full vbid (short.long) or short-only (just the folder name).
@@ -515,7 +521,7 @@ def view_download(*hashes: tuple[str], vbid: str = None, modified_since=None, **
     html = "<h1>Download Files</h1><ul>"
     for h, name, size, mtime in file_info:
         time_str = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
-        link = gw.build_url("download", h, vbid=vbid)
+        link = gw.build_url("downloads", h, vbid=vbid)
         html += f'<li><a href="{link}">{name}</a> ({size} bytes, modified {time_str}, MD5: {h})</li>'
     html += "</ul>"
 

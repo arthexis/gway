@@ -1,9 +1,11 @@
 # projects/web/server.py
 
+import socket
 from numpy import iterable
 from gway import gw
 
 _default_app_build_count = 0
+
 
 def start_app(*,
     host="[WEBSITE_HOST|127.0.0.1]",
@@ -186,3 +188,80 @@ def start_app(*,
         return asyncio.to_thread(run_server)
     else:
         run_server()
+
+
+def is_local(request=None, host=None):
+    """
+    Returns True if the active HTTP request originates from the same machine
+    that the server is running on (i.e., local request). Supports both
+    Bottle and FastAPI (ASGI/WSGI).
+    
+    Args:
+        request: Optionally, the request object (Bottle, Starlette, or FastAPI Request).
+        host: Optionally, the bound host (for override or testing).
+        
+    Returns:
+        bool: True if request is from localhost, else False.
+    """
+    try:
+        # --- Try to infer the active request if not given ---
+        if request is None:
+            # Try FastAPI/Starlette
+            try:
+                from starlette.requests import Request as StarletteRequest
+                import contextvars
+                req_var = contextvars.ContextVar("request")
+                request = req_var.get()
+            except Exception:
+                pass
+            # Try Bottle global
+            if request is None:
+                try:
+                    from bottle import request as bottle_request
+                    request = bottle_request
+                except ImportError:
+                    request = None
+
+        # --- Get remote address from request ---
+        remote_addr = None
+        if request is not None:
+            # FastAPI/Starlette: request.client.host
+            remote_addr = getattr(getattr(request, "client", None), "host", None)
+            # Bottle: request.remote_addr
+            if not remote_addr:
+                remote_addr = getattr(request, "remote_addr", None)
+            # Try request.environ['REMOTE_ADDR']
+            if not remote_addr and hasattr(request, "environ"):
+                remote_addr = request.environ.get("REMOTE_ADDR")
+        else:
+            # No request in context
+            return False
+
+        # --- Get server bound address ---
+        if host is None:
+            from gway import gw
+            host = gw.resolve("[WEBSITE_HOST|127.0.0.1]")
+        # If host is empty or all-interfaces, assume not local
+        if not host or host in ("0.0.0.0", "::", ""):
+            return False
+
+        # --- Normalize addresses for comparison ---
+        def _norm(addr):
+            if addr in ("localhost",):
+                return "127.0.0.1"
+            if addr in ("::1",):
+                return "127.0.0.1"
+            try:
+                # Try resolving hostname
+                return socket.gethostbyname(addr)
+            except Exception:
+                return addr
+
+        remote_ip = _norm(remote_addr)
+        host_ip = _norm(host)
+        # Accept both IPv4 and IPv6 loopback equivalence
+        return remote_ip.startswith("127.") or remote_ip == host_ip
+    except Exception as ex:
+        import traceback
+        print(f"[is_local] error: {ex}\n{traceback.format_exc()}")
+        return False

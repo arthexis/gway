@@ -229,3 +229,15 @@ def get_style():
     if css_cookie and css_cookie in all_styles:
         return css_cookie
     return all_styles[0] if all_styles else "base.css"
+
+
+def get_current_url():
+    """
+    Returns the current URL path including query parameters.
+    Useful for QR codes and redirects that need full context.
+    """
+    from bottle import request
+    url = request.fullpath
+    if request.query_string:
+        url += "?" + request.query_string
+    return url

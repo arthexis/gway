@@ -152,7 +152,6 @@ def setup(*,
         css_file = gw.web.nav.get_style() 
         return render_template(
             title="GWAY - " + view_func.__name__.replace("_", " ").title(),
-            full_url=request.fullpath,
             content=content,
             static=static,
             css_file=css_file
@@ -191,7 +190,7 @@ def build_url(*args, **kwargs):
     return url
 
 
-def render_template(*, title="GWAY", full_url="", content="", static="static", css_file=None):
+def render_template(*, title="GWAY", content="", static="static", css_file=None):
     global _ver
     version = _ver = _ver or gw.version()
     css_links = f'<link rel="stylesheet" href="/{static}/styles/base.css">\n'
@@ -205,7 +204,7 @@ def render_template(*, title="GWAY", full_url="", content="", static="static", c
     '''
     if is_enabled('nav'):
         nav = gw.web.nav.render(
-            current_url=full_url,
+            current_url=gw.web.nav.get_current_url(),
             homes=_homes
         )
     else:
