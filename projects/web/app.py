@@ -402,19 +402,22 @@ def redirect_error(error=None, note="", default=None, view_name=None):
 def collect_js_files(*, static, project, view_name):
     """
     Collect JS files for the current view:
-    - Always include global base.js if exists
+    - Always include all .js files in global static/scripts/
     - Always include project base.js if exists
     - Always include project <view_name>.js if exists (try both dashed and underscored)
     """
     files = []
-    global_base = gw.resource("data", "web", "static", "scripts", "base.js")
-    if os.path.isfile(global_base):
-        files.append(("global", "base.js"))
-
+    # --- Add all global scripts ---
+    global_scripts_path = gw.resource("data", "web", "static", "scripts")
+    if os.path.isdir(global_scripts_path):
+        for fname in sorted(os.listdir(global_scripts_path)):
+            if fname.endswith(".js"):
+                files.append(("global", fname))
+    # --- Project base.js ---
     proj_base = gw.resource("data", project, "static", "scripts", "base.js")
     if os.path.isfile(proj_base):
         files.append((project, "base.js"))
-
+    # --- Project view-specific JS ---
     vnames = set()
     vnames.add(f"{view_name}.js")
     vnames.add(f"{view_name.replace('-', '_')}.js")
@@ -423,9 +426,7 @@ def collect_js_files(*, static, project, view_name):
         proj_view = gw.resource("data", project, "static", "scripts", candidate)
         if os.path.isfile(proj_view):
             files.append((project, candidate))
-
     return files
-
 
 def collect_css_files(*, static, project, view_name, css=None):
     """

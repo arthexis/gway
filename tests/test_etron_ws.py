@@ -1,4 +1,4 @@
-# tests/test_etron_ws.py
+# file: tests/test_etron_ws.py
 
 import unittest
 import subprocess
@@ -11,29 +11,33 @@ import os
 import shutil
 from gway import gw
 
-CDV_PATH = 'data/etron/rfids.cdv'
 KNOWN_GOOD_TAG = "FFFFFFFF"
 ADMIN_TAG = "8505010F"
 UNKNOWN_TAG = "ZZZZZZZZ"
 
-ORIG_CDV_PATH = CDV_PATH + ".orig"
-
 class EtronWebSocketTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Backup the original file (if not already backed up)
-        if os.path.exists(CDV_PATH):
-            shutil.copy2(CDV_PATH, ORIG_CDV_PATH)
+        cls.data_dir = os.path.join("data", "etron")
+        cls.rfids_cdv = os.path.join(cls.data_dir, "rfids.cdv")
+        cls.backup_cdv = cls.rfids_cdv + ".bak"
+
+        # List initial files (full paths) so we can revert and delete as needed
+        cls.initial_files = set(os.listdir(cls.data_dir))
+
+        # Backup existing CDV or create a new blank one and back it up
+        if os.path.exists(cls.rfids_cdv):
+            shutil.copy2(cls.rfids_cdv, cls.backup_cdv)
         else:
-            # If file missing, create a minimal valid file and back it up
-            with open(CDV_PATH, "w") as f:
+            with open(cls.rfids_cdv, "w") as f:
                 pass
-            shutil.copy2(CDV_PATH, ORIG_CDV_PATH)
+            shutil.copy2(cls.rfids_cdv, cls.backup_cdv)
 
-        # Now operate on the working copy
-        gw.cdv.update(CDV_PATH, KNOWN_GOOD_TAG, user="test", balance="100")
-        gw.cdv.update(CDV_PATH, ADMIN_TAG, user="Admin", balance="150")
+        # Prepare known tags in the file used by both prod and test
+        gw.cdv.update(cls.rfids_cdv, KNOWN_GOOD_TAG, user="test", balance="100")
+        gw.cdv.update(cls.rfids_cdv, ADMIN_TAG, user="Admin", balance="150")
 
+        # Start the OCPP/etron server (uses data/etron/rfids.cdv)
         cls.proc = subprocess.Popen(
             ["gway", "-r", "etron/cloud"],
             stdout=subprocess.PIPE,
@@ -45,15 +49,26 @@ class EtronWebSocketTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if cls.proc:
+        # Kill the subprocess
+        if hasattr(cls, "proc") and cls.proc:
             cls.proc.terminate()
             try:
                 cls.proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 cls.proc.kill()
-        # Restore the original file to avoid extraneous commits
-        if os.path.exists(ORIG_CDV_PATH):
-            shutil.move(ORIG_CDV_PATH, CDV_PATH)
+
+        # Restore (or remove) rfids.cdv
+        if os.path.exists(cls.backup_cdv):
+            shutil.move(cls.backup_cdv, cls.rfids_cdv)
+        # Remove any *new* files created in data/etron/ during the test run
+        current_files = set(os.listdir(cls.data_dir))
+        new_files = current_files - cls.initial_files
+        for fname in new_files:
+            fpath = os.path.join(cls.data_dir, fname)
+            if os.path.isfile(fpath):
+                os.remove(fpath)
+            elif os.path.isdir(fpath):
+                shutil.rmtree(fpath)
 
     @staticmethod
     def _wait_for_port(port, timeout=10):
@@ -67,7 +82,11 @@ class EtronWebSocketTests(unittest.TestCase):
         raise TimeoutError(f"Port {port} not responding after {timeout} seconds")
 
     def _set_balance(self, tag, balance):
-        gw.cdv.update(CDV_PATH, tag, balance=str(balance))
+        self.__class__.gw_cdv_update(tag, balance=str(balance))
+
+    @classmethod
+    def gw_cdv_update(cls, tag, **fields):
+        gw.cdv.update(cls.rfids_cdv, tag, **fields)
 
     def test_websocket_connection(self):
         """Confirm we can connect to the OCPP server and receive BootNotification response."""
@@ -89,9 +108,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_authorize_valid_rfid(self):
         """RFID in allowlist with balance >=1 should be Accepted"""
-        # print("\n[test_authorize_valid_rfid] Set balance to 100 for FFFFFFFF")
         self._set_balance(KNOWN_GOOD_TAG, 100)
-        # print_cdv_state("[test_authorize_valid_rfid] ")
         uri = "ws://localhost:9000/tester1?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
@@ -100,7 +117,6 @@ class EtronWebSocketTests(unittest.TestCase):
                 authorize_msg = [2, message_id, "Authorize", payload]
                 await websocket.send(json.dumps(authorize_msg))
                 response = await websocket.recv()
-                # print(f"[test_authorize_valid_rfid] WS Response: {response}")
                 parsed = json.loads(response)
                 self.assertEqual(parsed[1], message_id)
                 status = parsed[2]["idTagInfo"]["status"]
@@ -109,9 +125,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_authorize_with_extra_fields(self):
         """RFID with additional fields in CDV still authorizes correctly"""
-        # print("\n[test_authorize_with_extra_fields] Set balance to 55 and add fields")
-        gw.cdv.update(CDV_PATH, KNOWN_GOOD_TAG, balance="55", foo="bar", baz="qux")
-        # print_cdv_state("[test_authorize_with_extra_fields] ")
+        self.__class__.gw_cdv_update(KNOWN_GOOD_TAG, balance="55", foo="bar", baz="qux")
         uri = "ws://localhost:9000/tester2?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
@@ -120,7 +134,6 @@ class EtronWebSocketTests(unittest.TestCase):
                 authorize_msg = [2, message_id, "Authorize", payload]
                 await websocket.send(json.dumps(authorize_msg))
                 response = await websocket.recv()
-                # print(f"[test_authorize_with_extra_fields] WS Response: {response}")
                 parsed = json.loads(response)
                 self.assertEqual(parsed[1], message_id)
                 status = parsed[2]["idTagInfo"]["status"]
@@ -129,9 +142,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_authorize_low_balance(self):
         """RFID present but balance <1 should be Rejected"""
-        # print("\n[test_authorize_low_balance] Set balance to 0 for FFFFFFFF")
         self._set_balance(KNOWN_GOOD_TAG, 0)
-        # print_cdv_state("[test_authorize_low_balance] ")
         uri = "ws://localhost:9000/tester3?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
@@ -140,7 +151,6 @@ class EtronWebSocketTests(unittest.TestCase):
                 authorize_msg = [2, message_id, "Authorize", payload]
                 await websocket.send(json.dumps(authorize_msg))
                 response = await websocket.recv()
-                # print(f"[test_authorize_low_balance] WS Response: {response}")
                 parsed = json.loads(response)
                 self.assertEqual(parsed[1], message_id)
                 status = parsed[2]["idTagInfo"]["status"]
@@ -149,9 +159,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_authorize_admin_tag(self):
         """Admin tag should be accepted (if balance >=1)"""
-        # print("\n[test_authorize_admin_tag] Set balance to 150 for ADMIN_TAG")
         self._set_balance(ADMIN_TAG, 150)
-        # print_cdv_state("[test_authorize_admin_tag] ")
         uri = "ws://localhost:9000/admin?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
@@ -160,7 +168,6 @@ class EtronWebSocketTests(unittest.TestCase):
                 authorize_msg = [2, message_id, "Authorize", payload]
                 await websocket.send(json.dumps(authorize_msg))
                 response = await websocket.recv()
-                # print(f"[test_authorize_admin_tag] WS Response: {response}")
                 parsed = json.loads(response)
                 self.assertEqual(parsed[1], message_id)
                 status = parsed[2]["idTagInfo"]["status"]
@@ -169,8 +176,6 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_authorize_unknown_rfid(self):
         """Unknown tag must be rejected"""
-        # print("\n[test_authorize_unknown_rfid] Unknown tag (ZZZZZZZZ)")
-        # print_cdv_state("[test_authorize_unknown_rfid] ")
         uri = "ws://localhost:9000/unknown?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
@@ -179,7 +184,6 @@ class EtronWebSocketTests(unittest.TestCase):
                 authorize_msg = [2, message_id, "Authorize", payload]
                 await websocket.send(json.dumps(authorize_msg))
                 response = await websocket.recv()
-                # print(f"[test_authorize_unknown_rfid] WS Response: {response}")
                 parsed = json.loads(response)
                 self.assertEqual(parsed[1], message_id)
                 status = parsed[2]["idTagInfo"]["status"]
@@ -188,10 +192,8 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_concurrent_connections(self):
         """Multiple OCPP connections can be active at once without auth leakage."""
-        # print("\n[test_concurrent_connections] Set FFFFFFFF balance=100, 8505010F balance=0")
         self._set_balance(KNOWN_GOOD_TAG, 100)
         self._set_balance(ADMIN_TAG, 0)
-        # print_cdv_state("[test_concurrent_connections] ")
         uris = [
             "ws://localhost:9000/chargerA?token=foo",
             "ws://localhost:9000/chargerB?token=foo"
@@ -203,7 +205,6 @@ class EtronWebSocketTests(unittest.TestCase):
                     await websocket.recv()
                     await websocket.send(json.dumps([2, "auth", "Authorize", {"idTag": idtag}]))
                     response = await websocket.recv()
-                    # print(f"[test_concurrent_connections][{uri}] WS Response: {response}")
                     parsed = json.loads(response)
                     return parsed[2]["idTagInfo"]["status"]
             statuses = await asyncio.gather(
@@ -216,9 +217,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_authorize_missing_balance(self):
         """If balance is missing, should be treated as 0 and Rejected."""
-        # print("\n[test_authorize_missing_balance] Remove balance for FFFFFFFF")
-        gw.cdv.update(CDV_PATH, KNOWN_GOOD_TAG, user="test")  # No balance field!
-        # print_cdv_state("[test_authorize_missing_balance] ")
+        self.__class__.gw_cdv_update(KNOWN_GOOD_TAG, user="test")  # No balance field!
         uri = "ws://localhost:9000/missingbal?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
@@ -227,7 +226,6 @@ class EtronWebSocketTests(unittest.TestCase):
                 authorize_msg = [2, message_id, "Authorize", payload]
                 await websocket.send(json.dumps(authorize_msg))
                 response = await websocket.recv()
-                # print(f"[test_authorize_missing_balance] WS Response: {response}")
                 parsed = json.loads(response)
                 self.assertEqual(parsed[1], message_id)
                 status = parsed[2]["idTagInfo"]["status"]
@@ -239,11 +237,9 @@ class EtronWebSocketTests(unittest.TestCase):
         uri = "ws://localhost:9000/callresult1?token=foo"
         async def run_ignore_callresult():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
-                # Send a valid CALLRESULT message (simulating client response)
                 message_id = "irrelevant-id"
                 callresult = [3, message_id, {"some": "result"}]
                 await websocket.send(json.dumps(callresult))
-                # Now send a valid BootNotification to confirm server is still alive
                 boot_message_id = "boot-check"
                 boot_notification = [2, boot_message_id, "BootNotification", {
                     "chargePointModel": "FakeModel",
@@ -261,11 +257,9 @@ class EtronWebSocketTests(unittest.TestCase):
         uri = "ws://localhost:9000/callerror1?token=foo"
         async def run_ignore_callerror():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
-                # Send a valid CALLERROR message (simulating client error response)
                 message_id = "irrelevant-id"
                 callerror = [4, message_id, "SomeErrorCode", "Description", {"errorDetails": "optional"}]
                 await websocket.send(json.dumps(callerror))
-                # Now send a valid BootNotification to confirm server is still alive
                 boot_message_id = "boot-check2"
                 boot_notification = [2, boot_message_id, "BootNotification", {
                     "chargePointModel": "FakeModel",
@@ -280,11 +274,10 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_power_consumed_and_extract_meter(self):
         """Test power calculation and latest meter value extraction."""
-
         # Simulated transaction with MeterValues in kWh
         tx1 = {
-            "meterStart": 150000,  # Wh
-            "meterStop": 152000,   # Wh
+            "meterStart": 150000,
+            "meterStop": 152000,
             "MeterValues": [
                 {"timestamp": 1, "sampledValue": [
                     {"value": 150.0, "measurand": "Energy.Active.Import.Register", "unit": "kWh"}
@@ -294,7 +287,6 @@ class EtronWebSocketTests(unittest.TestCase):
                 ]},
             ]
         }
-        # Should use MeterValues: 152.0 - 150.0 = 2.0 kWh
         pc = gw.ocpp.csms.power_consumed(tx1)
         self.assertAlmostEqual(pc, 2.0, places=2)
         lm = gw.ocpp.csms.extract_meter(tx1)
@@ -313,7 +305,6 @@ class EtronWebSocketTests(unittest.TestCase):
                 ]},
             ]
         }
-        # Should use MeterValues: (102500-100000)/1000 = 2.5 kWh
         pc = gw.ocpp.csms.power_consumed(tx2)
         self.assertAlmostEqual(pc, 2.5, places=2)
         lm = gw.ocpp.csms.extract_meter(tx2)
@@ -321,7 +312,6 @@ class EtronWebSocketTests(unittest.TestCase):
 
         # Only meterStart/meterStop (no MeterValues)
         tx3 = {"meterStart": 123000, "meterStop": 124500, "MeterValues": []}
-        # (124500-123000)/1000 = 1.5 kWh
         pc = gw.ocpp.csms.power_consumed(tx3)
         self.assertAlmostEqual(pc, 1.5, places=2)
         lm = gw.ocpp.csms.extract_meter(tx3)
