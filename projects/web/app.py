@@ -10,8 +10,6 @@ _ver = None
 _homes = []  # (title, route)
 _enabled = set()
 UPLOAD_MB = 100
-
-# --- STATIC MIGRATION: All static is now under data/web/static ---
 STATIC_ROOT = gw.resource("data", "web", "static")  # <--- fix
 STYLES_ROOT = os.path.join(STATIC_ROOT, "styles")   # <--- fix
 
@@ -328,6 +326,7 @@ def add_home(home, path):
         _homes.append((title, route))
         gw.debug(f"Added home: ({title}, {route})")
 
+...
 
 def redirect_error(error=None, note="", default=None, view_name=None):
     from bottle import request, response
