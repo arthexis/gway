@@ -1,4 +1,3 @@
-/* data/static/styles/base.css */
 /* GWAY base layout */
 
 * {
@@ -266,85 +265,146 @@ p.compass {
   display: none;
 }
 
+
+
+/* =========== HELP SYSTEM UI (LIGHT, FINAL) =========== */
+
+/* Help entry/card container */
 .help-entry {
-  margin: 1em 0;
-  border: 1px solid #bbb;
-  border-radius: 8px;
+  margin: 1.2em 0 1.4em 0;
+  border: 1.5px solid #e2e6ee;
+  border-radius: 13px;
   background: var(--card-bg, #fafaff);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-  padding: 1em;
+  box-shadow: 0 2px 8px 0 rgba(30,40,80,0.07);
+  padding: 1.05em 1.25em 0.7em 1.25em;
+  position: relative;
+  transition: box-shadow 0.15s;
+}
+.help-entry:hover {
+  box-shadow: 0 4px 14px 1px rgba(38,60,140,0.13);
 }
 
+/* Multi-help layout */
+.help-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1em;
+}
+
+/* Separator line */
+.help-sep {
+  border: none;
+  border-top: 2px solid #d5dbf4;
+  margin: 1.3em 0 1em 0;
+  opacity: 0.36;
+}
+
+/* Project/Function Row */
 .projfunc-row {
   display: flex;
   align-items: center;
-  gap: 0.6em;
-  font-size: 1.2em;
-  margin-bottom: 0.5em;
+  gap: 0.5em;
+  font-size: 1.29em;
+  font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', 'Consolas', monospace;
+  font-weight: 700;
+  margin-bottom: 0.6em;
+  letter-spacing: -0.01em;
 }
-.projfunc-row .project, .projfunc-row .function {
-  font-family: monospace;
-  font-weight: 500;
+.projfunc-row .project,
+.projfunc-row .function {
+  font-family: inherit;
+  font-weight: 700;
+  color: #2483c8;
+  background: #eef7fd;
+  padding: 0.07em 0.20em 0.08em 0.20em;
+  border-radius: 0.24em;
+  box-shadow: 0 2px 6px 0 #b8e3fc11;
+  font-size: 1em;
+  margin: 0 0.1em;
 }
 .projfunc-row .dot {
-  color: #999;
+  color: #a3b2c2;
   font-weight: 400;
+  font-size: 1.12em;
+  margin: 0 0.15em;
 }
 
-.help-multi {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1em;
+/* Help links */
+.help-entry a, .help-entry .refs a {
+  color: #2176c9;
+  text-decoration: none;
+  font-size: 1.02em;
+  font-weight: 500;
+  padding: 0.04em 0.14em;
+  border-radius: 0.13em;
+  transition: background 0.13s;
+}
+.help-entry a:hover {
+  background: #d4eaff;
+  color: #102a44;
 }
 
-.help-multi .help-entry {
-  flex: 1 1 380px;
-  min-width: 320px;
+/* References row */
+.refs {
+  margin: 0.33em 0 0.6em 0;
+  padding: 0.09em 0.04em;
+  font-size: 1em;
 }
 
+/* Help code blocks (Signature, Example CLI, Full Code, etc) */
+.help-entry pre,
 .help-entry pre code.python {
-  font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', monospace;
-  background: #23272e;
-  color: #f8f8f2;
+  background-color: #18243a;
+  color: #f0f8ff;
+  padding: 0.65em 0.8em;
   border-radius: 6px;
-  padding: 0.6em;
-  display: block;
-  overflow-x: auto;
-  font-size: 0.96em;
+  margin: 0.8em 0 0.7em 0;
+  font-size: 0.97em;
+  font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', monospace;
+  box-shadow: 0 1px 3px 0 #0001;
+}
+.help-entry pre code.python {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
 }
 
+/* Help docstrings */
 .help-entry .doc {
-  background: #eef6ff;
-  padding: 0.5em 0.8em;
-  border-left: 3px solid #6ba4ff;
-  margin: 0.7em 0;
-  color: #1a2543;
+  background: #eaf5fe;
+  color: #246196;
+  padding: 0.29em 0.61em;
+  border-left: 3px solid #52b8fa;
+  margin: 0.65em 0 0.79em 0;
+  border-radius: 2.5px;
+  font-size: 1.01em;
 }
-.help-multi .help-entry {
-  border: 1.5px solid #bbb;
-  border-radius: 9px;
-  background: var(--card-bg, #f7f8fb);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
-  margin: 1.6em 0;
-  padding: 1em 1.2em 0.5em 1.2em;
-  position: relative;
-}
-.help-sep {
-  border: none;
-  border-top: 2px dashed #8884;
-  margin: 2em 0 2em 0;
-}
+
+/* Copy button on full code blocks */
 .copy-btn {
   position: absolute;
-  top: 0.8em; right: 1em;
-  background: #007aff;
+  top: 0.6em; right: 1.0em;
+  background: #2483c8;
   color: #fff;
   border: none;
-  border-radius: 5px;
-  font-size: 0.9em;
-  padding: 0.2em 0.7em;
+  border-radius: 6px;
+  font-size: 0.99em;
+  padding: 0.17em 0.5em;
   cursor: pointer;
   z-index: 2;
+  box-shadow: 0 1px 5px 0 #7ed4ff44;
+  transition: background 0.13s;
 }
-.copy-btn:hover { background: #005dc1; }
+.copy-btn:hover { background: #196fa0; }
 .full-code-block { position: relative; }
+
+/* Help mobile tweak */
+@media (max-width: 650px) {
+  .help-entry {
+    padding: 0.44em 0.2em 0.25em 0.2em;
+  }
+  .projfunc-row { font-size: 1em; }
+}
+
+

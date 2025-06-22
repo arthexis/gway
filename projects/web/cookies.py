@@ -156,9 +156,9 @@ def view_cookie_jar():
         removal_form = """
             <form method="POST" action="/cookies/remove" style="margin-top:2em;">
                 <div style="display: flex; align-items: center; margin-bottom: 1em; gap: 0.5em;">
-                    <input type="checkbox" id="confirm_remove" name="confirm_remove" value="1" required
+                    <input type="checkbox" id="confirm" name="confirm" value="1" required
                         style="width:1.2em; height:1.2em; vertical-align:middle; margin:0;" />
-                    <label for="confirm_remove" style="margin:0; cursor:pointer; font-size:1em; line-height:1.2;">
+                    <label for="confirm" style="margin:0; cursor:pointer; font-size:1em; line-height:1.2;">
                         I understand my cookie data cannot be recovered once deleted.
                     </label>
                 </div>

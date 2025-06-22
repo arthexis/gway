@@ -203,3 +203,129 @@ nav .style-selector {
     padding: 1rem;
   }
 }
+
+
+/* === GWAY HELP OVERLAY: Dark Mode Styles === */
+
+.help-entry {
+  margin: 1.4em 0 1.7em 0;
+  border: 1.5px solid #343648;
+  border-radius: 13px;
+  background: #232435;
+  box-shadow: 0 2px 10px 0 rgba(30,40,80,0.18);
+  padding: 1.2em 1.5em 0.8em 1.5em;
+  position: relative;
+  transition: box-shadow 0.15s;
+}
+
+.help-entry:hover {
+  box-shadow: 0 6px 18px 1px rgba(68,146,203,0.12);
+}
+
+.help-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 1.3em;
+}
+
+.help-sep {
+  border: none;
+  border-top: 2px solid #3e425e;
+  margin: 2em 0 1.2em 0;
+  opacity: 0.37;
+}
+
+/* --- Project/Function Row at Top --- */
+.projfunc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  font-size: 1.45em;
+  font-family: var(--font-code), 'JetBrains Mono', 'Fira Mono', 'Menlo', 'Consolas', monospace;
+  font-weight: 700;
+  margin-bottom: 0.7em;
+  letter-spacing: -0.01em;
+}
+.projfunc-row .project, .projfunc-row .function {
+  font-family: inherit;
+  font-weight: 700;
+  color: #5eead4;
+  background: #20222f;
+  padding: 0.08em 0.38em;
+  border-radius: 0.32em;
+  box-shadow: 0 2px 9px 0 #33e6a511;
+  font-size: 1.01em;
+}
+.projfunc-row .dot {
+  color: #46c2b1;
+  font-weight: 400;
+  font-size: 1.18em;
+}
+
+/* --- Minor Links in Help --- */
+.help-entry a, .help-entry .refs a {
+  color: #60a5fa;
+  text-decoration: none;
+  font-size: 1.04em;
+  font-weight: 500;
+  padding: 0.07em 0.23em;
+  border-radius: 0.16em;
+  background: rgba(96,165,250,0.08);
+  transition: background 0.13s;
+}
+.help-entry a:hover {
+  background: #314b68;
+  color: #5eead4;
+}
+
+/* --- References row --- */
+.refs {
+  margin: 0.4em 0 0.8em 0;
+  padding: 0.15em 0.06em;
+  font-size: 1.01em;
+}
+
+/* --- Code Blocks in help --- */
+.help-entry pre,
+.help-entry pre code.python {
+  background-color: #10111c;
+  color: #a5f3fc;
+  border-radius: 7px;
+  margin: 1em 0 1em 0;
+  font-size: 0.98em;
+  font-family: var(--font-code), 'JetBrains Mono', 'Fira Mono', 'Menlo', monospace;
+  box-shadow: 0 1px 3px 0 #0006;
+}
+.help-entry .doc {
+  background: #23374b;
+  color: #a5f3fc;
+  padding: 0.47em 0.85em;
+  border-left: 3px solid #60a5fa;
+  margin: 1em 0 1.05em 0;
+  border-radius: 3px;
+  font-size: 1.02em;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 0.6em; right: 1.0em;
+  background: #60a5fa;
+  color: #10111c;
+  border: none;
+  border-radius: 6px;
+  font-size: 1.01em;
+  padding: 0.22em 0.7em;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 1px 5px 0 #1e293b66;
+  transition: background 0.13s;
+}
+.copy-btn:hover { background: #0891b2; }
+.full-code-block { position: relative; }
+
+@media (max-width: 650px) {
+  .help-entry {
+    padding: 0.7em 0.4em 0.45em 0.4em;
+  }
+  .projfunc-row { font-size: 1em; }
+}
