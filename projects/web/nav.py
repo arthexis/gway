@@ -129,11 +129,13 @@ def view_style_switcher(*, css=None):
     selected_style = None
 
     if request.method == "POST":
-        # Accept dropdown change immediately if cookies are accepted
         selected_style = request.forms.get("css")
         if cookies_enabled and cookies_accepted and selected_style and selected_style in all_styles:
             gw.web.cookies.set("css", selected_style)
-        # No redirect, just re-render with updated style
+            # REDIRECT after setting
+            response.status = 303
+            response.set_header("Location", request.fullpath)
+            return ""
 
     # Pick style: POST > URL param > cookie > default
     style = (
@@ -204,7 +206,6 @@ def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_acc
             <noscript><button type="submit">Set</button></noscript>
         </form>
     """
-
 
 def get_style():
     """

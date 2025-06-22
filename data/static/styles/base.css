@@ -265,3 +265,86 @@ p.compass {
 .hidden {
   display: none;
 }
+
+.help-entry {
+  margin: 1em 0;
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  background: var(--card-bg, #fafaff);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  padding: 1em;
+}
+
+.projfunc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  font-size: 1.2em;
+  margin-bottom: 0.5em;
+}
+.projfunc-row .project, .projfunc-row .function {
+  font-family: monospace;
+  font-weight: 500;
+}
+.projfunc-row .dot {
+  color: #999;
+  font-weight: 400;
+}
+
+.help-multi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1em;
+}
+
+.help-multi .help-entry {
+  flex: 1 1 380px;
+  min-width: 320px;
+}
+
+.help-entry pre code.python {
+  font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', monospace;
+  background: #23272e;
+  color: #f8f8f2;
+  border-radius: 6px;
+  padding: 0.6em;
+  display: block;
+  overflow-x: auto;
+  font-size: 0.96em;
+}
+
+.help-entry .doc {
+  background: #eef6ff;
+  padding: 0.5em 0.8em;
+  border-left: 3px solid #6ba4ff;
+  margin: 0.7em 0;
+  color: #1a2543;
+}
+.help-multi .help-entry {
+  border: 1.5px solid #bbb;
+  border-radius: 9px;
+  background: var(--card-bg, #f7f8fb);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  margin: 1.6em 0;
+  padding: 1em 1.2em 0.5em 1.2em;
+  position: relative;
+}
+.help-sep {
+  border: none;
+  border-top: 2px dashed #8884;
+  margin: 2em 0 2em 0;
+}
+.copy-btn {
+  position: absolute;
+  top: 0.8em; right: 1em;
+  background: #007aff;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.9em;
+  padding: 0.2em 0.7em;
+  cursor: pointer;
+  z-index: 2;
+}
+.copy-btn:hover { background: #005dc1; }
+.full-code-block { position: relative; }
