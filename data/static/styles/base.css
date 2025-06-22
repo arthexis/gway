@@ -243,6 +243,29 @@ p.compass {
     --bg-alt: #f0f0f0;
 }
 
+/* Style for expandable search box */
+textarea.help {
+    width: 100%;
+    font-size: 1em;
+    border-radius: 0.5em;
+    border: 1px solid var(--muted, #ccc);
+    font-family: inherit;
+    padding: 0.5em;
+    transition: box-shadow 0.1s;
+    box-sizing: border-box;
+    min-height: 2.4em;     /* height for one line */
+    max-height: 10em;      /* about 5–6 lines */
+    overflow-y: auto;
+    resize: none;
+    background: #fff;
+}
+textarea.help:focus {
+    outline: 2px solid var(--accent, #007bff);
+    background: #f7fbff;
+}
+
+
+
 /* OCPP status dashboard table */
 .ocpp-status {
   border-collapse: collapse;
@@ -288,7 +311,6 @@ p.compass {
 .help-multi {
   display: flex;
   flex-direction: column;
-  gap: 1.1em;
 }
 
 /* Separator line */

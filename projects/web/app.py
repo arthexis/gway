@@ -10,6 +10,12 @@ _homes = []  # (title, route)
 _enabled = set()
 UPLOAD_MB = 100
 
+# TODO: Allow per css to be set for all the views dispatched by the configured app to replace base.css
+
+# TODO: In addition to the base and nav styles, allow a 3rd css file: project-based css. When templating
+#       check if the file data/static/style/<project>/<view-name>.css or data/static/style/<project>/base.css
+#       exist. The first of the two gets added. If neither, don't add the 3rd css file.
+
 
 def setup(*,
     app=None,
@@ -19,6 +25,7 @@ def setup(*,
     views: str = "view",
     apis: str = "api",
     static="static",
+    css: str = 'base.css',
     work="work",
     engine="bottle",
 ):
@@ -275,6 +282,8 @@ def add_home(home, path):
         _homes.append((title, route))
         gw.debug(f"Added home: ({title}, {route})")
 
+
+...
 
 def redirect_error(error=None, note="", default=None, view_name=None):
     """Unified error redirect: in debug mode, show a debug page; otherwise redirect."""

@@ -4,9 +4,6 @@ import os
 from gway import gw
 from bottle import request
 
-# TODO: Tests have revealed that even after the css cookie has been set, only the view_style_switcher page itselg
-# shows a different css, but this change should apply to the main template. There may be an error either here on
-# web/app.py (see attached.)
 
 def render(*, current_url=None, homes=None):
     """
@@ -77,14 +74,33 @@ def render(*, current_url=None, homes=None):
     elif not homes:
         links += f'<li class="current">{current_title.upper()}</li>'
 
-    # ... (rest of function unchanged)
-
     # --- Search box ---
     search_box = '''
-        <form action="/site/help" method="get" class="nav">
-            <input type="text" name="topic" placeholder="Search this GWAY" class="help" />
+        <form action="/site/help" method="get" class="nav" style="margin-bottom:1.5em;">
+            <textarea name="topic" id="help-search"
+                placeholder="Search this GWAY"
+                class="help"
+                rows="1"
+                autocomplete="off"
+                spellcheck="false"
+                style="overflow:hidden; resize:none; min-height:2.4em; max-height:10em;"
+                oninput="autoExpand(this)"
+            >{}</textarea>
         </form>
-    '''
+        <script>
+        function autoExpand(el) {{
+            el.style.height = '2.4em'; // base height for 1 line
+            if (el.value.trim() !== "") {{
+                el.style.height = "auto";
+                el.style.height = (el.scrollHeight) + "px";
+            }}
+        }}
+        window.addEventListener("DOMContentLoaded", function(){{
+            var el = document.getElementById('help-search');
+            if (el && el.value.trim() !== "") autoExpand(el);
+        }});
+        </script>
+    '''.format(request.query.get("topic", ""))
 
     # --- QR code for this page ---
     compass = ""
