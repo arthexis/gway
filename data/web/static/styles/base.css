@@ -1,0 +1,432 @@
+/* GWAY base layout */
+
+* {
+    box-sizing: border-box;
+    scroll-behavior: smooth;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: system-ui, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, 'Liberation Sans', sans-serif;
+    font-size: 16px;
+    line-height: 1.7;
+    color: #202124;
+    letter-spacing: 0.01em;
+}
+
+.page-wrap {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+body, .page-wrap {
+    background: var(--bg, #fff);  /* use a CSS variable for easy theme switching */
+}
+
+.layout {
+    display: flex;
+    flex: 1 0 auto;
+    flex-direction: row;
+    width: 100%;
+    min-height: 0;
+}
+
+aside {
+    width: 240px;
+    padding: 2rem 1rem;
+    flex-shrink: 0;
+    background-color: var(--bg-alt, #f0f0f0);
+    border-right: 1px solid #ccc;
+    font-size: 1.08em;
+    font-family: inherit;
+}
+
+main {
+    flex: 1 1 0;
+    padding: 2rem;
+    min-width: 0;
+    overflow-x: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    font-family: inherit;
+}
+
+/* Footer (always after .page-wrap) */
+footer {
+    font-size: 0.92em;
+    padding: 1em;
+    color: var(--muted, #666);
+    border-top: 1px solid #ccc;
+    text-align: center;
+    background: inherit;
+    font-family: inherit;
+}
+
+aside ul {
+    list-style: none;
+    padding: 0;
+}
+aside ul li a {
+    display: block;
+    padding: 0.5em 0;
+    text-decoration: none;
+    text-transform: uppercase;
+    color: var(--fg, #000);
+    letter-spacing: 0.04em;
+    font-weight: 500;
+    font-size: 0.99em;
+    font-family: inherit;
+}
+aside ul li a:hover,
+aside ul li a.active {
+    font-weight: 700;
+    color: var(--accent, #007bff);
+}
+h1, h2, h3, h4 {
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    font-weight: 700;
+    line-height: 1.25;
+    font-family: 'Segoe UI Semibold', 'Roboto Slab', 'Georgia', serif, system-ui;
+    letter-spacing: 0.01em;
+}
+h1 { font-size: 2.2em; }
+h2 { font-size: 1.5em; }
+h3 { font-size: 1.22em; }
+h4 { font-size: 1.08em; }
+p {
+    margin: 1em 0;
+    font-family: inherit;
+}
+pre {
+    background-color: #111827;
+    color: #a5f3fc;
+    padding: 1rem;
+    margin: 1em 0;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    font-family: 'Fira Mono', 'Fira Code', 'Consolas', 'Menlo', 'Monaco', 'Liberation Mono', monospace;
+    font-size: 0.9em;
+    line-height: 1.6;
+}
+pre code {
+    /* Don't add more padding! Just inherit color/font, remove background */
+    background: none;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+    border-radius: 0;
+}
+code {
+    /* For inline code only (not inside pre) */
+    background-color: #111827;
+    color: #a5f3fc;
+    padding: 0.14em 0.32em;
+    border-radius: 0.3em;
+    font-family: 'Fira Mono', 'Fira Code', 'Consolas', 'Menlo', 'Monaco', 'Liberation Mono', monospace;
+    font-size: 0.92em;
+}
+
+
+h1 + pre,
+h2 + pre,
+h3 + pre,
+h4 + pre {
+    margin-top: 0.5em;
+}
+main > h1:first-child {
+    margin-top: 1em; /* Adjust to fit your preferred look */
+}
+
+/* Buttons & inputs */
+button,
+input[type="submit"],
+input[type="button"] {
+    background-color: var(--accent-alt, #007bff);
+    color: white;
+    padding: 0.6em 1.2em;
+    font-size: 1em;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    font-family: inherit;
+}
+button:hover,
+input[type="submit"]:hover {
+    background-color: var(--accent, #0056b3);
+    transform: scale(1.03);
+}
+button:active,
+input[type="submit"]:active {
+    background-color: #004494;
+    transform: scale(0.97);
+}
+input,
+textarea {
+    width: 100%;
+    padding: 0.5em;
+    font-size: 1em;
+    margin-bottom: 1em;
+    border-radius: 0.5rem;
+    border: 1px solid var(--muted, #ccc);
+    font-family: inherit;
+}
+select {
+    width: 100%;
+    padding: 0.5em;
+    font-size: 1em;
+    margin-bottom: 1em;
+    border-radius: 0.5rem;
+    border: 1px solid var(--muted, #ccc);
+    background-color: white;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 140 140' width='14' height='14' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolygon points='0,0 140,0 70,70' fill='%23666'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7em center;
+    background-size: 0.8em;
+    font-family: inherit;
+}
+
+img.compass {
+    max-width: 180px;
+    height: auto;
+    margin: 1em auto 0 auto;
+    display: block;
+}
+form.navbar {
+    margin-bottom: 1em;
+}
+div.compass {
+    margin-top: 1em;
+    text-align: center;
+}
+p.compass {
+    margin-bottom: 0.5em;
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+    .layout {
+        flex-direction: column;
+    }
+    aside {
+        width: 100%;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid #ccc;
+    }
+    main {
+        padding: 1rem;
+    }
+    nav,
+    .compass {
+        text-align: center;
+    }
+}
+@media print {
+    aside { display: none; }
+    body { background: white; color: black; }
+    main { padding: 0; }
+    pre { background: #f0f0f0; color: black; }
+}
+.current {
+    font-weight: bold;
+    text-decoration: underline;
+}
+:root {
+    --bg: #fff;
+    --bg-alt: #f0f0f0;
+}
+
+/* Style for expandable search box */
+textarea.help {
+    width: 100%;
+    font-size: 1em;
+    border-radius: 0.5em;
+    border: 1px solid var(--muted, #ccc);
+    font-family: inherit;
+    padding: 0.5em;
+    transition: box-shadow 0.1s;
+    box-sizing: border-box;
+    min-height: 2.4em;     /* height for one line */
+    max-height: 10em;      /* about 5–6 lines */
+    overflow-y: auto;
+    resize: none;
+    background: #fff;
+}
+textarea.help:focus {
+    outline: 2px solid var(--accent, #007bff);
+    background: #f7fbff;
+}
+
+
+
+/* OCPP status dashboard table */
+.ocpp-status {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.ocpp-status th,
+.ocpp-status td {
+  border: 1px solid #ccc;
+  padding: 4px;
+}
+
+/* Keep the form inline next to the button */
+.ocpp-status form.inline {
+  display: inline;
+}
+
+/* Details rows are hidden by default */
+.hidden {
+  display: none;
+}
+
+
+
+/* =========== HELP SYSTEM UI (LIGHT, FINAL) =========== */
+
+/* Help entry/card container */
+.help-entry {
+  margin: 1.2em 0 1.4em 0;
+  border: 1.5px solid #e2e6ee;
+  border-radius: 13px;
+  background: var(--card-bg, #fafaff);
+  box-shadow: 0 2px 8px 0 rgba(30,40,80,0.07);
+  padding: 1.05em 1.25em 0.7em 1.25em;
+  position: relative;
+  transition: box-shadow 0.15s;
+}
+.help-entry:hover {
+  box-shadow: 0 4px 14px 1px rgba(38,60,140,0.13);
+}
+
+/* Multi-help layout */
+.help-multi {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Separator line */
+.help-sep {
+  border: none;
+  border-top: 2px solid #d5dbf4;
+  margin: 1.3em 0 1em 0;
+  opacity: 0.36;
+}
+
+/* Project/Function Row */
+.projfunc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 1.29em;
+  font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', 'Consolas', monospace;
+  font-weight: 700;
+  margin-bottom: 0.6em;
+  letter-spacing: -0.01em;
+}
+.projfunc-row .project,
+.projfunc-row .function {
+  font-family: inherit;
+  font-weight: 700;
+  color: #2483c8;
+  background: #eef7fd;
+  padding: 0.07em 0.20em 0.08em 0.20em;
+  border-radius: 0.24em;
+  box-shadow: 0 2px 6px 0 #b8e3fc11;
+  font-size: 1em;
+  margin: 0 0.1em;
+}
+.projfunc-row .dot {
+  color: #a3b2c2;
+  font-weight: 400;
+  font-size: 1.12em;
+  margin: 0 0.15em;
+}
+
+/* Help links */
+.help-entry a, .help-entry .refs a {
+  color: #2176c9;
+  text-decoration: none;
+  font-size: 1.02em;
+  font-weight: 500;
+  padding: 0.04em 0.14em;
+  border-radius: 0.13em;
+  transition: background 0.13s;
+}
+.help-entry a:hover {
+  background: #d4eaff;
+  color: #102a44;
+}
+
+/* References row */
+.refs {
+  margin: 0.33em 0 0.6em 0;
+  padding: 0.09em 0.04em;
+  font-size: 1em;
+}
+
+/* Help code blocks (Signature, Example CLI, Full Code, etc) */
+.help-entry pre,
+.help-entry pre code.python {
+  background-color: #18243a;
+  color: #f0f8ff;
+  padding: 0.65em 0.8em;
+  border-radius: 6px;
+  margin: 0.8em 0 0.7em 0;
+  font-size: 0.97em;
+  font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', monospace;
+  box-shadow: 0 1px 3px 0 #0001;
+}
+.help-entry pre code.python {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Help docstrings */
+.help-entry .doc {
+  background: #eaf5fe;
+  color: #246196;
+  padding: 0.29em 0.61em;
+  border-left: 3px solid #52b8fa;
+  margin: 0.65em 0 0.79em 0;
+  border-radius: 2.5px;
+  font-size: 1.01em;
+}
+
+/* Copy button on full code blocks */
+.copy-btn {
+  position: absolute;
+  top: 0.6em; right: 1.0em;
+  background: #2483c8;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.99em;
+  padding: 0.17em 0.5em;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 1px 5px 0 #7ed4ff44;
+  transition: background 0.13s;
+}
+.copy-btn:hover { background: #196fa0; }
+.full-code-block { position: relative; }
+
+/* Help mobile tweak */
+@media (max-width: 650px) {
+  .help-entry {
+    padding: 0.44em 0.2em 0.25em 0.2em;
+  }
+  .projfunc-row { font-size: 1em; }
+}
+
+
