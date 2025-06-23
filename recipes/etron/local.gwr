@@ -1,4 +1,4 @@
-# file: recipes/etron.gwr
+# file: recipes/etron/local.gwr
 # OCPP 1.6 CSMS Recipe with basic RFID auth
 
 web app setup 

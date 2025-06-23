@@ -1,13 +1,15 @@
 
-# file: projects/ocpp.py
+# file: projects/ocpp/csms.py
 
 import json
 import os
 import time
+import uuid
 import traceback
 import asyncio
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
+from bottle import request, response, redirect, HTTPError
 from typing import Dict, Optional
 from gway import gw
 
@@ -267,17 +269,56 @@ def setup_app(*,
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 
 
-# GWAY Views for the main app. These are powered by bottle instead of FastAPI and run on another port.
-# However, by being defined on the same project, data may be shared between both.
-# These views only need to return html fragments and GWAY will render the rest of the needed content.
-# However, they may also return a whole document or a bottle response directly if needed
 
-def view_status():
+def dispatch_action(charger_id: str, action: str):
     """
-    /ocpp/status
-    Return only the dashboard table fragment; GWAY will wrap this in its page chrome.
-    Displays abnormal status/errors at the top if present.
+    Dispatch a remote admin action to the charger over OCPP via websocket.
     """
+    ws = _active_cons.get(charger_id)
+    if not ws:
+        raise HTTPError(404, "No active connection")
+    msg_id = str(uuid.uuid4())
+
+    # Compose and send the appropriate OCPP message for the requested action
+    if action == "remote_stop":
+        tx = _transactions.get(charger_id)
+        if not tx:
+            raise HTTPError(404, "No transaction to stop")
+        coro = ws.send_text(json.dumps([2, msg_id, "RemoteStopTransaction",
+                                        {"transactionId": tx["transactionId"]}]))
+    elif action.startswith("reset_"):
+        _, mode = action.split("_", 1)
+        coro = ws.send_text(json.dumps([2, msg_id, "Reset", {"type": mode.capitalize()}]))
+    elif action == "disconnect":
+        coro = ws.close(code=1000, reason="Admin disconnect")
+    else:
+        raise HTTPError(400, f"Unknown action: {action}")
+
+    if _csms_loop:
+        _csms_loop.call_soon_threadsafe(lambda: _csms_loop.create_task(coro))
+    else:
+        gw.warn("No CSMS event loop; action not sent")
+
+    return {"status": "requested", "messageId": msg_id}
+
+
+def view_charger_status(*, action=None, charger_id=None, **_):
+    """
+    /ocpp/charger-status
+    Handles GET and POST for dashboard. On POST with action, dispatch and redirect to clear state.
+    """
+    if request.method == "POST":
+        action = request.forms.get("action")
+        charger_id = request.forms.get("charger_id")
+        if action and charger_id:
+            try:
+                dispatch_action(charger_id, action)
+            except Exception as e:
+                gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
+            # PRG: Redirect to clear POST
+            return redirect(request.fullpath or "/ocpp/charger-status")
+        # If POST but missing data, just fall through and re-render
+
     all_chargers = set(_active_cons) | set(_transactions)
     parts = ["<h1>OCPP Status Dashboard</h1>"]
 
@@ -303,6 +344,7 @@ def view_status():
     if not all_chargers:
         parts.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
     else:
+        parts.append('<form method="post" action="" id="ocpp-action-form"></form>')
         parts.append('<table class="ocpp-status">')
         parts.append('<thead><tr>')
         for header in [
@@ -335,8 +377,9 @@ def view_status():
             for value in [cid, connected, tx_id, meter_start, latest, power, status]:
                 parts.append(f'<td>{value}</td>')
             parts.append('<td>')
+            # Updated form: each row form POSTs to this view (action="")
             parts.append(f'''
-                <form action="/ocpp/csms/action" method="post" class="inline">
+                <form method="post" action="" style="display:inline">
                   <input type="hidden" name="charger_id" value="{cid}">
                   <select name="action">
                     <option value="remote_stop">Stop</option>
@@ -426,3 +469,46 @@ def power_consumed(tx):
         pass
 
     return 0.0
+
+
+
+    """
+    /ocpp/action
+    Single‐endpoint dispatcher for all dropdown actions.
+    """
+    ws = _active_cons.get(charger_id)
+    if not ws:
+        raise HTTPError(404, "No active connection")
+    msg_id = str(uuid.uuid4())
+
+    # build the right OCPP message
+    if action == "remote_stop":
+        tx = _transactions.get(charger_id)
+        if not tx:
+            raise HTTPError(404, "No transaction to stop")
+        coro = ws.send_text(json.dumps([2, msg_id, "RemoteStopTransaction",
+                                        {"transactionId": tx["transactionId"]}]))
+
+    elif action.startswith("change_availability_"):
+        _, _, mode = action.partition("_availability_")
+        coro = ws.send_text(json.dumps([2, msg_id, "ChangeAvailability",
+                                        {"connectorId": 0, "type": mode.capitalize()}]))
+
+    elif action.startswith("reset_"):
+        _, mode = action.split("_", 1)
+        coro = ws.send_text(json.dumps([2, msg_id, "Reset", {"type": mode.capitalize()}]))
+
+    elif action == "disconnect":
+        # schedule a raw close
+        coro = ws.close(code=1000, reason="Admin disconnect")
+
+    else:
+        raise HTTPError(400, f"Unknown action: {action}")
+
+    if _csms_loop:
+        # schedule it on the FastAPI loopMore actions
+        _csms_loop.call_soon_threadsafe(lambda: _csms_loop.create_task(coro))
+    else:
+        gw.warn("No CSMS event loop; action not sent")
+
+    return {"status": "requested", "messageId": msg_id}

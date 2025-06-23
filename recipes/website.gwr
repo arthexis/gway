@@ -6,7 +6,10 @@ web app setup --home readme
     --project web.nav --home style-switcher
     --project web.cookies --home cookie-jar
     --project vbox --home uploads
+    --project ocpp.csms --home charger-status
     --project conway --home game-of-life 
+
+ocpp csms setup-app --location simulator
     
-web server start-app --host 127.0.0.1 --port 8888
+web server start-app --host 127.0.0.1 --port 8888 --ws-port 9999
 until --file VERSION --pypi 

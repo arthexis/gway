@@ -35,7 +35,7 @@ def find_cable(
         meters: Cable length (one line) in meters. Required keyword.
         amps: Load in Amperes. Default: 40 A.
         volts: System voltage. Default: 220 V.
-        material: 'cu' (copper), 'al' (aluminum), or '?' (any). Default: cu.
+        material: 'cu' (copper) or 'al' (aluminum). Default: cu.
         max_lines: Maximum number of line conductors allowed. Default: 1
         phases: Number of phases for AC (1, 2 or 3). Default: 2
         conduit: Conduit type or None.
@@ -53,11 +53,11 @@ def find_cable(
     phases = int(phases)
     ground = int(ground)
 
-    assert amps >= 10, "Minimum load for this calculator is 15 Amps."
-    assert (amps >= 546) if material == "cu" else (amps >= 430), "Max. load allowed is 546 A for Copper and 430 A with Aluminum."
+    assert amps >= 10, f"Minimum load for this calculator is 15 Amps.  Yours: {amps=}."
+    assert (amps <= 546) if material == "cu" else (amps <= 430), f"Max. load allowed is 546 A (cu) or 430 A (al). Yours: {amps=} {material=}"
     assert meters >= 1, "Consider at least 1 meter of cable."
-    assert 110 <= volts <= 460, "Volt range supported must be between 110-460."
-    assert material in ("cu", "al", "?"), "Material must be 'cu' (copper) or 'al' (aluminum)."
+    assert 110 <= volts <= 460, f"Volt range supported must be between 110-460. Yours: {volts=}"
+    assert material in ("cu", "al"), "Material must be 'cu' (copper) or 'al' (aluminum)."
     assert phases in (1, 2, 3), "AC phases 1, 2 or 3 to calculate for. DC not supported."
 
     with gw.sql.open_connection(autoload=True) as cursor:
