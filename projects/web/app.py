@@ -64,39 +64,40 @@ def setup(*,
             filename = filename.replace('-', '_')
             return static_file(filename, root=gw.resource("work", "shared"))
 
-    # --- Global static (styles and scripts) ---
-    @app.route(f"/{static}/styles/<filename:path>")
-    def send_global_style(filename):
-        return static_file(filename, root=gw.resource("data", "web", "static", "styles"))
+    if static:
+        # --- Global static (styles and scripts) ---
+        @app.route(f"/{static}/styles/<filename:path>")
+        def send_global_style(filename):
+            return static_file(filename, root=gw.resource("data", "web", "static", "styles"))
 
-    @app.route(f"/{static}/scripts/<filename:path>")
-    def send_global_script(filename):
-        return static_file(filename, root=gw.resource("data", "web", "static", "scripts"))
+        @app.route(f"/{static}/scripts/<filename:path>")
+        def send_global_script(filename):
+            return static_file(filename, root=gw.resource("data", "web", "static", "scripts"))
 
-    # --- Project static (styles and scripts) ---
-    @app.route(f"/{static}/<project>/styles/<filename:path>")
-    def send_project_style(project, filename):
-        # Security check
-        if ".." in project or "/" in project or "\\" in project:
-            return HTTPResponse(status=400, body="Bad project name.")
-        static_root = gw.resource("data", project, "static", "styles")
-        return static_file(filename, root=static_root)
+        # --- Project static (styles and scripts) ---
+        @app.route(f"/{static}/<project>/styles/<filename:path>")
+        def send_project_style(project, filename):
+            # Security check
+            if ".." in project or "/" in project or "\\" in project:
+                return HTTPResponse(status=400, body="Bad project name.")
+            static_root = gw.resource("data", project, "static", "styles")
+            return static_file(filename, root=static_root)
 
-    @app.route(f"/{static}/<project>/scripts/<filename:path>")
-    def send_project_script(project, filename):
-        if ".." in project or "/" in project or "\\" in project:
-            return HTTPResponse(status=400, body="Bad project name.")
-        static_root = gw.resource("data", project, "static", "scripts")
-        return static_file(filename, root=static_root)
+        @app.route(f"/{static}/<project>/scripts/<filename:path>")
+        def send_project_script(project, filename):
+            if ".." in project or "/" in project or "\\" in project:
+                return HTTPResponse(status=400, body="Bad project name.")
+            static_root = gw.resource("data", project, "static", "scripts")
+            return static_file(filename, root=static_root)
 
-    # --- Project generic static ---
-    @app.route(f"/{static}/<project>/<filename:path>")
-    def send_project_static(project, filename):
-        if ".." in project or "/" in project or "\\" in project:
-            return HTTPResponse(status=400, body="Bad project name.")
-        static_root = gw.resource("data", project, "static")
-        return static_file(filename, root=static_root)
-    
+        # --- Project generic static ---
+        @app.route(f"/{static}/<project>/<filename:path>")
+        def send_project_static(project, filename):
+            if ".." in project or "/" in project or "\\" in project:
+                return HTTPResponse(status=400, body="Bad project name.")
+            static_root = gw.resource("data", project, "static")
+            return static_file(filename, root=static_root)
+        
     @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
     def view_dispatch(view):
         nonlocal home, views, apis

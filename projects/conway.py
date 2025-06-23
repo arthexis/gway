@@ -65,14 +65,6 @@ def next_generation(board):
         for r,row in enumerate(board)
     ]
 
-def view_download_board():
-    """Download the current board as a text file."""
-    board = load_board()
-    text = _serialize_board(board)
-    response.content_type = 'text/plain'
-    response.headers['Content-Disposition'] = 'attachment; filename="conway.txt"'
-    return text
-
 def view_game_of_life(
     *args,
     action=None,
@@ -146,7 +138,7 @@ def view_game_of_life(
             <button type="submit" name="action" value="step">{ICONS['step']} Step Forward</button>
             <button type="submit" name="action" value="random">{ICONS['random']} Random</button>
             <button type="submit" name="action" value="clear">{ICONS['clear']} Clear</button>
-            <a href="/web/conway/download" download class="button">{ICONS['download']} Download</a>
+            <a href="/work/conway.txt" download class="button">{ICONS['download']} Download</a>
         </form>
         <p style="color:#aa2222">{html.escape(msg)}</p>
         <table id="gameboard" class="game-board">{html_board}</table>

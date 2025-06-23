@@ -1,6 +1,9 @@
 # file: recipes/website.gwr
 # Minimal GWAY website ingredients
 
+# Lines without a starting command repeat the previous command, so this block
+# is equivalent to calling 'web app setup' 7 times, passing 'app' back and forth.
+
 web app setup --home readme
     --project awg --home cable-finder
     --project web.nav --home style-switcher
@@ -10,6 +13,9 @@ web app setup --home readme
     --project conway --home game-of-life 
 
 ocpp csms setup-app --location simulator
-    
+
+# All the web app projects will use port 8888, but the ocpp ws will run on 9999  
 web server start-app --host 127.0.0.1 --port 8888 --ws-port 9999
+
+# Loop forever until VERSION or PyPI changes
 until --file VERSION --pypi 
