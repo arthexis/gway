@@ -5,10 +5,10 @@ web app setup
     --project web.cookies 
     --project web.nav
     --project vbox 
-    --project ocpp.csms --home status
+    --project ocpp.csms --home charger-status
 
 # Toggle this version to apply the allow list  
-ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre
+ocpp csms setup-app --allow data/etron/rfids.cdv --location etron_cloud
 
 # Without --allow, all transactions will be allowed by default
 # ocpp csms setup-app --location porsche_centre --deny data/etron/rfids.cdv

@@ -1,52 +1,23 @@
-# projects/web/site.py
+# file: projects/web/site.py
 
-# These view functions can be rendered by setup_app as the default website.
-# Views receive the query params and json payload merged into kwargs.
-# Don't use inline CSS ever, each user can have their own style sheets.
-
-import html
 from docutils.core import publish_parts
 from bottle import request, response
 from gway import gw
 
-
 def view_readme(*args, **kwargs):
     """Render the README.rst file as HTML."""
-
     readme_path = gw.resource("README.rst")
     with open(readme_path, encoding="utf-8") as f:
         rst_content = f.read()
-
     html_parts = publish_parts(source=rst_content, writer_name="html")
     return html_parts["html_body"]
 
-
-def view_restyle(css=None, next=None):
-    """
-    Sets the css cookie to the requested value and redirects to 'next'.
-    Accepts both GET (query params) and POST (form params).
-    If missing params, show info/debug.
-    """
-    css_val = css or request.forms.get('css') or request.query.get('css')
-    next_val = next or request.forms.get('next') or request.query.get('next')
-
-    if not css_val or not next_val:
-        response.status = 400
-        return (
-            "<h1>Style Switcher</h1>"
-            "<p>This endpoint is for switching styles. Use the style selector in the navbar.</p>"
-            f"<p>css: <b>{html.escape(str(css_val) if css_val else '')}</b> | next: <b>{html.escape(str(next_val) if next_val else '')}</b></p>"
-        )
-
-    if gw.web.cookie.check_consent():
-        gw.web.cookie.set("css", css_val)
-
-    response.status = 303
-    response.set_header("Location", next_val)
-    return ""
-
 def view_help(topic="", *args, **kwargs):
-    """Render dynamic help based on GWAY introspection and search-style links."""
+    """
+    Render dynamic help based on GWAY introspection and search-style links.
+    If there is an exact match in the search, show it at the top (highlighted).
+    """
+    topic_in = topic or ""
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
 
@@ -71,9 +42,7 @@ def view_help(topic="", *args, **kwargs):
             obj = getattr(obj, segment, None)
             if obj is None:
                 return f"<h2>Not Found</h2><p>Project path invalid at <code>{segment}</code>.</p>"
-
         project_str = ".".join(project_path)
-
         if hasattr(obj, maybe_function):
             function = maybe_function
             help_info = gw.help(project_str, function, full=True)
@@ -99,30 +68,54 @@ def view_help(topic="", *args, **kwargs):
     </script>
     '''
 
+    # --- Exact match highlighting logic ---
+    # Only applies if help_info contains "Matches"
     if "Matches" in help_info:
-        # Improvement 3: Clear separation using <hr> and class
+        matches = help_info["Matches"]
+        exact_key = (topic_in.replace(" ", "/").replace(".", "/").replace("-", "_")).strip("/")
+        # Try to find an exact match (project, or project/function) in matches
+        def canonical_str(m):
+            p, f = m.get("Project", ""), m.get("Function", "")
+            return (f"{p}/{f}" if f else p).replace(".", "/").replace("-", "_")
+        exact = None
+        exact_idx = -1
+        for idx, m in enumerate(matches):
+            if canonical_str(m).lower() == exact_key.lower():
+                exact = m
+                exact_idx = idx
+                break
+
         sections = []
-        for idx, match in enumerate(help_info["Matches"]):
+        # If found, show exact at top with highlight
+        if exact is not None:
+            sections.append('<div class="help-exact">' + _render_help_section(exact, use_query_links=True, highlight=True) + '</div>')
+            # Add separator if there are more matches
+            if len(matches) > 1:
+                sections.append('<hr class="help-sep">')
+            # Remove exact match from below
+            rest = [m for i, m in enumerate(matches) if i != exact_idx]
+        else:
+            rest = matches
+
+        for idx, match in enumerate(rest):
             section_html = _render_help_section(match, use_query_links=True)
-            if idx < len(help_info["Matches"]) - 1:
-                # Add a separator between but not after last
+            if idx < len(rest) - 1:
                 section_html += '<hr class="help-sep">'
             sections.append(section_html)
-        # Only inject highlight.js if there is code block
+
         multi = f"<div class='help-multi'>{''.join(sections)}</div>"
         if "Full Code" in str(help_info):
             multi += highlight_js
         return f"<h1>{title}</h1>{multi}"
 
+    # Not a multi-match result: just render normally
     body = _render_help_section(help_info, use_query_links=True)
-    # Only inject highlight.js if there is a code block in the output
     if "Full Code" in str(help_info):
         body += highlight_js
     return f"<h1>{title}</h1>{body}"
 
-def _render_help_section(info, use_query_links=False, *args, **kwargs):
+def _render_help_section(info, use_query_links=False, highlight=False, *args, **kwargs):
     import html
-
     proj = info.get("Project")
     func = info.get("Function")
     header = ""
@@ -192,18 +185,19 @@ def _render_help_section(info, use_query_links=False, *args, **kwargs):
 
         rows.append(f"<section><h3>{key}</h3>{value}</section>")
 
-    return f"<article class='help-entry'>{header}{''.join(rows)}</article>"
-
+    # Highlight exact matches with a CSS class
+    article_class = 'help-entry'
+    if highlight:
+        article_class += ' help-entry-exact'
+    return f"<article class='{article_class}'>{header}{''.join(rows)}</article>"
 
 def _autolink_refs(text):
-    # Link "project" or "project.function" references to their help topics
     import re
     return re.sub(r'\b([a-zA-Z0-9_]+)(?:\.([a-zA-Z0-9_]+))?\b', 
         lambda m: (
             f'<a href="?topic={m.group(1)}">{m.group(1)}</a>' if not m.group(2) 
             else f'<a href="?topic={m.group(1)}/{m.group(2)}">{m.group(1)}.{m.group(2)}</a>'
         ), text)
-
 
 def view_qr_code(*args, value=None, **kwargs):
     """Generate a QR code for a given value and serve it from cache if available."""
@@ -223,4 +217,3 @@ def view_qr_code(*args, value=None, **kwargs):
         <img src="{qr_url}" alt="QR Code" class="qr" />
         <p><a href="{back_link}">Generate another</a></p>
     """
-

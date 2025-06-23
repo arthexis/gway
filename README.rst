@@ -13,12 +13,12 @@ Fetch the source, changelogs and issues (or submit your own) here:
 
 https://github.com/arthexis/gway
 
-Watch the live demo here (if you aren't there already):
+See a demo and the full list of available projects and other help topics online here:
 
-https://arthexis.com/gway/readme
+https://arthexis.com/site/help
 
-Features
---------
+Basic Features
+--------------
 
 - 🔌 Seamless from CLI or code (e.g., ``gw.awg.find_cable()`` is ``gway awg find-cable``)
 - ⛓️ CLI chaining: ``proj1 func1 - proj2 func2`` (implicit parameter passing by name)
@@ -26,6 +26,7 @@ Features
 - ⚙️ Automatic CLI generation, with support for ``*``, ``*args`` and ``**kwargs``
 - 🧪 Built-in test runner and self-packaging: ``gway test`` and ``gway release build``
 - 📦 Environment-aware loading (e.g., ``clients`` and ``servers`` .env files)
+
 
 Examples
 --------
@@ -230,25 +231,28 @@ Suppose you want to create a very simple website:
             # No user_id, so render a form to collect it
             return '''
             <form method="get" action="">
-            <label for="user_id">Enter User ID:</label>
-            <input type="text" id="user_id" name="user_id" required />
-            <button type="submit">Submit</button>
+                <label for="user_id">Enter User ID:</label>
+                <input type="text" id="user_id" name="user_id" required />
+                <button type="submit">Submit</button>
             </form>
             '''
 
 Note that these views don't need to be decorated and you don't have to return the entire HTML document. You also don't have to specify http methods or where the variables come from (they can be read from a form or passed as a query param.) 
 
-Then in your recipe:
+Then in your own recipe:
 
 .. code-block:: text
 
-    # recipes/website.gwr
+    # recipes/my-website.gwr
     web app setup --project mysite --home hello
-        --project web.navbar
+    web app setup --project web.navbar
     web server start-app --host 127.0.0.1 --port 8888
-    loop
+    forever
 
 Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your views, including a handy navbar. Press Ctrl+D or close the terminal to end the process.
+
+The **forever** function keeps the above apps and servers running forever.
+
 
 Composing Sites from Multiple Projects
 --------------------------------------
@@ -257,20 +261,22 @@ You can chain as many projects as you want; each can define its own set of views
 
 .. code-block:: text
 
-    # recipes/website.gwr
+    # recipes/my-website.gwr
     web app setup --home readme
         --project web.cookie 
-        --project web.navbar 
-        --project vbox --home upload
-        --project conway --home board --path games/conway
+        --project web.navbar --home style-changer
+        --project vbox --home uploads
+        --project conway --home game-of-life --path games/conway
 
     web server start-app --host 127.0.0.1 --port 8888
-    until --lock-file VERSION --lock-pypi
+    until --file VERSION --pypi
 
 
 The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application. 
 
-The above recipe also shows that you can skip repeated commands. For example, instead of writing "web app setup" multiple times, each line below that doesn't start with a command repeats the last command with new parameters.
+The above recipe also shows implicit repeated commands. For example, instead of writing "web app setup" multiple times, each line below that doesn't start with a command repeats the last command with new parameters.
+
+The **until** function, as used here, will keep the recipe going until the package updates in PyPI (checked hourly) or a manual update ocurrs. This is appropriate for self-restarting services such as those managed by systemd or kubernetes.
 
 
 
@@ -291,23 +297,14 @@ View Example with Arguments
 
     # projects/vbox.py
 
-    def view_upload(*, vbid: str = None, timeout: int = 60, files: int = 4, email: str = None, **kwargs):
+    def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: str = None, **kwargs):
         """
         GET: Display upload interface or create a new upload box.
         POST: Handle uploaded files to a specific vbid.
         """
         ...
 
-This view can be accessed as `/vbox/upload` and will receive POST or GET parameters as arguments. 
-
-Advanced Topics
----------------
-
-- **Dynamic Navigation:** The GWAY navbar system can automatically track visited pages and show navigation links based on user activity. See `web.navbar`.
-- **Custom Paths and Prefixes:** Use `--path` and `--prefix` to fine-tune URL patterns and view function name conventions.
-- **Error Handling:** Any exceptions raised in a view are handled by a unified error redirect page (with stack trace if debug is on).
-- **Multiple Servers:** GWAY can launch several WSGI/ASGI apps in parallel, each on its own port, for advanced use cases.
-
+This view can be accessed as `/vbox/uploads` and will receive POST or GET parameters as arguments. 
 
 Recipes make Gway scripting modular and composable. Include them in your automation flows for maximum reuse and clarity.
 

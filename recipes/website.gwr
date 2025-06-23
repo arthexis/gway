@@ -1,5 +1,5 @@
 # file: recipes/website.gwr
-# Minimal GWAY website ingredients
+# Minimal GWAY demo website ingredients
 
 # Lines without a starting command repeat the previous command, so this block
 # is equivalent to calling 'web app setup' 7 times, passing 'app' back and forth.

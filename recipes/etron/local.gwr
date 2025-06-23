@@ -4,7 +4,7 @@
 web app setup 
     --project web.nav
     --project vbox 
-    --project ocpp.csms --home status 
+    --project ocpp.csms --home charger-status 
 
 # Toggle this version to apply the allowlist  
 # ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre

@@ -521,3 +521,50 @@ a:hover, a:focus {
 #nav-handle:active {
     opacity: 1;
 }
+
+/* === THEME-AWARE SEARCHBOX === */
+:root {
+    /* Defaults for light themes */
+    --search-bg: #fff;
+    --search-fg: #202124;
+    --search-border: #b8c2cc;
+    --search-placeholder: #888;
+    --search-border-focus: #1ad6a4;
+}
+
+[data-theme="dark"], .dark, body.dark {
+    --search-bg: #181c22;
+    --search-fg: #f3f8fc;
+    --search-border: #54ffcc;
+    --search-placeholder: #a3b2c2;
+    --search-border-focus: #9fffe5;
+}
+
+/* The searchbox styles */
+#help-search,
+.help-search {
+    background: var(--search-bg) !important;
+    color: var(--search-fg) !important;
+    border: 2px solid var(--search-border);
+    border-radius: 8px;
+    padding: 0.5em 0.75em;
+    font-size: 0.9em;
+    font-family: inherit;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    box-sizing: border-box;
+    width: 95%;
+    margin: 0.2em auto 0.5em auto;
+    display: block;
+}
+
+#help-search:focus,
+.help-search:focus {
+    border-color: var(--search-border-focus);
+    outline: none;
+}
+
+#help-search::placeholder,
+.help-search::placeholder {
+    color: var(--search-placeholder);
+    opacity: 1;
+}

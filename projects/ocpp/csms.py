@@ -1,6 +1,8 @@
 
 # file: projects/ocpp/csms.py
 
+# TODO: Extract CSS and JS from view_charger_status to charger_status.css and charger_status.js
+
 import json
 import os
 import time
@@ -348,8 +350,7 @@ def view_charger_status(*, action=None, charger_id=None, **_):
         parts.append('<table class="ocpp-status">')
         parts.append('<thead><tr>')
         for header in [
-            "Charger ID", "Connected", "Txn ID", "Meter Start",
-            "Latest", "kWh", "Status", "Actions"
+            "Charger ID", "State", "Txn ID", "Start", "Latest", "kWh", "Status", "Actions"
         ]:
             parts.append(f'<th>{header}</th>')
         parts.append('</tr></thead><tbody>')
@@ -402,6 +403,33 @@ def view_charger_status(*, action=None, charger_id=None, **_):
             ''')
 
         parts.append('</tbody></table>')
+
+    ws_url = gw.build_ws_url() 
+    parts.append(f"""
+    <div style="margin-top:32px;display:flex;align-items:center;gap:10px;
+                background:#222;color:#fff;border-radius:8px;max-width:700px;
+                padding:12px 20px 12px 16px">
+      <span style="font-weight:600;">Charger WebSocket URL:</span>
+      <input type="text" id="ocpp-ws-url" value="{ws_url}" readonly
+        style="flex:1;font-family:monospace;font-size:1em;
+               padding:16px 8px;background:#333;color:#fff;
+               border:1px solid #555;border-radius:5px;min-width:240px;"/>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('ocpp-ws-url').value)"
+        style="padding:6px 16px;font-size:1em;border-radius:5px;
+               border:1px solid #444;background:#444;color:#fff;cursor:pointer">
+        Copy
+      </button>
+    </div>
+    <script>
+    // Show "Copied!" feedback on click
+    document.querySelector('button[onclick*="clipboard"]').addEventListener('click', function() {{
+        var btn = this;
+        var orig = btn.innerText;
+        btn.innerText = "Copied!";
+        setTimeout(function() {{ btn.innerText = orig; }}, 1000);
+    }});
+    </script>
+    """)
 
     return "".join(parts)
 

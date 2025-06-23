@@ -1,5 +1,8 @@
 # file: projects/web/app.py
 
+# TODO: It was reported that /favicon.ico is missing or returning an error. 
+#       Screenshot attached.
+
 import os
 from urllib.parse import urlencode
 import bottle
@@ -220,6 +223,21 @@ def setup(*,
             note=f"404 Not Found: {request.url}",
             default=default_home()
         )
+    
+    @app.route("/favicon.ico")
+    def favicon():
+        # Extract project from route or default to first project
+        project_name = projects[0].split('.')[-1]  # e.g., 'site'
+        # Try project-specific favicon first
+        project_favicon = gw.resource("data", project_name, "static", "favicon.ico")
+        if os.path.isfile(project_favicon):
+            return static_file("favicon.ico", root=os.path.dirname(project_favicon))
+        # Fallback: serve global favicon
+        global_favicon = gw.resource("data", "web", "static", "favicon.ico")
+        if os.path.isfile(global_favicon):
+            return static_file("favicon.ico", root=os.path.dirname(global_favicon))
+        # Not found: 404
+        return HTTPResponse(status=404, body="favicon.ico not found")
 
     if gw.verbose:
         gw.debug(f"Registered homes: {_homes}")
@@ -261,18 +279,21 @@ def render_template(*, title="GWAY", content="", static="static", css_files=None
             else:
                 src_path = f"/{static}/{src}/scripts/{fname}"
             js_links += f'<script src="{src_path}"></script>\n'
-    favicon = f'<link rel="icon" href="/{static}/favicon.ico" type="image/x-icon" />'
+
+    favicon = f'<link rel="icon" href="/favicon.ico" type="image/x-icon" />'
     credits = f'''
         <p>GWAY is written in <a href="https://www.python.org/">Python 3.13</a>.
         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>, 
         <a href="https://pypi.org">PyPI</a> and <a href="https://github.com/arthexis/gway">Github</a>.</p>
     '''
+
     nav = ""
     if 'gw' in globals() and hasattr(gw, 'web') and hasattr(gw.web, 'nav') and is_enabled('nav'):
         nav = gw.web.nav.render(
             current_url=gw.web.nav.get_current_url(),
             homes=_homes
         )
+
     html = template("""<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -293,7 +314,6 @@ def render_template(*, title="GWAY", content="", static="static", css_files=None
                     {{!credits}}
                 </footer>
             </div>
-            <!-- htmx is auto-injected if needed! -->
             {{!js_links}}
         </body>
         </html>

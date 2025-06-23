@@ -48,6 +48,10 @@ def envs(filter: str = None) -> dict:
         return {k: v for k, v in os.environ.items() if filter in k}
     else: 
         return os.environ.copy()
+    
+
+# TODO: Create a first_env that takes a sequence (to_list it) of env vars
+#       Return the value of the first one that returns a non-empty value
 
 
 def version(check=None) -> str:
@@ -119,6 +123,7 @@ def resource(*parts, touch=False, check=False, text=False, dir=False):
         path = candidate
     else:
         tried.append(str(candidate))
+        # TODO: Consider if we should also be compatible with BASE_PATH and GWAY_PATH
         # 2. GWAY_ROOT env
         env_root = os.environ.get("GWAY_ROOT")
         if env_root:
@@ -671,20 +676,41 @@ def to_list(obj, flat=False):
     return [obj]
 
 
+# TODO: Consider a <urls> project for these functions later.
+
 def build_url(*args, **kwargs):
     """Build a fully-qualified context-aware URL given a path sequence and query params."""
-
-    # TODO: Testing with https://arthexis.com and
-
     from gway import gw
-    domain = os.environ.get('BASE_URL', None)
-    if not domain:
-        default = gw.resolve('http://[WEBSITE_PORT|0.0.0.0]:[WEBSITE_PORT|8888]')
-        domain = os.environ.get('SERVER_URL', default)
     try:
-        return domain + gw.web.app.build_url(*args, **kwargs)
+        return base_url() + gw.web.app.build_url(*args, **kwargs)
     except AttributeError:
-        return domain + '/'.join(args) 
+        return base_url() + '/'.join(args) 
+    
+    
+def build_ws_url(*args, **kwargs):
+    """Build a fully-qualified context-aware URL given a path sequence and query params."""
+    from gway import gw
+    try:
+        return base_ws_url() + gw.web.app.build_url(*args, **kwargs)
+    except AttributeError:
+        return base_ws_url() + '/'.join(args) 
+
+def base_url():
+    from gway import gw
+    url = os.environ.get('BASE_URL', None)
+    if not url:
+        default = gw.resolve('http://[WEBSITE_PORT|0.0.0.0]:[WEBSITE_PORT|8888]')
+        url = os.environ.get('SERVER_URL', default) 
+    return url
+
+
+def base_ws_url():
+    from gway import gw
+    url = os.environ.get('BASE_WS_URL', None)
+    if not url:
+        default = gw.resolve('ws://[WEBSITE_PORT|0.0.0.0]:[WEBSOCKETS_PORT|9999]')
+        url = os.environ.get('SERVER_WS_URL', default) 
+    return url
 
 
 # Exclude ambiguous characters: 0, O, 1, I, l
@@ -722,3 +748,8 @@ def shell():
 
     # Start the interactive console
     code.interact(banner=banner, local=local_vars)
+
+# TODO: Create an <init_root> builtin that will create a brand new folder structure
+# for GWAY at the 1) given param directory, 2) GWAY_ROOT/GWAY_PATH/BASE_PATH/APP_ROOT
+# as per the README. This should allow users to start using GWAY in library mode
+# by linking their own projects, data, etc.
