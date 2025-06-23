@@ -1,0 +1,191 @@
+/* GWAY party.css – a celebration of successful code! */
+
+/* Base colors */
+:root {
+    --bg: linear-gradient(120deg, #fefcea 0%, #f1daff 100%);
+    --bg-alt: rgba(255,255,255,0.70);
+    --main-bg: rgba(255,255,255,0.93);
+    --card-bg: rgba(255,255,255,0.92);
+    --fg: #20202b;
+    --accent: #ff51a4;
+    --accent-alt: #20b8fe;
+    --muted: #c5a7fd;
+}
+
+/* Confetti background animation */
+body, .page-wrap {
+    background: var(--bg) !important;
+    position: relative;
+    overflow-x: hidden;
+}
+body::before {
+    content: "";
+    pointer-events: none;
+    position: fixed;
+    z-index: 0;
+    left: 0; top: 0; width: 100vw; height: 100vh;
+    background-image:
+        radial-gradient(circle at 5% 15%, #f0e,  rgba(255,255,255,0) 70%),
+        radial-gradient(circle at 90% 8%, #ffb500,  rgba(255,255,255,0) 70%),
+        radial-gradient(circle at 85% 82%, #24eeb6,  rgba(255,255,255,0) 75%),
+        radial-gradient(circle at 12% 85%, #44aaff,  rgba(255,255,255,0) 85%);
+    opacity: 0.16;
+    animation: confetti-bg 8s linear infinite alternate;
+}
+@keyframes confetti-bg {
+    0% { filter: hue-rotate(0deg);}
+    100% { filter: hue-rotate(55deg);}
+}
+
+/* Sidebar navigation – a glowing card */
+aside {
+    background: var(--bg-alt);
+    border-right: 4px solid var(--accent-alt);
+    box-shadow: 0 2px 16px #ff51a42a, 0 0 24px 2px #20b8fe15;
+    backdrop-filter: blur(1.6px);
+    border-radius: 0 24px 28px 0;
+    position: relative;
+}
+aside ul li a {
+    background: linear-gradient(90deg, #ffb8de 0%, #e6fdff 70%);
+    color: var(--accent);
+    border-radius: 8px;
+    margin-bottom: 0.3em;
+    box-shadow: 0 1px 4px 0 #ffd4fd26;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    border-left: 4px solid #fff0;
+    transition: background 0.18s, color 0.17s, border-left 0.18s;
+}
+aside ul li a:hover,
+aside ul li a.active {
+    background: linear-gradient(90deg, #fdffd5 0%, #ffb8e8 100%);
+    color: #a8115e;
+    border-left: 4px solid var(--accent-alt);
+}
+
+/* Main area - clean with a gentle shadow */
+main {
+    background: var(--main-bg);
+    border-radius: 19px;
+    margin: 1.2em 0.2em 1.2em 0.2em;
+    box-shadow: 0 3px 28px 0 #f0a0ff12;
+    border: 1.5px solid #ffe1fc;
+    min-height: 65vh;
+    position: relative;
+    z-index: 1;
+    padding: 2.2em 2em;
+}
+
+/* Party headlines */
+h1, h2, h3 {
+    color: var(--accent);
+    font-family: 'Comic Sans MS', 'Baloo 2', 'Segoe UI', sans-serif;
+    text-shadow: 0 2px 8px #fff3, 0 0 12px #ff51a488;
+    margin-top: 1.2em;
+}
+h1 { font-size: 2.5em; font-weight: 900; letter-spacing: 0.04em; }
+h2 { font-size: 1.5em; font-weight: 800; }
+h3 { font-size: 1.15em; font-weight: 700; }
+
+/* Cardy blocks and footer */
+footer, .help-entry, .card {
+    background: var(--card-bg);
+    border-radius: 18px;
+    box-shadow: 0 3px 20px 0 #fdc6ff14, 0 1px 5px 0 #ff99dd09;
+    border: 1.5px solid #ffd8f7;
+}
+
+/* Button fun! */
+button,
+input[type="submit"], input[type="button"] {
+    background: linear-gradient(90deg, #ff51a4 0%, #20b8fe 100%);
+    color: #fff;
+    font-size: 1.04em;
+    font-family: inherit;
+    padding: 0.6em 1.5em;
+    border: none;
+    border-radius: 2em;
+    font-weight: 700;
+    box-shadow: 0 2px 8px #f1d8fd55, 0 1px 8px #20b8fe17;
+    transition: transform 0.15s, box-shadow 0.16s, background 0.16s;
+}
+button:hover,
+input[type="submit"]:hover {
+    background: linear-gradient(90deg, #fdffd5 0%, #ff51a4 100%);
+    color: #a8115e;
+    transform: scale(1.06) rotate(-1.2deg);
+    box-shadow: 0 5px 20px #ffe9fd44;
+}
+button:active {
+    background: #e41e6f;
+    color: #fff;
+    transform: scale(0.96);
+}
+
+/* Inline code and code blocks */
+code {
+    background: #fff9e3;
+    color: #f72691;
+    border-radius: 0.25em;
+    padding: 0.13em 0.3em;
+}
+pre, pre code {
+    background: #29144e;
+    color: #ffe5fe;
+    border-radius: 1em;
+    box-shadow: 0 2px 12px #f51a6f21;
+    padding: 1.2em;
+    font-size: 1.01em;
+    font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', monospace;
+}
+
+/* Party links */
+a {
+    color: var(--accent);
+    font-weight: bold;
+    text-shadow: 0 0 5px #fff7, 0 0 10px #f7269140;
+    transition: background 0.18s, color 0.17s, box-shadow 0.17s;
+    border-bottom: 2.2px dotted #ffb8e8;
+    border-radius: 4px;
+}
+a:hover {
+    color: var(--accent-alt);
+    background: #ffebfbcc;
+    box-shadow: 0 1px 8px #ffb8e845;
+    border-bottom: 2.2px solid #20b8fe;
+}
+
+/* Responsive polish */
+@media (max-width: 700px) {
+    aside {
+        width: 85vw;
+        padding: 1.2rem 0.7rem 3rem 0.7rem;
+        min-width: 0;
+    }
+    main {
+        border-radius: 13px;
+        margin: 1.2em 0.1em 1.2em 0.1em;
+        padding: 1.3em 0.5em;
+    }
+    h1 { font-size: 2em; }
+}
+
+/* Extra confetti! (Optional) */
+body::after {
+    content: "";
+    position: fixed;
+    z-index: 1999;
+    left: 0; top: 0; width: 100vw; height: 100vh;
+    pointer-events: none;
+    background-image:
+      repeating-linear-gradient(105deg, #fdf6b3 0, #fdf6b3 2px, transparent 2px, transparent 16px),
+      repeating-linear-gradient(245deg, #ffe6f7 0, #ffe6f7 2px, transparent 2px, transparent 16px),
+      repeating-linear-gradient(65deg, #e7fff7 0, #e7fff7 2px, transparent 2px, transparent 22px);
+    opacity: 0.12;
+    animation: confetti-after 12s linear infinite alternate;
+}
+@keyframes confetti-after {
+    0% { filter: hue-rotate(0deg);}
+    100% { filter: hue-rotate(-45deg);}
+}

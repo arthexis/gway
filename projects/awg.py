@@ -53,11 +53,12 @@ def find_cable(
     phases = int(phases)
     ground = int(ground)
 
-    assert amps >= 20, "Min. charger load is 20 Amps."
+    assert amps >= 10, "Minimum load for this calculator is 15 Amps."
+    assert (amps >= 546) if material == "cu" else (amps >= 430), "Max. load allowed is 546 A for Copper and 430 A with Aluminum."
     assert meters >= 1, "Consider at least 1 meter of cable."
-    assert 110 <= volts <= 460, "Volt range is 110-460."
-    assert material in ("cu", "al", "?"), "Material must be cu, al or ?."
-    assert phases in (1, 2, 3), "Allowed phases 1, 2 or 3."
+    assert 110 <= volts <= 460, "Volt range supported must be between 110-460."
+    assert material in ("cu", "al", "?"), "Material must be 'cu' (copper) or 'al' (aluminum)."
+    assert phases in (1, 2, 3), "AC phases 1, 2 or 3 to calculate for. DC not supported."
 
     with gw.sql.open_connection(autoload=True) as cursor:
 
