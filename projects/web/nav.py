@@ -118,7 +118,7 @@ def render(*, current_url=None, homes=None):
     # --- QR code for this page ---
     compass = ""
     if current_url:
-        qr_url = gw.qr.generate_url(current_url)
+        qr_url = gw.qr.generate_url(gw.build_url(current_url))
         compass = f'''
             <div class="compass">
                 <img src="{qr_url}" alt="QR Code" class="compass" />
