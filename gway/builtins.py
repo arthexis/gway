@@ -673,6 +673,9 @@ def to_list(obj, flat=False):
 
 def build_url(*args, **kwargs):
     """Build a fully-qualified context-aware URL given a path sequence and query params."""
+
+    # TODO: Testing with https://arthexis.com and
+
     from gway import gw
     domain = os.environ.get('BASE_URL', None)
     if not domain:

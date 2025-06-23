@@ -150,7 +150,7 @@ To make GWAY available from any directory (requires root access):
 
 .. code-block:: bash
 
-    sudo ln -s /home/arthe/gway/gway.sh /usr/local/bin/gway
+    sudo ln -s "$HOME/gway/gway.sh" /usr/local/bin/gway
 
 
 Project Structure
