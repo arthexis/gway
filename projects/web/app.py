@@ -10,8 +10,6 @@ _ver = None
 _homes = []  # (title, route)
 _enabled = set()
 UPLOAD_MB = 100
-STATIC_ROOT = gw.resource("data", "web", "static")  # <--- fix
-STYLES_ROOT = os.path.join(STATIC_ROOT, "styles")   # <--- fix
 
 def setup(*,
     app=None,
@@ -326,6 +324,10 @@ def add_home(home, path):
         _homes.append((title, route))
         gw.debug(f"Added home: ({title}, {route})")
 
+
+# Note that the logic for collecting JS and CSS is not the same, for example:
+# All web/static/scripts/*.js files found are installed by default in all site pages.
+# However only web/static/styles/base.css is fixed, and other *.css files are user options.
 
 def collect_js_files(*, static, project, view_name):
     """

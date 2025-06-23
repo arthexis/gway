@@ -224,7 +224,7 @@ def test(*, root: str = 'tests', filter=None, project=None):
     # suite, run an abstract test battery against the project or collection of projects
 
     with use_logging(logfile="test.log", logdir="logs", prog_name="gway",
-                     debug=getattr(gw, "debug", False),
+                     debug=getattr(gw, "debug", False), backup_count=0,
                      verbose=getattr(gw, "verbose", False)):
         print("Running the test suite...")
 
