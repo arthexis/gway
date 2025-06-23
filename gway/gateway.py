@@ -382,6 +382,12 @@ class Gateway(Resolver, Runner):
         """
         Find the projects directory in source, install, or user-specified locations.
         Returns the path to the projects directory if found, else raises FileNotFoundError.
+
+        Search order:
+        1. User explicitly passed a project_path (self.project_path)
+        2. Check next to base_path (source/venv/dev mode)
+        3. GWAY_PROJECT_PATH env variable
+        4. importlib.resources for installed package data (pip install)
         """
         # 1. User explicitly passed a project_path
         if self.project_path:
@@ -396,25 +402,21 @@ class Gateway(Resolver, Runner):
         env_path = os.environ.get('GWAY_PROJECT_PATH')
         if env_path and Path(env_path).is_dir():
             return env_path
-        # 4. Try site-packages data (pip install, wheel)
+        # 4. Try importlib.resources (Python 3.9+)
         try:
-            res_path = pkg_resources.resource_filename('gway', '../projects')
-            if os.path.isdir(res_path):
-                return res_path
+            import importlib.resources as resources
+            # Try to get 'projects' as a directory under the 'gway' package
+            with resources.as_file(resources.files('gway').joinpath('projects')) as res_path:
+                if res_path.is_dir():
+                    return str(res_path)
         except Exception:
             pass
-        # 5. Try as data file (if installed via data_files entry)
-        try:
-            res_path = pkg_resources.resource_filename('gway_projects', '')
-            if os.path.isdir(res_path):
-                return res_path
-        except Exception:
-            pass
+        # Not found: raise
         raise FileNotFoundError(
             "Could not locate 'projects' directory. "
-            "Tried base_path, GWAY_PROJECT_PATH, site-packages, and user data dirs."
+            "Tried base_path, GWAY_PROJECT_PATH, and package resources."
         )
-
+    
     def load_py_file(self, path: str, dotted_name: str):
         module_name = dotted_name.replace(".", "_")
         spec = importlib.util.spec_from_file_location(module_name, path)
