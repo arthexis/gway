@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# It is possible for recipe names to contain slashes, to indicate recipes in sub-folders
-# GWAY can handle recipes with slashes, but the service name should clean them up.
-
 # Resolve real directory of this script (even if symlinked)
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"

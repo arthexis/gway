@@ -151,6 +151,7 @@ def view_cable_finder(
     max_lines="3", phases="1", conduit=None, neutral="0", **kwargs
 ):
     """Page builder for AWG cable finder with HTML form and result."""
+    # TODO: Add a image with the sponsor logo on the right side of the result page
     if not meters:
         return '''<h1>AWG Cable Finder</h1>
             <form method="post">
@@ -200,5 +201,10 @@ def view_cable_finder(
             <li><strong>Voltage Drop:</strong> {result['vdrop']:.2f} V ({result['vdperc']:.2f}%)</li>
             <li><strong>Voltage at End:</strong> {result['vend']:.2f} V</li>
         </ul>
+        <p>
+        <em>Special thanks to the expert electrical engineers at <strong>
+        <a href="https://www.gelectriic.com">Gelectriic Solutions</a></strong> for their 
+        useful input and support while creating this calculator.</em>
+        </p>
         <p><a href="/awg/cable-finder">&#8592; Calculate again</a></p>
     """
