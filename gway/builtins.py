@@ -17,7 +17,7 @@ from typing import Any, Optional, Type, List
 # Instead, use "from gway import gw" inside the function definitions themselves
     
 
-def hello_world(name: str = "World", *, greeting: str = "Hello"):
+def hello_world(name: str = "World", *, greeting: str = "Hello", **kwargs):
     """Smoke test function."""
     from gway import gw
 

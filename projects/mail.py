@@ -12,7 +12,7 @@ from email.mime.text import MIMEText
 from email import message_from_bytes
 
 
-def send(subject, body=None, to=None, async_=None, **kwargs):
+def send(subject, body=None, to=None, threaded=None, **kwargs):
     """
     Send an email with the specified subject and body, using defaults from env if available.
 
@@ -20,11 +20,11 @@ def send(subject, body=None, to=None, async_=None, **kwargs):
     - subject: the email subject (string)
     - body:    the plain-text body (string). Must be provided.
     - to:      recipient address (string). Defaults to ADMIN_EMAIL from the environment.
-    - async_:  if True, send the email asynchronously; if False, block and send; if None, auto-detect.
+    - threaded:  if True, send the email asynchronously; if False, block and send; if None, auto-detect.
     - **kwargs: reserved for future use.
 
     Returns:
-        str ("Email sent successfully to ...") or error message, unless async_ is True (returns immediately).
+        str ("Email sent successfully to ...") or error message, unless threaded is True (returns immediately).
     """
 
     def _send_email():
@@ -77,14 +77,14 @@ def send(subject, body=None, to=None, async_=None, **kwargs):
             return f"Error sending email: {e}"
 
     # Auto-detect async mode if not specified
-    if async_ is None:
+    if threaded is None:
         try:
             asyncio.get_running_loop()
-            async_ = True
+            threaded = True
         except RuntimeError:
-            async_ = False
+            threaded = False
 
-    if async_:
+    if threaded:
         try:
             loop = asyncio.get_running_loop()
             async def async_task():
