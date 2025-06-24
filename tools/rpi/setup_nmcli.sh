@@ -3,6 +3,7 @@
 #
 # Enforce device assignment and gateway rules for AP/GATE/LAN connections.
 # For GATE, tries each connection on every available wifi interface until one succeeds.
+# Now also verifies Raspberry Pi Connect status before and after.
 
 # --- Configuration ---
 PING_TARGET="8.8.8.8"
@@ -20,15 +21,25 @@ for arg in "$@"; do
     esac
 done
 
-# --- Early Exit if Internet OK (unless --force) ---
-if [ $FORCE -eq 0 ]; then
-    if ping -q -c 2 -W 2 "$PING_TARGET" > /dev/null 2>&1; then
-        echo "[INFO] Internet already reachable. Skipping changes. Use --force to override."
-        exit 0
+# --- Initial ping test ---
+if ping -q -c 2 -W 2 "$PING_TARGET" > /dev/null 2>&1; then
+    echo "[INFO] Internet is reachable via $PING_TARGET."
+    # Doctor check
+    echo "[INFO] Running Raspberry Pi Connect doctor..."
+    if rpi-connect doctor | tee /tmp/rpi_doctor.txt | grep -q "Peer-to-peer connection candidate via"; then
+        echo "[INFO] Pi Connect doctor passed basic checks."
+        if [ $FORCE -eq 0 ]; then
+            echo "[INFO] No fixes needed. Use --force to override."
+            exit 0
+        else
+            echo "[FORCE] Continuing with fixes as requested."
+        fi
+    else
+        echo "[WARN] Doctor did not pass all checks. Proceeding with battery of fixes."
     fi
+else
+    echo "[WARN] Internet unreachable, enforcing role/gateway config."
 fi
-
-echo "[INFO] Continuing: Internet not reachable or --force given."
 
 # --- Confirm ---
 if [ $YES -eq 0 ]; then
@@ -153,5 +164,22 @@ while IFS= read -r line; do
         fi
     fi
 done < <(nmcli --fields NAME,UUID,TYPE,DEVICE connection show | tail -n +2)
+
+# --- Final: Restart and check rpi-connect ---
+echo "[INFO] Restarting Raspberry Pi Connect..."
+rpi-connect restart
+sleep 5
+
+echo "[INFO] Checking Raspberry Pi Connect status:"
+rpi-connect status
+
+echo "[INFO] Running Raspberry Pi Connect doctor for final check:"
+rpi-connect doctor | tee /tmp/rpi_doctor_after.txt
+
+if rpi-connect status | grep -q 'Signed in: yes' && rpi-connect status | grep -q 'Subscribed to events: yes'; then
+    echo "[SUCCESS] Raspberry Pi Connect is running and signed in."
+else
+    echo "[FAIL] Raspberry Pi Connect is NOT fully connected. Check status above."
+fi
 
 echo "[DONE] All connections processed. Check with 'nmcli connection show --active' and 'nmcli device status'."
