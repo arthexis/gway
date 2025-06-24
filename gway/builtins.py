@@ -21,6 +21,7 @@ def hello_world(name: str = "World", *, greeting: str = "Hello", **kwargs):
     """Smoke test function."""
     from gway import gw
 
+    version = gw.version()
     message = f"{greeting.title()}, {name.title()}!"
     if hasattr(gw, "hello_world"): 
         if not gw.silent:

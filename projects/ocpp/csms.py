@@ -306,8 +306,8 @@ def dispatch_action(charger_id: str, action: str):
 
 def view_charger_status(*, action=None, charger_id=None, **_):
     """
-    /ocpp/charger-status
     Handles GET and POST for dashboard. On POST with action, dispatch and redirect to clear state.
+    default path: /ocpp/csms/charger-status
     """
     if request.method == "POST":
         action = request.forms.get("action")

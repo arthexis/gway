@@ -1,8 +1,6 @@
 # file: recipes/etron/local.gwr
 # OCPP 1.6 CSMS Recipe with basic RFID auth
 
-wifi watchdog 
-
 web app setup 
     --project web.nav
     --project vbox 
