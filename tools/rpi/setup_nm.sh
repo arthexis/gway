@@ -123,15 +123,33 @@ while IFS= read -r line; do
         continue
     fi
 
-    # Handle LAN
+    # Handle LAN (only reconfigure/restart if needed)
     if [[ "$conn_name" == *LAN* ]]; then
-        echo "[LAN] $conn_name ($uuid): assign to $LAN_DEVICE"
-        nmcli connection modify "$uuid" connection.interface-name "$LAN_DEVICE"
-        nmcli connection modify "$uuid" ipv4.never-default yes
-        nmcli connection modify "$uuid" connection.autoconnect yes
-        nmcli connection modify "$uuid" 802-11-wireless.mac-address "" 2>/dev/null || true
-        nmcli connection down "$uuid" 2>/dev/null || true
-        nmcli connection up "$uuid" ifname "$LAN_DEVICE"
+        NEED_RECONF=0
+        # Check device assignment
+        if [[ "$device" != "$LAN_DEVICE" ]]; then
+            NEED_RECONF=1
+            echo "[LAN] $conn_name ($uuid): device is '$device', should be '$LAN_DEVICE' (will reconfigure)"
+        fi
+        # Check autoconnect and never-default properties
+        AUTOCON=$(nmcli -g connection.autoconnect connection show "$uuid")
+        NEVERDEF=$(nmcli -g ipv4.never-default connection show "$uuid")
+        if [[ "$AUTOCON" != "yes" || "$NEVERDEF" != "yes" ]]; then
+            NEED_RECONF=1
+            echo "[LAN] $conn_name ($uuid): autoconnect/never-default are not both yes (will reconfigure)"
+        fi
+
+        if [[ $NEED_RECONF -eq 1 ]]; then
+            nmcli connection modify "$uuid" connection.interface-name "$LAN_DEVICE"
+            nmcli connection modify "$uuid" ipv4.never-default yes
+            nmcli connection modify "$uuid" connection.autoconnect yes
+            nmcli connection modify "$uuid" 802-11-wireless.mac-address "" 2>/dev/null || true
+            nmcli connection down "$uuid" 2>/dev/null || true
+            nmcli connection up "$uuid" ifname "$LAN_DEVICE"
+            echo "[LAN] $conn_name ($uuid): LAN reconfigured and reconnected."
+        else
+            echo "[LAN] $conn_name ($uuid): already correctly configured, leaving untouched."
+        fi
         continue
     fi
 
