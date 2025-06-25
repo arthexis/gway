@@ -1,7 +1,5 @@
-
 # file: projects/ocpp/csms.py
-
-# TODO: Extract CSS and JS from view_charger_status to charger_status.css and charger_status.js
+# path: ocpp/csms/
 
 import json
 import os
@@ -11,15 +9,22 @@ import traceback
 import asyncio
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
-from bottle import request, response, redirect, HTTPError
+from bottle import request, redirect, HTTPError
 from typing import Dict, Optional
 from gway import gw
+
+
+_csms_loop: Optional[asyncio.AbstractEventLoop] = None
+_transactions: Dict[str, dict] = {}           # charger_id → latest transaction
+_active_cons: Dict[str, WebSocket] = {}      # charger_id → live WebSocket
+_latest_heartbeat: Dict[str, str] = {}  # charger_id → ISO8601 UTC time string
+_abnormal_status: Dict[str, dict] = {}  # charger_id → {"status": ..., "errorCode": ..., "info": ...}
+
 
 
 def authorize_balance(**record):
     """
     Default OCPP RFID secondary validator: Only authorize if balance >= 1.
-    This can be passed directly as the default 'authorize' param.
     The RFID needs to exist already for this to be called in the first place.
     """
     try:
@@ -27,30 +32,6 @@ def authorize_balance(**record):
     except Exception:
         return False
     
-
-_csms_loop: Optional[asyncio.AbstractEventLoop] = None
-_transactions: Dict[str, dict] = {}           # charger_id → latest transaction
-_active_cons: Dict[str, WebSocket] = {}      # charger_id → live WebSocket
-
-# --- New: Track abnormal OCPP status notifications/errors here ---
-_abnormal_status: Dict[str, dict] = {}  # charger_id → {"status": ..., "errorCode": ..., "info": ...}
-# Only keep abnormal status; clear when charger sends "normal" (Available/NoError)
-
-
-def is_abnormal_status(status: str, error_code: str) -> bool:
-    """Determine if a status/errorCode is 'abnormal' per OCPP 1.6."""
-    status = (status or "").capitalize()
-    error_code = (error_code or "").capitalize()
-    # Available/NoError or Preparing are 'normal'
-    if status in ("Available", "Preparing") and error_code in ("Noerror", "", None):
-        return False
-    # All Faulted, Unavailable, Suspended, etc. are abnormal
-    if status in ("Faulted", "Unavailable", "Suspendedev", "Suspended", "Removed"):
-        return True
-    if error_code not in ("Noerror", "", None):
-        return True
-    return False
-
 
 def setup_app(*,
     app=None,
@@ -203,6 +184,12 @@ def setup_app(*,
                         now = int(time.time())
                         tx = _transactions.get(charger_id)
                         if tx:
+                            if tx.get("MeterValues"):
+                                try:
+                                    archive_e(charger_id, tx["transactionId"], tx["MeterValues"])
+                                except Exception as e:
+                                    gw.error("Error recording energy chart.")
+                                    gw.exception(e)
                             tx.update({
                                 "syncStop": 1,
                                 "idTagStop": payload.get("idTag"),
@@ -250,7 +237,12 @@ def setup_app(*,
                     await websocket.send_text(json.dumps(response))
 
                 elif isinstance(msg, list) and msg[0] == 3:
-                    gw.debug(f"[OCPP:{charger_id}] Received CALLRESULT: {msg}")
+                    # Handle CALLRESULT, check for Heartbeat ACK to record latest heartbeat time
+                    payload = msg[2] if len(msg) > 2 else {}
+                    if isinstance(payload, dict) and "currentTime" in payload:
+                        # Only update for Heartbeat (or any other call with currentTime)
+                        _latest_heartbeat[charger_id] = payload["currentTime"]
+                        gw.debug(f"[OCPP:{charger_id}] Updated latest heartbeat to {_latest_heartbeat[charger_id]}")
                     continue
 
                 elif isinstance(msg, list) and msg[0] == 4:
@@ -270,6 +262,146 @@ def setup_app(*,
 
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 
+
+def is_abnormal_status(status: str, error_code: str) -> bool:
+    """Determine if a status/errorCode is 'abnormal' per OCPP 1.6."""
+    status = (status or "").capitalize()
+    error_code = (error_code or "").capitalize()
+    # Available/NoError or Preparing are 'normal'
+    if status in ("Available", "Preparing") and error_code in ("Noerror", "", None):
+        return False
+    # All Faulted, Unavailable, Suspended, etc. are abnormal
+    if status in ("Faulted", "Unavailable", "Suspendedev", "Suspended", "Removed"):
+        return True
+    if error_code not in ("Noerror", "", None):
+        return True
+    return False
+
+...
+
+# TODO: <Details> no longer works properly, clicking the button stretches the card box vertically
+#       for a second and the log flashes on screen before closing and going back to not showing.
+
+# TODO: The graph link doesn't take us anywhere, screen stays the same after clicking.
+
+# Bottle-based views are used for the interface, params injected by GWAY from query/payload
+# GWAY allows us to have the WS FastAPI server and Bottle UI server share memory space,
+# simply by placing both functions in the same project file.
+
+def view_charger_status(*, action=None, charger_id=None, **_):
+    """
+    Card-based OCPP dashboard: summary of all charger connections.
+    """
+    if request.method == "POST":
+        action = request.forms.get("action")
+        charger_id = request.forms.get("charger_id")
+        if action and charger_id:
+            try:
+                dispatch_action(charger_id, action)
+            except Exception as e:
+                gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
+            return redirect(request.fullpath or "/ocpp/charger-status")
+
+    all_chargers = set(_active_cons) | set(_transactions)
+    html = ["<h1>OCPP Status Dashboard</h1>"]
+
+    # --- Show abnormal statuses if present ---
+    if _abnormal_status:
+        html.append(
+            '<div style="color:#fff;background:#b22;padding:12px;font-weight:bold;margin-bottom:18px">'
+            "⚠️ Abnormal Charger Status Detected:<ul style='margin:0'>"
+        )
+        for cid, err in sorted(_abnormal_status.items()):
+            status = err.get("status", "")
+            error_code = err.get("errorCode", "")
+            info = err.get("info", "")
+            ts = err.get("timestamp", "")
+            msg = f"<b>{cid}</b>: {status}/{error_code}"
+            if info: msg += f" ({info})"
+            if ts: msg += f" <span style='font-size:0.9em;color:#eee'>@{ts}</span>"
+            html.append(f"<li>{msg}</li>")
+        html.append("</ul></div>")
+
+    if not all_chargers:
+        html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
+    else:
+        html.append('<div class="ocpp-dashboard">')
+        for cid in sorted(all_chargers):
+            ws_live = cid in _active_cons
+            tx      = _transactions.get(cid)
+            connected   = '🟢' if ws_live else '🔴'
+            tx_id       = tx.get("transactionId") if tx else '-'
+            meter_start = tx.get("meterStart")       if tx else '-'
+            latest      = (
+                tx.get("meterStop")
+                if tx and tx.get("meterStop") is not None
+                else (tx["MeterValues"][-1].get("meter") if tx and tx.get("MeterValues") else 'None')
+            )
+            power  = power_consumed(tx)
+            status = "Closed" if tx and tx.get("syncStop") else "Open" if tx else '-'
+            # Heartbeat
+            raw_hb = _latest_heartbeat.get(cid)
+            if raw_hb:
+                try:
+                    from datetime import datetime, timezone
+                    dt = datetime.fromisoformat(raw_hb.replace("Z", "+00:00")).astimezone()
+                    latest_hb = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    latest_hb = raw_hb
+            else:
+                latest_hb = "-"
+
+            html.append('<div class="charger-card">')
+            html.append(f'''
+                <div class="charger-header">
+                    <span class="charger-id">{cid}</span>
+                    <span class="charger-status">{connected}</span>
+                </div>
+                <div class="charger-details-row">
+                    <label>Txn ID:</label> <span>{tx_id}</span>
+                    <label>Start:</label> <span>{meter_start}</span>
+                    <label>Latest:</label> <span>{latest}</span>
+                </div>
+                <div class="charger-details-row">
+                    <label>kWh:</label> <span>{power}</span>
+                    <label>Status:</label> <span>{status}</span>
+                    <label>Last HB:</label> <span>{latest_hb}</span>
+                </div>
+                <form method="post" action="" class="charger-action-row">
+                    <input type="hidden" name="charger_id" value="{cid}">
+                    <select name="action" id="action-{cid}" aria-label="Action">
+                        <option value="remote_stop">Stop</option>
+                        <option value="reset_soft">Soft Reset</option>
+                        <option value="reset_hard">Hard Reset</option>
+                        <option value="disconnect">Disconnect</option>
+                    </select>
+                    <button type="submit" name="do" value="send">Send</button>
+                    <button type="submit" name="do" value="details" class="details-btn" data-target="details-{cid}">Details</button>
+                    <button type="submit" name="do" value="graph" class="graph-btn">Graph</button>
+                </form>
+                <div id="details-{cid}" class="charger-details-panel hidden">
+                    <pre>{json.dumps(tx or {}, indent=2)}</pre>
+                </div>
+            ''')
+            html.append('</div>')
+        html.append('</div>')  # end .ocpp-dashboard
+
+    # WebSocket URL bar
+    ws_url = gw.build_ws_url()
+    html.append(f"""
+    <div class="ocpp-wsbar">
+      <input type="text" id="ocpp-ws-url" value="{ws_url}" readonly
+        style="flex:1;font-family:monospace;font-size:1em;
+               padding:10px 6px;background:#222;color:#fff;
+               border:1px solid #333;border-radius:5px;min-width:160px;max-width:530px;"/>
+      <button id="copy-ws-url-btn"
+        style="padding:6px 16px;font-size:1em;border-radius:5px;
+               border:1px solid #444;background:#444;color:#fff;cursor:pointer">
+        Copy
+      </button>
+    </div>
+    """)
+    return "".join(html)
 
 
 def dispatch_action(charger_id: str, action: str):
@@ -303,136 +435,9 @@ def dispatch_action(charger_id: str, action: str):
 
     return {"status": "requested", "messageId": msg_id}
 
+...
 
-def view_charger_status(*, action=None, charger_id=None, **_):
-    """
-    Handles GET and POST for dashboard. On POST with action, dispatch and redirect to clear state.
-    default path: /ocpp/csms/charger-status
-    """
-    if request.method == "POST":
-        action = request.forms.get("action")
-        charger_id = request.forms.get("charger_id")
-        if action and charger_id:
-            try:
-                dispatch_action(charger_id, action)
-            except Exception as e:
-                gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
-            # PRG: Redirect to clear POST
-            return redirect(request.fullpath or "/ocpp/charger-status")
-        # If POST but missing data, just fall through and re-render
-
-    all_chargers = set(_active_cons) | set(_transactions)
-    parts = ["<h1>OCPP Status Dashboard</h1>"]
-
-    # --- Show current abnormal statuses/errors, if any ---
-    if _abnormal_status:
-        parts.append(
-            '<div style="color:#fff;background:#b22;padding:12px;font-weight:bold;margin-bottom:12px">'
-            "⚠️ Abnormal Charger Status Detected:<ul style='margin:0'>"
-        )
-        for cid, err in sorted(_abnormal_status.items()):
-            status = err.get("status", "")
-            error_code = err.get("errorCode", "")
-            info = err.get("info", "")
-            ts = err.get("timestamp", "")
-            msg = f"<b>{cid}</b>: {status}/{error_code}"
-            if info:
-                msg += f" ({info})"
-            if ts:
-                msg += f" <span style='font-size:0.9em;color:#eee'>@{ts}</span>"
-            parts.append(f"<li>{msg}</li>")
-        parts.append("</ul></div>")
-
-    if not all_chargers:
-        parts.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
-    else:
-        parts.append('<form method="post" action="" id="ocpp-action-form"></form>')
-        parts.append('<table class="ocpp-status">')
-        parts.append('<thead><tr>')
-        for header in [
-            "Charger ID", "State", "Txn ID", "Start", "Latest", "kWh", "Status", "Actions"
-        ]:
-            parts.append(f'<th>{header}</th>')
-        parts.append('</tr></thead><tbody>')
-
-        for cid in sorted(all_chargers):
-            ws_live = cid in _active_cons
-            tx      = _transactions.get(cid)
-
-            connected   = '🟢' if ws_live else '🔴'
-            tx_id       = tx.get("transactionId") if tx else '-'
-            meter_start = tx.get("meterStart")       if tx else '-'
-
-            if tx:
-                latest = (
-                    tx.get("meterStop")
-                    if tx.get("meterStop") is not None
-                    else (tx["MeterValues"][-1].get("meter") if tx.get("MeterValues") else '-')
-                )
-                power  = power_consumed(tx)
-                status = "Closed" if tx.get("syncStop") else "Open"
-            else:
-                latest = power = status = '-'
-
-            parts.append('<tr>')
-            for value in [cid, connected, tx_id, meter_start, latest, power, status]:
-                parts.append(f'<td>{value}</td>')
-            parts.append('<td>')
-            # Updated form: each row form POSTs to this view (action="")
-            parts.append(f'''
-                <form method="post" action="" style="display:inline">
-                  <input type="hidden" name="charger_id" value="{cid}">
-                  <select name="action">
-                    <option value="remote_stop">Stop</option>
-                    <option value="reset_soft">Soft Reset</option>
-                    <option value="reset_hard">Hard Reset</option>
-                    <option value="disconnect">Disconnect</option>
-                  </select>
-                  <button type="submit">Send</button>
-                </form>
-                <button type="button"
-                  onclick="document.getElementById('details-{cid}').classList.toggle('hidden')">
-                  Details
-                </button>
-            ''')
-            parts.append('</td></tr>')
-            parts.append(f'''
-            <tr id="details-{cid}" class="hidden">
-              <td colspan="8"><pre>{json.dumps(tx or {}, indent=2)}</pre></td>
-            </tr>
-            ''')
-
-        parts.append('</tbody></table>')
-
-    ws_url = gw.build_ws_url() 
-    parts.append(f"""
-    <div style="margin-top:32px;display:flex;align-items:center;gap:10px;
-                background:#222;color:#fff;border-radius:8px;max-width:700px;
-                padding:12px 20px 12px 16px">
-      <span style="font-weight:600;">Charger WebSocket URL:</span>
-      <input type="text" id="ocpp-ws-url" value="{ws_url}" readonly
-        style="flex:1;font-family:monospace;font-size:1em;
-               padding:16px 8px;background:#333;color:#fff;
-               border:1px solid #555;border-radius:5px;min-width:240px;"/>
-      <button onclick="navigator.clipboard.writeText(document.getElementById('ocpp-ws-url').value)"
-        style="padding:6px 16px;font-size:1em;border-radius:5px;
-               border:1px solid #444;background:#444;color:#fff;cursor:pointer">
-        Copy
-      </button>
-    </div>
-    <script>
-    // Show "Copied!" feedback on click
-    document.querySelector('button[onclick*="clipboard"]').addEventListener('click', function() {{
-        var btn = this;
-        var orig = btn.innerText;
-        btn.innerText = "Copied!";
-        setTimeout(function() {{ btn.innerText = orig; }}, 1000);
-    }});
-    </script>
-    """)
-
-    return "".join(parts)
-
+# Calculation tools
 
 def extract_meter(tx):
     """
@@ -499,44 +504,80 @@ def power_consumed(tx):
     return 0.0
 
 
-
+def archive_e(charger_id, transaction_id, meter_values):
     """
-    /ocpp/action
-    Single‐endpoint dispatcher for all dropdown actions.
+    Store MeterValues for a charger/transaction as a dated file for graphing.
     """
-    ws = _active_cons.get(charger_id)
-    if not ws:
-        raise HTTPError(404, "No active connection")
-    msg_id = str(uuid.uuid4())
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    base = gw.resource("work", "etron", "graphs", charger_id)
+    os.makedirs(base, exist_ok=True)
+    # File name: <date>_<txn_id>.json (add .json for safety)
+    file_path = os.path.join(base, f"{date_str}_{transaction_id}.json")
+    with open(file_path, "w") as f:
+        json.dump(meter_values, f, indent=2)
+    return file_path
 
-    # build the right OCPP message
-    if action == "remote_stop":
-        tx = _transactions.get(charger_id)
-        if not tx:
-            raise HTTPError(404, "No transaction to stop")
-        coro = ws.send_text(json.dumps([2, msg_id, "RemoteStopTransaction",
-                                        {"transactionId": tx["transactionId"]}]))
 
-    elif action.startswith("change_availability_"):
-        _, _, mode = action.partition("_availability_")
-        coro = ws.send_text(json.dumps([2, msg_id, "ChangeAvailability",
-                                        {"connectorId": 0, "type": mode.capitalize()}]))
+def view_energy_graph(*, charger_id=None, date=None, **_):
+    """
+    Render a page with a graph for a charger's session by date.
+    """
+    import glob
+    from datetime import datetime
+    html = ['<link rel="stylesheet" href="/static/styles/charger_status.css">']
+    html.append('<h1>Charger Transaction Graph</h1>')
 
-    elif action.startswith("reset_"):
-        _, mode = action.split("_", 1)
-        coro = ws.send_text(json.dumps([2, msg_id, "Reset", {"type": mode.capitalize()}]))
+    # Form for charger/date selector
+    graph_dir = gw.resource("work", "etron", "graphs")
+    charger_dirs = sorted(os.listdir(graph_dir)) if os.path.isdir(graph_dir) else []
+    txn_files = []
+    if charger_id:
+        cdir = os.path.join(graph_dir, charger_id)
+        if os.path.isdir(cdir):
+            txn_files = sorted(glob.glob(os.path.join(cdir, "*.json")))
+    html.append('<form method="get" action="/ocpp/csms/energy-graph" style="margin-bottom:2em;">')
+    html.append('<label>Charger: <select name="charger_id">')
+    html.append('<option value="">(choose)</option>')
+    for cid in charger_dirs:
+        sel = ' selected' if cid == charger_id else ''
+        html.append(f'<option value="{cid}"{sel}>{cid}</option>')
+    html.append('</select></label> ')
+    if txn_files:
+        html.append('<label>Transaction Date: <select name="date">')
+        html.append('<option value="">(choose)</option>')
+        for fn in txn_files:
+            # Filename: YYYY-MM-DD_<txn_id>.json
+            dt = os.path.basename(fn).split("_")[0]
+            sel = ' selected' if dt == date else ''
+            html.append(f'<option value="{dt}"{sel}>{dt}</option>')
+        html.append('</select></label> ')
+    html.append('<button type="submit">Show</button></form>')
 
-    elif action == "disconnect":
-        # schedule a raw close
-        coro = ws.close(code=1000, reason="Admin disconnect")
+    # Load and render the graph if possible
+    graph_data = []
+    if charger_id and date:
+        base = os.path.join(graph_dir, charger_id)
+        match = glob.glob(os.path.join(base, f"{date}_*.json"))
+        if match:
+            with open(match[0]) as f:
+                graph_data = json.load(f)
+        # Graph placeholder: (replace with your JS plotting lib)
+        html.append('<div style="background:#222;border-radius:1em;padding:1.5em;min-height:320px;">')
+        if graph_data:
+            html.append('<h3>Session kWh Over Time</h3>')
+            html.append('<pre style="color:#fff;font-size:1.02em;">')
+            # Show simple table (replace with a chart)
+            html.append("Time                | kWh\n---------------------|------\n")
+            for mv in graph_data:
+                ts = mv.get("timestampStr", "-")
+                kwh = "-"
+                for sv in mv.get("sampledValue", []):
+                    if sv.get("measurand") == "Energy.Active.Import.Register":
+                        kwh = sv.get("value")
+                html.append(f"{ts:21} | {kwh}\n")
+            html.append('</pre>')
+        else:
+            html.append("<em>No data available for this session.</em>")
+        html.append('</div>')
 
-    else:
-        raise HTTPError(400, f"Unknown action: {action}")
-
-    if _csms_loop:
-        # schedule it on the FastAPI loopMore actions
-        _csms_loop.call_soon_threadsafe(lambda: _csms_loop.create_task(coro))
-    else:
-        gw.warn("No CSMS event loop; action not sent")
-
-    return {"status": "requested", "messageId": msg_id}
+    return "".join(html)

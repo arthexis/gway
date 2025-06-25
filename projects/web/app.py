@@ -14,15 +14,25 @@ _homes = []  # (title, route)
 _enabled = set()
 UPLOAD_MB = 100
 
+
+# TODO: Replace work with shared to be symmetrical with static
+# static is a sub-folder of data, as shared is a sub-folder of work
+# data and work are fixed and will not change purpose, but static and shared 
+# (the specific sub-folders to share) are just good defaults.
+
+# The philosophical difference between static and shared is:
+# Static <- Exist unchangeable, typically a resource endlessly available to all users (lives in data/)
+# Shared <- An output that could change any time, and may be consumed by users (lives in work/)
+
 def setup(*,
     app=None,
     project="web.site",
     path=None,
     home: str = None,
-    views: str = "view",
+    views: str = "view", 
     apis: str = "api",
-    static="static",
-    work="work",
+    static="static",      
+    work="work",         # TODO: This should become shared="shared",
     engine="bottle",
 ):
     # file: projects/web/app.py
@@ -66,7 +76,34 @@ def setup(*,
         def send_work(filename):
             filename = filename.replace('-', '_')
             return static_file(filename, root=gw.resource("work", "shared"))
+        
+    # TODO: We should simplify how static files work by removing the styles/scripts folders
+    #       altogether. There is no benefit to splitting these two kinds of files just because of filetype.
+    #       This also readies the way to generic media delivery.
 
+    # A function or user can request a work or static path in any of these forms:
+    # 1. <static>/<file> 
+    # 2. <static>/<project>/<file> 
+    # 3. <static>/<project>/<view_name>/<file>
+
+    # Then we return the first file we find by checking these in order:
+    # 1. data/<static>/<project>/<view_name>/<file>
+    # 2. data/<static>/<project>/<file> 
+    # 3. data/<static>/<file> 
+
+    # TODO: Currently each project attached to the app creates directories in data for css and js:
+    #       data/<project>/static/... However testing reveals one folder is being created per project segment
+    #       but all at the same level. This means, web.nav + web.site create web/, nav/ and site/ as siblings. 
+    #       It is expected that it would create them deeply instead: web/nav/ amd web/site/. 
+
+    # TODO: Once deep static folders are implemented, allow project static files to be used as fallback
+    #       for missing files in sub-projects, for example: If /static/web/nav/base.css is requested, but doesn't
+    #       exist, and /static/web/base.css or /static/base.css exist, return those in that order instead.
+
+    # work should be implemented in a similar way as static, except the URL looks like this:
+    # work/<files> translates to work/<shared>/<files> in the file system. Unlike static, in work the parameter
+    # changes which sub-folder is used, but work/ is fixed in the parh 
+ 
     if static:
         # --- Global static (styles and scripts) ---
         @app.route(f"/{static}/styles/<filename:path>")
@@ -209,7 +246,6 @@ def setup(*,
             js_files=js_files,  # <-- add this line
         )
 
-
     @app.route("/", method=["GET", "POST"])
     def index():
         response.status = 302
@@ -345,6 +381,11 @@ def add_home(home, path):
         _homes.append((title, route))
         gw.debug(f"Added home: ({title}, {route})")
 
+    
+
+# TODO: Consider changes to the following views as the scripts and styles distinction is
+# no longer needed. Fuse into a single function "collect_static". Remember to collect
+# static data for the view_name, and for every level of the project (if it has sub-projects)
 
 # Note that the logic for collecting JS and CSS is not the same, for example:
 # All web/static/scripts/*.js files found are installed by default in all site pages.

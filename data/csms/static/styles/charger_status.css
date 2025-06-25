@@ -1,0 +1,168 @@
+/* OCPP Dashboard Card Layout - Responsive and Clean */
+
+.ocpp-dashboard {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 32px;
+    margin: 24px 0 0 0;
+    justify-content: flex-start;
+    /* Remove max-width, but cards have a max-width instead */
+}
+
+.charger-card {
+    background: #242b32;
+    color: #fff;
+    border-radius: 1rem;
+    min-width: 370px;
+    max-width: 530px;
+    flex: 1 1 48%;     /* Two columns when space allows */
+    padding: 1.3em 1.8em 1.1em 1.8em;
+    box-shadow: 0 2px 18px #0004;
+    margin-bottom: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7em;
+    word-break: break-all;
+    align-items: stretch;
+}
+
+.charger-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1em;
+    flex-wrap: wrap;
+    margin-bottom: 0.2em;
+}
+.charger-id {
+    font-family: monospace;
+    font-size: 1.35em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    max-width: 310px;
+    line-height: 1.1;
+    color: #cfe3ff;
+}
+.charger-status {
+    font-weight: bold;
+    font-size: 1.22em;
+}
+.charger-details-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.3em 1em;
+    margin-top: 0.2em;
+}
+.charger-details-row label {
+    font-weight: 400;
+    color: #a6c4e4;
+    font-size: 1em;
+}
+.charger-action-row {
+    margin-top: 0.6em;
+    display: flex;
+    flex-direction: row;
+    gap: 0.6em;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.charger-action-row select {
+    font-size: 1em;
+    padding: 0.32em 1.7em 0.32em 0.9em; /* wider on the right for space */
+    border-radius: 0.32em;
+    border: 1px solid #333;
+    background: #283344;
+    color: #e8f2ff;
+    margin-right: 1.1em;   /* Add big space to separate from buttons */
+    min-width: 120px;
+}
+
+.charger-action-row button {
+    font-size: 1em;
+    padding: 0.25em 1.2em;
+    border-radius: 0.32em;
+    border: 1px solid #333;
+    background: #283344;
+    color: #e8f2ff;
+    margin-right: 0.2em;
+    min-width: 78px;
+    white-space: nowrap;
+}
+.charger-action-row button:last-child {
+    margin-right: 0;
+}
+.charger-action-row button.graph-btn {
+    color: #7ff;
+    background: #242b32;
+    border: 1px solid #444;
+    text-decoration: underline;
+}
+.charger-action-row button.details-btn {
+    min-width: 84px;
+}
+.charger-details-panel {
+    background: #111a24;
+    border-radius: 0.7em;
+    margin: 0.7em 0 0 0;
+    padding: 0.8em 1em;
+    font-size: 0.98em;
+    max-height: 320px;
+    overflow: auto;
+    color: #fff;
+    white-space: pre-wrap;
+}
+.ocpp-wsbar {
+    margin: 1.5em 0 0 0;
+    background: #20292f;
+    border-radius: 0.7em;
+    color: #e6e6e6;
+    display: flex;
+    align-items: center;
+    gap: 1.1em;
+    padding: 1em 1.3em;
+    font-size: 1.03em;
+    max-width: 530px;
+}
+
+@media (max-width: 1200px) {
+    .ocpp-dashboard {
+        gap: 18px;
+        justify-content: center;
+    }
+}
+@media (max-width: 900px) {
+    .ocpp-dashboard {
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+    }
+    .charger-card, .ocpp-wsbar {
+        max-width: 98vw;
+        min-width: 0;
+        width: 98vw;
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+@media (max-width: 600px) {
+    .ocpp-dashboard {
+        gap: 0;
+        margin-top: 12px;
+    }
+    .charger-card, .ocpp-wsbar {
+        border-radius: 0;
+        max-width: 100vw;
+        min-width: 0;
+        width: 100vw;
+        margin-left: 0;
+        margin-right: 0;
+        box-shadow: none;
+        padding-left: 0.5em;
+        padding-right: 0.5em;
+    }
+    .charger-card {
+        margin-bottom: 8px;
+    }
+}

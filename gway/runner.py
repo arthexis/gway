@@ -43,14 +43,11 @@ class Runner:
         finally:
             loop.close()
 
-    def until(self, *, file=None, url=None, pypi=False, forever=False, hours=None):
+    def until(self, *, file=None, url=None, pypi=False, forever=False):
         assert file or url or pypi or forever, "Use forever for unconditional looping."
 
-        # TODO: Implement an 'hours' param that allows a range of hours of operation
-        # which may be in the form: 9:00 - 18:00 (with or w/o whitespace)
-        # When the closing time is reached, stop the loop. If the function is requested
-        # to start before the opening time, hold until that time before actually
-        # starting (show a warning explaining its temporarily closed and hours)
+        if not self._async_threads and hasattr(self, "critical"):
+            self.critical("No async threads detected before entering loop.")
 
         def shutdown(reason):
             if hasattr(self, "warning"):

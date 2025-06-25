@@ -12,11 +12,16 @@ def view_readme(*args, **kwargs):
     html_parts = publish_parts(source=rst_content, writer_name="html")
     return html_parts["html_body"]
 
+
 def view_help(topic="", *args, **kwargs):
     """
     Render dynamic help based on GWAY introspection and search-style links.
     If there is an exact match in the search, show it at the top (highlighted).
     """
+
+    # TODO: Change the wat the help system works: Instead of just using the results of
+    # gw.gelp at all times, compliment this result with other information. 
+
     topic_in = topic or ""
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
@@ -217,3 +222,4 @@ def view_qr_code(*args, value=None, **kwargs):
         <img src="{qr_url}" alt="QR Code" class="qr" />
         <p><a href="{back_link}">Generate another</a></p>
     """
+
