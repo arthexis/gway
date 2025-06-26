@@ -1,11 +1,12 @@
 # file: recipes/etron/cloud.gwr
 # OCPP 1.6 CSMS Recipe with basic RFID auth
 
-web app setup 
+web app setup --project ocpp.csms --home charger-status
     --project web.cookies 
     --project web.nav
     --project vbox 
-    --project ocpp.csms --home charger-status
+   
+web static collect
 
 # Toggle this version to apply the allow list  
 ocpp csms setup-app --allow data/etron/rfids.cdv --location etron_cloud

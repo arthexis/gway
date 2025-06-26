@@ -5,25 +5,26 @@ import subprocess
 import time
 import socket
 import requests
+from bs4 import BeautifulSoup
+from gway import gw
 
 class ConwayWebTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Use website recipe, port 8888
+        # Start the demo website (port 8888)
         cls.proc = subprocess.Popen(
             ["gway", "-r", "website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
-        cls._wait_for_port(8888, timeout=12)
-        # Let server start and write files
+        cls._wait_for_port(8888, timeout=15)
+        # Give server time to finish startup
         time.sleep(2)
         cls.base_url = "http://127.0.0.1:8888"
 
     @classmethod
     def tearDownClass(cls):
-        # Kill the subprocess
         if hasattr(cls, "proc") and cls.proc:
             cls.proc.terminate()
             try:
@@ -32,7 +33,7 @@ class ConwayWebTests(unittest.TestCase):
                 cls.proc.kill()
 
     @staticmethod
-    def _wait_for_port(port, timeout=10):
+    def _wait_for_port(port, timeout=12):
         start = time.time()
         while time.time() - start < timeout:
             try:
@@ -42,78 +43,34 @@ class ConwayWebTests(unittest.TestCase):
                 time.sleep(0.2)
         raise TimeoutError(f"Port {port} not responding after {timeout} seconds")
 
-    def _trim_html(self, html, max_lines=40):
-        """
-        Trim HTML for readable test failure output:
-        - Show only the first and last max_lines of HTML
-        - Replace all form contents with [FORM DATA]
-        - Skip the gameboard table with [ ... gameboard table trimmed ... ]
-        """
-        lines = html.splitlines()
-        trimmed = []
-        in_form = False
-        in_table = False
-
-        for line in lines:
-            # Detect the gameboard table
-            if '<table' in line and 'id="gameboard"' in line:
-                in_table = True
-                trimmed.append('[... gameboard table trimmed ...]')
-                continue
-            if in_table and '</table>' in line:
-                in_table = False
-                continue
-            if in_table:
-                continue
-
-            # Detect form blocks
-            if '<form' in line:
-                in_form = True
-                trimmed.append('[FORM DATA]')
-                continue
-            if in_form and '</form>' in line:
-                in_form = False
-                continue
-            if in_form:
-                continue
-
-            # Otherwise, keep line
-            trimmed.append(line)
-
-        # Now apply head/tail limit
-        if len(trimmed) > max_lines * 2:
-            head = trimmed[:max_lines]
-            tail = trimmed[-max_lines:]
-            return "\n".join(head) + "\n[... trimmed ...]\n" + "\n".join(tail)
-        return "\n".join(trimmed)
+    def _get_soup(self, url):
+        resp = requests.get(url)
+        self.assertEqual(
+            resp.status_code, 200,
+            f"Non-200 status code: {resp.status_code}\nURL: {url}"
+        )
+        return BeautifulSoup(resp.text, "html.parser"), resp
 
     def test_game_of_life_page_includes_css_and_js(self):
         """Game of Life page includes its css/js and download link."""
-        resp = requests.get(self.base_url + "/conway/game-of-life")
-        self.assertEqual(
-            resp.status_code, 200,
-            f"Non-200 status code: {resp.status_code}\n{self._trim_html(resp.text)}"
-        )
-        html = resp.text
-
-        self.assertIn(
-            '/static/conway/styles/game_of_life.css', html,
-            "game_of_life.css not found in HTML:\n" + self._trim_html(html)
-        )
-        self.assertIn(
-            '/static/conway/scripts/game_of_life.js', html,
-            "game_of_life.js not found in HTML:\n" + self._trim_html(html)
-        )
-        # New, robust check for download link:
-        self.assertIn(
-            'href="/work/conway.txt"', html,
-            'href="/work/conway.txt" link not found in HTML:\n' + self._trim_html(html)
-        )
-        # Optionally, you can check for the download attribute, but do not fail if missing.
+        soup, resp = self._get_soup(self.base_url + "/conway/game-of-life")
+        # CSS
+        css_links = [link['href'] for link in soup.find_all('link', rel="stylesheet")]
+        gw.info(f"CSS links found: {css_links}")
+        self.assertIn("/shared/global.css", css_links, f"/shared/global.css not in {css_links}")
+        # JS
+        js_links = [script['src'] for script in soup.find_all('script', src=True)]
+        gw.info(f"JS scripts found: {js_links}")
+        self.assertIn("/shared/global.js", js_links, f"/shared/global.js not in {js_links}")
+        # Download link
+        download_link = soup.find('a', href="/shared/conway.txt")
+        self.assertIsNotNone(download_link, "Download link for /shared/conway.txt not found in page HTML")
+        # Optionally: log the first part of the page for debugging
+        gw.info("Top of page: " + str(soup)[:400])
 
     def test_game_of_life_css_file_downloadable(self):
-        """CSS file is downloadable with correct content type."""
-        url = self.base_url + "/static/conway/styles/game_of_life.css"
+        """CSS bundle is downloadable with correct content type."""
+        url = self.base_url + "/shared/global.css"
         resp = requests.get(url)
         self.assertEqual(
             resp.status_code, 200,
@@ -129,16 +86,17 @@ class ConwayWebTests(unittest.TestCase):
         )
 
     def test_game_of_life_js_file_downloadable(self):
-        """JS file is downloadable with correct content type."""
-        url = self.base_url + "/static/conway/scripts/game_of_life.js"
+        """JS bundle is downloadable with correct content type."""
+        url = self.base_url + "/shared/global.js"
         resp = requests.get(url)
         self.assertEqual(
             resp.status_code, 200,
             f"JS not found (status {resp.status_code})."
         )
-        self.assertIn(
-            "javascript", resp.headers.get("Content-Type", ""),
-            f"Wrong content-type for JS: {resp.headers.get('Content-Type')}"
+        content_type = resp.headers.get("Content-Type", "")
+        self.assertTrue(
+            "javascript" in content_type.lower(),
+            f"Wrong content-type for JS: {content_type}"
         )
         self.assertTrue(
             len(resp.text) > 0,
@@ -146,12 +104,12 @@ class ConwayWebTests(unittest.TestCase):
         )
 
     def test_download_board_link_works(self):
-        """/work/conway.txt returns a plain text file, not HTML, and is not empty."""
-        url = self.base_url + "/work/conway.txt"
+        """/shared/conway.txt returns a plain text file, not HTML, and is not empty."""
+        url = self.base_url + "/shared/conway.txt"
         resp = requests.get(url)
         self.assertEqual(
             resp.status_code, 200,
-            f"/work/conway.txt not found (status {resp.status_code})."
+            f"/shared/conway.txt not found (status {resp.status_code})."
         )
         self.assertIn(
             "text/plain", resp.headers.get("Content-Type", ""),
@@ -167,22 +125,18 @@ class ConwayWebTests(unittest.TestCase):
         )
 
     def test_css_and_js_are_linked_first(self):
-        """Canary for regression: main CSS and JS files should appear before </head> and </body>"""
-        resp = requests.get(self.base_url + "/conway/game-of-life")
-        self.assertEqual(
-            resp.status_code, 200,
-            f"Non-200 status code: {resp.status_code}\n{self._trim_html(resp.text)}"
-        )
-        html = resp.text
-        head = html.split("</head>")[0]
-        self.assertIn(
-            '/static/conway/styles/game_of_life.css', head,
-            "game_of_life.css not linked in <head>:\n" + self._trim_html(head)
-        )
-        self.assertIn(
-            '/static/conway/scripts/game_of_life.js', html,
-            "game_of_life.js not linked in HTML:\n" + self._trim_html(html)
-        )
+        """
+        CSS should appear in <head>, JS should appear before </body>.
+        """
+        soup, resp = self._get_soup(self.base_url + "/conway/game-of-life")
+        head = soup.head
+        body = soup.body
+        # CSS in head
+        css_links = [link['href'] for link in head.find_all('link', rel="stylesheet")]
+        self.assertIn("/shared/global.css", css_links, f"/shared/global.css not linked in <head>: {css_links}")
+        # JS at bottom of body (look for the last scripts)
+        js_links = [script['src'] for script in body.find_all('script', src=True)]
+        self.assertIn("/shared/global.js", js_links, f"/shared/global.js not linked before </body>: {js_links}")
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,7 +18,7 @@ def generate_image(value, *, path=None):
     """
     img = qrcode.make(value)
     if path is None:
-        path = gw.resource("work", "shared", "qr_codes", str(uuid.uuid4()) + ".png")
+        path = gw.resource("work", "shared", "qr", str(uuid.uuid4()) + ".png")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     img.save(path)
     return path
@@ -31,11 +31,11 @@ def generate_url(value):
     """
     safe_filename = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=") + ".png"
     if safe_filename not in _qr_code_cache:
-        qr_path = gw.resource("work", "shared", "qr_codes", safe_filename)
+        qr_path = gw.resource("work", "shared", "qr", safe_filename)
         if not os.path.exists(qr_path):
             generate_image(value, path=qr_path)
         _qr_code_cache.add(safe_filename)
-    return f"/work/qr-codes/{safe_filename}"
+    return f"/shared/qr/{safe_filename}"
 
 
 def generate_b64data(value):

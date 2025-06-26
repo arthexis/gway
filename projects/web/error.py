@@ -1,6 +1,10 @@
 from gway import gw
 
-def redirect(error=None, *, note="", default=None, view_name=None):
+def redirect(message="", *, err=None, default=None, view_name=None):
+    """
+    GWAY error/redirect handler.
+    Deprecated: 'view_name'. Now uses gw.web.app.current_view.
+    """
     from bottle import request, response
     import traceback
     import html
@@ -9,9 +13,23 @@ def redirect(error=None, *, note="", default=None, view_name=None):
     visited = gw.web.cookies.get("visited", "")
     visited_items = visited.split("|") if visited else []
 
+    # --- DEPRECATED: view_name, use gw.web.app.current_view instead ---
+    if view_name is not None:
+        import warnings
+        warnings.warn(
+            "redirect(): 'view_name' is deprecated. Use gw.web.app.current_view instead.",
+            DeprecationWarning
+        )
+    # Use the new convention
+    curr_view = getattr(gw.web.app, "current_view", None)
+    view_key = curr_view() if callable(curr_view) else curr_view
+    # fallback to old param if needed (for backward compatibility, will be dropped soon)
+    if not view_key and view_name:
+        view_key = view_name
+
     pruned = False
-    if view_name and gw.web.cookies.check_consent():
-        norm_broken = (view_name or "").replace("-", " ").replace("_", " ").title().lower()
+    if view_key and gw.web.cookies.check_consent():
+        norm_broken = (view_key or "").replace("-", " ").replace("_", " ").title().lower()
         new_items = []
         for v in visited_items:
             title = v.split("=", 1)[0].strip().lower()
@@ -25,8 +43,8 @@ def redirect(error=None, *, note="", default=None, view_name=None):
 
     if debug_enabled:
         tb_str = ""
-        if error:
-            tb_str = "".join(traceback.format_exception(type(error), error, getattr(error, "__traceback__", None)))
+        if err:
+            tb_str = "".join(traceback.format_exception(type(err), err, getattr(err, "__traceback__", None)))
         debug_content = f"""
         <html>
         <head>
@@ -44,8 +62,8 @@ def redirect(error=None, *, note="", default=None, view_name=None):
         <body>
             <h1>GWAY Debug Error</h1>
             <div id="debug-content">
-                <div class="section"><b>Note:</b> {html.escape(str(note) or "")}</div>
-                <div class="section"><b>Error:</b> {html.escape(str(error) or "")}</div>
+                <div class="section"><b>Message:</b> {html.escape(str(message) or "")}</div>
+                <div class="section"><b>Error:</b> {html.escape(str(err) or "")}</div>
                 <div class="section"><b>Path:</b> {html.escape(request.path or "")}<br>
                                      <b>Method:</b> {html.escape(request.method or "")}<br>
                                      <b>Full URL:</b> {html.escape(request.url or "")}</div>
@@ -68,4 +86,3 @@ def redirect(error=None, *, note="", default=None, view_name=None):
     response.status = 302
     response.set_header("Location", default or gw.web.app.default_home())
     return ""
-

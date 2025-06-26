@@ -190,39 +190,39 @@ def view_cookie_jar(*, eat=None):
         <p>You can remove all stored cookie information at any time by using the form below.</p>
         {removal_form}
         <hr>
-        <p>On the other hand, you can make your cookies available in other browsers and devices by configuring an identity.</p>
-        <p><button><a href="/cookies/my-identity">Learn more about identities.</a></button></p>
+        <p>On the other hand, you can make your cookies available in other browsers and devices by configuring a mask.</p>
+        <p><a href="/cookies/my-mask">Learn more about masks.</a></p>
         """
 
-# --- Identities System ---
+# --- Mask System ---
 
-def _normalize_identity(identity: str) -> str:
+def _normalize_mask(mask: str) -> str:
     """
-    Normalize identity string using slug rules: lowercase, alphanumeric and dashes, no spaces.
+    Normalize mask string using slug rules: lowercase, alphanumeric and dashes, no spaces.
     """
-    identity = identity.strip().lower()
-    identity = re.sub(r"[\s_]+", "-", identity)
-    identity = re.sub(r"[^a-z0-9\-]", "", identity)
-    identity = re.sub(r"\-+", "-", identity)
-    identity = identity.strip("-")
-    return identity
+    mask = mask.strip().lower()
+    mask = re.sub(r"[\s_]+", "-", mask)
+    mask = re.sub(r"[^a-z0-9\-]", "", mask)
+    mask = re.sub(r"\-+", "-", mask)
+    mask = mask.strip("-")
+    return mask
 
-def _identities_path():
-    """Returns the path to the identities.cdv file in work/."""
-    return gw.resource("work", "identities.cdv")
+def _masks_path():
+    """Returns the path to the masks.cdv file in work/."""
+    return gw.resource("work", "masks.cdv")
 
-def _read_identities():
-    """Reads identities.cdv as dict of identity -> cookies_dict. Returns {} if not present."""
-    path = _identities_path()
+def _read_masks():
+    """Reads masks.cdv as dict of mask -> cookies_dict. Returns {} if not present."""
+    path = _masks_path()
     try:
         return gw.cdv.load_all(path)
     except Exception:
         return {}
 
-def _write_identities(identity_map):
-    """Writes the given identity_map back to identities.cdv using gw.cdv.save_all."""
-    path = _identities_path()
-    gw.cdv.save_all(path, identity_map)
+def _write_masks(mask_map):
+    """Writes the given mask_map back to masks.cdv using gw.cdv.save_all."""
+    path = _masks_path()
+    gw.cdv.save_all(path, mask_map)
 
 def _get_current_cookies():
     """Return a dict of all current cookies (excluding blank/None)."""
@@ -236,120 +236,120 @@ def _restore_cookies(cookie_dict):
         set(k, v)
         
 
-def view_my_identity(*, claim=None, set_identity=None):
+def view_my_mask(*, claim=None, set_mask=None):
     """
-    View and manage identity linking for cookies.
-    - GET: Shows current identity and allows claim or update.
-    - POST (claim/set_identity): Claim an identity and save/load cookies to/from identities.cdv.
+    View and manage mask linking for cookies.
+    - GET: Shows current mask and allows claim or update.
+    - POST (claim/set_mask): Claim a mask and save/load cookies to/from masks.cdv.
     
-    If user claims an existing identity AND already has an identity cookie, 
-    ALL existing cookies (except cookies_accepted) are wiped before restoring the claimed identity.
-    No wipe is performed when creating a new identity.
+    If user claims an existing mask AND already has a mask cookie, 
+    ALL existing cookies (except cookies_accepted) are wiped before restoring the claimed mask.
+    No wipe is performed when creating a new mask.
     """
     cookies_ok = check_consent()
-    identity = get("identity", "")
+    mask = get("mask", "")
 
-    # Handle claiming or setting identity via POST
-    if claim or set_identity:
-        ident = (claim or set_identity or "").strip()
-        norm = _normalize_identity(ident)
+    # Handle claiming or setting mask via POST
+    if claim or set_mask:
+        ident = (claim or set_mask or "").strip()
+        norm = _normalize_mask(ident)
         if not norm:
-            msg = "<b>Identity string is invalid.</b> Please use only letters, numbers, and dashes."
+            msg = "<b>mask string is invalid.</b> Please use only letters, numbers, and dashes."
         else:
-            identity_map = _read_identities()
-            existing = identity_map.get(norm)
+            mask_map = _read_masks()
+            existing = mask_map.get(norm)
             if not existing:
-                # New identity: Save all current cookies (except identity and cookies_accepted) to record
+                # New mask: Save all current cookies (except mask and cookies_accepted) to record
                 current = _get_current_cookies()
-                filtered = {k: v for k, v in current.items() if k not in ("identity", "cookies_accepted")}
-                identity_map[norm] = filtered
-                _write_identities(identity_map)
-                set("identity", norm)
+                filtered = {k: v for k, v in current.items() if k not in ("mask", "cookies_accepted")}
+                mask_map[norm] = filtered
+                _write_masks(mask_map)
+                set("mask", norm)
                 msg = (
-                    f"<b>Identity <code>{html.escape(norm)}</code> claimed and stored!</b> "
-                    "Your cookie data has been saved under this identity. "
-                    "You may now restore it from any device or browser by claiming this identity again."
+                    f"<b>mask <code>{html.escape(norm)}</code> claimed and stored!</b> "
+                    "Your cookie data has been saved under this mask. "
+                    "You may now restore it from any device or browser by claiming this mask again."
                 )
             else:
-                # If user already has an identity, wipe all their cookies (except cookies_accepted) before restoring
-                if identity:
+                # If user already has a mask, wipe all their cookies (except cookies_accepted) before restoring
+                if mask:
                     for k in list(request.cookies):
                         if k not in ("cookies_accepted",):
                             remove(k)
-                # Restore cookies from identity
+                # Restore cookies from mask
                 _restore_cookies(existing)
-                set("identity", norm)
+                set("mask", norm)
                 # Merge new cookies into record (overwriting with current, but not blanking any missing)
                 merged = existing.copy()
                 for k, v in _get_current_cookies().items():
-                    if k not in ("identity", "cookies_accepted"):
+                    if k not in ("mask", "cookies_accepted"):
                         merged[k] = v
-                identity_map[norm] = merged
-                _write_identities(identity_map)
+                mask_map[norm] = merged
+                _write_masks(mask_map)
                 msg = (
-                    f"<b>Identity <code>{html.escape(norm)}</code> loaded!</b> "
-                    "All cookies for this identity have been restored and merged with your current data. "
-                    "Future changes to your cookies will update this identity."
+                    f"<b>mask <code>{html.escape(norm)}</code> loaded!</b> "
+                    "All cookies for this mask have been restored and merged with your current data. "
+                    "Future changes to your cookies will update this mask."
                 )
         # After processing, reload view with message
-        return view_my_identity() + f"<div style='margin:1em 0; color:#080;'>{msg}</div>"
+        return view_my_mask() + f"<div style='margin:1em 0; color:#080;'>{msg}</div>"
 
-    # GET: Show info, form, and current identity
-    identity_note = (
-        f"<div style='margin:1em 0; color:#005;'><b>Current identity:</b> <code>{html.escape(identity)}</code></div>"
-        if identity else
-        "<div style='margin:1em 0; color:#888;'>You have not claimed an identity yet.</div>"
+    # GET: Show info, form, and current mask
+    mask_note = (
+        f"<div style='margin:1em 0; color:#005;'><b>Current mask:</b> <code>{html.escape(mask)}</code></div>"
+        if mask else
+        "<div style='margin:1em 0; color:#888;'>You have not claimed a mask yet.</div>"
     )
     claim_form = """
     <form method="POST" style="margin-top:1em;">
-        <label for="identity" style="font-size:1em;">
-            Enter an identity string to claim (letters, numbers, dashes):</label>
-        <input type="text" id="identity" name="set_identity" required pattern="[a-zA-Z0-9\\-]+"
+        <label for="mask" style="font-size:1em;">
+            Enter a mask string to claim (letters, numbers, dashes):</label>
+        <input type="text" id="mask" name="set_mask" required pattern="[a-zA-Z0-9\\-]+"
                style="margin-left:0.5em; font-size:1.1em; width:12em; border-radius:0.3em; border:1px solid #aaa;"/>
         <button type="submit" style="margin-left:1em; font-size:1em;">Claim / Load</button>
     </form>
     """
     return f"""
-    <h1>Cookie Identities</h1>
+    <h1>Cookie Masks</h1>
     <p>
-        Identities allow you to copy your cookie data (such as preferences, navigation history, shopping cart, etc)
+        <strong>Masks</strong> allow you to copy your cookie data (such as preferences, navigation history, cart, etc)
         from one device or browser to another, without needing to register an account.
-        Claiming an identity will save a copy of your current cookie data under the identity string you provide.<br>
-        <b>Warning:</b> Anyone who knows this identity string can restore your cookie data, so choose carefully.
+        Claiming a mask will save a copy of your current cookie data under the mask string you provide.<br>
+        <b>Warning:</b> Anyone who knows this mask string can restore your cookie data, so choose carefully.
     </p>
-    {identity_note}
+    {mask_note}
     {claim_form}
     <p style='margin-top:2em; color:#555; font-size:0.98em;'>
-        To transfer cookies:<br>
-        1. On your main device, claim an identity (e.g. "my-handle-123").<br>
-        2. On another device/browser, visit this page and claim the same identity to restore your data.<br>
-        3. Any changes you make while holding an identity will update the stored copy.
+        To transfer your Cookies as a Mask:<br>
+        1. On your main device, claim mask (e.g. "my-handle-123").<br>
+        2. On another device/browser, visit this page and claim the same mask to restore your data.<br>
+        3. Any changes you make while holding a mask will update the stored copy.
     </p>
     """
 
 
-def update_identity_on_cookie_change():
+def update_mask_on_cookie_change():
     """
-    Called when any cookie is set or removed, to update the identity record (if any) in identities.cdv.
+    Called when any cookie is set or removed, to update the mask record (if any) in masks.cdv.
     """
-    identity = get("identity")
-    if identity:
-        norm = _normalize_identity(identity)
+    mask = get("mask")
+    if mask:
+        norm = _normalize_mask(mask)
         if not norm:
             return
-        identity_map = _read_identities()
-        current = {k: v for k, v in _get_current_cookies().items() if k not in ("identity", "cookies_accepted")}
-        identity_map[norm] = current
-        _write_identities(identity_map)
+        mask_map = _read_masks()
+        current = {k: v for k, v in _get_current_cookies().items() if k not in ("mask", "cookies_accepted")}
+        mask_map[norm] = current
+        _write_masks(mask_map)
 
-# --- Patch set() and remove() to trigger update_identity_on_cookie_change ---
+# --- Patch set() and remove() to trigger update_mask_on_cookie_change ---
 
 _orig_set = set
 def set(name, value, *args, **kwargs):
     _orig_set(name, value, *args, **kwargs)
-    update_identity_on_cookie_change()
+    update_mask_on_cookie_change()
 
 _orig_remove = remove
 def remove(name, *args, **kwargs):
     _orig_remove(name, *args, **kwargs)
-    update_identity_on_cookie_change()
+    update_mask_on_cookie_change()

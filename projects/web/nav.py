@@ -2,15 +2,15 @@
 
 import os
 from gway import gw
-from bottle import request
+from bottle import request, response
 
-
-def render(*, current_url=None, homes=None):
+def render(*, homes=None):
     """
-    Renders the sidebar navigation.
-    Always highlights and shows the current page, even if not yet in the visited cookie.
+    Renders the sidebar navigation including search, home links, visited links, and a QR compass.
+    No longer injects any <link rel="stylesheet"> for the theme. 
+    All theme CSS is injected by render_template in app.py.
     """
-    cookies_ok = gw.web.app.is_enabled('cookies') and gw.web.cookies.check_consent()
+    cookies_ok = gw.web.app.is_enabled('web.cookies') and gw.web.cookies.check_consent()
     gw.debug(f"Render nav with {homes=} {cookies_ok=}")
 
     visited = []
@@ -41,28 +41,13 @@ def render(*, current_url=None, homes=None):
         entries.append((current_title, current_route))
         visited_set.add(current_route)
 
-    # --- New: Build title count mapping for disambiguation ---
-    all_links = []
-    if homes:
-        for home_title, home_route in homes:
-            all_links.append((home_title, home_route.strip("/")))
-    all_links.extend(entries)  # Add visited
-    title_count = {}
-    title_routes = {}
-    for title, route in all_links:
-        k = title.strip().lower()
-        title_count[k] = title_count.get(k, 0) + 1
-        title_routes.setdefault(k, []).append(route)
-
-    # --- Build HTML ---
+    # --- Build HTML links ---
     links = ""
-    # Homes
     if homes:
         for home_title, home_route in homes:
             route = home_route.strip("/")
             is_current = ' class="current"' if route == current_route else ""
             links += f'<li><a href="/{home_route}"{is_current}>{home_title.upper()}</a></li>'
-    # Visited (most recent first, not already in homes)
     if cookies_ok and entries:
         visited_rendered = set()
         for title, route in reversed(entries):
@@ -79,66 +64,87 @@ def render(*, current_url=None, homes=None):
         <form action="/site/help" method="get" class="nav">
             <textarea name="topic" id="help-search"
                 placeholder="Search this GWAY"
-                class="help"
-                rows="1"
+                class="help" rows="1"
                 autocomplete="off"
                 spellcheck="false"
                 style="overflow:hidden; resize:none; min-height:2.4em; max-height:10em;"
                 oninput="autoExpand(this)"
             >{}</textarea>
         </form>
-        <script>
-        function autoExpand(el) {{
-            el.style.height = '2.4em'; // base height for 1 line
-            if (el.value.trim() !== "") {{
-                el.style.height = "auto";
-                el.style.height = (el.scrollHeight) + "px";
-            }}
-        }}
-        window.addEventListener("DOMContentLoaded", function(){{
-            var el = document.getElementById('help-search');
-            if (el) {{
-                // Auto-expand if pre-filled
-                if (el.value.trim() !== "") autoExpand(el);
-                // Submit on Enter, newline on Shift+Enter
-                el.addEventListener('keydown', function(e) {{
-                    if (e.key === "Enter" && !e.shiftKey) {{
-                        e.preventDefault();
-                        // Find parent form and submit
-                        var form = el.form;
-                        if (form) form.submit();
-                    }}
-                    // If Shift+Enter, allow default (insert newline)
-                }});
-            }}
-        }});
-        </script>
     '''.format(request.query.get("topic", ""))
 
     # --- QR code for this page ---
     compass = ""
-    if current_url:
-        qr_url = gw.qr.generate_url(gw.build_url(current_url))
+    try:
+        url = get_current_url()
+        qr_url = gw.qr.generate_url(url)
         compass = f'''
             <div class="compass">
                 <img src="{qr_url}" alt="QR Code" class="compass" />
             </div>
         '''
+    except Exception as e:
+        gw.debug(f"Could not generate QR compass: {e}")
 
     gw.debug(f"Visited cookie raw: {gw.web.cookies.get('visited')}")
     return f"<aside>{search_box}<ul>{links}</ul><br>{compass}</aside>"
+
+def get_style():
+    """
+    Returns the current user's preferred style path (to .css file), checking:
+    - URL ?css= param (for preview/testing)
+    - 'css' cookie
+    - First available style, or '/static/styles/base.css' if none found
+    This should be called by render_template for every page load.
+    """
+    styles = list_styles()
+    style_cookie = gw.web.cookies.get("css") if gw.web.app.is_enabled('web.cookies') else None
+    style_query = request.query.get("css")
+    style_path = None
+
+    # Prefer query param (if exists and valid)
+    if style_query:
+        for src, fname in styles:
+            if fname == style_query:
+                style_path = f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+                break
+    # Otherwise, prefer cookie
+    if not style_path and style_cookie:
+        for src, fname in styles:
+            if fname == style_cookie:
+                style_path = f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+                break
+    # Otherwise, first available style
+    if not style_path and styles:
+        src, fname = styles[0]
+        style_path = f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+    # Fallback to base
+    return style_path or "/static/styles/base.css"
+
+def get_selected_style():
+    """
+    (Deprecated for site-wide theme—use get_style instead.)
+    Returns the CSS <link> href for the selected style for this user/session.
+    """
+    return get_style()
+
+def get_current_url():
+    """Returns the current full URL path (with querystring)."""
+    url = request.fullpath
+    if request.query_string:
+        url += "?" + request.query_string
+    return url
 
 def html_escape(text):
     import html
     return html.escape(text or "")
 
-
 # --- Style view endpoints ---
 
 def view_style_switcher(*, css=None, project=None):
     """
-    GET/POST: Shows available styles (global + project), lets user choose, preview, and see raw CSS.
-    If cookies are accepted, sets the style via cookie when changed in dropdown (no redirect).
+    Shows available styles (global + project), lets user choose, preview, and see raw CSS.
+    If cookies are accepted, sets the style via cookie when changed in dropdown.
     If cookies are not accepted, only uses the css param for preview.
     """
     import os
@@ -146,28 +152,25 @@ def view_style_switcher(*, css=None, project=None):
 
     # Determine the project from context or fallback if not provided
     if not project:
-        # Try to infer project from URL or context if possible
         path = request.fullpath.strip("/").split("/")
         if path and path[0] in ("conway", "awg", "site", "etron"):
             project = path[0]
         else:
             project = "site"
 
-    # Helper to find all .css styles from both global and project dirs
-    def list_available_styles(project):
+    def list_styles_local(project):
         seen = set()
         styles = []
         # Global styles
-        global_dir = gw.resource("data", "web", "static", "styles")
+        global_dir = gw.resource("data", "static", "styles")
         if os.path.isdir(global_dir):
             for f in sorted(os.listdir(global_dir)):
                 if f.endswith(".css") and os.path.isfile(os.path.join(global_dir, f)):
                     if f not in seen:
                         styles.append(("global", f))
                         seen.add(f)
-        # Project styles
         if project:
-            proj_dir = gw.resource("data", project, "static", "styles")
+            proj_dir = gw.resource("data", "static", project, "styles")
             if os.path.isdir(proj_dir):
                 for f in sorted(os.listdir(proj_dir)):
                     if f.endswith(".css") and os.path.isfile(os.path.join(proj_dir, f)):
@@ -176,18 +179,15 @@ def view_style_switcher(*, css=None, project=None):
                             seen.add(f)
         return styles
 
-    styles = list_available_styles(project)
+    styles = list_styles_local(project)
     all_styles = [fname for _, fname in styles]
     style_sources = {fname: src for src, fname in styles}
 
-    # --- Consent logic ---
-    cookies_enabled = gw.web.app.is_enabled('cookies')
+    cookies_enabled = gw.web.app.is_enabled('web.cookies')
     cookies_accepted = gw.web.cookies.check_consent() if cookies_enabled else False
-
     css_cookie = gw.web.cookies.get("css")
-    selected_style = None
 
-    # Handle POST (change style, persist cookie if possible)
+    # Handle POST
     if request.method == "POST":
         selected_style = request.forms.get("css")
         if cookies_enabled and cookies_accepted and selected_style and selected_style in all_styles:
@@ -196,30 +196,34 @@ def view_style_switcher(*, css=None, project=None):
             response.set_header("Location", request.fullpath)
             return ""
 
-    # Pick style: POST > URL param > cookie > default
-    style = (
-        selected_style or
-        css or
-        request.query.get("css") or
-        (css_cookie if (css_cookie in all_styles) else None) or
-        (all_styles[0] if all_styles else "base.css")
+    # --- THIS IS THE MAIN LOGIC: ---
+    # Priority: query param > explicit function arg > cookie > default
+    style_query = request.query.get("css")
+    selected_style = (
+        style_query if style_query in all_styles else
+        (css if css in all_styles else
+         (css_cookie if css_cookie in all_styles else
+          (all_styles[0] if all_styles else "base.css")))
     )
-    if style not in all_styles:
-        style = all_styles[0] if all_styles else "base.css"
+    # If still not valid, fallback to default
+    if selected_style not in all_styles:
+        selected_style = all_styles[0] if all_styles else "base.css"
 
     # Determine preview link and path for raw CSS
-    if style_sources.get(style) == "global":
-        preview_href = f"/static/styles/{style}"
-        css_path = gw.resource("data", "web", "static", "styles", style)
+    if style_sources.get(selected_style) == "global":
+        preview_href = f"/static/styles/{selected_style}"
+        css_path = gw.resource("data", "static", "styles", selected_style)
+        css_link = f'<link rel="stylesheet" href="/static/styles/{selected_style}">'
     else:
-        preview_href = f"/static/{project}/styles/{style}"
-        css_path = gw.resource("data", project, "static", "styles", style)
+        preview_href = f"/static/{project}/styles/{selected_style}"
+        css_path = gw.resource("data", "static", project, "styles", selected_style)
+        css_link = f'<link rel="stylesheet" href="/static/{project}/styles/{selected_style}">'
 
     preview_html = f"""
-        <link rel="stylesheet" href="{preview_href}" />
+        {css_link}
         <div class="style-preview">
-            <h2>Theme Preview: {style[:-4].replace('_', ' ').title()}</h2>
-            <p>This is a preview of the <b>{style}</b> theme.</p>
+            <h2>Theme Preview: {selected_style[:-4].replace('_', ' ').title()}</h2>
+            <p>This is a preview of the <b>{selected_style}</b> theme.</p>
             <button>Sample button</button>
             <pre>code block</pre>
         </div>
@@ -233,7 +237,7 @@ def view_style_switcher(*, css=None, project=None):
 
     selector = style_selector_form(
         all_styles=styles,
-        selected_style=style,
+        selected_style=selected_style,
         cookies_enabled=cookies_enabled,
         cookies_accepted=cookies_accepted,
         project=project
@@ -243,7 +247,7 @@ def view_style_switcher(*, css=None, project=None):
         <h1>Select a Site Theme</h1>
         {selector}
         {preview_html}
-        <h3>CSS Source: {style}</h3>
+        <h3>CSS Source: {selected_style}</h3>
         <pre style="max-height:400px;overflow:auto;">{html_escape(css_code)}</pre>
     """
 
@@ -256,26 +260,12 @@ def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_acc
         selected = " selected" if fname == selected_style else ""
         options.append(f'<option value="{fname}"{selected}>{label}</option>')
 
-    # Info
     info = ""
     if cookies_enabled and not cookies_accepted:
         info = "<p><b><a href='/cookies/cookie-jar'>Accept cookies to save your style preference.</a></b></p>"
 
-    # JS for non-cookie: redirect on select
-    # We use window.location to append/update the ?css=... param
-    js_redirect = """
-    <script>
-    function styleSelectChanged(sel) {
-        var css = sel.value;
-        var url = window.location.pathname + window.location.search.replace(/([?&])css=[^&]*(&|$)/, '$1').replace(/^\\?|&$/g, '');
-        url += (url.indexOf('?') === -1 ? '?' : '&') + 'css=' + encodeURIComponent(css);
-        window.location = url;
-    }
-    </script>
-    """
-
+    # No JS redirect actually needed.
     if cookies_enabled and cookies_accepted:
-        # Form submit as POST
         return f"""
             {info}
             <form method="post" action="/nav/style-switcher" class="style-form" style="margin-bottom: 0.5em">
@@ -286,67 +276,34 @@ def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_acc
             </form>
         """
     else:
-        # No submit, only JS redirect
+        # Preview-only (no saving)
         return f"""
             {info}
-            {js_redirect}
             <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="styleSelectChanged(this)">
                 {''.join(options)}
             </select>
+            <script>
+                function styleSelectChanged(sel) {{
+                    var val = sel.value;
+                    var url = new URL(window.location.href);
+                    url.searchParams.set('css', val);
+                    window.location.href = url.toString();
+                }}
+            </script>
         """
 
-
-def get_style():
-    """
-    Returns the current user's preferred style filename, checking for:
-    - URL ?css=... parameter (for quick-testing themes)
-    - CSS cookie (for accepted preference)
-    - Otherwise, defaults to the first style or 'base.css'.
-    Discovers all available styles automatically.
-    """
-    import os
-    from bottle import request
-    styles_dir = gw.resource("data", "static", "styles")
-    all_styles = [
-        f for f in sorted(os.listdir(styles_dir))
-        if f.endswith(".css") and os.path.isfile(os.path.join(styles_dir, f))
-    ]
-    style = request.query.get('css')
-    if style and style in all_styles:
-        return style
-    css_cookie = gw.web.cookies.get("css")
-    if css_cookie and css_cookie in all_styles:
-        return css_cookie
-    return all_styles[0] if all_styles else "base.css"
-
-
-def get_current_url():
-    """
-    Returns the current URL path including query parameters.
-    Useful for QR codes and redirects that need full context.
-    """
-    from bottle import request
-    url = request.fullpath
-    if request.query_string:
-        url += "?" + request.query_string
-    return url
-
-
-def list_available_styles(project=None):
-    """Return all unique .css files in global and project style dirs as (source, name) pairs."""
+def list_styles(project=None):
     seen = set()
     styles = []
-    # Global styles
-    global_dir = gw.resource("data", "web", "static", "styles")
+    global_dir = gw.resource("data", "static", "styles")
     if os.path.isdir(global_dir):
         for f in sorted(os.listdir(global_dir)):
             if f.endswith(".css") and os.path.isfile(os.path.join(global_dir, f)):
                 if f not in seen:
                     styles.append(("global", f))
                     seen.add(f)
-    # Project styles
     if project:
-        proj_dir = gw.resource("data", project, "static", "styles")
+        proj_dir = gw.resource("data", "static", project, "styles")
         if os.path.isdir(proj_dir):
             for f in sorted(os.listdir(proj_dir)):
                 if f.endswith(".css") and os.path.isfile(os.path.join(proj_dir, f)):
@@ -354,4 +311,3 @@ def list_available_styles(project=None):
                         styles.append((project, f))
                         seen.add(f)
     return styles
-
