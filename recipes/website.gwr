@@ -8,13 +8,15 @@ web app setup --home readme
     --project awg --home cable-finder
     --project web.nav --home style-switcher
     --project web.cookies --home cookie-jar
-    --project vbox --home uploads
-    --project ocpp.csms --home charger-status
+    --project vbox --home uploads 
+    --project ocpp.csms --home charger-status --auth-required
     --project conway --home game-of-life 
+    --project web.auth 
 
 web static collect
-
 ocpp csms setup-app --location simulator
+
+web auth config-basic --optional
 
 # All the web app projects will use port 8888, but the ocpp ws will run on 9999  
 web server start-app --host 0.0.0.0 --port 8888 --ws-port 9999

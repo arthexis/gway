@@ -284,6 +284,10 @@ def is_abnormal_status(status: str, error_code: str) -> bool:
 
 # TODO: The graph link doesn't take us anywhere, screen stays the same after clicking.
 
+# TODO: Dashbord upgrades include link to online evcs simulator if is_enabled('ocpp.evcs')
+
+# TODO: Show the correct url to the server WS including domain name if available from env.
+
 # Bottle-based views are used for the interface, params injected by GWAY from query/payload
 # GWAY allows us to have the WS FastAPI server and Bottle UI server share memory space,
 # simply by placing both functions in the same project file.

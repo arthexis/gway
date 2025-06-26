@@ -2,13 +2,11 @@
 
 import os
 from gway import gw
-from bottle import request, response
+from bottle import request
 
 def render(*, homes=None):
     """
     Renders the sidebar navigation including search, home links, visited links, and a QR compass.
-    No longer injects any <link rel="stylesheet"> for the theme. 
-    All theme CSS is injected by render_template in app.py.
     """
     cookies_ok = gw.web.app.is_enabled('web.cookies') and gw.web.cookies.check_consent()
     gw.debug(f"Render nav with {homes=} {cookies_ok=}")

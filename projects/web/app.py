@@ -32,8 +32,9 @@ def setup(*,
     apis: str = "api",
     static="static",
     shared="shared",
-    css="global",       # Default CSS (without .css extension)
-    js="global",        # Default JS  (without .js extension)
+    css="global",           # Default CSS (without .css extension)
+    js="global",            # Default JS  (without .js extension)
+    auth_required=False,    # Default: Don't enforce --optional security
     engine="bottle",
 ):
     """
@@ -105,12 +106,15 @@ def setup(*,
             if os.path.isfile(file_path):
                 return static_file(os.path.basename(file_path), root=os.path.dirname(file_path))
             return HTTPResponse(status=404, body="static file not found")
-
+        
     # Main view dispatcher (only if views is not None)
     if views:
         @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
         def view_dispatch(view):
             nonlocal home, views
+            # --- AUTH CHECK ---
+            if is_enabled('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
+                return gw.web.error.unauthorized("Unauthorized: You are not permitted to view this page.")
             # Set current endpoint in GWAY context (for helpers/build_url etc)
             gw.context['current_endpoint'] = path
             segments = [s for s in view.strip("/").split("/") if s]
@@ -159,6 +163,9 @@ def setup(*,
         @app.route(f"/api/{path}/<view:path>", method=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
         def api_dispatch(view):
             nonlocal home, apis
+            # --- AUTH CHECK ---
+            if is_enabled('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
+                return gw.web.error.unauthorized("Unauthorized: API access denied.")
             # Set current endpoint in GWAY context (for helpers/build_url etc)
             gw.context['current_endpoint'] = path
             segments = [s for s in view.strip("/").split("/") if s]
@@ -191,7 +198,7 @@ def setup(*,
                 return res
             except Exception as e:
                 return gw.web.error.redirect("Broken API", err=e)
-    
+
     @app.route("/favicon.ico")
     def favicon():
         proj_parts = project.split('.')

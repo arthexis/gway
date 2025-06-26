@@ -8,7 +8,7 @@ from gway import gw
 # --- Core Cookie Utilities ---
 
 def set(name, value, path="/", expires=None, secure=None, httponly=True, samesite="Lax", **kwargs):
-    """Set a cookie on the response. Only includes expires if set, to avoid Bottle crash."""
+    """Set a cookie on the response. Only includes expires if set."""
     if not check_consent() and name != "cookies_accepted":
         return
     if secure is None:
