@@ -113,7 +113,7 @@ def setup(*,
         def view_dispatch(view):
             nonlocal home, views
             # --- AUTH CHECK ---
-            if is_enabled('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
+            if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
                 return gw.web.error.unauthorized("Unauthorized: You are not permitted to view this page.")
             # Set current endpoint in GWAY context (for helpers/build_url etc)
             gw.context['current_endpoint'] = path
@@ -164,7 +164,7 @@ def setup(*,
         def api_dispatch(view):
             nonlocal home, apis
             # --- AUTH CHECK ---
-            if is_enabled('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
+            if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
                 return gw.web.error.unauthorized("Unauthorized: API access denied.")
             # Set current endpoint in GWAY context (for helpers/build_url etc)
             gw.context['current_endpoint'] = path
@@ -234,7 +234,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
 
     # --- MAIN: THEME CSS HANDLING ---
     theme_css = None
-    if is_enabled('web.nav'):
+    if is_setup('web.nav'):
         try:
             theme_css = gw.web.nav.get_style()
         except Exception:
@@ -262,7 +262,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
     '''
 
     nav = ""
-    if is_enabled('web.nav'):
+    if is_setup('web.nav'):
         nav = gw.web.nav.render(homes=_homes)
 
     html = template("""<!DOCTYPE html>
@@ -301,7 +301,7 @@ def debug_routes(app):
     for route in app.routes:
         gw.debug(f"{route.method:6} {route.rule:30} -> {route.callback.__name__}")
 
-def is_enabled(project_name):
+def is_setup(project_name):
     global _enabled
     return project_name in _enabled
 

@@ -4,6 +4,11 @@ import asyncio, json, random, time, websockets
 import threading
 from gway import gw
 import secrets
+import base64
+
+# TODO: Fix this issue found in the logs.
+# [Simulator:CPX] Exception: cannot call recv while another coroutine is already running recv or recv_streaming
+# It seems to ocurr intermitently. 
 
 def parse_repeat(repeat):
     """Handle repeat=True/'forever'/n logic."""
@@ -14,7 +19,6 @@ def parse_repeat(repeat):
         return n if n > 0 else 1
     except Exception:
         return 1
-    
 
 def _thread_runner(target, *args, **kwargs):
     """Helper to run an async function in a thread with its own loop."""
@@ -27,7 +31,6 @@ def _unique_cp_path(cp_path, idx, total_threads):
     """Append -XXXX to cp_path for each thread when threads > 1."""
     if total_threads == 1:
         return cp_path
-    # Random 4-character uppercase hex, always unique per thread launch (not globally unique, which is fine for simulation)
     rand_tag = secrets.token_hex(2).upper()  # 4 hex digits, e.g., '1A2B'
     return f"{cp_path}-{rand_tag}"
 
@@ -41,12 +44,15 @@ def simulate(
     repeat=False,
     threads: int = None,
     daemon: bool = True,
+    username: str = None,
+    password: str = None,
 ):
     """
     Flexible OCPP charger simulator.
     - daemon=False: blocking, always returns after all runs.
     - daemon=True: returns a coroutine for orchestration, user is responsible for awaiting/cancelling.
     - threads: None/1 for one session; >1 to simulate multiple charge points.
+    - username/password: If provided, use HTTP Basic Auth on the WS handshake.
     """
     host    = gw.resolve(host)
     ws_port = int(gw.resolve(ws_port))
@@ -68,7 +74,9 @@ def simulate(
                     rfid,
                     this_cp_path,
                     duration,
-                    session_count
+                    session_count,
+                    username,
+                    password,
                 )
             except Exception as e:
                 print(f"[Simulator:coroutine:{idx}] Exception: {e}")
@@ -83,7 +91,9 @@ def simulate(
                     rfid,
                     this_cp_path,
                     duration,
-                    session_count
+                    session_count,
+                    username,
+                    password,
                 ))
             except Exception as e:
                 print(f"[Simulator:thread:{idx}] Exception: {e}")
@@ -114,19 +124,18 @@ def simulate(
         return orchestrate_all()
     else:
         if n_threads == 1:
-            asyncio.run(simulate_cp(0, host, ws_port, rfid, cp_path, duration, session_count))
+            asyncio.run(simulate_cp(0, host, ws_port, rfid, cp_path, duration, session_count, username, password))
         else:
             threads_list = []
             for idx in range(n_threads):
                 this_cp_path = _unique_cp_path(cp_path, idx, n_threads)
                 t = threading.Thread(target=_thread_runner, args=(
-                    simulate_cp, idx, host, ws_port, rfid, this_cp_path, duration, session_count
+                    simulate_cp, idx, host, ws_port, rfid, this_cp_path, duration, session_count, username, password
                 ), daemon=True)
                 t.start()
                 threads_list.append(t)
             for t in threads_list:
                 t.join()
-
 
 async def simulate_cp(
         cp_idx,
@@ -135,16 +144,29 @@ async def simulate_cp(
         rfid,
         cp_path,
         duration,
-        session_count
+        session_count,
+        username=None,
+        password=None,
     ):
     """
     Simulate a single CP session (possibly many times if session_count>1).
+    If username/password are provided, use HTTP Basic Auth in the handshake.
     """
     cp_name = cp_path if session_count == 1 else f"{cp_path}{cp_idx+1}"
     uri     = f"ws://{host}:{ws_port}/{cp_name}"
+    headers = {}
+    if username and password:
+        userpass = f"{username}:{password}"
+        b64 = base64.b64encode(userpass.encode("utf-8")).decode("ascii")
+        headers["Authorization"] = f"Basic {b64}"
+
     try:
-        async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as ws:
-            print(f"[Simulator:{cp_name}] Connected to {uri}")
+        async with websockets.connect(
+            uri,
+            subprotocols=["ocpp1.6"],
+            additional_headers=headers,
+        ) as ws:
+            print(f"[Simulator:{cp_name}] Connected to {uri} (auth={'yes' if headers else 'no'})")
 
             async def listen_to_csms(stop_event):
                 try:

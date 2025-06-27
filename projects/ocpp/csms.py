@@ -40,9 +40,10 @@ def setup_app(*,
     location=None,
     authorize=authorize_balance,
     email=None,
+    auth_required=False,
 ):
     global _transactions, _active_cons, _abnormal_status
-    email = email if isinstance(email, str) else gw.resolve('[ADMIN_EMAIL]')
+    email = email if isinstance(email, str) else (gw.resolve('[ADMIN_EMAIL]') if email else email)
 
     oapp = app
     from fastapi import FastAPI as _FastAPI
@@ -67,8 +68,13 @@ def setup_app(*,
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
         global _csms_loop, _abnormal_status
-        _csms_loop = asyncio.get_running_loop()
+        if auth_required:
+            if not gw.web.auth.check_websocket_auth(websocket):
+                await websocket.close(code=4401, reason="Unauthorized")
+                gw.warn(f"[OCPP] Unauthorized WebSocket connection attempt for charger_id={path}")
+                return
 
+        _csms_loop = asyncio.get_running_loop()
         charger_id = path.strip("/").split("/")[-1]
         gw.info(f"[OCPP] WebSocket connected: charger_id={charger_id}")
 
@@ -284,7 +290,7 @@ def is_abnormal_status(status: str, error_code: str) -> bool:
 
 # TODO: The graph link doesn't take us anywhere, screen stays the same after clicking.
 
-# TODO: Dashbord upgrades include link to online evcs simulator if is_enabled('ocpp.evcs')
+# TODO: Dashbord upgrades include link to online evcs simulator if is_setup('ocpp.evcs')
 
 # TODO: Show the correct url to the server WS including domain name if available from env.
 
