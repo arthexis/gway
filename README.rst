@@ -312,7 +312,7 @@ Recipes make Gway scripting modular and composable. Include them in your automat
 Design Philosophies
 ===================
 
-This section contains notes from the author on the nature of the code that may provide insight and guidance to future developers.
+This section contains notes from the author that **may** provide insight to future developers.
 
 
 Keep a Goal in Mind by Making it a TODO

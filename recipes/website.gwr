@@ -16,7 +16,7 @@ web app setup --home readme
 web static collect
 ocpp csms setup-app --location simulator
 
-web auth config-basic --optional
+web auth config-basic --optional --temp-link
 
 # All the web app projects will use port 8888, but the ocpp ws will run on 9999  
 web server start-app --host 0.0.0.0 --port 8888 --ws-port 9999
