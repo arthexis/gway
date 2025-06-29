@@ -34,9 +34,9 @@ def build(
     import subprocess
     import toml
 
-    user = gw.resolve("[PYPI_USERNAME]")
-    password = gw.resolve("[PYPI_PASSWORD]")
-    token = gw.resolve("[PYPI_API_TOKEN]")
+    if not (token := gw.resolve("[PYPI_API_TOKEN]", "")):
+        user = gw.resolve("[PYPI_USERNAME]")
+        password = gw.resolve("[PYPI_PASSWORD]")
 
     if all:
         bump = True
