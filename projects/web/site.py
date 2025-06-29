@@ -1,12 +1,24 @@
 # file: projects/web/site.py
 
+import os
 from docutils.core import publish_parts
 from gway import gw, __
 
-# TODO: Convert to view_reader and allow it to open safe files of different kinds.
+# TODO: Convert to view_reader and allow it to open safe files of different kinds. 
+#       Support .rst and .md first
+
+def _sanitize_filename(fname):
+    """
+    Sanitize the fname filename so only a bare filename is allowed (no path separators, etc).
+    Strips out slashes, backslashes, .., etc.
+    """
+    fname = os.path.basename(str(fname))
+    fname = fname.replace('/', '').replace('\\', '').replace('..', '')
+    return fname
 
 def view_reader(*, rst=__('[README]', 'README'), **kwargs):
     """Render the README.rst file as HTML."""
+    rst = _sanitize_filename(rst)
     readme_path = gw.resource(f"{rst}.rst")
     with open(readme_path, encoding="utf-8") as f:
         rst_content = f.read()
