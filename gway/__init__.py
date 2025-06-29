@@ -4,7 +4,7 @@
 
 from .gateway import Gateway, gw
 from .console import cli_main, process, load_recipe
-from .sigils import Sigil, Resolver, Spool
+from .sigils import Sigil, Resolver, Spool, __
 from .structs import Results
 from .logging import setup_logging
 from .envs import load_env

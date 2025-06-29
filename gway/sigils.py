@@ -8,7 +8,7 @@ class Sigil:
     _pattern = re.compile(r"\[([^\[\]]+)\]")
 
     def __init__(self, text):
-        self.original = text
+        self.original = text or ''
 
     def _make_lookup(self, finder):
         def lookup(key):
@@ -169,7 +169,8 @@ class Spool:
     """
     A spool is a collection of sigils.
     Represents a list of Sigils, and supports batch resolution.
-    Example: Spool('[HOST]', '[HOSTNAME]', sigil_var, '127.0.0.1')
+    Example: Spool('[HOST]', '[HOSTNAME]', sigiled_var, '127.0.0.1')
+    or __('[HOST]', '[HOSTNAME]', sigiled_var, '127.0.0.1')
     All elements are converted to Sigil if not already.
     """
     def __init__(self, *values):
@@ -229,3 +230,5 @@ class Spool:
         return f"Spool({', '.join(repr(s) for s in self.sigils)})"
     def __str__(self):
         return " | ".join(str(s) for s in self.sigils)
+
+__ = Spool

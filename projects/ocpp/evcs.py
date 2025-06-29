@@ -2,7 +2,7 @@
 
 import threading
 import traceback
-from gway import gw
+from gway import gw, __
 import secrets
 import base64
 from bottle import request
@@ -38,10 +38,12 @@ def _unique_cp_path(cp_path, idx, total_threads):
     rand_tag = secrets.token_hex(2).upper()  # 4 hex digits, e.g., '1A2B'
     return f"{cp_path}-{rand_tag}"
 
+# TODO: Update sigils to new model
+
 def simulate(
     *,
-    host: str = "[WEBSITE_HOST|127.0.0.1]",
-    ws_port: int = "[WEBSOCKET_PORT|9000]",
+    host: str = __("[SITE_HOST]", "127.0.0.1") ,
+    ws_port: int = __("[WEBSOCKET_PORT]", "9000"),
     rfid: str = "FFFFFFFF",
     cp_path: str = "CPX",
     duration: int = 60,
@@ -52,7 +54,7 @@ def simulate(
     password: str = None,
 ):
     """
-    Flexible OCPP charger simulator.
+    Flexible OCPP 1.6 charger simulator.
     - daemon=False: blocking, always returns after all runs.
     - daemon=True: returns a coroutine for orchestration, user is responsible for awaiting/cancelling.
     - threads: None/1 for one session; >1 to simulate multiple charge points.

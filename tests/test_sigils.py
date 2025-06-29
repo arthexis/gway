@@ -1,7 +1,7 @@
 # file: tests/test_sigils.py
 
 import unittest
-from gway import Sigil, Spool, gw
+from gway import Sigil, Spool, gw, __
 
 
 class SigilTests(unittest.TestCase):

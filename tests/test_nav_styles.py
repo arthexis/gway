@@ -141,8 +141,8 @@ class NavStyleTests(unittest.TestCase):
             f"Theme change did not set css cookie, got cookies: {session.cookies.get_dict()}"
         )
 
-        # 4. Now visit /site/readme (or any other page)
-        resp2 = session.get(self.base_url + "/site/readme")
+        # 4. Now visit /site/reader (or any other page)
+        resp2 = session.get(self.base_url + "/site/reader")
         soup2 = BeautifulSoup(resp2.text, "html.parser")
         link = soup2.find("link", rel="stylesheet", href=lambda h: h and "classic-95.css" in h)
         self.assertIsNotNone(

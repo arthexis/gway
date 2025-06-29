@@ -304,7 +304,7 @@ def default_home():
     for _, route in _homes:
         if route:
             return "/" + route.lstrip("/")
-    return "/site/readme"
+    return "/site/reader"
 
 def debug_routes(app):
     for route in app.routes:

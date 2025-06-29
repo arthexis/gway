@@ -2,15 +2,15 @@
 
 import socket
 from numpy import iterable
-from gway import gw, Spool
+from gway import gw, __
 
 # Registry for active apps and their hosts/ports
 _active_servers = {}  # key: label or index, value: dict with host/port/ws_port
 
 def start_app(*,
-    host            = Spool('[SITE_HOST]', '[BASE_HOST]', '0.0.0.0'),
-    port : int      = Spool('[SITE_PORT]', '[BASE_PORT]', '8888'),
-    ws_port : int   = Spool('[WS_PORT]', '[WEBSOCKET_PORT]', '9999'),
+    host            = __('[SITE_HOST]', '[BASE_HOST]', '0.0.0.0'),
+    port : int      = __('[SITE_PORT]', '[BASE_PORT]', '8888'),
+    ws_port : int   = __('[WS_PORT]', '[WEBSOCKET_PORT]', '9999'),
     debug=False,
     proxy=None,
     app=None,

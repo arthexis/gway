@@ -18,7 +18,7 @@ def render(*, homes=None):
             visited = visited_cookie.split("|")
 
     current_route = request.fullpath.strip("/")
-    current_title = (current_route.split("/")[-1] or "readme").replace('-', ' ').replace('_', ' ').title()
+    current_title = current_route.split("/")[-1].replace('-', ' ').replace('_', ' ').title()
 
     visited_set = set()
     entries = []

@@ -1,12 +1,13 @@
 # file: projects/web/site.py
 
 from docutils.core import publish_parts
-from bottle import request, response
-from gway import gw
+from gway import gw, __
 
-def view_readme(*args, **kwargs):
+# TODO: Convert to view_reader and allow it to open safe files of different kinds.
+
+def view_reader(*, rst=__('[README]', 'README'), **kwargs):
     """Render the README.rst file as HTML."""
-    readme_path = gw.resource("README.rst")
+    readme_path = gw.resource(f"{rst}.rst")
     with open(readme_path, encoding="utf-8") as f:
         rst_content = f.read()
     html_parts = publish_parts(source=rst_content, writer_name="html")
@@ -19,7 +20,7 @@ def view_help(topic="", *args, **kwargs):
     If there is an exact match in the search, show it at the top (highlighted).
     """
 
-    # TODO: Change the wat the help system works: Instead of just using the results of
+    # TODO: Change how the help system works: Instead of just using the results of
     # gw.gelp at all times, compliment this result with other information. 
 
     topic_in = topic or ""
