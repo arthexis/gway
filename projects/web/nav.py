@@ -74,7 +74,7 @@ def render(*, homes=None):
     # --- QR code for this page ---
     compass = ""
     try:
-        url = get_current_url()
+        url = current_url()
         qr_url = gw.qr.generate_url(url)
         compass = f'''
             <div class="compass">
@@ -87,7 +87,7 @@ def render(*, homes=None):
     gw.debug(f"Visited cookie raw: {gw.web.cookies.get('visited')}")
     return f"<aside>{search_box}<ul>{links}</ul><br>{compass}</aside>"
 
-def get_style():
+def active_style():
     """
     Returns the current user's preferred style path (to .css file), checking:
     - URL ?css= param (for preview/testing)
@@ -119,14 +119,7 @@ def get_style():
     # Fallback to base
     return style_path or "/static/styles/base.css"
 
-def get_selected_style():
-    """
-    (Deprecated for site-wide theme—use get_style instead.)
-    Returns the CSS <link> href for the selected style for this user/session.
-    """
-    return get_style()
-
-def get_current_url():
+def current_url():
     """Returns the current full URL path (with querystring)."""
     url = request.fullpath
     if request.query_string:

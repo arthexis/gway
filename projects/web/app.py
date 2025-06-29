@@ -23,7 +23,7 @@ def current_endpoint():
     """
     return gw.context.get('current_endpoint')
 
-def setup(*,
+def setup_app(*,
     app=None,
     project="web.site",
     path=None,
@@ -36,12 +36,15 @@ def setup(*,
     js="global",            # Default JS  (without .js extension)
     auth_required=False,    # Default: Don't enforce --optional security
     engine="bottle",
+    
 ):
     """
     Setup Bottle web application with symmetrical static/shared public folders.
-    Only one project per app. CSS/JS params are used as the only static includes.
+    Only one project can be setup per call. CSS/JS params are used as the only static includes.
     """
     global _ver, _homes, _enabled
+
+    # TODO: Use gw.resolve to determine the param defaults using [sigils]
 
     if engine != "bottle":
         raise NotImplementedError("Only Bottle is supported at the moment.")
@@ -72,7 +75,8 @@ def setup(*,
         gw.info("No Bottle app found; creating a new Bottle app.")
         app = Bottle()
         _homes.clear()
-        add_home(home, path)
+        if home:
+            add_home(home, path)
 
         @app.route("/", method=["GET", "POST"])
         def index():
@@ -107,7 +111,6 @@ def setup(*,
                 return static_file(os.path.basename(file_path), root=os.path.dirname(file_path))
             return HTTPResponse(status=404, body="static file not found")
         
-    # Main view dispatcher (only if views is not None)
     if views:
         @app.route(f"/{path}/<view:path>", method=["GET", "POST"])
         def view_dispatch(view):
@@ -125,13 +128,18 @@ def setup(*,
                 try:
                     kwargs.update(request.json or dict(request.forms))
                 except Exception as e:
-                    return gw.web.error.redirect("Error loading JSON payload", error=e)
+                    return gw.web.error.redirect("Error loading JSON payload", err=e)
+            # -- PREFERRED DISPATCH LOGIC --
+            method = request.method.lower()  # 'get' or 'post'
+            method_func_name = f"{views}_{method}_{view_name}"
+            generic_func_name = f"{views}_{view_name}"
 
-            target_func_name = f"{views}_{view_name}" if views else view_name
-
-            view_func = getattr(source, target_func_name, None)
+            # Prefer view_get_x/view_post_x before view_x
+            view_func = getattr(source, method_func_name, None)
             if not callable(view_func):
-                return gw.web.error.redirect(f"View not found: {target_func_name} in {project}")
+                view_func = getattr(source, generic_func_name, None)
+            if not callable(view_func):
+                return gw.web.error.redirect(f"View not found: {method_func_name} or {generic_func_name} in {project}")
 
             try:
                 content = view_func(*args, **kwargs)
@@ -214,6 +222,9 @@ def setup(*,
         gw.debug(f"Registered homes: {_homes}")
         debug_routes(app)
 
+    gw.info(f"build_url: {build_url()}")
+    gw.info(f"default_home: {default_home()}")
+
     return oapp if oapp else app
 
 # Use current_endpoint to get the current project route
@@ -232,23 +243,23 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
     global _ver
     version = _ver = _ver or gw.version()
 
-    # --- MAIN: THEME CSS HANDLING ---
+    css_files = gw.cast.to_list(css_files)
     theme_css = None
     if is_setup('web.nav'):
         try:
-            theme_css = gw.web.nav.get_style()
+            theme_css = gw.web.nav.active_style()
         except Exception:
-            theme_css = "/static/styles/base.css"
-    css_files = gw.to_list(css_files)
+            theme_css = None
+    # <<< Patch: APPEND, don't prepend! >>>
     if theme_css and theme_css not in css_files:
-        idx = 1 if css_files and 'global.css' in css_files[0] else 0
-        css_files.insert(idx, theme_css)
+        css_files.append(theme_css)
+
     css_links = ""
     if css_files:
         for href in css_files:
             css_links += f'<link rel="stylesheet" href="{href}">\n'
 
-    js_files = gw.to_list(js_files)
+    js_files = gw.cast.to_list(js_files)
     js_links = ""
     if js_files:
         for src in js_files:
@@ -260,10 +271,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>, 
         <a href="https://pypi.org">PyPI</a> and <a href="https://github.com/arthexis/gway">Github</a>.</p>
     '''
-
-    nav = ""
-    if is_setup('web.nav'):
-        nav = gw.web.nav.render(homes=_homes)
+    nav = gw.web.nav.render(homes=_homes) if is_setup('web.nav') else ""
 
     html = template("""<!DOCTYPE html>
         <html lang="en">
@@ -291,8 +299,9 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
     """, **locals())
     return html
 
+
 def default_home():
-    for title, route in _homes:
+    for _, route in _homes:
         if route:
             return "/" + route.lstrip("/")
     return "/site/readme"
@@ -312,4 +321,3 @@ def add_home(home, path):
     if (title, route) not in _homes:
         _homes.append((title, route))
         gw.debug(f"Added home: ({title}, {route})")
-    

@@ -1,16 +1,16 @@
-# projects/web/server.py
+# file: projects/web/server.py
 
 import socket
 from numpy import iterable
-from gway import gw
+from gway import gw, Spool
 
-_default_app_build_count = 0
-
+# Registry for active apps and their hosts/ports
+_active_servers = {}  # key: label or index, value: dict with host/port/ws_port
 
 def start_app(*,
-    host="[WEBSITE_HOST|127.0.0.1]",
-    port="[WEBSITE_PORT|8888]",
-    ws_port="[WEBSOCKET_PORT|9000]",         
+    host            = Spool('[SITE_HOST]', '[BASE_HOST]', '0.0.0.0'),
+    port : int      = Spool('[SITE_PORT]', '[BASE_PORT]', '8888'),
+    ws_port : int   = Spool('[WS_PORT]', '[WEBSOCKET_PORT]', '9999'),
     debug=False,
     proxy=None,
     app=None,
@@ -18,23 +18,14 @@ def start_app(*,
     threaded=True,
     is_worker=False,
     workers=None,
+    label=None,  # for multi-app registry
 ):
-    """
-    Start an HTTP (WSGI) or ASGI server to host the given application.
-
-    - If `app` is a FastAPI instance, runs with Uvicorn (optionally on ws_port if set).
-    - If `app` is a WSGI app, uses Paste+ws4py or Bottle.
-    - If `app` is a zero-arg factory, it will be invoked (supporting sync or async factories).
-    - If `app` is a list of apps, each will be run in its own thread (each on an incremented port; FastAPI uses ws_port if set).
-    """
     import inspect
     import asyncio
 
-    host = gw.resolve(host) if isinstance(host, str) else host
-    port = gw.resolve(port) if isinstance(port, str) else port
-    ws_port = gw.resolve(ws_port) if isinstance(ws_port, str) else ws_port
+    global _active_servers
 
-    def run_server():
+    def run_server(app_label=None):
         nonlocal app
         all_apps = app if iterable(app) else (app, )
 
@@ -58,17 +49,20 @@ def start_app(*,
 
                 # ---- Use ws_port for the first FastAPI app if provided, else increment port as before ----
                 if is_fastapi and ws_port and fastapi_count == 0:
-                    port_i = int(ws_port)
+                    port_i = ws_port
                     fastapi_count += 1
                 else:
-                    # Use base port + i, skipping ws_port if it's in the range
-                    port_i = int(port) + i
-                    # Prevent port collision if ws_port == port_i (rare but possible)
-                    if ws_port and port_i == int(ws_port):
+                    port_i = port + i
+                    if ws_port and port_i == ws_port:
                         port_i += 1
 
+                # --- Register server info BEFORE thread starts ---
+                label_i = app_type.lower() if is_fastapi else f"wsgi{i+1}"
+                if i == 0:
+                    label_i = "main"
+                _active_servers[label_i] = dict(host=host, port=port_i, ws_port=ws_port if is_fastapi else None)
+
                 gw.info(f"  App {i+1}: type={app_type}, port={port_i}")
-                app_types.append(app_type)
 
                 t = Thread(
                     target=gw.web.server.start_app,
@@ -82,11 +76,13 @@ def start_app(*,
                         daemon=daemon,
                         threaded=threaded,
                         is_worker=True,
+                        label=label_i,
                     ),
                     daemon=daemon,
                 )
                 t.start()
                 threads.append(t)
+                app_types.append(app_type)
 
             type_summary = Counter(app_types)
             summary_str = ", ".join(f"{count}×{t}" for t, count in type_summary.items())
@@ -98,18 +94,8 @@ def start_app(*,
             return
 
         # ---- Single-app mode ----
-        global _default_app_build_count
-        if not all_apps or all_apps == (None,):
-            _default_app_build_count += 1
-            if _default_app_build_count > 1:
-                gw.warning(
-                    f"Default app is being built {_default_app_build_count} times! "
-                    "This may indicate a misconfiguration or repeated server setup. "
-                    "Check your recipe/config. Run with --app default to silence."
-                )
-            app = gw.web.app.setup(app=None)
-        else:
-            app = all_apps[0]
+        if not app:
+            raise NotImplementedError("No app received. Auto-build mode has been phased out.")
 
         # Proxy setup (unchanged)
         if proxy:
@@ -137,9 +123,15 @@ def start_app(*,
 
         if is_asgi:
             # Use ws_port if provided, else use regular port
-            port_to_use = int(ws_port) if ws_port else int(port)
+            port_to_use = ws_port if ws_port else port
             ws_url = f"ws://{host}:{port_to_use}"
             gw.info(f"WebSocket support active @ {ws_url}/<path>?token=...")
+
+            # --- Register server info ---
+            reg_label = label or "main"
+            _active_servers[reg_label] = dict(host=host, port=port, ws_port=ws_port)
+            gw.info(f"[asgi] Registered app servers: {all_app_servers()}")
+
             try:
                 import uvicorn
             except ImportError:
@@ -168,16 +160,21 @@ def start_app(*,
         except ImportError:
             ws4py_available = False
 
+        # --- Register server info ---
+        reg_label = label or "main"
+        _active_servers[reg_label] = dict(host=host, port=port, ws_port=None)
+        gw.info(f"[wsgi] Registered app servers: {all_app_servers()}")
+
         if httpserver:
             httpserver.serve(
-                app, host=host, port=int(port), 
+                app, host=host, port=port, 
                 threadpool_workers=(workers or 5), 
             )
         elif isinstance(app, Bottle):
             bottle_run(
                 app,
                 host=host,
-                port=int(port),
+                port=port,
                 debug=debug,
                 threaded=threaded,
             )
@@ -189,24 +186,44 @@ def start_app(*,
     else:
         run_server()
 
+# === App host/port tracking ===
+
+def app_host(label="main"):
+    """
+    Return the actual host (interface/address) currently used by the running web server.
+    By default, returns the primary (first) app's host.
+    For multi-app mode, use label="main" or label="fastapi", etc.
+    """
+    host = _active_servers.get(label, {}).get("host")
+    return host if host != '0.0.0.0' else '127.0.0.1'
+
+def app_port(label="main"):
+    """
+    Return the actual port used by the main web server instance.
+    For multi-app, use label as above.
+    """
+    return _active_servers.get(label, {}).get("port")
+
+def app_ws_port(label="main"):
+    """
+    Return the port used for WebSocket/ASGI FastAPI, if any (else None).
+    For multi-app, use label as above.
+    """
+    return _active_servers.get(label, {}).get("ws_port")
+
+def all_app_servers():
+    """
+    Returns dict of all known app servers (label => info).
+    """
+    return dict(_active_servers)
 
 def is_local(request=None, host=None):
     """
     Returns True if the active HTTP request originates from the same machine
-    that the server is running on (i.e., local request). Supports both
-    Bottle and FastAPI (ASGI/WSGI).
-    
-    Args:
-        request: Optionally, the request object (Bottle, Starlette, or FastAPI Request).
-        host: Optionally, the bound host (for override or testing).
-        
-    Returns:
-        bool: True if request is from localhost, else False.
+    that the server is running on (i.e., local request). Supports FastAPI and Bottle (ASGI/WSGI).
     """
     try:
-        # --- Try to infer the active request if not given ---
         if request is None:
-            # Try FastAPI/Starlette
             try:
                 from starlette.requests import Request as StarletteRequest
                 import contextvars
@@ -214,7 +231,6 @@ def is_local(request=None, host=None):
                 request = req_var.get()
             except Exception:
                 pass
-            # Try Bottle global
             if request is None:
                 try:
                     from bottle import request as bottle_request
@@ -222,44 +238,34 @@ def is_local(request=None, host=None):
                 except ImportError:
                     request = None
 
-        # --- Get remote address from request ---
         remote_addr = None
         if request is not None:
-            # FastAPI/Starlette: request.client.host
             remote_addr = getattr(getattr(request, "client", None), "host", None)
-            # Bottle: request.remote_addr
             if not remote_addr:
                 remote_addr = getattr(request, "remote_addr", None)
-            # Try request.environ['REMOTE_ADDR']
             if not remote_addr and hasattr(request, "environ"):
                 remote_addr = request.environ.get("REMOTE_ADDR")
         else:
-            # No request in context
             return False
 
-        # --- Get server bound address ---
+        # Use the tracked app host if available
         if host is None:
-            from gway import gw
-            host = gw.resolve("[WEBSITE_HOST|127.0.0.1]")
-        # If host is empty or all-interfaces, assume not local
+            host = app_host() or gw.web.host()
         if not host or host in ("0.0.0.0", "::", ""):
             return False
 
-        # --- Normalize addresses for comparison ---
         def _norm(addr):
             if addr in ("localhost",):
                 return "127.0.0.1"
             if addr in ("::1",):
                 return "127.0.0.1"
             try:
-                # Try resolving hostname
                 return socket.gethostbyname(addr)
             except Exception:
                 return addr
 
         remote_ip = _norm(remote_addr)
         host_ip = _norm(host)
-        # Accept both IPv4 and IPv6 loopback equivalence
         return remote_ip.startswith("127.") or remote_ip == host_ip
     except Exception as ex:
         import traceback

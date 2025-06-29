@@ -17,7 +17,7 @@ class AWG(int):
         return f"AWG({str(self)})"
 
 
-def find_cable(
+def find_awg(
     *,
     meters: Union[int, str, None] = None,  # Required
     amps: Union[int, str] = "40",
@@ -176,7 +176,7 @@ def view_cable_finder(
             </form>
         '''
     try:
-        result = find_cable(
+        result = find_awg(
             meters=meters, amps=amps, volts=volts,
             material=material, max_lines=max_lines, phases=phases, 
         )

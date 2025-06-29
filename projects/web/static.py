@@ -61,7 +61,7 @@ def collect(*, css="global", js="global", root="data/static", target="work/share
         if isinstance(css, str):
             bundle_path = gw.resource(target, f"{css}.css")
             with open(bundle_path, "w", encoding="utf-8") as out:
-                for proj, rel, full in report["css"]:
+                for proj, rel, full in reversed(report["css"]):
                     with open(full, "r", encoding="utf-8") as f:
                         out.write(f"/* --- {proj}:{rel} --- */\n")
                         out.write(f.read() + "\n\n")

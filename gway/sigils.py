@@ -1,152 +1,132 @@
 import re
 import os
 
-
 class Sigil:
     """
-    Represents a resolvable sigil in the format [key] or [key|fallback].
-    Can be resolved using a callable finder passed at instantiation or via `%` operator.
+    Represents a resolvable [sigil] or text, such as this docstring, containing one.
     """
-
-    _pattern = re.compile(r"\[([^\[\]|]*)(?:\|([^\[\]]*))?\]")
+    _pattern = re.compile(r"\[([^\[\]]+)\]")
 
     def __init__(self, text):
-        if not isinstance(text, str):
-            raise TypeError("Sigil text must be a string")
-
-        # Check for nested sigils
-        if re.search(r"\[[^\[\]]*\[[^\[\]]*\]", text):
-            raise ValueError("Nested sigils are not allowed")
-
         self.original = text
 
     def _make_lookup(self, finder):
-        if isinstance(finder, dict):
-            def _lookup(key, fallback):
-                for variant in (key, key.lower(), key.upper()):
-                    if variant in finder:
-                        return finder[variant]
-                return fallback
-        elif callable(finder):
-            def _lookup(key, fallback):
-                for variant in (key, key.lower(), key.upper()):
+        def lookup(key):
+            # Try all dash/underscore/case variants
+            variants = {
+                key, key.replace('-', '_'), key.replace('_', '-'),
+                key.lower(), key.upper()
+            }
+            for variant in variants:
+                val = None
+                if isinstance(finder, dict):
+                    val = finder.get(variant)
+                elif callable(finder):
                     val = finder(variant, None)
-                    if val is not None:
-                        return val
-                return fallback
-        else:
-            raise TypeError("Finder must be a callable or a dictionary")
-        return _lookup
+                if val is not None:
+                    return val
+            return None
+        return lookup
 
     def resolve(self, finder):
-        return _replace_sigils(self.original, self._make_lookup(finder), on_missing=None)
-
-    def redact(self, finder, remanent=None):
-        """Redacts missing sigils instead of removing them. Use `remanent` to replace unresolved sigils."""
-        return _replace_sigils(self.original, self._make_lookup(finder), on_missing=remanent)
-
-    def cleave(self):
-        """Remove all text between brackets (including the brackets)."""
-        return re.sub(self._pattern, '', self.original) or None
+        return _replace_sigils(self.original, self._make_lookup(finder))
 
     def list_sigils(self):
-        """Returns a list of all well-formed [sigils] in the original text (including brackets)."""
         return [match.group(0) for match in self._pattern.finditer(self.original)]
 
     def __mod__(self, finder):
-        """Allows use of `%` operator for resolution."""
         return self.resolve(finder)
+    
+    def __str__(self):
+        return str(self.original)
+    
+    def __repr__(self):
+        return repr(self.original)
 
+def _unquote(val):
+    if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+        return val[1:-1]
+    return val
 
-# Updated _replace_sigils to support exclusion/delay of sigil resolution when prefixed with '%'
-# Note that this is not a method of Sigil, but a standalone function
-def _replace_sigils(text, lookup_fn, on_missing=None):
+def _replace_sigils(text, lookup_fn):
     """
-    Replace sigils in `text` using `lookup_fn`, with support for delaying resolution
-    when sigils are prefixed by one or more '%'. Each '%' strips one level of exclusion.
+    Replace all sigils in the text, raising if any sigil is unresolved.
     """
-    # First, strip one '%' from any sigil prefix without resolving
-    exclusion_pattern = re.compile(r"(%+)(\[[^\[\]|]*(?:\|[^\[\]]*)?\])")
-    def exclusion_replacer(match):
-        prefix = match.group(1)
-        raw = match.group(2)
-        # Remove one '%' from the prefix
-        return prefix[1:] + raw
 
-    stripped = exclusion_pattern.sub(exclusion_replacer, text)
-    # If any exclusion occurred, return the text with one level of '%' removed
-    if stripped != text:
-        return stripped or None
-
-    # No exclusion prefixes: perform normal resolution
     def replacer(match):
-        key = match.group(1).strip()
-        fallback = match.group(2).strip() if match.group(2) is not None else None
+        from gway import gw
 
-        if key == "":
-            raise ValueError("Empty key is not allowed")
-        if match.group(2) is not None and fallback == "":
-            raise ValueError(f"Empty fallback is not allowed in [{key}|]")
+        raw = match.group(1).strip()
+        # Support quoted literals: ["FOO"] or ['BAR']
+        quoted = (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'"))
+        key = _unquote(raw) if quoted else raw
 
-        try:
-            resolved = lookup_fn(key, fallback)
-            if resolved is not None:
-                return str(resolved)
-        except Exception:
-            pass
+        val = lookup_fn(key)
+        if val is not None:
+            gw.verbose(f"Resolved sigil [{raw}] → {val}")
+            return str(val)
+        if quoted:
+            gw.verbose(f"Sigil [{raw}] not resolved, using quoted literal '{key}'")
+            return key
+        # If unresolved and not quoted, always raise
+        raise KeyError(f"Unresolved sigil: [{raw}]")
 
-        return str(on_missing) if on_missing is not None else match.group(0)
-
-    return re.sub(Sigil._pattern, replacer, text) or None
-
+    return re.sub(Sigil._pattern, replacer, text)
 
 class Resolver:
     def __init__(self, search_order):
         """
         :param search_order: List of (name, source) pairs to search in order.
-                             E.g., [('results', results), ('context', context), ('env', os.environ)]
         """
         self._search_order = search_order
 
     def append_source(self, source):
         self._search_order.append(source)
 
-    def resolve(self, sigil):
-        """Resolve [sigils] in a given string, using find_value()."""
-        if not isinstance(sigil, Sigil):
-            sigil = Sigil(str(sigil))
-        return sigil % self.find_value
-    
-    def redact(self, sigil, remanent=None):
-        """Redact [sigils] in a given string, keeping unresolved ones or replacing with remanent."""
-        if not isinstance(sigil, Sigil):
-            sigil = Sigil(str(sigil))
-        return sigil.redact(self.find_value, remanent=remanent)
+    def resolve(self, *args):
+        """
+        Attempt to resolve each argument in order. Return the first successful result.
+        """
+        from gway import gw
 
-    def cleave(self, sigil):
-        """Remove all [sigils] from the given string."""
-        if not isinstance(sigil, Sigil):
-            sigil = Sigil(str(sigil))
-        return sigil.cleave()
-    
+        last_exc = None
+        for arg in args:
+            try:
+                sigil = Sigil(str(arg)) if not isinstance(arg, Sigil) else arg
+                result = _replace_sigils(sigil.original, self.find_value)
+                # If we get here, it was resolved successfully
+                return result
+            except KeyError as e:
+                gw.verbose(f"Could not resolve sigil(s) in '{arg}': {e}")
+                last_exc = e
+        if last_exc is not None:
+            gw.error(f"All sigil resolutions failed: {last_exc}")
+            raise last_exc
+        gw.error("No arguments provided to resolve()")
+        raise KeyError("No arguments provided to resolve()")
+
     def find_value(self, key: str, fallback: str = None) -> str:
-        """Find a value from the search sources provided in search_order."""
         for name, source in self._search_order:
             if name == "env":
                 val = os.getenv(key.upper())
                 if val is not None:
                     return val
-            elif key in source:
+            elif isinstance(source, dict) and key in source:
                 return source[key]
+            elif hasattr(source, "__getitem__"):
+                try:
+                    val = source[key]
+                    if val is not None:
+                        return val
+                except Exception:
+                    pass
         return fallback
 
     def _resolve_key(self, key: str, fallback: str = None) -> str:
-        """Tries find_value first, then attribute/dot-notation fallback."""
         val = self.find_value(key, fallback)
         if val is not None:
             return val
-
-        # Dot notation traversal
+        # Allow dash/underscore interchange in fallback search
         parts = key.replace('-', '_').split('.')
         current = self
         for part in parts:
@@ -175,8 +155,7 @@ class Resolver:
             if not match:
                 return False
             key = match.group(1).strip()
-            fallback = match.group(2).strip() if match.group(2) is not None else None
-            if self._resolve_key(key, fallback) is None:
+            if self._resolve_key(key, None) is None:
                 return False
         return True
     
@@ -185,4 +164,68 @@ class Resolver:
 
     def keys(self):
         return {key for _, source in self._search_order if isinstance(source, dict) for key in source}
+    
+class Spool:
+    """
+    A spool is a collection of sigils.
+    Represents a list of Sigils, and supports batch resolution.
+    Example: Spool('[HOST]', '[HOSTNAME]', sigil_var, '127.0.0.1')
+    All elements are converted to Sigil if not already.
+    """
+    def __init__(self, *values):
+        self.sigils = []
+        for item in values:
+            if not item: continue
+            self._add_flat(item)
 
+    def _add_flat(self, item):
+        # Recursively flatten
+        if isinstance(item, (list, tuple, set)):
+            for sub in item:
+                self._add_flat(sub)
+        else:
+            self.sigils.append(self._to_sigil(item))
+
+    @staticmethod
+    def _to_sigil(value):
+        if isinstance(value, Sigil):
+            return value
+        return Sigil(str(value))
+
+    def resolve(self, resolver=None):
+        if resolver is None:
+            from gway import gw
+            resolver = gw
+        last_exc = None
+        for sigil in self:
+            try:
+                result = sigil.resolve(resolver)
+                return result
+            except Exception as e:
+                last_exc = e
+        if last_exc:
+            if hasattr(resolver, "error"):
+                resolver.error(f"Spool: All resolutions failed: {last_exc}")
+            raise last_exc
+        raise KeyError("Spool: No items to resolve.")
+
+    # --- Sequence protocol ---
+    def __getitem__(self, idx):
+        return self.sigils[idx]
+    def __len__(self):
+        return len(self.sigils)
+    def __iter__(self):
+        return iter(self.sigils)
+    def append(self, value):
+        self._add_flat(value)
+    def extend(self, values):
+        self._add_flat(values)
+    def index(self, value):
+        return self.sigils.index(self._to_sigil(value))
+    def count(self, value):
+        return self.sigils.count(self._to_sigil(value))
+
+    def __repr__(self):
+        return f"Spool({', '.join(repr(s) for s in self.sigils)})"
+    def __str__(self):
+        return " | ".join(str(s) for s in self.sigils)

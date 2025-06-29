@@ -34,7 +34,6 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('help', builtin_ls)
         self.assertIn('test', builtin_ls)
         self.assertIn('abort', builtin_ls)
-        self.assertIn('to_html', builtin_ls)
         self.assertIn('unwrap_one', builtin_ls)
         self.assertIn('unwrap_all', builtin_ls)
         self.assertIn('run_recipe', builtin_ls)
@@ -46,6 +45,10 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('sql', project_ls)
         self.assertIn('mail', project_ls)
         self.assertIn('awg', project_ls)
+        self.assertIn('cast', project_ls)
+        self.assertIn('conway', project_ls)
+        self.assertIn('recipe', project_ls)
+        self.assertIn('cdv', project_ls)
 
     def test_load_qr_code_project(self):
         # Normally qr is autoloaded when accessed, but this test ensures we can 
@@ -66,23 +69,6 @@ class GatewayBuiltinsTests(unittest.TestCase):
         # Help is a builtin
         help_result = gw.help('hello-world')
         self.assertEqual(help_result['Sample CLI'], 'gway hello-world')
-
-    def test_to_list_basic_and_split(self):
-        self.assertEqual(to_list("a b c"), ["a", "b", "c"])
-        self.assertEqual(to_list("a,b:c;d"), ["a", "b", "c", "d"])
-        self.assertEqual(to_list(["x", "y"]), ["x", "y"])
-        self.assertEqual(to_list(42), [42])
-        self.assertEqual(to_list({"k": 1}), ["k=1"])
-
-    def test_to_list_flattening(self):
-        nested = ["a", ["b", ["c", {"x": 1}]], "d"]
-        flat = to_list(nested, flat=True)
-        gw.debug(f"{flat=}")
-        self.assertIn("x=1", flat)
-        self.assertEqual(flat, ["a", "b", "c", "x=1", "d"])
-
-        # Also ensure strings are not flattened by character
-        self.assertEqual(to_list("hello", flat=True), ["hello"])
 
     async def test_abort(self):
         """Test that the abort function raises a SystemExit exception."""

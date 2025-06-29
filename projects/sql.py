@@ -58,11 +58,8 @@ class WrappedConnection:
 
 
 def infer_type(val):
-    return gw.infer_type(
-        val,
-        INTEGER=int,
-        REAL=float
-    ) or "TEXT"
+    t, _ = gw.try_cast(val, INTEGER=int, REAL=float)
+    return t or "TEXT"
 
 
 def load_csv(*, connection=None, folder="data", force=False):

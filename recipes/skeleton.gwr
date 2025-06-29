@@ -1,6 +1,7 @@
 # file: recipes/skeleton.gwr
 
-web app setup --project web.site --home readme
+web app setup-app --project web.site --home readme
+    --project web.nav 
 web static collect
 web server start-app --host 0.0.0.0 --port 8888 
 forever

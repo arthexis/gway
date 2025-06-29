@@ -47,7 +47,7 @@ def cli_main():
         verbose=args.verbose
     )
     start_time = time.time() if args.timed else None
-
+    
     # Init Gateway instance
     gw_local = Gateway(
         client=args.client,
@@ -121,8 +121,7 @@ def cli_main():
                 f.write(str(output))
 
     if start_time:
-        print(f"\nElapsed: {time.time() - start_time:.4f} seconds")
-
+        print(f"Time: {time.time() - start_time:.3f} seconds")
 
 def process(command_sources, callback=None, **context):
     """Shared logic for executing CLI or recipe commands with optional per-node callback."""
@@ -216,7 +215,6 @@ def process(command_sources, callback=None, **context):
 
     return all_results, last_result
 
-
 def prepare(parsed_args, func_obj):
     """Prepare *args and **kwargs for a function call."""
     func_args = []
@@ -257,7 +255,6 @@ def prepare(parsed_args, func_obj):
 
     return func_args, {**func_kwargs, **extra_kwargs}
 
-
 def chunk(args_commands):
     """Split args.commands into logical chunks without breaking quoted arguments."""
     chunks = []
@@ -276,15 +273,14 @@ def chunk(args_commands):
 
     return chunks
 
-
 def show_functions(functions: dict):
     """Display a formatted view of available functions."""
-    from .builtins import sample_cli_args
+    from .builtins import sample_cli
 
     print("Available functions:")
     for name, func in functions.items():
         name_cli = name.replace("_", "-")
-        cli_args = sample_cli_args(func)
+        cli_args = sample_cli(func)
         doc = ""
         if func.__doc__:
             doc_lines = [line.strip() for line in func.__doc__.splitlines()]
@@ -293,7 +289,6 @@ def show_functions(functions: dict):
         print(f"  > {name_cli} {cli_args}")
         if doc:
             print(f"      {doc}")
-
 
 def add_func_args(subparser, func_obj):
     """Add the function's arguments to the CLI subparser."""

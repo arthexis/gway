@@ -159,13 +159,13 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
             if not expires or expires < now:
                 _open_boxes[full_id] = now + timeout * 60
                 os.makedirs(gw.resource(*VBOX_PATH, short), exist_ok=True)
-                url = gw.build_url("uploads", vbid=full_id)
+                url = gw.web.build_url("uploads", vbid=full_id)
                 message = f"[UPLOAD] Upload box created (expires in {timeout} min): {url}"
                 print(("-" * 70) + '\n' + message + '\n' + ("-" * 70))
                 gw.warning(message)
                 gw.info(f"Created new box: {full_id}")
             else:
-                url = gw.build_url("upload", vbid=full_id)
+                url = gw.web.build_url("upload", vbid=full_id)
                 gw.info(f"Existing box reused: {full_id}")
 
         admin_notif = ""
@@ -232,7 +232,7 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
         f'<input type="file" name="file">' for _ in range(max(1, files))
     )
 
-    download_url = gw.build_url("download", vbid=vbid)
+    download_url = gw.web.build_url("download", vbid=vbid)
     gw.info(f"Displaying upload form for {short}")
 
     return f"<h1>Upload to Box: {short}</h1>" + f"""
@@ -521,13 +521,13 @@ def view_downloads(*hashes: tuple[str], vbid: str = None, modified_since=None, *
     html = "<h1>Download Files</h1><ul>"
     for h, name, size, mtime in file_info:
         time_str = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
-        link = gw.build_url("downloads", h, vbid=vbid)
+        link = gw.web.build_url("downloads", h, vbid=vbid)
         html += f'<li><a href="{link}">{name}</a> ({size} bytes, modified {time_str}, MD5: {h})</li>'
     html += "</ul>"
 
     # Only include upload link if full vbid was used
     if "." in vbid:
-        upload_url = gw.build_url("upload", vbid=vbid)
+        upload_url = gw.web.build_url("upload", vbid=vbid)
         html += f"<p><a href='{upload_url}'>UPLOAD MORE files to this box</a></p>"
 
     return html

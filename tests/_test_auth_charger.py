@@ -10,8 +10,8 @@ import requests
 from gway import gw
 
 CDV_PATH = "work/basic_auth.cdv"
-TEST_USER = "authtest"
-TEST_PASS = "S3cr3t42"
+TEST_USER = "admin"
+TEST_PASS = "admin"
 
 def _remove_test_user(user=TEST_USER):
     if not os.path.exists(CDV_PATH):

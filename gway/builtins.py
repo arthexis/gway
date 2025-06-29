@@ -15,32 +15,26 @@ from typing import Any, Optional, Type, List
 
 # Avoid importing Gateway at the top level in this file specifically (circular import)
 # Instead, use "from gway import gw" inside the function definitions themselves
-    
+# Keep comments and names to a minimum. This module will get long.
 
 def hello_world(name: str = "World", *, greeting: str = "Hello", **kwargs):
     """Smoke test function."""
     from gway import gw
-
     version = gw.version()
     message = f"{greeting.title()}, {name.title()}!"
     if hasattr(gw, "hello_world"): 
-        if not gw.silent:
-            print(message)
-        else:
-            print(f"{gw.silent=}")
+        if not gw.silent: print(message)
+        else: print(f"{gw.silent=}")
     else: 
         print("Greeting protocol not found ((serious smoke)).")
     return locals()
 
-
 def abort(message: str, *, exit_code: int = 1) -> int:
     """Abort with error message."""
     from gway import gw
-
     gw.critical(message)
     print(f"Halting: {message}")
     raise SystemExit(exit_code)
-
 
 def envs(filter: str = None) -> dict:
     """Return all environment variables in a dictionary."""
@@ -49,17 +43,9 @@ def envs(filter: str = None) -> dict:
         return {k: v for k, v in os.environ.items() if filter in k}
     else: 
         return os.environ.copy()
-    
-
-# TODO: Create a first_env that takes a sequence (to_list it) of env vars
-#       Return the value of the first one that returns a non-empty value
-
 
 def version(check=None) -> str:
-    """Return the version of the package. If `check` is provided,
-    ensure the version meets or exceeds the required `major.minor.patch` string.
-    Raise AssertionError if requirement is not met.
-    """
+    """Return the version of the package."""
     from gway import gw
 
     def parse_version(vstr):
@@ -93,9 +79,6 @@ def version(check=None) -> str:
 def normalize_ext(e):
     return e if e.startswith('.') else f'.{e}'
 
-...
-
-
 def resource(*parts, touch=False, check=False, text=False, dir=False):
     """
     Locate or create a resource by searching in:
@@ -124,8 +107,6 @@ def resource(*parts, touch=False, check=False, text=False, dir=False):
         path = candidate
     else:
         tried.append(str(candidate))
-        # TODO: Consider if we should also be compatible with BASE_PATH and GWAY_PATH
-        # 2. GWAY_ROOT env
         env_root = os.environ.get("GWAY_ROOT")
         if env_root:
             candidate = pathlib.Path(env_root) / rel_path
@@ -214,9 +195,6 @@ def resource_list(*parts, ext=None, prefix=None, suffix=None):
     matches.sort(key=lambda p: p.stat().st_ctime)
     return matches
 
-...
-
-
 def test(*, root: str = 'tests', filter=None, project=None):
     """Execute all automatically detected test suites, logging to logs/test.log."""
     import unittest
@@ -224,7 +202,7 @@ def test(*, root: str = 'tests', filter=None, project=None):
     from gway import gw
     from gway.logging import use_logging
 
-    projects = gw.to_list(project)
+    projects = gw.cast.to_list(project)
 
     # TODO: Implement a 'project' mode. Instead of performing the hard-coded GWAY test
     # suite, run an abstract test battery against the project or collection of projects
@@ -255,12 +233,7 @@ def test(*, root: str = 'tests', filter=None, project=None):
         result = runner.run(test_suite)
         gw.info(f"Test results: {str(result).strip()}")
 
-    # after the block, logs restore to normal!
-
     return result.wasSuccessful()
-
-...
-
 
 def help(*args, full=False):
     from gway import gw
@@ -373,12 +346,14 @@ def help(*args, full=False):
 
         return results[0] if len(results) == 1 else {"Matches": results}
 
-
-def sample_cli_args(func):
+def sample_cli(func):
     """Generate a sample CLI string for a function."""
+
+    # TODO: Is this working properly? Are we not using it in view_help?
+
     from gway import gw
     if not callable(func):
-        func = gw[str(func).replace("-", "_")]
+        func = gw[str(func)]
     sig = inspect.signature(func)
     parts = []
     seen_kw_only = False
@@ -405,127 +380,147 @@ def sample_cli_args(func):
 
     return " ".join(parts)
 
-
 def sigils(*args: str):
     """List the valid sigils found in any of the given args."""
     from .sigils import Sigil
     text = "\n".join(args)
     return Sigil(text).list_sigils()
 
-
-def infer_type(value, default=None, **types):
+def try_cast(value, default=None, **types) -> tuple:
     """
     Try casting `value` to each provided type. If a cast succeeds, 
-    returns the corresponding key (name). If none succeed, returns default.
-    
+    returns the corresponding key (name) and the value after casting.
+    If none succeed, returns default and the original value.
     Example:
-        gw.infer_type("42", INTEGER=int, REAL=float)  # => "INTEGER"
-        gw.infer_type("hello", INTEGER=int, default="TEXT")  # => "TEXT"
+        gw.try_cast("42", INTEGER=int, REAL=float)  # => "INTEGER"
+        gw.try_cast("hello", INTEGER=int, default="TEXT")  # => "TEXT"
     """
     for name, caster in types.items():
         try:
-            caster(value)
-            return name
+            new_value = caster(value)
+            return name, new_value
         except Exception:
             continue
-    return default
+    return default, value
 
-...
-
-
-def run_recipe(*script: str, **context):
+def run_recipe(*scripts: str, **context):
     """
-    Run commands parsed from a .gwr file, falling back to the 'recipes/' resource bundle.
-    Recipes are gway scripts composed of one command per line with optional comments.
+    Run commands parsed from one or more .gwr files, falling back to the 'recipes/' resource bundle.
+    Recipes are just simple GWAY scripts: one command per line, with optional comments.
     """
     from .console import load_recipe, process
     from gway import gw
 
-    gw.debug(f"run_recipe called with script tuple: {script!r}")
+    if not scripts:
+        raise ValueError("At least one script must be provided to run_recipe()")
+    gw.debug(f"run_recipe called with scripts: {scripts!r}")
 
-    # Ensure the last element ends with '.gwr'
-    if not script[-1].endswith(".gwr"):
-        script = script[:-1] + (script[-1] + ".gwr",)
-        gw.debug(f"Appended .gwr extension, new script tuple: {script!r}")
+    results = []
+    for script in scripts:
+        orig_script = script
+        # Ensure extension
+        if not script.endswith('.gwr'):
+            script += '.gwr'
+            gw.debug(f"Appended .gwr extension: {script!r}")
 
-    # Try to resolve the script as given
-    try:
-        script_path = gw.resource(*script, check=True)
-        gw.debug(f"Found script at: {script_path}")
-    except (FileNotFoundError, KeyError) as first_exc:
-        # Fallback: look in the 'recipes' directory of the package
-        gw.debug(f"Script not found at {script!r}: {first_exc!r}")
+        # Try to resolve the script as given
         try:
-            script_path = gw.resource("recipes", *script)
-            gw.debug(f"Found script in 'recipes/': {script_path}")
-        except Exception as second_exc:
-            # If still not found, re-raise with a clear message
-            msg = (
-                f"Could not locate script {script!r} "
-                f"(tried direct lookup and under 'recipes/')."
-            )
-            gw.debug(f"{msg} Last error: {second_exc!r}")
-            raise FileNotFoundError(msg) from second_exc
+            script_path = gw.resource(script, check=True)
+            gw.debug(f"Found script at: {script_path}")
+        except (FileNotFoundError, KeyError) as first_exc:
+            # Fallback: look in the 'recipes' directory of the package
+            gw.debug(f"Script not found at {script!r}: {first_exc!r}")
+            try:
+                script_path = gw.resource("recipes", script)
+                gw.debug(f"Found script in 'recipes/': {script_path}")
+            except Exception as second_exc:
+                # If still not found, re-raise with a clear message
+                msg = (
+                    f"Could not locate script {script!r} "
+                    f"(tried direct lookup and under 'recipes/')."
+                )
+                gw.debug(f"{msg} Last error: {second_exc!r}")
+                raise FileNotFoundError(msg) from second_exc
 
-    # Load and run the recipe
-    command_sources, comments = load_recipe(script_path)
-    if comments:
-        gw.debug("Recipe comments:\n" + "\n".join(comments))
-    return process(command_sources, **context)
-
+        # Load and run the recipe
+        command_sources, comments = load_recipe(script_path)
+        if comments:
+            gw.debug("Recipe comments:\n" + "\n".join(comments))
+        result = process(command_sources, **context)
+        results.append(result)
+    return results[-1] if len(results) == 1 else results
 
 def run(*script: str, **context):
+    """Run recipes. If recipes are not found, treat the input as the literal recipe to be run."""
     from gway import gw
-    return gw.run_recipe(*script, **context)
+    import uuid
+    import os
+    from datetime import datetime
 
-...
+    # Try to run all scripts as recipes first
+    try:
+        return gw.run_recipe(*script, **context)
+    except FileNotFoundError:
+        # Not found: treat script as raw lines, write to temp recipe and run that
+        gw.debug(f"run(): Could not find one or more recipes, treating script as raw lines")
+        work_dir = gw.resource("work", check=True)
+        unique_id = str(uuid.uuid4())
+        recipe_name = f"run_{unique_id}.gwr"
+        recipe_path = os.path.join(work_dir, recipe_name)
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        user = os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+        context_lines = [
+            f"# GWAY ad-hoc script",
+            f"# Created: {now} by {user}",
+            f"# Args: {script!r}",
+        ]
+        if context:
+            context_lines.append(f"# Context: {context!r}")
+        script_lines = list(script)
+        all_lines = context_lines + list(script_lines)
+
+        # Write to file
+        with open(recipe_path, "w", encoding="utf-8") as f:
+            for line in all_lines:
+                f.write(line.rstrip("\n") + "\n")
+        gw.debug(f"Wrote ad-hoc script to {recipe_path}")
+
+        # Now run the new recipe
+        return gw.run_recipe(recipe_path, **context)
 
 # Unwrapping is useful for handling one or multiple apps, or other
 # objects passed between GWAY functions, using a simplified scheme.
 
 def unwrap_one(obj: Any, expected: Optional[Type] = None) -> Any:
-    """
-    Returns the first matching unwrapped value from obj.
-    """
+    """Returns the first matching unwrapped value from obj."""
     return next(_unwrap(obj, expected, first_only=True), None)
 
-
 def unwrap_all(obj: Any, expected: Optional[Type] = None) -> List[Any]:
-    """
-    Returns a list of all matching unwrapped values from obj.
-    """
+    """Returns a list of all matching unwrapped values from obj."""
     return list(_unwrap(obj, expected, first_only=False))
 
+# TODO: Create unwrap_split_one that returns a two item tuple: first_found, others
+#       and its equivalent unwrap_split_all: all_found
 
-# Internal recursive helper that yields all matches
 def _unwrap(obj: Any, expected: Optional[Type], first_only: bool = True):
-    """
-    Internal generator that recursively searches through obj.
-    If first_only is True, yields the first match and stops.
-    """
     def unwrap_closure(fn):
         # Only unwrap closures for *actual* functions with __closure__
         if isinstance(fn, FunctionType) and getattr(fn, "__closure__", None):
             for cell in fn.__closure__:
-                try:
-                    val = cell.cell_contents
-                except Exception:
-                    continue
+                try: val = cell.cell_contents
+                except Exception: continue
                 yield from _unwrap(val, expected, first_only)
-                if first_only:
-                    return
+                if first_only: return
 
     if expected is not None:
         if isinstance(obj, expected):
             yield obj
-            if first_only:
-                return
+            if first_only: return
 
         if callable(obj):
-            try:
-                unwrapped = inspect.unwrap(obj)
-            except Exception:
-                unwrapped = obj
+            try: unwrapped = inspect.unwrap(obj)
+            except Exception: unwrapped = obj
 
             if isinstance(unwrapped, expected):
                 yield unwrapped
@@ -533,221 +528,30 @@ def _unwrap(obj: Any, expected: Optional[Type], first_only: bool = True):
                     return
 
             yield from unwrap_closure(unwrapped)
-            if first_only:
-                return
+            if first_only: return
 
-        # Only iterate if it's not a string/bytes/bytearray
         if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes, bytearray)):
             for item in obj:
                 yield from _unwrap(item, expected, first_only)
-                if first_only:
-                    return
+                if first_only: return
     else:
-        # No expected type, just unwrap callable if possible
         if callable(obj):
-            try:
-                yield inspect.unwrap(obj)
-            except Exception:
-                yield obj
-        else:
-            yield obj
+            try: yield inspect.unwrap(obj)
+            except Exception: yield obj
+        else: yield obj
 
-...
-
-# TODO: Remove these functions from gway/builtins.py and relocate them
-# to methods of a new class Apeiron in the structs module.
-
-
-def to_html(obj, **kwargs):
-    """
-    Convert an arbitrary Python object to structured HTML.
-    
-    Args:
-        obj: The object to convert.
-        **kwargs: Optional keyword arguments for customization:
-            - class_prefix: Prefix for HTML class names.
-            - max_depth: Maximum recursion depth.
-            - skip_none: Skip None values.
-            - pretty: Insert newlines/indentation.
-    
-    Returns:
-        A string of HTML representing the object.
-    """
-    class_prefix = kwargs.get("class_prefix", "obj")
-    max_depth = kwargs.get("max_depth", 10)
-    skip_none = kwargs.get("skip_none", False)
-    pretty = kwargs.get("pretty", False)
-
-    def indent(level):
-        return "  " * level if pretty else ""
-
-    def _to_html(o, depth=0):
-        if depth > max_depth:
-            return f'{indent(depth)}<div class="{class_prefix}-max-depth">…</div>'
-
-        if o is None:
-            return "" if skip_none else f'{indent(depth)}<div class="{class_prefix}-none">None</div>'
-
-        elif isinstance(o, bool):
-            return f'{indent(depth)}<div class="{class_prefix}-bool">{o}</div>'
-
-        elif isinstance(o, (int, float)):
-            return f'{indent(depth)}<div class="{class_prefix}-number">{o}</div>'
-
-        elif isinstance(o, str):
-            safe = html.escape(o)
-            return f'{indent(depth)}<div class="{class_prefix}-string">"{safe}"</div>'
-
-        elif isinstance(o, Mapping):
-            html_parts = [f'{indent(depth)}<table class="{class_prefix}-dict">']
-            for k, v in o.items():
-                if v is None and skip_none:
-                    continue
-                key_html = html.escape(str(k))
-                value_html = _to_html(v, depth + 1)
-                html_parts.append(f'{indent(depth+1)}<tr><th>{key_html}</th><td>{value_html}</td></tr>')
-            html_parts.append(f'{indent(depth)}</table>')
-            return "\n".join(html_parts)
-
-        elif isinstance(o, Sequence) and not isinstance(o, (str, bytes)):
-            html_parts = [f'{indent(depth)}<ul class="{class_prefix}-list">']
-            for item in o:
-                item_html = _to_html(item, depth + 1)
-                html_parts.append(f'{indent(depth+1)}<li>{item_html}</li>')
-            html_parts.append(f'{indent(depth)}</ul>')
-            return "\n".join(html_parts)
-
-        elif hasattr(o, "__dict__"):
-            html_parts = [f'{indent(depth)}<div class="{class_prefix}-object">']
-            html_parts.append(f'{indent(depth+1)}<div class="{class_prefix}-class-name">{o.__class__.__name__}</div>')
-            for k, v in vars(o).items():
-                if v is None and skip_none:
-                    continue
-                value_html = _to_html(v, depth + 2)
-                html_parts.append(f'{indent(depth+1)}<div class="{class_prefix}-field"><strong>{html.escape(k)}:</strong> {value_html}</div>')
-            html_parts.append(f'{indent(depth)}</div>')
-            return "\n".join(html_parts)
-
-        else:
-            safe = html.escape(str(o))
-            return f'{indent(depth)}<div class="{class_prefix}-other">{safe}</div>'
-
-    return _to_html(obj)
-
-
-def to_list(obj, flat=False):
-    """
-    Convert, and optionally flatten, any object into a list with a set of intuitive rules.
-    - If `obj` is a string with spaces, commas, colons, or semicolons, split it.
-    - If `obj` is a dict or a view (e.g., bottle view dict), return ["key=value", ...].
-    - If `obj` is a list or tuple, return it as a list.
-    - If `obj` is an iterable, convert to list.
-    - Otherwise, return [obj].
-    """
-    def _flatten(x):
-        for item in x:
-            if isinstance(item, str) or isinstance(item, bytes):
-                yield item
-            elif isinstance(item, collections.abc.Mapping):
-                for k, v in item.items():
-                    yield f"{k}={v}"
-            elif isinstance(item, collections.abc.Iterable):
-                yield from _flatten(item)
-            else:
-                yield item
-
-    # Handle string splitting
-    if isinstance(obj, str):
-        if re.search(r"[ ,;:]", obj):
-            result = re.split(r"[ ,;:]+", obj.strip())
-            return list(_flatten(result)) if flat else result
-        return [obj]
-
-    # Handle mappings (e.g. dicts, views)
-    if isinstance(obj, collections.abc.Mapping):
-        items = [f"{k}={v}" for k, v in obj.items()]
-        return list(_flatten(items)) if flat else items
-
-    # Handle other iterables
-    if isinstance(obj, collections.abc.Iterable):
-        result = list(obj)
-        return list(_flatten(result)) if flat else result
-
-    # Fallback
-    return [obj]
-
-
-# TODO: Consider a <urls> project for these functions later.
-
-def build_url(*args, **kwargs):
-    """Build a fully-qualified context-aware URL given a path sequence and query params."""
-    from gway import gw
-    try:
-        return base_url() + gw.web.app.build_url(*args, **kwargs)
-    except AttributeError:
-        return base_url() + '/'.join(args) 
-    
-    
-def build_ws_url(*args, **kwargs):
-    """Build a fully-qualified context-aware URL given a path sequence and query params."""
-    from gway import gw
-    try:
-        return base_ws_url() + gw.web.app.build_url(*args, **kwargs)
-    except AttributeError:
-        return base_ws_url() + '/'.join(args) 
-
-def base_url():
-    from gway import gw
-    url = os.environ.get('BASE_URL', None)
-    if not url:
-        default = gw.resolve('http://[WEBSITE_PORT|0.0.0.0]:[WEBSITE_PORT|8888]')
-        url = os.environ.get('SERVER_URL', default) 
-    return url
-
-
-def base_ws_url():
-    from gway import gw
-    url = os.environ.get('BASE_WS_URL', None)
-    if not url:
-        default = gw.resolve('ws://[WEBSITE_PORT|0.0.0.0]:[WEBSOCKETS_PORT|9999]')
-        url = os.environ.get('SERVER_WS_URL', default) 
-    return url
-
-
-# Exclude ambiguous characters: 0, O, 1, I, l
-_EZ_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghikmnopqrstuvwxyz23456789"
+# Excludse ambiguous characters: 0, O, 1, I, l, Z, 2
+_EZ_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXY3456789"
 
 def random_id(length: int = 8, alphabet: str = _EZ_ALPHABET) -> str:
-    """
-    Generate a readable random ID, avoiding confusing characters.
-
-    Args:
-        length: Length of the ID (default 8)
-        alphabet: Characters to choose from (default: unambiguous alphanumerics)
-
-    Returns:
-        A visually clear, randomly generated string.
-    """
+    """Generate a readable random ID, avoiding confusing characters."""
     return ''.join(random.choices(alphabet, k=length))
-
 
 def shell():
     """Launch an interactive Python shell with 'from gway import gw' preloaded."""
-    # Try to import gw
-    try:
-        from gway import gw
-    except ImportError as e:
-        print(f"Warning: could not import gw from gway ({e})", file=sys.stderr)
-        gw = None
-
-    # Build the locals dict for the shell
+    from gway import gw
     local_vars = {'gw': gw}
-    banner = (
-        "GWAY interactive shell.\n"
-        "from gway import gw  # Python 3.13 compatible"
-    )
-
-    # Start the interactive console
+    banner = "GWAY interactive shell.\nfrom gway import gw  # Python 3.13 compatible"
     code.interact(banner=banner, local=local_vars)
 
 # TODO: Create an <init_root> builtin that will create a brand new folder structure

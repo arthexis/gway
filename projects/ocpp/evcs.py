@@ -1,10 +1,14 @@
 # file: projects/ocpp/evcs.py
 
-import asyncio, json, random, time, websockets
 import threading
+import traceback
 from gway import gw
 import secrets
 import base64
+from bottle import request
+import asyncio, json, random, time, websockets
+import json
+import time
 
 # TODO: Fix this issue found in the logs.
 # [Simulator:CPX] Exception: cannot call recv while another coroutine is already running recv or recv_streaming
@@ -294,3 +298,185 @@ async def simulate_cp(
             print(f"[Simulator:{cp_name}] Simulation ended.")
     except Exception as e:
         print(f"[Simulator:{cp_name}] Exception: {e}")
+
+
+# --- Simulator control state ---
+_simulator_state = {
+    "running": False,
+    "last_status": "",
+    "last_command": None,
+    "last_error": "",
+    "thread": None,
+    "start_time": None,
+    "stop_time": None,
+    "params": {},
+}
+
+
+def _run_simulator_thread(params):
+    """Background runner for the simulator, updating state as it runs."""
+    global _simulator_state
+    try:
+        _simulator_state["last_status"] = "Starting..."
+        coro = simulate(**params)
+        if hasattr(coro, "__await__"):  # coroutine (daemon=True)
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(coro)
+        _simulator_state["last_status"] = "Simulator finished."
+    except Exception as e:
+        _simulator_state["last_status"] = "Error"
+        _simulator_state["last_error"] = f"{e}\n{traceback.format_exc()}"
+    finally:
+        _simulator_state["running"] = False
+        _simulator_state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        _simulator_state["thread"] = None
+
+
+def _start_simulator(params=None):
+    """Start the simulator in a background thread."""
+    global _simulator_state
+    if _simulator_state["running"]:
+        return False  # Already running
+    _simulator_state["last_error"] = ""
+    _simulator_state["last_command"] = "start"
+    _simulator_state["last_status"] = "Simulator launching..."
+    _simulator_state["params"] = params or {}
+    _simulator_state["running"] = True
+    _simulator_state["start_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _simulator_state["stop_time"] = None
+    t = threading.Thread(target=_run_simulator_thread, args=(_simulator_state["params"],), daemon=True)
+    _simulator_state["thread"] = t
+    t.start()
+    return True
+
+def _stop_simulator():
+    """Stop the simulator. (Note: true coroutine interruption is not implemented.)"""
+    global _simulator_state
+    _simulator_state["last_command"] = "stop"
+    _simulator_state["last_status"] = "Requested stop (will finish current run)..."
+    _simulator_state["running"] = False
+    # Simulator must check this flag between sessions (not during a blocking one).
+    # For a true hard kill, one would need to implement cancellation or kill the thread (not recommended).
+    return True
+
+def _simulator_status_json():
+    """JSON summary for possible API endpoint / AJAX polling."""
+    global _simulator_state
+    return json.dumps({
+        "running": _simulator_state["running"],
+        "last_status": _simulator_state["last_status"],
+        "last_command": _simulator_state["last_command"],
+        "last_error": _simulator_state["last_error"],
+        "params": _simulator_state["params"],
+        "start_time": _simulator_state["start_time"],
+        "stop_time": _simulator_state["stop_time"],
+    }, indent=2)
+
+
+def view_cp_simulator(*args, **kwargs):
+    """
+    Web UI for the OCPP simulator (single session only).
+    Start/stop, view state, error messages, and current config.
+    """
+    global _simulator_state
+
+    # Get default host/port from CSMS websocket
+    ws_url = gw.web.build_ws_url(project="ocpp.csms")
+    default_host = ws_url.split("://")[-1].split(":")[0]
+    default_ws_port = ws_url.split(":")[-1].split("/")[0] if ":" in ws_url else "9000"
+    default_cp_path = "CPX"
+    default_rfid = "FFFFFFFF"
+
+    msg = ""
+    if request.method == "POST":
+        action = request.forms.get("action")
+        if action == "start":
+            sim_params = dict(
+                host = request.forms.get("host") or default_host,
+                ws_port = int(request.forms.get("ws_port") or default_ws_port),
+                cp_path = request.forms.get("cp_path") or default_cp_path,
+                rfid = request.forms.get("rfid") or default_rfid,
+                duration = int(request.forms.get("duration") or 60),
+                repeat = request.forms.get("repeat") or False,
+                daemon = True,
+                username = request.forms.get("username") or None,
+                password = request.forms.get("password") or None,
+            )
+            started = _start_simulator(sim_params)
+            msg = "Simulator started." if started else "Simulator is already running."
+        elif action == "stop":
+            _stop_simulator()
+            msg = "Stop requested. Simulator will finish current session before stopping."
+        else:
+            msg = "Unknown action."
+
+    state = dict(_simulator_state)
+    running = state["running"]
+    error = state["last_error"]
+    params = state["params"]
+
+    html = ['<h1>OCPP Charger Simulator</h1>']
+    if msg:
+        html.append(f'<div style="margin-bottom:1em;color:#0a0">{msg}</div>')
+
+    html.append(f'''
+    <form method="post" style="margin-bottom:1.2em;display:flex;gap:20px;align-items:flex-end;">
+        <div>
+            <label>Host:<br><input name="host" value="{params.get('host', default_host)}" style="width:130px"></label>
+        </div>
+        <div>
+            <label>Port:<br><input name="ws_port" value="{params.get('ws_port', default_ws_port)}" style="width:70px"></label>
+        </div>
+        <div>
+            <label>ChargePoint Path:<br><input name="cp_path" value="{params.get('cp_path', default_cp_path)}" style="width:90px"></label>
+        </div>
+        <div>
+            <label>RFID:<br><input name="rfid" value="{params.get('rfid', default_rfid)}" style="width:110px"></label>
+        </div>
+        <div>
+            <label>Duration (s):<br><input name="duration" value="{params.get('duration', 60)}" style="width:60px"></label>
+        </div>
+        <div>
+            <label>Repeat:<br>
+                <select name="repeat" style="width:80px">
+                    <option value="False" {'selected' if not params.get('repeat') else ''}>No</option>
+                    <option value="True" {'selected' if str(params.get('repeat')).lower() in ('true', '1') else ''}>Yes</option>
+                </select>
+            </label>
+        </div>
+        <div>
+            <label>User:<br><input name="username" value="" style="width:80px"></label>
+        </div>
+        <div>
+            <label>Pass:<br><input name="password" value="" type="password" style="width:80px"></label>
+        </div>
+        <div>
+            <button type="submit" name="action" value="start" {'disabled' if running else ''}>Start</button>
+            <button type="submit" name="action" value="stop" {'disabled' if not running else ''}>Stop</button>
+        </div>
+    </form>
+    ''')
+
+    html.append('<div style="margin-bottom:0.8em;">')
+    html.append(f'<b>Status:</b> {"🟢 Running" if running else "⚪ Stopped"}<br>')
+    html.append(f'<b>Last Status:</b> {state["last_status"]}<br>')
+    html.append(f'<b>Last Command:</b> {state["last_command"] or "-"}<br>')
+    html.append(f'<b>Started:</b> {state["start_time"] or "-"}<br>')
+    html.append(f'<b>Stopped:</b> {state["stop_time"] or "-"}<br>')
+    html.append('</div>')
+
+    if error:
+        html.append(f'<div style="background:#faa;color:#a00;padding:0.8em 1em;border-radius:7px;margin-bottom:1em;"><b>Error:</b><pre>{error}</pre></div>')
+
+    html.append('<details style="margin-bottom:1.2em;"><summary style="font-weight:bold;cursor:pointer;">Show Simulator Params</summary>')
+    html.append('<pre style="margin:0.4em 0 0 0;font-size:1.02em;background:#222;color:#fff;border-radius:6px;padding:10px 12px;">')
+    html.append(json.dumps(params, indent=2))
+    html.append('</pre></details>')
+
+    html.append('<details><summary style="font-weight:bold;cursor:pointer;">Show Simulator State JSON</summary>')
+    html.append(f'<pre style="margin:0.4em 0 0 0;font-size:1.02em;background:#222;color:#fff;border-radius:6px;padding:10px 12px;">{_simulator_status_json()}</pre>')
+    html.append('</details>')
+
+    return "".join(html)

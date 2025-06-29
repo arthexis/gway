@@ -193,7 +193,7 @@ def config_basic(
         gw.cdv.update(allow, username, b64=pw_b64, expiration=expiration)
 
         demo_path = "ocpp/csms/charger-status"
-        resource_url = gw.build_url(demo_path)
+        resource_url = gw.web.build_url(demo_path)
         from urllib.parse import urlparse
         p = urlparse(resource_url)
         basic_url = f"{p.scheme}://{username}:{password}@{p.hostname}"

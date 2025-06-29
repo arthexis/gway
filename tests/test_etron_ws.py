@@ -1,6 +1,7 @@
 # file: tests/test_etron_ws.py
 
 import unittest
+import sys
 import subprocess
 import time
 import websockets
@@ -15,60 +16,90 @@ KNOWN_GOOD_TAG = "FFFFFFFF"
 ADMIN_TAG = "8505010F"
 UNKNOWN_TAG = "ZZZZZZZZ"
 
+import signal
+
 class EtronWebSocketTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.data_dir = os.path.join("data", "etron")
-        cls.rfids_cdv = os.path.join(cls.data_dir, "rfids.cdv")
-        cls.backup_cdv = cls.rfids_cdv + ".bak"
+        cls.proc = None
+        try:
+            cls.data_dir = os.path.join("data", "etron")
+            cls.rfids_cdv = os.path.join(cls.data_dir, "rfids.cdv")
+            cls.backup_cdv = cls.rfids_cdv + ".bak"
+            cls.initial_files = set(os.listdir(cls.data_dir))
+            if os.path.exists(cls.rfids_cdv):
+                shutil.copy2(cls.rfids_cdv, cls.backup_cdv)
+            else:
+                with open(cls.rfids_cdv, "w") as f:
+                    pass
+                shutil.copy2(cls.rfids_cdv, cls.backup_cdv)
+            gw.cdv.update(cls.rfids_cdv, KNOWN_GOOD_TAG, user="test", balance="100")
+            gw.cdv.update(cls.rfids_cdv, ADMIN_TAG, user="Admin", balance="150")
 
-        # List initial files (full paths) so we can revert and delete as needed
-        cls.initial_files = set(os.listdir(cls.data_dir))
-
-        # Backup existing CDV or create a new blank one and back it up
-        if os.path.exists(cls.rfids_cdv):
-            shutil.copy2(cls.rfids_cdv, cls.backup_cdv)
-        else:
-            with open(cls.rfids_cdv, "w") as f:
-                pass
-            shutil.copy2(cls.rfids_cdv, cls.backup_cdv)
-
-        # Prepare known tags in the file used by both prod and test
-        gw.cdv.update(cls.rfids_cdv, KNOWN_GOOD_TAG, user="test", balance="100")
-        gw.cdv.update(cls.rfids_cdv, ADMIN_TAG, user="Admin", balance="150")
-
-        # Start the OCPP/etron server (uses data/etron/rfids.cdv)
-        cls.proc = subprocess.Popen(
-            ["gway", "-r", "etron/cloud"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        cls._wait_for_port(9000, timeout=12)
-        time.sleep(2)  # Let the server start fully
+            # --- START SERVER ---
+            cls.proc = subprocess.Popen(
+                ["gway", "-r", "etron/cloud"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            cls._wait_for_port(9000, timeout=12)
+        except Exception as e:
+            # Read and print whatever the process wrote
+            try:
+                output = cls.proc.stdout.read()
+                print("=== etron/cloud subprocess output ===", file=sys.stderr)
+                print(output, file=sys.stderr)
+            except Exception as out_exc:
+                print("Could not read subprocess output:", out_exc, file=sys.stderr)
+            # Kill process
+            cls._cleanup_server()
+            raise
 
     @classmethod
     def tearDownClass(cls):
-        # Kill the subprocess
-        if hasattr(cls, "proc") and cls.proc:
-            cls.proc.terminate()
-            try:
-                cls.proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                cls.proc.kill()
+        cls._cleanup_server()
 
-        # Restore (or remove) rfids.cdv
-        if os.path.exists(cls.backup_cdv):
-            shutil.move(cls.backup_cdv, cls.rfids_cdv)
-        # Remove any *new* files created in data/etron/ during the test run
-        current_files = set(os.listdir(cls.data_dir))
-        new_files = current_files - cls.initial_files
-        for fname in new_files:
-            fpath = os.path.join(cls.data_dir, fname)
-            if os.path.isfile(fpath):
-                os.remove(fpath)
-            elif os.path.isdir(fpath):
-                shutil.rmtree(fpath)
+    @classmethod
+    def _cleanup_server(cls):
+        # Kill the subprocess
+        proc = getattr(cls, "proc", None)
+        if proc:
+            try:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    # Try a SIGKILL if not already dead
+                    if hasattr(proc, "kill"):
+                        proc.kill()
+                    else:
+                        # On Windows, terminate is kill, but just in case
+                        os.kill(proc.pid, signal.SIGTERM)
+            except Exception:
+                pass
+            cls.proc = None
+            time.sleep(1)  # Let OS free the port
+
+        # Restore/remove rfids.cdv and delete any new files
+        data_dir = getattr(cls, "data_dir", None)
+        rfids_cdv = getattr(cls, "rfids_cdv", None)
+        backup_cdv = getattr(cls, "backup_cdv", None)
+        initial_files = getattr(cls, "initial_files", set())
+        if backup_cdv and os.path.exists(backup_cdv):
+            shutil.move(backup_cdv, rfids_cdv)
+        if data_dir and os.path.isdir(data_dir):
+            current_files = set(os.listdir(data_dir))
+            new_files = current_files - initial_files
+            for fname in new_files:
+                fpath = os.path.join(data_dir, fname)
+                try:
+                    if os.path.isfile(fpath):
+                        os.remove(fpath)
+                    elif os.path.isdir(fpath):
+                        shutil.rmtree(fpath)
+                except Exception:
+                    pass
 
     @staticmethod
     def _wait_for_port(port, timeout=10):

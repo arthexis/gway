@@ -14,7 +14,7 @@ from regex import W
 from pathlib import Path
 
 from .envs import load_env, get_base_client, get_base_server
-from .sigils import Resolver
+from .sigils import Resolver, Sigil, Spool
 from .structs import Results, Project, Null
 from .runner import Runner
 
@@ -31,9 +31,9 @@ class Gateway(Resolver, Runner):
     verbose = False
     wizard = False
 
-    def __init__(self, *, 
+    def __init__(self, *,
                 client=None, server=None, name="gw", base_path=None, project_path=None,
-                verbose=False, silent=False, debug=None, wizard=None, quantity=1, **kwargs
+                verbose=None, silent=None, debug=None, wizard=None, quantity=1, **kwargs
     ):
         self._cache = {}
         self._async_threads = []
@@ -45,15 +45,24 @@ class Gateway(Resolver, Runner):
         self.name = name
         self.logger = logging.getLogger(name)
 
-        # Configure log level helpers
-        if debug is not None:
-            Gateway.debug = (lambda self, msg: self.logger.debug(msg, stacklevel=2)) if debug else Null
-        if silent is not None:
-            Gateway.silent = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if silent else Null
-        if verbose is not None:
-            Gateway.verbose = (lambda self, msg: self.logger.info(msg, stacklevel=2)) if verbose else Null
-        if wizard is not None:
-            Gateway.verbose = (lambda self, msg: self.logger.debug(msg, stacklevel=2)) if wizard else Null
+        # --- Mode propagation logic: Set global flags via classmethod ---
+        explicit_modes = {}
+        for flag in ('debug', 'silent', 'verbose', 'wizard'):
+            val = locals()[flag]
+            if val is not None:
+                explicit_modes[flag] = val
+        if explicit_modes:
+            type(self).update_modes(**explicit_modes)
+
+        # Set instance mode flags to match class-level (which may have just changed)
+        for flag in ('debug', 'silent', 'verbose', 'wizard'):
+            setattr(self, f"{flag}_enabled", getattr(type(self), flag))
+
+        # Instance-level log helpers: always use self.<flag>() to log
+        self.debug = (lambda msg, *a, **k: self.logger.debug(msg, *a, stacklevel=2, **k)) if self.debug_enabled else Null
+        self.silent = (lambda msg, *a, **k: self.logger.info(msg, *a, stacklevel=2, **k)) if self.silent_enabled else Null
+        self.verbose = (lambda msg, *a, **k: self.logger.info(msg, *a, stacklevel=2, **k)) if self.verbose_enabled else Null
+        self.wizard = (lambda msg, *a, **k: self.logger.debug(msg, *a, stacklevel=2, **k)) if self.wizard_enabled else Null
 
         client_name = client or get_base_client()
         server_name = server or get_base_server()
@@ -86,6 +95,28 @@ class Gateway(Resolver, Runner):
                 and not name.startswith("_")
                 and inspect.getmodule(obj) == builtins_module
             }
+
+    @classmethod
+    def update_modes(cls, *, debug=None, silent=None, verbose=None, wizard=None):
+        """Set global mode flags at the class level and on the global 'gw' instance, if present."""
+        updated = {}
+        for flag, value in [('debug', debug), ('silent', silent), ('verbose', verbose), ('wizard', wizard)]:
+            if value is not None:
+                setattr(cls, flag, value)
+                updated[flag] = value
+        # Update global gw instance if it exists and is not the current instance
+        try:
+            import sys
+            mod = sys.modules[cls.__module__]
+            if hasattr(mod, "gw"):
+                g = getattr(mod, "gw")
+                if isinstance(g, Gateway):
+                    for flag, value in updated.items():
+                        setattr(g, f"{flag}_enabled", value)
+                        # Update the instance method as well!
+                        setattr(g, flag, (lambda msg, *a, **k: g.logger.debug(msg, *a, stacklevel=2, **k)) if value else Null)
+        except Exception:
+            pass
 
     def _projects_path(self):
         # 1. User explicitly passed a project_path
@@ -142,7 +173,7 @@ class Gateway(Resolver, Runner):
         """Attempt to load a project by name from all supported project locations."""
         def try_path(base_dir):
             base = gw.resource(base_dir, *project_name.split("."))
-            self.debug(f"{project_name} <- Project('{base}')")
+            self.verbose(f"{project_name} <- Project('{base}')")
 
             def load_module_ns(py_path: str, dotted: str):
                 mod = self.load_py_file(py_path, dotted)
@@ -202,51 +233,78 @@ class Gateway(Resolver, Runner):
                 arg_txt = ', '.join(f"'{x}'" for x in args)
                 if kwarg_txt and arg_txt:
                     arg_txt = f"{arg_txt}, "
-                # Only log call for builtins if verbose; otherwise, always log for non-builtins
                 if not (is_builtin and not self.verbose):
                     self.debug(f"> {func_name}({arg_txt}{kwarg_txt})")
+
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
                 bound_args.apply_defaults()
+                subject = self.subject(func_name)
 
-                # --- Step 1: NO automatic resolution of defaults here ---
-                # (context injection handled by fallback in Step 3)
+                call_args = []
+                call_kwargs = {}
 
-                # --- Step 2: NO automatic resolution of argument values ---
-                # Instead, just copy into context
-                for key, value in bound_args.arguments.items():
-                    self.context[key] = value
+                for name, param in sig.parameters.items():
+                    has_explicit = name in bound_args.arguments and (
+                        param.default is inspect.Parameter.empty or
+                        bound_args.arguments[name] is not param.default
+                    )
 
-                # Step 3: Prepare final call args/kwargs (context fallback intact)
-                args_to_pass = []
-                kwargs_to_pass = {}
-                for param in sig.parameters.values():
-                    if param.kind == param.VAR_POSITIONAL:
-                        args_to_pass.extend(bound_args.arguments.get(param.name, ()))
+                    can_auto_inject = (subject is not None) and (name == subject) and not is_builtin
+
+                    if has_explicit:
+                        value = bound_args.arguments[name]
+                    elif can_auto_inject:
+                        value = self.find_value(name)
+                        if value is None:
+                            default_val = bound_args.arguments.get(name, param.default)
+                            if isinstance(default_val, (Sigil, Spool)):
+                                value = default_val.resolve(self)
+                            else:
+                                value = default_val
+                    else:
+                        default_val = bound_args.arguments.get(name, param.default)
+                        if isinstance(default_val, (Sigil, Spool)):
+                            value = default_val.resolve(self)
+                        else:
+                            value = default_val
+
+                    ann = param.annotation
+                    if ann in (int, float, str, bool) and value is not None and not isinstance(value, ann):
+                        try:
+                            value = ann(value)
+                        except Exception:
+                            if ann is bool and isinstance(value, str):
+                                value = value.lower() in ("1", "true", "yes", "on")
+                            else:
+                                raise
+
+                    if can_auto_inject:
+                        self.context[name] = value
+
+                    if param.kind == param.POSITIONAL_ONLY:
+                        call_args.append(value)
+                    elif param.kind == param.POSITIONAL_OR_KEYWORD:
+                        call_args.append(value)
+                    elif param.kind == param.VAR_POSITIONAL:
+                        call_args.extend(value if isinstance(value, (list, tuple)) else [value])
+                    elif param.kind == param.KEYWORD_ONLY:
+                        call_kwargs[name] = value
                     elif param.kind == param.VAR_KEYWORD:
-                        kwargs_to_pass.update(bound_args.arguments.get(param.name, {}))
-                    elif param.name in bound_args.arguments:
-                        val = bound_args.arguments[param.name]
-                        # If argument is still the default, try to override from context
-                        if param.default == val:
-                            found = self.find_value(param.name)
-                            if found is not None and found != val:
-                                val = found
-                                self.context[param.name] = val
-                        kwargs_to_pass[param.name] = val
+                        call_kwargs.update(value if isinstance(value, dict) else {})
 
-                # Step 4: Call the function (async or sync)
+                # Async handling unchanged
                 if inspect.iscoroutinefunction(func_obj):
                     thread = threading.Thread(
                         target=self.run_coroutine,
-                        args=(func_name, func_obj, args_to_pass, kwargs_to_pass),
+                        args=(func_name, func_obj, call_args, call_kwargs),
                         daemon=True
                     )
                     self._async_threads.append(thread)
                     thread.start()
                     return f"ASYNC task started for {func_name}"
 
-                result = func_obj(*args_to_pass, **kwargs_to_pass)
+                result = func_obj(*call_args, **call_kwargs)
 
                 if inspect.iscoroutine(result):
                     thread = threading.Thread(
@@ -258,41 +316,23 @@ class Gateway(Resolver, Runner):
                     thread.start()
                     return f"ASYNC coroutine started for {func_name}"
 
-                # Step 5: Store result into results/context if not None
-                if result is not None:
-                    parts = func_name.split(".")
-                    project = parts[-2] if len(parts) > 1 else parts[-1]
-                    func = parts[-1]
+                # ---- Result storage logic ----
+                # 1. If built-in, skip storage entirely.
+                # 2. If there is a subject, store result under subject (and in context if dict).
+                #    If there is no subject, do NOT store, do NOT wrap/encapsulate result.
 
-                    def split_words(name):
-                        return re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', name.replace("_", " "))
-
-                    words = split_words(func)
-                    if len(words) == 1:
-                        sk = project
-                    else:
-                        sk = words[-1]
-
-                    lk = ".".join([project] + words[1:]) if len(words) > 1 else project
-
-                    repr_result = repr(result)
-                    if len(repr_result) > 100:
-                        short_result = repr_result[:100] + "...[truncated]"
-                    else:
-                        short_result = repr_result
-
+                if not is_builtin and subject and result is not None:
+                    # Do NOT wrap/modify result; just store reference.
+                    log_value = repr(result)
+                    if len(log_value) > 100:
+                        log_value = log_value[:100] + "...[truncated]"
                     sensitive_keywords = ("password", "secret", "token", "key")
-                    if any(word.lower() in sk.lower() for word in sensitive_keywords):
+                    if any(word in subject for word in sensitive_keywords):
                         log_value = "<redacted>"
-                    else:
-                        log_value = short_result
 
-                    # Only log result for builtins if verbose; otherwise, always log for non-builtins
-                    if not (is_builtin and not self.verbose):
-                        self.debug(f"< result['{sk}'] == {log_value}")
-                    self.results.insert(sk, result)
-                    if lk != sk:
-                        self.results.insert(lk, result)
+                    if not self.verbose:
+                        self.debug(f"< result['{subject}'] == {log_value}")
+                    self.results.insert(subject, result)
                     if isinstance(result, dict):
                         self.context.update(result)
 
@@ -305,7 +345,7 @@ class Gateway(Resolver, Runner):
                 raise
 
         return wrap
-    
+
     def __getattr__(self, name):
         # Pass through standard logger methods if present
         if hasattr(self.logger, name) and callable(getattr(self.logger, name)):
@@ -333,7 +373,7 @@ class Gateway(Resolver, Runner):
         """
         def try_path(base_dir):
             base = gw.resource(base_dir, *project_name.split("."))
-            self.debug(f"{project_name} <- Project('{base}')")
+            self.verbose(f"{project_name} <- Project('{base}')")
 
             def load_module_ns(py_path: str, dotted: str):
                 mod = self.load_py_file(py_path, dotted)
@@ -498,6 +538,12 @@ class Gateway(Resolver, Runner):
             self.info(*args, **kwargs)
             return "info"
 
+    def subject(self, func_name: str):
+        # Returns subject if "verb_subject", else None
+        words = func_name.replace("-", "_").split("_")
+        if len(words) > 1:
+            return "_".join(words[1:])
+        return None
 
 # This line allows using "from gway import gw" everywhere else
 gw = Gateway()

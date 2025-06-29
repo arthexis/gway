@@ -74,19 +74,25 @@ class NavStyleTests(unittest.TestCase):
         self.assertIsNotNone(preview_div, "style-preview div not found")
         self.assertIn("Palimpsesto", preview_div.text, "Preview does not mention 'Palimpsesto'")
 
+    # TODO: The following test keeps failing. We should do a standalone test for cookies to isolate the source
+
     def test_theme_switch_sets_css_cookie_and_main_link(self):
         """Test POST to change theme sets cookie and updates <head> <link>."""
         session = requests.Session()
-        # Accept cookies (simulate via GET to /cookies/cookie-jar?accept=true)
-        session.get(self.base_url + "/cookies/cookie-jar?accept=true")
-        # Post to set theme
-        r = session.post(self.base_url + "/nav/style-switcher", data={"css": "classic-95.css"})
-        # Follow redirect if present
-        if r.status_code in (301, 302, 303, 307):
-            redirect_url = r.headers.get("Location") or r.headers.get("location")
-            if redirect_url:
-                session.get(self.base_url + redirect_url)
-        # Now reload page and check head
+        # Accept cookies
+        session.post(self.base_url + "/cookies/accept")
+        # POST to set theme to classic-95.css
+        resp = session.post(
+            self.base_url + "/nav/style-switcher",
+            data={"css": "classic-95.css"},
+            allow_redirects=True
+        )
+        # Check that the css cookie is set
+        self.assertIn(
+            "classic-95.css", session.cookies.get_dict().get("css", ""),
+            f"Theme change did not set css cookie, got cookies: {session.cookies.get_dict()}"
+        )
+        # Now reload style-switcher and check <head>
         soup, _ = self._get_soup(self.base_url + "/nav/style-switcher", session)
         head = soup.head
         links = [l for l in head.find_all('link', rel="stylesheet") if "classic-95.css" in l.get('href', '')]
