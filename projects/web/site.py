@@ -3,27 +3,118 @@
 import os
 from docutils.core import publish_parts
 from gway import gw, __
+import markdown as mdlib
 
-# TODO: Convert to view_reader and allow it to open safe files of different kinds. 
-#       Support .rst and .md first
+def view_reader(
+    *,
+    title=__('[README]', 'README'),
+    ext=None,
+    origin="root",
+    **kwargs,
+):
+    """
+    Render a resource file (.rst or .md) as HTML.
+    If origin='root', only files in the resource root (no subfolders).
+    Never serves files starting with dot or underscore.
+    """
+    gw.verbose(f"[reader] Called with title={title!r}, ext={ext!r}, origin={origin!r}")
+    fname = _sanitize_filename(title)
+    gw.verbose(f"[reader] Sanitized filename: {fname}")
+
+    ext = (str(ext).strip().lower() if ext else None)
+    if ext and ext.startswith('.'):
+        ext = ext[1:]
+    gw.verbose(f"[reader] Normalized ext: {ext}")
+
+    # Security: Never allow files starting with dot/underscore
+    if _is_hidden_or_private(fname):
+        gw.verbose(f"[reader] Access denied due to hidden/private filename: {fname}")
+        return "<b>Access denied.</b>"
+
+    def file_variants(base):
+        if ext in {'rst', 'md'}:
+            variants = [f"{base}.{ext}"]
+        else:
+            base_, ext_ = os.path.splitext(base)
+            if ext_ in {'.rst', '.md'}:
+                variants = [base]
+            else:
+                variants = [f"{base}.rst", f"{base}.md"]
+        gw.verbose(f"[reader] Candidate variants for base {base}: {variants}")
+        return variants
+
+    if origin == "root":
+        resource_dir = os.path.dirname(gw.resource('README.rst'))  # This IS the resource root
+        gw.verbose(f"[reader] Resource root directory: {resource_dir}")
+        for candidate in file_variants(fname):
+            gw.verbose(f"[reader] Checking candidate: {candidate}")
+            if _is_hidden_or_private(candidate):
+                gw.verbose(f"[reader] Skipped hidden/private candidate: {candidate}")
+                continue
+            try:
+                resource_path = gw.resource(candidate)
+                gw.verbose(f"[reader] Resolved resource path: {resource_path}")
+            except Exception as e:
+                gw.verbose(f"[reader] gw.resource({candidate}) exception: {e}")
+                continue
+            # Only allow files in the resource root
+            if not os.path.isfile(resource_path):
+                gw.verbose(f"[reader] Not a file: {resource_path}")
+                continue
+            if os.path.dirname(resource_path) != resource_dir:
+                gw.verbose(f"[reader] File not in resource root: {resource_path}")
+                continue
+            if _is_hidden_or_private(os.path.basename(resource_path)):
+                gw.verbose(f"[reader] File rejected (hidden/private): {resource_path}")
+                continue
+            gw.verbose(f"[reader] Will open file: {resource_path}")
+            try:
+                with open(resource_path, encoding="utf-8") as f:
+                    content = f.read()
+                if candidate.lower().endswith(".rst"):
+                    html = publish_parts(source=content, writer_name="html")["html_body"]
+                elif candidate.lower().endswith(".md"):
+                    html = mdlib.markdown(content)
+                else:
+                    gw.verbose(f"[reader] Unsupported file type for {candidate}")
+                    html = "<b>Unsupported file type.</b>"
+                gw.verbose(f"[reader] Successfully rendered {candidate}")
+                return html
+            except Exception as e:
+                gw.verbose(f"[reader] Exception reading or rendering {resource_path}: {e}")
+                continue
+        exts = ' or '.join(['.rst', '.md']) if not ext else f".{ext}"
+        gw.verbose(f"[reader] File not found or not allowed: {fname}{exts}")
+        return f"<b>File not found or not allowed: {fname}{exts}</b>"
+
+    # Fallback for other origins (not fully implemented here)
+    gw.verbose(f"[view_reader] Non-root origin {origin} not implemented in this snippet.")
+    return "<b>Invalid or unsupported origin.</b>"
 
 def _sanitize_filename(fname):
     """
-    Sanitize the fname filename so only a bare filename is allowed (no path separators, etc).
-    Strips out slashes, backslashes, .., etc.
+    Sanitize the filename: only allow dots and alphanumerics. No slashes, no backslashes, no "..".
     """
-    fname = os.path.basename(str(fname))
+    fname = str(fname)
     fname = fname.replace('/', '').replace('\\', '').replace('..', '')
+    fname = ''.join(c for c in fname if c.isalnum() or c in '._-')
     return fname
 
-def view_reader(*, rst=__('[README]', 'README'), **kwargs):
-    """Render the README.rst file as HTML."""
-    rst = _sanitize_filename(rst)
-    readme_path = gw.resource(f"{rst}.rst")
-    with open(readme_path, encoding="utf-8") as f:
-        rst_content = f.read()
-    html_parts = publish_parts(source=rst_content, writer_name="html")
-    return html_parts["html_body"]
+def _is_hidden_or_private(fname):
+    """
+    Returns True if filename (or its extension) starts with a dot or underscore.
+    """
+    fname = os.path.basename(fname)
+    if not fname:
+        return True
+    if fname[0] in {'.', '_'}:
+        return True
+    name, ext = os.path.splitext(fname)
+    if ext and ext[1:2] in {'.', '_'}:
+        return True
+    if name.startswith('.') or name.startswith('_'):
+        return True
+    return False
 
 
 def view_help(topic="", *args, **kwargs):
