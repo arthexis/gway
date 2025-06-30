@@ -1,4 +1,5 @@
 # file: projects/web/monitor.py
+# web path: /monitor
 
 import asyncio
 import subprocess
@@ -10,6 +11,7 @@ from gway import gw
 NMCLI_STATE = {
     "last_config_change": None,      # ISO8601 string
     "last_config_action": None,      # Text summary of change
+    "last_monitor_check": None,      # ISO8601 string (new)
     "wlan0_mode": None,              # "ap", "station", or None
     "wlan0_ssid": None,
     "wlan0_connected": None,
@@ -222,11 +224,13 @@ def try_connect_wlan0_known_networks():
 
 def watch_nmcli(*, 
         block=True, daemon=True, interval=15, 
-        ap_ssid=None, ap_password=None, ap_conn=None
+        ap_ssid=None, ap_password=None, ap_conn=None,
+        startup_delay=30
     ):
-
-    # TODO: Allow the monitor to have a startup delay
-    #       (but ensure this delay is waited for in the thread if possible)
+    """
+    Monitor nmcli state and manage AP/client fallback for wlan0.
+    :param startup_delay: Seconds to wait before starting monitor loop.
+    """
 
     ap_conn = gw.resolve(ap_conn or '[AP_CONN]')
     ap_ssid = gw.resolve(ap_ssid or '[AP_SSID]')
@@ -235,7 +239,12 @@ def watch_nmcli(*,
         raise ValueError("Missing ap_conn (AP_CONN). Required for AP operation.")
 
     async def monitor_loop():
+        # --- Startup delay ---
+        if startup_delay > 0:
+            gw.info(f"[monitor] Waiting {startup_delay}s before starting monitor loop...")
+            await asyncio.sleep(startup_delay)
         while True:
+            NMCLI_STATE["last_monitor_check"] = now_iso()   # Update monitor check time
             check_eth0_gateway()
             wlan_ifaces = get_wlan_ifaces()
             gw.info(f"[monitor] WLAN ifaces detected: {wlan_ifaces}")
@@ -275,7 +284,12 @@ def watch_nmcli(*,
             await asyncio.sleep(interval)
 
     def blocking_loop():
+        # --- Startup delay ---
+        if startup_delay > 0:
+            gw.info(f"[monitor] Waiting {startup_delay}s before starting monitor loop...")
+            time.sleep(startup_delay)
         while True:
+            NMCLI_STATE["last_monitor_check"] = now_iso()
             check_eth0_gateway()
             wlan_ifaces = get_wlan_ifaces()
             gw.info(f"[monitor] WLAN ifaces detected: {wlan_ifaces}")
@@ -317,6 +331,7 @@ def watch_nmcli(*,
     if block:
         blocking_loop()
     else:
+        NMCLI_STATE["last_monitor_check"] = now_iso()
         check_eth0_gateway()
         wlan_ifaces = get_wlan_ifaces()
         for iface in wlan_ifaces:
@@ -337,32 +352,38 @@ def watch_nmcli(*,
             set_wlan0_ap(ap_conn, ap_ssid, ap_password)
 
 # -- HTML report fragment --
+def _color_icon(status):
+    """Return a green/yellow/red dot HTML for boolean or status."""
+    if status is True or status == "ok":
+        return '<span style="color:#0b0;">&#9679;</span>'
+    if status is False or status == "fail":
+        return '<span style="color:#b00;">&#9679;</span>'
+    return '<span style="color:#bb0;">&#9679;</span>'
+
 def view_nmcli_report(**_):
     """
     Returns a diagnostic HTML fragment with the current nmcli state.
+    Includes time of last monitor check and colored indicators for key values.
     """
-
-    # TODO: Include datetime of last monitor check
 
     s = NMCLI_STATE
     html = [
         '<div class="nmcli-report">',
+        f"<b>Last monitor check:</b> {s.get('last_monitor_check') or '-'}<br>",
         f"<b>Last config change:</b> {s.get('last_config_change') or 'Never'}<br>",
         f"<b>Last action:</b> {s.get('last_config_action') or '-'}<br>",
         f"<b>wlan0 mode:</b> {s.get('wlan0_mode') or '-'}<br>",
         f"<b>wlan0 ssid:</b> {s.get('wlan0_ssid') or '-'}<br>",
-        f"<b>wlan0 internet:</b> {s.get('wlan0_inet')}<br>",
+        f"<b>wlan0 internet:</b> {_color_icon(s.get('wlan0_inet'))} {s.get('wlan0_inet')}<br>",
         f"<b>eth0 IP:</b> {s.get('eth0_ip') or '-'}<br>",
-        f"<b>eth0 gateway:</b> {'yes' if s.get('eth0_gateway') else 'no'}<br>",
-        f"<b>Last internet OK:</b> {s.get('last_inet_ok') or '-'}<br>",
-        f"<b>Last internet fail:</b> {s.get('last_inet_fail') or '-'}<br>",
-        f"<b>Last error:</b> {s.get('last_error') or '-'}<br>",
+        f"<b>eth0 gateway:</b> {_color_icon(s.get('eth0_gateway'))} {'yes' if s.get('eth0_gateway') else 'no'}<br>",
+        f"<b>Last internet OK:</b> {_color_icon(bool(s.get('last_inet_ok')))} {s.get('last_inet_ok') or '-'}<br>",
+        f"<b>Last internet fail:</b> {_color_icon(bool(s.get('last_inet_fail')))} {s.get('last_inet_fail') or '-'}<br>",
+        f"<b>Last error:</b> {_color_icon(s.get('last_error') is None)} {s.get('last_error') or '-'}<br>",
         "<b>WLANN status:</b><br><ul>",
     ]
     for iface, state in (s.get("wlanN") or {}).items():
-        html.append(f"<li>{iface}: ssid={state.get('ssid')}, conn={state.get('connected')}, inet={state.get('inet')}</li>")
+        html.append(f"<li>{iface}: ssid={state.get('ssid')}, conn={_color_icon(state.get('connected'))} {state.get('connected')}, inet={_color_icon(state.get('inet'))} {state.get('inet')}</li>")
     html.append("</ul></div>")
     return "\n".join(html)
 
-if __name__ == "__main__":
-    watch_nmcli()
