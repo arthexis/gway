@@ -549,8 +549,8 @@ def random_id(length: int = 8, alphabet: str = _EZ_ALPHABET) -> str:
 
 def shell():
     """Launch an interactive Python shell with 'from gway import gw' preloaded."""
-    from gway import gw
-    local_vars = {'gw': gw}
+    from gway import gw, __
+    local_vars = {'gw': gw, '__': __}
     banner = "GWAY interactive shell.\nfrom gway import gw  # Python 3.13 compatible"
     code.interact(banner=banner, local=local_vars)
 

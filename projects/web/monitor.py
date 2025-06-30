@@ -221,8 +221,13 @@ def try_connect_wlan0_known_networks():
     return False
 
 def watch_nmcli(*, 
-                block=True, daemon=True, interval=15, 
-                ap_ssid=None, ap_password=None, ap_conn=None):
+        block=True, daemon=True, interval=15, 
+        ap_ssid=None, ap_password=None, ap_conn=None
+    ):
+
+    # TODO: Allow the monitor to have a startup delay
+    #       (but ensure this delay is waited for in the thread if possible)
+
     ap_conn = gw.resolve(ap_conn or '[AP_CONN]')
     ap_ssid = gw.resolve(ap_ssid or '[AP_SSID]')
     ap_password = gw.resolve(ap_password or '[AP_PASSWORD]')
@@ -336,6 +341,9 @@ def view_nmcli_report(**_):
     """
     Returns a diagnostic HTML fragment with the current nmcli state.
     """
+
+    # TODO: Include datetime of last monitor check
+
     s = NMCLI_STATE
     html = [
         '<div class="nmcli-report">',

@@ -116,7 +116,6 @@ def _is_hidden_or_private(fname):
         return True
     return False
 
-
 def view_help(topic="", *args, **kwargs):
     """
     Render dynamic help based on GWAY introspection and search-style links.

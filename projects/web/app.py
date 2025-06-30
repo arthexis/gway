@@ -30,13 +30,13 @@ def setup_app(*,
     home: str = None,
     views: str = "view", 
     apis: str = "api",
+    renders: str = "render",
     static="static",
     shared="shared",
     css="global",           # Default CSS (without .css extension)
     js="global",            # Default JS  (without .js extension)
     auth_required=False,    # Default: Don't enforce --optional security
     engine="bottle",
-    
 ):
     """
     Setup Bottle web application with symmetrical static/shared public folders.
@@ -129,7 +129,6 @@ def setup_app(*,
                     kwargs.update(request.json or dict(request.forms))
                 except Exception as e:
                     return gw.web.error.redirect("Error loading JSON payload", err=e)
-            # -- PREFERRED DISPATCH LOGIC --
             method = request.method.lower()  # 'get' or 'post'
             method_func_name = f"{views}_{method}_{view_name}"
             generic_func_name = f"{views}_{view_name}"
@@ -206,6 +205,58 @@ def setup_app(*,
                 return res
             except Exception as e:
                 return gw.web.error.redirect("Broken API", err=e)
+            
+    if renders:
+        @app.route(f"/_/{path}/<hash>/<view:path>", method=["GET", "POST"])
+        def render_dispatch(hash, view):
+            nonlocal renders
+            # --- AUTH CHECK ---
+            if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
+                return gw.web.error.unauthorized("Unauthorized: Render access denied.")
+
+            # Set current endpoint in GWAY context
+            gw.context['current_endpoint'] = path
+
+            # view is always present (may be empty string)
+            segments = [s for s in view.strip("/").split("/") if s]
+            view_name = segments[0].replace("-", "_") if segments else ""
+            args = segments[1:] if segments else []
+            kwargs = dict(request.query)
+
+            # Add 'hash' to kwargs (for passing into the render function)
+            kwargs['hash'] = hash
+
+            if request.method == "POST":
+                try:
+                    # Robust param handling: JSON, form, or even raw POST body
+                    params = request.json or dict(request.forms) or request.body.read()
+                    # Only update if params is not empty (avoid overwriting with b'')
+                    if params:
+                        kwargs.update(gw.cast.to_dict(params))
+                except Exception as e:
+                    return gw.web.error.redirect("Error loading POST parameters", err=e)
+
+            # There is no render_post_ variant, always call render_<view_name>
+            func_name = f"{renders}_{view_name}"
+            render_func = getattr(source, func_name, None)
+            if not callable(render_func):
+                return gw.web.error.redirect(f"Render function not found: {func_name} in {project}")
+
+            try:
+                result = render_func(*args, **kwargs)
+                # If string or bytes: serve as fragment (HTML or text, not wrapped)
+                if isinstance(result, (str, bytes)):
+                    return result
+                # If HTTPResponse, return it
+                if isinstance(result, HTTPResponse):
+                    return result
+                # Else, return as JSON (for lists, dicts, etc)
+                response.content_type = "application/json"
+                return gw.to_json(result)
+            except HTTPResponse as res:
+                return res
+            except Exception as e:
+                return gw.web.error.redirect("Broken render function", err=e)
 
     @app.route("/favicon.ico")
     def favicon():

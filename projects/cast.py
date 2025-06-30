@@ -1,5 +1,7 @@
 
 import html
+import json
+from bs4 import BeautifulSoup
 import collections
 from typing import Sequence, Mapping
 
@@ -43,8 +45,6 @@ def to_list(obj, flat=False):
 
     # Fallback
     return [obj]
-
-
 
 def to_html(obj, **kwargs):
     """
@@ -157,4 +157,89 @@ def to_bool(val):
         # Fallback: use regular bool conversion
         return bool(val)
 
+def to_dict(obj):
+    """
+    Attempt to coerce input into a dict.
+    - If input is a dict, return as-is.
+    - If input is a string, parse as JSON or HTML form data.
+    - If input is bytes, decode as UTF-8 and parse.
+    - Raises ValueError if not possible.
+    """
+    # Idempotent: already dict
+    if isinstance(obj, dict):
+        return obj
+
+    # Accept bytes, decode to str
+    if isinstance(obj, bytes):
+        obj = obj.decode('utf-8', errors='replace')
+
+    # Accept string: try JSON, then HTML
+    if isinstance(obj, str):
+        text = obj.strip()
+        # Try JSON
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+        # Try HTML form
+        try:
+            soup = BeautifulSoup(text, "html.parser")
+
+            def extract_fields(scope):
+                result = {}
+
+                # Nested forms/fieldsets
+                for form in scope.find_all(['form', 'fieldset'], recursive=False):
+                    key = form.get('name') or form.get('id')
+                    subfields = extract_fields(form)
+                    if key:
+                        result[key] = subfields
+                    else:
+                        result.update(subfields)
+
+                # Inputs
+                for inp in scope.find_all('input', recursive=False):
+                    name = inp.get('name')
+                    if not name:
+                        continue
+                    value = inp.get('value', '')
+                    if inp.get('type') in ('checkbox', 'radio'):
+                        if inp.has_attr('checked'):
+                            result[name] = value or 'on'
+                    else:
+                        result[name] = value
+
+                # Textareas
+                for ta in scope.find_all('textarea', recursive=False):
+                    name = ta.get('name')
+                    if name:
+                        result[name] = ta.text or ta.string or ''
+
+                # Selects
+                for sel in scope.find_all('select', recursive=False):
+                    name = sel.get('name')
+                    if not name:
+                        continue
+                    if sel.has_attr('multiple'):
+                        selected = [opt.get('value', opt.text)
+                                    for opt in sel.find_all('option', selected=True)]
+                        result[name] = selected
+                    else:
+                        opt = sel.find('option', selected=True)
+                        if not opt:
+                            opt = sel.find('option')
+                        result[name] = opt.get('value', opt.text) if opt else ''
+                return result
+
+            parsed = extract_fields(soup)
+            if not parsed:
+                raise ValueError("No form-like data found in HTML")
+            return parsed
+        except Exception:
+            pass
+
+    raise ValueError("Cannot convert input to dict")
 
