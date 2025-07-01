@@ -1,7 +1,8 @@
+# file projects/cast.py
 
+import re
 import html
 import json
-from bs4 import BeautifulSoup
 import collections
 from typing import Sequence, Mapping
 
@@ -186,6 +187,7 @@ def to_dict(obj):
 
         # Try HTML form
         try:
+            from bs4 import BeautifulSoup
             soup = BeautifulSoup(text, "html.parser")
 
             def extract_fields(scope):

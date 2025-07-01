@@ -9,7 +9,7 @@ def render(*, homes=None):
     Renders the sidebar navigation including search, home links, visited links, and a QR compass.
     """
     cookies_ok = gw.web.app.is_setup('web.cookies') and gw.web.cookies.check_consent()
-    gw.debug(f"Render nav with {homes=} {cookies_ok=}")
+    gw.verbose(f"Render nav with {homes=} {cookies_ok=}")
 
     visited = []
     if cookies_ok:
