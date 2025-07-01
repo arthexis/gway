@@ -1,168 +1,186 @@
-/* OCPP Dashboard Card Layout - Responsive and Clean */
+/* file: data/static/charger_status.css */
 
-.ocpp-dashboard {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 32px;
-    margin: 24px 0 0 0;
-    justify-content: flex-start;
-    /* Remove max-width, but cards have a max-width instead */
+.charger-layout {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 0;
 }
 
-.charger-card {
-    background: #242b32;
-    color: #fff;
-    border-radius: 1rem;
-    min-width: 370px;
-    max-width: 530px;
-    flex: 1 1 48%;     /* Two columns when space allows */
-    padding: 1.3em 1.8em 1.1em 1.8em;
-    box-shadow: 0 2px 18px #0004;
-    margin-bottom: 18px;
+.charger-info-td {
+    width: 65%;
+    vertical-align: top;
+    padding-right: 16px;
+}
+
+.charger-actions-td {
+    width: 35%;
+    min-width: 210px;
+    vertical-align: top;
+    text-align: right;
+}
+
+.charger-info-table {
+    width: 100%;
+    font-size: 1.08em;
+    border-collapse: collapse;
+}
+.charger-info-table td.label {
+    color: #bcd;
+    font-weight: 500;
+    padding-right: 6px;
+    font-size: 1em;
+    min-width: 36px;
+}
+.charger-info-table td.value {
+    font-family: monospace;
+    padding-right: 10px;
+    font-size: 1em;
+    min-width: 40px;
+}
+.charger-info-table td.dot {
+    font-size: 1.36em;
+    padding-left: 11px;
+    text-align: left;
+}
+.charger-info-table td {
+    padding-bottom: 2px;
+    vertical-align: middle;
+}
+
+.charger-action-form {
     display: flex;
     flex-direction: column;
-    gap: 0.7em;
-    word-break: break-all;
-    align-items: stretch;
+    align-items: flex-end;
+    gap: 12px;
+    margin-top: 2px;
 }
 
-.charger-header {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 1em;
-    flex-wrap: wrap;
-    margin-bottom: 0.2em;
-}
-.charger-id {
-    font-family: monospace;
-    font-size: 1.35em;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    max-width: 310px;
-    line-height: 1.1;
-    color: #cfe3ff;
-}
-.charger-status {
-    font-weight: bold;
-    font-size: 1.22em;
-}
-.charger-details-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.3em 1em;
-    margin-top: 0.2em;
-}
-.charger-details-row label {
-    font-weight: 400;
-    color: #a6c4e4;
+.charger-action-form select {
     font-size: 1em;
+    padding: 0.44em 1.7em 0.44em 0.9em;
+    border-radius: 0.32em;
+    border: 1px solid #333;
+    background: #283344;
+    color: #e8f2ff;
+    margin-bottom: 9px;
+    min-width: 130px;
+    max-width: 190px;
 }
-.charger-action-row {
-    margin-top: 0.6em;
+
+.charger-actions-btns {
     display: flex;
     flex-direction: row;
-    gap: 0.6em;
-    align-items: center;
-    justify-content: flex-start;
+    gap: 12px;
+    justify-content: flex-end;
 }
 
-.charger-action-row select {
+.charger-actions-btns button,
+.charger-actions-btns a.graph-btn {
     font-size: 1em;
-    padding: 0.32em 1.7em 0.32em 0.9em; /* wider on the right for space */
+    padding: 0.27em 1.3em;
     border-radius: 0.32em;
     border: 1px solid #333;
     background: #283344;
     color: #e8f2ff;
-    margin-right: 1.1em;   /* Add big space to separate from buttons */
-    min-width: 120px;
-}
-
-.charger-action-row button {
-    font-size: 1em;
-    padding: 0.25em 1.2em;
-    border-radius: 0.32em;
-    border: 1px solid #333;
-    background: #283344;
-    color: #e8f2ff;
-    margin-right: 0.2em;
-    min-width: 78px;
+    min-width: 66px;
     white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    margin: 0 2px 0 0;
 }
-.charger-action-row button:last-child {
-    margin-right: 0;
+
+.charger-actions-btns .details-btn {
+    min-width: 74px;
 }
-.charger-action-row button.graph-btn {
+
+.charger-actions-btns .graph-btn {
     color: #7ff;
     background: #242b32;
     border: 1px solid #444;
     text-decoration: underline;
-}
-.charger-action-row button.details-btn {
-    min-width: 84px;
-}
-.charger-details-panel {
-    background: #111a24;
-    border-radius: 0.7em;
-    margin: 0.7em 0 0 0;
-    padding: 0.8em 1em;
-    font-size: 0.98em;
-    max-height: 320px;
-    overflow: auto;
-    color: #fff;
-    white-space: pre-wrap;
-}
-.ocpp-wsbar {
-    margin: 1.5em 0 0 0;
-    background: #20292f;
-    border-radius: 0.7em;
-    color: #e6e6e6;
-    display: flex;
-    align-items: center;
-    gap: 1.1em;
-    padding: 1em 1.3em;
-    font-size: 1.03em;
-    max-width: 530px;
+    min-width: 62px;
+    padding-left: 1.1em;
+    padding-right: 1.1em;
 }
 
-@media (max-width: 1200px) {
-    .ocpp-dashboard {
-        gap: 18px;
-        justify-content: center;
+.charger-details-panel.hidden {
+    display: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1300px) {
+    .charger-card {
+        max-width: 97vw;
+        padding-left: 1em; padding-right: 1em;
     }
 }
-@media (max-width: 900px) {
-    .ocpp-dashboard {
-        flex-direction: column;
-        align-items: center;
-        gap: 12px;
+@media (max-width: 800px) {
+    .charger-layout, .charger-info-table {
+        font-size: 0.98em;
     }
-    .charger-card, .ocpp-wsbar {
-        max-width: 98vw;
-        min-width: 0;
-        width: 98vw;
-        margin-left: 0;
-        margin-right: 0;
+    .charger-actions-td {
+        min-width: 120px;
+        font-size: 0.97em;
     }
 }
 @media (max-width: 600px) {
-    .ocpp-dashboard {
-        gap: 0;
-        margin-top: 12px;
-    }
-    .charger-card, .ocpp-wsbar {
-        border-radius: 0;
-        max-width: 100vw;
-        min-width: 0;
-        width: 100vw;
-        margin-left: 0;
-        margin-right: 0;
-        box-shadow: none;
-        padding-left: 0.5em;
-        padding-right: 0.5em;
-    }
-    .charger-card {
-        margin-bottom: 8px;
-    }
+    .charger-card { padding: 0.8em 0.3em 1.2em 0.3em; }
+    .charger-actions-td, .charger-info-td { width: 100%; display: block; }
+    .charger-layout { display: block; }
+    .charger-action-form { align-items: stretch; }
+    .charger-actions-btns { justify-content: stretch; gap: 4px; }
+}
+
+
+.charger-card {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto 28px auto;
+    background: #242b32;
+    color: #fff;
+    border-radius: 1rem;
+    box-shadow: 0 2px 18px #0002;
+    border: 1.5px solid #3a4b5c;
+    /* Right border color comes from status class */
+    border-right-width: 25px;
+    border-right-style: solid;
+    padding: 1.3em 2.1em 2.3em 2.1em;
+    display: block;
+    box-sizing: border-box;
+    transition: border-right-color 0.3s;
+}
+
+/* Green for online, red for offline */
+.charger-card.status-online   { border-right-color: #48e16c; }
+.charger-card.status-offline  { border-right-color: #ff3e3e; }
+
+.charger-layout { width: 100%; border-collapse: separate; }
+.charger-info-td { width: 65%; vertical-align: top; padding-right: 16px; }
+.charger-actions-td { width: 35%; min-width: 210px; vertical-align: top; text-align: right; }
+.charger-info-table { width: 100%; font-size: 1.08em; border-collapse: collapse; }
+.charger-info-table td.label { color: #bcd; font-weight: 500; padding-right: 6px; font-size: 1em; min-width: 36px; }
+.charger-info-table td.value { font-family: monospace; padding-right: 10px; font-size: 1em; min-width: 40px; }
+.charger-info-table td { padding-bottom: 2px; vertical-align: middle; }
+
+.charger-action-form { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; margin-top: 2px; }
+.charger-action-form select { font-size: 1em; padding: 0.44em 1.7em 0.44em 0.9em; border-radius: 0.32em; border: 1px solid #333; background: #283344; color: #e8f2ff; margin-bottom: 9px; min-width: 130px; max-width: 190px; }
+.charger-actions-btns { display: flex; flex-direction: row; gap: 12px; justify-content: flex-end; }
+.charger-actions-btns button, .charger-actions-btns a.graph-btn { font-size: 1em; padding: 0.27em 1.3em; border-radius: 0.32em; border: 1px solid #333; background: #283344; color: #e8f2ff; min-width: 66px; white-space: nowrap; text-decoration: none; cursor: pointer; margin: 0 2px 0 0; }
+.charger-actions-btns .details-btn { min-width: 74px; }
+.charger-actions-btns .graph-btn { color: #7ff; background: #242b32; border: 1px solid #444; text-decoration: underline; min-width: 62px; padding-left: 1.1em; padding-right: 1.1em; }
+.charger-details-panel.hidden { display: none; }
+
+@media (max-width: 1300px) {
+    .charger-card { max-width: 97vw; padding-left: 1em; padding-right: 1em; }
+}
+@media (max-width: 800px) {
+    .charger-layout, .charger-info-table { font-size: 0.98em; }
+    .charger-actions-td { min-width: 120px; font-size: 0.97em; }
+}
+@media (max-width: 600px) {
+    .charger-card { padding: 0.8em 0.3em 1.2em 0.3em; }
+    .charger-actions-td, .charger-info-td { width: 100%; display: block; }
+    .charger-layout { display: block; }
+    .charger-action-form { align-items: stretch; }
+    .charger-actions-btns { justify-content: stretch; gap: 4px; }
 }

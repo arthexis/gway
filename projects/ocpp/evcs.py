@@ -1,5 +1,6 @@
 # file: projects/ocpp/evcs.py
 
+from faulthandler import is_enabled
 import threading
 import traceback
 from gway import gw, __
@@ -376,15 +377,14 @@ def _simulator_status_json():
         "stop_time": _simulator_state["stop_time"],
     }, indent=2)
 
-
 def view_cp_simulator(*args, **kwargs):
     """
     Web UI for the OCPP simulator (single session only).
     Start/stop, view state, error messages, and current config.
+    NO card, content in main dashboard layout.
     """
     global _simulator_state
 
-    # Get default host/port from CSMS websocket
     ws_url = gw.web.build_ws_url(project="ocpp.csms")
     default_host = ws_url.split("://")[-1].split(":")[0]
     default_ws_port = ws_url.split(":")[-1].split("/")[0] if ":" in ws_url else "9000"
@@ -419,66 +419,91 @@ def view_cp_simulator(*args, **kwargs):
     error = state["last_error"]
     params = state["params"]
 
-    html = ['<h1>OCPP Charger Simulator</h1>']
+    html = ['<h1>OCPP Charge Point Simulator</h1>']
     if msg:
-        html.append(f'<div style="margin-bottom:1em;color:#0a0">{msg}</div>')
+        html.append(f'<div class="sim-msg">{msg}</div>')
 
-    html.append(f'''
-    <form method="post" style="margin-bottom:1.2em;display:flex;gap:20px;align-items:flex-end;">
+    # Form directly in main (no card)
+    html.append('''
+    <form method="post" class="simulator-form">
         <div>
-            <label>Host:<br><input name="host" value="{params.get('host', default_host)}" style="width:130px"></label>
+            <label>Host:</label>
+            <input name="host" value="{host}">
         </div>
         <div>
-            <label>Port:<br><input name="ws_port" value="{params.get('ws_port', default_ws_port)}" style="width:70px"></label>
+            <label>Port:</label>
+            <input name="ws_port" value="{ws_port}">
         </div>
         <div>
-            <label>ChargePoint Path:<br><input name="cp_path" value="{params.get('cp_path', default_cp_path)}" style="width:90px"></label>
+            <label>ChargePoint Path:</label>
+            <input name="cp_path" value="{cp_path}">
         </div>
         <div>
-            <label>RFID:<br><input name="rfid" value="{params.get('rfid', default_rfid)}" style="width:110px"></label>
+            <label>RFID:</label>
+            <input name="rfid" value="{rfid}">
         </div>
         <div>
-            <label>Duration (s):<br><input name="duration" value="{params.get('duration', 60)}" style="width:60px"></label>
+            <label>Duration (s):</label>
+            <input name="duration" value="{duration}">
         </div>
         <div>
-            <label>Repeat:<br>
-                <select name="repeat" style="width:80px">
-                    <option value="False" {'selected' if not params.get('repeat') else ''}>No</option>
-                    <option value="True" {'selected' if str(params.get('repeat')).lower() in ('true', '1') else ''}>Yes</option>
-                </select>
-            </label>
+            <label>Repeat:</label>
+            <select name="repeat">
+                <option value="False" {repeat_no}>No</option>
+                <option value="True" {repeat_yes}>Yes</option>
+            </select>
         </div>
         <div>
-            <label>User:<br><input name="username" value="" style="width:80px"></label>
+            <label>User:</label>
+            <input name="username" value="">
         </div>
         <div>
-            <label>Pass:<br><input name="password" value="" type="password" style="width:80px"></label>
+            <label>Pass:</label>
+            <input name="password" value="" type="password">
         </div>
-        <div>
-            <button type="submit" name="action" value="start" {'disabled' if running else ''}>Start</button>
-            <button type="submit" name="action" value="stop" {'disabled' if not running else ''}>Stop</button>
+        <div class="form-btns">
+            <button type="submit" name="action" value="start" {start_dis}>Start</button>
+            <button type="submit" name="action" value="stop" {stop_dis}>Stop</button>
         </div>
     </form>
+    '''.format(
+        host=params.get('host', default_host),
+        ws_port=params.get('ws_port', default_ws_port),
+        cp_path=params.get('cp_path', default_cp_path),
+        rfid=params.get('rfid', default_rfid),
+        duration=params.get('duration', 60),
+        repeat_no='selected' if not params.get('repeat') else '',
+        repeat_yes='selected' if str(params.get('repeat')).lower() in ('true', '1') else '',
+        start_dis='disabled' if running else '',
+        stop_dis='disabled' if not running else '',
+    ))
+
+    # Status area (no card)
+    dot_class = "state-dot online" if running else "state-dot stopped"
+    dot_label = "Running" if running else "Stopped"
+    html.append(f'''
+    <div class="simulator-status">
+        <span class="{dot_class}"></span>
+        <span>{dot_label}</span>
+    </div>
+    <div class="simulator-details">
+        <label>Last Status:</label> <span class="stat">{state["last_status"] or "-"}</span>
+        <label>Last Command:</label> <span class="stat">{state["last_command"] or "-"}</span>
+        <label>Started:</label> <span class="stat">{state["start_time"] or "-"}</span>
+        <label>Stopped:</label> <span class="stat">{state["stop_time"] or "-"}</span>
+    </div>
     ''')
 
-    html.append('<div style="margin-bottom:0.8em;">')
-    html.append(f'<b>Status:</b> {"🟢 Running" if running else "⚪ Stopped"}<br>')
-    html.append(f'<b>Last Status:</b> {state["last_status"]}<br>')
-    html.append(f'<b>Last Command:</b> {state["last_command"] or "-"}<br>')
-    html.append(f'<b>Started:</b> {state["start_time"] or "-"}<br>')
-    html.append(f'<b>Stopped:</b> {state["stop_time"] or "-"}<br>')
-    html.append('</div>')
-
     if error:
-        html.append(f'<div style="background:#faa;color:#a00;padding:0.8em 1em;border-radius:7px;margin-bottom:1em;"><b>Error:</b><pre>{error}</pre></div>')
+        html.append(f'<div class="error"><b>Error:</b><pre>{error}</pre></div>')
 
-    html.append('<details style="margin-bottom:1.2em;"><summary style="font-weight:bold;cursor:pointer;">Show Simulator Params</summary>')
-    html.append('<pre style="margin:0.4em 0 0 0;font-size:1.02em;background:#222;color:#fff;border-radius:6px;padding:10px 12px;">')
+    # Panels (params and state)
+    html.append('<details class="simulator-panel"><summary>Show Simulator Params</summary>')
+    html.append('<pre>')
     html.append(json.dumps(params, indent=2))
     html.append('</pre></details>')
 
-    html.append('<details><summary style="font-weight:bold;cursor:pointer;">Show Simulator State JSON</summary>')
-    html.append(f'<pre style="margin:0.4em 0 0 0;font-size:1.02em;background:#222;color:#fff;border-radius:6px;padding:10px 12px;">{_simulator_status_json()}</pre>')
-    html.append('</details>')
+    html.append('<details class="simulator-panel"><summary>Show Simulator State JSON</summary>')
+    html.append(f'<pre>{_simulator_status_json()}</pre></details>')
 
     return "".join(html)

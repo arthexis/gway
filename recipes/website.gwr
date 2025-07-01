@@ -8,15 +8,18 @@ web app setup-app --home reader
     --project web.nav --home style-switcher
     --project web.cookies --home cookie-jar
     --project vbox --home uploads 
-    --project ocpp.csms --home charger-status --auth-required
-    --project ocpp.evcs
-    --project conway --home game-of-life 
+    --project ocpp.csms --auth-required --home charger-status
+    --project ocpp.evcs --auth-required --home cp-simulator
+    --project monitor.nmcli --auth-required --home network-report
+    --project games.conway --home game-of-life --path conway
     --project web.auth 
 
 web static collect
-ocpp csms setup-app --location simulator
 web auth config-basic --optional --temp-link
-web server start-app 
+
+ocpp csms setup-app --location simulator
+
+web server start-app --port 8888 --ws-port 9999
 
 # Loop forever until VERSION or PyPI changes
 until --file VERSION --pypi 

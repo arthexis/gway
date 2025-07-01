@@ -46,7 +46,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('mail', project_ls)
         self.assertIn('awg', project_ls)
         self.assertIn('cast', project_ls)
-        self.assertIn('conway', project_ls)
+        self.assertIn('games', project_ls)
         self.assertIn('recipe', project_ls)
         self.assertIn('cdv', project_ls)
 

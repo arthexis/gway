@@ -1,5 +1,11 @@
-# file: projects/web/monitor.py
+# file: projects/monitor.py
 # web path: /monitor
+
+# TODO: Explain the logic used by the watcher somewhere in the file.
+#       Ideally, make it a view_ function that contains online/offline help.
+#       And add a link to it below the main monitor view_.
+
+# TODO: This project was moved from web.monitor, make sure the move was clean.
 
 import asyncio
 import subprocess
@@ -24,13 +30,13 @@ NMCLI_STATE = {
     "last_error": None,
 }
 
-def update_state(key, value):
+def track_state(key, value):
     NMCLI_STATE[key] = value
 
 def now_iso():
     return datetime.datetime.now().isoformat(timespec="seconds")
 
-def ping_internet(iface, target="8.8.8.8", count=2, timeout=2):
+def ping(iface, target="8.8.8.8", count=2, timeout=2):
     try:
         result = subprocess.run(
             ["ping", "-I", iface, "-c", str(count), "-W", str(timeout), target],
@@ -39,14 +45,14 @@ def ping_internet(iface, target="8.8.8.8", count=2, timeout=2):
         )
         ok = (result.returncode == 0)
         if ok:
-            update_state("last_inet_ok", now_iso())
+            track_state("last_inet_ok", now_iso())
         else:
-            update_state("last_inet_fail", now_iso())
+            track_state("last_inet_fail", now_iso())
         return ok
     except Exception as e:
         gw.info(f"[monitor] Ping failed ({iface}): {e}")
-        update_state("last_error", f"Ping failed ({iface}): {e}")
-        update_state("last_inet_fail", now_iso())
+        track_state("last_error", f"Ping failed ({iface}): {e}")
+        track_state("last_inet_fail", now_iso())
         return False
 
 def nmcli(*args):
@@ -90,17 +96,17 @@ def get_wlan_status(iface):
                             if "802-11-wireless.ssid" in dline:
                                 ssid = dline.split(":")[-1].strip()
                                 break
-            inet = ping_internet(iface)
+            inet = ping(iface)
             return {"ssid": ssid, "connected": conn, "inet": inet}
     return {"ssid": None, "connected": False, "inet": False}
 
-def ap_profile_exists(ap_conn, ap_ssid, ap_password):
+def ap_profile_exists(ap_con, ap_ssid, ap_password):
     conns = nmcli("connection", "show")
     for line in conns.splitlines():
         fields = line.split()
         if len(fields) < 4: continue
         name, uuid, ctype, device = fields[:4]
-        if name == ap_conn and ctype == "wifi":
+        if name == ap_con and ctype == "wifi":
             details = nmcli("connection", "show", name)
             details_dict = {}
             for detline in details.splitlines():
@@ -112,46 +118,46 @@ def ap_profile_exists(ap_conn, ap_ssid, ap_password):
             return ssid_ok and pwd_ok
     return False
 
-def ensure_ap_profile(ap_conn, ap_ssid, ap_password):
-    if not ap_conn:
-        raise ValueError("AP_CONN must be specified.")
+def ensure_ap_profile(ap_con, ap_ssid, ap_password):
+    if not ap_con:
+        raise ValueError("AP_CON must be specified.")
     if not ap_ssid or not ap_password:
         gw.info("[monitor] Missing AP_SSID or AP_PASSWORD. Skipping AP profile creation.")
         return
-    if ap_profile_exists(ap_conn, ap_ssid, ap_password):
+    if ap_profile_exists(ap_con, ap_ssid, ap_password):
         return
     conns = nmcli("connection", "show")
     for line in conns.splitlines():
-        if line.startswith(ap_conn + " "):
-            gw.info(f"[monitor] Removing existing AP connection profile: {ap_conn}")
-            nmcli("connection", "down", ap_conn)
-            nmcli("connection", "delete", ap_conn)
+        if line.startswith(ap_con + " "):
+            gw.info(f"[monitor] Removing existing AP connection profile: {ap_con}")
+            nmcli("connection", "down", ap_con)
+            nmcli("connection", "delete", ap_con)
             break
-    gw.info(f"[monitor] Creating AP profile: name={ap_conn} ssid={ap_ssid}")
+    gw.info(f"[monitor] Creating AP profile: name={ap_con} ssid={ap_ssid}")
     nmcli("connection", "add", "type", "wifi", "ifname", "wlan0",
-          "con-name", ap_conn, "autoconnect", "no", "ssid", ap_ssid)
-    nmcli("connection", "modify", ap_conn,
+          "con-name", ap_con, "autoconnect", "no", "ssid", ap_ssid)
+    nmcli("connection", "modify", ap_con,
           "mode", "ap", "802-11-wireless.band", "bg",
           "wifi-sec.key-mgmt", "wpa-psk",
           "wifi-sec.psk", ap_password)
 
-def set_wlan0_ap(ap_conn, ap_ssid, ap_password):
-    ensure_ap_profile(ap_conn, ap_ssid, ap_password)
-    gw.info(f"[monitor] Activating wlan0 AP: conn={ap_conn}, ssid={ap_ssid}")
+def set_wlan0_ap(ap_con, ap_ssid, ap_password):
+    ensure_ap_profile(ap_con, ap_ssid, ap_password)
+    gw.info(f"[monitor] Activating wlan0 AP: conn={ap_con}, ssid={ap_ssid}")
     nmcli("device", "disconnect", "wlan0")
-    nmcli("connection", "up", ap_conn)
-    update_state("wlan0_mode", "ap")
-    update_state("wlan0_ssid", ap_ssid)
-    update_state("last_config_change", now_iso())
-    update_state("last_config_action", f"Activated AP {ap_ssid}")
+    nmcli("connection", "up", ap_con)
+    track_state("wlan0_mode", "ap")
+    track_state("wlan0_ssid", ap_ssid)
+    track_state("last_config_change", now_iso())
+    track_state("last_config_action", f"Activated AP {ap_ssid}")
 
 def set_wlan0_station():
     gw.info("[monitor] Setting wlan0 to station (managed) mode")
     nmcli("device", "set", "wlan0", "managed", "yes")
     nmcli("device", "disconnect", "wlan0")
-    update_state("wlan0_mode", "station")
-    update_state("last_config_change", now_iso())
-    update_state("last_config_action", "Set wlan0 to station")
+    track_state("wlan0_mode", "station")
+    track_state("last_config_change", now_iso())
+    track_state("last_config_action", "Set wlan0 to station")
 
 def check_eth0_gateway():
     try:
@@ -162,12 +168,12 @@ def check_eth0_gateway():
             nmcli("connection", "modify", "eth0", "ipv4.never-default", "yes")
             nmcli("connection", "up", "eth0")
             gw.info("[monitor] Removed default route from eth0")
-            update_state("last_config_change", now_iso())
-            update_state("last_config_action", "Removed eth0 default route")
-        update_state("eth0_ip", ip_addr)
-        update_state("eth0_gateway", "default" in routes)
+            track_state("last_config_change", now_iso())
+            track_state("last_config_action", "Removed eth0 default route")
+        track_state("eth0_ip", ip_addr)
+        track_state("eth0_gateway", "default" in routes)
     except Exception as e:
-        update_state("last_error", f"eth0 gateway: {e}")
+        track_state("last_error", f"eth0 gateway: {e}")
 
 def clean_and_reconnect_wifi(iface, ssid, password=None):
     conns = nmcli("connection", "show")
@@ -180,8 +186,8 @@ def clean_and_reconnect_wifi(iface, ssid, password=None):
             gw.info(f"[monitor] Removing stale connection {name} ({uuid}) on {iface}")
             nmcli("connection", "down", name)
             nmcli("connection", "delete", name)
-            update_state("last_config_change", now_iso())
-            update_state("last_config_action", f"Removed stale WiFi {name} on {iface}")
+            track_state("last_config_change", now_iso())
+            track_state("last_config_action", f"Removed stale WiFi {name} on {iface}")
             break
     gw.info(f"[monitor] Resetting interface {iface}")
     nmcli("device", "disconnect", iface)
@@ -193,8 +199,8 @@ def clean_and_reconnect_wifi(iface, ssid, password=None):
         nmcli("device", "wifi", "connect", ssid, "ifname", iface, "password", password)
     else:
         nmcli("device", "wifi", "connect", ssid, "ifname", iface)
-    update_state("last_config_change", now_iso())
-    update_state("last_config_action", f"Re-added {iface} to {ssid}")
+    track_state("last_config_change", now_iso())
+    track_state("last_config_action", f"Re-added {iface} to {ssid}")
 
 def try_connect_wlan0_known_networks():
     conns = nmcli("connection", "show")
@@ -202,47 +208,55 @@ def try_connect_wlan0_known_networks():
     for conn in wifi_conns:
         gw.info(f"[monitor] Trying wlan0 connect: {conn}")
         nmcli("device", "wifi", "connect", conn, "ifname", "wlan0")
-        if ping_internet("wlan0"):
+        if ping("wlan0"):
             gw.info(f"[monitor] wlan0 internet works via {conn}")
-            update_state("wlan0_mode", "station")
-            update_state("wlan0_ssid", conn)
-            update_state("wlan0_inet", True)
-            update_state("last_config_change", now_iso())
-            update_state("last_config_action", f"wlan0 connected to {conn}")
+            track_state("wlan0_mode", "station")
+            track_state("wlan0_ssid", conn)
+            track_state("wlan0_inet", True)
+            track_state("last_config_change", now_iso())
+            track_state("last_config_action", f"wlan0 connected to {conn}")
             return True
         clean_and_reconnect_wifi("wlan0", conn)
-        if ping_internet("wlan0"):
+        if ping("wlan0"):
             gw.info(f"[monitor] wlan0 internet works via {conn} after reset")
-            update_state("wlan0_mode", "station")
-            update_state("wlan0_ssid", conn)
-            update_state("wlan0_inet", True)
-            update_state("last_config_change", now_iso())
-            update_state("last_config_action", f"wlan0 reconnected to {conn}")
+            track_state("wlan0_mode", "station")
+            track_state("wlan0_ssid", conn)
+            track_state("wlan0_inet", True)
+            track_state("last_config_change", now_iso())
+            track_state("last_config_action", f"wlan0 reconnected to {conn}")
             return True
-    update_state("wlan0_inet", False)
+    track_state("wlan0_inet", False)
     return False
 
-def watch_nmcli(*, 
-        block=True, daemon=True, interval=15, 
-        ap_ssid=None, ap_password=None, ap_conn=None,
-        startup_delay=30
+# TODO: While watch is running in daemon mode, have a way to trigger the thread to 
+#       stop waiting and perform the checks again right away (a trigger_watch function?)
+
+# TODO: Keep track of when the checks are expected to next run in a global. If delay is specified
+#       make sure this global is updated before waiting for the given delay. 
+
+def watch(*, 
+        ap_con=None, ap_ssid=None, ap_password=None,
+        block=True, daemon=True, interval=120, delay=0,
     ):
     """
     Monitor nmcli state and manage AP/client fallback for wlan0.
-    :param startup_delay: Seconds to wait before starting monitor loop.
+    :param delay: Seconds to wait before starting monitor loop.
     """
 
-    ap_conn = gw.resolve(ap_conn or '[AP_CONN]')
-    ap_ssid = gw.resolve(ap_ssid or '[AP_SSID]')
+    # TODO: If run on a system without nmcli installed or similar issue, log
+    #       with gw.warning and don't try to keep watching.
+
+    ap_ssid = gw.resolve(ap_ssid, '[AP_SSID]') 
+    ap_con = gw.resolve(ap_con, '[AP_CON]') or ap_ssid
     ap_password = gw.resolve(ap_password or '[AP_PASSWORD]')
-    if not ap_conn:
-        raise ValueError("Missing ap_conn (AP_CONN). Required for AP operation.")
+    if not ap_con:
+        raise ValueError("Missing ap_con (AP_CON). Required for AP operation.")
 
     async def monitor_loop():
         # --- Startup delay ---
-        if startup_delay > 0:
-            gw.info(f"[monitor] Waiting {startup_delay}s before starting monitor loop...")
-            await asyncio.sleep(startup_delay)
+        if delay > 0:
+            gw.info(f"[monitor] Waiting {delay}s before starting monitor loop...")
+            await asyncio.sleep(delay)
         while True:
             NMCLI_STATE["last_monitor_check"] = now_iso()   # Update monitor check time
             check_eth0_gateway()
@@ -257,7 +271,7 @@ def watch_nmcli(*,
                 gw.info(f"[monitor] {iface} status: {s}")
                 if s["inet"]:
                     gw.info(f"[monitor] {iface} has internet, keeping wlan0 as AP ({ap_ssid})")
-                    set_wlan0_ap(ap_conn, ap_ssid, ap_password)
+                    set_wlan0_ap(ap_con, ap_ssid, ap_password)
                     found_inet = True
                     break
                 else:
@@ -266,7 +280,7 @@ def watch_nmcli(*,
                     NMCLI_STATE["wlanN"][iface] = s2
                     if s2["inet"]:
                         gw.info(f"[monitor] {iface} internet works after reset")
-                        set_wlan0_ap(ap_conn, ap_ssid, ap_password)
+                        set_wlan0_ap(ap_con, ap_ssid, ap_password)
                         found_inet = True
                         break
             # 2. If no wlanN, try wlan0 as internet
@@ -280,14 +294,14 @@ def watch_nmcli(*,
                     gw.info("[monitor] wlan0 cannot connect as client")
             if not found_inet:
                 gw.info("[monitor] No internet found, switching wlan0 to AP")
-                set_wlan0_ap(ap_conn, ap_ssid, ap_password)
+                set_wlan0_ap(ap_con, ap_ssid, ap_password)
             await asyncio.sleep(interval)
 
     def blocking_loop():
         # --- Startup delay ---
-        if startup_delay > 0:
-            gw.info(f"[monitor] Waiting {startup_delay}s before starting monitor loop...")
-            time.sleep(startup_delay)
+        if delay > 0:
+            gw.info(f"[monitor] Waiting {delay}s before starting monitor loop...")
+            time.sleep(delay)
         while True:
             NMCLI_STATE["last_monitor_check"] = now_iso()
             check_eth0_gateway()
@@ -301,7 +315,7 @@ def watch_nmcli(*,
                 gw.info(f"[monitor] {iface} status: {s}")
                 if s["inet"]:
                     gw.info(f"[monitor] {iface} has internet, keeping wlan0 as AP ({ap_ssid})")
-                    set_wlan0_ap(ap_conn, ap_ssid, ap_password)
+                    set_wlan0_ap(ap_con, ap_ssid, ap_password)
                     found_inet = True
                     break
                 else:
@@ -310,7 +324,7 @@ def watch_nmcli(*,
                     NMCLI_STATE["wlanN"][iface] = s2
                     if s2["inet"]:
                         gw.info(f"[monitor] {iface} internet works after reset")
-                        set_wlan0_ap(ap_conn, ap_ssid, ap_password)
+                        set_wlan0_ap(ap_con, ap_ssid, ap_password)
                         found_inet = True
                         break
             if not found_inet:
@@ -323,7 +337,7 @@ def watch_nmcli(*,
                     gw.info("[monitor] wlan0 cannot connect as client")
             if not found_inet:
                 gw.info("[monitor] No internet found, switching wlan0 to AP")
-                set_wlan0_ap(ap_conn, ap_ssid, ap_password)
+                set_wlan0_ap(ap_con, ap_ssid, ap_password)
             time.sleep(interval)
 
     if daemon:
@@ -338,18 +352,18 @@ def watch_nmcli(*,
             s = get_wlan_status(iface)
             NMCLI_STATE["wlanN"][iface] = s
             if s["inet"]:
-                set_wlan0_ap(ap_conn, ap_ssid, ap_password)
+                set_wlan0_ap(ap_con, ap_ssid, ap_password)
                 return
             else:
                 clean_and_reconnect_wifi(iface, iface)
                 s2 = get_wlan_status(iface)
                 NMCLI_STATE["wlanN"][iface] = s2
                 if s2["inet"]:
-                    set_wlan0_ap(ap_conn, ap_ssid, ap_password)
+                    set_wlan0_ap(ap_con, ap_ssid, ap_password)
                     return
         set_wlan0_station()
         if not try_connect_wlan0_known_networks():
-            set_wlan0_ap(ap_conn, ap_ssid, ap_password)
+            set_wlan0_ap(ap_con, ap_ssid, ap_password)
 
 # -- HTML report fragment --
 def _color_icon(status):
@@ -360,11 +374,26 @@ def _color_icon(status):
         return '<span style="color:#b00;">&#9679;</span>'
     return '<span style="color:#bb0;">&#9679;</span>'
 
-def view_nmcli_report(**_):
+
+# TODO: Keep all the report data in a column on the left, but add a second column 
+#       with buttons that allow the user to execute certain commands and refresh.
+#       1. Perform checks -> Calls trigger_watch or similar mechanism.
+#       2. Ping other -> Include an input box below, include result in next refresh.
+
+# TODO: Show a warning in the UI if there is no NMCLI_STATE set when visited.
+#       Try to explain the reason. If gw.web.app.is_enabled('web.auth') is False, 
+#       The NMCLI watcher has not been configured to run. Otherwise, let the user 
+#       know the monitor may have not run and to check the logs. Show the user
+#       the expected execution date if available.
+
+
+def view_network_report(**_):
     """
     Returns a diagnostic HTML fragment with the current nmcli state.
     Includes time of last monitor check and colored indicators for key values.
     """
+
+    # TODO: Add a main header to the report
 
     s = NMCLI_STATE
     html = [

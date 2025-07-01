@@ -173,7 +173,7 @@ def view_colon_validator(*, text=None):
     
     # TODO: If text is None, return an html fragment with a form in which the user
     # can paste a CDV file into a large textarea and submit for validation as 'text'.
-    # If text is received, test amd validate it and let the user know if there are any issues
+    # If text is received, test and validate it and let the user know if there are any issues
     # found that would impede the file to be processed as a valid CDV. 
 
     raise NotImplementedError

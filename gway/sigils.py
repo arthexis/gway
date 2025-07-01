@@ -1,3 +1,5 @@
+# file: gway/sigils.py
+
 import re
 import os
 
@@ -36,12 +38,13 @@ class Sigil:
 
     def __mod__(self, finder):
         return self.resolve(finder)
-    
+
     def __str__(self):
         return str(self.original)
-    
+
     def __repr__(self):
-        return repr(self.original)
+        return f"Sigil({self.original!r})"
+
 
 def _unquote(val):
     if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
@@ -83,27 +86,33 @@ class Resolver:
     def append_source(self, source):
         self._search_order.append(source)
 
-    def resolve(self, *args):
+    def resolve(self, *args, default="_raise"):
         """
-        Attempt to resolve each argument in order. Return the first successful result.
+        Attempt to resolve sigils each argument in order (ignoring None/False). Return the first successful result.
+        If none resolve, return the 'default' parameter unresolved (if provided), otherwise raise KeyError.
         """
         from gway import gw
 
         last_exc = None
         for arg in args:
+            # Discard None or False values (but NOT 0 or '')
+            if arg is None:
+                continue
+            arg = '' if not arg else arg
             try:
-                sigil = Sigil(str(arg)) if not isinstance(arg, Sigil) else arg
+                sigil = arg if isinstance(arg, Sigil) else Sigil(str(arg))
                 result = _replace_sigils(sigil.original, self.find_value)
-                # If we get here, it was resolved successfully
                 return result
             except KeyError as e:
                 gw.verbose(f"Could not resolve sigil(s) in '{arg}': {e}")
                 last_exc = e
+        if default is not '_raise':
+            return default
         if last_exc is not None:
             gw.error(f"All sigil resolutions failed: {last_exc}")
             raise last_exc
-        gw.error("No arguments provided to resolve()")
-        raise KeyError("No arguments provided to resolve()")
+        gw.error("No arguments provided to resolve() or all were None/False")
+        raise KeyError("No arguments provided to resolve() or all were None/False")
 
     def find_value(self, key: str, fallback: str = None) -> str:
         for name, source in self._search_order:
@@ -143,7 +152,7 @@ class Resolver:
         if value is None:
             raise KeyError(f"Cannot resolve key '{key}'")
         return value
-    
+
     def __contains__(self, sigil_text):
         try:
             sigil = Sigil(sigil_text)
@@ -158,13 +167,13 @@ class Resolver:
             if self._resolve_key(key, None) is None:
                 return False
         return True
-    
+
     def get(self, key, default=None):
         return self._resolve_key(key, fallback=default)
 
     def keys(self):
         return {key for _, source in self._search_order if isinstance(source, dict) for key in source}
-    
+
 class Spool:
     """
     A spool is a collection of sigils.

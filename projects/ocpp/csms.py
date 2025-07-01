@@ -8,6 +8,7 @@ import uuid
 import traceback
 import asyncio
 from datetime import datetime
+from bs4 import BeautifulSoup
 from fastapi import WebSocket, WebSocketDisconnect
 from bottle import request, redirect, HTTPError
 from typing import Dict, Optional
@@ -188,7 +189,7 @@ def setup_app(*,
                         if tx:
                             if tx.get("MeterValues"):
                                 try:
-                                    archive_e(charger_id, tx["transactionId"], tx["MeterValues"])
+                                    archive_energy(charger_id, tx["transactionId"], tx["MeterValues"])
                                 except Exception as e:
                                     gw.error("Error recording energy chart.")
                                     gw.exception(e)
@@ -264,6 +265,8 @@ def setup_app(*,
 
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 
+...
+
 def is_abnormal_status(status: str, error_code: str) -> bool:
     """Determine if a status/errorCode is 'abnormal' per OCPP 1.6."""
     status = (status or "").capitalize()
@@ -278,18 +281,112 @@ def is_abnormal_status(status: str, error_code: str) -> bool:
         return True
     return False
 
-# Bottle-based views are used for the interface, params injected by GWAY from query/payload
-# GWAY allows us to have the WS FastAPI server and Bottle UI server share memory space,
-# simply by placing both functions in the same project file.
+def get_charger_state(cid, tx, ws_live, raw_hb):
+    """
+    Determine charger state for stripe:
+    - "error": charger is abnormal/faulted
+    - "online": live socket, active transaction, not closed
+    - "available": live socket, no open transaction
+    - "unknown": not live, not abnormal, default
+    """
+    # Priority: error > online > available > unknown
+    if cid in _abnormal_status:
+        return "error"
+    if ws_live and tx and not tx.get("syncStop"):
+        return "online"
+    if ws_live and (not tx or tx.get("syncStop")):
+        return "available"
+    return "unknown"
 
-# TODO: <Details> no longer works properly, clicking the button stretches the card box vertically
-#       for a second and the log flashes on screen before closing and going back to not showing.
+...
 
-# TODO: The graph link doesn't take us anywhere, screen stays the same after clicking.
+def _render_charger_card(cid, tx, state, raw_hb):
+    """
+    Render a charger card with the right status stripe (state: "online", "available", "error", "unknown").
+    """
+    status_class = f"status-{state}"
+    tx_id       = tx.get("transactionId") if tx else '-'
+    meter_start = tx.get("meterStart") if tx else '-'
+    latest      = (
+        tx.get("meterStop")
+        if tx and tx.get("meterStop") is not None
+        else (tx["MeterValues"][-1].get("meter") if tx and tx.get("MeterValues") else 'None')
+    )
+    power  = power_consumed(tx)
+    status = "Closed" if tx and tx.get("syncStop") else "Open" if tx else '-'
+    latest_hb = "-"
+    if raw_hb:
+        try:
+            from datetime import datetime, timezone
+            dt = datetime.fromisoformat(raw_hb.replace("Z", "+00:00")).astimezone()
+            latest_hb = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            latest_hb = raw_hb
+
+    last_updated = tx.get("last_updated", raw_hb or "") if tx else (raw_hb or "")
+
+    return f'''
+    <div class="charger-card {status_class}" id="charger-{cid}">
+      <input type="hidden" name="charger_id" value="{cid}">
+      <input type="hidden" name="last_updated" value="{last_updated}">
+      <table class="charger-layout">
+        <tr>
+          <td class="charger-info-td">
+            <table class="charger-info-table">
+              <tr>
+                <td class="label">ID</td>
+                <td class="value">{cid}</td>
+              </tr>
+              <tr>
+                <td class="label">TXN</td>
+                <td class="value">{tx_id}</td>
+              </tr>
+              <tr>
+                <td class="label">Start</td>
+                <td class="value">{meter_start}</td>
+                <td class="label">Latest</td>
+                <td class="value">{latest}</td>
+              </tr>
+              <tr>
+                <td class="label">kWh.</td>
+                <td class="value">{power}</td>
+                <td class="label">Last HB</td>
+                <td class="value">{latest_hb}</td>
+              </tr>
+              <tr>
+                <td class="label">Status</td>
+                <td class="value" colspan="3">{status}</td>
+              </tr>
+            </table>
+          </td>
+          <td class="charger-actions-td">
+            <form method="post" action="" class="charger-action-form">
+              <select name="action" id="action-{cid}" aria-label="Action">
+                <option value="remote_stop">Stop</option>
+                <option value="reset_soft">Soft Reset</option>
+                <option value="reset_hard">Hard Reset</option>
+                <option value="disconnect">Disconnect</option>
+              </select>
+              <div class="charger-actions-btns">
+                <button type="submit" name="do" value="send">Send</button>
+                <button type="button" class="details-btn" data-target="details-{cid}">Details</button>
+                <a href="/ocpp/graph/{cid}" class="graph-btn" target="_blank">Graph</a>
+              </div>
+            </form>
+          </td>
+        </tr>
+      </table>
+      <div id="details-{cid}" class="charger-details-panel hidden">
+        <pre>{json.dumps(tx or {}, indent=2)}</pre>
+      </div>
+    </div>
+    '''
 
 def view_charger_status(*, action=None, charger_id=None, **_):
     """
     Card-based OCPP dashboard: summary of all charger connections.
+    Renders <div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5">
+    so the client can periodically refresh the list via render.js.
     """
     if request.method == "POST":
         action = request.forms.get("action")
@@ -304,11 +401,11 @@ def view_charger_status(*, action=None, charger_id=None, **_):
     all_chargers = set(_active_cons) | set(_transactions)
     html = ["<h1>OCPP Status Dashboard</h1>"]
 
-    # --- Show abnormal statuses if present ---
+    # Abnormal status warning
     if _abnormal_status:
         html.append(
-            '<div style="color:#fff;background:#b22;padding:12px;font-weight:bold;margin-bottom:18px">'
-            "⚠️ Abnormal Charger Status Detected:<ul style='margin:0'>"
+            '<div class="ocpp-alert">'
+            "⚠️ Abnormal Charger Status Detected:<ul>"
         )
         for cid, err in sorted(_abnormal_status.items()):
             status = err.get("status", "")
@@ -317,75 +414,25 @@ def view_charger_status(*, action=None, charger_id=None, **_):
             ts = err.get("timestamp", "")
             msg = f"<b>{cid}</b>: {status}/{error_code}"
             if info: msg += f" ({info})"
-            if ts: msg += f" <span style='font-size:0.9em;color:#eee'>@{ts}</span>"
+            if ts: msg += f" <span class='timestamp'>@{ts}</span>"
             html.append(f"<li>{msg}</li>")
         html.append("</ul></div>")
 
+    # --- The key block for autorefresh ---
+    html.append(
+        '<div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5">'
+    )
     if not all_chargers:
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
     else:
-        html.append('<div class="ocpp-dashboard">')
         for cid in sorted(all_chargers):
             ws_live = cid in _active_cons
-            tx      = _transactions.get(cid)
-            connected   = '🟢' if ws_live else '🔴'
-            tx_id       = tx.get("transactionId") if tx else '-'
-            meter_start = tx.get("meterStart")       if tx else '-'
-            latest      = (
-                tx.get("meterStop")
-                if tx and tx.get("meterStop") is not None
-                else (tx["MeterValues"][-1].get("meter") if tx and tx.get("MeterValues") else 'None')
-            )
-            power  = power_consumed(tx)
-            status = "Closed" if tx and tx.get("syncStop") else "Open" if tx else '-'
-            # Heartbeat
+            tx = _transactions.get(cid)
             raw_hb = _latest_heartbeat.get(cid)
-            if raw_hb:
-                try:
-                    from datetime import datetime, timezone
-                    dt = datetime.fromisoformat(raw_hb.replace("Z", "+00:00")).astimezone()
-                    latest_hb = dt.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    latest_hb = raw_hb
-            else:
-                latest_hb = "-"
+            state = get_charger_state(cid, tx, ws_live, raw_hb)
+            html.append(_render_charger_card(cid, tx, state, raw_hb))
+    html.append('</div>')
 
-            html.append('<div class="charger-card">')
-            html.append(f'''
-                <div class="charger-header">
-                    <span class="charger-id">{cid}</span>
-                    <span class="charger-status">{connected}</span>
-                </div>
-                <div class="charger-details-row">
-                    <label>Txn ID:</label> <span>{tx_id}</span>
-                    <label>Start:</label> <span>{meter_start}</span>
-                    <label>Latest:</label> <span>{latest}</span>
-                </div>
-                <div class="charger-details-row">
-                    <label>kWh:</label> <span>{power}</span>
-                    <label>Status:</label> <span>{status}</span>
-                    <label>Last HB:</label> <span>{latest_hb}</span>
-                </div>
-                <form method="post" action="" class="charger-action-row">
-                    <input type="hidden" name="charger_id" value="{cid}">
-                    <select name="action" id="action-{cid}" aria-label="Action">
-                        <option value="remote_stop">Stop</option>
-                        <option value="reset_soft">Soft Reset</option>
-                        <option value="reset_hard">Hard Reset</option>
-                        <option value="disconnect">Disconnect</option>
-                    </select>
-                    <button type="submit" name="do" value="send">Send</button>
-                    <button type="submit" name="do" value="details" class="details-btn" data-target="details-{cid}">Details</button>
-                    <button type="submit" name="do" value="graph" class="graph-btn">Graph</button>
-                </form>
-                <div id="details-{cid}" class="charger-details-panel hidden">
-                    <pre>{json.dumps(tx or {}, indent=2)}</pre>
-                </div>
-            ''')
-            html.append('</div>')
-        html.append('</div>')  # end .ocpp-dashboard
-
-    # WebSocket URL bar
     ws_url = gw.web.build_ws_url()
     html.append(f"""
     <div class="ocpp-wsbar">
@@ -398,21 +445,31 @@ def view_charger_status(*, action=None, charger_id=None, **_):
                border:1px solid #444;background:#444;color:#fff;cursor:pointer">
         Copy
       </button>
+      <a href="/ocpp/evcs/cp-simulator" style="margin-left:1.3em">Simulator</a>
     </div>
     """)
-
-    # TODO: This next link should ideally be placed on the right column, right to the 
-    #       box with the ocpp link and copy button. If there is no existing CSS to do this
-    #       create a separate block of css that we can add to our static data.
-
-    if gw.web.app.is_setup('ocpp.evcs'):
-        html.append("""
-        <div>
-            <a href="/ocpp/evcs/cp-simulator">Activate or visualize the online simulator.</a>
-        </div>
-        """)
     return "".join(html)
 
+def render_charger_list(**kwargs):
+    """
+    Regenerate the full charger list HTML (all cards).
+    No parsing of incoming HTML; just returns a new block of HTML for charger-list.
+    Called via POST (or GET) from render.js, possibly with params in kwargs.
+    """
+    all_chargers = set(_active_cons) | set(_transactions)
+    html = []
+    if not all_chargers:
+        html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
+    else:
+        for cid in sorted(all_chargers):
+            ws_live = cid in _active_cons
+            tx = _transactions.get(cid)
+            raw_hb = _latest_heartbeat.get(cid)
+            state = get_charger_state(cid, tx, ws_live, raw_hb)
+            html.append(_render_charger_card(cid, tx, state, raw_hb))
+    return "\n".join(html)
+
+...
 
 def dispatch_action(charger_id: str, action: str):
     """
@@ -513,8 +570,7 @@ def power_consumed(tx):
 
     return 0.0
 
-
-def archive_e(charger_id, transaction_id, meter_values):
+def archive_energy(charger_id, transaction_id, meter_values):
     """
     Store MeterValues for a charger/transaction as a dated file for graphing.
     """
@@ -527,13 +583,11 @@ def archive_e(charger_id, transaction_id, meter_values):
         json.dump(meter_values, f, indent=2)
     return file_path
 
-
 def view_energy_graph(*, charger_id=None, date=None, **_):
     """
     Render a page with a graph for a charger's session by date.
     """
     import glob
-    from datetime import datetime
     html = ['<link rel="stylesheet" href="/static/styles/charger_status.css">']
     html.append('<h1>Charger Transaction Graph</h1>')
 

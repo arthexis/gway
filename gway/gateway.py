@@ -1,7 +1,6 @@
 # file: gway/gateway.py
 
 import os
-import re
 import sys
 import uuid
 import inspect
@@ -9,8 +8,6 @@ import logging
 import threading
 import importlib
 import functools
-
-from regex import W
 from pathlib import Path
 
 from .envs import load_env, get_base_client, get_base_server
@@ -22,6 +19,7 @@ from .runner import Runner
 class Gateway(Resolver, Runner):
     _builtins = None  # Class-level: stores all discovered builtins only once
     _thread_local = threading.local()
+    defaults = {} 
 
     Null = Null  # Null is a black-hole, assign with care.
 
@@ -34,7 +32,7 @@ class Gateway(Resolver, Runner):
     def __init__(self, *,
                 client=None, server=None, name="gw", base_path=None, project_path=None,
                 verbose=None, silent=None, debug=None, wizard=None, quantity=1, **kwargs
-    ):
+            ):
         self._cache = {}
         self._async_threads = []
         self.uuid = uuid.uuid4()
@@ -74,6 +72,8 @@ class Gateway(Resolver, Runner):
 
         self.context = Gateway._thread_local.context
         self.results = Gateway._thread_local.results
+
+        # self.defaults is class-level, already initialized above
 
         super().__init__([
             ('results', self.results),
@@ -117,6 +117,23 @@ class Gateway(Resolver, Runner):
                         setattr(g, flag, (lambda msg, *a, **k: g.logger.debug(msg, *a, stacklevel=2, **k)) if value else Null)
         except Exception:
             pass
+
+    @classmethod
+    def set_defaults(cls, **kwargs):
+        """Set (or update) default values for all Gateways."""
+        cls.defaults.update(kwargs)
+        logging.getLogger("gw").debug(f"Gateway.defaults updated: {cls.defaults}")
+
+    @classmethod
+    def clear_defaults(cls):
+        """Remove all class-level defaults."""
+        cls.defaults.clear()
+        logging.getLogger("gw").debug(f"Gateway.defaults cleared")
+
+    @classmethod
+    def get_default(cls, key, default=None):
+        """Fetch a default by key."""
+        return cls.defaults.get(key, default)
 
     def _projects_path(self):
         # 1. User explicitly passed a project_path
@@ -164,7 +181,6 @@ class Gateway(Resolver, Runner):
             return []
 
         result = set(discover_projects(projects_path))
-
         sorted_result = sorted(result)
         self.verbose(f"Discovered projects: {sorted_result}", func="projects")
         return sorted_result
@@ -244,6 +260,11 @@ class Gateway(Resolver, Runner):
                 call_args = []
                 call_kwargs = {}
 
+                # --- NEW: defaults injection ---
+                # 1. Start with the provided args/kwargs
+                # 2. For any missing kwarg (not given by caller or bound by positional), inject from
+                #    context/results/env as before, then finally from Gateway.defaults
+
                 for name, param in sig.parameters.items():
                     has_explicit = name in bound_args.arguments and (
                         param.default is inspect.Parameter.empty or
@@ -263,11 +284,18 @@ class Gateway(Resolver, Runner):
                             else:
                                 value = default_val
                     else:
+                        # Check for context/env first
                         default_val = bound_args.arguments.get(name, param.default)
                         if isinstance(default_val, (Sigil, Spool)):
                             value = default_val.resolve(self)
                         else:
                             value = default_val
+
+                        # -- Here's the new part: If still empty, pull from class-level defaults --
+                        if (value is inspect.Parameter.empty or value is None) and name in type(self).defaults:
+                            value = type(self).defaults[name]
+                            if self.verbose:
+                                self.verbose(f"Injected default {name}={value!r} from Gateway.defaults", func="wrap_callable")
 
                     ann = param.annotation
                     if ann in (int, float, str, bool) and value is not None and not isinstance(value, ann):
@@ -317,12 +345,7 @@ class Gateway(Resolver, Runner):
                     return f"ASYNC coroutine started for {func_name}"
 
                 # ---- Result storage logic ----
-                # 1. If built-in, skip storage entirely.
-                # 2. If there is a subject, store result under subject (and in context if dict).
-                #    If there is no subject, do NOT store, do NOT wrap/encapsulate result.
-
                 if not is_builtin and subject and result is not None:
-                    # Do NOT wrap/modify result; just store reference.
                     log_value = repr(result)
                     if len(log_value) > 100:
                         log_value = log_value[:100] + "...[truncated]"

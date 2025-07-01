@@ -20,7 +20,7 @@ def build_ws_url(*args, **kwargs):
 
 def base_host():
     # Replace '0.0.0.0' with '127.0.0.1' by convention
-    val = gw.resolve('[DOMAIN]', '[BASE_HOST]', '[SITE_HOST]', '[LOCALHOST]', '127.0.0.1')
+    val = gw.resolve('[BASE_HOST]', '[SITE_HOST]', '[LOCALHOST]', '127.0.0.1')
     if val == "0.0.0.0":
         val = "127.0.0.1"
     return val
@@ -86,7 +86,7 @@ def base_ws_url(*, ssl_default=False):
     Returns the canonical WS(S) base URL, e.g. 'ws://host:port'
     Forces ws if host is localhost/127.0.0.1.
     """
-    host_url = gw.resolve('[DOMAIN]', '[BASE_URL]', '[SITE_URL]', '')
+    host_url = gw.resolve('[BASE_URL]', '[SITE_URL]', '')
     if not host_url:
         host = base_host()
         port = base_port()

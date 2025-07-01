@@ -75,7 +75,6 @@ def version(check=None) -> str:
         gw.critical("VERSION file not found.")
         return "unknown"
 
-
 def normalize_ext(e):
     return e if e.startswith('.') else f'.{e}'
 
@@ -152,7 +151,6 @@ def resource(*parts, touch=False, check=False, text=False, dir=False):
         except Exception as e:
             gw.abort(f"Failed to read {path}: {e}")
     return path.resolve()
-
 
 def resource_list(*parts, ext=None, prefix=None, suffix=None):
     """

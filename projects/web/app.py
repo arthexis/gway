@@ -3,6 +3,7 @@
 import os
 from urllib.parse import urlencode
 import bottle
+import json
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
@@ -43,8 +44,6 @@ def setup_app(*,
     Only one project can be setup per call. CSS/JS params are used as the only static includes.
     """
     global _ver, _homes, _enabled
-
-    # TODO: Use gw.resolve to determine the param defaults using [sigils]
 
     if engine != "bottle":
         raise NotImplementedError("Only Bottle is supported at the moment.")
@@ -174,7 +173,7 @@ def setup_app(*,
             if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
                 return gw.web.error.unauthorized("Unauthorized: API access denied.")
             # Set current endpoint in GWAY context (for helpers/build_url etc)
-            gw.context['current_endpoint'] = path
+            gw.context['current_endpoint'] = path 
             segments = [s for s in view.strip("/").split("/") if s]
             view_name = segments[0].replace("-", "_") if segments else home
             args = segments[1:] if segments else []
@@ -200,64 +199,71 @@ def setup_app(*,
                 if isinstance(result, HTTPResponse):
                     return result
                 response.content_type = "application/json"
-                return gw.to_json(result)
+                return json.dumps(gw.cast.to_dict(result))
             except HTTPResponse as res:
                 return res
             except Exception as e:
                 return gw.web.error.redirect("Broken API", err=e)
             
     if renders:
-        @app.route(f"/_/{path}/<hash>/<view:path>", method=["GET", "POST"])
-        def render_dispatch(hash, view):
+        @app.route(f"/render/{path}/<view>/<hash>", method=["GET", "POST"])
+        def render_dispatch(view, hash):
             nonlocal renders
             # --- AUTH CHECK ---
             if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
                 return gw.web.error.unauthorized("Unauthorized: Render access denied.")
-
-            # Set current endpoint in GWAY context
+            kwargs = dict(request.query)
             gw.context['current_endpoint'] = path
 
-            # view is always present (may be empty string)
-            segments = [s for s in view.strip("/").split("/") if s]
-            view_name = segments[0].replace("-", "_") if segments else ""
-            args = segments[1:] if segments else []
-            kwargs = dict(request.query)
+            # Normalize dashes to underscores for Python function names
+            func_view = view.replace("-", "_")
+            func_hash = hash.replace("-", "_")
+            func_name = f"{renders}_{func_hash}"
 
-            # Add 'hash' to kwargs (for passing into the render function)
-            kwargs['hash'] = hash
+            # Optionally: Allow render_<view>_<hash> if you want to dispatch more granularly
+            #func_name = f"{renders}_{func_view}_{func_hash}"
+
+            render_func = getattr(source, func_name, None)
+            if not callable(render_func):
+                # Fallback: allow view as prefix, e.g. render_charger_status_charger_list
+                alt_func_name = f"{renders}_{func_view}_{func_hash}"
+                render_func = getattr(source, alt_func_name, None)
+                if not callable(render_func):
+                    return gw.web.error.redirect(
+                        f"Render function not found: {func_name} or {alt_func_name} in {project}")
 
             if request.method == "POST":
                 try:
-                    # Robust param handling: JSON, form, or even raw POST body
                     params = request.json or dict(request.forms) or request.body.read()
-                    # Only update if params is not empty (avoid overwriting with b'')
                     if params:
                         kwargs.update(gw.cast.to_dict(params))
                 except Exception as e:
                     return gw.web.error.redirect("Error loading POST parameters", err=e)
 
-            # There is no render_post_ variant, always call render_<view_name>
-            func_name = f"{renders}_{view_name}"
-            render_func = getattr(source, func_name, None)
-            if not callable(render_func):
-                return gw.web.error.redirect(f"Render function not found: {func_name} in {project}")
-
             try:
-                result = render_func(*args, **kwargs)
-                # If string or bytes: serve as fragment (HTML or text, not wrapped)
+                result = render_func(**kwargs)
+                # Dict: pass through as JSON
+                if isinstance(result, dict):
+                    response.content_type = "application/json"
+                    return json.dumps(result)
+                # List: treat as a list of HTML fragments (return as JSON)
+                if isinstance(result, list):
+                    html_list = [x if isinstance(x, str) else gw.to_html(x) for x in result]
+                    response.content_type = "application/json"
+                    return json.dumps(html_list)
+                # String/bytes: send as plain text (fragment)
                 if isinstance(result, (str, bytes)):
+                    response.content_type = "text/html"
                     return result
-                # If HTTPResponse, return it
-                if isinstance(result, HTTPResponse):
-                    return result
-                # Else, return as JSON (for lists, dicts, etc)
+                # Else: fallback to JSON
                 response.content_type = "application/json"
-                return gw.to_json(result)
+                return json.dumps(gw.cast.to_dict(result))
             except HTTPResponse as res:
                 return res
             except Exception as e:
                 return gw.web.error.redirect("Broken render function", err=e)
 
+        
     @app.route("/favicon.ico")
     def favicon():
         proj_parts = project.split('.')
@@ -270,11 +276,8 @@ def setup_app(*,
         return HTTPResponse(status=404, body="favicon.ico not found")
 
     if gw.verbose:
-        gw.debug(f"Registered homes: {_homes}")
+        gw.info(f"Registered homes: {_homes}")
         debug_routes(app)
-
-    gw.info(f"build_url: {build_url()}")
-    gw.info(f"default_home: {default_home()}")
 
     return oapp if oapp else app
 
@@ -349,7 +352,6 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         </html>
     """, **locals())
     return html
-
 
 def default_home():
     for _, route in _homes:

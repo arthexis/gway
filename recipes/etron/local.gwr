@@ -6,13 +6,13 @@ web app setup-app
     --project vbox 
     --project ocpp.csms --home charger-status 
     --project ocpp.evcs --home cp-simulator
-    --project web.monitor --home nmcli-report
+    --project monitor --home nmcli-report
 
 # Toggle this version to apply the allowlist  
 # ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre
 
 # This only makes sense for NetworkManager in Linux 
-web monitor watch-nmcli 
+monitor nmcli watch --no-block
 
 # Without a specific --allow param, all transactions are allowed by default
 ocpp csms setup-app --location porsche_centre

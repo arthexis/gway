@@ -83,8 +83,7 @@ def render(*, homes=None):
         '''
     except Exception as e:
         gw.debug(f"Could not generate QR compass: {e}")
-
-    gw.debug(f"Visited cookie raw: {gw.web.cookies.get('visited')}")
+        
     return f"<aside>{search_box}<ul>{links}</ul><br>{compass}</aside>"
 
 def active_style():
