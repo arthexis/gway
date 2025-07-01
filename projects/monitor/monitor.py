@@ -22,6 +22,10 @@ def set_state(project, key, value):
     """Set a key/value in the state for a given project."""
     get_state(project)[key] = value
 
+def set_states(project, mapping):
+    """Set a key/value in the state for a given project."""
+    get_state(project).update(mapping)
+
 def get_next_check_time(project):
     return MONITOR_NEXT_CHECK.get(project)
 

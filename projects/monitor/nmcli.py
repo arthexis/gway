@@ -4,7 +4,7 @@
 GWAY NMCLI Network Monitor Project
 
 Single-run monitor and render functions for Linux systems using nmcli.
-Works with monitor/monitor.py. All state is read/written via gw.monitor.get_state/set_state('nmcli').
+Works with monitor/monitor.py. All state is read/written via gw.monitor.get_state/set_states('nmcli', {...}).
 
 Monitors:
     - monitor_nmcli: Full network check/fallback logic (AP/station/repair).
@@ -19,10 +19,10 @@ Renders:
 
 import os
 import subprocess
-import datetime
 from gway import gw
 
 def now_iso():
+    import datetime
     return datetime.datetime.now().isoformat(timespec="seconds")
 
 # --- Utility functions ---
@@ -83,20 +83,24 @@ def get_wlan_status(iface):
     return {"ssid": None, "connected": False, "inet": False}
 
 def check_eth0_gateway():
-    state = gw.monitor.get_state('nmcli')
     try:
         routes = subprocess.check_output(["ip", "route", "show", "dev", "eth0"], text=True)
         ip_addr = get_eth0_ip()
+        state_update = {
+            "eth0_ip": ip_addr,
+            "eth0_gateway": "default" in routes
+        }
         if "default" in routes:
             subprocess.run(["ip", "route", "del", "default", "dev", "eth0"], stderr=subprocess.DEVNULL)
             nmcli("connection", "modify", "eth0", "ipv4.never-default", "yes")
             nmcli("connection", "up", "eth0")
-            gw.monitor.set_state('nmcli', "last_config_change", now_iso())
-            gw.monitor.set_state('nmcli', "last_config_action", "Removed eth0 default route")
-        gw.monitor.set_state('nmcli', "eth0_ip", ip_addr)
-        gw.monitor.set_state('nmcli', "eth0_gateway", "default" in routes)
+            state_update.update({
+                "last_config_change": now_iso(),
+                "last_config_action": "Removed eth0 default route"
+            })
+        gw.monitor.set_states('nmcli', state_update)
     except Exception as e:
-        gw.monitor.set_state('nmcli', "last_error", f"eth0 gateway: {e}")
+        gw.monitor.set_states('nmcli', {"last_error": f"eth0 gateway: {e}"})
 
 def ap_profile_exists(ap_con, ap_ssid, ap_password):
     conns = nmcli("connection", "show")
@@ -144,18 +148,22 @@ def set_wlan0_ap(ap_con, ap_ssid, ap_password):
     gw.info(f"[nmcli] Activating wlan0 AP: conn={ap_con}, ssid={ap_ssid}")
     nmcli("device", "disconnect", "wlan0")
     nmcli("connection", "up", ap_con)
-    gw.monitor.set_state('nmcli', "wlan0_mode", "ap")
-    gw.monitor.set_state('nmcli', "wlan0_ssid", ap_ssid)
-    gw.monitor.set_state('nmcli', "last_config_change", now_iso())
-    gw.monitor.set_state('nmcli', "last_config_action", f"Activated AP {ap_ssid}")
+    gw.monitor.set_states('nmcli', {
+        "wlan0_mode": "ap",
+        "wlan0_ssid": ap_ssid,
+        "last_config_change": now_iso(),
+        "last_config_action": f"Activated AP {ap_ssid}"
+    })
 
 def set_wlan0_station():
     gw.info("[nmcli] Setting wlan0 to station (managed) mode")
     nmcli("device", "set", "wlan0", "managed", "yes")
     nmcli("device", "disconnect", "wlan0")
-    gw.monitor.set_state('nmcli', "wlan0_mode", "station")
-    gw.monitor.set_state('nmcli', "last_config_change", now_iso())
-    gw.monitor.set_state('nmcli', "last_config_action", "Set wlan0 to station")
+    gw.monitor.set_states('nmcli', {
+        "wlan0_mode": "station",
+        "last_config_change": now_iso(),
+        "last_config_action": "Set wlan0 to station"
+    })
 
 def clean_and_reconnect_wifi(iface, ssid, password=None):
     conns = nmcli("connection", "show")
@@ -168,8 +176,10 @@ def clean_and_reconnect_wifi(iface, ssid, password=None):
             gw.info(f"[nmcli] Removing stale connection {name} ({uuid}) on {iface}")
             nmcli("connection", "down", name)
             nmcli("connection", "delete", name)
-            gw.monitor.set_state('nmcli', "last_config_change", now_iso())
-            gw.monitor.set_state('nmcli', "last_config_action", f"Removed stale WiFi {name} on {iface}")
+            gw.monitor.set_states('nmcli', {
+                "last_config_change": now_iso(),
+                "last_config_action": f"Removed stale WiFi {name} on {iface}"
+            })
             break
     gw.info(f"[nmcli] Resetting interface {iface}")
     nmcli("device", "disconnect", iface)
@@ -181,8 +191,10 @@ def clean_and_reconnect_wifi(iface, ssid, password=None):
         nmcli("device", "wifi", "connect", ssid, "ifname", iface, "password", password)
     else:
         nmcli("device", "wifi", "connect", ssid, "ifname", iface)
-    gw.monitor.set_state('nmcli', "last_config_change", now_iso())
-    gw.monitor.set_state('nmcli', "last_config_action", f"Re-added {iface} to {ssid}")
+    gw.monitor.set_states('nmcli', {
+        "last_config_change": now_iso(),
+        "last_config_action": f"Re-added {iface} to {ssid}"
+    })
 
 def try_connect_wlan0_known_networks():
     conns = nmcli("connection", "show")
@@ -192,32 +204,31 @@ def try_connect_wlan0_known_networks():
         nmcli("device", "wifi", "connect", conn, "ifname", "wlan0")
         if ping("wlan0"):
             gw.info(f"[nmcli] wlan0 internet works via {conn}")
-            gw.monitor.set_state('nmcli', "wlan0_mode", "station")
-            gw.monitor.set_state('nmcli', "wlan0_ssid", conn)
-            gw.monitor.set_state('nmcli', "wlan0_inet", True)
-            gw.monitor.set_state('nmcli', "last_config_change", now_iso())
-            gw.monitor.set_state('nmcli', "last_config_action", f"wlan0 connected to {conn}")
+            gw.monitor.set_states('nmcli', {
+                "wlan0_mode": "station",
+                "wlan0_ssid": conn,
+                "wlan0_inet": True,
+                "last_config_change": now_iso(),
+                "last_config_action": f"wlan0 connected to {conn}"
+            })
             return True
         clean_and_reconnect_wifi("wlan0", conn)
         if ping("wlan0"):
             gw.info(f"[nmcli] wlan0 internet works via {conn} after reset")
-            gw.monitor.set_state('nmcli', "wlan0_mode", "station")
-            gw.monitor.set_state('nmcli', "wlan0_ssid", conn)
-            gw.monitor.set_state('nmcli', "wlan0_inet", True)
-            gw.monitor.set_state('nmcli', "last_config_change", now_iso())
-            gw.monitor.set_state('nmcli', "last_config_action", f"wlan0 reconnected to {conn}")
+            gw.monitor.set_states('nmcli', {
+                "wlan0_mode": "station",
+                "wlan0_ssid": conn,
+                "wlan0_inet": True,
+                "last_config_change": now_iso(),
+                "last_config_action": f"wlan0 reconnected to {conn}"
+            })
             return True
-    gw.monitor.set_state('nmcli', "wlan0_inet", False)
+    gw.monitor.set_states('nmcli', {"wlan0_inet": False})
     return False
 
 # --- Main single-run monitor functions ---
 
 def monitor_nmcli(**kwargs):
-    """
-    Default monitor for nmcli: checks WLANs, tries fallback, maintains AP/client as needed.
-    Updates state via gw.monitor.set_state('nmcli', ...).
-    """
-    # Resolve config from kwargs or gw/context/env
     ap_ssid = kwargs.get("ap_ssid") or gw.resolve('[AP_SSID]')
     ap_con = kwargs.get("ap_con") or ap_ssid or gw.resolve('[AP_CON]')
     ap_password = kwargs.get("ap_password") or gw.resolve('[AP_PASSWORD]')
@@ -247,7 +258,7 @@ def monitor_nmcli(**kwargs):
                 set_wlan0_ap(ap_con, ap_ssid, ap_password)
                 found_inet = True
                 break
-    gw.monitor.set_state('nmcli', "wlanN", wlanN)
+    gw.monitor.set_states('nmcli', {"wlanN": wlanN})
     if not found_inet:
         gw.info("[nmcli] No internet via wlanN, trying wlan0 as client")
         set_wlan0_station()
@@ -259,11 +270,12 @@ def monitor_nmcli(**kwargs):
     if not found_inet:
         gw.info("[nmcli] No internet found, switching wlan0 to AP")
         set_wlan0_ap(ap_con, ap_ssid, ap_password)
-    gw.monitor.set_state('nmcli', "last_monitor_check", now_iso())
+    gw.monitor.set_states('nmcli', {"last_monitor_check": now_iso()})
+    state = gw.monitor.get_state('nmcli')
     return {
         "ok": found_inet,
-        "action": gw.monitor.get_state('nmcli').get("last_config_action"),
-        "wlan0_mode": gw.monitor.get_state('nmcli').get("wlan0_mode"),
+        "action": state.get("last_config_action"),
+        "wlan0_mode": state.get("wlan0_mode"),
     }
 
 def monitor_ap_only(**kwargs):
@@ -271,13 +283,15 @@ def monitor_ap_only(**kwargs):
     ap_con = kwargs.get("ap_con") or ap_ssid or gw.resolve('[AP_CON]')
     ap_password = kwargs.get("ap_password") or gw.resolve('[AP_PASSWORD]')
     set_wlan0_ap(ap_con, ap_ssid, ap_password)
-    gw.monitor.set_state('nmcli', "last_monitor_check", now_iso())
-    return {"wlan0_mode": gw.monitor.get_state('nmcli').get("wlan0_mode"), "ssid": ap_ssid}
+    gw.monitor.set_states('nmcli', {"last_monitor_check": now_iso()})
+    state = gw.monitor.get_state('nmcli')
+    return {"wlan0_mode": state.get("wlan0_mode"), "ssid": ap_ssid}
 
 def monitor_station_only(**kwargs):
     set_wlan0_station()
-    gw.monitor.set_state('nmcli', "last_monitor_check", now_iso())
-    return {"wlan0_mode": gw.monitor.get_state('nmcli').get("wlan0_mode")}
+    gw.monitor.set_states('nmcli', {"last_monitor_check": now_iso()})
+    state = gw.monitor.get_state('nmcli')
+    return {"wlan0_mode": state.get("wlan0_mode")}
 
 # --- Renderers (for dashboard, html output) ---
 
@@ -319,5 +333,4 @@ def render_status():
             f"<b>Mode:</b> {mode} <b>SSID:</b> {ssid} <b>INET:</b> {inet} <b>Last:</b> {last}</div>")
 
 def render_monitor():
-    # Fallback, just call render_nmcli
     return render_nmcli()
