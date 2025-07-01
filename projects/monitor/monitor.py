@@ -64,9 +64,11 @@ def start_watch(
     project_name = str(project)
     log_prefix = f"[monitor:{project_name}] "
 
-    gproj = gw.get(project_name) or gw.get(f"monitor.{project_name}")
+    gproj = gw.get(f"monitor.{project_name}")
     if not gproj:
-        raise ValueError(f"{log_prefix}Project not found in GWAY: '{project_name}' or 'monitor.{project_name}'")
+        raise ValueError(f"{log_prefix}Project not found in GWAY: 'monitor.{project_name}'")
+    
+    # TODO: Default to "monitor_all" if it exists.
 
     monitors = gw.to_list(monitor) if monitor else [project_name]
     monitor_funcs = []
@@ -163,6 +165,13 @@ def start_watch(
             datetime.datetime.now() + datetime.timedelta(seconds=interval)
         ).isoformat(timespec="seconds")
         return results
+    
+# TODO: Fix this error which appears in the logs whenever the view_net_monitors is reloaded.
+#       Curiously, the error doesn't show the first time around, only on second visit (or maybe its a delay).
+# FileNotFoundError: Project path not found for 'nmcli'. 
+# Tried: project_path=None, base_path/projects, env var, site-packages, and 'projects'.
+# We should always transform <project> into 'monitor.<project>' before looking it up in gw, because we
+# want to restrict monitor to work with its sub-clases only for now.
 
 def view_net_monitors(**_):
     """
@@ -172,14 +181,13 @@ def view_net_monitors(**_):
       - fallback: render_<project> or render_monitor
     """
     html = ['<div class="gway-net-dashboard">']
-    html.append('<h1>GWAY Network Monitor Dashboard</h1>')
     if not NETWORK_STATE:
         html.append('<div class="warn" style="color:#a00;">No monitors are currently running.</div>')
     for project in NETWORK_STATE:
         state = get_state(project)
         proj_title = f"Monitor: <b>{project}</b>"
         html.append(f'<div class="monitor-block"><h2>{proj_title}</h2>')
-        gproj = gw.get(project) or gw.get(f"monitor.{project}")
+        gproj = gw.get(f"monitor.{project}")
         renders = MONITOR_RENDER.get(project) or [project]
         rendered = False
         for rname in renders:
