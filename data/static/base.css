@@ -1,10 +1,11 @@
-/* GWAY base layout */
+/* file: data/web/static/styles/base.css */
+/* === GWAY BASE LAYOUT (REWRITTEN, THEME-AWARE, MOBILE-SAFE) === */
 
+/* 1. General reset and typography */
 * {
     box-sizing: border-box;
     scroll-behavior: smooth;
 }
-
 html, body {
     height: 100%;
     margin: 0;
@@ -12,38 +13,50 @@ html, body {
     font-family: system-ui, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, 'Liberation Sans', sans-serif;
     font-size: 16px;
     line-height: 1.7;
-    color: #202124;
+    color: var(--fg, #202124);
+    background: var(--bg, #fff);
     letter-spacing: 0.01em;
 }
+:root {
+    --bg: #fff;
+    --bg-alt: #f0f0f0;
+    --main-bg: #fff;         /* used for mobile main background */
+    --fg: #202124;
+    --muted: #666;
+    --accent: #007bff;
+    --accent-alt: #007bff;
+    --card-bg: #fafaff;
+}
 
+/* 2. App structural layout */
 .page-wrap {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    background: none;
 }
-
-body, .page-wrap {
-    background: var(--bg, #fff);  /* use a CSS variable for easy theme switching */
-}
-
 .layout {
     display: flex;
     flex: 1 0 auto;
     flex-direction: row;
     width: 100%;
     min-height: 0;
+    background: none;
 }
 
+/* 3. Sidebar (aside) */
 aside {
     width: 240px;
     padding: 2rem 1rem;
     flex-shrink: 0;
-    background-color: var(--bg-alt, #f0f0f0);
+    background: var(--bg-alt, #f0f0f0);
     border-right: 1px solid #ccc;
     font-size: 1.08em;
     font-family: inherit;
+    transition: background 0.2s;
 }
 
+/* 4. Main content area */
 main {
     flex: 1 1 0;
     padding: 1rem 2rem;
@@ -53,9 +66,11 @@ main {
     flex-direction: column;
     min-height: 0;
     font-family: inherit;
+    background: var(--main-bg, var(--bg, #fff));
+    transition: background 0.2s;
 }
 
-/* Footer (always after .page-wrap) */
+/* 5. Footer */
 footer {
     font-size: 0.92em;
     padding: 1em;
@@ -66,26 +81,7 @@ footer {
     font-family: inherit;
 }
 
-aside ul {
-    list-style: none;
-    padding: 0;
-}
-aside ul li a {
-    display: block;
-    padding: 0.5em 0;
-    text-decoration: none;
-    text-transform: uppercase;
-    color: var(--fg, #000);
-    letter-spacing: 0.04em;
-    font-weight: 500;
-    font-size: 0.99em;
-    font-family: inherit;
-}
-aside ul li a:hover,
-aside ul li a.active {
-    font-weight: 700;
-    color: var(--accent, #007bff);
-}
+/* 6. Typography */
 h1, h2, h3, h4 {
     margin-top: 1em;
     margin-bottom: 0.5em;
@@ -98,12 +94,11 @@ h1 { font-size: 2.2em; }
 h2 { font-size: 1.5em; }
 h3 { font-size: 1.22em; }
 h4 { font-size: 1.08em; }
-p {
-    margin: 1em 0;
-    font-family: inherit;
-}
+main > h1:first-child { margin-top: 1em; }
+p { margin: 1em 0; }
+
 pre {
-    background-color: #111827;
+    background: #111827;
     color: #a5f3fc;
     padding: 1rem;
     margin: 1em 0;
@@ -114,7 +109,6 @@ pre {
     line-height: 1.6;
 }
 pre code {
-    /* Don't add more padding! Just inherit color/font, remove background */
     background: none;
     color: inherit;
     padding: 0;
@@ -122,52 +116,59 @@ pre code {
     border-radius: 0;
 }
 code {
-    /* For inline code only (not inside pre) */
-    background-color: #111827;
+    background: #111827;
     color: #a5f3fc;
     padding: 0.14em 0.32em;
     border-radius: 0.3em;
     font-family: 'Fira Mono', 'Fira Code', 'Consolas', 'Menlo', 'Monaco', 'Liberation Mono', monospace;
     font-size: 0.92em;
 }
+h1 + pre, h2 + pre, h3 + pre, h4 + pre { margin-top: 0.5em; }
 
-
-h1 + pre,
-h2 + pre,
-h3 + pre,
-h4 + pre {
-    margin-top: 0.5em;
+/* 7. Lists and links */
+aside ul { list-style: none; padding: 0; }
+aside ul li a {
+    display: block;
+    padding: 0.5em 0;
+    text-decoration: none;
+    text-transform: uppercase;
+    color: var(--fg, #000);
+    letter-spacing: 0.04em;
+    font-weight: 500;
+    font-size: 0.99em;
+    font-family: inherit;
+    transition: color 0.15s;
 }
-main > h1:first-child {
-    margin-top: 1em; /* Adjust to fit your preferred look */
+aside ul li a:hover, aside ul li a.active {
+    font-weight: 700;
+    color: var(--accent, #007bff);
+}
+.current, li a.active {
+    font-weight: bold;
+    text-decoration: underline;
 }
 
-/* Buttons & inputs */
-button,
-input[type="submit"],
-input[type="button"] {
-    background-color: var(--accent-alt, #007bff);
-    color: white;
+/* 8. Buttons & form controls */
+button, input[type="submit"], input[type="button"] {
+    background: var(--accent-alt, #007bff);
+    color: #fff;
     padding: 0.6em 1.2em;
     font-size: 1em;
     border: none;
     border-radius: 0.5rem;
     cursor: pointer;
-    transition: background-color 0.2s ease, transform 0.1s ease;
+    transition: background 0.2s, transform 0.1s;
     font-family: inherit;
 }
-button:hover,
-input[type="submit"]:hover {
-    background-color: var(--accent, #0056b3);
+button:hover, input[type="submit"]:hover {
+    background: var(--accent, #0056b3);
     transform: scale(1.03);
 }
-button:active,
-input[type="submit"]:active {
-    background-color: #004494;
+button:active, input[type="submit"]:active {
+    background: #004494;
     transform: scale(0.97);
 }
-input,
-textarea {
+input, textarea, select {
     width: 100%;
     padding: 0.5em;
     font-size: 1em;
@@ -175,59 +176,33 @@ textarea {
     border-radius: 0.5rem;
     border: 1px solid var(--muted, #ccc);
     font-family: inherit;
+    box-sizing: border-box;
 }
 select {
-    width: 100%;
-    padding: 0.5em;
-    font-size: 1em;
-    margin-bottom: 1em;
-    border-radius: 0.5rem;
-    border: 1px solid var(--muted, #ccc);
-    background-color: white;
+    background: #fff;
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 140 140' width='14' height='14' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolygon points='0,0 140,0 70,70' fill='%23666'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.7em center;
     background-size: 0.8em;
-    font-family: inherit;
 }
 
-img.compass {
-    max-width: 180px;
-    height: auto;
-    margin: 1em auto 0 auto;
-    display: block;
-}
-form.navbar {
-    margin-bottom: 1em;
-}
-div.compass {
-    margin-top: 1em;
-    text-align: center;
-}
-p.compass {
-    margin-bottom: 0.5em;
-}
-
-/* Responsive layout */
+/* 9. Responsive design: MOBILE OVERRIDES */
 @media (max-width: 650px) {
     .layout {
-        flex-direction: row !important;  /* force side-by-side */
+        flex-direction: row !important;
         min-height: 100vh;
         position: relative;
+        background: none;
     }
     aside {
         width: 76vw;
         max-width: 350px;
         min-width: 200px;
         position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        height: 100vh;
+        left: 0; top: 0; bottom: 0; height: 100vh;
         border-right: 1px solid #222;
-        border-bottom: none;
-        background: var(--bg-alt, #191b23); /* keep same as desktop theme */
+        background: var(--bg-alt, #191b23);
         z-index: 22;
         padding-bottom: 3rem;
         transition: background 0.22s;
@@ -235,322 +210,130 @@ p.compass {
     }
     main {
         padding: 0.8rem 0.3rem 0.3rem 0.7rem;
-        min-width: 0;
         width: 100%;
+        min-width: 0;
         height: 100vh;
         overflow-x: auto;
         position: relative;
         z-index: 1;
-        background: var(--main-bg, #181820); /* theme safe */
-        /* NOTE: If you have a dark theme, set --bg-alt for aside, --main-bg for main */
+        background: var(--main-bg, #fff); /* always light by default for readability */
+        /* To support dark theme, set --main-bg via JS or a theme class */
     }
 }
 
+/* 10. Print styles */
 @media print {
     aside { display: none; }
-    body { background: white; color: black; }
+    body { background: #fff; color: #000; }
     main { padding: 0; }
-    pre { background: #f0f0f0; color: black; }
-}
-.current {
-    font-weight: bold;
-    text-decoration: underline;
-}
-:root {
-    --bg: #fff;
-    --bg-alt: #f0f0f0;
+    pre { background: #f0f0f0; color: #000; }
 }
 
-/* Style for expandable search box */
-textarea.help {
-    width: 100%;
-    font-size: 1em;
-    border-radius: 0.5em;
-    border: 1px solid var(--muted, #ccc);
-    font-family: inherit;
-    padding: 0.5em;
-    margin-bottom: 0;
-    transition: box-shadow 0.1s;
-    box-sizing: border-box;
-    min-height: 2.4em;     /* height for one line */
-    max-height: 10em;      /* about 5–6 lines */
-    overflow-y: auto;
-    resize: none;
-    background: #fff;
-}
-textarea.help:focus {
-    outline: 2px solid var(--accent, #007bff);
-    background: #f7fbff;
-}
-
-
-
-/* OCPP status dashboard table */
-.ocpp-status {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-.ocpp-status th,
-.ocpp-status td {
-  border: 1px solid #ccc;
-  padding: 4px;
-}
-
-/* Keep the form inline next to the button */
-.ocpp-status form.inline {
-  display: inline;
-}
-
-/* Details rows are hidden by default */
-.hidden {
-  display: none;
-}
-
-
-
-/* =========== HELP SYSTEM UI (LIGHT, FINAL) =========== */
-
-/* Help entry/card container */
-.help-entry {
-  margin: 1.2em 0 1.4em 0;
-  border: 1.5px solid #e2e6ee;
-  border-radius: 13px;
-  background: var(--card-bg, #fafaff);
-  box-shadow: 0 2px 8px 0 rgba(30,40,80,0.07);
-  padding: 1.05em 1.25em 0.7em 1.25em;
-  position: relative;
-  transition: box-shadow 0.15s;
-}
-.help-entry:hover {
-  box-shadow: 0 4px 14px 1px rgba(38,60,140,0.13);
-}
-
-/* Multi-help layout */
-.help-multi {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Separator line */
-.help-sep {
-  border: none;
-  border-top: 2px solid #d5dbf4;
-  margin: 1.3em 0 1em 0;
-  opacity: 0.36;
-}
-
-/* Project/Function Row */
-.projfunc-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  font-size: 1.29em;
-  font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', 'Consolas', monospace;
-  font-weight: 700;
-  margin-bottom: 0.6em;
-  letter-spacing: -0.01em;
-}
-.projfunc-row .project,
-.projfunc-row .function {
-  font-family: inherit;
-  font-weight: 700;
-  color: #2483c8;
-  background: #eef7fd;
-  padding: 0.07em 0.20em 0.08em 0.20em;
-  border-radius: 0.24em;
-  box-shadow: 0 2px 6px 0 #b8e3fc11;
-  font-size: 1em;
-  margin: 0 0.1em;
-}
-.projfunc-row .dot {
-  color: #a3b2c2;
-  font-weight: 400;
-  font-size: 1.12em;
-  margin: 0 0.15em;
-}
-
-/* Help links */
-.help-entry a, .help-entry .refs a {
-  color: #2176c9;
-  text-decoration: none;
-  font-size: 1.02em;
-  font-weight: 500;
-  padding: 0.04em 0.14em;
-  border-radius: 0.13em;
-  transition: background 0.13s;
-}
-.help-entry a:hover {
-  background: #d4eaff;
-  color: #102a44;
-}
-
-/* References row */
-.refs {
-  margin: 0.33em 0 0.6em 0;
-  padding: 0.09em 0.04em;
-  font-size: 1em;
-}
-
-/* Help code blocks (Signature, Example CLI, Full Code, etc) */
-.help-entry pre,
-.help-entry pre code.python {
-  background-color: #18243a;
-  color: #f0f8ff;
-  padding: 0.65em 0.8em;
-  border-radius: 6px;
-  margin: 0.8em 0 0.7em 0;
-  font-size: 0.97em;
-  font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', monospace;
-  box-shadow: 0 1px 3px 0 #0001;
-}
-.help-entry pre code.python {
-  padding: 0;
-  background: none;
-  color: inherit;
-  font-size: inherit;
-}
-
-/* Help docstrings */
-.help-entry .doc {
-  background: #eaf5fe;
-  color: #246196;
-  padding: 0.29em 0.61em;
-  border-left: 3px solid #52b8fa;
-  margin: 0.65em 0 0.79em 0;
-  border-radius: 2.5px;
-  font-size: 1.01em;
-}
-
-/* Copy button on full code blocks */
-.copy-btn {
-  position: absolute;
-  top: 0.6em; right: 1.0em;
-  background: #2483c8;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.99em;
-  padding: 0.17em 0.5em;
-  cursor: pointer;
-  z-index: 2;
-  box-shadow: 0 1px 5px 0 #7ed4ff44;
-  transition: background 0.13s;
-}
-.copy-btn:hover { background: #196fa0; }
-.full-code-block { position: relative; }
-
-/* Help mobile tweak */
-@media (max-width: 650px) {
-  .help-entry {
-    padding: 0.44em 0.2em 0.25em 0.2em;
-  }
-  .projfunc-row { font-size: 1em; }
-}
-
-/* Base link style: visible on any background with soft highlight */
+/* 11. Basic link styles, theme-robust */
 a {
-    color: inherit; /* Use current text color, unless overridden by theme */
+    color: inherit;
     text-decoration: underline;
     text-underline-offset: 0.13em;
-    position: relative;
     transition: color 0.18s, box-shadow 0.18s;
-    /* Subtle outer white glow for visibility on any background */
-    text-shadow:
-        0 0 5px rgba(255,255,255,0.44),
-        0 0 12px rgba(255,255,255,0.15);
-    /* Optionally add a background highlight for extreme cases: */
-    /* background: rgba(255,255,255,0.10); border-radius: 3px; */
+    text-shadow: 0 0 5px rgba(255,255,255,0.44),
+                 0 0 12px rgba(255,255,255,0.15);
 }
-a:visited {
-    color: inherit; /* Prevent default purple */
-    opacity: 0.95;
-}
+a:visited { color: inherit; opacity: 0.95; }
 a:hover, a:focus {
     color: inherit;
     background: rgba(255,255,255,0.13);
     box-shadow: 0 0 7px 2px rgba(255,255,255,0.29);
-    text-shadow:
-        0 0 7px rgba(255,255,255,0.50),
-        0 0 14px rgba(255,255,255,0.25);
+    text-shadow: 0 0 7px rgba(255,255,255,0.50),
+                 0 0 14px rgba(255,255,255,0.25);
     outline: none;
 }
 
-/* file: data/web/static/styles/base.css */
+/* 12. Miscellaneous elements (images, forms, etc) */
+img.compass {
+    max-width: 180px;
+    height: auto;
+    margin: 1em auto 0 auto;
+    display: block;
+}
+form.navbar { margin-bottom: 1em; }
+div.compass { margin-top: 1em; text-align: center; }
+p.compass { margin-bottom: 0.5em; }
 
-/* Hide nav by sweeping left (out of view) */
+/* 13. Utility classes */
+.hidden { display: none !important; }
+.full-code-block { position: relative; }
+
+/* 14. Table (e.g., OCPP status dashboard) */
+.ocpp-status {
+    border-collapse: collapse;
+    width: 100%;
+}
+.ocpp-status th, .ocpp-status td {
+    border: 1px solid #ccc;
+    padding: 4px;
+}
+.ocpp-status form.inline { display: inline; }
+
+/* 15. Help System Styles (trimmed for brevity, can be extended as needed) */
+.help-entry {
+    margin: 1.2em 0 1.4em 0;
+    border: 1.5px solid #e2e6ee;
+    border-radius: 13px;
+    background: var(--card-bg, #fafaff);
+    box-shadow: 0 2px 8px 0 rgba(30,40,80,0.07);
+    padding: 1.05em 1.25em 0.7em 1.25em;
+    transition: box-shadow 0.15s;
+}
+.help-entry:hover {
+    box-shadow: 0 4px 14px 1px rgba(38,60,140,0.13);
+}
+
+/* 16. Navbar/Navigation roll handling */
 .layout.nav-rolled aside {
     transform: translateX(-110%);
     transition: transform 0.25s cubic-bezier(.4,2,.6,1), box-shadow 0.2s, opacity 0.2s;
     box-shadow: none !important;
-    opacity: 1 !important;   /* keep normal, do NOT dim */
+    opacity: 1 !important;
     pointer-events: none;
 }
-
-/* Nav visible when open */
 .layout aside {
     transform: none;
     opacity: 1 !important;
     pointer-events: auto;
     transition: transform 0.25s cubic-bezier(.4,2,.6,1), box-shadow 0.2s, opacity 0.2s;
 }
-
-/* Main content full width when nav hidden */
 .layout.nav-rolled main {
     margin-left: 0 !important;
     width: 100% !important;
+    opacity: 1 !important;
+    filter: none !important;
     transition: width 0.2s;
 }
 
-/* Nav handle always on left (matches JS) */
-#nav-handle {
-    box-shadow: 2px 2px 16px #0006;
-    background: none;
-    border-radius: 0 24px 24px 0;
-    border: none;
-    outline: none;
-    transition: background 0.15s, opacity 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-}
-#nav-handle svg {
-    display: block;
-}
-#nav-handle:active {
-    opacity: 1;
-}
-
-/* === THEME-AWARE SEARCHBOX === */
+/* 17. Searchbox theme support (light/dark ready) */
 :root {
-    /* Defaults for light themes */
     --search-bg: #fff;
     --search-fg: #202124;
     --search-border: #b8c2cc;
     --search-placeholder: #888;
     --search-border-focus: #1ad6a4;
 }
-
 [data-theme="dark"], .dark, body.dark {
+    --bg: #191b23;
+    --bg-alt: #11151a;
+    --main-bg: #181820;
+    --fg: #f3f8fc;
+    --muted: #a3b2c2;
+    --accent: #21c9ff;
+    --accent-alt: #2483c8;
+    --card-bg: #1a2330;
     --search-bg: #181c22;
     --search-fg: #f3f8fc;
     --search-border: #54ffcc;
     --search-placeholder: #a3b2c2;
     --search-border-focus: #9fffe5;
 }
-
-/* file: data/web/static/styles/base.css */
-
-/* -- Fix mobile main content darkening bug when nav is rolled -- */
-.layout.nav-rolled main {
-    opacity: 1 !important;
-    filter: none !important;
-}
-
-/* The searchbox styles */
-#help-search,
-.help-search {
+#help-search, .help-search {
     background: var(--search-bg) !important;
     color: var(--search-fg) !important;
     border: 2px solid var(--search-border);
@@ -559,20 +342,25 @@ a:hover, a:focus {
     font-size: 0.9em;
     font-family: inherit;
     transition: border-color 0.15s, background 0.15s, color 0.15s;
-    box-sizing: border-box;
     width: 95%;
     margin: 0.2em auto 0.5em auto;
     display: block;
 }
-
-#help-search:focus,
-.help-search:focus {
+#help-search:focus, .help-search:focus {
     border-color: var(--search-border-focus);
     outline: none;
 }
-
-#help-search::placeholder,
-.help-search::placeholder {
+#help-search::placeholder, .help-search::placeholder {
     color: var(--search-placeholder);
     opacity: 1;
+}
+
+/* 18. Scrollbar styling (optional for modern look) */
+::-webkit-scrollbar {
+    width: 12px;
+    background: #e0e0e0;
+}
+::-webkit-scrollbar-thumb {
+    background: #b0b0b0;
+    border: 2px solid #e0e0e0;
 }
