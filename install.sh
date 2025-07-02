@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# file: install.sh
 set -euo pipefail
 
 # Resolve real directory of this script (even if symlinked)
@@ -73,6 +74,7 @@ WorkingDirectory=$SCRIPT_DIR
 ExecStartPre=/home/ubuntu/gway/upgrade.sh --auto
 ExecStart=$SCRIPT_DIR/gway.sh -r $RECIPE
 Restart=on-failure
+RestartSec=10
 Environment=PYTHONUNBUFFERED=1
 StandardOutput=journal
 StandardError=journal

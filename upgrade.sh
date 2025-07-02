@@ -1,6 +1,6 @@
+#!/bin/bash
 # file: upgrade.sh
 
-#!/bin/bash
 set -e
 
 SNAPSHOT_FILE=".upgrade_snapshot"
