@@ -10,7 +10,6 @@ web app setup-app --home reader
     --project vbox --home uploads 
     --project ocpp.csms --auth-required --home charger-status
     --project ocpp.evcs --auth-required --home cp-simulator
-    --project monitor.nmcli --auth-required --home network-report
     --project games.conway --home game-of-life --path conway
     --project web.auth 
 
