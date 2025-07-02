@@ -20,5 +20,5 @@ ocpp csms setup-app --location simulator
 
 web server start-app --port 8888 --ws-port 9999
 
-# Loop forever until VERSION or PyPI changes
+# Loop until VERSION or PyPI changes
 until --file VERSION --pypi 
