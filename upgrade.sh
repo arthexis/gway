@@ -90,8 +90,8 @@ fi
 pip install -e .
 
 echo "[7] Running test command..."
-if ! gway hello-world; then
-    echo "Error: gway hello-world failed after upgrade."
+if ! gway test; then
+    echo "Error: gway test failed after upgrade."
     log_action "Upgrade failed at commit: $NEW_HASH"
     if [[ $AUTO -eq 1 ]]; then
         echo "Auto mode enabled: reverting to previous version."

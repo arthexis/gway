@@ -29,7 +29,7 @@ def hello_world(name: str = "World", *, greeting: str = "Hello", **kwargs):
         print("Greeting protocol not found ((serious smoke)).")
     return locals()
 
-def abort(message: str, *, exit_code: int = 1) -> int:
+def abort(message: str, *, exit_code: int = 13) -> int:
     """Abort with error message."""
     from gway import gw
     gw.critical(message)
@@ -193,21 +193,23 @@ def resource_list(*parts, ext=None, prefix=None, suffix=None):
     matches.sort(key=lambda p: p.stat().st_ctime)
     return matches
 
-def test(*, root: str = 'tests', filter=None, project=None):
+def test(*, root: str = 'tests', filter=None, on_success = "clear"):
     """Execute all automatically detected test suites, logging to logs/test.log."""
     import unittest
     import os
     from gway import gw
     from gway.logging import use_logging
 
-    projects = gw.cast.to_list(project)
+    log_path = os.path.join("logs", "test.log")
 
-    # TODO: Implement a 'project' mode. Instead of performing the hard-coded GWAY test
-    # suite, run an abstract test battery against the project or collection of projects
-
-    with use_logging(logfile="test.log", logdir="logs", prog_name="gway",
-                     debug=getattr(gw, "debug", False), backup_count=0,
-                     verbose=getattr(gw, "verbose", False)):
+    with use_logging(
+        logfile="test.log",
+        logdir="logs",
+        prog_name="gway",
+        debug=getattr(gw, "debug", False),
+        backup_count=0,
+        verbose=getattr(gw, "verbose", False),
+    ):
         print("Running the test suite...")
 
         def is_test_file(file):
@@ -230,6 +232,11 @@ def test(*, root: str = 'tests', filter=None, project=None):
         runner = unittest.TextTestRunner(verbosity=2)
         result = runner.run(test_suite)
         gw.info(f"Test results: {str(result).strip()}")
+
+    # --- Cleanup: Remove test.log if tests succeeded and on_success is 'clear' ---
+    if result.wasSuccessful() and on_success.lower() == "clear":
+        if os.path.exists(log_path):
+            os.remove(log_path)
 
     return result.wasSuccessful()
 

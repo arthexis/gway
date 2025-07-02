@@ -70,7 +70,8 @@ After=network.target
 Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$SCRIPT_DIR
-ExecStart=$SCRIPT_DIR/gway.sh -dr $RECIPE
+ExecStartPre=/home/ubuntu/gway/upgrade.sh --auto
+ExecStart=$SCRIPT_DIR/gway.sh -r $RECIPE
 Restart=on-failure
 Environment=PYTHONUNBUFFERED=1
 StandardOutput=journal
