@@ -1,5 +1,9 @@
 // file: data/web/static/scripts/mobile.js
 
+// TODO: When mobile mode is activated, the navbar moves as expected, however the main
+//       content of the sites becomes too dark to read. Investigate how it works, 
+//       specially when used in tandem with base.css
+
 (function() {
     const NAV_SELECTOR = 'aside';
     const LAYOUT_SELECTOR = '.layout';
@@ -30,11 +34,13 @@
         if (document.getElementById(HANDLE_ID)) return;
         const handle = document.createElement('div');
         handle.id = HANDLE_ID;
-        // SVG: a left-side pill tab with arrow (can be styled as you wish)
+        // SVG: big, bold right arrow inside a thick less-rounded vertical tab
         handle.innerHTML = `
-            <svg width="50" height="44" viewBox="0 0 50 44" fill="none">
-                <rect x="0" y="0" width="42" height="44" rx="22" fill="#26374a" opacity="0.97"/>
-                <polygon points="37,22 17,12 17,32" fill="#fff"/>
+            <svg width="60" height="64" viewBox="0 0 60 64" fill="none">
+                <rect x="0" y="0" width="56" height="64" rx="18"
+                    fill="var(--bg-alt, #26374a)" fill-opacity="0.98"/>
+                <polygon points="38,32 22,18 22,46"
+                    fill="var(--accent, #F98C00)"/>
             </svg>
         `;
         handle.setAttribute('aria-label', 'Open navigation');
@@ -42,17 +48,17 @@
         handle.style.bottom = '2.1rem';
         handle.style.left = '0px';
         handle.style.zIndex = 3000;
-        handle.style.width = '44px';
-        handle.style.height = '44px';
+        handle.style.width = '54px';
+        handle.style.height = '64px';
         handle.style.display = 'flex';
         handle.style.justifyContent = 'center';
         handle.style.alignItems = 'center';
         handle.style.border = 'none';
         handle.style.background = 'none';
-        handle.style.borderRadius = '0 24px 24px 0';
-        handle.style.boxShadow = '2px 2px 16px #0005';
+        handle.style.borderRadius = '0 18px 18px 0'; // less rounded
+        handle.style.boxShadow = '2px 2px 18px #0004';
         handle.style.cursor = 'pointer';
-        handle.style.opacity = '0.95';
+        handle.style.opacity = '0.98'; // 80% solid
         handle.onclick = function(e) {
             e.stopPropagation();
             rollNav(false);

@@ -540,6 +540,14 @@ a:hover, a:focus {
     --search-border-focus: #9fffe5;
 }
 
+/* file: data/web/static/styles/base.css */
+
+/* -- Fix mobile main content darkening bug when nav is rolled -- */
+.layout.nav-rolled main {
+    opacity: 1 !important;
+    filter: none !important;
+}
+
 /* The searchbox styles */
 #help-search,
 .help-search {
