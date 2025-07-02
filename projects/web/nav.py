@@ -143,7 +143,7 @@ def view_style_switcher(*, css=None, project=None):
     # Determine the project from context or fallback if not provided
     if not project:
         path = request.fullpath.strip("/").split("/")
-        if path and path[0] in ("conway", "awg", "site", "etron"):
+        if path and path[0]:
             project = path[0]
         else:
             project = "site"

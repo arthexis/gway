@@ -411,7 +411,7 @@ def load_recipe(recipe_filename):
     Example:
         web app setup --home reader
             --project vbox --home upload
-            --project conway --home board --path games/conway
+            --project games.conway --home board --path conway
         web server start-app --host 127.0.0.1 --port 8888
 
     This parses the indented lines as continuations of the previous non-indented command.

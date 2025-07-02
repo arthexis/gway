@@ -63,8 +63,8 @@ class ConwayWebTests(unittest.TestCase):
         gw.info(f"JS scripts found: {js_links}")
         self.assertIn("/shared/global.js", js_links, f"/shared/global.js not in {js_links}")
         # Download link
-        download_link = soup.find('a', href="/shared/conway.txt")
-        self.assertIsNotNone(download_link, "Download link for /shared/conway.txt not found in page HTML")
+        download_link = soup.find('a', href="/shared/games/conway.txt")
+        self.assertIsNotNone(download_link, "Download link for /shared/games/conway.txt not found in page HTML")
         # Optionally: log the first part of the page for debugging
         gw.info("Top of page: " + str(soup)[:400])
 
@@ -104,12 +104,12 @@ class ConwayWebTests(unittest.TestCase):
         )
 
     def test_download_board_link_works(self):
-        """/shared/conway.txt returns a plain text file, not HTML, and is not empty."""
-        url = self.base_url + "/shared/conway.txt"
+        """/shared/games/conway.txt returns a plain text file, not HTML, and is not empty."""
+        url = self.base_url + "/shared/games/conway.txt"
         resp = requests.get(url)
         self.assertEqual(
             resp.status_code, 200,
-            f"/shared/conway.txt not found (status {resp.status_code})."
+            f"/shared/games/conway.txt not found (status {resp.status_code})."
         )
         self.assertIn(
             "text/plain", resp.headers.get("Content-Type", ""),

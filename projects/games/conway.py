@@ -1,4 +1,4 @@
-# file: projects/conway.py
+# file: projects/games/conway.py
 
 import os
 import random
@@ -9,7 +9,7 @@ from gway import gw
 from bottle import response, redirect
 
 BOARD_SIZE = 54
-BOARD_FILE = gw.resource("work", "shared", "conway.txt", touch=True)
+BOARD_FILE = gw.resource("work", "shared", "games","conway.txt", touch=True)
 
 def _new_board(size=BOARD_SIZE, fill=0):
     return [[fill for _ in range(size)] for _ in range(size)]
@@ -138,7 +138,7 @@ def view_game_of_life(
             <button type="submit" name="action" value="step">{ICONS['step']} Step Forward</button>
             <button type="submit" name="action" value="random">{ICONS['random']} Random</button>
             <button type="submit" name="action" value="clear">{ICONS['clear']} Clear</button>
-            <a href="/shared/conway.txt" download class="button">{ICONS['download']} Download</a>
+            <a href="/shared/games/conway.txt" download class="button">{ICONS['download']} Download</a>
         </form>
         <p style="color:#aa2222">{html.escape(msg)}</p>
         <table id="gameboard" class="game-board">{html_board}</table>
