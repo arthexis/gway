@@ -7,16 +7,19 @@ import socket
 import os
 import base64
 import requests
+import random
+import string
 from gway import gw
 
-# TODO: This test is wiping work/basic_auth.cdv each time its run, but this file is
-#       also used during local development, we have to work around this or the file not existing.
-
-CDV_PATH = "work/test/basic_auth.cdv"
-TEST_USER = "admin"
-TEST_PASS = "admin"
+CDV_PATH = os.path.abspath("work/basic_auth.cdv")  # Use production path
+# Generate a random user/pass for each test run
+def _rand_str(n=10):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=n))
+TEST_USER = f"testuser_{_rand_str(8)}"
+TEST_PASS = _rand_str(16)
 
 def _remove_test_user(user=TEST_USER):
+    """Remove the test user from the allowlist file, if present."""
     if not os.path.exists(CDV_PATH):
         return
     lines = []
@@ -31,6 +34,7 @@ class AuthChargerStatusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         _remove_test_user()
+        # Start the server
         cls.proc = subprocess.Popen(
             ["gway", "-r", "website"],
             stdout=subprocess.PIPE,
@@ -65,6 +69,8 @@ class AuthChargerStatusTests(unittest.TestCase):
     def setUp(self):
         _remove_test_user()
         gw.web.auth.create_user(TEST_USER, TEST_PASS, allow=CDV_PATH, force=True)
+        # Optionally, log to help debug
+        # print(f"Created test user {TEST_USER} in {CDV_PATH}")
 
     def tearDown(self):
         _remove_test_user()
