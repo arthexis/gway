@@ -47,6 +47,50 @@ def get_eth0_ip():
             return line.split(":")[-1].strip()
     return None
 
+def get_device_info(dev):
+    """
+    Returns a dict with relevant info for a network device, such as state, type, driver, path, mac, etc.
+    """
+    info = {
+        'device': dev,
+        'type': '-',
+        'state': '-',
+        'driver': '-',
+        'mac': '-',
+        'path': '-',
+        'connection': '-',
+    }
+    try:
+        output = nmcli('device', 'show', dev)
+        for line in output.splitlines():
+            if line.startswith('GENERAL.TYPE'):
+                info['type'] = line.split(':', 1)[-1].strip()
+            elif line.startswith('GENERAL.STATE'):
+                info['state'] = line.split(':', 1)[-1].strip()
+            elif line.startswith('GENERAL.HWADDR'):
+                info['mac'] = line.split(':', 1)[-1].strip()
+            elif line.startswith('GENERAL.DRIVER'):
+                info['driver'] = line.split(':', 1)[-1].strip()
+            elif line.startswith('GENERAL.PATH'):
+                info['path'] = line.split(':', 1)[-1].strip()
+            elif line.startswith('GENERAL.CONNECTION'):
+                info['connection'] = line.split(':', 1)[-1].strip()
+    except Exception as e:
+        info['error'] = str(e)
+    return info
+
+def get_all_devices():
+    """
+    Returns a list of all device names from nmcli (regardless of status).
+    """
+    devices = []
+    out = nmcli('device', 'status')
+    for line in out.splitlines():
+        parts = line.split()
+        if parts:
+            devices.append(parts[0])
+    return devices
+
 def ping(iface, target="8.8.8.8", count=2, timeout=2):
     try:
         result = subprocess.run(
@@ -316,19 +360,34 @@ def render_nmcli():
             internet_ssid = st.get('ssid')
             break
 
+    # Gather device info for eth0, wlan0, all wlanN, and any other network devices
+    devices = get_all_devices()
+    device_info = {dev: get_device_info(dev) for dev in devices}
+
     html = ['<div class="nmcli-report">']
     html.append("<h2>Network Manager</h2>")
     html.append(f"<b>Last monitor check:</b> {s.get('last_monitor_check') or '-'}<br>")
     html.append(f"<b>Last config change:</b> {s.get('last_config_change') or 'Never'}<br>")
     html.append(f"<b>Last action:</b> {s.get('last_config_action') or '-'}<br>")
     html.append(f"<b>wlan0 mode:</b> {s.get('wlan0_mode') or '-'}<br>")
-    html.append(f"<b>wlan0 ssid:</b> {s.get('wlan0_ssid') or '-'}<br>")
+    # AP info
+    wlan0_info = device_info.get('wlan0', {})
+    html.append(
+        f"<b>wlan0 ssid:</b> {s.get('wlan0_ssid') or '-'} "
+        f"(state: {wlan0_info.get('state','-')}, driver: {wlan0_info.get('driver','-')}, "
+        f"mac: {wlan0_info.get('mac','-')})<br>"
+    )
     html.append(f"<b>wlan0 internet:</b> {_color_icon(s.get('wlan0_inet'))} {s.get('wlan0_inet')}<br>")
 
-    # eth0: color logic for "unavailable"
+    # eth0 info
     eth0_ip = s.get('eth0_ip')
     eth0_color = _color_icon(bool(eth0_ip))
-    html.append(f"<b>eth0 IP:</b> {eth0_color} {eth0_ip or '-'}<br>")
+    eth0_info = device_info.get('eth0', {})
+    html.append(
+        f"<b>eth0 IP:</b> {eth0_color} {eth0_ip or '-'} "
+        f"(state: {eth0_info.get('state','-')}, driver: {eth0_info.get('driver','-')}, "
+        f"mac: {eth0_info.get('mac','-')})<br>"
+    )
     eth0_gw = s.get('eth0_gateway')
     html.append(f"<b>eth0 gateway:</b> {_color_icon(eth0_gw)} {'yes' if eth0_gw else 'no'}<br>")
 
@@ -336,27 +395,33 @@ def render_nmcli():
     html.append(f"<b>Last internet fail:</b> {_color_icon(bool(s.get('last_inet_fail')))} {s.get('last_inet_fail') or '-'}<br>")
     html.append(f"<b>Last error:</b> {_color_icon(s.get('last_error') is None)} {s.get('last_error') or '-'}<br>")
 
-    # WLANN summary
+    # All wlanN and relevant info (including disconnected/disabled)
     html.append(f"<b>WLANN interfaces:</b> {wlan_count}<br>")
-    if wlan_count:
-        html.append('<table style="border-collapse:collapse;margin-top:4px;"><tr>'
-                    '<th>iface</th><th>SSID</th><th>Connected</th><th>INET</th></tr>')
-        for iface, st in wlanN.items():
-            html.append(
-                f"<tr>"
-                f"<td>{iface}</td>"
-                f"<td>{st.get('ssid') or '-'}</td>"
-                f"<td>{_color_icon(st.get('connected'))} {st.get('connected')}</td>"
-                f"<td>{_color_icon(st.get('inet'))} {st.get('inet')}</td>"
-                f"</tr>"
-            )
-        html.append('</table>')
-    else:
-        html.append("<i>No wlanN interfaces detected.</i><br>")
+    html.append('<table style="border-collapse:collapse;margin-top:4px;"><tr>'
+                '<th>iface</th><th>SSID</th><th>Connected</th><th>INET</th><th>State</th><th>Driver</th><th>MAC</th></tr>')
+    for dev in sorted([d for d in devices if d.startswith('wlan')]):
+        st = wlanN.get(dev, {})
+        dinfo = device_info.get(dev, {})
+        html.append(
+            f"<tr>"
+            f"<td>{dev}</td>"
+            f"<td>{st.get('ssid') or '-'}</td>"
+            f"<td>{_color_icon(st.get('connected'))} {st.get('connected') if 'connected' in st else dinfo.get('state','-')}</td>"
+            f"<td>{_color_icon(st.get('inet')) if 'inet' in st else _color_icon(dinfo.get('state')=='connected')} {st.get('inet') if 'inet' in st else '-'}</td>"
+            f"<td>{dinfo.get('state','-')}</td>"
+            f"<td>{dinfo.get('driver','-')}</td>"
+            f"<td>{dinfo.get('mac','-')}</td>"
+            f"</tr>"
+        )
+    html.append('</table>')
 
-    # Internet gateway info
+    # Internet gateway info (with device detail)
     if internet_iface:
-        html.append(f"<b>Internet via:</b> {internet_iface} (SSID: {internet_ssid})<br>")
+        gwdev = device_info.get(internet_iface, {})
+        html.append(
+            f"<b>Internet via:</b> {internet_iface} (SSID: {internet_ssid}) "
+            f"(driver: {gwdev.get('driver','-')}, mac: {gwdev.get('mac','-')}, state: {gwdev.get('state','-')})<br>"
+        )
     else:
         html.append(f"<b>Internet via:</b> <span style='color:#b00;'>No gateway detected</span><br>")
 
