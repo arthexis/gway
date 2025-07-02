@@ -66,7 +66,7 @@ def build(
     description = "Software Project Infrastructure by https://www.gelectriic.com"
     author_name = "Rafael J. Guillén-Osorio"
     author_email = "tecnologia@gelectriic.com"
-    python_requires = ">=3.11"
+    python_requires = ">=3.10"
     license_expression = "MIT"
     readme_file = Path("README.rst")
 

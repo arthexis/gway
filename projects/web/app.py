@@ -321,7 +321,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
 
     favicon = f'<link rel="icon" href="/favicon.ico" type="image/x-icon" />'
     credits = f'''
-        <p>GWAY is written in <a href="https://www.python.org/">Python 3.11</a>.
+        <p>GWAY is written in <a href="https://www.python.org/">Python 3.10</a>.
         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>, 
         <a href="https://pypi.org">PyPI</a> and <a href="https://github.com/arthexis/gway">Github</a>.</p>
     '''
