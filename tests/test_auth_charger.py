@@ -9,7 +9,10 @@ import base64
 import requests
 from gway import gw
 
-CDV_PATH = "work/basic_auth.cdv"
+# TODO: This test is wiping work/basic_auth.cdv each time its run, but this file is
+#       also used during local development, we have to work around this or the file not existing.
+
+CDV_PATH = "work/test/basic_auth.cdv"
 TEST_USER = "admin"
 TEST_PASS = "admin"
 
