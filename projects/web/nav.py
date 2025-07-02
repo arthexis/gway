@@ -272,14 +272,6 @@ def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_acc
             <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="styleSelectChanged(this)">
                 {''.join(options)}
             </select>
-            <script>
-                function styleSelectChanged(sel) {{
-                    var val = sel.value;
-                    var url = new URL(window.location.href);
-                    url.searchParams.set('css', val);
-                    window.location.href = url.toString();
-                }}
-            </script>
         """
 
 def list_styles(project=None):

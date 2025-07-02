@@ -1,4 +1,4 @@
-# file: monitor/nmcli.py
+# file: projects/monitor/nmcli.py
 
 """
 GWAY NMCLI Network Monitor Project
@@ -17,7 +17,6 @@ Renders:
     - render_monitor: Fallback renderer.
 """
 
-import os
 import subprocess
 from gway import gw
 
@@ -302,35 +301,64 @@ def _color_icon(status):
         return '<span style="color:#b00;">&#9679;</span>'
     return '<span style="color:#bb0;">&#9679;</span>'
 
+
 def render_nmcli():
     s = gw.monitor.get_state('nmcli')
+    wlanN = s.get("wlanN") or {}
+    wlan_count = len(wlanN)
+    internet_iface = None
+    internet_ssid = None
+
+    # Find first interface with inet True
+    for iface, st in wlanN.items():
+        if st.get('inet'):
+            internet_iface = iface
+            internet_ssid = st.get('ssid')
+            break
+
     html = ['<div class="nmcli-report">']
-    html.append("<h2>Network State Monitor</h2>")
+    html.append("<h2>Network Manager</h2>")
     html.append(f"<b>Last monitor check:</b> {s.get('last_monitor_check') or '-'}<br>")
     html.append(f"<b>Last config change:</b> {s.get('last_config_change') or 'Never'}<br>")
     html.append(f"<b>Last action:</b> {s.get('last_config_action') or '-'}<br>")
     html.append(f"<b>wlan0 mode:</b> {s.get('wlan0_mode') or '-'}<br>")
     html.append(f"<b>wlan0 ssid:</b> {s.get('wlan0_ssid') or '-'}<br>")
     html.append(f"<b>wlan0 internet:</b> {_color_icon(s.get('wlan0_inet'))} {s.get('wlan0_inet')}<br>")
-    html.append(f"<b>eth0 IP:</b> {s.get('eth0_ip') or '-'}<br>")
-    html.append(f"<b>eth0 gateway:</b> {_color_icon(s.get('eth0_gateway'))} {'yes' if s.get('eth0_gateway') else 'no'}<br>")
+
+    # eth0: color logic for "unavailable"
+    eth0_ip = s.get('eth0_ip')
+    eth0_color = _color_icon(bool(eth0_ip))
+    html.append(f"<b>eth0 IP:</b> {eth0_color} {eth0_ip or '-'}<br>")
+    eth0_gw = s.get('eth0_gateway')
+    html.append(f"<b>eth0 gateway:</b> {_color_icon(eth0_gw)} {'yes' if eth0_gw else 'no'}<br>")
+
     html.append(f"<b>Last internet OK:</b> {_color_icon(bool(s.get('last_inet_ok')))} {s.get('last_inet_ok') or '-'}<br>")
     html.append(f"<b>Last internet fail:</b> {_color_icon(bool(s.get('last_inet_fail')))} {s.get('last_inet_fail') or '-'}<br>")
     html.append(f"<b>Last error:</b> {_color_icon(s.get('last_error') is None)} {s.get('last_error') or '-'}<br>")
-    html.append("<b>WLANN status:</b><br><ul>")
-    for iface, st in (s.get("wlanN") or {}).items():
-        html.append(f"<li>{iface}: ssid={st.get('ssid')}, conn={_color_icon(st.get('connected'))} {st.get('connected')}, inet={_color_icon(st.get('inet'))} {st.get('inet')}</li>")
-    html.append("</ul></div>")
+
+    # WLANN summary
+    html.append(f"<b>WLANN interfaces:</b> {wlan_count}<br>")
+    if wlan_count:
+        html.append('<table style="border-collapse:collapse;margin-top:4px;"><tr>'
+                    '<th>iface</th><th>SSID</th><th>Connected</th><th>INET</th></tr>')
+        for iface, st in wlanN.items():
+            html.append(
+                f"<tr>"
+                f"<td>{iface}</td>"
+                f"<td>{st.get('ssid') or '-'}</td>"
+                f"<td>{_color_icon(st.get('connected'))} {st.get('connected')}</td>"
+                f"<td>{_color_icon(st.get('inet'))} {st.get('inet')}</td>"
+                f"</tr>"
+            )
+        html.append('</table>')
+    else:
+        html.append("<i>No wlanN interfaces detected.</i><br>")
+
+    # Internet gateway info
+    if internet_iface:
+        html.append(f"<b>Internet via:</b> {internet_iface} (SSID: {internet_ssid})<br>")
+    else:
+        html.append(f"<b>Internet via:</b> <span style='color:#b00;'>No gateway detected</span><br>")
+
+    html.append("</div>")
     return "\n".join(html)
-
-def render_status():
-    s = gw.monitor.get_state('nmcli')
-    mode = s.get('wlan0_mode') or '-'
-    ssid = s.get('wlan0_ssid') or '-'
-    inet = _color_icon(s.get('wlan0_inet'))
-    last = s.get('last_monitor_check') or '-'
-    return (f"<div class='status-summary'>"
-            f"<b>Mode:</b> {mode} <b>SSID:</b> {ssid} <b>INET:</b> {inet} <b>Last:</b> {last}</div>")
-
-def render_monitor():
-    return render_nmcli()

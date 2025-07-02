@@ -6,7 +6,7 @@ web app setup-app
     --project vbox 
     --project ocpp.csms --home charger-status 
     --project ocpp.evcs --home cp-simulator
-    --project monitor --home net-monitors
+    --project monitor --home monitor-panel
 
 # Toggle this version to apply the allowlist  
 # ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre
