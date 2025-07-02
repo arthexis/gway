@@ -105,3 +105,37 @@ def extract_records(location, *,
     gw.info(f"Data successfully written to {output_csv}")
     return {"status": "success", "output_csv": output_csv}
 
+def summary_report(report_path, *, output_path=None):
+    """
+    Generate a summary CSV from a detailed EVCS report.
+    Columns: DIA, KWH_TOTAL, TRANSACCIONES, KWH_MAX
+    """
+    import pandas as pd
+
+    # If given a name like 'san-pedro', assume report file is work/etron/reports/<name>_records.csv
+    if not report_path.endswith(".csv"):
+        dir_name = os.path.split(report_path.strip('/').strip('\\'))[-1]
+        report_path = gw.resource("work", "etron", "reports", f"{dir_name}_records.csv")
+
+    if output_path is None:
+        dir_name = os.path.splitext(os.path.basename(report_path))[0].replace("_records", "")
+        output_path = gw.resource("work", "etron", "reports", f"{dir_name}_summary.csv")
+
+    # Load the CSV
+    df = pd.read_csv(report_path, encoding="utf-8")
+
+    # Create DIA column (date of FECHA INICIO)
+    df["DIA"] = pd.to_datetime(df["FECHA INICIO"]).dt.date
+
+    # Group and aggregate
+    grouped = df.groupby("DIA").agg(
+        KWH_TOTAL = ("WH USADOS", lambda x: round(x.sum() / 1000, 3)),
+        TRANSACCIONES = ("WH USADOS", "count"),
+        KWH_MAX = ("WH USADOS", lambda x: round(x.max() / 1000, 3))
+    ).reset_index()
+
+    # Write summary CSV
+    grouped.to_csv(output_path, index=False, encoding="utf-8")
+
+    gw.info(f"Summary written to {output_path}")
+    return {"status": "success", "output_csv": output_path}

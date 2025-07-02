@@ -87,6 +87,10 @@ else
     exit 1
 fi
 
+# --- TODO COMPLETED: Update pip itself before updating other packages ---
+echo "[6.1] Upgrading pip to latest version in venv..."
+python -m pip install --upgrade pip
+
 pip install -e .
 
 echo "[7] Running test command..."
