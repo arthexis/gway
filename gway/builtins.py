@@ -193,7 +193,7 @@ def resource_list(*parts, ext=None, prefix=None, suffix=None):
     matches.sort(key=lambda p: p.stat().st_ctime)
     return matches
 
-def test(*, root: str = 'tests', filter=None, on_success = "clear"):
+def test(*, root: str = 'tests', filter=None, on_success = None, on_failure= None):
     """Execute all automatically detected test suites, logging to logs/test.log."""
     import unittest
     import os
@@ -234,9 +234,12 @@ def test(*, root: str = 'tests', filter=None, on_success = "clear"):
         gw.info(f"Test results: {str(result).strip()}")
 
     # --- Cleanup: Remove test.log if tests succeeded and on_success is 'clear' ---
-    if result.wasSuccessful() and on_success.lower() == "clear":
+    if result.wasSuccessful() and on_success == "clear":
         if os.path.exists(log_path):
             os.remove(log_path)
+
+    if not result.wasSuccessful() and on_failure == "abort":
+        gw.abort(f"Tests failed with --abort flag. Results: {str(result).strip()}")
 
     return result.wasSuccessful()
 
