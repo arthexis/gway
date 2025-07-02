@@ -103,7 +103,7 @@ python -m pip install --upgrade pip
 pip install -e .
 
 echo "[7] Running test command..."
-if ! gway test; then
+if ! gway test --on-failure abort; then
     echo "Error: gway test failed after upgrade."
     log_action "Upgrade failed at commit: $NEW_HASH"
     if [[ $AUTO -eq 1 ]]; then

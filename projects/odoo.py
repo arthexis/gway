@@ -30,7 +30,7 @@ def execute_kw(*args, model: str, method: str, **kwargs) -> dict:
 
     gw.info(f"Odoo Execute: {model=} {method=} @ {url=} {db_name=} {username=}")
     if url.startswith("[") or "ODOO_BASE_URL" in url:
-        gw.abort("Odoo XML-RPC url not configured. Please set ODOO_BASE_URL correctly.")
+        gw.halt("Odoo XML-RPC url not configured. Please set ODOO_BASE_URL correctly.")
     try:
         common_client = client.ServerProxy(f"{url}/xmlrpc/2/common")
     except Exception as e:

@@ -123,7 +123,7 @@ def simulate(
                 while any(t.is_alive() for t in threads_list):
                     await asyncio.sleep(0.5)
             except asyncio.CancelledError:
-                gw.abort("[Simulator] Orchestration cancelled.")
+                gw.halt("[Simulator] Orchestration cancelled.")
             for t in threads_list:
                 t.join()
 
