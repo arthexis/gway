@@ -83,7 +83,7 @@ def redirect(message="", *, err=None, default=None, view_name=None):
         view_key = view_name
 
     pruned = False
-    if view_key and gw.web.cookies.check_consent():
+    if view_key and gw.web.cookies.accepted():
         norm_broken = (view_key or "").replace("-", " ").replace("_", " ").title().lower()
         new_items = []
         for v in visited_items:

@@ -11,6 +11,7 @@ web app setup-app --home reader
     --project ocpp.csms --auth-required --home charger-status
     --project ocpp.evcs --auth-required --home cp-simulator
     --project games.conway --home game-of-life --path conway
+    --project games.mtg --home search-games 
     --project web.auth 
 
 web static collect

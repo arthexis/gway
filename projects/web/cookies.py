@@ -9,7 +9,7 @@ from gway import gw
 
 def set(name, value, path="/", expires=None, secure=None, httponly=True, samesite="Lax", **kwargs):
     """Set a cookie on the response. Only includes expires if set."""
-    if not check_consent() and name != "cookies_accepted":
+    if not accepted() and name != "cookies_accepted":
         return
     if secure is None:
         secure = (getattr(request, "urlparts", None) and request.urlparts.scheme == "https")
@@ -33,7 +33,7 @@ def remove(name: str, path="/"):
     """
     Remove a cookie by blanking and setting expiry to epoch (deleted).
     """
-    if not check_consent():
+    if not accepted():
         return
     expires = "Thu, 01 Jan 1970 00:00:00 GMT"
     response.set_cookie(name, value="", path=path, expires=expires, secure=False)
@@ -43,12 +43,12 @@ def clear_all(path="/"):
     """
     Remove all cookies in the request, blanking and expiring each.
     """
-    if not check_consent():
+    if not accepted():
         return
     for cookie in list(request.cookies):
         remove(cookie, path=path)
 
-def check_consent() -> bool:
+def accepted() -> bool:
     """
     Returns True if the user has accepted cookies (not blank, not None).
     """
@@ -59,7 +59,7 @@ def list_all() -> dict:
     """
     Returns a dict of all cookies from the request, omitting blanked cookies.
     """
-    if not check_consent():
+    if not accepted():
         return {}
     return {k: v for k, v in request.cookies.items() if v not in (None, "")}
 
@@ -68,7 +68,7 @@ def append(name: str, label: str, value: str, sep: str = "|") -> list:
     Append a (label=value) entry to the specified cookie, ensuring no duplicates (label-based).
     Useful for visited history, shopping cart items, etc.
     """
-    if not check_consent():
+    if not accepted():
         return []
     raw = get(name, "")
     items = raw.split(sep) if raw else []
@@ -94,7 +94,7 @@ def view_remove(*, next="/cookies/cookie-jar", confirm = False):
         response.status = 303
         response.set_header("Location", next)
         return ""
-    if not check_consent():
+    if not accepted():
         response.status = 303
         response.set_header("Location", next)
         return ""
@@ -104,7 +104,7 @@ def view_remove(*, next="/cookies/cookie-jar", confirm = False):
     return ""
 
 def view_cookie_jar(*, eat=None):
-    cookies_ok = check_consent()
+    cookies_ok = accepted()
     # Handle eating a cookie (removal via ?eat=)
     if cookies_ok and eat:
         eat_key = str(eat)
@@ -246,7 +246,7 @@ def view_my_mask(*, claim=None, set_mask=None):
     ALL existing cookies (except cookies_accepted) are wiped before restoring the claimed mask.
     No wipe is performed when creating a new mask.
     """
-    cookies_ok = check_consent()
+    cookies_ok = accepted()
     mask = get("mask", "")
 
     # Handle claiming or setting mask via POST

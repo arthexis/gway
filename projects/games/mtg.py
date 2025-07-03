@@ -1,51 +1,297 @@
 # file: projects/mtg.py
 
 import requests
+from html import escape
+from gway import gw
+import json
 
-def search(query, *, show=True, limit=5, **kwargs):
-    """
-    Search for Magic: The Gathering cards using Scryfall API.
+NAME_SUGGESTIONS = [
+    "Black Lotus", "Lightning Bolt", "Sol Ring", "Emrakul", "Shivan Dragon", "Griselbrand",
+    "Birds of Paradise", "Snapcaster Mage", "Brainstorm", "Thoughtseize", "Giant Growth",
+    "Force of Will", "Serra Angel", "Tarmogoyf", "Jace, the Mind Sculptor", "Thragtusk",
+    "Ugin, the Spirit Dragon", "Blood Moon", "Phyrexian Obliterator", "Walking Ballista",
+]
+TYPE_SUGGESTIONS = [
+    "Creature", "Instant", "Artifact", "Planeswalker", "Sorcery", "Enchantment",
+    "Land", "Legendary", "Vampire", "Goblin", "Angel", "Dragon", "Zombie", "Elf",
+    "Dinosaur", "Vehicle", "Saga", "God", "Giant", "Wizard",
+]
+TEXT_SUGGESTIONS = [
+    "draw a card", "flying", "hexproof", "trample", "protection", "haste", "lifelink",
+    "indestructible", "counter target", "exile", "destroy", "untap", "discards",
+    "target", "deathtouch", "double strike", "token", "flash", "defender",
+    "proliferate", "mill",
+]
+SET_SUGGESTIONS = [
+    "Alpha", "Beta", "Unlimited", "Revised", "Mirage", "Zendikar", "Theros", "Dominaria",
+    "Strixhaven", "Kamigawa", "Innistrad", "Ravnica", "Kaldheim", "Eldraine", "Modern",
+    "New Capenna", "Phyrexia", "War", "Tarkir", "Ixalan",
+]
 
-    Parameters:
-        query (str): The search query (name, text, type, etc.)
-        show (bool): If True, print the card(s) info; else, return the results.
-        **kwargs: Extra parameters for the Scryfall search API.
-
-    Returns:
-        list of dict: List of matching card data dicts if show=False.
-        None: If show=True (prints results directly).
-    """
-    # Construct the query parameters
+def _scryfall_search(query, limit=3):
     params = {'q': query}
-    params.update(kwargs)
     url = "https://api.scryfall.com/cards/search"
-    
     try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
+        resp = requests.get(url, params=params, timeout=6)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get('object') == 'list' and data.get('data'):
+            return data['data'][:limit]
     except Exception as e:
-        print(f"Error searching Scryfall: {e}")
-        return None
+        gw.warn(f"Scryfall search error: {e}")
+    return []
 
-    if data.get('object') != 'list' or not data.get('data'):
-        print("No cards found for that query.")
-        return None
+def _scryfall_random():
+    try:
+        resp = requests.get("https://api.scryfall.com/cards/random", timeout=6)
+        resp.raise_for_status()
+        card = resp.json()
+        if card.get("object") == "card":
+            return card
+    except Exception as e:
+        gw.warn(f"Scryfall random error: {e}")
+    return None
 
-    cards = data['data']
+def _get_cookie_hand():
+    hand = gw.web.cookies.get("mtg_hand")
+    if hand:
+        try:
+            return [c for c in hand.split("|") if c]
+        except Exception:
+            return []
+    return []
 
-    if show:
-        for card in cards[:limit]:  # Show up to 5 results
-            print(f"\n--- {card.get('name', 'Unknown')} ---")
-            print(f"Set: {card.get('set_name', 'Unknown')} ({card.get('set').upper()})")
-            print(f"Type: {card.get('type_line', '-')}")
-            if card.get('mana_cost'):
-                print(f"Mana Cost: {card['mana_cost']}")
-            if card.get('oracle_text'):
-                print(f"Text: {card['oracle_text']}")
-            if card.get('power') or card.get('toughness'):
-                print(f"P/T: {card.get('power', '')}/{card.get('toughness', '')}")
-            if card.get('image_uris', {}).get('normal'):
-                print(f"Image: {card['image_uris']['normal']}")
-    else:
-        return cards
+def _set_cookie_hand(card_ids):
+    gw.web.cookies.set("mtg_hand", "|".join(card_ids), path="/", max_age=14*24*3600)
+
+def _get_cookie_discards():
+    discards = gw.web.cookies.get("mtg_discards")
+    if discards:
+        try:
+            return set(discards.split("|"))
+        except Exception:
+            return set()
+    return set()
+
+def _add_cookie_discard(card_id):
+    discards = _get_cookie_discards()
+    discards.add(card_id)
+    gw.web.cookies.set("mtg_discards", "|".join(discards), path="/", max_age=14*24*3600)
+
+def _render_card(card):
+    name = escape(card.get("name", "Unknown"))
+    set_name = escape(card.get("set_name", "-"))
+    scry_uri = card.get("scryfall_uri", "#")
+    card_type = escape(card.get("type_line", ""))
+    text = escape(card.get("oracle_text", ""))
+    pt = ""
+    if card.get("power") or card.get("toughness"):
+        pt = f'P/T: {escape(str(card.get("power") or ""))}/{escape(str(card.get("toughness") or ""))}'
+    img_url = card.get("image_uris", {}).get("normal", "")
+    html = f"""
+    <div class="mtg-card">
+      <div class="mtg-title">{name}</div>
+      <div class="mtg-set"><a href="{escape(scry_uri)}" target="_blank">{set_name}</a></div>
+      {'<img src="'+img_url+'" alt="'+name+'" class="mtg-img">' if img_url else ''}
+      <div class="mtg-type">{card_type}</div>
+      <div class="mtg-text">{text}</div>
+      <div class="mtg-pt">{pt}</div>
+    </div>
+    """
+    return html
+
+# TODO: Don't show reminder text in card cards. 
+
+# TODO: Clear the value from the search form fields after card is added.
+
+# TODO: After hand goes to 7 cards, just show the discard. Currently, the
+#       form to search more is still displayed some times.
+
+# TODO: When 2 or 3 cards are found, pick one at random, not always the first.
+
+def view_search_games(
+    name=None,
+    type_line=None,
+    oracle_text=None,
+    set_name=None,
+    discard=None,
+    **kwargs
+):
+    # --- Cookie-based hand setup ---
+    use_hand = (
+        hasattr(gw.web, "app") and hasattr(gw.web, "cookies")
+        and getattr(gw.web.app, "is_setup", lambda x: False)("web.cookies")
+        and gw.web.cookies.accepted()
+    )
+
+    hand_ids = _get_cookie_hand() if use_hand else []
+    discards = _get_cookie_discards() if use_hand else set()
+    card_data_map = {}
+
+    # Handle discarding from hand
+    if discard and use_hand:
+        if discard in hand_ids:
+            hand_ids.remove(discard)
+            _set_cookie_hand(hand_ids)
+            _add_cookie_discard(discard)
+
+    # --- Build query string ---
+    query_parts = []
+    if name:        query_parts.append(f'name:"{name}"')
+    if type_line:   query_parts.append(f'type:"{type_line}"')
+    if oracle_text: query_parts.append(f'o:"{oracle_text}"')
+    if set_name:    query_parts.append(f'setname:"{set_name}"')
+    query = " ".join(query_parts).strip()
+    all_discards = set(discards)
+
+    # If hand is full, only show hand and discard UI
+    if use_hand and len(hand_ids) >= 7:
+        html = []
+        html.append('<link rel="stylesheet" href="/static/card_game.css">')
+        html.append('<script src="/static/search_cards.js"></script>')
+        html.append(f"""
+        <script>
+        window.mtgSuggestions = {{
+            name: {json.dumps(NAME_SUGGESTIONS)},
+            type_line: {json.dumps(TYPE_SUGGESTIONS)},
+            oracle_text: {json.dumps(TEXT_SUGGESTIONS)},
+            set_name: {json.dumps(SET_SUGGESTIONS)},
+        }};
+        </script>
+        """)
+        html.append("<h1>Garfield's Game of Trading Cards</h1>")
+        html.append('<div class="mtg-cards-hand">')
+        for cid in hand_ids:
+            card = card_data_map.get(cid)
+            if not card:
+                try:
+                    r = requests.get(f"https://api.scryfall.com/cards/{cid}", timeout=5)
+                    if r.ok:
+                        card = r.json()
+                        card_data_map[cid] = card
+                except Exception:
+                    card = None
+            if card:
+                html.append(_render_card(card))
+        html.append("</div>")
+        html.append('<div class="mtg-hand-full">Your hand is full.<br>Discard a card to draw more.</div>')
+        html.append('<form class="mtg-search-form" method="get" style="margin-bottom:1.2em;">')
+        html.append('<label for="discard">Discard:</label> <select name="discard">')
+        for cid in hand_ids:
+            card = card_data_map.get(cid)
+            label = escape(card.get("name")) if card else cid
+            html.append(f'<option value="{cid}">{label}</option>')
+        html.append('</select> <button type="submit">Discard</button></form>')
+        return "\n".join(html)
+
+    # --- Search for a card if a query is present and hand is not full ---
+    main_card = None
+    searched = bool(query)
+    message = ""
+    if query and (not use_hand or len(hand_ids) < 7):
+        found = _scryfall_search(query, limit=3)
+        found = [c for c in found if c.get("id") not in hand_ids and c.get("id") not in all_discards]
+        if not found:
+            attempts = 0
+            card = None
+            while attempts < 7:
+                card = _scryfall_random()
+                if not card:
+                    break
+                if card.get("id") not in hand_ids and card.get("id") not in all_discards:
+                    break
+                attempts += 1
+            if card:
+                main_card = card
+                message = "<b>No cards found for your query. Here's a random card instead:</b>"
+            else:
+                message = "<b>No cards found and couldn't fetch a random card.</b>"
+        else:
+            main_card = found[0]
+
+    # If we got a main_card and use_hand, add it to hand
+    if main_card and use_hand and main_card.get("id") not in hand_ids and main_card.get("id") not in all_discards:
+        hand_ids.append(main_card.get("id"))
+        _set_cookie_hand(hand_ids)
+
+    html = []
+    html.append('<link rel="stylesheet" href="/static/card_game.css">')
+    html.append('<script src="/static/search_cards.js"></script>')
+    html.append(f"""
+    <script>
+    window.mtgSuggestions = {{
+        name: {json.dumps(NAME_SUGGESTIONS)},
+        type_line: {json.dumps(TYPE_SUGGESTIONS)},
+        oracle_text: {json.dumps(TEXT_SUGGESTIONS)},
+        set_name: {json.dumps(SET_SUGGESTIONS)},
+    }};
+    </script>
+    """)
+    html.append("<h1>Garfield's Game of Trading Cards</h1>")
+
+    # Show hand (if enabled and not empty)
+    if use_hand and hand_ids:
+        html.append('<div class="mtg-cards-hand">')
+        for cid in hand_ids:
+            card = card_data_map.get(cid)
+            if not card:
+                try:
+                    r = requests.get(f"https://api.scryfall.com/cards/{cid}", timeout=5)
+                    if r.ok:
+                        card = r.json()
+                        card_data_map[cid] = card
+                except Exception:
+                    card = None
+            if card:
+                html.append(_render_card(card))
+        html.append("</div>")
+    elif use_hand:
+        html.append('<div style="color:#b6a45e;font-size:1.06em;">Your hand is empty. Search for a card!</div>')
+
+    # Show main card result (if not already in hand)
+    if main_card:
+        if not use_hand:
+            html.append('<div class="mtg-cards-hand">')
+            html.append(_render_card(main_card))
+            html.append('</div>')
+        if message:
+            html.append(f'<div style="margin-bottom:1em;color:#be6500;">{message}</div>')
+    elif searched and (not use_hand or len(hand_ids) < 7):
+        html.append('<div style="color:#ba1c0c;">No results found and no random card could be found.</div>')
+
+    # Search form (below hand/results)
+    html.append("""
+    <form class="mtg-search-form" method="get">
+        <div class="mtg-grid">
+            <div class="mtg-form-row">
+                <label>NAME:</label>
+                <input type="text" name="name" value="{name}" placeholder="Black Lotus">
+                <button class="mtg-random-btn" type="button" title="Random name" onclick="mtgPickRandom('name')">&#x1f3b2;</button>
+            </div>
+            <div class="mtg-form-row">
+                <label>TYPE:</label>
+                <input type="text" name="type_line" value="{type_line}" placeholder="Creature">
+                <button class="mtg-random-btn" type="button" title="Random type" onclick="mtgPickRandom('type_line')">&#x1f3b2;</button>
+            </div>
+            <div class="mtg-form-row">
+                <label>RULES:</label>
+                <input type="text" name="oracle_text" value="{oracle_text}" placeholder="draw a card">
+                <button class="mtg-random-btn" type="button" title="Random text" onclick="mtgPickRandom('oracle_text')">&#x1f3b2;</button>
+            </div>
+            <div class="mtg-form-row">
+                <label>SET:</label>
+                <input type="text" name="set_name" value="{set_name}" placeholder="Alpha">
+                <button class="mtg-random-btn" type="button" title="Random set" onclick="mtgPickRandom('set_name')">&#x1f3b2;</button>
+            </div>
+        </div>
+        <button class="search-btn" type="submit">Search</button>
+    </form>
+    """.format(
+        name=escape(name or ""), type_line=escape(type_line or ""),
+        oracle_text=escape(oracle_text or ""), set_name=escape(set_name or "")
+    ))
+
+    html.append(
+        '<div style="font-size:0.95em;color:#888;margin-top:2em;">Made using the <a href="https://scryfall.com/docs/api">Scryfall API</a>.</div>'
+    )
+    return "\n".join(html)
