@@ -178,7 +178,7 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+-------------------------------------------------------------+
 | work/          | Working directory for output files and products.            |
 +----------------+-------------------------------------------------------------+
-| scripts/       | Included .gwr recipe files (-r mode). You may add more.     |
+| recipes/       | Included .gwr recipe files (-r mode). You may add more.     |
 +----------------+-------------------------------------------------------------+
 | tools/         | Platform-specific scripts and files.                        |
 +----------------+-------------------------------------------------------------+
