@@ -1,6 +1,5 @@
 # file: projects/ocpp/evcs.py
 
-from faulthandler import is_enabled
 import threading
 import traceback
 from gway import gw, __
@@ -8,8 +7,6 @@ import secrets
 import base64
 from bottle import request
 import asyncio, json, random, time, websockets
-import json
-import time
 
 # TODO: Fix this issue found in the logs.
 # [Simulator:CPX] Exception: cannot call recv while another coroutine is already running recv or recv_streaming
@@ -67,7 +64,6 @@ def simulate(
     n_threads = int(threads) if threads else 1
 
     async def orchestrate_all():
-        stop_flags = [threading.Event() for _ in range(n_threads)]
         tasks = []
         threads_list = []
 
@@ -88,7 +84,7 @@ def simulate(
             except Exception as e:
                 print(f"[Simulator:coroutine:{idx}] Exception: {e}")
 
-        def run_thread(idx, stop_flag):
+        def run_thread(idx):
             try:
                 this_cp_path = _unique_cp_path(cp_path, idx, n_threads)
                 asyncio.run(simulate_cp(
@@ -116,7 +112,7 @@ def simulate(
                 raise
         else:
             for idx in range(n_threads):
-                t = threading.Thread(target=run_thread, args=(idx, stop_flags[idx]), daemon=True)
+                t = threading.Thread(target=run_thread, args=(idx,), daemon=True)
                 t.start()
                 threads_list.append(t)
             try:
@@ -186,7 +182,7 @@ async def simulate_cp(
                             print(f"[Simulator:{cp_name}] Warning: Received non-JSON message")
                             continue
                         if isinstance(msg, list) and msg[0] == 2:
-                            msg_id, action, payload = msg[1], msg[2], (msg[3] if len(msg) > 3 else {})
+                            msg_id, action = msg[1], msg[2]
                             await ws.send(json.dumps([3, msg_id, {}]))
                             if action == "RemoteStopTransaction":
                                 print(f"[Simulator:{cp_name}] Received RemoteStopTransaction → stopping transaction")
@@ -261,7 +257,6 @@ async def simulate_cp(
 
                 # Idle phase: send heartbeat and idle meter value
                 idle_time = 20 if session_count == 1 else 60
-                idle_counter = 0
                 next_meter = meter
                 last_meter_value = time.monotonic()
                 start_idle = time.monotonic()
@@ -269,7 +264,6 @@ async def simulate_cp(
                 while (time.monotonic() - start_idle) < idle_time and not stop_event.is_set():
                     await ws.send(json.dumps([2, "hb", "Heartbeat", {}]))
                     await asyncio.sleep(5)
-                    idle_counter += 5
                     if time.monotonic() - last_meter_value >= 30:
                         next_meter += random.randint(0, 2)
                         next_meter_kwh = next_meter / 1000.0
@@ -318,7 +312,6 @@ _simulator_state = {
 
 def _run_simulator_thread(params):
     """Background runner for the simulator, updating state as it runs."""
-    global _simulator_state
     try:
         _simulator_state["last_status"] = "Starting..."
         coro = simulate(**params)
@@ -339,7 +332,6 @@ def _run_simulator_thread(params):
 
 def _start_simulator(params=None):
     """Start the simulator in a background thread."""
-    global _simulator_state
     if _simulator_state["running"]:
         return False  # Already running
     _simulator_state["last_error"] = ""
@@ -356,7 +348,6 @@ def _start_simulator(params=None):
 
 def _stop_simulator():
     """Stop the simulator. (Note: true coroutine interruption is not implemented.)"""
-    global _simulator_state
     _simulator_state["last_command"] = "stop"
     _simulator_state["last_status"] = "Requested stop (will finish current run)..."
     _simulator_state["running"] = False
@@ -366,7 +357,6 @@ def _stop_simulator():
 
 def _simulator_status_json():
     """JSON summary for possible API endpoint / AJAX polling."""
-    global _simulator_state
     return json.dumps({
         "running": _simulator_state["running"],
         "last_status": _simulator_state["last_status"],
@@ -383,7 +373,6 @@ def view_cp_simulator(*args, **kwargs):
     Start/stop, view state, error messages, and current config.
     NO card, content in main dashboard layout.
     """
-    global _simulator_state
 
     ws_url = gw.web.build_ws_url(project="ocpp.csms")
     default_host = ws_url.split("://")[-1].split(":")[0]
