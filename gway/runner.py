@@ -7,8 +7,6 @@ import hashlib
 import threading
 import requests
 
-from regex import W
-
 
 # Extract all async/thread/coroutine runner logic into Runner,
 # and have Gateway inherit from Runner and Resolver.
