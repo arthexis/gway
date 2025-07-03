@@ -46,7 +46,7 @@ html, body {
 
 /* 3. Sidebar (aside) */
 aside {
-    width: 240px;
+    width: 220px;
     padding: 2rem 1rem;
     flex-shrink: 0;
     background: var(--bg-alt, #f0f0f0);
@@ -54,6 +54,8 @@ aside {
     font-size: 1.08em;
     font-family: inherit;
     transition: background 0.2s;
+    overflow-y: auto;
+    scrollbar-width: none;
 }
 
 /* 4. Main content area */
@@ -365,9 +367,5 @@ p.compass { margin-bottom: 0.5em; }
     border: 2px solid #e0e0e0;
 }
 
-.layout.nav-rolled main {
-    margin-left: 0 !important;
-    width: 100vw !important;
-    max-width: 100vw !important;
-    transition: width 0.25s, margin-left 0.25s;
-}
+
+

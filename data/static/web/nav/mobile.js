@@ -3,43 +3,48 @@
 (function() {
     const NAV_SELECTOR = 'aside';
     const LAYOUT_SELECTOR = '.layout';
+    const MAIN_SELECTOR = 'main';
     const ROLL_CLASS = 'nav-rolled';
     const HANDLE_ID = 'nav-handle';
     const SPLITTER_ID = 'nav-splitter';
+    const ARROW_WIDTH = 54; // px
     let isOpen = true;
-    let isMobileMode = false;
 
-    // Helper: Are we in mobile mode?
     function isMobile() {
         return window.innerWidth <= 650;
     }
 
-    // Main nav open/close logic
     function rollNav(out = true) {
         const layout = document.querySelector(LAYOUT_SELECTOR);
+        const main = document.querySelector(MAIN_SELECTOR);
         if (!layout) return;
         if (out) {
             layout.classList.add(ROLL_CLASS);
             isOpen = false;
-            if (isMobile()) createMobileHandle();
-            else createDesktopHandle();
+            showHandle();
+            if (isMobile() && main) {
+                main.style.marginLeft = ARROW_WIDTH + 'px';
+            }
         } else {
             layout.classList.remove(ROLL_CLASS);
             isOpen = true;
-            removeAllHandles();
+            hideHandle();
+            if (main) main.style.marginLeft = '';
         }
     }
 
-    // --- Handles ---
-    function createMobileHandle() {
-        if (document.getElementById(HANDLE_ID)) return;
+    function showHandle() {
+        if (document.getElementById(HANDLE_ID)) {
+            document.getElementById(HANDLE_ID).style.display = 'flex';
+            return;
+        }
         const handle = document.createElement('div');
         handle.id = HANDLE_ID;
-        tab.innerHTML = `
-            <svg width="44" height="54" viewBox="0 0 44 54" fill="none">
-                <rect x="0" y="0" width="38" height="54" rx="15"
+        handle.innerHTML = `
+            <svg width="60" height="64" viewBox="0 0 60 64" fill="none">
+                <rect x="0" y="0" width="56" height="64" rx="18"
                     fill="var(--bg-alt, #26374a)" fill-opacity="0.98"/>
-                <polygon points="14,15 28,27 14,39"
+                <polygon points="22,18 38,32 22,46"
                     fill="var(--accent, #F98C00)"/>
             </svg>
         `;
@@ -48,7 +53,7 @@
         handle.style.bottom = '2.1rem';
         handle.style.left = '0px';
         handle.style.zIndex = 3000;
-        handle.style.width = '54px';
+        handle.style.width = ARROW_WIDTH + 'px';
         handle.style.height = '64px';
         handle.style.display = 'flex';
         handle.style.justifyContent = 'center';
@@ -66,9 +71,18 @@
         document.body.appendChild(handle);
     }
 
-    function createDesktopHandle() {
-        // Splitter appears on the right edge of aside
-        if (document.getElementById(SPLITTER_ID)) return;
+    function hideHandle() {
+        const handle = document.getElementById(HANDLE_ID);
+        if (handle) handle.style.display = 'none';
+    }
+
+    function removeHandle() {
+        const handle = document.getElementById(HANDLE_ID);
+        if (handle) handle.remove();
+    }
+
+    function showSplitter() {
+        if (document.getElementById(SPLITTER_ID) || isMobile()) return;
         const aside = document.querySelector(NAV_SELECTOR);
         if (!aside) return;
         const splitter = document.createElement('div');
@@ -85,8 +99,6 @@
         splitter.style.cursor = 'ew-resize';
         splitter.style.zIndex = 101;
         splitter.style.background = 'transparent';
-
-        // Big gray vertical pill with a left arrow
         splitter.innerHTML = `
             <div style="
                 width: 16px;
@@ -102,109 +114,39 @@
                 </svg>
             </div>
         `;
-
         splitter.onclick = function(e) {
             e.stopPropagation();
             rollNav(true);
         };
-        // Place on aside
         aside.style.position = 'relative';
         aside.appendChild(splitter);
     }
 
-    function createDesktopRestoreTab() {
-        if (document.getElementById(HANDLE_ID)) return;
-        const main = document.querySelector('main');
-        if (!main) return;
-        const tab = document.createElement('div');
-        tab.id = HANDLE_ID;
-        tab.title = "Restore navigation";
-        tab.style.position = 'fixed';
-        tab.style.top = '2.4rem';
-        tab.style.left = '0px';
-        tab.style.zIndex = 2001;
-        tab.style.width = '42px';
-        tab.style.height = '64px';
-        tab.style.display = 'flex';
-        tab.style.justifyContent = 'center';
-        tab.style.alignItems = 'center';
-        tab.style.border = 'none';
-        tab.style.background = 'none';
-        tab.style.borderRadius = '0 16px 16px 0';
-        tab.style.boxShadow = '2px 2px 18px #0003';
-        tab.style.cursor = 'pointer';
-        tab.style.opacity = '0.97';
-        tab.innerHTML = `
-            <svg width="44" height="54" viewBox="0 0 44 54" fill="none">
-                <rect x="0" y="0" width="38" height="54" rx="15"
-                    fill="var(--bg-alt, #26374a)" fill-opacity="0.98"/>
-                <polygon points="14,15 28,27 14,39"
-                    fill="var(--accent, #F98C00)"/>
-            </svg>
-        `;
-        tab.onclick = function(e) {
-            e.stopPropagation();
-            rollNav(false);
-        };
-        document.body.appendChild(tab);
+    function removeSplitter() {
+        const splitter = document.getElementById(SPLITTER_ID);
+        if (splitter) splitter.remove();
     }
 
-    function removeAllHandles() {
-        ['#' + HANDLE_ID, '#' + SPLITTER_ID].forEach(sel => {
-            const el = document.querySelector(sel);
-            if (el) el.remove();
-        });
-    }
-
-    // --- Desktop hover-to-show splitter logic ---
+    // Only on desktop: show/hide splitter on nav hover
     function setupSplitterHover() {
         const aside = document.querySelector(NAV_SELECTOR);
         if (!aside) return;
         aside.addEventListener('mouseenter', function() {
-            if (!isMobile() && isOpen) createDesktopHandle();
+            if (!isMobile() && isOpen) showSplitter();
         });
         aside.addEventListener('mouseleave', function() {
-            if (!isMobile() && isOpen) {
-                const splitter = document.getElementById(SPLITTER_ID);
-                if (splitter) splitter.remove();
-            }
+            if (!isMobile() && isOpen) removeSplitter();
         });
     }
 
-    // --- Touch support for mobile ---
-    let touchStartX = null;
-    let touchDeltaX = 0;
-    document.addEventListener('touchstart', function(e) {
-        if (!isMobile()) return;
-        if (!e.touches[0]) return;
-        touchStartX = e.touches[0].clientX;
-        touchDeltaX = 0;
-    });
-    document.addEventListener('touchmove', function(e) {
-        if (!isMobile()) return;
-        if (touchStartX === null) return;
-        let currentX = e.touches[0].clientX;
-        touchDeltaX = currentX - touchStartX;
-    });
-    document.addEventListener('touchend', function(e) {
-        if (!isMobile() || touchStartX === null) return;
-        if (touchDeltaX < -70 && isOpen) {
-            rollNav(true);
-        } else if (touchDeltaX > 70 && !isOpen && touchStartX < 60) {
-            rollNav(false);
-        }
-        touchStartX = null;
-        touchDeltaX = 0;
-    });
-
-    // --- Click outside nav to close on mobile ---
+    // Only on mobile: click outside nav closes it
     document.addEventListener('click', function(e) {
         if (!isMobile()) return;
         const nav = document.querySelector(NAV_SELECTOR);
-        if (!nav) return;
         const handle = document.getElementById(HANDLE_ID);
         if (
             isOpen &&
+            nav &&
             !nav.contains(e.target) &&
             !(handle && handle.contains(e.target))
         ) {
@@ -212,40 +154,58 @@
         }
     });
 
-    // --- Handle resizing / mode switching ---
-    function adapt() {
-        isMobileMode = isMobile();
-        if (isMobileMode) {
-            // Always start with nav closed in mobile
-            rollNav(true);
+    // Prevent footer from overlapping nav in mobile mode
+    function fixFooterOverlap() {
+        const nav = document.querySelector(NAV_SELECTOR);
+        const footer = document.querySelector('footer');
+        if (!nav || !footer) return;
+        if (isMobile()) {
+            nav.style.height = `100%`;
+            nav.style.overflowY = 'auto';
         } else {
-            // On desktop, nav is open, splitter appears on hover
-            rollNav(false);
-            setupSplitterHover();
+            nav.style.height = '';
+            nav.style.overflowY = '';
         }
     }
 
-    // --- Listen for resize / DOMContentLoaded / short delay for SSR ---
-    window.addEventListener('resize', adapt);
-    document.addEventListener('DOMContentLoaded', adapt);
-    setTimeout(adapt, 300);
+    // Keep nav/main gap as wide as the arrow when nav open in mobile
+    function fixMainMargin() {
+        const main = document.querySelector(MAIN_SELECTOR);
+        if (!main) return;
+        if (isMobile() && isOpen) {
+            main.style.marginLeft = ARROW_WIDTH + 'px';
+        } else {
+            main.style.marginLeft = '';
+        }
+    }
 
-    // --- Desktop collapsed nav: show restore tab on nav rolled ---
-    const observer = new MutationObserver(function(mutations) {
+    // Set correct nav/main state on load and resize
+    function adapt() {
+        removeHandle();
+        removeSplitter();
+        fixFooterOverlap();
         const layout = document.querySelector(LAYOUT_SELECTOR);
         if (!layout) return;
-        if (!isMobile() && layout.classList.contains(ROLL_CLASS)) {
-            createDesktopRestoreTab();
+
+        if (isMobile()) {
+            rollNav(true); // mobile: start closed
+            showHandle();
+            fixFooterOverlap();
+            fixMainMargin();
         } else {
-            const restore = document.getElementById(HANDLE_ID);
-            if (restore) restore.remove();
+            rollNav(false); // desktop: start open
+            hideHandle();
+            setupSplitterHover();
+            fixFooterOverlap();
+            fixMainMargin();
         }
+    }
+
+    window.addEventListener('resize', function() {
+        adapt();
     });
     document.addEventListener('DOMContentLoaded', function() {
-        const layout = document.querySelector(LAYOUT_SELECTOR);
-        if (layout) {
-            observer.observe(layout, { attributes: true, attributeFilter: ['class'] });
-        }
+        adapt();
     });
+    setTimeout(adapt, 300);
 })();
-

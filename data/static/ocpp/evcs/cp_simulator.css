@@ -2,7 +2,6 @@
 
 body, html {
     background: #161a20;
-    color: #fff;
     font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
 }
 
@@ -31,12 +30,12 @@ body, html {
     min-width: 120px;
 }
 .simulator-form label {
-    color: #8fd5ff;
     font-size: 1.05em;
     font-weight: 500;
     margin-bottom: 3px;
 }
 .simulator-form input,
+.simulator-form input[type="password"],
 .simulator-form select {
     background: #232b34;
     color: #eaf6ff;
@@ -56,9 +55,6 @@ body, html {
     font-size: 1.08em;
     padding: 0.29em 1.4em;
     border-radius: 0.32em;
-    border: 1px solid #2871bb;
-    background: #2580ff;
-    color: #fff;
     margin-right: 10px;
     min-width: 80px;
     cursor: pointer;
@@ -77,7 +73,6 @@ body, html {
     border-radius: 50%;
     margin-right: 8px;
     vertical-align: -2px;
-    background: #aaa;
     box-shadow: 0 0 4px #0008;
 }
 .state-dot.online  { background: #48e16c; }
@@ -94,7 +89,6 @@ body, html {
 }
 
 .simulator-details {
-    color: #ddefff;
     font-size: 1.03em;
     margin-bottom: 1.2em;
     display: flex;
@@ -103,12 +97,10 @@ body, html {
 }
 .simulator-details label {
     font-weight: 400;
-    color: #8fd5ff;
     margin-right: 4px;
 }
 .simulator-details .stat {
     font-family: monospace;
-    color: #fff;
     margin-right: 15px;
 }
 
@@ -126,14 +118,11 @@ body, html {
 .simulator-panel summary {
     font-weight: bold;
     cursor: pointer;
-    color: #8fd5ff;
     font-size: 1.09em;
     margin-bottom: 3px;
 }
 .simulator-panel pre {
     margin: 0.6em 0 0 0;
-    background: #181b23;
-    color: #fff;
     border-radius: 7px;
     padding: 12px 14px;
     font-size: 1.03em;
