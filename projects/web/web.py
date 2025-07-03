@@ -85,12 +85,26 @@ def base_ws_url(*, ssl_default=False):
     """
     Returns the canonical WS(S) base URL, e.g. 'ws://host:port'
     Forces ws if host is localhost/127.0.0.1.
+    If the host_url already has a port, replace it with the ws_port.
     """
+    from urllib.parse import urlparse
+
     host_url = gw.resolve('[BASE_URL]', '[SITE_URL]', '')
+    ws_port = int(gw.resolve('[WEBSOCKET_PORT]', '9000'))
     if not host_url:
         host = base_host()
         port = base_port()
         host_url = f"{host}:{port}"
+
+    # Parse out host and port
+    s = host_url.strip().replace("0.0.0.0", "127.0.0.1")
+    # urlparse needs protocol to parse port correctly
+    parsed = urlparse(s if "://" in s else f"//{s}", scheme="")
+
+    host = parsed.hostname or ""
+    # Use ws_port, replacing any existing port
+    netloc = f"{host}:{ws_port}" if host else f"127.0.0.1:{ws_port}"
+
     use_wss = gw.cast.to_bool(gw.resolve('[USE_WSS]', '[ENABLE_SSL]', '[USE_SSL]', ssl_default))
-    protocol = _get_protocol(host_url, use_wss, kind="ws")
-    return build_protocol(protocol, host_url)
+    protocol = _get_protocol(netloc, use_wss, kind="ws")
+    return f"{protocol}://{netloc}"
