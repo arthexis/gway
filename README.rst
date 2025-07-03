@@ -111,7 +111,7 @@ Installation
 Your chosen Installation method will depend on how you intend to use GWAY:
 
 1. If you intend to contribute to GWAY at some point or want to access the latest updates from the open source community, you should **Install from Source**. As a plus, you get everything in the basic ecosystem from the get go.
-2. If you want to use GWAY for a private use, such as work for a company or customer that prevents you from sharing your code, or you alredy have an open-source repo but want a second personal one, **Install via PyPI**.
+2. If you want to use GWAY for a private use, such as work for a company or customer that prevents you from sharing your code, or you already have an open-source repo but want a second personal one, **Install via PyPI**.
 
 You may also install them either way and just experiment with what each mode offers. For example, PyPI install allows you to easily use GWAY within Google Colab or other IPython/Jupyter projects.
 
@@ -178,7 +178,7 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+-------------------------------------------------------------+
 | work/          | Working directory for output files and products.            |
 +----------------+-------------------------------------------------------------+
-| scripts/       | Included .gwr recipe files (-r mode). You may add more.     |
+| recipes/       | Included .gwr recipe files (-r mode). You may add more.     |
 +----------------+-------------------------------------------------------------+
 | tools/         | Platform-specific scripts and files.                        |
 +----------------+-------------------------------------------------------------+
