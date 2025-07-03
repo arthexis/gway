@@ -135,33 +135,6 @@ class Gateway(Resolver, Runner):
         """Fetch a default by key."""
         return cls.defaults.get(key, default)
 
-    def _projects_path(self):
-        # 1. User explicitly passed a project_path
-        if self.project_path:
-            candidate = Path(self.project_path)
-            if candidate.is_dir():
-                return str(candidate)
-        # 2. Check next to base_path (source/venv/dev mode)
-        candidate = Path(self.base_path) / "projects"
-        if candidate.is_dir():
-            return str(candidate)
-        # 3. GWAY_PROJECT_PATH env variable
-        env_path = os.environ.get('GWAY_PROJECT_PATH')
-        if env_path and Path(env_path).is_dir():
-            return env_path
-        # 4. Try importlib.resources (Python 3.9+)
-        try:
-            import importlib.resources as resources
-            with resources.as_file(resources.files('gway').joinpath('projects')) as res_path:
-                if res_path.is_dir():
-                    return str(res_path)
-        except Exception:
-            pass
-        raise FileNotFoundError(
-            "Could not locate 'projects' directory. "
-            "Tried base_path, GWAY_PROJECT_PATH, and package resources."
-        )
-
     def projects(self):
         def discover_projects(base: Path):
             result = []
@@ -184,55 +157,6 @@ class Gateway(Resolver, Runner):
         sorted_result = sorted(result)
         self.verbose(f"Discovered projects: {sorted_result}", func="projects")
         return sorted_result
-
-    def load_project(self, project_name: str, *, root: str = "projects"):
-        """Attempt to load a project by name from all supported project locations."""
-        def try_path(base_dir):
-            base = gw.resource(base_dir, *project_name.split("."))
-            self.verbose(f"{project_name} <- Project('{base}')")
-
-            def load_module_ns(py_path: str, dotted: str):
-                mod = self.load_py_file(py_path, dotted)
-                funcs = {}
-                for fname, obj in inspect.getmembers(mod, inspect.isfunction):
-                    if not fname.startswith("_"):
-                        funcs[fname] = self.wrap_callable(f"{dotted}.{fname}", obj)
-                ns = Project(dotted, funcs, self)
-                self._cache[dotted] = ns
-                return ns
-
-            if os.path.isdir(base):
-                return self.recurse_ns(base, project_name)
-
-            base_path = Path(base)
-            py_file = base_path if base_path.suffix == ".py" else base_path.with_suffix(".py")
-            if py_file.is_file():
-                return load_module_ns(str(py_file), project_name)
-
-            return None
-
-        if self.project_path:  # 1. Use user-specified project_path if set
-            result = try_path(self.project_path)
-            if result:
-                return result
-            
-        try:  # 2. Try _projects_path (base_path/projects, site-packages, etc)
-            proj_root = self._projects_path()
-            result = try_path(proj_root)
-            if result:
-                return result
-        except Exception:
-            pass
-
-        result = try_path(root)  # 3. Fallback: try default root (should now rarely hit)
-        if result:
-            return result
-
-        raise FileNotFoundError(
-            f"Project path not found for '{project_name}'. "
-            f"Tried: project_path={self.project_path}, "
-            f"base_path/projects, env var, site-packages, and '{root}'."
-        )
 
     def builtins(self):
         return sorted(Gateway._builtins)
