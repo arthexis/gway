@@ -111,7 +111,7 @@ class ConwayWebTests(unittest.TestCase):
         """/shared/games/conway.txt returns a plain text file, not HTML, and is not empty."""
         path = "/shared/games/conway.txt"
         # load_board will create the board if missing, avoiding the missing file error
-        _ = gw.games.conway.load_board()
+        gw.games.conway.save_board(gw.games.conway.load_board())
         url = self.base_url + path
         resp = requests.get(url)
         self.assertEqual(

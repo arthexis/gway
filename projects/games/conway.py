@@ -8,6 +8,7 @@ from datetime import datetime
 from gway import gw
 from bottle import response, redirect
 
+
 BOARD_SIZE = 54
 BOARD_FILE = gw.resource("work", "shared", "games","conway.txt", touch=True)
 
@@ -24,8 +25,9 @@ def _deserialize_board(s):
     return [[int(cell) for cell in row.split(",")] for row in s.strip().splitlines()]
 
 def load_board():
-    """Load the board from disk, or create one if missing."""
-    if not os.path.exists(BOARD_FILE):
+    """Load the board from disk, or create one if missing or empty."""
+    # Check for existence and non-empty file
+    if not os.path.exists(BOARD_FILE) or os.path.getsize(BOARD_FILE) == 0:
         board = _random_board()
         save_board(board)
         return board
@@ -33,6 +35,7 @@ def load_board():
         try:
             return _deserialize_board(f.read())
         except Exception:
+            # On any error (e.g., file corrupt), start fresh
             board = _random_board()
             save_board(board)
             return board
