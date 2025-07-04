@@ -55,7 +55,7 @@ def cli_main():
         verbose=args.verbose,
         silent=args.silent,
         name=args.username or "gw",
-        projects=args.projects,
+        project_path=args.projects,
         debug=args.debug,
         wizard=args.wizard
     )
@@ -74,7 +74,14 @@ def cli_main():
         sys.exit(1)
 
     # Run commands
-    all_results, last_result = process(command_sources)
+    run_kwargs = {}
+    if args.projects:
+        run_kwargs['project_path'] = args.projects
+    if args.client:
+        run_kwargs['client'] = args.client
+    if args.server:
+        run_kwargs['server'] = args.server
+    all_results, last_result = process(command_sources, **run_kwargs)
 
     # Resolve expression if requested
     if args.expression:
