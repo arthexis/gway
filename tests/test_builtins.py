@@ -8,7 +8,6 @@ import sys
 import io
 import asyncio
 from gway.gateway import gw
-from gway.builtins import *
 
 class GatewayBuiltinsTests(unittest.TestCase):
 
