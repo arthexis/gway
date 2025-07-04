@@ -363,11 +363,13 @@ def monitor_nmcli(**kwargs):
             gw.info("[nmcli] wlan0 cannot connect as client")
             # Keep wlan0 in station mode. It will switch back to AP
             # only when another interface provides internet.
+
     # Fallback to system default route if we detected internet
     if found_inet and not internet_iface:
         gw_iface = get_default_route_iface()
         if gw_iface:
             internet_iface = gw_iface
+            
     gw.monitor.set_states('nmcli', {
         "last_monitor_check": now_iso(),
         "internet_iface": internet_iface,
