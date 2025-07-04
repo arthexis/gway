@@ -106,7 +106,8 @@ class Resolver:
             except KeyError as e:
                 gw.verbose(f"Could not resolve sigil(s) in '{arg}': {e}")
                 last_exc = e
-        if default is not '_raise':
+        # return provided fallback unless user passed the '_raise' sentinel
+        if default != '_raise':
             return default
         if last_exc is not None:
             gw.error(f"All sigil resolutions failed: {last_exc}")
