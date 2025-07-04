@@ -57,7 +57,9 @@ def find_awg(
     meters = int(meters)
     volts = int(volts)
     max_lines = int(max_lines)
-    if max_awg is not None:
+    if max_awg in (None, ""):
+        max_awg = None
+    else:
         max_awg = AWG(max_awg)
     phases = int(phases)
     temperature = None if temperature in (None, "", "auto") else int(temperature)
@@ -235,6 +237,8 @@ def view_cable_finder(
                 <button type="submit" class="submit">Find Cable</button>
             </form>
         '''
+    if max_awg in (None, ""):
+        max_awg = None
     try:
         result = find_awg(
             meters=meters, amps=amps, volts=volts,

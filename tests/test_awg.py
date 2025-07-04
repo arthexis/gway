@@ -13,5 +13,9 @@ class TestMaxAwg(unittest.TestCase):
         r75 = gw.awg.find_awg(meters=30, amps=60, volts=240, material="cu", temperature=75)
         self.assertNotEqual(r60["awg"], r75["awg"])
 
+    def test_blank_max_awg_is_ignored(self):
+        res = gw.awg.find_awg(meters=30, amps=40, max_awg="")
+        self.assertEqual(res["awg"], "8")
+
 if __name__ == "__main__":
     unittest.main()
