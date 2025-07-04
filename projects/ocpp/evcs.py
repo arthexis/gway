@@ -155,7 +155,7 @@ async def simulate_cp(
     Simulate a single CP session (possibly many times if session_count>1).
     If username/password are provided, use HTTP Basic Auth in the handshake.
     """
-    cp_name = cp_path if session_count == 1 else f"{cp_path}{cp_idx+1}"
+    cp_name = cp_path
     uri     = f"ws://{host}:{ws_port}/{cp_name}"
     headers = {}
     if username and password:
@@ -205,7 +205,8 @@ async def simulate_cp(
             while loop_count < session_count:
                 stop_event = asyncio.Event()
                 reset_event = asyncio.Event()
-
+                # Start listener for this session
+                listener = asyncio.create_task(listen_to_csms(stop_event, reset_event))
                 # Initial handshake
                 await ws.send(json.dumps([2, "boot", "BootNotification", {
                     "chargePointModel": "Simulator",
@@ -298,6 +299,10 @@ async def simulate_cp(
                         last_meter_value = time.monotonic()
                         print(f"[Simulator:{cp_name}] Idle MeterValues sent.")
 
+
+                if reset_event.is_set():
+                    print(f"[Simulator:{cp_name}] Session reset requested.")
+                    continue
 
                 if reset_event.is_set():
                     print(f"[Simulator:{cp_name}] Session reset requested.")

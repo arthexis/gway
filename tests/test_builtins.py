@@ -6,8 +6,8 @@
 import unittest
 import sys
 import io
-import asyncio
 from gway.gateway import gw
+import gway.builtins as builtins
 
 class GatewayBuiltinsTests(unittest.TestCase):
 
@@ -23,7 +23,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
     def test_builtins_functions(self):
         # Test if the builtins can be accessed directly and are callable
         try:
-            gw.hello_world()
+            builtins.hello_world()
         except AttributeError as e:
             self.fail(f"AttributeError occurred: {e}")
 
@@ -69,11 +69,10 @@ class GatewayBuiltinsTests(unittest.TestCase):
         help_result = gw.help('hello-world')
         self.assertEqual(help_result['Sample CLI'], 'gway hello-world')
 
-    async def test_abort(self):
+    def test_abort(self):
         """Test that the abort function raises a SystemExit exception."""
         with self.assertRaises(SystemExit):
-            # Run abort in a separate event loop to avoid exit in main test process
-            await asyncio.to_thread(gw.abort, "Abort test")
+            gw.abort("Abort test")
 
 if __name__ == "__main__":
     unittest.main()
