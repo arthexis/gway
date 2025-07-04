@@ -6,7 +6,6 @@
 import unittest
 import sys
 import io
-import asyncio
 from gway.gateway import gw
 
 class GatewayBuiltinsTests(unittest.TestCase):
@@ -69,11 +68,10 @@ class GatewayBuiltinsTests(unittest.TestCase):
         help_result = gw.help('hello-world')
         self.assertEqual(help_result['Sample CLI'], 'gway hello-world')
 
-    async def test_abort(self):
+    def test_abort(self):
         """Test that the abort function raises a SystemExit exception."""
         with self.assertRaises(SystemExit):
-            # Run abort in a separate event loop to avoid exit in main test process
-            await asyncio.to_thread(gw.abort, "Abort test")
+            gw.abort("Abort test")
 
 if __name__ == "__main__":
     unittest.main()
