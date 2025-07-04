@@ -171,7 +171,8 @@ async def simulate_cp(
         ) as ws:
             print(f"[Simulator:{cp_name}] Connected to {uri} (auth={'yes' if headers else 'no'})")
 
-            async def listen_to_csms(stop_event):
+            async def listen_to_csms(stop_event, reset_event):
+                """Handle incoming CSMS messages until cancelled."""
                 try:
                     while True:
                         raw = await ws.recv()
@@ -187,6 +188,13 @@ async def simulate_cp(
                             if action == "RemoteStopTransaction":
                                 print(f"[Simulator:{cp_name}] Received RemoteStopTransaction → stopping transaction")
                                 stop_event.set()
+                            elif action == "Reset":
+                                reset_type = ""
+                                if len(msg) > 3 and isinstance(msg[3], dict):
+                                    reset_type = msg[3].get("type", "")
+                                print(f"[Simulator:{cp_name}] Received Reset ({reset_type}) → restarting session")
+                                reset_event.set()
+                                stop_event.set()
                         else:
                             print(f"[Simulator:{cp_name}] Notice: Unexpected message format", msg)
                 except websockets.ConnectionClosed:
@@ -196,9 +204,7 @@ async def simulate_cp(
             loop_count = 0
             while loop_count < session_count:
                 stop_event = asyncio.Event()
-
-                # Start listener for this session
-                listener = asyncio.create_task(listen_to_csms(stop_event))
+                reset_event = asyncio.Event()
 
                 # Initial handshake
                 await ws.send(json.dumps([2, "boot", "BootNotification", {
@@ -219,6 +225,9 @@ async def simulate_cp(
                 resp = await ws.recv()
                 tx_id = json.loads(resp)[2].get("transactionId")
                 print(f"[Simulator:{cp_name}] Transaction {tx_id} started at meter {meter_start}")
+
+                # Start listener only after transaction is active so recv calls don't overlap
+                listener = asyncio.create_task(listen_to_csms(stop_event, reset_event))
 
                 # MeterValues loop
                 actual_duration = random.uniform(duration * 0.75, duration * 1.25)
@@ -245,6 +254,13 @@ async def simulate_cp(
                         }]
                     }]))
                     await asyncio.sleep(interval)
+
+                # Stop listener before sending StopTransaction to avoid recv conflicts
+                listener.cancel()
+                try:
+                    await listener
+                except asyncio.CancelledError:
+                    pass
 
                 # StopTransaction
                 await ws.send(json.dumps([2, "stop", "StopTransaction", {
@@ -282,11 +298,10 @@ async def simulate_cp(
                         last_meter_value = time.monotonic()
                         print(f"[Simulator:{cp_name}] Idle MeterValues sent.")
 
-                listener.cancel()
-                try:
-                    await listener
-                except asyncio.CancelledError:
-                    pass
+
+                if reset_event.is_set():
+                    print(f"[Simulator:{cp_name}] Session reset requested.")
+                    continue
 
                 loop_count += 1
                 if session_count == float('inf'):

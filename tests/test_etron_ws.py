@@ -10,6 +10,7 @@ import socket
 import json
 import os
 import shutil
+import requests
 from gway import gw
 
 KNOWN_GOOD_TAG = "FFFFFFFF"
@@ -364,6 +365,40 @@ class EtronWebSocketTests(unittest.TestCase):
         self.assertEqual(pc, 0.0)
         lm = gw.ocpp.csms.extract_meter(tx4)
         self.assertEqual(lm, "-")
+
+    def test_remote_stop_transaction(self):
+        """Dashboard Stop action triggers RemoteStopTransaction on the CP."""
+        uri = "ws://localhost:9000/stopper?token=foo"
+
+        async def run_stop_check():
+            async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as ws:
+                # Boot and authorize
+                await ws.send(json.dumps([2, "boot", "BootNotification", {
+                    "chargePointModel": "Fake", "chargePointVendor": "Fake"}]))
+                await ws.recv()
+                await ws.send(json.dumps([2, "auth", "Authorize", {"idTag": KNOWN_GOOD_TAG}]))
+                await ws.recv()
+                # StartTransaction
+                await ws.send(json.dumps([2, "start", "StartTransaction", {
+                    "connectorId": 1,
+                    "idTag": KNOWN_GOOD_TAG,
+                    "meterStart": 1000
+                }]))
+                await ws.recv()
+
+                # Issue Stop from dashboard
+                await asyncio.to_thread(
+                    requests.post,
+                    "http://127.0.0.1:8000/ocpp/csms/charger-status",
+                    data={"charger_id": "stopper", "action": "remote_stop", "do": "send"},
+                    timeout=5,
+                )
+
+                raw = await asyncio.wait_for(ws.recv(), timeout=10)
+                msg = json.loads(raw)
+                self.assertEqual(msg[2], "RemoteStopTransaction")
+
+        asyncio.run(run_stop_check())
 
 
 if __name__ == "__main__":
