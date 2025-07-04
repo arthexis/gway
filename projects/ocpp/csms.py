@@ -12,6 +12,11 @@ from fastapi import WebSocket, WebSocketDisconnect
 from bottle import request, redirect, HTTPError
 from typing import Dict, Optional
 from gway import gw
+# Avoid relative import issues when loaded as a standalone project
+ocpp_data = gw.load_py_file(
+    os.path.join(os.path.dirname(__file__), "data.py"),
+    "ocpp.data",
+)
 
 _csms_loop: Optional[asyncio.AbstractEventLoop] = None
 _transactions: Dict[str, dict] = {}           # charger_id → latest transaction
@@ -129,6 +134,20 @@ def setup_app(*,
                             "transactionId": transaction_id,
                             "MeterValues": []
                         }
+                        cp_ts = None
+                        if payload.get("timestamp"):
+                            try:
+                                cp_ts = int(datetime.fromisoformat(payload["timestamp"].rstrip("Z")).timestamp())
+                            except Exception:
+                                cp_ts = None
+                        ocpp_data.record_transaction_start(
+                            charger_id,
+                            transaction_id,
+                            now,
+                            id_tag=payload.get("idTag"),
+                            meter_start=payload.get("meterStart"),
+                            charger_timestamp=cp_ts,
+                        )
                         response_payload = {
                             "transactionId": transaction_id,
                             "idTagInfo": {"status": "Accepted"}
@@ -172,6 +191,15 @@ def setup_app(*,
                                             "measurand": measurand,
                                             "context": sv.get("context", ""),
                                         })
+                                        ocpp_data.record_meter_value(
+                                            charger_id,
+                                            tx.get("transactionId"),
+                                            ts_epoch,
+                                            measurand,
+                                            fval,
+                                            "kWh" if unit == "Wh" else unit,
+                                            sv.get("context", ""),
+                                        )
                                     except Exception:
                                         continue
                                 tx["MeterValues"].append({
@@ -202,6 +230,20 @@ def setup_app(*,
                                 "reason": 4,
                                 "reasonStr": "Local",
                             })
+                            cp_stop = None
+                            if payload.get("timestamp"):
+                                try:
+                                    cp_stop = int(datetime.fromisoformat(payload["timestamp"].rstrip("Z")).timestamp())
+                                except Exception:
+                                    cp_stop = None
+                            ocpp_data.record_transaction_stop(
+                                charger_id,
+                                tx.get("transactionId"),
+                                now,
+                                meter_stop=payload.get("meterStop"),
+                                reason="Local",
+                                charger_timestamp=cp_stop,
+                            )
                             if location:
                                 file_path = gw.resource(
                                     "work", "etron", "records", location,
@@ -225,6 +267,7 @@ def setup_app(*,
                                 "timestamp": datetime.utcnow().isoformat() + "Z"
                             }
                             gw.warn(f"[OCPP] Abnormal status for {charger_id}: {status}/{error_code} - {info}")
+                            ocpp_data.record_error(charger_id, status, error_code, info)
                         else:
                             if charger_id in _abnormal_status:
                                 gw.info(f"[OCPP] Status normalized for {charger_id}: {status}/{error_code}")
@@ -398,7 +441,12 @@ def view_charger_status(*, action=None, charger_id=None, **_):
             return redirect(request.fullpath or "/ocpp/charger-status")
 
     all_chargers = set(_active_cons) | set(_transactions)
-    html = ["<h1>OCPP Status Dashboard</h1>"]
+    html = [
+        '<link rel="stylesheet" href="/static/styles/charger_status.css">',
+        '<script src="/static/render.js"></script>',
+        '<script src="/static/ocpp/csms/charger_status.js"></script>',
+        "<h1>OCPP Status Dashboard</h1>"
+    ]
 
     # Abnormal status warning
     if _abnormal_status:

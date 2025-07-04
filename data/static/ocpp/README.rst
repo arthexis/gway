@@ -33,3 +33,24 @@ Run them via ``gway run <recipe>``. For example:
 .. code-block:: bash
 
    gway run recipes/etron/local.gwr
+
+OCPP Data Storage
+-----------------
+
+``ocpp.data`` provides helper functions to persist transactions, meter
+values and error reports in ``work/ocpp.sqlite`` using ``gw.sql``.  The
+``csms`` module calls these helpers so charging sessions are recorded
+automatically.
+
+Both the server time and the charger-provided timestamp are stored for
+each transaction event. This lets you verify the charger's clock during
+reconciliation.
+
+To review stored information you can render a simple summary table with:
+
+.. code-block:: bash
+
+   gway ocpp.data.view_charger_summary
+
+This shows the number of sessions and total energy per charger along
+with the timestamp of the last stop and any last recorded error.
