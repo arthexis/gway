@@ -1,0 +1,18 @@
+/* file: data/static/games/qpig/farm.css */
+
+.qpig-buttons {
+    display: flex;
+    gap: 8px;
+    margin: 1em 0;
+}
+.qpig-buttons button {
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid #aaa;
+    background: #f0f0f0;
+    cursor: pointer;
+}
+.qpig-warning {
+    margin-top: 1em;
+    color: #a00;
+}
