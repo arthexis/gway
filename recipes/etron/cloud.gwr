@@ -14,7 +14,7 @@ ocpp csms setup-app --allow data/etron/rfids.cdv --location etron_cloud
 # ocpp csms setup-app --location porsche_centre --deny data/etron/rfids.cdv
 
 web static collect
-web auth config-basic --temp-link
+web auth config-basic 
 web server start-app --host 0.0.0.0 --port 8000 --ws-port 9000 
 
 until --file VERSION
