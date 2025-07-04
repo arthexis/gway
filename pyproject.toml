@@ -28,3 +28,7 @@ Sponsor = "https://www.gelectriic.com/"
 
 [tool.setuptools]
 packages = [ "gway",]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
