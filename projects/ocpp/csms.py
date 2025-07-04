@@ -8,7 +8,6 @@ import uuid
 import traceback
 import asyncio
 from datetime import datetime
-from bs4 import BeautifulSoup
 from fastapi import WebSocket, WebSocketDisconnect
 from bottle import request, redirect, HTTPError
 from typing import Dict, Optional
@@ -39,7 +38,7 @@ def setup_app(*,
     email=None,
     auth_required=False,
 ):
-    global _transactions, _active_cons, _abnormal_status
+    # no globals needed here; dictionaries are modified in-place
     email = email if isinstance(email, str) else (gw.resolve('[ADMIN_EMAIL]') if email else email)
 
     oapp = app
@@ -64,7 +63,7 @@ def setup_app(*,
 
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
-        global _csms_loop, _abnormal_status
+        global _csms_loop
         if auth_required:
             if not gw.web.auth.check_websocket_auth(websocket):
                 await websocket.close(code=4401, reason="Unauthorized")
@@ -317,7 +316,7 @@ def _render_charger_card(cid, tx, state, raw_hb):
     latest_hb = "-"
     if raw_hb:
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
             dt = datetime.fromisoformat(raw_hb.replace("Z", "+00:00")).astimezone()
             latest_hb = dt.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
