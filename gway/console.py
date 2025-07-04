@@ -8,6 +8,7 @@ import inspect
 import argparse
 import csv
 from typing import get_origin, get_args, Literal, Union
+from types import UnionType
 
 from .logging import setup_logging
 from .builtins import abort
@@ -379,7 +380,7 @@ def get_arg_opts(arg_name, param, gw=None):
     if origin == Literal:
         opts["choices"] = args
         inferred_type = type(args[0]) if args else str
-    elif origin == Union:
+    elif origin in (Union, UnionType):
         non_none = [a for a in args if a is not type(None)]
         if len(non_none) == 1:
             inner_param = type("param", (), {"annotation": non_none[0], "default": default})
