@@ -36,14 +36,14 @@ class AuthChargerStatusTests(unittest.TestCase):
         _remove_test_user()
         # Start the server
         cls.proc = subprocess.Popen(
-            ["gway", "-r", "website"],
+            ["gway", "-r", "test/website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
-        cls._wait_for_port(8888, timeout=18)
+        cls._wait_for_port(18888, timeout=18)
         time.sleep(2)
-        cls.base_url = "http://127.0.0.1:8888"
+        cls.base_url = "http://127.0.0.1:18888"
 
     @classmethod
     def tearDownClass(cls):
