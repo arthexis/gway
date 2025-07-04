@@ -155,7 +155,7 @@ async def simulate_cp(
     Simulate a single CP session (possibly many times if session_count>1).
     If username/password are provided, use HTTP Basic Auth in the handshake.
     """
-    cp_name = cp_path if session_count == 1 else f"{cp_path}{cp_idx+1}"
+    cp_name = cp_path
     uri     = f"ws://{host}:{ws_port}/{cp_name}"
     headers = {}
     if username and password:
