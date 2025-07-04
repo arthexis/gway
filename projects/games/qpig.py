@@ -40,6 +40,7 @@ VEGGIE_TYPES = ["carrot", "lettuce", "cilantro", "cucumber"]
 VEGGIE_BASE_PRICE = 12
 VEGGIE_PRICE_SPREAD = 8
 
+
 # chance to generate an extra pellet while nibbling
 VEGGIE_BONUS = {
     "carrot": 0.25,
@@ -352,6 +353,6 @@ def view_qpig_farm(*, action: str = None, **_):
         html.append(
             "<div class='qpig-warning'>Enable cookies to save your progress.</div>"
         )
-    html.append("</div>")
 
+    html.append("</div>")
     return "\n".join(html)

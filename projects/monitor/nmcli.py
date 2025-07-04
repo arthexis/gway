@@ -91,6 +91,21 @@ def get_all_devices():
             devices.append(parts[0])
     return devices
 
+def get_default_route_iface():
+    """Return the interface used for the default route, or None."""
+    try:
+        out = subprocess.check_output(["ip", "route", "show", "default"], text=True)
+        for line in out.splitlines():
+            if line.startswith("default"):
+                parts = line.split()
+                if "dev" in parts:
+                    idx = parts.index("dev")
+                    if idx + 1 < len(parts):
+                        return parts[idx + 1]
+    except Exception:
+        pass
+    return None
+
 def ping(iface, target="8.8.8.8", count=2, timeout=2):
     try:
         result = subprocess.run(
@@ -260,6 +275,10 @@ def clean_and_reconnect_wifi(iface, ssid, password=None):
     })
 
 def try_connect_wlan0_known_networks():
+    """Try connecting wlan0 using known WiFi profiles.
+
+    Returns the SSID if connection succeeds, otherwise None.
+    """
     conns = nmcli("connection", "show")
     wifi_conns = [line.split()[0] for line in conns.splitlines()[1:] if "wifi" in line]
     for conn in wifi_conns:
@@ -274,7 +293,7 @@ def try_connect_wlan0_known_networks():
                 "last_config_change": now_iso(),
                 "last_config_action": f"wlan0 connected to {conn}"
             })
-            return True
+            return conn
         clean_and_reconnect_wifi("wlan0", conn)
         if ping("wlan0"):
             gw.info(f"[nmcli] wlan0 internet works via {conn} after reset")
@@ -285,9 +304,9 @@ def try_connect_wlan0_known_networks():
                 "last_config_change": now_iso(),
                 "last_config_action": f"wlan0 reconnected to {conn}"
             })
-            return True
+            return conn
     gw.monitor.set_states('nmcli', {"wlan0_inet": False})
-    return False
+    return None
 
 # --- Main single-run monitor functions ---
 
@@ -304,6 +323,8 @@ def monitor_nmcli(**kwargs):
     gw.info(f"[nmcli] WLAN ifaces detected: {wlan_ifaces}")
     wlanN = {}
     found_inet = False
+    internet_iface = None
+    internet_ssid = None
     for iface in wlan_ifaces:
         s = get_wlan_status(iface)
         wlanN[iface] = s
@@ -313,6 +334,8 @@ def monitor_nmcli(**kwargs):
             maybe_notify_ap_switch(ap_ssid, email)
             set_wlan0_ap(ap_con, ap_ssid, ap_password)
             found_inet = True
+            internet_iface = iface
+            internet_ssid = s.get("ssid")
             break
         else:
             clean_and_reconnect_wifi(iface, iface)
@@ -323,19 +346,35 @@ def monitor_nmcli(**kwargs):
                 maybe_notify_ap_switch(ap_ssid, email)
                 set_wlan0_ap(ap_con, ap_ssid, ap_password)
                 found_inet = True
+                internet_iface = iface
+                internet_ssid = s2.get("ssid")
                 break
     gw.monitor.set_states('nmcli', {"wlanN": wlanN})
     if not found_inet:
         gw.info("[nmcli] No internet via wlanN, trying wlan0 as client")
         set_wlan0_station()
-        if try_connect_wlan0_known_networks():
+        conn = try_connect_wlan0_known_networks()
+        if conn:
             gw.info("[nmcli] wlan0 now has internet")
             found_inet = True
+            internet_iface = "wlan0"
+            internet_ssid = conn
         else:
             gw.info("[nmcli] wlan0 cannot connect as client")
             # Keep wlan0 in station mode. It will switch back to AP
             # only when another interface provides internet.
-    gw.monitor.set_states('nmcli', {"last_monitor_check": now_iso()})
+
+    # Fallback to system default route if we detected internet
+    if found_inet and not internet_iface:
+        gw_iface = get_default_route_iface()
+        if gw_iface:
+            internet_iface = gw_iface
+            
+    gw.monitor.set_states('nmcli', {
+        "last_monitor_check": now_iso(),
+        "internet_iface": internet_iface,
+        "internet_ssid": internet_ssid,
+    })
     state = gw.monitor.get_state('nmcli')
     return {
         "ok": found_inet,
@@ -371,20 +410,24 @@ def _color_icon(status):
 def render_nmcli():
     s = gw.monitor.get_state('nmcli')
     wlanN = s.get("wlanN") or {}
-    wlan_count = len(wlanN)
-    internet_iface = None
-    internet_ssid = None
+    internet_iface = s.get("internet_iface")
+    internet_ssid = s.get("internet_ssid")
 
-    # Find first interface with inet True
-    for iface, st in wlanN.items():
-        if st.get('inet'):
-            internet_iface = iface
-            internet_ssid = st.get('ssid')
-            break
+    # Fallback detection from wlan statuses
+    if not internet_iface:
+        for iface, st in wlanN.items():
+            if st.get('inet'):
+                internet_iface = iface
+                internet_ssid = st.get('ssid')
+                break
+    if not internet_iface and s.get('wlan0_inet'):
+        internet_iface = 'wlan0'
+        internet_ssid = s.get('wlan0_ssid')
 
     # Gather device info for eth0, wlan0, all wlanN, and any other network devices
     devices = get_all_devices()
     device_info = {dev: get_device_info(dev) for dev in devices}
+    wlan_count = len([d for d in devices if d.startswith('wlan') and d != 'wlan0'])
 
     html = ['<div class="nmcli-report">']
     html.append("<h2>Network Manager</h2>")
@@ -424,12 +467,13 @@ def render_nmcli():
     for dev in sorted([d for d in devices if d.startswith('wlan')]):
         st = wlanN.get(dev, {})
         dinfo = device_info.get(dev, {})
+        gw_mark = ' <b>(gw)</b>' if dev == internet_iface else ''
         html.append(
             f"<tr>"
             f"<td>{dev}</td>"
             f"<td>{st.get('ssid') or '-'}</td>"
             f"<td>{_color_icon(st.get('connected'))} {st.get('connected') if 'connected' in st else dinfo.get('state','-')}</td>"
-            f"<td>{_color_icon(st.get('inet')) if 'inet' in st else _color_icon(dinfo.get('state')=='connected')} {st.get('inet') if 'inet' in st else '-'}</td>"
+            f"<td>{_color_icon(st.get('inet')) if 'inet' in st else _color_icon(dinfo.get('state')=='connected')} {st.get('inet') if 'inet' in st else '-'}{gw_mark}</td>"
             f"<td>{dinfo.get('state','-')}</td>"
             f"<td>{dinfo.get('driver','-')}</td>"
             f"<td>{dinfo.get('mac','-')}</td>"
