@@ -172,6 +172,7 @@ async def simulate_cp(
             print(f"[Simulator:{cp_name}] Connected to {uri} (auth={'yes' if headers else 'no'})")
 
             async def listen_to_csms(stop_event, reset_event):
+                """Handle incoming CSMS messages until cancelled."""
                 try:
                     while True:
                         raw = await ws.recv()
@@ -204,10 +205,8 @@ async def simulate_cp(
             while loop_count < session_count:
                 stop_event = asyncio.Event()
                 reset_event = asyncio.Event()
-
                 # Start listener for this session
                 listener = asyncio.create_task(listen_to_csms(stop_event, reset_event))
-
                 # Initial handshake
                 await ws.send(json.dumps([2, "boot", "BootNotification", {
                     "chargePointModel": "Simulator",
@@ -227,6 +226,9 @@ async def simulate_cp(
                 resp = await ws.recv()
                 tx_id = json.loads(resp)[2].get("transactionId")
                 print(f"[Simulator:{cp_name}] Transaction {tx_id} started at meter {meter_start}")
+
+                # Start listener only after transaction is active so recv calls don't overlap
+                listener = asyncio.create_task(listen_to_csms(stop_event, reset_event))
 
                 # MeterValues loop
                 actual_duration = random.uniform(duration * 0.75, duration * 1.25)
@@ -253,6 +255,13 @@ async def simulate_cp(
                         }]
                     }]))
                     await asyncio.sleep(interval)
+
+                # Stop listener before sending StopTransaction to avoid recv conflicts
+                listener.cancel()
+                try:
+                    await listener
+                except asyncio.CancelledError:
+                    pass
 
                 # StopTransaction
                 await ws.send(json.dumps([2, "stop", "StopTransaction", {
@@ -290,11 +299,10 @@ async def simulate_cp(
                         last_meter_value = time.monotonic()
                         print(f"[Simulator:{cp_name}] Idle MeterValues sent.")
 
-                listener.cancel()
-                try:
-                    await listener
-                except asyncio.CancelledError:
-                    pass
+
+                if reset_event.is_set():
+                    print(f"[Simulator:{cp_name}] Session reset requested.")
+                    continue
 
                 if reset_event.is_set():
                     print(f"[Simulator:{cp_name}] Session reset requested.")
