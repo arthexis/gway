@@ -294,7 +294,8 @@ You can chain as many projects as you want; each can define its own set of views
     until --file VERSION --pypi
 
 
-The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application. 
+The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application.
+
 
 The above recipe also shows implicit repeated commands. For example, instead of writing "web app setup" multiple times, each line below that doesn't start with a command repeats the last command with new parameters.
 
