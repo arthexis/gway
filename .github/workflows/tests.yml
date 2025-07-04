@@ -1,10 +1,11 @@
 name: tests
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  # Manual invocation via the GitHub UI
+  workflow_dispatch:
+  # Run on release events to validate packages
+  release:
+    types: [published]
 
 jobs:
   tests:
