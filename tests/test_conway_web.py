@@ -17,15 +17,15 @@ class ConwayWebTests(unittest.TestCase):
     def setUpClass(cls):
         # Start the demo website (port 8888)
         cls.proc = subprocess.Popen(
-            ["gway", "-r", "website"],
+            ["gway", "-r", "test/website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
-        cls._wait_for_port(8888, timeout=15)
+        cls._wait_for_port(18888, timeout=15)
         # Give server time to finish startup
         time.sleep(2)
-        cls.base_url = "http://127.0.0.1:8888"
+        cls.base_url = "http://127.0.0.1:18888"
 
     @classmethod
     def tearDownClass(cls):
