@@ -8,6 +8,7 @@ import sys
 import io
 import asyncio
 from gway.gateway import gw
+import gway.builtins as builtins
 
 class GatewayBuiltinsTests(unittest.TestCase):
 
@@ -23,7 +24,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
     def test_builtins_functions(self):
         # Test if the builtins can be accessed directly and are callable
         try:
-            gw.hello_world()
+            builtins.hello_world()
         except AttributeError as e:
             self.fail(f"AttributeError occurred: {e}")
 
