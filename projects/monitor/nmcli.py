@@ -208,6 +208,26 @@ def set_wlan0_station():
         "last_config_action": "Set wlan0 to station"
     })
 
+def maybe_notify_ap_switch(ap_ssid, email=None):
+    state = gw.monitor.get_state('nmcli')
+    prev_mode = state.get("wlan0_mode")
+    prev_ssid = state.get("wlan0_ssid")
+    prev_inet = state.get("wlan0_inet")
+    recipient = email or gw.resolve('[ADMIN_EMAIL]')
+    if recipient and prev_mode == "station" and prev_inet:
+        subject = "[nmcli] wlan0 switching to AP mode"
+        body = (
+            f"Previous mode: station\n"
+            f"SSID: {prev_ssid}\n"
+            f"Internet: {prev_inet}\n\n"
+            f"New mode: ap\n"
+            f"AP SSID: {ap_ssid}\n"
+        )
+        try:
+            gw.mail.send(subject, body=body, to=recipient)
+        except Exception as e:
+            gw.error(f"[nmcli] Email notification failed: {e}")
+
 def clean_and_reconnect_wifi(iface, ssid, password=None):
     conns = nmcli("connection", "show")
     for line in conns.splitlines():
@@ -275,6 +295,7 @@ def monitor_nmcli(**kwargs):
     ap_ssid = kwargs.get("ap_ssid") or gw.resolve('[AP_SSID]')
     ap_con = kwargs.get("ap_con") or ap_ssid or gw.resolve('[AP_CON]')
     ap_password = kwargs.get("ap_password") or gw.resolve('[AP_PASSWORD]')
+    email = kwargs.get("email")
     if not ap_con:
         raise ValueError("Missing ap_con (AP_CON). Required for AP operation.")
 
@@ -289,6 +310,7 @@ def monitor_nmcli(**kwargs):
         gw.info(f"[nmcli] {iface} status: {s}")
         if s["inet"]:
             gw.info(f"[nmcli] {iface} has internet, keeping wlan0 as AP ({ap_ssid})")
+            maybe_notify_ap_switch(ap_ssid, email)
             set_wlan0_ap(ap_con, ap_ssid, ap_password)
             found_inet = True
             break
@@ -298,6 +320,7 @@ def monitor_nmcli(**kwargs):
             wlanN[iface] = s2
             if s2["inet"]:
                 gw.info(f"[nmcli] {iface} internet works after reset")
+                maybe_notify_ap_switch(ap_ssid, email)
                 set_wlan0_ap(ap_con, ap_ssid, ap_password)
                 found_inet = True
                 break
@@ -310,9 +333,8 @@ def monitor_nmcli(**kwargs):
             found_inet = True
         else:
             gw.info("[nmcli] wlan0 cannot connect as client")
-    if not found_inet:
-        gw.info("[nmcli] No internet found, switching wlan0 to AP")
-        set_wlan0_ap(ap_con, ap_ssid, ap_password)
+            # Keep wlan0 in station mode. It will switch back to AP
+            # only when another interface provides internet.
     gw.monitor.set_states('nmcli', {"last_monitor_check": now_iso()})
     state = gw.monitor.get_state('nmcli')
     return {
