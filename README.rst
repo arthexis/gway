@@ -89,6 +89,22 @@ This launches an interactive web UI that lets you browse your project, inspect h
 
 Visit `http://localhost:8888` once it's running.
 
+Odoo Project Tasks
+~~~~~~~~~~~~~~~~~~
+
+You can add tasks to your Odoo projects without leaving the terminal.
+
+.. code-block:: bash
+
+    export ODOO_DEFAULT_PROJECT="Internal"
+    gway odoo create-task --customer "Acme Corp" \
+        --phone 5551234567 --notes "Requested callback next week" \
+        --new-customer
+
+Using ``--new-customer`` creates the partner before the task and the phone and
+note details are included in the task description. If ``--title`` is omitted,
+the task title defaults to the customer name.
+
 
 You can use a similar syntax to lunch any .gwr (GWAY Recipe) files you find. You can register them on your OS for automatic execution with the following command (Administrator/root privileges may be required):
 
