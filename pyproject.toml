@@ -26,5 +26,8 @@ Repository = "https://github.com/arthexis/gway.git"
 Homepage = "https://arthexis.com"
 Sponsor = "https://www.gelectriic.com/"
 
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
 [tool.setuptools]
 packages = [ "gway",]
