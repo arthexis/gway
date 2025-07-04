@@ -147,13 +147,15 @@ class Gateway(Resolver, Runner):
                     result.append(entry.name)
             return result
 
-        try:
-            projects_path = Path(self._projects_path())
-        except FileNotFoundError as e:
-            self.warning(f"Could not find 'projects' directory: {e}")
+        paths = self._projects_paths()
+        if not paths:
+            self.warning("Could not find any 'projects' directory")
             return []
 
-        result = set(discover_projects(projects_path))
+        result = set()
+        for p in paths:
+            result.update(discover_projects(Path(p)))
+
         sorted_result = sorted(result)
         self.verbose(f"Discovered projects: {sorted_result}", func="projects")
         return sorted_result
@@ -342,67 +344,65 @@ class Gateway(Resolver, Runner):
 
             return None
 
-        # 1. Use user-specified project_path if set
-        if self.project_path:
-            result = try_path(self.project_path)
-            if result: return result
+        search_paths = self._projects_paths()
+        if root not in search_paths:
+            search_paths.append(root)
 
-        # 2. Try _projects_path (base_path/projects, site-packages, etc)
-        try:
-            proj_root = self._projects_path()
-            result = try_path(proj_root)
-            if result: return result
-        except Exception:
-            pass
-
-        # 3. Fallback: try default root (should now rarely hit)
-        result = try_path(root)
-        if result: return result
+        tried = []
+        for p in search_paths:
+            tried.append(p)
+            result = try_path(p)
+            if result:
+                return result
 
         raise FileNotFoundError(
-            f"Project path not found for '{project_name}'. "
-            f"Tried: project_path={self.project_path}, "
-            f"base_path/projects, env var, site-packages, and '{root}'."
+            f"Project path not found for '{project_name}'. Tried: {tried}"
         )
 
-    def _projects_path(self):
-        """
-        Find the projects directory in source, install, or user-specified locations.
-        Returns the path to the projects directory if found, else raises FileNotFoundError.
+    def _projects_paths(self):
+        """Return a list of candidate 'projects' directories in priority order."""
+        candidates = []
 
-        Search order:
-        1. User explicitly passed a project_path (self.project_path)
-        2. Check next to base_path (source/venv/dev mode)
-        3. GWAY_PROJECT_PATH env variable
-        4. importlib.resources for installed package data (pip install)
-        """
-        # 1. User explicitly passed a project_path
         if self.project_path:
-            candidate = Path(self.project_path)
-            if candidate.is_dir():
-                return str(candidate)
-        # 2. Check next to base_path (source/venv/dev mode)
-        candidate = Path(self.base_path) / "projects"
-        if candidate.is_dir():
-            return str(candidate)
-        # 3. GWAY_PROJECT_PATH env variable
-        env_path = os.environ.get('GWAY_PROJECT_PATH')
-        if env_path and Path(env_path).is_dir():
-            return env_path
-        # 4. Try importlib.resources (Python 3.9+)
+            p = Path(self.project_path)
+            if p.is_dir():
+                candidates.append(p)
+
+        base_candidate = Path(self.base_path) / "projects"
+        if base_candidate.is_dir() and base_candidate not in candidates:
+            candidates.append(base_candidate)
+
+        env_path = os.environ.get("GWAY_PROJECT_PATH")
+        if env_path:
+            p = Path(env_path)
+            if p.is_dir() and p not in candidates:
+                candidates.append(p)
+
+        root_env = os.environ.get("GWAY_ROOT")
+        if root_env:
+            p = Path(root_env) / "projects"
+            if p.is_dir() and p not in candidates:
+                candidates.append(p)
+
         try:
             import importlib.resources as resources
-            # Try to get 'projects' as a directory under the 'gway' package
-            with resources.as_file(resources.files('gway').joinpath('projects')) as res_path:
-                if res_path.is_dir():
-                    return str(res_path)
+            with resources.as_file(resources.files("gway").joinpath("projects")) as res:
+                if res.is_dir() and res not in candidates:
+                    candidates.append(res)
         except Exception:
             pass
-        # Not found: raise
-        raise FileNotFoundError(
-            "Could not locate 'projects' directory. "
-            "Tried base_path, GWAY_PROJECT_PATH, and package resources."
-        )
+
+        return [str(c) for c in candidates]
+
+    def _projects_path(self):
+        """Return the highest priority projects directory or raise FileNotFoundError."""
+        paths = self._projects_paths()
+        if not paths:
+            raise FileNotFoundError(
+                "Could not locate 'projects' directory. "
+                "Tried base_path, GWAY_PROJECT_PATH, GWAY_ROOT, and package resources."
+            )
+        return paths[0]
     
     def load_py_file(self, path: str, dotted_name: str):
         module_name = dotted_name.replace(".", "_")

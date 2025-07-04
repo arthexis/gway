@@ -562,7 +562,39 @@ def shell():
     banner = "GWAY interactive shell.\nfrom gway import gw  # Python 3.13 compatible"
     code.interact(banner=banner, local=local_vars)
 
-# TODO: Create an <init_root> builtin that will create a brand new folder structure
-# for GWAY at the 1) given param directory, 2) GWAY_ROOT/GWAY_PATH/BASE_PATH/APP_ROOT
-# as per the README. This should allow users to start using GWAY in library mode
-# by linking their own projects, data, etc.
+
+def init_root(path: str | None = None) -> str:
+    """Create a minimal GWAY workspace at the resolved path."""
+    from pathlib import Path
+    from gway import gw
+
+    target = Path(
+        gw.resolve(
+            path,
+            "[GWAY_ROOT]",
+            "[GWAY_PATH]",
+            "[BASE_PATH]",
+            "[APP_ROOT]",
+            default=".",
+        )
+    ).resolve()
+
+    subdirs = [
+        "envs/clients",
+        "envs/servers",
+        "projects",
+        "data/static",
+        "logs",
+        "work",
+        "recipes",
+    ]
+
+    for sub in subdirs:
+        (target / sub).mkdir(parents=True, exist_ok=True)
+
+    readme = target / "README.rst"
+    if not readme.exists():
+        readme.write_text("# GWAY Workspace\nCreated by `gway init-root`\n")
+
+    gw.info(f"Initialized root at {target}")
+    return str(target)
