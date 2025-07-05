@@ -1,7 +1,7 @@
 # file: recipes/etron/local.gwr
 # OCPP 1.6 CSMS runnable GWAY Recipe with basic RFID auth
 
-web app setup-app
+web app setup-app --project ocpp.data --home charger-summary
     --project web.nav
     --project vbox
     --project ocpp.csms --home charger-status

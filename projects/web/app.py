@@ -4,6 +4,7 @@ import os
 from urllib.parse import urlencode
 import bottle
 import json
+import datetime
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
@@ -12,7 +13,44 @@ from gway import gw
 _ver = None
 _homes = []   # (title, route)
 _enabled = set()
+_fresh_mtime = None
+_fresh_dt = None
 UPLOAD_MB = 100
+
+def _refresh_fresh_date():
+    """Return cached datetime of VERSION modification, updating cache if needed."""
+    global _fresh_mtime, _fresh_dt
+    try:
+        path = gw.resource("VERSION")
+        mtime = os.path.getmtime(path)
+    except Exception:
+        return None
+    if _fresh_mtime != mtime:
+        _fresh_mtime = mtime
+        _fresh_dt = datetime.datetime.fromtimestamp(mtime)
+    return _fresh_dt
+
+
+def _format_fresh(dt: datetime.datetime | None) -> str:
+    """Return human friendly string for datetime `dt`."""
+    if not dt:
+        return "unknown"
+    now = datetime.datetime.now(dt.tzinfo)
+    delta = now - dt
+    if delta < datetime.timedelta(minutes=1):
+        return "seconds ago"
+    if delta < datetime.timedelta(hours=1):
+        minutes = int(delta.total_seconds() // 60)
+        return "a minute ago" if minutes == 1 else f"{minutes} minutes ago"
+    if delta < datetime.timedelta(days=1):
+        hours = int(delta.total_seconds() // 3600)
+        return "an hour ago" if hours == 1 else f"{hours} hours ago"
+    if delta < datetime.timedelta(days=7):
+        days = delta.days
+        return "a day ago" if days == 1 else f"{days} days ago"
+    if dt.year == now.year:
+        return dt.strftime("%B %d").replace(" 0", " ")
+    return dt.strftime("%B %d, %Y").replace(" 0", " ")
 
 def enabled_projects():
     """Return a set of all enabled web projects (for static.collect, etc)."""
@@ -298,6 +336,7 @@ def build_url(*args, **kwargs):
 def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
     global _ver
     version = _ver = _ver or gw.version()
+    fresh = _format_fresh(_refresh_fresh_date())
 
     css_files = gw.cast.to_list(css_files)
     theme_css = None
@@ -343,9 +382,10 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
                 <div class="layout">
                     {{!nav}}<main>{{!content}}</main>
                 </div>
-                <footer><p>This website was <strong>built</strong>, <strong>tested</strong> 
-                    and <strong>released</strong> with <a href="https://arthexis.com">GWAY</a> 
-                    <a href="https://pypi.org/project/gway/{{!version}}/">v{{!version}}</a>.</p>
+                <footer><p>This website was <strong>built</strong>, <strong>tested</strong>
+                    and <strong>released</strong> with <a href="https://arthexis.com">GWAY</a>
+                    <a href="https://pypi.org/project/gway/{{!version}}/">v{{!version}}</a>,
+                    fresh since {{!fresh}}.</p>
                     {{!credits}}
                 </footer>
             </div>

@@ -5,7 +5,6 @@ import time
 import json
 from datetime import datetime
 from typing import Iterable, Optional, Sequence
-
 from gway import gw
 
 _db_conn = None
@@ -370,3 +369,4 @@ def view_time_series(*, chargers: list = None, start: str = None, end: str = Non
     )
     html.append('</script>')
     return "\n".join(html)
+

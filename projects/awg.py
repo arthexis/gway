@@ -56,7 +56,9 @@ def find_awg(
     amps = int(amps)
     meters = int(meters)
     volts = int(volts)
-    max_lines = int(max_lines)
+
+    max_lines = 1 if max_lines in (None, "") else int(max_lines)
+
     if max_awg in (None, ""):
         max_awg = None
     else:
@@ -91,9 +93,9 @@ def find_awg(
             SELECT awg_size, line_num, {expr} AS vdrop
             FROM awg_cable_size
             WHERE (material = :material OR :material = '?')
-              AND {amp_clause}
+              AND ({amp_clause})
               AND line_num <= :max_lines
-              {"" if max_awg is None else "AND awg_size <= :max_awg"}
+              {"" if max_awg is None else "AND awg_size >= :max_awg"}
             ORDER BY awg_size DESC
         """
         params = {
@@ -199,11 +201,10 @@ def find_conduit(awg, cables, *, conduit="emt"):
 
 def view_cable_finder(
     *, meters=None, amps="40", volts="220", material="cu",
-    max_lines="3", max_awg=None, phases="1", temperature=None,
+    max_lines="1", max_awg=None, phases="1", temperature=None,
     conduit=None, neutral="0", **kwargs
 ):
     """Page builder for AWG cable finder with HTML form and result."""
-    # TODO: Add a image with the sponsor logo on the right side of the result page
     if not meters:
         return '''<link rel="stylesheet" href="/static/awg/cable_finder.css">
             <h1>AWG Cable Finder</h1>
@@ -233,7 +234,14 @@ def view_cable_finder(
                     </select>
                 </label>
                 <label>Max AWG:<input type="text" name="max_awg" /></label>
-                <label>Max Lines:<input type="number" name="max_lines" value="1" /></label>
+                <label>Max Lines:
+                    <select name="max_lines">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                    </select>
+                </label>
                 <button type="submit" class="submit">Find Cable</button>
             </form>
         '''
@@ -257,7 +265,7 @@ def view_cable_finder(
         """
 
     return f"""
-        <h1>Recommended Cable</h1>
+        <h1>Recommended Cable <img src='/static/awg/sponsor_logo.svg' alt='Sponsor Logo' class='sponsor-logo'></h1>
         <ul>
             <li><strong>AWG Size:</strong> {result['awg']}</li>
             <li><strong>Lines:</strong> {result['lines']}</li>
