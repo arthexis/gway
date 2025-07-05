@@ -35,6 +35,11 @@ class SiteHelpAutoTests(unittest.TestCase):
                 cls.proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 cls.proc.kill()
+        try:
+            with webauto.browse(close=True):
+                pass
+        except Exception:
+            pass
 
     @staticmethod
     def _wait_for_port(port, timeout=12):
