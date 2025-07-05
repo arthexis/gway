@@ -1,5 +1,6 @@
 import unittest
 import os
+import imaplib
 from unittest.mock import patch
 from email.mime.text import MIMEText
 from gway import gw
@@ -56,6 +57,27 @@ class MailUTF8Tests(unittest.TestCase):
             self.assertEqual(content, 'respuesta')
             fake = FakeIMAP.instances[0]
             self.assertTrue(fake.utf8_enabled)
+            self.assertEqual(fake.last_search[0], None)
+
+    def test_charset_fallback(self):
+        class RejectIMAP(FakeIMAP):
+            def __init__(self, *a, **kw):
+                super().__init__(*a, **kw)
+                self.failed = False
+                self._encoding = 'utf-8'
+            def enable(self, capability):
+                raise Exception('unsupported')
+            def search(self, charset, criteria):
+                if not self.failed:
+                    self.failed = True
+                    raise imaplib.IMAP4.error('BAD parse error')
+                return super().search(charset, criteria)
+
+        with patch('imaplib.IMAP4_SSL', RejectIMAP):
+            content, attachments = gw.mail.search('instalación')
+            self.assertEqual(content, 'respuesta')
+            fake = FakeIMAP.instances[0]
+            self.assertTrue(getattr(fake, 'failed', False))
             self.assertEqual(fake.last_search[0], None)
 
     def test_search_uses_inbox_uppercase(self):
