@@ -8,7 +8,7 @@ import uuid
 import traceback
 import asyncio
 import html
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import WebSocket, WebSocketDisconnect
 from bottle import request, redirect, HTTPError
 from typing import Dict, Optional
@@ -94,6 +94,7 @@ def setup_app(*,
             while True:
                 raw = await websocket.receive_text()
                 gw.info(f"[OCPP:{charger_id}] → {raw}")
+                _msg_log.setdefault(charger_id, []).append(f"> {raw}")
                 try:
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
@@ -246,6 +247,7 @@ def setup_app(*,
                                 reason="Local",
                                 charger_timestamp=cp_stop,
                             )
+                            archive_transaction(charger_id, tx)
                             if location:
                                 file_path = gw.resource(
                                     "work", "etron", "records", location,
@@ -538,6 +540,12 @@ def view_charger_detail(*, charger_id=None, **_):
     """Detail view for a single charger with live log."""
     if not charger_id:
         return redirect("/ocpp/csms/charger-status")
+    if (
+        charger_id not in _active_cons
+        and charger_id not in _transactions
+        and charger_id not in _latest_heartbeat
+    ):
+        return redirect("/ocpp/csms/charger-status")
 
     msg = ""
     if request.method == "POST":
@@ -554,12 +562,16 @@ def view_charger_detail(*, charger_id=None, **_):
     tx = _transactions.get(charger_id)
     raw_hb = _latest_heartbeat.get(charger_id)
     state = get_charger_state(charger_id, tx, ws_live, raw_hb)
+    now = datetime.utcnow()
+    since_default = (now - timedelta(days=1)).date().isoformat()
+    until_default = now.date().isoformat()
+    since = request.query.get('since') or since_default
+    until = request.query.get('until') or until_default
 
     html = [
         '<link rel="stylesheet" href="/static/ocpp/csms/charger_status.css">',
         '<script src="/static/render.js"></script>',
-        '<h1>Charger Details</h1>',
-        f'<nav><a href="/ocpp/csms/charger-status">&laquo; All Chargers</a></nav>'
+        f'<h1><a href="/ocpp/csms/charger-status">All Chargers</a> / {charger_id} Details</h1>'
     ]
     if msg:
         html.append(f'<p class="error">{msg}</p>')
@@ -567,6 +579,22 @@ def view_charger_detail(*, charger_id=None, **_):
     html.append(
         f'<div id="charger-info" data-gw-render="charger_info" data-gw-refresh="5" data-charger-id="{charger_id}">' +
         _render_charger_card(charger_id, tx, state, raw_hb) +
+        '</div>'
+    )
+
+    html.append(
+        f'''<form id="tx-range" method="get" style="margin:1em 0;">
+            <input type="hidden" name="charger_id" value="{charger_id}">
+            <label>From: <input type="date" name="since" value="{since}"></label>
+            <label>To: <input type="date" name="until" value="{until}"></label>
+            <button type="submit">Apply</button>
+        </form>'''
+    )
+
+    html.append(
+        f'<div id="charger-transactions" data-gw-render="charger_transactions" '
+        f'data-charger-id="{charger_id}" data-since="{since}" data-until="{until}">' +
+        render_charger_transactions(charger_id=charger_id, since=since, until=until) +
         '</div>'
     )
 
@@ -594,6 +622,57 @@ def render_charger_log(*, charger_id=None, chargerId=None, **_):
     lines = _msg_log.get(cid, [])[-50:]
     esc = lambda s: html.escape(s)
     return '<pre>' + '\n'.join(esc(line) for line in lines) + '</pre>'
+
+def render_charger_transactions(*, charger_id=None, chargerId=None, since=None, until=None, **_):
+    cid = charger_id or chargerId
+    if not cid:
+        return ""
+    since = since or request.forms.get('since') or request.query.get('since')
+    until = until or request.forms.get('until') or request.query.get('until')
+
+    def to_epoch(date_str):
+        if not date_str:
+            return None
+        try:
+            dt = datetime.fromisoformat(date_str)
+            if len(date_str) == 10:
+                return int(dt.timestamp())
+            return int(dt.timestamp())
+        except Exception:
+            return None
+
+    start_ts = to_epoch(since)
+    end_ts = to_epoch(until)
+    rows = list(
+        ocpp_data.iter_transactions(
+            cid,
+            start=start_ts,
+            end=end_ts,
+            sort="start_time",
+            order="desc",
+            limit=50,
+        )
+    )
+
+    def fmt(ts):
+        if not ts:
+            return "-"
+        try:
+            return datetime.utcfromtimestamp(int(ts)).isoformat() + "Z"
+        except Exception:
+            return str(ts)
+
+    html = [
+        '<table class="ocpp-details">',
+        '<tr><th>ID</th><th>Start</th><th>Stop</th><th>Meter Δ(kWh)</th><th>Reason</th></tr>'
+    ]
+    for r in rows:
+        delta = (r[5] or 0) - (r[4] or 0)
+        html.append(
+            f"<tr><td>{r[1]}</td><td>{fmt(r[2])}</td><td>{fmt(r[3])}</td><td>{round(delta/1000.0,3)}</td><td>{r[6] or ''}</td></tr>"
+        )
+    html.append('</table>')
+    return '\n'.join(html)
 
 ...
 
@@ -714,6 +793,23 @@ def archive_energy(charger_id, transaction_id, meter_values):
     with open(file_path, "w") as f:
         json.dump(meter_values, f, indent=2)
     return file_path
+
+def archive_transaction(charger_id, tx):
+    """Write a transaction record as JSON in work/ocpp/records."""
+    try:
+        connector = tx.get("connectorId", 0)
+        txn_id = tx.get("transactionId")
+        if txn_id is None:
+            return None
+        base = gw.resource("work", "ocpp", "records", charger_id)
+        os.makedirs(base, exist_ok=True)
+        file_path = os.path.join(base, f"{connector}_{txn_id}.dat")
+        with open(file_path, "w") as f:
+            json.dump(tx, f, indent=2)
+        return file_path
+    except Exception:
+        gw.exception("Failed to archive transaction")
+        return None
 
 def view_energy_graph(*, charger_id=None, date=None, **_):
     """
