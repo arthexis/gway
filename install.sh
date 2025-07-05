@@ -21,11 +21,29 @@ fi
 # Activate the virtual environment
 source .venv/bin/activate
 
+# Repair previously installed services
+if [[ ${1-} == "--repair" ]]; then
+  echo "Repairing installed gway services..."
+  for unit in /etc/systemd/system/gway-*.service; do
+    [[ -f "$unit" ]] || continue
+    recipe=$(grep -oE 'ExecStart=.*-r ([^ ]+)' "$unit" | awk '{print $2}')
+    if [[ -z "$recipe" ]]; then
+      echo "  Skipping $unit (could not determine recipe)" >&2
+      continue
+    fi
+    "$SCRIPT_PATH" "$recipe"
+  done
+  deactivate
+  exit 0
+fi
+
 # 2) No-arg case: notify installation and usage
 if [[ $# -eq 0 ]]; then
   echo "GWAY has been set up in .venv."
   echo "To install a systemd service for a recipe, run:"
   echo "  sudo ./install.sh <recipe-name>"
+  echo "To repair all existing services, run:"
+  echo "  sudo ./install.sh --repair"
   deactivate
   exit 0
 fi
