@@ -46,6 +46,7 @@ def browse(
     browser: str = DEFAULT_BROWSER,
     headless: bool = True,
     driver=None,
+    close: bool = False,
 ):
     """Yield a cached WebDriver instance, creating a new one if needed."""
     global _active_driver, _active_config
@@ -56,6 +57,19 @@ def browse(
         driver = gw.unwrap_one(driver, webdriver.Remote) if driver else None
     except Exception:
         pass
+
+    if close:
+        target = driver or _active_driver
+        if target:
+            try:
+                target.quit()
+            except Exception:
+                pass
+            if target is _active_driver:
+                _active_driver = None
+                _active_config = None
+        yield None
+        return
 
     desired_cfg = (browser.lower(), bool(headless))
 

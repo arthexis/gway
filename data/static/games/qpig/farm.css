@@ -1,18 +1,30 @@
 /* file: data/static/games/qpig/farm.css */
 
-.qpig-buttons {
+.qpig-garden {
+    font-family: monospace;
+    background: #7ec87e;
+    border: 2px solid #2b7a2b;
+    padding: 8px;
+    margin: 0 auto;
+    display: inline-block;
+}
+
+.qpig-garden .qpig-buttons {
     display: flex;
     gap: 8px;
     margin: 1em 0;
 }
-.qpig-buttons button {
+
+.qpig-garden button {
     padding: 6px 12px;
-    border-radius: 4px;
-    border: 1px solid #aaa;
-    background: #f0f0f0;
+    border: 1px solid #333;
+    background: #d6f5d6;
     cursor: pointer;
+    color: #000;
 }
-.qpig-warning {
+
+.qpig-garden .qpig-warning {
+
     margin-top: 1em;
     color: #a00;
 }

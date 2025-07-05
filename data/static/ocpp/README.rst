@@ -54,3 +54,10 @@ To review stored information you can render a simple summary table with:
 
 This shows the number of sessions and total energy per charger along
 with the timestamp of the last stop and any last recorded error.
+
+Two additional views provide more insight into stored data:
+
+``view_charger_details`` displays transaction records for one charger
+with simple filtering and pagination. ``view_time_series`` returns a
+chart of energy usage over time for selected chargers and dates.
+
