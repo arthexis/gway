@@ -41,8 +41,8 @@ class Runner:
         finally:
             loop.close()
 
-    def until(self, *, file=None, url=None, pypi=False, forever=False):
-        assert file or url or pypi or forever, "Use forever for unconditional looping."
+    def until(self, *, file=None, url=None, pypi=False, version=False, build=False, forever=False):
+        assert file or url or pypi or version or build or forever, "Use forever for unconditional looping."
 
         if not self._async_threads and hasattr(self, "critical"):
             self.critical("No async threads detected before entering loop.")
@@ -52,11 +52,18 @@ class Runner:
                 self.warning(f"{reason} triggered async shutdown.")
             os._exit(1)
 
-        watchers = [
+        from gway import gw
+
+        watchers = []
+        if version:
+            watchers.append((gw.resource("VERSION"), watch_file, "VERSION file"))
+        if build:
+            watchers.append((gw.resource("BUILD"), watch_file, "BUILD file"))
+        watchers.extend([
             (file, watch_file, "Lock file"),
             (url, watch_url, "Lock url"),
-            (pypi if pypi is not False else None, watch_pypi_package, "PyPI package")
-        ]
+            (pypi if pypi is not False else None, watch_pypi_package, "PyPI package"),
+        ])
         for target, watcher, reason in watchers:
             if target:
                 if hasattr(self, "info"):

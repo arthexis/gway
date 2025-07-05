@@ -98,6 +98,12 @@ def build(
 
     version = new_version
 
+    # Write BUILD file with current commit hash
+    build_path = Path("BUILD")
+    build_hash = commit()
+    build_path.write_text(build_hash)
+    gw.info(f"Wrote BUILD file with commit {build_hash}")
+
     dependencies = [
         line.strip()
         for line in requirements_path.read_text().splitlines()
@@ -156,6 +162,7 @@ def build(
         manifest_path.write_text(
             "include README.rst\n"
             "include VERSION\n"
+            "include BUILD\n"
             "include requirements.txt\n"
             "include pyproject.toml\n"
         )
@@ -222,7 +229,7 @@ def build(
             gw.info("Package uploaded to PyPI successfully.")
 
     if git:
-        files_to_add = ["VERSION", "pyproject.toml"]
+        files_to_add = ["VERSION", "BUILD", "pyproject.toml"]
         if help_db:
             files_to_add.append("data/help.sqlite")
         if projects:
@@ -372,6 +379,32 @@ def create_shortcut(
     shortcut.Save()
 
     print(f"Shortcut created at: {shortcut_path}")
+
+
+def commit(length: int = 6) -> str:
+    """Return the current git commit hash (optionally truncated)."""
+    import subprocess
+
+    try:
+        full = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+        if length:
+            return full[-length:]
+        return full
+    except Exception:
+        return "unknown"
+
+
+def build(length: int = 6) -> str:
+    """Return the build hash stored in the BUILD file."""
+    build_path = Path("BUILD")
+    if build_path.exists():
+        commit_hash = build_path.read_text().strip()
+        return commit_hash[-length:] if length else commit_hash
+    else:
+        gw.warning("BUILD file not found.")
+        return "unknown"
 
 
 def changes(*, files=None, staged=False, context=3, max_bytes=200_000, clip=False):

@@ -337,6 +337,12 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
     global _ver
     version = _ver = _ver or gw.version()
     fresh = _format_fresh(_refresh_fresh_date())
+    build = ""
+    if getattr(gw, "debug_enabled", False):
+        try:
+            build = f" Build: {gw.release.commit()}"
+        except Exception:
+            build = ""
 
     css_files = gw.cast.to_list(css_files)
     theme_css = None
@@ -385,7 +391,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
                 <footer><p>This website was <strong>built</strong>, <strong>tested</strong>
                     and <strong>released</strong> with <a href="https://arthexis.com">GWAY</a>
                     <a href="https://pypi.org/project/gway/{{!version}}/">v{{!version}}</a>,
-                    fresh since {{!fresh}}.</p>
+                    fresh since {{!fresh}}{{!build}}.</p>
                     {{!credits}}
                 </footer>
             </div>
