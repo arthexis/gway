@@ -4,8 +4,31 @@ setlocal
 rem Ensure the script runs from its own directory
 cd /d "%~dp0"
 
-rem Repair previously installed services
-if "%~1"=="--repair" (
+rem Parse arguments
+set "ACTION=install"
+set "RECIPE="
+set "FORCE_FLAG="
+:parse_args
+if "%~1"=="" goto end_parse_args
+if "%~1"=="--remove" (
+    set "ACTION=remove"
+) else if "%~1"=="--repair" (
+    set "ACTION=repair"
+) else if "%~1"=="--force" (
+    set "FORCE_FLAG=--force"
+) else (
+    if not defined RECIPE (
+        set "RECIPE=%~1"
+    ) else (
+        echo ERROR: Unexpected argument %1
+        exit /b 1
+    )
+)
+shift
+goto parse_args
+:end_parse_args
+
+if "%ACTION%"=="repair" if not defined RECIPE (
     echo Repairing installed gway services...
     for /f "usebackq delims=" %%R in (
         `python "%~dp0tools\windows_service.py" list-recipes`
@@ -31,25 +54,19 @@ if not exist ".venv" (
 )
 
 rem No-arg case
-if "%~1"=="" (
+if not defined RECIPE (
     echo GWAY has been set up in .venv.
     echo To install a Windows service for a recipe, run:
     echo   install.bat ^<recipe^>
     echo To remove a Windows service, run:
-    echo   install.bat --remove ^<recipe^> [--force]
+    echo   install.bat ^<recipe^> --remove [--force]
+    echo To repair a Windows service, run:
+    echo   install.bat ^<recipe^> --repair
     echo To repair all existing services, run:
     echo   install.bat --repair
     goto :eof
 )
 
-set "ACTION=install"
-set "RECIPE=%~1"
-set "FORCE_FLAG="
-if "%~1"=="--remove" (
-    set "ACTION=remove"
-    set "RECIPE=%~2"
-    if "%~3"=="--force" set "FORCE_FLAG=--force"
-)
 if not exist "recipes\%RECIPE%.gwr" (
     echo ERROR: Recipe '%RECIPE%' not found at recipes\%RECIPE%.gwr
     exit /b 1
@@ -63,9 +80,13 @@ set "SERVICE_PY=%~dp0tools\windows_service.py"
 if "%ACTION%"=="install" (
     echo Installing Windows service %SERVICE_NAME% for recipe %RECIPE%...
     python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE%
-) else (
+) else if "%ACTION%"=="remove" (
     echo Removing Windows service %SERVICE_NAME% for recipe %RECIPE%...
     python "%SERVICE_PY%" remove --name %SERVICE_NAME% --recipe %RECIPE% %FORCE_FLAG%
+) else (
+    echo Repairing Windows service %SERVICE_NAME% for recipe %RECIPE%...
+    python "%SERVICE_PY%" remove --name %SERVICE_NAME% --recipe %RECIPE% %FORCE_FLAG%
+    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE%
 )
 
 endlocal
