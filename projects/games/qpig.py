@@ -37,7 +37,9 @@ ADOPTION_THRESHOLD = 7
 QP_INTERVAL = 6.0  # seconds between pellet attempts
 
 VEGGIE_TYPES = ["carrot", "lettuce", "cilantro", "cucumber"]
-VEGGIE_BASE_PRICE = 20
+VEGGIE_BASE_PRICE = 12
+VEGGIE_PRICE_SPREAD = 8
+
 
 # chance to generate an extra pellet while nibbling
 VEGGIE_BONUS = {
@@ -77,7 +79,8 @@ def _get_offer():
 
     kind = random.choice(VEGGIE_TYPES)
     qty = random.randint(1, 3)
-    price = VEGGIE_BASE_PRICE + random.randint(-2, 2)
+    price = VEGGIE_BASE_PRICE + random.randint(-VEGGIE_PRICE_SPREAD, VEGGIE_PRICE_SPREAD)
+    price = max(5, min(20, price))
     cookies.set("qpig_offer_kind", kind, path="/", max_age=300)
     cookies.set("qpig_offer_qty", str(qty), path="/", max_age=300)
     cookies.set("qpig_offer_price", str(price), path="/", max_age=300)
@@ -323,6 +326,7 @@ def view_qpig_farm(*, action: str = None, **_):
     refresh = 3 if any(f[1] > time.time() for f in food) else 5
     html = [
         '<link rel="stylesheet" href="/static/games/qpig/farm.css">',
+        '<div class="qpig-garden">',
         "<h1>Quantum Piggy Farm</h1>",
         f'<div id="qpig-stats" data-gw-render="stats" data-gw-refresh="{refresh}">',
         render_qpig_farm_stats(),
@@ -345,10 +349,10 @@ def view_qpig_farm(*, action: str = None, **_):
             if v > 0:
                 html.append(f"<button type='submit' name='action' value='place_{k}'>Feed {k}</button>")
     html.append("</form>")
-
     if not use_cookies:
         html.append(
             "<div class='qpig-warning'>Enable cookies to save your progress.</div>"
         )
 
+    html.append("</div>")
     return "\n".join(html)
