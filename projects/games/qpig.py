@@ -2,11 +2,7 @@
 """Prototype incremental game about quantum guinea pigs."""
 
 from gway import gw
-
-
 import time
-
-
 import json
 import math
 
@@ -34,12 +30,14 @@ ADOPTION_ADD = 2
 ADOPTION_INTERVAL = 3 * 3600
 ADOPTION_THRESHOLD = 7
 
-QP_INTERVAL = 6.0  # seconds between pellet attempts
+# QP generation: 50% chance every 30s plus +/-25% from Certainty
+QP_INTERVAL = 30.0  # seconds between pellet attempts
+QP_BASE_CHANCE = 0.5
+QP_CERT_BONUS = 0.25
 
 VEGGIE_TYPES = ["carrot", "lettuce", "cilantro", "cucumber"]
 VEGGIE_BASE_PRICE = 12
 VEGGIE_PRICE_SPREAD = 8
-
 
 # chance to generate an extra pellet while nibbling
 VEGGIE_BONUS = {
@@ -69,6 +67,15 @@ def _use_cookies():
 
 
 def _get_offer():
+    """Return the current veggie offer, generating a new one if needed."""
+    if not _use_cookies():
+        import random
+
+        kind = random.choice(VEGGIE_TYPES)
+        qty = random.randint(1, 3)
+        price = VEGGIE_BASE_PRICE + random.randint(-VEGGIE_PRICE_SPREAD, VEGGIE_PRICE_SPREAD)
+        return kind, qty, max(5, min(20, price))
+
     cookies = gw.web.cookies
     kind = cookies.get("qpig_offer_kind")
     qty = cookies.get("qpig_offer_qty")
@@ -88,6 +95,9 @@ def _get_offer():
 
 
 def _clear_offer():
+    if not _use_cookies():
+        return
+
     cookies = gw.web.cookies
     for k in ["qpig_offer_kind", "qpig_offer_qty", "qpig_offer_price"]:
         cookies.delete(k, path="/")
@@ -196,12 +206,14 @@ def _process_state(action: str | None = None):
     intervals = int(dt / QP_INTERVAL)
     if intervals > 0:
         import random
-
+        base_prob = QP_BASE_CHANCE * (1 + (cert_frac - 0.5) * QP_CERT_BONUS * 2)
+        prob = min(1.0, base_prob * buff_mult)
         for _ in range(intervals):
             for _ in range(pigs):
-                prob = min(1.0, cert_frac * buff_mult)
                 if random.random() < prob:
                     pellets += 1
+                    if random.random() < prob:
+                        pellets += 1
         last_time += intervals * QP_INTERVAL
 
     # chance for bonus pellets from active veggies
@@ -353,6 +365,5 @@ def view_qpig_farm(*, action: str = None, **_):
         html.append(
             "<div class='qpig-warning'>Enable cookies to save your progress.</div>"
         )
-
     html.append("</div>")
     return "\n".join(html)

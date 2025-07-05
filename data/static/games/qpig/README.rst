@@ -6,6 +6,7 @@ Quantum Piggy Farm
 
 Veggie offers vary in price from 5 to 20 MCerts each. Feeding veggies can
 temporarily double production and some veggies might grant a bonus ``QP`` when
-chewed. The whole interface is wrapped in a tiny pixelated garden so outside
-styles don't leak in.
+chewed. QPellets are produced about every 30 seconds with a base 50\% chance,
+modified by ±25\% depending on your Certainty. The whole interface is wrapped
+in a tiny pixelated garden so outside styles don't leak in.
 
