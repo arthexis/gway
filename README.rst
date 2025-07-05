@@ -301,7 +301,7 @@ You can chain as many projects as you want; each can define its own set of views
         --project conway --home game-of-life --path games/conway
 
     web server start-app --host 127.0.0.1 --port 8888
-    until --file VERSION --pypi
+    until --version --build --pypi
 
 
 The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application.
