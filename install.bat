@@ -8,7 +8,7 @@ rem Repair previously installed services
 if "%~1"=="--repair" (
     echo Repairing installed gway services...
     for /f "usebackq delims=" %%R in (
-        `powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\list_services.ps1"`
+        `python "%~dp0windows_service.py" list-recipes`
     ) do (
         call "%~f0" %%R
     )
@@ -35,12 +35,21 @@ if "%~1"=="" (
     echo GWAY has been set up in .venv.
     echo To install a Windows service for a recipe, run:
     echo   install.bat ^<recipe^>
+    echo To remove a Windows service, run:
+    echo   install.bat --remove ^<recipe^> [--force]
     echo To repair all existing services, run:
     echo   install.bat --repair
     goto :eof
 )
 
+set "ACTION=install"
 set "RECIPE=%~1"
+set "FORCE_FLAG="
+if "%~1"=="--remove" (
+    set "ACTION=remove"
+    set "RECIPE=%~2"
+    if "%~3"=="--force" set "FORCE_FLAG=--force"
+)
 if not exist "recipes\%RECIPE%.gwr" (
     echo ERROR: Recipe '%RECIPE%' not found at recipes\%RECIPE%.gwr
     exit /b 1
@@ -48,13 +57,15 @@ if not exist "recipes\%RECIPE%.gwr" (
 
 for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "$n='%RECIPE%'; $n=$n -replace '[\\/]','-'; $n=$n -replace '[^a-zA-Z0-9_-]','-'; Write-Output $n"`) do set "SAFE_RECIPE=%%S"
 set "SERVICE_NAME=gway-%SAFE_RECIPE%"
-set "BATPATH=%~dp0gway.bat"
+rem Path to helper script
+set "SERVICE_PY=%~dp0windows_service.py"
 
-echo Installing Windows service %SERVICE_NAME% for recipe %RECIPE%...
-sc.exe create "%SERVICE_NAME%" binPath= "cmd /c \"\"%BATPATH%\" -r %RECIPE%\"" start= auto
-sc.exe failure "%SERVICE_NAME%" reset= 0 actions= restart/5000
-sc.exe failureflag "%SERVICE_NAME%" 1
-sc.exe start "%SERVICE_NAME%"
-sc.exe query "%SERVICE_NAME%"
+if "%ACTION%"=="install" (
+    echo Installing Windows service %SERVICE_NAME% for recipe %RECIPE%...
+    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE%
+) else (
+    echo Removing Windows service %SERVICE_NAME% for recipe %RECIPE%...
+    python "%SERVICE_PY%" remove --name %SERVICE_NAME% --recipe %RECIPE% %FORCE_FLAG%
+)
 
 endlocal
