@@ -55,6 +55,12 @@ Given ``projects/awg.py`` containing logic to calculate cable sizes and conduit 
     # With conduit calculation
     gway awg find-cable --meters 30 --amps 60 --material cu --volts 240 --conduit emt
 
+    # Limit cable size to AWG 6
+    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240 --max-awg 6
+
+    # Specify 90C cable rating
+    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240 --temperature 90
+
 **Chaining Example**
 
 .. code-block:: bash
