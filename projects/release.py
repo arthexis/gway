@@ -91,7 +91,7 @@ def build(
         major, minor, patch = map(int, current_version.split("."))
         patch += 1
         new_version = f"{major}.{minor}.{patch}"
-        version_path.write_text(new_version)
+        version_path.write_text(new_version + "\n")
         gw.info(f"\nBumped version: {current_version} → {new_version}")
     else:
         new_version = version_path.read_text().strip()
@@ -101,7 +101,7 @@ def build(
     # Write BUILD file with current commit hash
     build_path = Path("BUILD")
     build_hash = commit()
-    build_path.write_text(build_hash)
+    build_path.write_text(build_hash + "\n")
     gw.info(f"Wrote BUILD file with commit {build_hash}")
 
     dependencies = [
