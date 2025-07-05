@@ -58,12 +58,14 @@ VEGGIE_EFFECTS = {
 
 def _use_cookies():
     """Return True if cookie support is available and accepted."""
-    return (
+    use = (
         hasattr(gw.web, "app")
         and hasattr(gw.web, "cookies")
         and getattr(gw.web.app, "is_setup", lambda x: False)("web.cookies")
         and gw.web.cookies.accepted()
     )
+    gw.debug(f"_use_cookies -> {use}")
+    return use
 
 
 def _get_offer():
@@ -74,14 +76,18 @@ def _get_offer():
         kind = random.choice(VEGGIE_TYPES)
         qty = random.randint(1, 3)
         price = VEGGIE_BASE_PRICE + random.randint(-VEGGIE_PRICE_SPREAD, VEGGIE_PRICE_SPREAD)
-        return kind, qty, max(5, min(20, price))
+        offer = kind, qty, max(5, min(20, price))
+        gw.debug(f"_get_offer (no cookies) -> {offer}")
+        return offer
 
     cookies = gw.web.cookies
     kind = cookies.get("qpig_offer_kind")
     qty = cookies.get("qpig_offer_qty")
     price = cookies.get("qpig_offer_price")
     if kind and qty and price:
-        return kind, int(qty), int(price)
+        offer = (kind, int(qty), int(price))
+        gw.debug(f"_get_offer (existing) -> {offer}")
+        return offer
     import random
 
     kind = random.choice(VEGGIE_TYPES)
@@ -91,7 +97,9 @@ def _get_offer():
     cookies.set("qpig_offer_kind", kind, path="/", max_age=300)
     cookies.set("qpig_offer_qty", str(qty), path="/", max_age=300)
     cookies.set("qpig_offer_price", str(price), path="/", max_age=300)
-    return kind, qty, price
+    offer = (kind, qty, price)
+    gw.debug(f"_get_offer (new) -> {offer}")
+    return offer
 
 
 def _clear_offer():
@@ -101,6 +109,7 @@ def _clear_offer():
     cookies = gw.web.cookies
     for k in ["qpig_offer_kind", "qpig_offer_qty", "qpig_offer_price"]:
         cookies.delete(k, path="/")
+    gw.debug("_clear_offer: offer cookies cleared")
 
 
 def _get_state():
@@ -115,7 +124,7 @@ def _get_state():
     last_add = float(cookies.get("qpig_last_add") or last_time)
     veggies = json.loads(cookies.get("qpig_veggies") or "{}")
     food = json.loads(cookies.get("qpig_food") or "[]")
-    return (
+    state = (
         pigs,
         mc,
         pellets,
@@ -127,6 +136,8 @@ def _get_state():
         veggies,
         food,
     )
+    gw.debug(f"_get_state -> {state}")
+    return state
 
 
 def _set_state(
@@ -152,11 +163,16 @@ def _set_state(
     cookies.set("qpig_last_add", str(last_add), path="/", max_age=30 * 24 * 3600)
     cookies.set("qpig_veggies", json.dumps(veggies), path="/", max_age=30 * 24 * 3600)
     cookies.set("qpig_food", json.dumps(food), path="/", max_age=30 * 24 * 3600)
+    gw.debug(
+        "_set_state: pigs=%s mc=%s pellets=%s avail=%s enc_small=%s enc_large=%s veggies=%s food=%s"
+        % (pigs, mc, pellets, avail, enc_small, enc_large, veggies, food)
+    )
 
 
 def _process_state(action: str | None = None):
     """Update and optionally mutate the farm state."""
     use_cookies = _use_cookies()
+    gw.debug(f"_process_state start: action={action} use_cookies={use_cookies}")
     (
         pigs,
         mc,
@@ -184,19 +200,26 @@ def _process_state(action: str | None = None):
             DEFAULT_FOOD.copy(),
         )
     )
+    gw.debug(
+        "initial state: pigs=%s mc=%s pellets=%s avail=%s enc_small=%s enc_large=%s veggies=%s food=%s"
+        % (pigs, mc, pellets, avail, enc_small, enc_large, veggies, food)
+    )
 
     now = time.time()
     dt = max(0.0, min(now - last_time, 3600))
+    gw.debug(f"time delta={dt}")
 
     upkeep_mc = ((UPKEEP_SMALL_HR * enc_small) + (UPKEEP_LARGE_HR * enc_large)) * (
         dt / 3600
     )
     mc = max(0.0, mc - upkeep_mc)
+    gw.debug(f"after upkeep: mc={mc}")
 
     fill_time = FILL_TIME + enc_small * ENC_TIME_SMALL + enc_large * ENC_TIME_LARGE
     cert_frac = mc / CERTAINTY_MAX
     cert_frac = 1.0 - (1.0 - cert_frac) * math.exp(-dt / fill_time)
     mc = min(CERTAINTY_MAX, cert_frac * CERTAINTY_MAX)
+    gw.debug(f"after fill: mc={mc}")
 
     # handle food buffs
     food = [f for f in food if f[1] > now]
@@ -208,6 +231,7 @@ def _process_state(action: str | None = None):
         import random
         base_prob = QP_BASE_CHANCE * (1 + (cert_frac - 0.5) * QP_CERT_BONUS * 2)
         prob = min(1.0, base_prob * buff_mult)
+        gw.debug(f"pellet gen: intervals={intervals} prob={prob} pigs={pigs}")
         for _ in range(intervals):
             for _ in range(pigs):
                 if random.random() < prob:
@@ -220,6 +244,7 @@ def _process_state(action: str | None = None):
     nibbling = [f[0] for f in food if f[1] > now]
     if nibbling:
         import random
+        gw.debug(f"nibbling: {nibbling}")
         for kind in nibbling:
             chance = VEGGIE_BONUS.get(kind, 0.0)
             if random.random() < chance:
@@ -229,6 +254,7 @@ def _process_state(action: str | None = None):
     while now - last_add >= ADOPTION_INTERVAL and avail <= ADOPTION_THRESHOLD:
         avail = min(avail + ADOPTION_ADD, ADOPTION_THRESHOLD)
         last_add += ADOPTION_INTERVAL
+        gw.debug(f"adoption queue replenished -> avail={avail}")
 
     offer_kind, offer_qty, offer_price = _get_offer()
 
@@ -236,12 +262,15 @@ def _process_state(action: str | None = None):
     if action == "adopt" and avail > 0 and pigs < capacity:
         pigs += 1
         avail -= 1
+        gw.debug(f"action adopt -> pigs={pigs} avail={avail}")
     elif action == "buy_small" and mc >= SMALL_COST and (enc_small + enc_large) < ENCLOSURE_MAX:
         mc -= SMALL_COST
         enc_small += 1
+        gw.debug(f"action buy_small -> enc_small={enc_small} mc={mc}")
     elif action == "buy_large" and mc >= LARGE_COST and (enc_small + enc_large) < ENCLOSURE_MAX:
         mc -= LARGE_COST
         enc_large += 1
+        gw.debug(f"action buy_large -> enc_large={enc_large} mc={mc}")
     elif action == "buy_veggie":
         total = offer_price * offer_qty
         if mc >= total:
@@ -249,6 +278,7 @@ def _process_state(action: str | None = None):
             veggies[offer_kind] = veggies.get(offer_kind, 0) + offer_qty
             _clear_offer()
             offer_kind, offer_qty, offer_price = _get_offer()
+            gw.debug(f"action buy_veggie -> veggies={veggies} mc={mc}")
     elif action and action.startswith("place_"):
         kind = action.split("_", 1)[1]
         slots = (enc_small + enc_large) * 3
@@ -258,6 +288,7 @@ def _process_state(action: str | None = None):
                 del veggies[kind]
             eat, linger = VEGGIE_EFFECTS.get(kind, (60, 30))
             food.append([kind, now + eat, now + eat + linger])
+            gw.debug(f"action place_{kind} -> food={food} veggies={veggies}")
 
     if use_cookies:
         _set_state(
@@ -273,7 +304,7 @@ def _process_state(action: str | None = None):
             food,
         )
 
-    return (
+    state = (
         pigs,
         mc,
         pellets,
@@ -286,10 +317,13 @@ def _process_state(action: str | None = None):
         (offer_kind, offer_qty, offer_price),
         use_cookies,
     )
+    gw.debug(f"_process_state end -> {state}")
+    return state
 
 
 def render_qpig_farm_stats(*_, **__):
     """Return the farm stats block (used by render.js)."""
+    gw.debug("render_qpig_farm_stats called")
     (
         pigs,
         mc,
@@ -319,6 +353,7 @@ def render_qpig_farm_stats(*_, **__):
 
 def view_qpig_farm(*, action: str = None, **_):
     """Main Quantum Piggy farm view."""
+    gw.debug(f"view_qpig_farm called with action={action}")
     (
         pigs,
         mc,
