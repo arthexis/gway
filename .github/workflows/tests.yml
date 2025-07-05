@@ -38,6 +38,10 @@ jobs:
         run: |
           if compgen -G "work/screenshots/*.png" > /dev/null; then
             for img in work/screenshots/*.png; do
-              gh pr comment ${{ github.event.pull_request.number }} --body "Screenshot from test: $(basename $img)" --attach "$img"
+              encoded=$(base64 -w0 "$img")
+              gh pr comment ${{ github.event.pull_request.number }} \
+                --body "Screenshot from test: $(basename $img)
+
+![$(basename $img)](data:image/png;base64,$encoded)"
             done
           fi
