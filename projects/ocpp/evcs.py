@@ -394,7 +394,7 @@ def view_cp_simulator(*args, **kwargs):
     NO card, content in main dashboard layout.
     """
 
-    ws_url = gw.web.build_ws_url(project="ocpp.csms")
+    ws_url = gw.web.build_ws_url("ocpp", "csms")
     default_host = ws_url.split("://")[-1].split(":")[0]
     default_ws_port = ws_url.split(":")[-1].split("/")[0] if ":" in ws_url else "9000"
     default_cp_path = "CPX"

@@ -14,8 +14,17 @@ Launch a simulator session pointing at your CSMS with:
 
    gway ocpp.evcs simulate --host 127.0.0.1 --ws-port 9000 --cp-path CPX
 
-Open ``/ocpp/csms/charger-status`` in your browser and you can send
-``Stop`` or ``Soft Reset`` commands to see the simulator react.
+Open ``/ocpp/csms/charger-status`` in your browser to view all
+connected chargers. Each card refreshes every few seconds so data
+stays current. Click a charger to open its detail page where you can
+send commands like ``Stop`` or ``Soft Reset`` and watch the log update
+in real time. The auto-refresh will collapse any open panels; you can
+temporarily disable it by removing the ``data-gw-refresh`` attribute
+from the page.
+
+The charger detail view also lists recent transactions. By default it
+shows the last 24 hours but you can adjust the period with the date
+selectors above the table.
 
 Etron Recipes
 -------------
@@ -41,6 +50,9 @@ OCPP Data Storage
 values and error reports in ``work/ocpp.sqlite`` using ``gw.sql``.  The
 ``csms`` module calls these helpers so charging sessions are recorded
 automatically.
+
+For comparison with real EVCS logs, every completed transaction is also
+written as a ``.dat`` file under ``work/ocpp/records/<charger_id>/``.
 
 Both the server time and the charger-provided timestamp are stored for
 each transaction event. This lets you verify the charger's clock during
