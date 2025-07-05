@@ -56,7 +56,9 @@ def find_awg(
     amps = int(amps)
     meters = int(meters)
     volts = int(volts)
+
     max_lines = 1 if max_lines in (None, "") else int(max_lines)
+
     if max_awg in (None, ""):
         max_awg = None
     else:
