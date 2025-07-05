@@ -11,16 +11,15 @@ web app setup-app --home reader
     --project ocpp.csms --auth-required --home charger-status
     --project ocpp.evcs --auth-required --home cp-simulator
     --project games.conway --home game-of-life --path conway
-    --project games.mtg --home search-games
-    --project games.qpig --home qpig-farm --path qpig
-    --project web.auth
+    --project games.mtg --home search-games 
+    --project web.auth 
 
 web static collect
 web auth config-basic --optional --temp-link
 
 ocpp csms setup-app --location simulator
 
-web server start-app --port 8888 --ws-port 9999
+web server start-app --port 18888 --ws-port 19999
 
 # Loop until VERSION or PyPI changes
 until --file VERSION --pypi 

@@ -11,21 +11,29 @@ import socket
 import requests
 from bs4 import BeautifulSoup
 from gway import gw
+import importlib.util
+from pathlib import Path
+
+# Dynamically load the web.auto helpers so we can capture screenshots
+auto_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "auto.py"
+spec = importlib.util.spec_from_file_location("webauto", auto_path)
+webauto = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(webauto)
 
 class ConwayWebTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Start the demo website (port 8888)
         cls.proc = subprocess.Popen(
-            ["gway", "-r", "website"],
+            ["gway", "-r", "test/website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
-        cls._wait_for_port(8888, timeout=15)
+        cls._wait_for_port(18888, timeout=15)
         # Give server time to finish startup
         time.sleep(2)
-        cls.base_url = "http://127.0.0.1:8888"
+        cls.base_url = "http://127.0.0.1:18888"
 
     @classmethod
     def tearDownClass(cls):
@@ -144,6 +152,20 @@ class ConwayWebTests(unittest.TestCase):
         # JS at bottom of body (look for the last scripts)
         js_links = [script['src'] for script in body.find_all('script', src=True)]
         self.assertIn("/shared/global.js", js_links, f"/shared/global.js not linked before </body>: {js_links}")
+
+    def test_conway_game_page_screenshot(self):
+        """Capture a screenshot of the Game of Life page for manual review."""
+        screenshot_dir = Path("work/screenshots")
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+        screenshot_file = screenshot_dir / "conway_game.png"
+        try:
+            webauto.capture_page_source(
+                self.base_url + "/conway/game-of-life",
+                screenshot=str(screenshot_file),
+            )
+        except Exception as e:
+            self.skipTest(f"Webdriver unavailable: {e}")
+        self.assertTrue(screenshot_file.exists())
 
 if __name__ == "__main__":
     unittest.main()
