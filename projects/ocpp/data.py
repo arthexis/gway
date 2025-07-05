@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from typing import Iterable, Optional, Sequence
 
+
 from gway import gw
 
 _db_conn = None
@@ -242,6 +243,7 @@ def list_chargers() -> list[str]:
     )
     return [r[0] for r in rows]
 
+
 def view_charger_summary(**_):
     """Simple HTML summary of charger data."""
     rows = get_summary()
@@ -258,6 +260,7 @@ def view_charger_summary(**_):
         )
     html.append("</table>")
     return "\n".join(html)
+
 
 def view_charger_details(
     *,
@@ -370,3 +373,4 @@ def view_time_series(*, chargers: list = None, start: str = None, end: str = Non
     )
     html.append('</script>')
     return "\n".join(html)
+

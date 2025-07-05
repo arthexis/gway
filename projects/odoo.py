@@ -544,3 +544,104 @@ def find_quotes(
         quote['matching_lines'] = quote_lines_by_order.get(quote['id'], [])
 
     return quotes
+
+
+def fetch_projects(*, name=None):
+    """Fetch projects by partial name."""
+    model = 'project.project'
+    method = 'search_read'
+
+    domain_filter = []
+    if name:
+        domain_filter.append(('name', 'ilike', name))
+
+    fields_to_fetch = ['name']
+    result = execute_kw(
+        [domain_filter], {'fields': fields_to_fetch},
+        model=model, method=method
+    )
+    return result
+
+
+def create_task(
+    *,
+    title: str | None = None,
+    project: str | int = '[ODOO_DEFAULT_PROJECT]',
+    customer: str | None = None,
+    phone: str | None = None,
+    notes: str | None = None,
+    new_customer: bool = False,
+):
+    """Create an Odoo project task with optional customer creation.
+
+    If ``title`` is not provided but ``customer`` is, the task title defaults
+    to the customer name.
+    """
+
+    # Resolve default project value from environment
+    if isinstance(project, str):
+        project_resolved = gw.resolve(project)
+    else:
+        project_resolved = project
+
+    # Determine project_id
+    try:
+        project_id = int(project_resolved)
+    except (ValueError, TypeError):
+        projects = fetch_projects(name=project_resolved)
+        if not projects:
+            return {'error': f"Project not found: {project_resolved}"}
+        if len(projects) > 1:
+            gw.warning(f"Multiple projects match '{project_resolved}', using first")
+        project_id = projects[0]['id']
+
+    # Handle customer lookup / creation
+    customer_id = None
+    if customer:
+        if new_customer:
+            values = {'name': customer}
+            if phone:
+                values['phone'] = phone
+            if notes:
+                values['comment'] = notes
+            customer_id = execute_kw(
+                [values], {},
+                model='res.partner', method='create'
+            )
+        else:
+            result = fetch_customers(name=customer)
+            if not result:
+                return {'error': f"Customer not found: {customer}"}
+            customer_id = result[0]['id']
+
+    if title is None:
+        if customer:
+            title = customer
+        else:
+            return {'error': 'title or customer required'}
+
+    description_parts = []
+    if phone:
+        description_parts.append(f"Phone: {phone}")
+    if notes:
+        description_parts.append(notes)
+    description = '\n'.join(description_parts)
+
+    task_vals = {
+        'name': title,
+        'project_id': project_id,
+    }
+    if customer_id:
+        task_vals['partner_id'] = customer_id
+    if description:
+        task_vals['description'] = description
+
+    task_id = execute_kw(
+        [task_vals], {},
+        model='project.task', method='create'
+    )
+    task = execute_kw(
+        [[task_id]], {'fields': ['id', 'name', 'project_id', 'partner_id', 'description']},
+        model='project.task', method='read'
+    )
+    return task

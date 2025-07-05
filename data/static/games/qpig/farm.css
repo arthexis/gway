@@ -1,0 +1,21 @@
+/* file: data/static/games/qpig/farm.css */
+
+.qpig-garden {
+    font-family: monospace;
+    background: #7ec87e;
+    border: 2px solid #2b7a2b;
+    padding: 8px;
+    margin: 0 auto;
+    display: inline-block;
+}
+
+.qpig-garden .qpig-buttons {
+    display: flex;
+    gap: 8px;
+    margin: 1em 0;
+}
+
+pig-warning {
+    margin-top: 1em;
+    color: #a00;
+}
