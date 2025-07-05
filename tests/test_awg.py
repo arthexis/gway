@@ -11,6 +11,12 @@ class TestMaxAwg(unittest.TestCase):
         self.assertEqual(res["awg"], "4")
         self.assertGreater(res["vdperc"], 3)
 
+    def test_uses_extra_lines_within_limit(self):
+        res = gw.awg.find_awg(meters=125, amps=60, volts=240, material="cu", max_awg=4, max_lines=3)
+        self.assertEqual(res["awg"], "4")
+        self.assertEqual(res["lines"], 2)
+        self.assertLess(res["vdperc"], 3)
+
     def test_respects_max_awg_limit(self):
         res = gw.awg.find_awg(meters=250, amps=125, volts=240, material="cu", max_awg=4)
         self.assertEqual(res["awg"], "n/a")
