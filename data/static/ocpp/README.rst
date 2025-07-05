@@ -14,8 +14,13 @@ Launch a simulator session pointing at your CSMS with:
 
    gway ocpp.evcs simulate --host 127.0.0.1 --ws-port 9000 --cp-path CPX
 
-Open ``/ocpp/csms/charger-status`` in your browser and you can send
-``Stop`` or ``Soft Reset`` commands to see the simulator react.
+Open ``/ocpp/csms/charger-status`` in your browser to view all
+connected chargers. Each card refreshes every few seconds so data
+stays current. Click a charger to open its detail page where you can
+send commands like ``Stop`` or ``Soft Reset`` and watch the log update
+in real time. The auto-refresh will collapse any open panels; you can
+temporarily disable it by removing the ``data-gw-refresh`` attribute
+from the page.
 
 Etron Recipes
 -------------

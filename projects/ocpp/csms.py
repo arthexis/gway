@@ -7,6 +7,7 @@ import time
 import uuid
 import traceback
 import asyncio
+import html
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
 from bottle import request, redirect, HTTPError
@@ -23,6 +24,7 @@ _transactions: Dict[str, dict] = {}           # charger_id → latest transactio
 _active_cons: Dict[str, WebSocket] = {}      # charger_id → live WebSocket
 _latest_heartbeat: Dict[str, str] = {}  # charger_id → ISO8601 UTC time string
 _abnormal_status: Dict[str, dict] = {}  # charger_id → {"status": ..., "errorCode": ..., "info": ...}
+_msg_log: Dict[str, list] = {}          # charger_id → ["< msg", "> msg", ...]
 
 def authorize_balance(**record):
     """
@@ -342,7 +344,31 @@ def get_charger_state(cid, tx, ws_live, raw_hb):
 
 ...
 
-def _render_charger_card(cid, tx, state, raw_hb):
+def _render_card_controls(cid):
+    return f'''
+            <form method="post" action="" class="charger-action-form">
+              <input type="hidden" name="charger_id" value="{cid}">
+              <select name="action" id="action-{cid}" aria-label="Action">
+                <option value="remote_stop">Stop</option>
+                <option value="reset_soft">Soft Reset</option>
+                <option value="reset_hard">Hard Reset</option>
+                <option value="disconnect">Disconnect</option>
+              </select>
+              <div class="charger-actions-btns">
+                <button type="submit" name="do" value="send">Send</button>
+                <a href="/ocpp/csms/energy-graph?charger_id={cid}" class="graph-btn" target="_blank">Graph</a>
+              </div>
+            </form>
+    '''
+
+def _render_card_link(cid):
+    return (
+        '<div class="charger-actions-btns">'
+        f'<a href="/ocpp/csms/charger-detail?charger_id={cid}" class="graph-btn">Details</a>'
+        '</div>'
+    )
+
+def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
     """
     Render a charger card with the right status stripe (state: "online", "available", "error", "unknown").
     """
@@ -366,6 +392,9 @@ def _render_charger_card(cid, tx, state, raw_hb):
             latest_hb = raw_hb
 
     last_updated = tx.get("last_updated", raw_hb or "") if tx else (raw_hb or "")
+
+    controls_html = _render_card_controls(cid) if show_controls else _render_card_link(cid)
+    details_html = ''
 
     return f'''
     <div class="charger-card {status_class}" id="charger-{cid}">
@@ -401,26 +430,11 @@ def _render_charger_card(cid, tx, state, raw_hb):
             </table>
           </td>
           <td class="charger-actions-td">
-            <form method="post" action="" class="charger-action-form">
-              <input type="hidden" name="charger_id" value="{cid}">
-              <select name="action" id="action-{cid}" aria-label="Action">
-                <option value="remote_stop">Stop</option>
-                <option value="reset_soft">Soft Reset</option>
-                <option value="reset_hard">Hard Reset</option>
-                <option value="disconnect">Disconnect</option>
-              </select>
-              <div class="charger-actions-btns">
-                <button type="submit" name="do" value="send">Send</button>
-                <button type="button" class="details-btn" data-target="details-{cid}">Details</button>
-                <a href="/ocpp/csms/energy-graph?charger_id={cid}" class="graph-btn" target="_blank">Graph</a>
-              </div>
-            </form>
+            {controls_html}
           </td>
         </tr>
       </table>
-      <div id="details-{cid}" class="charger-details-panel hidden">
-        <pre>{json.dumps(tx or {}, indent=2)}</pre>
-      </div>
+      {details_html}
     </div>
     '''
 
@@ -430,15 +444,17 @@ def view_charger_status(*, action=None, charger_id=None, **_):
     Renders <div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5">
     so the client can periodically refresh the list via render.js.
     """
+    msg = ""
     if request.method == "POST":
         action = request.forms.get("action")
         charger_id = request.forms.get("charger_id")
         if action and charger_id:
             try:
                 dispatch_action(charger_id, action)
+                msg = f"Action {action} sent"
             except Exception as e:
                 gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
-            return redirect(request.fullpath or "/ocpp/charger-status")
+                msg = f"Error: {e}"
 
     all_chargers = set(_active_cons) | set(_transactions)
     html = [
@@ -447,6 +463,8 @@ def view_charger_status(*, action=None, charger_id=None, **_):
         '<script src="/static/ocpp/csms/charger_status.js"></script>',
         "<h1>OCPP Status Dashboard</h1>"
     ]
+    if msg:
+        html.append(f'<p class="error">{msg}</p>')
 
     # Abnormal status warning
     if _abnormal_status:
@@ -477,7 +495,7 @@ def view_charger_status(*, action=None, charger_id=None, **_):
             tx = _transactions.get(cid)
             raw_hb = _latest_heartbeat.get(cid)
             state = get_charger_state(cid, tx, ws_live, raw_hb)
-            html.append(_render_charger_card(cid, tx, state, raw_hb))
+            html.append(_render_charger_card(cid, tx, state, raw_hb, show_controls=False))
     html.append('</div>')
 
     ws_url = gw.web.build_ws_url()
@@ -513,8 +531,69 @@ def render_charger_list(**kwargs):
             tx = _transactions.get(cid)
             raw_hb = _latest_heartbeat.get(cid)
             state = get_charger_state(cid, tx, ws_live, raw_hb)
-            html.append(_render_charger_card(cid, tx, state, raw_hb))
+            html.append(_render_charger_card(cid, tx, state, raw_hb, show_controls=False))
     return "\n".join(html)
+
+def view_charger_detail(*, charger_id=None, **_):
+    """Detail view for a single charger with live log."""
+    if not charger_id:
+        return redirect("/ocpp/csms/charger-status")
+
+    msg = ""
+    if request.method == "POST":
+        action = request.forms.get("action")
+        if action:
+            try:
+                dispatch_action(charger_id, action)
+                msg = f"Action {action} sent"
+            except Exception as e:
+                gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
+                msg = f"Error: {e}"
+
+    ws_live = charger_id in _active_cons
+    tx = _transactions.get(charger_id)
+    raw_hb = _latest_heartbeat.get(charger_id)
+    state = get_charger_state(charger_id, tx, ws_live, raw_hb)
+
+    html = [
+        '<link rel="stylesheet" href="/static/ocpp/csms/charger_status.css">',
+        '<script src="/static/render.js"></script>',
+        '<h1>Charger Details</h1>',
+        f'<nav><a href="/ocpp/csms/charger-status">&laquo; All Chargers</a></nav>'
+    ]
+    if msg:
+        html.append(f'<p class="error">{msg}</p>')
+
+    html.append(
+        f'<div id="charger-info" data-gw-render="charger_info" data-gw-refresh="5" data-charger-id="{charger_id}">' +
+        _render_charger_card(charger_id, tx, state, raw_hb) +
+        '</div>'
+    )
+
+    html.append(
+        f'<div id="charger-log" data-gw-render="charger_log" data-gw-refresh="2" data-charger-id="{charger_id}">' +
+        render_charger_log(charger_id=charger_id) +
+        '</div>'
+    )
+
+    return "".join(html)
+
+def render_charger_info(*, charger_id=None, chargerId=None, **_):
+    cid = charger_id or chargerId
+    if not cid:
+        return ""
+    tx = _transactions.get(cid)
+    raw_hb = _latest_heartbeat.get(cid)
+    state = get_charger_state(cid, tx, cid in _active_cons, raw_hb)
+    return _render_charger_card(cid, tx, state, raw_hb)
+
+def render_charger_log(*, charger_id=None, chargerId=None, **_):
+    cid = charger_id or chargerId
+    if not cid:
+        return ""
+    lines = _msg_log.get(cid, [])[-50:]
+    esc = lambda s: html.escape(s)
+    return '<pre>' + '\n'.join(esc(line) for line in lines) + '</pre>'
 
 ...
 
@@ -528,15 +607,18 @@ def dispatch_action(charger_id: str, action: str):
     msg_id = str(uuid.uuid4())
 
     # Compose and send the appropriate OCPP message for the requested action
+    msg_text = None
     if action == "remote_stop":
         tx = _transactions.get(charger_id)
         if not tx:
             raise HTTPError(404, "No transaction to stop")
-        coro = ws.send_text(json.dumps([2, msg_id, "RemoteStopTransaction",
-                                        {"transactionId": tx["transactionId"]}]))
+        msg_text = json.dumps([2, msg_id, "RemoteStopTransaction",
+                               {"transactionId": tx["transactionId"]}])
+        coro = ws.send_text(msg_text)
     elif action.startswith("reset_"):
         _, mode = action.split("_", 1)
-        coro = ws.send_text(json.dumps([2, msg_id, "Reset", {"type": mode.capitalize()}]))
+        msg_text = json.dumps([2, msg_id, "Reset", {"type": mode.capitalize()}])
+        coro = ws.send_text(msg_text)
     elif action == "disconnect":
         coro = ws.close(code=1000, reason="Admin disconnect")
     else:
@@ -546,6 +628,9 @@ def dispatch_action(charger_id: str, action: str):
         _csms_loop.call_soon_threadsafe(lambda: _csms_loop.create_task(coro))
     else:
         gw.warn("No CSMS event loop; action not sent")
+
+    if msg_text:
+        _msg_log.setdefault(charger_id, []).append(f"< {msg_text}")
 
     return {"status": "requested", "messageId": msg_id}
 
