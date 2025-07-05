@@ -46,6 +46,19 @@ class SigilTests(unittest.TestCase):
         self.assertIn("[val]", str(s))
         self.assertIn("[val]", repr(s))
 
+    def test_make_lookup_with_callable_variants(self):
+        def finder(key, _):
+            if key == "FOO_BAR":
+                return "bar"
+        s = Sigil("Value [FOO-BAR]")
+        self.assertEqual(s.resolve(finder), "Value bar")
+
+    def test_unquote_helper(self):
+        from gway.sigils import _unquote
+        self.assertEqual(_unquote('"hello"'), "hello")
+        self.assertEqual(_unquote("'world'"), "world")
+        self.assertEqual(_unquote("plain"), "plain")
+
 class SpoolTests(unittest.TestCase):
     def setUp(self):
         self.mapping = {"A": "apple", "B": "banana", "C": "cucumber"}
@@ -81,6 +94,11 @@ class SpoolTests(unittest.TestCase):
         spool = Spool("[X]", "[A]")
         # Provide a gw-style object with .resolve()
         self.assertEqual(spool.resolve(self.mapping), "apple")
+
+    def test_spool_flatten_and_str(self):
+        spool = Spool(["[A]", ["[B]", "[C]"]])
+        self.assertEqual(len(spool), 3)
+        self.assertEqual(str(spool), "[A] | [B] | [C]")
 
 if __name__ == "__main__":
     unittest.main()
