@@ -1,6 +1,18 @@
 @echo off
 setlocal
 
+if "%~1"=="--help" (
+    echo Usage: install.bat [--show] [recipe]
+    echo   --show    List installed gway services
+    goto :eof
+)
+
+if "%~1"=="--show" (
+    echo Installed GWAY services:
+    for /f "tokens=2 delims=:" %%S in ('sc.exe query state^= all ^| findstr "SERVICE_NAME: gway-"') do echo %%S
+    goto :eof
+)
+
 rem Ensure the script runs from its own directory
 cd /d "%~dp0"
 

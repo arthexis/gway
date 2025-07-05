@@ -174,6 +174,13 @@ To run GWAY automatically as a service using a recipe:
     sudo ./install.sh <recipe>   # On Linux/macOS
     install.bat <recipe>         # On Windows
 
+List installed services:
+
+.. code-block:: bash
+
+    sudo ./install.sh --show
+    install.bat --show
+
 On Windows, the installed service will automatically restart if it exits
 unexpectedly.
 

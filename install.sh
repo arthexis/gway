@@ -2,6 +2,12 @@
 # file: install.sh
 set -euo pipefail
 
+usage() {
+  echo "Usage: $0 [--show] [recipe]"
+  echo "  --show    List installed gway services"
+  exit 0
+}
+
 # Resolve real directory of this script (even if symlinked)
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
@@ -21,17 +27,54 @@ fi
 # Activate the virtual environment
 source .venv/bin/activate
 
-# 2) No-arg case: notify installation and usage
-if [[ $# -eq 0 ]]; then
+# Parse arguments
+SHOW=0
+RECIPE=""
+for arg in "$@"; do
+  case "$arg" in
+    --show)
+      SHOW=1
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      if [[ -z "$RECIPE" ]]; then
+        RECIPE="$arg"
+      else
+        echo "Unknown argument: $arg" >&2
+        deactivate
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+# No arguments at all -> show instructions
+if [[ $SHOW -eq 0 && -z "$RECIPE" ]]; then
   echo "GWAY has been set up in .venv."
   echo "To install a systemd service for a recipe, run:"
   echo "  sudo ./install.sh <recipe-name>"
+  echo "Use --show to list installed services"
+  deactivate
+  exit 0
+fi
+
+# Show installed services
+if [[ $SHOW -eq 1 && -z "$RECIPE" ]]; then
+  echo "Installed GWAY services:" 
+  systemctl list-unit-files | grep '^gway-.*\.service' || true
   deactivate
   exit 0
 fi
 
 # 3) Recipe-based service install
-RECIPE="$1"
+if [[ -z "$RECIPE" ]]; then
+  echo "Error: missing recipe name" >&2
+  deactivate
+  exit 1
+fi
+
 RECIPE_FILE="recipes/${RECIPE}.gwr"
 if [[ ! -f "$RECIPE_FILE" ]]; then
   echo "ERROR: Recipe '$RECIPE' not found at $RECIPE_FILE" >&2
