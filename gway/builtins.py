@@ -193,12 +193,20 @@ def resource_list(*parts, ext=None, prefix=None, suffix=None):
     matches.sort(key=lambda p: p.stat().st_ctime)
     return matches
 
-def test(*, root: str = 'tests', filter=None, on_success = None, on_failure= None):
+def test(*, root: str = 'tests', filter=None, on_success=None, on_failure=None, coverage: bool = False):
     """Execute all automatically detected test suites, logging to logs/test.log."""
     import unittest
     import os
     from gway import gw
     from gway.logging import use_logging
+    cov = None
+    if coverage:
+        try:
+            from coverage import Coverage
+            cov = Coverage()
+            cov.start()
+        except Exception as e:
+            gw.warning(f"Coverage requested but failed to initialize: {e}")
 
     log_path = os.path.join("logs", "test.log")
 
@@ -232,6 +240,26 @@ def test(*, root: str = 'tests', filter=None, on_success = None, on_failure= Non
         runner = unittest.TextTestRunner(verbosity=2)
         result = runner.run(test_suite)
         gw.info(f"Test results: {str(result).strip()}")
+
+    if cov:
+        cov.stop()
+        try:
+            percent = cov.report(include=["gway/*"])
+            gw.info(f"gway coverage: {percent:.2f}%")
+            print(f"gway: {percent:.2f}%")
+            projects_dir = "projects"
+            if os.path.isdir(projects_dir):
+                for proj in sorted(os.listdir(projects_dir)):
+                    path = os.path.join(projects_dir, proj)
+                    if os.path.isdir(path):
+                        percent = cov.report(include=[f"{path}/*"])
+                        gw.info(f"{proj} coverage: {percent:.2f}%")
+                        print(f"{proj}: {percent:.2f}%")
+            total = cov.report()
+            gw.info(f"Total coverage: {total:.2f}%")
+            print(f"Total: {total:.2f}%")
+        except Exception as e:
+            gw.warning(f"Coverage report failed: {e}")
 
     # --- Cleanup: Remove test.log if tests succeeded and on_success is 'clear' ---
     if result.wasSuccessful() and on_success == "clear":

@@ -24,7 +24,7 @@ Basic Features
 - ⛓️ CLI chaining: ``proj1 func1 - proj2 func2`` (implicit parameter passing by name)
 - 🧠 Sigil-based context resolution (e.g., ``[result-context-environ|fallback]``)
 - ⚙️ Automatic CLI generation, with support for ``*``, ``*args`` and ``**kwargs``
-- 🧪 Built-in test runner and self-packaging: ``gway test`` and ``gway release build``
+- 🧪 Built-in test runner and self-packaging: ``gway test`` (use ``--coverage`` for coverage) and ``gway release build``
 - 📦 Environment-aware loading (e.g., ``clients`` and ``servers`` .env files)
 
 

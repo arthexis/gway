@@ -27,7 +27,7 @@ Homepage = "https://arthexis.com"
 Sponsor = "https://www.gelectriic.com/"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "coverage"]
 
 [tool.setuptools]
 packages = [ "gway",]
