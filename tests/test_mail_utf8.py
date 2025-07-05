@@ -11,6 +11,7 @@ class FakeIMAP:
         self.port = port
         self._encoding = 'ascii'
         self.utf8_enabled = False
+        self.selected_mailbox = None
         FakeIMAP.instances.append(self)
     def login(self, user, password):
         pass
@@ -21,7 +22,7 @@ class FakeIMAP:
             return 'OK', [b'enabled']
         raise Exception('unsupported')
     def select(self, mailbox):
-        pass
+        self.selected_mailbox = mailbox
     def search(self, charset, criteria):
         if isinstance(criteria, str):
             criteria.encode(self._encoding)
@@ -56,6 +57,14 @@ class MailUTF8Tests(unittest.TestCase):
             fake = FakeIMAP.instances[0]
             self.assertTrue(fake.utf8_enabled)
             self.assertEqual(fake.last_search[0], None)
+
+    def test_search_uses_inbox_uppercase(self):
+        """Ensure search operates with FakeIMAP when selecting 'INBOX'."""
+        with patch('imaplib.IMAP4_SSL', FakeIMAP):
+            content, attachments = gw.mail.search('hello')
+            self.assertEqual(content, 'respuesta')
+            fake = FakeIMAP.instances[0]
+            self.assertEqual(fake.selected_mailbox, 'INBOX')
 
 if __name__ == '__main__':
     unittest.main()
