@@ -145,6 +145,16 @@ To **upgrade** to the latest version from source:
     ./upgrade.sh     # On Linux/macOS
     upgrade.bat      # On Windows
 
+To run GWAY automatically as a service using a recipe:
+
+.. code-block:: bash
+
+    sudo ./install.sh <recipe>   # On Linux/macOS
+    install.bat <recipe>         # On Windows
+
+On Windows, the installed service will automatically restart if it exits
+unexpectedly.
+
 This pulls the latest updates from the `main` branch and refreshes dependencies.
 
 To make GWAY available from any directory (requires root access):
