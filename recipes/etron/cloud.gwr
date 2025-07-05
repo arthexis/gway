@@ -1,7 +1,8 @@
 # file: recipes/etron/cloud.gwr
 # OCPP 1.6 CSMS Recipe for Central Cloud Server
 
-web app setup-app --project ocpp.csms --home charger-status
+web app setup-app --project ocpp.data --home charger-summary
+    --project ocpp.csms --home charger-status
     --project ocpp.csms --home cp-simulator
     --project web.cookies 
     --project web.nav

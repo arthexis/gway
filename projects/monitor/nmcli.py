@@ -91,6 +91,21 @@ def get_all_devices():
             devices.append(parts[0])
     return devices
 
+def get_default_route_iface():
+    """Return the interface used for the default route, or None."""
+    try:
+        out = subprocess.check_output(["ip", "route", "show", "default"], text=True)
+        for line in out.splitlines():
+            if line.startswith("default"):
+                parts = line.split()
+                if "dev" in parts:
+                    idx = parts.index("dev")
+                    if idx + 1 < len(parts):
+                        return parts[idx + 1]
+    except Exception:
+        pass
+    return None
+
 def ping(iface, target="8.8.8.8", count=2, timeout=2):
     try:
         result = subprocess.run(
@@ -348,6 +363,13 @@ def monitor_nmcli(**kwargs):
             gw.info("[nmcli] wlan0 cannot connect as client")
             # Keep wlan0 in station mode. It will switch back to AP
             # only when another interface provides internet.
+
+    # Fallback to system default route if we detected internet
+    if found_inet and not internet_iface:
+        gw_iface = get_default_route_iface()
+        if gw_iface:
+            internet_iface = gw_iface
+            
     gw.monitor.set_states('nmcli', {
         "last_monitor_check": now_iso(),
         "internet_iface": internet_iface,
@@ -388,7 +410,6 @@ def _color_icon(status):
 def render_nmcli():
     s = gw.monitor.get_state('nmcli')
     wlanN = s.get("wlanN") or {}
-    wlan_count = len(wlanN)
     internet_iface = s.get("internet_iface")
     internet_ssid = s.get("internet_ssid")
 
@@ -406,6 +427,7 @@ def render_nmcli():
     # Gather device info for eth0, wlan0, all wlanN, and any other network devices
     devices = get_all_devices()
     device_info = {dev: get_device_info(dev) for dev in devices}
+    wlan_count = len([d for d in devices if d.startswith('wlan') and d != 'wlan0'])
 
     html = ['<div class="nmcli-report">']
     html.append("<h2>Network Manager</h2>")
@@ -445,12 +467,13 @@ def render_nmcli():
     for dev in sorted([d for d in devices if d.startswith('wlan')]):
         st = wlanN.get(dev, {})
         dinfo = device_info.get(dev, {})
+        gw_mark = ' <b>(gw)</b>' if dev == internet_iface else ''
         html.append(
             f"<tr>"
             f"<td>{dev}</td>"
             f"<td>{st.get('ssid') or '-'}</td>"
             f"<td>{_color_icon(st.get('connected'))} {st.get('connected') if 'connected' in st else dinfo.get('state','-')}</td>"
-            f"<td>{_color_icon(st.get('inet')) if 'inet' in st else _color_icon(dinfo.get('state')=='connected')} {st.get('inet') if 'inet' in st else '-'}</td>"
+            f"<td>{_color_icon(st.get('inet')) if 'inet' in st else _color_icon(dinfo.get('state')=='connected')} {st.get('inet') if 'inet' in st else '-'}{gw_mark}</td>"
             f"<td>{dinfo.get('state','-')}</td>"
             f"<td>{dinfo.get('driver','-')}</td>"
             f"<td>{dinfo.get('mac','-')}</td>"
