@@ -51,7 +51,7 @@ def find_awg(
             or ``90``. ``None`` (default) selects 60C for loads <=100A and 75C
             otherwise.
         conduit: Conduit type or None.
-        ground: Number of ground wires.
+        ground: Number of ground wires per line.
     Returns:
         dict with cable selection and voltage drop info, or {'awg': 'n/a'} if not possible.
     """
@@ -153,8 +153,8 @@ def find_awg(
                     "vdrop": vdrop,
                     "vend": volts - vdrop,
                     "vdperc": perc * 100,
-                    "cables": f"{n * phases}+{ground}",
-                    "total_meters": f"{n * phases * meters}+{meters * ground}",
+                    "cables": f"{n * phases}+{n * ground}",
+                    "total_meters": f"{n * phases * meters}+{meters * n * ground}",
                 }
                 if perc <= 0.03:
                     if conduit:

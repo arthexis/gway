@@ -16,6 +16,7 @@ class TestMaxAwg(unittest.TestCase):
         self.assertEqual(res["awg"], "4")
         self.assertEqual(res["lines"], 2)
         self.assertLess(res["vdperc"], 3)
+        self.assertEqual(res["cables"], "4+2")
 
     def test_respects_max_awg_limit(self):
         res = gw.awg.find_awg(meters=250, amps=125, volts=240, material="cu", max_awg=4)
