@@ -126,7 +126,8 @@ def search(subject_fragment, body_fragment=None):
             mail.enable('UTF8=ACCEPT')
         except Exception:
             pass
-        mail.select('inbox')
+        # Ensure mailbox is selected case-sensitively for broader compatibility
+        mail.select('INBOX')
 
         search_criteria = []
         if subject_fragment and subject_fragment != "*":
