@@ -369,7 +369,6 @@ def _render_charger_card(cid, tx, state, raw_hb):
 
     return f'''
     <div class="charger-card {status_class}" id="charger-{cid}">
-      <input type="hidden" name="charger_id" value="{cid}">
       <input type="hidden" name="last_updated" value="{last_updated}">
       <table class="charger-layout">
         <tr>
@@ -403,6 +402,7 @@ def _render_charger_card(cid, tx, state, raw_hb):
           </td>
           <td class="charger-actions-td">
             <form method="post" action="" class="charger-action-form">
+              <input type="hidden" name="charger_id" value="{cid}">
               <select name="action" id="action-{cid}" aria-label="Action">
                 <option value="remote_stop">Stop</option>
                 <option value="reset_soft">Soft Reset</option>
@@ -442,7 +442,7 @@ def view_charger_status(*, action=None, charger_id=None, **_):
 
     all_chargers = set(_active_cons) | set(_transactions)
     html = [
-        '<link rel="stylesheet" href="/static/styles/charger_status.css">',
+        '<link rel="stylesheet" href="/static/ocpp/csms/charger_status.css">',
         '<script src="/static/render.js"></script>',
         '<script src="/static/ocpp/csms/charger_status.js"></script>',
         "<h1>OCPP Status Dashboard</h1>"
