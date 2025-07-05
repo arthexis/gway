@@ -157,6 +157,8 @@ Install from Source:
     # Run directly from shell or command prompt
     ./gway.sh        # On Linux/macOS
     gway.bat         # On Windows
+    # VS Code task configuration
+    tasks.json       # Provides a "Run Gway on Current File" task
 
 When running GWAY from source for the first time, it will **auto-install** dependencies if needed.
 
@@ -166,6 +168,7 @@ To **upgrade** to the latest version from source:
 
     ./upgrade.sh     # On Linux/macOS
     upgrade.bat      # On Windows
+    # Or run ./upgrade.sh via Git Bash or WSL
 
 To run GWAY automatically as a service using a recipe:
 
