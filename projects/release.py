@@ -104,6 +104,10 @@ def build(
         if line.strip() and not line.startswith("#")
     ]
 
+    optional_dependencies = {
+        "dev": ["pytest", "pytest-cov"],
+    }
+
     pyproject_content = {
         "build-system": {
             "requires": ["setuptools", "wheel"],
@@ -121,6 +125,7 @@ def build(
             },
             "classifiers": classifiers,
             "dependencies": dependencies,
+            "optional-dependencies": optional_dependencies,
             "authors": [
                 {
                     "name": author_name,

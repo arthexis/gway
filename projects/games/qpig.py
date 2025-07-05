@@ -2,11 +2,7 @@
 """Prototype incremental game about quantum guinea pigs."""
 
 from gway import gw
-
-
 import time
-
-
 import json
 import math
 
@@ -101,6 +97,7 @@ def _get_offer():
 def _clear_offer():
     if not _use_cookies():
         return
+
     cookies = gw.web.cookies
     for k in ["qpig_offer_kind", "qpig_offer_qty", "qpig_offer_price"]:
         cookies.delete(k, path="/")
@@ -209,7 +206,6 @@ def _process_state(action: str | None = None):
     intervals = int(dt / QP_INTERVAL)
     if intervals > 0:
         import random
-
         base_prob = QP_BASE_CHANCE * (1 + (cert_frac - 0.5) * QP_CERT_BONUS * 2)
         prob = min(1.0, base_prob * buff_mult)
         for _ in range(intervals):
@@ -370,5 +366,4 @@ def view_qpig_farm(*, action: str = None, **_):
             "<div class='qpig-warning'>Enable cookies to save your progress.</div>"
         )
     html.append("</div>")
-
     return "\n".join(html)
