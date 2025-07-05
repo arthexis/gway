@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Gway on Current File",
+      "type": "shell",
+      "command": ".venv\\Scripts\\activate && gway",
+      "args": [
+        "${file}"
+      ],
+      "windows": {
+        "command": ".venv\\Scripts\\activate && gway"
+      },
+      "linux": {
+        "command": "source .venv/bin/activate && gway"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
+}
