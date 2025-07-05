@@ -140,7 +140,7 @@ def setup_app(*,
                                 cp_ts = int(datetime.fromisoformat(payload["timestamp"].rstrip("Z")).timestamp())
                             except Exception:
                                 cp_ts = None
-                        ocpp_data.record_transaction_start(
+                        gw.ocpp.data.record_transaction_start(
                             charger_id,
                             transaction_id,
                             now,
@@ -191,7 +191,7 @@ def setup_app(*,
                                             "measurand": measurand,
                                             "context": sv.get("context", ""),
                                         })
-                                        ocpp_data.record_meter_value(
+                                        gw.ocpp.data.record_meter_value(
                                             charger_id,
                                             tx.get("transactionId"),
                                             ts_epoch,
@@ -236,7 +236,7 @@ def setup_app(*,
                                     cp_stop = int(datetime.fromisoformat(payload["timestamp"].rstrip("Z")).timestamp())
                                 except Exception:
                                     cp_stop = None
-                            ocpp_data.record_transaction_stop(
+                            gw.ocpp.data.record_transaction_stop(
                                 charger_id,
                                 tx.get("transactionId"),
                                 now,
@@ -267,7 +267,7 @@ def setup_app(*,
                                 "timestamp": datetime.utcnow().isoformat() + "Z"
                             }
                             gw.warn(f"[OCPP] Abnormal status for {charger_id}: {status}/{error_code} - {info}")
-                            ocpp_data.record_error(charger_id, status, error_code, info)
+                            gw.ocpp.data.record_error(charger_id, status, error_code, info)
                         else:
                             if charger_id in _abnormal_status:
                                 gw.info(f"[OCPP] Status normalized for {charger_id}: {status}/{error_code}")
@@ -412,7 +412,7 @@ def _render_charger_card(cid, tx, state, raw_hb):
               <div class="charger-actions-btns">
                 <button type="submit" name="do" value="send">Send</button>
                 <button type="button" class="details-btn" data-target="details-{cid}">Details</button>
-                <a href="/ocpp/graph/{cid}" class="graph-btn" target="_blank">Graph</a>
+                <a href="/ocpp/csms/energy-graph?charger_id={cid}" class="graph-btn" target="_blank">Graph</a>
               </div>
             </form>
           </td>
