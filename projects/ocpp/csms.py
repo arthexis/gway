@@ -587,7 +587,7 @@ def view_energy_graph(*, charger_id=None, date=None, **_):
     Render a page with a graph for a charger's session by date.
     """
     import glob
-    html = ['<link rel="stylesheet" href="/static/styles/charger_status.css">']
+    html = ['<link rel="stylesheet" href="/static/ocpp/csms/charger_status.css">']
     html.append('<h1>Charger Transaction Graph</h1>')
 
     # Form for charger/date selector
