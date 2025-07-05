@@ -4,6 +4,17 @@ setlocal
 rem Ensure the script runs from its own directory
 cd /d "%~dp0"
 
+rem Repair previously installed services
+if "%~1"=="--repair" (
+    echo Repairing installed gway services...
+    for /f "usebackq delims=" %%R in (
+        `powershell -NoProfile -Command "Get-Service | Where-Object { $_.Name -like 'gway-*' } | ForEach-Object { sc.exe qc $_.Name | Select-String '-r ' | ForEach-Object { if (\$_ -match '-r\\s+([^\"\\s]+)') { $matches[1] } } }"`
+    ) do (
+        call "%~f0" %%R
+    )
+    goto :eof
+)
+
 rem Create .venv and install package if not present
 if not exist ".venv" (
     echo Creating virtual environment...
@@ -24,6 +35,8 @@ if "%~1"=="" (
     echo GWAY has been set up in .venv.
     echo To install a Windows service for a recipe, run:
     echo   install.bat ^<recipe^>
+    echo To repair all existing services, run:
+    echo   install.bat --repair
     goto :eof
 )
 
