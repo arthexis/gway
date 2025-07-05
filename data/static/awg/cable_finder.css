@@ -1,0 +1,36 @@
+/* file: data/static/awg/cable_finder.css */
+.cable-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+    gap: 8px 18px;
+    margin-bottom: 1em;
+}
+.cable-form label {
+    display: flex;
+    flex-direction: column;
+    font-weight: 500;
+}
+.cable-form input,
+.cable-form select {
+    margin-top: 3px;
+    padding: 4px 6px;
+    font-size: 1em;
+}
+@media (max-width: 600px) {
+    .cable-form {
+        grid-template-columns: 1fr;
+    }
+}
+.warning {
+    background: #fee;
+    color: #b00;
+    padding: 0.6em 0.8em;
+    border-radius: 4px;
+    margin-top: 0.6em;
+}
+
+.sponsor-logo {
+    float: right;
+    margin-left: 1em;
+    max-width: 140px;
+}
