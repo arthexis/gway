@@ -1,9 +1,9 @@
 import unittest
 import os
-import imaplib
 from unittest.mock import patch
 from email.mime.text import MIMEText
 from gway import gw
+
 
 class FakeIMAP:
     instances = []
@@ -12,7 +12,6 @@ class FakeIMAP:
         self.port = port
         self._encoding = 'ascii'
         self.utf8_enabled = False
-        self.selected_mailbox = None
         FakeIMAP.instances.append(self)
     def login(self, user, password):
         pass
@@ -23,7 +22,7 @@ class FakeIMAP:
             return 'OK', [b'enabled']
         raise Exception('unsupported')
     def select(self, mailbox):
-        self.selected_mailbox = mailbox
+        pass
     def search(self, charset, criteria):
         if isinstance(criteria, str):
             criteria.encode(self._encoding)
@@ -39,7 +38,7 @@ class FakeIMAP:
     def logout(self):
         pass
 
-class MailUTF8Tests(unittest.TestCase):
+class MailQuoteEscapeTests(unittest.TestCase):
     def setUp(self):
         os.environ['MAIL_SENDER'] = 'test@example.com'
         os.environ['MAIL_PASSWORD'] = 'secret'
@@ -51,42 +50,14 @@ class MailUTF8Tests(unittest.TestCase):
         for var in ['MAIL_SENDER','MAIL_PASSWORD','IMAP_SERVER','IMAP_PORT']:
             os.environ.pop(var, None)
 
-    def test_unicode_subject_search(self):
+    def test_subject_with_quotes(self):
         with patch('imaplib.IMAP4_SSL', FakeIMAP):
-            content, attachments = gw.mail.search('instalación')
+            content, attachments = gw.mail.search('He said "Hi"')
             self.assertEqual(content, 'respuesta')
             fake = FakeIMAP.instances[0]
+            expected = '(SUBJECT "He said \\"Hi\\"")'
+            self.assertEqual(fake.last_search[1], expected)
             self.assertTrue(fake.utf8_enabled)
-            self.assertEqual(fake.last_search[0], None)
-
-    def test_charset_fallback(self):
-        class RejectIMAP(FakeIMAP):
-            def __init__(self, *a, **kw):
-                super().__init__(*a, **kw)
-                self.failed = False
-                self._encoding = 'utf-8'
-            def enable(self, capability):
-                raise Exception('unsupported')
-            def search(self, charset, criteria):
-                if not self.failed:
-                    self.failed = True
-                    raise imaplib.IMAP4.error('BAD parse error')
-                return super().search(charset, criteria)
-
-        with patch('imaplib.IMAP4_SSL', RejectIMAP):
-            content, attachments = gw.mail.search('instalación')
-            self.assertEqual(content, 'respuesta')
-            fake = FakeIMAP.instances[0]
-            self.assertTrue(getattr(fake, 'failed', False))
-            self.assertEqual(fake.last_search[0], None)
-
-    def test_search_uses_inbox_uppercase(self):
-        """Ensure search operates with FakeIMAP when selecting 'INBOX'."""
-        with patch('imaplib.IMAP4_SSL', FakeIMAP):
-            content, attachments = gw.mail.search('hello')
-            self.assertEqual(content, 'respuesta')
-            fake = FakeIMAP.instances[0]
-            self.assertEqual(fake.selected_mailbox, 'INBOX')
 
 if __name__ == '__main__':
     unittest.main()

@@ -12,6 +12,11 @@ from email.mime.text import MIMEText
 from email import message_from_bytes
 
 
+def _escape_imap_string(value: str) -> str:
+    """Escape backslashes and quotes for IMAP SEARCH."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def send(subject, body=None, to=None, threaded=None, **kwargs):
     """
     Send an email with the specified subject and body, using defaults from env if available.
@@ -126,9 +131,11 @@ def search(subject_fragment, body_fragment=None):
 
         search_criteria = []
         if subject_fragment and subject_fragment != "*":
-            search_criteria.append(f'(SUBJECT "{subject_fragment}")')
+            esc_subject = _escape_imap_string(subject_fragment)
+            search_criteria.append(f'(SUBJECT "{esc_subject}")')
         if body_fragment:
-            search_criteria.append(f'(BODY "{body_fragment}")')
+            esc_body = _escape_imap_string(body_fragment)
+            search_criteria.append(f'(BODY "{esc_body}")')
 
         if not search_criteria:
             gw.warning("No search criteria provided.")
@@ -136,10 +143,17 @@ def search(subject_fragment, body_fragment=None):
 
         combined_criteria = ' '.join(search_criteria)
 
-        if getattr(mail, 'utf8_enabled', False):
-            status, data = mail.search(None, combined_criteria)
-        else:
-            status, data = mail.search('UTF-8', combined_criteria.encode('utf-8'))
+        try:
+            if getattr(mail, 'utf8_enabled', False):
+                status, data = mail.search(None, combined_criteria)
+            else:
+                status, data = mail.search('UTF-8', combined_criteria.encode('utf-8'))
+        except imaplib.IMAP4.error as e:
+            if 'bad' in str(e).lower() or 'parse' in str(e).lower():
+                gw.warning(f"Search charset failed ({e}); retrying without charset")
+                status, data = mail.search(None, combined_criteria)
+            else:
+                raise
         mail_ids = data[0].split()
 
         if not mail_ids:
