@@ -180,9 +180,13 @@ To apply updated service definitions to all installed services:
 
     sudo ./install.sh --repair   # On Linux/macOS
     install.bat --repair         # On Windows
+    install.bat --remove <recipe>         # Uninstall service
+    install.bat --remove <recipe> --force # Force stop and remove
 
 On Windows, the installed service will automatically restart if it exits
 unexpectedly.
+
+Services on Windows are implemented via ``windows_service.py``.
 
 This pulls the latest updates from the `main` branch and refreshes dependencies.
 
