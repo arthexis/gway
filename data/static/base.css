@@ -265,16 +265,6 @@ p.compass { margin-bottom: 0.5em; }
 .hidden { display: none !important; }
 .full-code-block { position: relative; }
 
-/* 14. Table (e.g., OCPP status dashboard) */
-.ocpp-status {
-    border-collapse: collapse;
-    width: 100%;
-}
-.ocpp-status th, .ocpp-status td {
-    border: 1px solid #ccc;
-    padding: 4px;
-}
-.ocpp-status form.inline { display: inline; }
 
 /* 15. Help System Styles (trimmed for brevity, can be extended as needed) */
 .help-entry {
@@ -366,6 +356,4 @@ p.compass { margin-bottom: 0.5em; }
     background: #b0b0b0;
     border: 2px solid #e0e0e0;
 }
-
-
 

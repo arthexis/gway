@@ -1,0 +1,43 @@
+name: test
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+      - name: Run tests
+        run: gway test
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: work/screenshots/*.png
+      - name: Install gh
+        if: always()
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh
+      - name: Comment screenshots on PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if compgen -G "work/screenshots/*.png" > /dev/null; then
+            for img in work/screenshots/*.png; do
+              gh pr comment ${{ github.event.pull_request.number }} --body "Screenshot from test: $(basename $img)" --attach "$img"
+            done
+          fi

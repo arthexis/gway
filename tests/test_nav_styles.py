@@ -6,21 +6,29 @@ import time
 import socket
 import requests
 from bs4 import BeautifulSoup
+import importlib.util
+from pathlib import Path
+
+# Dynamically load the web.auto helpers for screenshot capture
+auto_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "auto.py"
+spec = importlib.util.spec_from_file_location("webauto", auto_path)
+webauto = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(webauto)
 
 class NavStyleTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Launch the website recipe on a test port (8888)
         cls.proc = subprocess.Popen(
-            ["gway", "-r", "website"],
+            ["gway", "-r", "test/website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
-        cls._wait_for_port(8888, timeout=15)
+        cls._wait_for_port(18888, timeout=15)
         # Let the server warm up
         time.sleep(2)
-        cls.base_url = "http://127.0.0.1:8888"
+        cls.base_url = "http://127.0.0.1:18888"
 
     @classmethod
     def tearDownClass(cls):
@@ -149,6 +157,20 @@ class NavStyleTests(unittest.TestCase):
             link,
             f"Readme page did not include expected theme <link> for classic-95.css in <head>. Got links: {[str(l) for l in soup2.find_all('link', rel='stylesheet')]}"
         )
+
+    def test_style_switcher_screenshot(self):
+        """Capture a screenshot of the style switcher page."""
+        screenshot_dir = Path("work/screenshots")
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+        screenshot_file = screenshot_dir / "style_switcher.png"
+        try:
+            webauto.capture_page_source(
+                self.base_url + "/nav/style-switcher",
+                screenshot=str(screenshot_file),
+            )
+        except Exception as e:
+            self.skipTest(f"Webdriver unavailable: {e}")
+        self.assertTrue(screenshot_file.exists())
 
 
 if __name__ == "__main__":

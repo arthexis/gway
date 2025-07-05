@@ -10,6 +10,14 @@ import requests
 import random
 import string
 from gway import gw
+import importlib.util
+from pathlib import Path
+
+# Dynamically load the web.auto helpers for screenshots
+auto_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "auto.py"
+spec = importlib.util.spec_from_file_location("webauto", auto_path)
+webauto = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(webauto)
 
 CDV_PATH = os.path.abspath("work/basic_auth.cdv")  # Use production path
 # Generate a random user/pass for each test run
@@ -36,14 +44,14 @@ class AuthChargerStatusTests(unittest.TestCase):
         _remove_test_user()
         # Start the server
         cls.proc = subprocess.Popen(
-            ["gway", "-r", "website"],
+            ["gway", "-r", "test/website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
-        cls._wait_for_port(8888, timeout=18)
+        cls._wait_for_port(18888, timeout=18)
         time.sleep(2)
-        cls.base_url = "http://127.0.0.1:8888"
+        cls.base_url = "http://127.0.0.1:18888"
 
     @classmethod
     def tearDownClass(cls):
@@ -112,6 +120,18 @@ class AuthChargerStatusTests(unittest.TestCase):
             f"Expected 200 for authenticated /cookies/cookie-jar, got {resp2.status_code}"
         )
         self.assertIn("cookie", resp2.text.lower())
+
+    def test_charger_status_screenshot(self):
+        """Capture charger status page screenshot using basic auth."""
+        screenshot_dir = Path("work/screenshots")
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+        screenshot_file = screenshot_dir / "charger_status.png"
+        url = f"http://{TEST_USER}:{TEST_PASS}@127.0.0.1:18888/ocpp/csms/charger-status"
+        try:
+            webauto.capture_page_source(url, screenshot=str(screenshot_file))
+        except Exception as e:
+            self.skipTest(f"Webdriver unavailable: {e}")
+        self.assertTrue(screenshot_file.exists())
 
 if __name__ == "__main__":
     unittest.main()
