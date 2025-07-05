@@ -116,6 +116,11 @@ def search(subject_fragment, body_fragment=None):
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
         mail.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        # Try to enable UTF-8 mode if the server supports it
+        try:
+            mail.enable('UTF8=ACCEPT')
+        except Exception:
+            pass
         mail.select('inbox')
 
         search_criteria = []
@@ -129,7 +134,11 @@ def search(subject_fragment, body_fragment=None):
             return None
 
         combined_criteria = ' '.join(search_criteria)
-        status, data = mail.search(None, combined_criteria)
+
+        if getattr(mail, 'utf8_enabled', False):
+            status, data = mail.search(None, combined_criteria)
+        else:
+            status, data = mail.search('UTF-8', combined_criteria.encode('utf-8'))
         mail_ids = data[0].split()
 
         if not mail_ids:
