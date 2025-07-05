@@ -24,6 +24,7 @@ _transactions: Dict[str, dict] = {}           # charger_id → latest transactio
 _active_cons: Dict[str, WebSocket] = {}      # charger_id → live WebSocket
 _latest_heartbeat: Dict[str, str] = {}  # charger_id → ISO8601 UTC time string
 _abnormal_status: Dict[str, dict] = {}  # charger_id → {"status": ..., "errorCode": ..., "info": ...}
+_msg_log: Dict[str, list] = {}          # charger_id → ["< msg", "> msg", ...]
 
 def authorize_balance(**record):
     """
