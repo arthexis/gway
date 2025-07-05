@@ -8,7 +8,7 @@ rem Repair previously installed services
 if "%~1"=="--repair" (
     echo Repairing installed gway services...
     for /f "usebackq delims=" %%R in (
-        `python "%~dp0windows_service.py" list-recipes`
+        `python "%~dp0tools\windows_service.py" list-recipes`
     ) do (
         call "%~f0" %%R
     )
@@ -58,7 +58,7 @@ if not exist "recipes\%RECIPE%.gwr" (
 for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "$n='%RECIPE%'; $n=$n -replace '[\\/]','-'; $n=$n -replace '[^a-zA-Z0-9_-]','-'; Write-Output $n"`) do set "SAFE_RECIPE=%%S"
 set "SERVICE_NAME=gway-%SAFE_RECIPE%"
 rem Path to helper script
-set "SERVICE_PY=%~dp0windows_service.py"
+set "SERVICE_PY=%~dp0tools\windows_service.py"
 
 if "%ACTION%"=="install" (
     echo Installing Windows service %SERVICE_NAME% for recipe %RECIPE%...
