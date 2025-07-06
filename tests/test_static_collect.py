@@ -36,8 +36,14 @@ class StaticCollectTests(unittest.TestCase):
                  patch.object(webstatic.gw.web.app, "enabled_projects", lambda: {"web.site"}):
                 report = webstatic.collect(root="data/static", target="work/shared")
 
-            self.assertEqual({rel for _, rel, _ in report["css"]}, {"web/site/a.css", "web/site/b.css"})
-            self.assertEqual({rel for _, rel, _ in report["js"]}, {"web/site/a.js", "web/site/b.js"})
+            self.assertEqual(
+                {Path(rel).as_posix() for _, rel, _ in report["css"]},
+                {"web/site/a.css", "web/site/b.css"},
+            )
+            self.assertEqual(
+                {Path(rel).as_posix() for _, rel, _ in report["js"]},
+                {"web/site/a.js", "web/site/b.js"},
+            )
 
             css_bundle = Path(report["css_bundle"]).read_text()
             expected_css = "".join(
