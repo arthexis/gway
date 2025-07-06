@@ -83,13 +83,17 @@ set "SERVICE_PY=%~dp0tools\windows_service.py"
 if "%ACTION%"=="install" (
     echo Installing Windows service %SERVICE_NAME% for recipe %RECIPE%...
     python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE% %DEBUG_FLAG%
+    python "%SERVICE_PY%" start --name %SERVICE_NAME%
 ) else if "%ACTION%"=="remove" (
     echo Removing Windows service %SERVICE_NAME% for recipe %RECIPE%...
+    python "%SERVICE_PY%" stop --name %SERVICE_NAME%
     python "%SERVICE_PY%" remove --name %SERVICE_NAME% --recipe %RECIPE% %FORCE_FLAG%
 ) else (
     echo Repairing Windows service %SERVICE_NAME% for recipe %RECIPE%...
+    python "%SERVICE_PY%" stop --name %SERVICE_NAME%
     python "%SERVICE_PY%" remove --name %SERVICE_NAME% --recipe %RECIPE% %FORCE_FLAG%
     python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE% %DEBUG_FLAG%
+    python "%SERVICE_PY%" start --name %SERVICE_NAME%
 )
 
 endlocal

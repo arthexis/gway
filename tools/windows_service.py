@@ -19,7 +19,14 @@ service.
 import os
 import sys
 import argparse
+import re
 import subprocess
+
+
+def _format_display_name(name: str) -> str:
+    """Return a human friendly Windows service display name."""
+    parts = re.split(r"[-_]+", name)
+    return " ".join("GWAY" if p.lower() == "gway" else p.capitalize() for p in parts)
 
 try:
     import win32serviceutil
@@ -86,9 +93,11 @@ def main(argv: list[str] | None = None) -> None:
     if not win32serviceutil:
         raise RuntimeError("pywin32 is required on Windows")
 
+    display_name = _format_display_name(args.name)
+
     class Service(GatewayService):
         _svc_name_ = args.name
-        _svc_display_name_ = args.name
+        _svc_display_name_ = display_name
         recipe = args.recipe
         debug = args.debug
 
@@ -103,7 +112,7 @@ def main(argv: list[str] | None = None) -> None:
         win32serviceutil.InstallService(
             pythonClassString=f"{__name__}.GatewayService",
             serviceName=args.name,
-            displayName=args.name,
+            displayName=display_name,
             exeName=win32serviceutil.LocatePythonServiceExe(),
             exeArgs=exe_args,
             startType=win32service.SERVICE_AUTO_START,
