@@ -88,14 +88,16 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "install":
         if not args.recipe:
             raise SystemExit("--recipe is required for install")
-        exe_name = sys.executable
-        exe_args = f'"{os.path.abspath(__file__)}" run --name {args.name} --recipe {args.recipe}'
+        exe_args = (
+            f'"{os.path.abspath(__file__)}" run --name {args.name} --recipe {args.recipe}'
+        )
         win32serviceutil.InstallService(
-            exe_name,
-            args.name,
-            args.name,
-            startType=win32service.SERVICE_AUTO_START,
+            pythonClassString=f"{__name__}.GatewayService",
+            serviceName=args.name,
+            displayName=args.name,
+            exeName=win32serviceutil.LocatePythonServiceExe(),
             exeArgs=exe_args,
+            startType=win32service.SERVICE_AUTO_START,
             description=f"GWAY Service ({args.recipe})",
         )
         print(f"Service {args.name} installed.")
