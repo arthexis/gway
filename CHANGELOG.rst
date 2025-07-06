@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.34 [build 673405]
+---------------------
+
+- 6e2494d PyPI Release v0.4.33
+
 0.4.33 [build e7a1df]
 ---------------------
 
