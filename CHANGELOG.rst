@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.35 [build d4bb5d]
+---------------------
+
+- ca795a3 fix service install script
+
 0.4.34 [build 673405]
 ---------------------
 
