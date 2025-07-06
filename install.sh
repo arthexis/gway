@@ -26,6 +26,7 @@ ACTION="install"
 DEBUG_FLAG=""
 RECIPE=""
 FORCE_FLAG=""
+ROOT_FLAG=""
 for arg in "$@"; do
   case "$arg" in
     --repair)
@@ -39,6 +40,9 @@ for arg in "$@"; do
       ;;
     --debug)
       DEBUG_FLAG="-d"
+      ;;
+    --root)
+      ROOT_FLAG="--root"
       ;;
     *)
       if [[ -z "$RECIPE" ]]; then
@@ -124,7 +128,9 @@ SERVICE_NAME="gway-${SERVICE_SAFE_RECIPE}.service"
 SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
 
 # Determine service user
-if [[ -n "${SUDO_USER-}" && "$SUDO_USER" != "root" ]]; then
+if [[ "$ROOT_FLAG" == "--root" ]]; then
+  SERVICE_USER="root"
+elif [[ -n "${SUDO_USER-}" && "$SUDO_USER" != "root" ]]; then
   SERVICE_USER="$SUDO_USER"
 else
   SERVICE_USER="$(whoami)"
