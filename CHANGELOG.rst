@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.36 [build 4c763d]
+---------------------
+
+- 9bbd954 Make upgrade script resilient offline
+
 0.4.35 [build d4bb5d]
 ---------------------
 
