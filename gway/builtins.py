@@ -8,8 +8,7 @@ import code
 import random
 import inspect
 import collections.abc
-from collections.abc import Iterable, Mapping, Sequence
-from types import FunctionType
+from collections.abc import Mapping, Sequence
 from typing import Any, Optional, Type, List
 
 
@@ -525,56 +524,7 @@ def run(*script: str, **context):
         # Now run the new recipe
         return gw.run_recipe(recipe_path, **context)
 
-# Unwrapping is useful for handling one or multiple apps, or other
-# objects passed between GWAY functions, using a simplified scheme.
 
-def unwrap_one(obj: Any, expected: Optional[Type] = None) -> Any:
-    """Returns the first matching unwrapped value from obj."""
-    return next(_unwrap(obj, expected, first_only=True), None)
-
-def unwrap_all(obj: Any, expected: Optional[Type] = None) -> List[Any]:
-    """Returns a list of all matching unwrapped values from obj."""
-    return list(_unwrap(obj, expected, first_only=False))
-
-# TODO: Create unwrap_split_one that returns a two item tuple: first_found, others
-#       and its equivalent unwrap_split_all: all_found
-
-def _unwrap(obj: Any, expected: Optional[Type], first_only: bool = True):
-    def unwrap_closure(fn):
-        # Only unwrap closures for *actual* functions with __closure__
-        if isinstance(fn, FunctionType) and getattr(fn, "__closure__", None):
-            for cell in fn.__closure__:
-                try: val = cell.cell_contents
-                except Exception: continue
-                yield from _unwrap(val, expected, first_only)
-                if first_only: return
-
-    if expected is not None:
-        if isinstance(obj, expected):
-            yield obj
-            if first_only: return
-
-        if callable(obj):
-            try: unwrapped = inspect.unwrap(obj)
-            except Exception: unwrapped = obj
-
-            if isinstance(unwrapped, expected):
-                yield unwrapped
-                if first_only:
-                    return
-
-            yield from unwrap_closure(unwrapped)
-            if first_only: return
-
-        if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes, bytearray)):
-            for item in obj:
-                yield from _unwrap(item, expected, first_only)
-                if first_only: return
-    else:
-        if callable(obj):
-            try: yield inspect.unwrap(obj)
-            except Exception: yield obj
-        else: yield obj
 
 # Excludse ambiguous characters: 0, O, 1, I, l, Z, 2
 _EZ_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXY3456789"

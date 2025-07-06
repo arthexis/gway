@@ -26,12 +26,28 @@ def setup_fallback_app(*,
     # trigger: Use a callback function to check. Redirects when result is True.
     # Move this explanation to the docstring.
 
-    # TODO: We need to use gw.unwrap_all instead and apply the proxy mode to each of the
-    #       apps found there, then we need to return all those apps in a collection.
+    # TODO: Apply the proxy mode to each received app and return the collection
 
     # collect apps by type
-    bottle_app = gw.unwrap_one(app, Bottle)
-    fastapi_app = gw.unwrap_one(app, FastAPI)
+    match app:
+        case Bottle() as b:
+            bottle_app, fastapi_app = b, None
+        case FastAPI() as f:
+            bottle_app, fastapi_app = None, f
+        case list() | tuple() as seq:
+            bottle_app = next((x for x in seq if isinstance(x, Bottle)), None)
+            fastapi_app = next((x for x in seq if isinstance(x, FastAPI)), None)
+        case None:
+            bottle_app = fastapi_app = None
+        case _ if isinstance(app, Bottle):
+            bottle_app, fastapi_app = app, None
+        case _ if isinstance(app, FastAPI):
+            bottle_app, fastapi_app = None, app
+        case _ if hasattr(app, "__iter__") and not isinstance(app, (str, bytes, bytearray)):
+            bottle_app = next((x for x in app if isinstance(x, Bottle)), None)
+            fastapi_app = next((x for x in app if isinstance(x, FastAPI)), None)
+        case _:
+            bottle_app = fastapi_app = None
 
     prepared = []
 

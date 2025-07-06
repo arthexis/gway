@@ -109,7 +109,24 @@ def setup_app(*,
         if path.startswith('web/'):
             path = path.removeprefix('web/')
             
-    is_new_app = not (app := gw.unwrap_one(app, Bottle) if (oapp := app) else None)
+    oapp = app
+    match app:
+        case Bottle() as b:
+            app = b
+            is_new_app = False
+        case list() | tuple() as seq:
+            app = next((x for x in seq if isinstance(x, Bottle)), None)
+            is_new_app = app is None
+        case None:
+            is_new_app = True
+        case _ if isinstance(app, Bottle):
+            is_new_app = False
+        case _ if hasattr(app, "__iter__") and not isinstance(app, (str, bytes, bytearray)):
+            app = next((x for x in app if isinstance(x, Bottle)), None)
+            is_new_app = app is None
+        case _:
+            is_new_app = app is None or not isinstance(app, Bottle)
+
     if is_new_app:
         gw.info("No Bottle app found; creating a new Bottle app.")
         app = Bottle()
