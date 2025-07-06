@@ -25,10 +25,17 @@ source .venv/bin/activate
 ACTION="install"
 DEBUG_FLAG=""
 RECIPE=""
+FORCE_FLAG=""
 for arg in "$@"; do
   case "$arg" in
     --repair)
       ACTION="repair"
+      ;;
+    --remove)
+      ACTION="remove"
+      ;;
+    --force)
+      FORCE_FLAG="--force"
       ;;
     --debug)
       DEBUG_FLAG="-d"
@@ -66,11 +73,35 @@ if [[ "$ACTION" == "repair" ]]; then
   exit 0
 fi
 
+# Remove specified service
+if [[ "$ACTION" == "remove" ]]; then
+  if [[ -z "$RECIPE" ]]; then
+    echo "ERROR: --remove requires a recipe argument" >&2
+    deactivate
+    exit 1
+  fi
+  SERVICE_SAFE_RECIPE="${RECIPE//\//-}"
+  SERVICE_SAFE_RECIPE="${SERVICE_SAFE_RECIPE//[^a-zA-Z0-9_-]/-}"
+  SERVICE_NAME="gway-${SERVICE_SAFE_RECIPE}.service"
+  SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
+  echo "Removing systemd service '$SERVICE_NAME' for recipe '$RECIPE'..."
+  sudo systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+  sudo systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+  if [[ -f "$SERVICE_PATH" ]]; then
+    sudo rm -f "$SERVICE_PATH"
+  fi
+  sudo systemctl daemon-reload
+  deactivate
+  exit 0
+fi
+
 # 2) No-arg case: notify installation and usage
 if [[ -z "$RECIPE" && "$ACTION" == "install" ]]; then
   echo "GWAY has been set up in .venv."
   echo "To install a systemd service for a recipe, run:"
   echo "  sudo ./install.sh <recipe-name> [--debug]"
+  echo "To remove a systemd service, run:"
+  echo "  sudo ./install.sh <recipe-name> --remove"
   echo "To repair all existing services, run:"
   echo "  sudo ./install.sh --repair"
   deactivate
@@ -124,7 +155,7 @@ After=network.target
 Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$SCRIPT_DIR
-ExecStartPre=/home/ubuntu/gway/upgrade.sh --auto
+ExecStartPre=$SCRIPT_DIR/upgrade.sh --auto
 ExecStart=$GWAY_EXEC
 Restart=on-failure
 RestartSec=10
