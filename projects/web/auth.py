@@ -57,7 +57,8 @@ def is_authorized(*, strict=False, context=None):
             return False
     return True
 
-def _parse_basic_auth_header(header):
+def parse_basic_auth_header(header):
+    """Parse an HTTP Basic Auth header."""
     if not header or not header.startswith("Basic "):
         return None, None
     try:
@@ -98,14 +99,14 @@ def _basic_auth(allow, engine):
                 from bottle import request, response
                 ctx["response"] = response
                 auth_header = request.get_header("Authorization")
-                username, password = _parse_basic_auth_header(auth_header)
+                username, password = parse_basic_auth_header(auth_header)
             elif engine_actual == "fastapi":
                 # Context should include 'request' and 'response'
                 req = ctx.get("request")
                 resp = ctx.get("response")
                 ctx["response"] = resp
                 auth_header = req.headers.get("authorization") if req else None
-                username, password = _parse_basic_auth_header(auth_header)
+                username, password = parse_basic_auth_header(auth_header)
             elif engine_actual == "fastapi_ws":
                 # Context should include 'websocket'
                 ws = ctx.get("websocket")
@@ -119,7 +120,7 @@ def _basic_auth(allow, engine):
                         # Accept fallback with capitalization
                         if not auth_header:
                             auth_header = headers.get("Authorization")
-                username, password = _parse_basic_auth_header(auth_header)
+                username, password = parse_basic_auth_header(auth_header)
             else:
                 gw.error(f"[auth] Unknown engine: {engine_actual}")
                 return False, ctx
