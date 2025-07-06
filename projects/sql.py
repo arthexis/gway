@@ -5,7 +5,20 @@ import csv
 import queue
 import sqlite3
 import threading
+import re
+import time
 from gway import gw
+
+# Regex mask matching the default gway logging pattern. This captures the
+# timestamp, log level, logger name, function name, filename, line number, and
+# message from lines formatted by :func:`gway.logging.setup_logging`.
+DEFAULT_LOG_MASK = (
+    r"(?P<time>\d{2}:\d{2}:\d{2}) "
+    r"(?P<level>\w+) "
+    r"\[(?P<name>[^\]]+)\] "
+    r"(?P<func>\S+) "
+    r"(?P<file>[^:]+):(?P<line>\d+)  # (?P<msg>.*)"
+)
 
 # # GWAY database functions. These can be called from anywhere safely:
 #
@@ -344,3 +357,66 @@ def shutdown_writer():
             _write_queue.task_done()
     except queue.Empty:
         pass
+
+
+def parse_log(
+    mask: str = DEFAULT_LOG_MASK,
+    log_location=None,
+    *,
+    table,
+    connection=None,
+    start_at_end=True,
+    poll_interval=0.5,
+    stop_event=None,
+    flags=0,
+):
+    """Consume a log file in real time and store matching records.
+
+    Parameters:
+        mask (str): Regular expression with named groups representing columns.
+            Defaults to ``DEFAULT_LOG_MASK`` which parses standard GWay logs.
+        log_location (str): Path to the log file to monitor.
+        table (str): Table to insert parsed records into.
+        connection: Database connection from :func:`open_connection`.
+        start_at_end (bool): If True, begin tailing from end of file.
+        poll_interval (float): Seconds to wait for new lines.
+        stop_event (threading.Event): Optional event to stop the tail loop.
+        flags (int): Regex flags for ``re.compile``.
+    """
+
+    assert connection, "Pass connection= from gw.sql.open_connection()"
+
+    regex = re.compile(mask, flags)
+    columns = list(regex.groupindex.keys())
+    if not columns:
+        raise ValueError("Mask must use named capturing groups for columns")
+
+    colspec = ", ".join(f"[{c}] TEXT" for c in columns)
+    gw.sql.execute(
+        f"CREATE TABLE IF NOT EXISTS [{table}] ({colspec})",
+        connection=connection,
+    )
+
+    stop_event = stop_event or threading.Event()
+
+    with open(log_location, "r", encoding="utf-8") as f:
+        if start_at_end:
+            f.seek(0, os.SEEK_END)
+        while not stop_event.is_set():
+            line = f.readline()
+            if not line:
+                time.sleep(poll_interval)
+                continue
+            m = regex.search(line)
+            if not m:
+                continue
+            values = m.groupdict()
+            columns_sql = ", ".join(f"[{c}]" for c in columns)
+            placeholders = ", ".join("?" for _ in columns)
+            gw.sql.execute(
+                f"INSERT INTO [{table}] ({columns_sql}) VALUES ({placeholders})",
+                args=tuple(values[c] for c in columns),
+                connection=connection,
+            )
+
+    return stop_event
