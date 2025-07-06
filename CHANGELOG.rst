@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.37 [build 6aa9b9]
+---------------------
+
+- 633461d start Windows service after installation
+
 0.4.36 [build 4c763d]
 ---------------------
 
