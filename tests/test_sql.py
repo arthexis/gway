@@ -5,6 +5,7 @@ import tempfile
 import shutil
 import os
 import threading
+import time
 from gway import gw
 
 TEMP_DB = "work/test_data.sqlite"
@@ -170,6 +171,87 @@ class SqlTests(unittest.TestCase):
         c3 = gw.sql.open_connection(TEMP_DB)
         gw.sql.execute("CREATE TABLE foo (id INT)", connection=c3)
         gw.sql.close_connection(TEMP_DB)
+
+    def test_parse_log(self):
+        """parse_log tail-inserts matching log lines into a table."""
+        log_path = gw.resource("work/test.log")
+        if os.path.exists(log_path):
+            os.remove(log_path)
+        # create empty file
+        with open(log_path, "w", encoding="utf-8"):
+            pass
+
+        stop_event = threading.Event()
+        t = threading.Thread(
+            target=gw.sql.parse_log,
+            args=(r"(?P<level>\w+): (?P<msg>.+)", log_path),
+            kwargs=dict(
+                table="log_table",
+                connection=self.conn,
+                start_at_end=False,
+                poll_interval=0.1,
+                stop_event=stop_event,
+            ),
+            daemon=True,
+        )
+        t.start()
+
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write("INFO: hello\n")
+            f.flush()
+
+        time.sleep(0.3)
+        stop_event.set()
+        t.join(1)
+
+        rows = gw.sql.execute(
+            "SELECT level, msg FROM log_table", connection=self.conn
+        )
+        self.assertEqual(rows[0][0], "INFO")
+        self.assertEqual(rows[0][1], "hello")
+
+        os.remove(log_path)
+
+    def test_parse_log_default_mask(self):
+        """Default mask parses standard GWay log lines."""
+        log_path = gw.resource("work/test_gw.log")
+        if os.path.exists(log_path):
+            os.remove(log_path)
+        with open(log_path, "w", encoding="utf-8"):
+            pass
+
+        stop_event = threading.Event()
+        t = threading.Thread(
+            target=gw.sql.parse_log,
+            kwargs=dict(
+                log_location=log_path,
+                table="gw_log_table",
+                connection=self.conn,
+                start_at_end=False,
+                poll_interval=0.1,
+                stop_event=stop_event,
+            ),
+            daemon=True,
+        )
+        t.start()
+
+        sample = "12:34:56 INFO [gw:abcd:1234] func foo.py:10  # hi\n"
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(sample)
+            f.flush()
+
+        time.sleep(0.3)
+        stop_event.set()
+        t.join(1)
+
+        rows = gw.sql.execute(
+            "SELECT time, level, name, func, file, line, msg FROM gw_log_table",
+            connection=self.conn,
+        )
+        self.assertEqual(rows[0][0], "12:34:56")
+        self.assertEqual(rows[0][-1], "hi")
+
+        os.remove(log_path)
 
 if __name__ == "__main__":
     unittest.main()
