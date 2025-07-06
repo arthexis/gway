@@ -66,7 +66,10 @@ echo "[2] Checking current commit hash..."
 OLD_HASH=$(git rev-parse HEAD)
 
 echo "[3] Fetching latest commits from Git..."
-git fetch --all --prune
+if ! git fetch --all --prune; then
+    echo "Warning: git fetch failed, continuing with existing code"
+    log_action "git fetch failed: offline?"
+fi
 
 echo "[4] Resetting to origin/main and cleaning up..."
 git reset --hard origin/main
@@ -98,9 +101,15 @@ else
 fi
 
 echo "[6.1] Upgrading pip to latest version in venv..."
-python -m pip install --upgrade pip
+if ! python -m pip install --upgrade pip; then
+    echo "Warning: pip upgrade failed, continuing"
+    log_action "pip upgrade failed"
+fi
 
-pip install -e .
+if ! pip install -e .; then
+    echo "Warning: package installation failed, continuing"
+    log_action "pip install failed"
+fi
 
 echo "[7] Running test command..."
 if ! gway test --on-failure abort; then
