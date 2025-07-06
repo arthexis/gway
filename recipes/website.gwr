@@ -12,7 +12,6 @@ web app setup-app --home reader
     --project ocpp.evcs --auth-required --home cp-simulator
     --project games.conway --home game-of-life --path conway
     --project games.mtg --home search-games
-    --project games.qpig --home qpig-farm --path qpig
     --project web.auth
 
 web static collect
