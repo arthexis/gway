@@ -13,7 +13,24 @@ def setup_sink_app(*, app=None):
     Note: This version of the app was tested at the EVCS with real EVs.
     """
     # A - This line ensures we find just the kind of app we need or create one if missing
-    if (_is_new_app := not (app := gw.unwrap_one((oapp := app), FastAPI))):
+    oapp = app
+    match app:
+        case FastAPI() as f:
+            app = f
+            _is_new_app = False
+        case list() | tuple() as seq:
+            app = next((x for x in seq if isinstance(x, FastAPI)), None)
+            _is_new_app = app is None
+        case None:
+            _is_new_app = True
+        case _ if isinstance(app, FastAPI):
+            _is_new_app = False
+        case _ if hasattr(app, "__iter__") and not isinstance(app, (str, bytes, bytearray)):
+            app = next((x for x in app if isinstance(x, FastAPI)), None)
+            _is_new_app = app is None
+        case _:
+            _is_new_app = app is None or not isinstance(app, FastAPI)
+    if _is_new_app:
         app = FastAPI()
 
     @app.websocket("{path:path}")

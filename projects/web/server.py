@@ -27,7 +27,13 @@ def start_app(*,
 
     def run_server(app_label=None):
         nonlocal app
-        all_apps = app if iterable(app) else (app, )
+        match app:
+            case list() | tuple() as seq:
+                all_apps = tuple(seq)
+            case None:
+                all_apps = (None,)
+            case _:
+                all_apps = (app,)
 
         # ---- Multi-app mode ----
         if not is_worker and len(all_apps) > 1:
@@ -38,14 +44,19 @@ def start_app(*,
             gw.info(f"Starting {len(all_apps)} apps in parallel threads.")
 
             fastapi_count = 0
+            try:
+                from fastapi import FastAPI
+            except ImportError:
+                FastAPI = None
+
             for i, sub_app in enumerate(all_apps):
-                try:
-                    from fastapi import FastAPI
-                    is_fastapi = isinstance(sub_app, FastAPI)
-                    app_type = "FastAPI" if is_fastapi else type(sub_app).__name__
-                except ImportError:
-                    is_fastapi = False
-                    app_type = type(sub_app).__name__
+                match sub_app:
+                    case _ if FastAPI and isinstance(sub_app, FastAPI):
+                        is_fastapi = True
+                        app_type = "FastAPI"
+                    case _:
+                        is_fastapi = False
+                        app_type = type(sub_app).__name__
 
                 # ---- Use ws_port for the first FastAPI app if provided, else increment port as before ----
                 if is_fastapi and ws_port and fastapi_count == 0:
@@ -117,9 +128,14 @@ def start_app(*,
         # ---- Detect ASGI/FastAPI ----
         try:
             from fastapi import FastAPI
-            is_asgi = isinstance(app, FastAPI)
         except ImportError:
-            is_asgi = False
+            FastAPI = None
+
+        match app:
+            case _ if FastAPI and isinstance(app, FastAPI):
+                is_asgi = True
+            case _:
+                is_asgi = False
 
         if is_asgi:
             # Use ws_port if provided, else use regular port

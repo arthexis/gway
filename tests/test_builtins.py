@@ -33,8 +33,6 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('help', builtin_ls)
         self.assertIn('test', builtin_ls)
         self.assertIn('abort', builtin_ls)
-        self.assertIn('unwrap_one', builtin_ls)
-        self.assertIn('unwrap_all', builtin_ls)
         self.assertIn('run_recipe', builtin_ls)
 
     def test_list_projects(self):

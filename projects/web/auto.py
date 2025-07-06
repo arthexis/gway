@@ -53,8 +53,19 @@ def browse(
 
     # Try to unwrap an existing driver from the given object (tuple/list etc)
     try:
-        from gway import gw
-        driver = gw.unwrap_one(driver, webdriver.Remote) if driver else None
+        match driver:
+            case webdriver.Remote() as d:
+                driver = d
+            case list() | tuple() as seq:
+                driver = next((x for x in seq if isinstance(x, webdriver.Remote)), None)
+            case None:
+                driver = None
+            case _ if isinstance(driver, webdriver.Remote):
+                pass
+            case _ if hasattr(driver, "__iter__") and not isinstance(driver, (str, bytes, bytearray)):
+                driver = next((x for x in driver if isinstance(x, webdriver.Remote)), None)
+            case _:
+                driver = None
     except Exception:
         pass
 
