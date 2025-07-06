@@ -50,7 +50,23 @@ def setup_app(*,
 
     oapp = app
     from fastapi import FastAPI as _FastAPI
-    if (_is_new_app := not (app := gw.unwrap_one(app, _FastAPI))):
+    match app:
+        case _FastAPI() as f:
+            app = f
+            _is_new_app = False
+        case list() | tuple() as seq:
+            app = next((x for x in seq if isinstance(x, _FastAPI)), None)
+            _is_new_app = app is None
+        case None:
+            _is_new_app = True
+        case _ if isinstance(app, _FastAPI):
+            _is_new_app = False
+        case _ if hasattr(app, "__iter__") and not isinstance(app, (str, bytes, bytearray)):
+            app = next((x for x in app if isinstance(x, _FastAPI)), None)
+            _is_new_app = app is None
+        case _:
+            _is_new_app = app is None or not isinstance(app, _FastAPI)
+    if _is_new_app:
         app = _FastAPI()
 
     validator = None
