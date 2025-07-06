@@ -151,7 +151,7 @@ def search(subject_fragment, body_fragment=None):
         except imaplib.IMAP4.error as e:
             if 'bad' in str(e).lower() or 'parse' in str(e).lower():
                 gw.warning(f"Search charset failed ({e}); retrying without charset")
-                status, data = mail.search(None, combined_criteria)
+                status, data = mail.search(None, combined_criteria.encode('utf-8'))
             else:
                 raise
         mail_ids = data[0].split()
