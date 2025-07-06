@@ -23,12 +23,13 @@ class FakeIMAP:
         raise Exception('unsupported')
     def select(self, mailbox):
         pass
-    def search(self, charset, criteria):
-        if isinstance(criteria, str):
-            criteria.encode(self._encoding)
-        else:
-            criteria.decode(self._encoding)
-        self.last_search = (charset, criteria)
+    def search(self, charset, *criteria):
+        for item in criteria:
+            if isinstance(item, str):
+                item.encode(self._encoding)
+            else:
+                item.decode(self._encoding)
+        self.last_search = (charset, list(criteria))
         return 'OK', [b'1']
     def fetch(self, mail_id, mode):
         msg = MIMEText('respuesta')
@@ -55,7 +56,7 @@ class MailQuoteEscapeTests(unittest.TestCase):
             content, attachments = gw.mail.search('He said "Hi"')
             self.assertEqual(content, 'respuesta')
             fake = FakeIMAP.instances[0]
-            expected = '(SUBJECT "He said \\"Hi\\"")'
+            expected = ['SUBJECT', '"He said \\"Hi\\""']
             self.assertEqual(fake.last_search[1], expected)
             self.assertTrue(fake.utf8_enabled)
 

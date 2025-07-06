@@ -24,12 +24,13 @@ class FakeIMAP:
         raise Exception('unsupported')
     def select(self, mailbox):
         self.selected_mailbox = mailbox
-    def search(self, charset, criteria):
-        if isinstance(criteria, str):
-            criteria.encode(self._encoding)
-        else:
-            criteria.decode(self._encoding)
-        self.last_search = (charset, criteria)
+    def search(self, charset, *criteria):
+        for item in criteria:
+            if isinstance(item, str):
+                item.encode(self._encoding)
+            else:
+                item.decode(self._encoding)
+        self.last_search = (charset, list(criteria))
         return 'OK', [b'1']
     def fetch(self, mail_id, mode):
         msg = MIMEText('respuesta')
@@ -58,6 +59,7 @@ class MailUTF8Tests(unittest.TestCase):
             fake = FakeIMAP.instances[0]
             self.assertTrue(fake.utf8_enabled)
             self.assertEqual(fake.last_search[0], None)
+            self.assertEqual(fake.last_search[1], ['SUBJECT', '"instalación"'])
 
     def test_charset_fallback(self):
         class RejectIMAP(FakeIMAP):
@@ -67,11 +69,11 @@ class MailUTF8Tests(unittest.TestCase):
                 self._encoding = 'utf-8'
             def enable(self, capability):
                 raise Exception('unsupported')
-            def search(self, charset, criteria):
+            def search(self, charset, *criteria):
                 if not self.failed:
                     self.failed = True
                     raise imaplib.IMAP4.error('BAD parse error')
-                return super().search(charset, criteria)
+                return super().search(charset, *criteria)
 
         with patch('imaplib.IMAP4_SSL', RejectIMAP):
             content, attachments = gw.mail.search('instalación')
@@ -79,6 +81,7 @@ class MailUTF8Tests(unittest.TestCase):
             fake = FakeIMAP.instances[0]
             self.assertTrue(getattr(fake, 'failed', False))
             self.assertEqual(fake.last_search[0], None)
+            self.assertEqual(fake.last_search[1], ['SUBJECT', '"instalación"'])
 
     def test_search_uses_inbox_uppercase(self):
         """Ensure search operates with FakeIMAP when selecting 'INBOX'."""
