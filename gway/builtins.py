@@ -249,11 +249,21 @@ def test(*, root: str = 'tests', filter=None, on_success=None, on_failure=None, 
             projects_dir = "projects"
             if os.path.isdir(projects_dir):
                 for proj in sorted(os.listdir(projects_dir)):
+                    if proj.startswith("__"):
+                        continue
                     path = os.path.join(projects_dir, proj)
+                    include_paths = []
                     if os.path.isdir(path):
-                        percent = cov.report(include=[f"{path}/*"])
-                        gw.info(f"{proj} coverage: {percent:.2f}%")
-                        print(f"{proj}: {percent:.2f}%")
+                        include_paths = [os.path.join(os.path.abspath(path), "*")]
+                    elif os.path.isfile(path) and path.endswith(".py"):
+                        include_paths = [os.path.abspath(path)]
+                    if include_paths:
+                        try:
+                            percent = cov.report(include=include_paths)
+                            gw.info(f"{proj} coverage: {percent:.2f}%")
+                            print(f"{proj}: {percent:.2f}%")
+                        except Exception:
+                            gw.warning(f"Coverage report failed for {proj}")
             total = cov.report()
             gw.info(f"Total coverage: {total:.2f}%")
             print(f"Total: {total:.2f}%")
