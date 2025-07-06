@@ -58,7 +58,9 @@ class GatewayService(win32serviceutil.ServiceFramework if win32serviceutil else 
 
     def SvcDoRun(self):  # pragma: no cover - requires Windows
         bat = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "gway.bat"))
-        cmd = [bat, "-r", self.recipe] if self.recipe else [bat]
+        cmd = ["cmd.exe", "/c", bat]
+        if self.recipe:
+            cmd += ["-r", self.recipe]
         self.process = subprocess.Popen(cmd, cwd=os.path.dirname(bat))
         win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
         if self.process and self.process.poll() is None:
