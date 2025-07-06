@@ -100,9 +100,11 @@ def build(
 
     # Write BUILD file with current commit hash
     build_path = Path("BUILD")
+    prev_build = build_path.read_text().strip() if build_path.exists() else None
     build_hash = commit()
     build_path.write_text(build_hash + "\n")
     gw.info(f"Wrote BUILD file with commit {build_hash}")
+    update_changelog(version, build_hash, prev_build)
 
     dependencies = [
         line.strip()
@@ -457,6 +459,73 @@ def changes(*, files=None, staged=False, context=3, max_bytes=200_000, clip=Fals
         gw.clip.copy(result)
     if not gw.silent:
         return result or "[No changes detected]"
+
+
+def _last_changelog_build():
+    path = Path("CHANGELOG.rst")
+    if not path.exists():
+        return None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("#"):
+            continue
+        if "[build" in line:
+            try:
+                return line.split("[build", 1)[1].split("]", 1)[0].strip()
+            except Exception:
+                return None
+    return None
+
+
+def update_changelog(version: str, build_hash: str, prev_build: str | None = None) -> None:
+    import subprocess
+
+    path = Path("CHANGELOG.rst")
+    header = f"{version} [build {build_hash}]"
+    underline = "-" * len(header)
+
+    if prev_build is None:
+        prev_build = _last_changelog_build()
+
+    log_range = f"{prev_build}..HEAD" if prev_build else "HEAD"
+    try:
+        proc = subprocess.run([
+            "git", "log", "--pretty=%h %s", log_range
+        ], capture_output=True, text=True, check=True)
+        commits = [f"- {line.strip()}" for line in proc.stdout.splitlines() if line.strip()]
+    except Exception:
+        commits = []
+
+    entry = "\n".join([header, underline, "", *commits, ""]) + "\n"
+
+    if path.exists():
+        existing = path.read_text(encoding="utf-8")
+        if not existing.startswith("Changelog"):
+            existing = "Changelog\n=========\n\n" + existing
+        path.write_text("".join([entry, existing]), encoding="utf-8")
+    else:
+        path.write_text("Changelog\n=========\n\n" + entry, encoding="utf-8")
+
+
+def view_changelog():
+    from projects.web import site
+
+    last_build = _last_changelog_build()
+    unreleased = []
+    if last_build:
+        import subprocess
+        proc = subprocess.run([
+            "git", "log", "--pretty=%h %s", f"{last_build}..HEAD"
+        ], capture_output=True, text=True)
+        unreleased = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+
+    parts = []
+    if unreleased:
+        parts.append("<h2>Unreleased</h2><ul>")
+        parts.extend(f"<li>{c}</li>" for c in unreleased)
+        parts.append("</ul><hr>")
+
+    parts.append(site.view_reader(title="CHANGELOG", ext="rst"))
+    return "\n".join(parts)
 
 
 if __name__ == "__main__":
