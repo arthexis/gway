@@ -8,6 +8,7 @@ rem Parse arguments
 set "ACTION=install"
 set "RECIPE="
 set "FORCE_FLAG="
+set "DEBUG_FLAG="
 :parse_args
 if "%~1"=="" goto end_parse_args
 if "%~1"=="--remove" (
@@ -16,6 +17,8 @@ if "%~1"=="--remove" (
     set "ACTION=repair"
 ) else if "%~1"=="--force" (
     set "FORCE_FLAG=--force"
+ ) else if "%~1"=="--debug" (
+    set "DEBUG_FLAG=--debug"
 ) else (
     if not defined RECIPE (
         set "RECIPE=%~1"
@@ -57,7 +60,7 @@ rem No-arg case
 if not defined RECIPE (
     echo GWAY has been set up in .venv.
     echo To install a Windows service for a recipe, run:
-    echo   install.bat ^<recipe^>
+    echo   install.bat ^<recipe^> [--debug]
     echo To remove a Windows service, run:
     echo   install.bat ^<recipe^> --remove [--force]
     echo To repair a Windows service, run:
@@ -79,14 +82,14 @@ set "SERVICE_PY=%~dp0tools\windows_service.py"
 
 if "%ACTION%"=="install" (
     echo Installing Windows service %SERVICE_NAME% for recipe %RECIPE%...
-    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE%
+    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE% %DEBUG_FLAG%
 ) else if "%ACTION%"=="remove" (
     echo Removing Windows service %SERVICE_NAME% for recipe %RECIPE%...
     python "%SERVICE_PY%" remove --name %SERVICE_NAME% --recipe %RECIPE% %FORCE_FLAG%
 ) else (
     echo Repairing Windows service %SERVICE_NAME% for recipe %RECIPE%...
     python "%SERVICE_PY%" remove --name %SERVICE_NAME% --recipe %RECIPE% %FORCE_FLAG%
-    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE%
+    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE% %DEBUG_FLAG%
 )
 
 endlocal

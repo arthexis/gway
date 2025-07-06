@@ -176,8 +176,8 @@ To run GWAY automatically as a service using a recipe:
 
 .. code-block:: bash
 
-    sudo ./install.sh <recipe>   # On Linux/macOS
-    install.bat <recipe>         # On Windows
+    sudo ./install.sh <recipe> [--debug]   # On Linux/macOS
+    install.bat <recipe> [--debug]         # On Windows
     install.bat <recipe> --remove [--force]  # Remove on Windows
     install.bat <recipe> --repair            # Repair one service on Windows
 

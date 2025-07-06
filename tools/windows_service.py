@@ -37,6 +37,7 @@ class GatewayService(win32serviceutil.ServiceFramework if win32serviceutil else 
     _svc_description_ = "Run GWAY recipe as a Windows service"
 
     recipe: str | None = None
+    debug: bool = False
     process: subprocess.Popen | None = None
 
     def __init__(self, args):
@@ -58,7 +59,11 @@ class GatewayService(win32serviceutil.ServiceFramework if win32serviceutil else 
 
     def SvcDoRun(self):  # pragma: no cover - requires Windows
         bat = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "gway.bat"))
-        cmd = [bat, "-r", self.recipe] if self.recipe else [bat]
+        cmd = [bat]
+        if self.debug:
+            cmd.append("-d")
+        if self.recipe:
+            cmd.extend(["-r", self.recipe])
         self.process = subprocess.Popen(cmd, cwd=os.path.dirname(bat))
         win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
         if self.process and self.process.poll() is None:
@@ -71,6 +76,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--name", required=True, help="Service name")
     parser.add_argument("--recipe", help="Recipe to run")
     parser.add_argument("--force", action="store_true", help="Force kill on remove")
+    parser.add_argument("--debug", action="store_true", help="Run gway in debug mode")
     return parser.parse_args(argv)
 
 
@@ -84,6 +90,7 @@ def main(argv: list[str] | None = None) -> None:
         _svc_name_ = args.name
         _svc_display_name_ = args.name
         recipe = args.recipe
+        debug = args.debug
 
     if args.command == "install":
         if not args.recipe:
@@ -91,6 +98,8 @@ def main(argv: list[str] | None = None) -> None:
         exe_args = (
             f'"{os.path.abspath(__file__)}" run --name {args.name} --recipe {args.recipe}'
         )
+        if args.debug:
+            exe_args += " --debug"
         win32serviceutil.InstallService(
             pythonClassString=f"{__name__}.GatewayService",
             serviceName=args.name,

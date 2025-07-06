@@ -21,8 +21,37 @@ fi
 # Activate the virtual environment
 source .venv/bin/activate
 
+# Parse arguments
+ACTION="install"
+DEBUG_FLAG=""
+RECIPE=""
+for arg in "$@"; do
+  case "$arg" in
+    --repair)
+      ACTION="repair"
+      ;;
+    --debug)
+      DEBUG_FLAG="-d"
+      ;;
+    *)
+      if [[ -z "$RECIPE" ]]; then
+        RECIPE="$arg"
+      else
+        echo "ERROR: Unexpected argument $arg" >&2
+        deactivate
+        exit 1
+      fi
+      ;;
+  esac
+done
+
 # Repair previously installed services
-if [[ ${1-} == "--repair" ]]; then
+if [[ "$ACTION" == "repair" ]]; then
+  if [[ -n "$RECIPE" ]]; then
+    echo "ERROR: --repair does not take a recipe argument" >&2
+    deactivate
+    exit 1
+  fi
   echo "Repairing installed gway services..."
   for unit in /etc/systemd/system/gway-*.service; do
     [[ -f "$unit" ]] || continue
@@ -38,10 +67,10 @@ if [[ ${1-} == "--repair" ]]; then
 fi
 
 # 2) No-arg case: notify installation and usage
-if [[ $# -eq 0 ]]; then
+if [[ -z "$RECIPE" && "$ACTION" == "install" ]]; then
   echo "GWAY has been set up in .venv."
   echo "To install a systemd service for a recipe, run:"
-  echo "  sudo ./install.sh <recipe-name>"
+  echo "  sudo ./install.sh <recipe-name> [--debug]"
   echo "To repair all existing services, run:"
   echo "  sudo ./install.sh --repair"
   deactivate
@@ -49,7 +78,6 @@ if [[ $# -eq 0 ]]; then
 fi
 
 # 3) Recipe-based service install
-RECIPE="$1"
 RECIPE_FILE="recipes/${RECIPE}.gwr"
 if [[ ! -f "$RECIPE_FILE" ]]; then
   echo "ERROR: Recipe '$RECIPE' not found at $RECIPE_FILE" >&2
@@ -73,6 +101,13 @@ fi
 
 echo "Installing systemd service '$SERVICE_NAME' for recipe '$RECIPE'..."
 
+# Build ExecStart command
+GWAY_EXEC="$SCRIPT_DIR/gway.sh"
+if [[ -n "$DEBUG_FLAG" ]]; then
+  GWAY_EXEC+=" $DEBUG_FLAG"
+fi
+GWAY_EXEC+=" -r $RECIPE"
+
 # Backup existing unit
 if [[ -f "$SERVICE_PATH" ]]; then
   sudo cp "$SERVICE_PATH" "$SERVICE_PATH.bak.$(date +%s)"
@@ -90,7 +125,7 @@ Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$SCRIPT_DIR
 ExecStartPre=/home/ubuntu/gway/upgrade.sh --auto
-ExecStart=$SCRIPT_DIR/gway.sh -r $RECIPE
+ExecStart=$GWAY_EXEC
 Restart=on-failure
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
