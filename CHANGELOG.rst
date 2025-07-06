@@ -3,6 +3,10 @@ Changelog
 
 Unreleased
 ----------
+
+0.4.33 [build e7a1df]
+---------------------
+
 - Fix changelog to skip merge commits
 
 
