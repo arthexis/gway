@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gway"
-version = "0.4.31"
+version = "0.4.32"
 description = "Software Project Infrastructure by https://www.gelectriic.com"
 requires-python = ">=3.10"
 license = "MIT"
@@ -18,6 +18,9 @@ email = "tecnologia@gelectriic.com"
 file = "README.rst"
 content-type = "text/x-rst"
 
+[project.optional-dependencies]
+dev = [ "pytest", "pytest-cov",]
+
 [project.scripts]
 gway = "gway:cli_main"
 
@@ -25,9 +28,6 @@ gway = "gway:cli_main"
 Repository = "https://github.com/arthexis/gway.git"
 Homepage = "https://arthexis.com"
 Sponsor = "https://www.gelectriic.com/"
-
-[project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "coverage"]
 
 [tool.setuptools]
 packages = [ "gway",]
