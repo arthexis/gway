@@ -4,6 +4,7 @@ import os
 import inspect
 from pathlib import Path
 
+
 from gway import gw
 
 
@@ -231,7 +232,7 @@ def build(
             gw.info("Package uploaded to PyPI successfully.")
 
     if git:
-        files_to_add = ["VERSION", "BUILD", "pyproject.toml"]
+        files_to_add = ["VERSION", "BUILD", "pyproject.toml", "CHANGELOG.rst"]
         if help_db:
             files_to_add.append("data/help.sqlite")
         if projects:
@@ -476,56 +477,136 @@ def _last_changelog_build():
     return None
 
 
-def update_changelog(version: str, build_hash: str, prev_build: str | None = None) -> None:
+def _ensure_changelog() -> str:
+    """Return the changelog text ensuring base headers and an Unreleased section."""
+    base_header = "Changelog\n=========\n\n"
+    path = Path("CHANGELOG.rst")
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    if not text.startswith("Changelog"):
+        text = base_header + text
+    if "Unreleased" not in text:
+        text = text[: len(base_header)] + "Unreleased\n----------\n\n" + text[len(base_header):]
+    return text
+
+
+def _pop_unreleased(text: str) -> tuple[str, str]:
+    """Return (body, new_text) removing the Unreleased section."""
+    lines = text.splitlines()
+    try:
+        idx = lines.index("Unreleased")
+    except ValueError:
+        return "", text
+
+    body = []
+    i = idx + 2  # Skip underline
+    while i < len(lines) and lines[i].startswith("- "):
+        body.append(lines[i])
+        i += 1
+    if i < len(lines) and lines[i] == "":
+        i += 1
+    new_lines = lines[:idx] + lines[i:]
+    return "\n".join(body), "\n".join(new_lines) + ("\n" if text.endswith("\n") else "")
+
+
+def add_note(message: str | None = None) -> None:
+    """Append a bullet to the Unreleased section of CHANGELOG.rst."""
     import subprocess
 
+    if message is None:
+        try:
+            proc = subprocess.run(
+                ["git", "log", "-1", "--pretty=%h %s", "--no-merges"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            message = proc.stdout.strip()
+            if message.startswith("Merge"):
+                message = ""
+        except Exception:
+            message = ""
+
+    if not message:
+        gw.warning("No changelog entry provided and git log failed.")
+        return
+
     path = Path("CHANGELOG.rst")
+    text = _ensure_changelog()
+    lines = text.splitlines()
+    try:
+        idx = lines.index("Unreleased")
+    except ValueError:
+        idx = None
+    if idx is None:
+        lines.insert(2, "Unreleased")
+        lines.insert(3, "-" * len("Unreleased"))
+        lines.insert(4, "")
+        idx = 2
+    insert = idx + 2
+    lines.insert(insert, f"- {message}")
+    lines.insert(insert + 1, "")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def update_changelog(version: str, build_hash: str, prev_build: str | None = None) -> None:
+    """Promote the Unreleased section to a new version entry."""
+    import subprocess
+
+    text = _ensure_changelog()
+
+    unreleased_body, text = _pop_unreleased(text)
+
+    if not unreleased_body:
+        prev_build = prev_build or _last_changelog_build()
+        log_range = f"{prev_build}..HEAD" if prev_build else "HEAD"
+        commits = []
+        try:
+            proc = subprocess.run(
+                ["git", "log", "--pretty=%h %s", "--no-merges", log_range],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            commits = [
+                f"- {line.strip()}"
+                for line in proc.stdout.splitlines()
+                if line.strip() and not line.strip().startswith("Merge")
+            ]
+        except subprocess.CalledProcessError:
+            try:
+                proc = subprocess.run(
+                    ["git", "log", "-1", "--pretty=%h %s", "--no-merges"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                commits = [
+                    f"- {line.strip()}"
+                    for line in proc.stdout.splitlines()
+                    if line.strip() and not line.strip().startswith("Merge")
+                ]
+            except Exception:
+                commits = []
+        except Exception:
+            commits = []
+        unreleased_body = "\n".join(commits)
+
     header = f"{version} [build {build_hash}]"
     underline = "-" * len(header)
+    entry = "\n".join([header, underline, "", unreleased_body, ""]).rstrip() + "\n\n"
 
-    if prev_build is None:
-        prev_build = _last_changelog_build()
+    base_header = "Changelog\n=========\n\n"
+    remaining = text[len(base_header):]
+    new_text = base_header + "Unreleased\n----------\n\n" + entry + remaining
 
-    log_range = f"{prev_build}..HEAD" if prev_build else "HEAD"
-    try:
-        proc = subprocess.run([
-            "git", "log", "--pretty=%h %s", log_range
-        ], capture_output=True, text=True, check=True)
-        commits = [f"- {line.strip()}" for line in proc.stdout.splitlines() if line.strip()]
-    except Exception:
-        commits = []
-
-    entry = "\n".join([header, underline, "", *commits, ""]) + "\n"
-
-    if path.exists():
-        existing = path.read_text(encoding="utf-8")
-        if not existing.startswith("Changelog"):
-            existing = "Changelog\n=========\n\n" + existing
-        path.write_text("".join([entry, existing]), encoding="utf-8")
-    else:
-        path.write_text("Changelog\n=========\n\n" + entry, encoding="utf-8")
+    Path("CHANGELOG.rst").write_text(new_text, encoding="utf-8")
 
 
 def view_changelog():
+    """Render the changelog including any Unreleased section."""
     from projects.web import site
 
-    last_build = _last_changelog_build()
-    unreleased = []
-    if last_build:
-        import subprocess
-        proc = subprocess.run([
-            "git", "log", "--pretty=%h %s", f"{last_build}..HEAD"
-        ], capture_output=True, text=True)
-        unreleased = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-
-    parts = []
-    if unreleased:
-        parts.append("<h2>Unreleased</h2><ul>")
-        parts.extend(f"<li>{c}</li>" for c in unreleased)
-        parts.append("</ul><hr>")
-
-    parts.append(site.view_reader(title="CHANGELOG", ext="rst"))
-    return "\n".join(parts)
+    return site.view_reader(title="CHANGELOG", ext="rst")
 
 
 if __name__ == "__main__":
