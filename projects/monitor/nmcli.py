@@ -137,7 +137,9 @@ def get_wlan_status(iface):
                                 ssid = dline.split(":")[-1].strip()
                                 break
             inet = ping(iface)
-            return {"ssid": ssid, "connected": conn, "inet": inet}
+            status = {"ssid": ssid, "connected": conn, "inet": inet}
+            gw.debug(f"[nmcli] status for {iface}: {status}")
+            return status
     return {"ssid": None, "connected": False, "inet": False}
 
 def check_eth0_gateway():
@@ -244,6 +246,7 @@ def maybe_notify_ap_switch(ap_ssid, email=None):
             gw.error(f"[nmcli] Email notification failed: {e}")
 
 def clean_and_reconnect_wifi(iface, ssid, password=None):
+    gw.debug(f"[nmcli] clean_and_reconnect_wifi({iface}, ssid={ssid})")
     conns = nmcli("connection", "show")
     for line in conns.splitlines():
         fields = line.split()
@@ -281,6 +284,7 @@ def try_connect_wlan0_known_networks():
     """
     conns = nmcli("connection", "show")
     wifi_conns = [line.split()[0] for line in conns.splitlines()[1:] if "wifi" in line]
+    gw.debug(f"[nmcli] known wifi profiles: {wifi_conns}")
     for conn in wifi_conns:
         gw.info(f"[nmcli] Trying wlan0 connect: {conn}")
         nmcli("device", "wifi", "connect", conn, "ifname", "wlan0")
@@ -295,6 +299,7 @@ def try_connect_wlan0_known_networks():
             })
             return conn
         clean_and_reconnect_wifi("wlan0", conn)
+        gw.debug(f"[nmcli] retrying connection to {conn} after reset")
         if ping("wlan0"):
             gw.info(f"[nmcli] wlan0 internet works via {conn} after reset")
             gw.monitor.set_states('nmcli', {
@@ -338,7 +343,7 @@ def monitor_nmcli(**kwargs):
             internet_ssid = s.get("ssid")
             break
         else:
-            clean_and_reconnect_wifi(iface, iface)
+            clean_and_reconnect_wifi(iface, s.get("ssid") or iface)
             s2 = get_wlan_status(iface)
             wlanN[iface] = s2
             if s2["inet"]:
@@ -364,17 +369,27 @@ def monitor_nmcli(**kwargs):
             # Keep wlan0 in station mode. It will switch back to AP
             # only when another interface provides internet.
 
-    # Fallback to system default route if we detected internet
-    if found_inet and not internet_iface:
-        gw_iface = get_default_route_iface()
-        if gw_iface:
-            internet_iface = gw_iface
+    # Fallback to system default route
+    gw_iface = get_default_route_iface()
+    gw.debug(f"[nmcli] default route iface: {gw_iface}")
+    if gw_iface and not internet_iface:
+        if ping(gw_iface):
+            found_inet = True
+        internet_iface = gw_iface
+        if gw_iface in wlanN:
+            internet_ssid = wlanN[gw_iface].get("ssid")
+        elif gw_iface == "wlan0":
+            internet_ssid = gw.monitor.get_state('nmcli').get("wlan0_ssid")
             
     gw.monitor.set_states('nmcli', {
         "last_monitor_check": now_iso(),
         "internet_iface": internet_iface,
         "internet_ssid": internet_ssid,
     })
+    gw.debug(
+        f"[nmcli] monitor results: found_inet={found_inet}, "
+        f"internet_iface={internet_iface}, internet_ssid={internet_ssid}"
+    )
     state = gw.monitor.get_state('nmcli')
     return {
         "ok": found_inet,
