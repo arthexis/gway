@@ -398,7 +398,7 @@ def commit(length: int = 6) -> str:
         return "unknown"
 
 
-def build(length: int = 6) -> str:
+def get_build(length: int = 6) -> str:
     """Return the build hash stored in the BUILD file."""
     build_path = Path("BUILD")
     if build_path.exists():
