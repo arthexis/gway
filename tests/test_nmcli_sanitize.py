@@ -29,5 +29,33 @@ class EnsureApProfileTests(unittest.TestCase):
             ('connection', 'show', 'myap'),
         ])
 
+    def test_ensure_ap_profile_sets_default_ip(self):
+        calls = []
+        def fake_nmcli(*args):
+            calls.append(args)
+            return ''
+        with patch.object(nmcli_mod, 'nmcli', side_effect=fake_nmcli):
+            nmcli_mod.ensure_ap_profile('ap', 'ssid', 'pass')
+        self.assertIn(
+            (
+                'connection',
+                'modify',
+                'ap',
+                'mode',
+                'ap',
+                '802-11-wireless.band',
+                'bg',
+                'wifi-sec.key-mgmt',
+                'wpa-psk',
+                'wifi-sec.psk',
+                'pass',
+                'ipv4.method',
+                'shared',
+                'ipv4.addresses',
+                '10.42.0.1/24',
+            ),
+            calls,
+        )
+
 if __name__ == '__main__':
     unittest.main()
