@@ -184,7 +184,7 @@ def ap_profile_exists(ap_con, ap_ssid, ap_password):
             return ssid_ok and pwd_ok
     return False
 
-def ensure_ap_profile(ap_con, ap_ssid, ap_password):
+def ensure_ap_profile(ap_con, ap_ssid, ap_password, ap_ip=None):
     ap_con = _sanitize(ap_con)
     ap_ssid = _sanitize(ap_ssid)
     ap_password = _sanitize(ap_password)
@@ -193,6 +193,7 @@ def ensure_ap_profile(ap_con, ap_ssid, ap_password):
     if not ap_ssid or not ap_password:
         gw.info("[nmcli] Missing AP_SSID or AP_PASSWORD. Skipping AP profile creation.")
         return
+    ap_ip = gw.resolve('[LOCAL_IP]', default=ap_ip)
     if ap_profile_exists(ap_con, ap_ssid, ap_password):
         return
     conns = nmcli("connection", "show")
@@ -216,6 +217,7 @@ def ensure_ap_profile(ap_con, ap_ssid, ap_password):
     if local_ip:
         mod_args += ["ipv4.addresses", f"{local_ip}/24"]
     nmcli("connection", "modify", ap_con, *mod_args)
+    
 
 def set_wlan0_ap(ap_con, ap_ssid, ap_password):
     ap_con = _sanitize(ap_con)
@@ -466,7 +468,6 @@ def render_nmcli():
     html = ['<div class="nmcli-report">']
     html.append("<h2>Network Manager</h2>")
     html.append(f"<b>Last monitor check:</b> {s.get('last_monitor_check') or '-'}<br>")
-    html.append(f"<b>Last config change:</b> {s.get('last_config_change') or 'Never'}<br>")
     last_action = s.get('last_config_action')
     last_change = s.get('last_config_change')
     if last_action and last_change:
