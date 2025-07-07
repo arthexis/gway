@@ -460,7 +460,12 @@ def render_nmcli():
     html.append("<h2>Network Manager</h2>")
     html.append(f"<b>Last monitor check:</b> {s.get('last_monitor_check') or '-'}<br>")
     html.append(f"<b>Last config change:</b> {s.get('last_config_change') or 'Never'}<br>")
-    html.append(f"<b>Last action:</b> {s.get('last_config_action') or '-'}<br>")
+    last_action = s.get('last_config_action')
+    last_change = s.get('last_config_change')
+    if last_action and last_change:
+        html.append(f"<b>Last action:</b> {last_change} - {last_action}<br>")
+    else:
+        html.append(f"<b>Last action:</b> {last_action or '-'}<br>")
     html.append(f"<b>wlan0 mode:</b> {s.get('wlan0_mode') or '-'}<br>")
     # AP info
     wlan0_info = device_info.get('wlan0', {})
@@ -489,21 +494,29 @@ def render_nmcli():
 
     # All wlanN and relevant info (including disconnected/disabled)
     html.append(f"<b>WLANN interfaces:</b> {wlan_count}<br>")
-    html.append('<table style="border-collapse:collapse;margin-top:4px;"><tr>'
-                '<th>iface</th><th>SSID</th><th>Connected</th><th>INET</th><th>State</th><th>Driver</th><th>MAC</th></tr>')
+    html.append('<table style="border-collapse:collapse;margin-top:4px;font-size:90%;">'
+                '<tr>'
+                '<th style="border:1px solid #ccc;padding:2px 4px;">iface</th>'
+                '<th style="border:1px solid #ccc;padding:2px 4px;">SSID</th>'
+                '<th style="border:1px solid #ccc;padding:2px 4px;">Connected</th>'
+                '<th style="border:1px solid #ccc;padding:2px 4px;">INET</th>'
+                '<th style="border:1px solid #ccc;padding:2px 4px;">State</th>'
+                '<th style="border:1px solid #ccc;padding:2px 4px;">Driver</th>'
+                '<th style="border:1px solid #ccc;padding:2px 4px;">MAC</th>'
+                '</tr>')
     for dev in sorted([d for d in devices if d.startswith('wlan')]):
         st = wlanN.get(dev, {})
         dinfo = device_info.get(dev, {})
         gw_mark = ' <b>(gw)</b>' if dev == internet_iface else ''
         html.append(
             f"<tr>"
-            f"<td>{dev}</td>"
-            f"<td>{st.get('ssid') or '-'}</td>"
-            f"<td>{_color_icon(st.get('connected'))} {st.get('connected') if 'connected' in st else dinfo.get('state','-')}</td>"
-            f"<td>{_color_icon(st.get('inet')) if 'inet' in st else _color_icon(dinfo.get('state')=='connected')} {st.get('inet') if 'inet' in st else '-'}{gw_mark}</td>"
-            f"<td>{dinfo.get('state','-')}</td>"
-            f"<td>{dinfo.get('driver','-')}</td>"
-            f"<td>{dinfo.get('mac','-')}</td>"
+            f'<td style="border:1px solid #ccc;padding:2px 4px;">{dev}</td>'
+            f'<td style="border:1px solid #ccc;padding:2px 4px;">{st.get("ssid") or "-"}</td>'
+            f'<td style="border:1px solid #ccc;padding:2px 4px;">{_color_icon(st.get("connected"))} {st.get("connected") if "connected" in st else dinfo.get("state", "-")}</td>'
+            f'<td style="border:1px solid #ccc;padding:2px 4px;">{_color_icon(st.get("inet")) if "inet" in st else _color_icon(dinfo.get("state")=="connected")} {st.get("inet") if "inet" in st else "-"}{gw_mark}</td>'
+            f'<td style="border:1px solid #ccc;padding:2px 4px;">{dinfo.get("state", "-")}</td>'
+            f'<td style="border:1px solid #ccc;padding:2px 4px;">{dinfo.get("driver", "-")}</td>'
+            f'<td style="border:1px solid #ccc;padding:2px 4px;">{dinfo.get("mac", "-")}</td>'
             f"</tr>"
         )
     html.append('</table>')
