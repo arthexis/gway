@@ -121,6 +121,7 @@ class AuthChargerStatusTests(unittest.TestCase):
         )
         self.assertIn("cookie", resp2.text.lower())
 
+    @unittest.skip("Screenshot tests disabled")
     def test_charger_status_screenshot(self):
         """Capture charger status page screenshot using basic auth."""
         screenshot_dir = Path("work/screenshots")

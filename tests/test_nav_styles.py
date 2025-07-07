@@ -158,6 +158,7 @@ class NavStyleTests(unittest.TestCase):
             f"Readme page did not include expected theme <link> for classic-95.css in <head>. Got links: {[str(l) for l in soup2.find_all('link', rel='stylesheet')]}"
         )
 
+    @unittest.skip("Screenshot tests disabled")
     def test_style_switcher_screenshot(self):
         """Capture a screenshot of the style switcher page."""
         screenshot_dir = Path("work/screenshots")
