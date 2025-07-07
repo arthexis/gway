@@ -9,7 +9,7 @@ Unreleased
 
 - b17445d Fix Windows service start
 
-- Ensure nmcli hotspot sets IPv4 address via LOCAL_IP or default 10.42.0.1
+- Ensure nmcli hotspot sets IPv4 address via AP_GATEWAY or default 10.42.0.1
 
 0.4.38 [build 425327]
 ---------------------
