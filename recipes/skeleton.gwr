@@ -1,7 +1,9 @@
 # file: recipes/skeleton.gwr
 
-web app setup-app --project web.site --home reader
-web app setup-app --project web.nav 
-web static collect
-web server start-app 
+web app setup-app:
+    --project web.site --home reader
+    --project web.nav
+web:
+ - static collect
+ - server start-app
 forever

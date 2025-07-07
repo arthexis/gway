@@ -1,16 +1,18 @@
 # file: recipes/gamebox.gwr
 # Games-only demo with cookies, navbar and style switcher
 
-web app setup-app --home reader 
-    --project games.conway --home game-of-life --path conway 
-    --project games.mtg --home search-games 
-    --project games.qpig --home qpig-farm --path qpig 
-    --project games.snl --home snl-board --path snl 
-    --project web.nav --home style-switcher 
+web app setup-app:
+    --home reader
+    --project games.conway --home game-of-life --path conway
+    --project games.mtg --home search-games
+    --project games.qpig --home qpig-farm --path qpig
+    --project games.snl --home snl-board --path snl
+    --project web.nav --home style-switcher
     --project web.cookies --home cookie-jar
 
-web static collect
-web server start-app --port 8888
+web:
+ - static collect
+ - server start-app --port 8888
 
 forever
 

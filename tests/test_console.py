@@ -113,5 +113,59 @@ app start --port 8000
         self.assertEqual(comments, expected_comments)
 
 
+class TestLoadRecipeColonSyntax(unittest.TestCase):
+    def test_load_recipe_with_colon_repetition(self):
+        content = (
+            """web app setup-app:
+    --project one --home first
+    --project two
+web:
+ - static collect
+ - server start-app --host 1 --port 2
+"""
+        )
+        with tempfile.NamedTemporaryFile('w', delete=False) as f:
+            f.write(content)
+            temp_name = f.name
+        try:
+            commands, _ = console.load_recipe(temp_name)
+        finally:
+            os.remove(temp_name)
+
+        expected = [
+            ['web', 'app', 'setup-app', '--project', 'one', '--home', 'first'],
+            ['web', 'app', 'setup-app', '--project', 'two'],
+            ['web', 'static', 'collect'],
+            ['web', 'server', 'start-app', '--host', '1', '--port', '2'],
+        ]
+        self.assertEqual(commands, expected)
+
+    def test_load_recipe_colon_without_indentation(self):
+        content = (
+            """web app setup-app:
+--project one
+--project two
+web:
+- static collect
+- server start-app --host 1 --port 2
+"""
+        )
+        with tempfile.NamedTemporaryFile('w', delete=False) as f:
+            f.write(content)
+            temp_name = f.name
+        try:
+            commands, _ = console.load_recipe(temp_name)
+        finally:
+            os.remove(temp_name)
+
+        expected = [
+            ['web', 'app', 'setup-app', '--project', 'one'],
+            ['web', 'app', 'setup-app', '--project', 'two'],
+            ['web', 'static', 'collect'],
+            ['web', 'server', 'start-app', '--host', '1', '--port', '2'],
+        ]
+        self.assertEqual(commands, expected)
+
+
 if __name__ == '__main__':
     unittest.main()
