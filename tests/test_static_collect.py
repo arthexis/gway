@@ -59,5 +59,30 @@ class StaticCollectTests(unittest.TestCase):
             )
             self.assertEqual(js_bundle, expected_js)
 
+    def test_collect_includes_monitor_tabs_script(self):
+        """net_monitors.js is bundled when monitor project is enabled."""
+        with TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            monitor_dir = tmp_path / "data" / "static" / "monitor"
+            monitor_dir.mkdir(parents=True)
+            js_file = monitor_dir / "net_monitors.js"
+            js_file.write_text("console.log('tabs');")
+            css_file = monitor_dir / "net_monitors.css"
+            css_file.write_text(".tabs{}")
+            target_dir = tmp_path / "work" / "shared"
+            target_dir.mkdir(parents=True)
+
+            def fake_resource(*parts, **kw):
+                return tmp_path.joinpath(*parts)
+
+            with patch.object(webstatic.gw, "resource", fake_resource), \
+                 patch.object(webstatic.gw.web.app, "enabled_projects", lambda: {"monitor"}):
+                report = webstatic.collect(root="data/static", target="work/shared")
+
+            js_files = {Path(rel).as_posix() for _, rel, _ in report["js"]}
+            self.assertIn("monitor/net_monitors.js", js_files)
+            js_bundle = Path(report["js_bundle"]).read_text()
+            self.assertIn("net_monitors.js", js_bundle)
+
 if __name__ == "__main__":
     unittest.main()
