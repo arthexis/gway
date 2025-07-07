@@ -459,7 +459,6 @@ def render_nmcli():
     html = ['<div class="nmcli-report">']
     html.append("<h2>Network Manager</h2>")
     html.append(f"<b>Last monitor check:</b> {s.get('last_monitor_check') or '-'}<br>")
-    html.append(f"<b>Last config change:</b> {s.get('last_config_change') or 'Never'}<br>")
     last_action = s.get('last_config_action')
     last_change = s.get('last_config_change')
     if last_action and last_change:
