@@ -3,13 +3,14 @@
 """
 GWAY NMCLI Network Monitor Project
 
-Single-run monitor and render functions for Linux systems using nmcli.
-Works with monitor/monitor.py. All state is read/written via gw.monitor.get_state/set_states('nmcli', {...}).
+Network monitoring helpers for Linux systems using ``nmcli``.
+All state is read/written via ``gw.monitor.get_state/set_states('nmcli', {...})``.
+The monitors only collect information and never modify the network.
 
 Monitors:
-    - monitor_nmcli: Full network check/fallback logic (AP/station/repair).
-    - monitor_ap_only: Ensure wlan0 is in AP mode.
-    - monitor_station_only: Ensure wlan0 is in station/client mode.
+    - monitor_nmcli: Collect information about all interfaces.
+    - monitor_ap_only: Record wlan0 status without changes.
+    - monitor_station_only: Same as above for station mode.
 
 Renders:
     - render_nmcli: Main network diagnostic report (HTML).
@@ -18,6 +19,8 @@ Renders:
 """
 
 import subprocess
+import shlex
+from bottle import request
 from gway import gw
 from gway.sigils import _unquote
 
@@ -160,25 +163,18 @@ def get_wlan_status(iface):
             return status
     return {"ssid": None, "connected": False, "inet": False}
 
-def check_eth0_gateway():
+def gather_eth0_status():
+    """Record eth0 IP and whether a default gateway exists."""
     try:
         routes = subprocess.check_output(["ip", "route", "show", "dev", "eth0"], text=True)
         ip_addr = get_eth0_ip()
         state_update = {
             "eth0_ip": ip_addr,
-            "eth0_gateway": "default" in routes
+            "eth0_gateway": "default" in routes,
         }
-        if "default" in routes:
-            subprocess.run(["ip", "route", "del", "default", "dev", "eth0"], stderr=subprocess.DEVNULL)
-            nmcli("connection", "modify", "eth0", "ipv4.never-default", "yes")
-            nmcli("connection", "up", "eth0")
-            state_update.update({
-                "last_config_change": now_iso(),
-                "last_config_action": "Removed eth0 default route"
-            })
         gw.monitor.set_states('nmcli', state_update)
     except Exception as e:
-        gw.monitor.set_states('nmcli', {"last_error": f"eth0 gateway: {e}"})
+        gw.monitor.set_states('nmcli', {"last_error": f"eth0 status: {e}"})
 
 def ap_profile_exists(ap_con, ap_ssid, ap_password):
     for name, uuid, ctype, device in nmcli_list_connections():
@@ -341,14 +337,7 @@ def try_connect_wlan0_known_networks():
 # --- Main single-run monitor functions ---
 
 def monitor_nmcli(**kwargs):
-    ap_ssid = kwargs.get("ap_ssid") or gw.resolve('[AP_SSID]')
-    ap_con = kwargs.get("ap_con") or ap_ssid or gw.resolve('[AP_CON]')
-    ap_password = kwargs.get("ap_password") or gw.resolve('[AP_PASSWORD]')
-    email = kwargs.get("email")
-    if not ap_con:
-        raise ValueError("Missing ap_con (AP_CON). Required for AP operation.")
-
-    check_eth0_gateway()
+    gather_eth0_status()
     wlan_ifaces = get_wlan_ifaces()
     gw.info(f"[nmcli] WLAN ifaces detected: {wlan_ifaces}")
     wlanN = {}
@@ -359,53 +348,24 @@ def monitor_nmcli(**kwargs):
         s = get_wlan_status(iface)
         wlanN[iface] = s
         gw.info(f"[nmcli] {iface} status: {s}")
-        if s["inet"]:
-            gw.info(f"[nmcli] {iface} has internet, keeping wlan0 as AP ({ap_ssid})")
-            maybe_notify_ap_switch(ap_ssid, email)
-            set_wlan0_ap(ap_con, ap_ssid, ap_password)
+        if s["inet"] and not found_inet:
             found_inet = True
             internet_iface = iface
             internet_ssid = s.get("ssid")
-            break
-        else:
-            clean_and_reconnect_wifi(iface, s.get("ssid") or iface)
-            s2 = get_wlan_status(iface)
-            wlanN[iface] = s2
-            if s2["inet"]:
-                gw.info(f"[nmcli] {iface} internet works after reset")
-                maybe_notify_ap_switch(ap_ssid, email)
-                set_wlan0_ap(ap_con, ap_ssid, ap_password)
-                found_inet = True
-                internet_iface = iface
-                internet_ssid = s2.get("ssid")
-                break
     gw.monitor.set_states('nmcli', {"wlanN": wlanN})
+    gw_iface = None
     if not found_inet:
-        gw.info("[nmcli] No internet via wlanN, trying wlan0 as client")
-        set_wlan0_station()
-        conn = try_connect_wlan0_known_networks()
-        if conn:
-            gw.info("[nmcli] wlan0 now has internet")
+        gw_iface = get_default_route_iface()
+        gw.debug(f"[nmcli] default route iface: {gw_iface}")
+        if gw_iface and ping(gw_iface):
             found_inet = True
-            internet_iface = "wlan0"
-            internet_ssid = conn
-        else:
-            gw.info("[nmcli] wlan0 cannot connect as client")
-            # Keep wlan0 in station mode. It will switch back to AP
-            # only when another interface provides internet.
+            internet_iface = gw_iface
+            if gw_iface in wlanN:
+                internet_ssid = wlanN[gw_iface].get("ssid")
 
-    # Fallback to system default route
-    gw_iface = get_default_route_iface()
-    gw.debug(f"[nmcli] default route iface: {gw_iface}")
-    if gw_iface and not internet_iface:
-        if ping(gw_iface):
-            found_inet = True
-        internet_iface = gw_iface
-        if gw_iface in wlanN:
-            internet_ssid = wlanN[gw_iface].get("ssid")
-        elif gw_iface == "wlan0":
-            internet_ssid = gw.monitor.get_state('nmcli').get("wlan0_ssid")
-            
+    if not internet_iface and gw_iface == "wlan0":
+        internet_ssid = gw.monitor.get_state('nmcli').get("wlan0_ssid")
+
     gw.monitor.set_states('nmcli', {
         "last_monitor_check": now_iso(),
         "internet_iface": internet_iface,
@@ -423,19 +383,24 @@ def monitor_nmcli(**kwargs):
     }
 
 def monitor_ap_only(**kwargs):
-    ap_ssid = kwargs.get("ap_ssid") or gw.resolve('[AP_SSID]')
-    ap_con = kwargs.get("ap_con") or ap_ssid or gw.resolve('[AP_CON]')
-    ap_password = kwargs.get("ap_password") or gw.resolve('[AP_PASSWORD]')
-    set_wlan0_ap(ap_con, ap_ssid, ap_password)
-    gw.monitor.set_states('nmcli', {"last_monitor_check": now_iso()})
-    state = gw.monitor.get_state('nmcli')
-    return {"wlan0_mode": state.get("wlan0_mode"), "ssid": ap_ssid}
+    """Record wlan0 status without changing configuration."""
+    gather_eth0_status()
+    status = get_wlan_status("wlan0")
+    gw.monitor.set_states('nmcli', {
+        "last_monitor_check": now_iso(),
+        "wlanN": {"wlan0": status},
+    })
+    return {"wlan0_mode": gw.monitor.get_state('nmcli').get("wlan0_mode"), "ssid": status.get("ssid")}
 
 def monitor_station_only(**kwargs):
-    set_wlan0_station()
-    gw.monitor.set_states('nmcli', {"last_monitor_check": now_iso()})
-    state = gw.monitor.get_state('nmcli')
-    return {"wlan0_mode": state.get("wlan0_mode")}
+    """Record wlan0 status without changing configuration."""
+    gather_eth0_status()
+    status = get_wlan_status("wlan0")
+    gw.monitor.set_states('nmcli', {
+        "last_monitor_check": now_iso(),
+        "wlanN": {"wlan0": status},
+    })
+    return {"wlan0_mode": gw.monitor.get_state('nmcli').get("wlan0_mode")}
 
 # --- Renderers (for dashboard, html output) ---
 
@@ -543,5 +508,38 @@ def render_nmcli():
     else:
         html.append(f"<b>Internet via:</b> <span style='color:#b00;'>No gateway detected</span><br>")
 
+    # --- Command box ---
+    html.append(_render_run_form())
+
     html.append("</div>")
     return "\n".join(html)
+
+
+def _render_run_form(cmd: str = "", output: str = "") -> str:
+    url = gw.web.app.build_url("run") if hasattr(gw, "web") else "run"
+    form = [
+        f"<form method='post' action='{url}' style='margin-top:8px;'>",
+        f"<input type='text' name='cmd' value='{gw.to_html(cmd)}' placeholder='nmcli arguments' style='width:70%;'>",
+        "<button type='submit'>Run</button>",
+        "</form>",
+    ]
+    if output:
+        form.append(f"<pre>{gw.to_html(output)}</pre>")
+    return "".join(form)
+
+
+def view_get_run(cmd: str = ""):
+    """Display nmcli command form."""
+    return _render_run_form(cmd)
+
+
+def view_post_run(cmd: str = ""):
+    """Execute nmcli command and show output."""
+    cmd = cmd or request.forms.get("cmd", "")
+    output = ""
+    if cmd:
+        try:
+            output = nmcli(*shlex.split(cmd))
+        except Exception as e:
+            output = f"Error: {e}"
+    return _render_run_form(cmd, output)

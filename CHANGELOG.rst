@@ -8,6 +8,7 @@ Unreleased
 ---------------------
 
 - b17445d Fix Windows service start
+- Rework nmcli monitor to report status only and provide a web command interface
 
 - Ensure nmcli hotspot sets IPv4 address via AP_GATEWAY or default 10.42.0.1
 
