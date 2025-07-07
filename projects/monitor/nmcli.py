@@ -31,6 +31,20 @@ def nmcli(*args):
     result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
     return result.stdout.strip()
 
+def nmcli_list_connections():
+    """Return a list of (name, uuid, type, device) tuples from nmcli."""
+    output = nmcli('-t', '-f', 'NAME,UUID,TYPE,DEVICE', 'connection', 'show')
+    conns = []
+    for line in output.splitlines():
+        if not line:
+            continue
+        parts = line.split(':')
+        if len(parts) < 4:
+            parts += [''] * (4 - len(parts))
+        name, uuid, ctype, device = parts[:4]
+        conns.append((name, uuid, ctype, device))
+    return conns
+
 def _sanitize(val):
     return _unquote(val.strip()) if isinstance(val, str) else val
 
@@ -167,11 +181,7 @@ def check_eth0_gateway():
         gw.monitor.set_states('nmcli', {"last_error": f"eth0 gateway: {e}"})
 
 def ap_profile_exists(ap_con, ap_ssid, ap_password):
-    conns = nmcli("connection", "show")
-    for line in conns.splitlines():
-        fields = line.split()
-        if len(fields) < 4: continue
-        name, uuid, ctype, device = fields[:4]
+    for name, uuid, ctype, device in nmcli_list_connections():
         if name == ap_con and ctype == "wifi":
             details = nmcli("connection", "show", name)
             details_dict = {}
@@ -268,12 +278,7 @@ def maybe_notify_ap_switch(ap_ssid, email=None):
 
 def clean_and_reconnect_wifi(iface, ssid, password=None):
     gw.debug(f"[nmcli] clean_and_reconnect_wifi({iface}, ssid={ssid})")
-    conns = nmcli("connection", "show")
-    for line in conns.splitlines():
-        fields = line.split()
-        if len(fields) < 4:
-            continue
-        name, uuid, conn_type, device = fields[:4]
+    for name, uuid, conn_type, device in nmcli_list_connections():
         if conn_type == "wifi" and (device == iface or name == ssid):
             gw.info(f"[nmcli] Removing stale connection {name} ({uuid}) on {iface}")
             nmcli("connection", "down", name)
@@ -303,8 +308,7 @@ def try_connect_wlan0_known_networks():
 
     Returns the SSID if connection succeeds, otherwise None.
     """
-    conns = nmcli("connection", "show")
-    wifi_conns = [line.split()[0] for line in conns.splitlines()[1:] if "wifi" in line]
+    wifi_conns = [name for name, _, ctype, _ in nmcli_list_connections() if ctype == "wifi"]
     gw.debug(f"[nmcli] known wifi profiles: {wifi_conns}")
     for conn in wifi_conns:
         gw.info(f"[nmcli] Trying wlan0 connect: {conn}")
