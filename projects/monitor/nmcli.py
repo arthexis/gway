@@ -230,8 +230,10 @@ def maybe_notify_ap_switch(ap_ssid, email=None):
     prev_mode = state.get("wlan0_mode")
     prev_ssid = state.get("wlan0_ssid")
     prev_inet = state.get("wlan0_inet")
-    recipient = email or gw.resolve('[ADMIN_EMAIL]')
-    if recipient and prev_mode == "station" and prev_inet:
+    recipient = email if email else gw.resolve('[ADMIN_EMAIL]', default=None)
+    if not recipient:
+        return
+    if prev_mode == "station" and prev_inet:
         subject = "[nmcli] wlan0 switching to AP mode"
         body = (
             f"Previous mode: station\n"
