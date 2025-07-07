@@ -8,6 +8,7 @@ Unreleased
 ---------------------
 
 - a4056e5 Improve nmcli monitor table styling
+- Ignore "service has not been started" error when removing Windows services
 
 0.4.37 [build 6aa9b9]
 ---------------------
