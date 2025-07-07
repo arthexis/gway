@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.39 [build ccb94e]
+---------------------
+
+- b17445d Fix Windows service start
+
 - Ensure nmcli hotspot sets IPv4 address via LOCAL_IP or default 10.42.0.1
 
 0.4.38 [build 425327]
