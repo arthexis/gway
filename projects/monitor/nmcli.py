@@ -205,10 +205,17 @@ def ensure_ap_profile(ap_con, ap_ssid, ap_password):
     gw.info(f"[nmcli] Creating AP profile: name={ap_con} ssid={ap_ssid}")
     nmcli("connection", "add", "type", "wifi", "ifname", "wlan0",
           "con-name", ap_con, "autoconnect", "no", "ssid", ap_ssid)
-    nmcli("connection", "modify", ap_con,
-          "mode", "ap", "802-11-wireless.band", "bg",
-          "wifi-sec.key-mgmt", "wpa-psk",
-          "wifi-sec.psk", ap_password)
+
+    local_ip = gw.resolve('[LOCAL_IP]', default='10.42.0.1')
+    mod_args = [
+        "mode", "ap", "802-11-wireless.band", "bg",
+        "wifi-sec.key-mgmt", "wpa-psk",
+        "wifi-sec.psk", ap_password,
+        "ipv4.method", "shared",
+    ]
+    if local_ip:
+        mod_args += ["ipv4.addresses", f"{local_ip}/24"]
+    nmcli("connection", "modify", ap_con, *mod_args)
 
 def set_wlan0_ap(ap_con, ap_ssid, ap_password):
     ap_con = _sanitize(ap_con)
