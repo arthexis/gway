@@ -238,7 +238,9 @@ After placing your modules under `projects/`, you can immediately invoke them fr
     gway project-dir-or-script your-function argN --kwargN valueN
 
 
-By default, results get reused as context for future calls made with the same Gateway thread.  
+By default, results get reused as context for future calls made with the same Gateway thread.
+
+
 
 
 Recipes and Web Views

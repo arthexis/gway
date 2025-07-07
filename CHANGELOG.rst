@@ -4,6 +4,8 @@ Changelog
 Unreleased
 ----------
 
+- Ensure nmcli hotspot sets IPv4 address via LOCAL_IP or default 10.42.0.1
+
 0.4.38 [build 425327]
 ---------------------
 

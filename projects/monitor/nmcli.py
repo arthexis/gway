@@ -184,7 +184,7 @@ def ap_profile_exists(ap_con, ap_ssid, ap_password):
             return ssid_ok and pwd_ok
     return False
 
-def ensure_ap_profile(ap_con, ap_ssid, ap_password):
+def ensure_ap_profile(ap_con, ap_ssid, ap_password, ap_ip=None):
     ap_con = _sanitize(ap_con)
     ap_ssid = _sanitize(ap_ssid)
     ap_password = _sanitize(ap_password)
@@ -193,6 +193,7 @@ def ensure_ap_profile(ap_con, ap_ssid, ap_password):
     if not ap_ssid or not ap_password:
         gw.info("[nmcli] Missing AP_SSID or AP_PASSWORD. Skipping AP profile creation.")
         return
+    ap_ip = gw.resolve('[LOCAL_IP]', default=ap_ip)
     if ap_profile_exists(ap_con, ap_ssid, ap_password):
         return
     conns = nmcli("connection", "show")
@@ -203,12 +204,37 @@ def ensure_ap_profile(ap_con, ap_ssid, ap_password):
             nmcli("connection", "delete", ap_con)
             break
     gw.info(f"[nmcli] Creating AP profile: name={ap_con} ssid={ap_ssid}")
-    nmcli("connection", "add", "type", "wifi", "ifname", "wlan0",
-          "con-name", ap_con, "autoconnect", "no", "ssid", ap_ssid)
-    nmcli("connection", "modify", ap_con,
-          "mode", "ap", "802-11-wireless.band", "bg",
-          "wifi-sec.key-mgmt", "wpa-psk",
-          "wifi-sec.psk", ap_password)
+    nmcli(
+        "connection",
+        "add",
+        "type",
+        "wifi",
+        "ifname",
+        "wlan0",
+        "con-name",
+        ap_con,
+        "autoconnect",
+        "no",
+        "ssid",
+        ap_ssid,
+    )
+    nmcli(
+        "connection",
+        "modify",
+        ap_con,
+        "mode",
+        "ap",
+        "802-11-wireless.band",
+        "bg",
+        "wifi-sec.key-mgmt",
+        "wpa-psk",
+        "wifi-sec.psk",
+        ap_password,
+        "ipv4.method",
+        "shared",
+        "ipv4.addresses",
+        f"{ap_ip or '10.42.0.1'}/24",
+    )
 
 def set_wlan0_ap(ap_con, ap_ssid, ap_password):
     ap_con = _sanitize(ap_con)
