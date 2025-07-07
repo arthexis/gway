@@ -23,6 +23,22 @@ import re
 import subprocess
 
 
+def _create_service_class(name: str, display_name: str, recipe: str | None, debug: bool) -> type:
+    """Return a module-level service class unique to ``name``."""
+    cls_name = "Service_" + re.sub(r"[^a-zA-Z0-9_]", "_", name)
+
+    class Service(GatewayService):
+        pass
+
+    Service.__name__ = cls_name
+    Service._svc_name_ = name
+    Service._svc_display_name_ = display_name
+    Service.recipe = recipe
+    Service.debug = debug
+    globals()[cls_name] = Service
+    return Service
+
+
 def _format_display_name(name: str) -> str:
     """Return a human friendly Windows service display name."""
     parts = re.split(r"[-_]+", name)
@@ -96,11 +112,13 @@ def main(argv: list[str] | None = None) -> None:
 
     display_name = _format_display_name(args.name)
 
-    class Service(GatewayService):
-        _svc_name_ = args.name
-        _svc_display_name_ = display_name
-        recipe = args.recipe
-        debug = args.debug
+    Service = _create_service_class(
+        args.name,
+        display_name,
+        args.recipe,
+        args.debug,
+    )
+    cls_name = Service.__name__
 
     if args.command == "install":
         if not args.recipe:
@@ -111,7 +129,7 @@ def main(argv: list[str] | None = None) -> None:
         if args.debug:
             exe_args += " --debug"
         win32serviceutil.InstallService(
-            pythonClassString=f"{__name__}.GatewayService",
+            pythonClassString=f"{__name__}.{cls_name}",
             serviceName=args.name,
             displayName=display_name,
             exeName=win32serviceutil.LocatePythonServiceExe(),
@@ -121,14 +139,31 @@ def main(argv: list[str] | None = None) -> None:
         )
         print(f"Service {args.name} installed.")
     elif args.command == "remove":
+        def _svc_missing(exc: Exception) -> bool:
+            return getattr(exc, "winerror", None) == 1060
+
         try:
             win32serviceutil.StopService(args.name)
-        except Exception:
-            pass
+        except Exception as exc:
+            if not _svc_missing(exc):
+                print(f"Failed to stop {args.name}: {exc}")
+
         if args.force:
-            subprocess.run(["taskkill", "/F", "/FI", f"SERVICES eq {args.name}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        win32serviceutil.RemoveService(args.name)
-        print(f"Service {args.name} removed.")
+            subprocess.run(
+                ["taskkill", "/F", "/FI", f"SERVICES eq {args.name}"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+        try:
+            win32serviceutil.RemoveService(args.name)
+        except Exception as exc:
+            if _svc_missing(exc):
+                print(f"Service {args.name} does not exist.")
+            else:
+                raise
+        else:
+            print(f"Service {args.name} removed.")
     elif args.command == "start":
         win32serviceutil.StartService(args.name)
     elif args.command == "stop":
