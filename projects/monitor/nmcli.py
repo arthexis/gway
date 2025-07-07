@@ -193,7 +193,7 @@ def ensure_ap_profile(ap_con, ap_ssid, ap_password, ap_ip=None):
     if not ap_ssid or not ap_password:
         gw.info("[nmcli] Missing AP_SSID or AP_PASSWORD. Skipping AP profile creation.")
         return
-    ap_ip = gw.resolve('[LOCAL_IP]', default=ap_ip)
+    ap_ip = gw.resolve('[AP_GATEWAY]', default=ap_ip)
     if ap_profile_exists(ap_con, ap_ssid, ap_password):
         return
     conns = nmcli("connection", "show")
@@ -207,7 +207,7 @@ def ensure_ap_profile(ap_con, ap_ssid, ap_password, ap_ip=None):
     nmcli("connection", "add", "type", "wifi", "ifname", "wlan0",
           "con-name", ap_con, "autoconnect", "no", "ssid", ap_ssid)
 
-    local_ip = gw.resolve('[LOCAL_IP]', default='10.42.0.1')
+    local_ip = gw.resolve('[AP_GATEWAY]', default='10.42.0.1')
     mod_args = [
         "mode", "ap", "802-11-wireless.band", "bg",
         "wifi-sec.key-mgmt", "wpa-psk",
