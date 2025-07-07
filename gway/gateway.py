@@ -174,7 +174,7 @@ class Gateway(Resolver, Runner):
                 if kwarg_txt and arg_txt:
                     arg_txt = f"{arg_txt}, "
                 if not (is_builtin and not self.verbose):
-                    self.debug(f"-> {func_name}({arg_txt}{kwarg_txt})")
+                    self.verbose(f"-> {func_name}({arg_txt}{kwarg_txt})")
 
                 sig = inspect.signature(func_obj)
                 bound_args = sig.bind_partial(*args, **kwargs)
@@ -277,8 +277,7 @@ class Gateway(Resolver, Runner):
                     if any(word in subject for word in sensitive_keywords):
                         log_value = "[redacted]"
 
-                    if not self.verbose:
-                        self.debug(f"<- result['{subject}'] == {log_value}")
+                    self.verbose(f"<- result['{subject}'] == {log_value}")
                     self.results.insert(subject, result)
                     if isinstance(result, dict):
                         self.context.update(result)
