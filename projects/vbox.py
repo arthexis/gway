@@ -464,7 +464,6 @@ def view_downloads(*hashes: tuple[str], vbid: str = None, modified_since=None, *
     - If modified_since is passed (as iso or epoch seconds), only send file if newer, else 304.
     """
 
-    # TODO: Support multiple hashes by checking them one by one. If the first doesn't exist, 
     # try the next and so forth. Give up when every hash fails to match. First matches is chosen first.
 
     gw.warning(f"Download view: {hashes=} {vbid=} {kwargs=}")

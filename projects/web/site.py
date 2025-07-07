@@ -122,7 +122,6 @@ def view_help(topic="", *args, **kwargs):
     If there is an exact match in the search, show it at the top (highlighted).
     """
 
-    # TODO: Change how the help system works: Instead of just using the results of
     # gw.gelp at all times, compliment this result with other information. 
 
     topic_in = topic or ""

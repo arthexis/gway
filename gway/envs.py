@@ -46,7 +46,6 @@ def load_env(env_type: str, name: str, env_root: str):
     but base env vars will not override the primary env's values.
     """
 
-    # TODO: When creating an empty file, include a header starting with #
     # followed by the short path of the file, like this: 
     # envs/<env_type>/<name>.env
 

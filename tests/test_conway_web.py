@@ -1,7 +1,6 @@
 # file: tests/test_conway_web.py
 
 
-# TODO: Fix test_download_board_link_works
 
 
 import unittest

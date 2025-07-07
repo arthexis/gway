@@ -95,8 +95,6 @@ def track_history(interval: int = 5, *, stop_after=None, notify=True):
 def view_history(*, selection: list = None, copy: bool = True, purge: bool = True):
     gw.verbose(f"Received {selection=}")
     selection = gw.cast.to_list(selection) if selection else selection
-    # TODO: If copy, concatenate selection, copy to clipboard
-    # TODO: If purge, remove listed all items by sequence from history.txt
     raise NotImplementedError
 
 

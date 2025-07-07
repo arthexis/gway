@@ -82,7 +82,6 @@ class NavStyleTests(unittest.TestCase):
         self.assertIsNotNone(preview_div, "style-preview div not found")
         self.assertIn("Palimpsesto", preview_div.text, "Preview does not mention 'Palimpsesto'")
 
-    # TODO: The following test keeps failing. We should do a standalone test for cookies to isolate the source
 
     def test_theme_switch_sets_css_cookie_and_main_link(self):
         """Test POST to change theme sets cookie and updates <head> <link>."""
