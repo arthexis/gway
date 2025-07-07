@@ -30,5 +30,17 @@ class StreamFileResponseTests(unittest.TestCase):
             os.remove(tmp_path)
 
 
+class SanitizeFilenameTests(unittest.TestCase):
+    def test_sanitize_filename(self):
+        cases = {
+            "foo/bar": "foobar",
+            "../secret": "secret",
+            "normal-name.txt": "normal-name.txt",
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(vbox._sanitize_filename(raw), expected)
+
+
 if __name__ == "__main__":
     unittest.main()

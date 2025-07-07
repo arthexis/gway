@@ -30,6 +30,13 @@ _gc_thread_on = False
 VBOX_PATH = "work", "vbox"
 
 
+def _sanitize_filename(name: str) -> str:
+    """Return a safe filename by stripping path separators and unsafe chars."""
+    name = str(name)
+    name = name.replace("/", "").replace("\\", "").replace("..", "")
+    return "".join(c for c in name if c.isalnum() or c in "._-")
+
+
 def purge(*, all=False):
     """Manually purge expired vbox entries and remove their folders.
 
@@ -124,14 +131,15 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
         uploaded_files = request.files.getlist("file")
         results = []
         for f in uploaded_files:
-            save_path = os.path.join(upload_dir, f.filename)
+            safe_name = _sanitize_filename(f.filename)
+            save_path = os.path.join(upload_dir, safe_name)
             try:
                 f.save(save_path)
-                results.append(f"Uploaded {f.filename}")
-                gw.info(f"Uploaded {f.filename} to {short}")
+                results.append(f"Uploaded {safe_name}")
+                gw.info(f"Uploaded {safe_name} to {short}")
             except Exception as e:
-                results.append(f"Error uploading {f.filename}: {e}")
-                gw.error(f"Issue uploading {f.filename} to {short}")
+                results.append(f"Error uploading {safe_name}: {e}")
+                gw.error(f"Issue uploading {safe_name} to {short}")
                 gw.exception(e)
 
         download_short_url = gw.web.app.build_url("download", vbid=short)
@@ -395,7 +403,8 @@ def poll_remote(server_url: str = '[SERVER_URL]', *, target='work/vbox/remote', 
 
     def download_file(md5, name, mtime):
         # Download if missing or outdated
-        local_path = os.path.join(target, name)
+        safe_name = _sanitize_filename(name)
+        local_path = os.path.join(target, safe_name)
         # Only download if missing or mtime newer
         if os.path.exists(local_path):
             prev = os.path.getmtime(local_path)
@@ -406,16 +415,16 @@ def poll_remote(server_url: str = '[SERVER_URL]', *, target='work/vbox/remote', 
         try:
             resp = requests.get(file_url, timeout=30)
             if resp.status_code == 304:
-                gw.info(f"[poll_remote] Skipped {name}: not modified")
+                gw.info(f"[poll_remote] Skipped {safe_name}: not modified")
                 return False
             resp.raise_for_status()
             with open(local_path, "wb") as f:
                 f.write(resp.content)
             os.utime(local_path, (mtime, mtime))  # Set mtime to match remote
-            gw.info(f"[poll_remote] Downloaded {name} ({md5})")
+            gw.info(f"[poll_remote] Downloaded {safe_name} ({md5})")
             return True
         except Exception as e:
-            gw.error(f"[poll_remote] Error downloading {name}: {e}")
+            gw.error(f"[poll_remote] Error downloading {safe_name}: {e}")
             return False
 
     # Main polling loop
