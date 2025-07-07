@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.38 [build 425327]
+---------------------
+
+- a4056e5 Improve nmcli monitor table styling
+
 0.4.37 [build 6aa9b9]
 ---------------------
 
