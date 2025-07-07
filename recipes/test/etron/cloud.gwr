@@ -1,7 +1,8 @@
 # file: recipes/etron/cloud.gwr
 # OCPP 1.6 CSMS Recipe for Central Cloud Server
 
-web app setup-app --project ocpp.data --home charger-summary
+web app setup-app:
+    --project ocpp.data --home charger-summary
     --project ocpp.csms --home charger-status
     --project ocpp.csms --home cp-simulator
     --project web.cookies
@@ -10,13 +11,16 @@ web app setup-app --project ocpp.data --home charger-summary
     --project ocpp.data --home charger-summary
    
 # Toggle this version to apply the allow list  
-ocpp csms setup-app --allow data/etron/rfids.cdv --location etron_cloud
+ocpp csms setup-app:
+    --allow data/etron/rfids.cdv --location etron_cloud
 
 # Without --allow, all transactions will be allowed by default
-# ocpp csms setup-app --location porsche_centre --deny data/etron/rfids.cdv
+# ocpp csms setup-app:
+#     --location porsche_centre --deny data/etron/rfids.cdv
 
-web static collect
-web auth config-basic --temp-link
-web server start-app --host 0.0.0.0 --port 18000 --ws-port 19000 
+web:
+ - static collect
+ - auth config-basic --temp-link
+ - server start-app --host 0.0.0.0 --port 18000 --ws-port 19000
 
 until --file VERSION

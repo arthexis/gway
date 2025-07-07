@@ -450,14 +450,30 @@ def load_recipe(recipe_filename):
     
     deindented_lines = []
     last_prefix = ""
+    colon_prefix = None
     with open(recipe_path) as f:
         for raw_line in f:
             line = raw_line.rstrip("\n")
             stripped_line = line.lstrip()
             if not stripped_line:
+                colon_prefix = None
                 continue  # skip blank lines
             if stripped_line.startswith("#"):
                 comments.append(stripped_line)
+                colon_prefix = None
+                continue
+            if colon_prefix:
+                if stripped_line.startswith("- "):
+                    addition = stripped_line[1:].lstrip()
+                    deindented_lines.append(colon_prefix + " " + addition)
+                    continue
+                if stripped_line.startswith("--"):
+                    deindented_lines.append(colon_prefix + " " + stripped_line)
+                    continue
+                colon_prefix = None
+            if stripped_line.endswith(":"):
+                colon_prefix = stripped_line[:-1].rstrip()
+                last_prefix = colon_prefix
                 continue
             # Detect if line is indented and starts with '--'
             if line[:1].isspace() and stripped_line.startswith("--"):
