@@ -19,6 +19,7 @@ Renders:
 
 import subprocess
 from gway import gw
+from gway.sigils import _unquote
 
 def now_iso():
     import datetime
@@ -29,6 +30,9 @@ def now_iso():
 def nmcli(*args):
     result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
     return result.stdout.strip()
+
+def _sanitize(val):
+    return _unquote(val.strip()) if isinstance(val, str) else val
 
 def get_wlan_ifaces():
     output = nmcli("device", "status")
@@ -181,6 +185,9 @@ def ap_profile_exists(ap_con, ap_ssid, ap_password):
     return False
 
 def ensure_ap_profile(ap_con, ap_ssid, ap_password):
+    ap_con = _sanitize(ap_con)
+    ap_ssid = _sanitize(ap_ssid)
+    ap_password = _sanitize(ap_password)
     if not ap_con:
         raise ValueError("AP_CON must be specified.")
     if not ap_ssid or not ap_password:
@@ -204,6 +211,9 @@ def ensure_ap_profile(ap_con, ap_ssid, ap_password):
           "wifi-sec.psk", ap_password)
 
 def set_wlan0_ap(ap_con, ap_ssid, ap_password):
+    ap_con = _sanitize(ap_con)
+    ap_ssid = _sanitize(ap_ssid)
+    ap_password = _sanitize(ap_password)
     ensure_ap_profile(ap_con, ap_ssid, ap_password)
     gw.info(f"[nmcli] Activating wlan0 AP: conn={ap_con}, ssid={ap_ssid}")
     nmcli("device", "disconnect", "wlan0")
