@@ -151,12 +151,18 @@ def search(subject_fragment, body_fragment=None):
             if getattr(mail, 'utf8_enabled', False):
                 status, data = mail.search(None, *criteria)
             else:
+                encoded_criteria = [
+                    c.encode('utf-8') if isinstance(c, str) else c
+                    for c in criteria
+                ]
                 try:
-                    status, data = mail.search('UTF-8', *criteria)
+                    status, data = mail.search('UTF-8', *encoded_criteria)
                 except imaplib.IMAP4.error as e:
                     if 'bad' in str(e).lower() or 'parse' in str(e).lower():
-                        gw.warning(f"Search charset failed ({e}); retrying without charset")
-                        status, data = mail.search(None, *criteria)
+                        gw.warning(
+                            f"Search charset failed ({e}); retrying without charset"
+                        )
+                        status, data = mail.search(None, *encoded_criteria)
                     else:
                         raise
         except imaplib.IMAP4.error as e:

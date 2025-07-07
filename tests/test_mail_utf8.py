@@ -81,7 +81,10 @@ class MailUTF8Tests(unittest.TestCase):
             fake = FakeIMAP.instances[0]
             self.assertTrue(getattr(fake, 'failed', False))
             self.assertEqual(fake.last_search[0], None)
-            self.assertEqual(fake.last_search[1], ['SUBJECT', '"instalación"'])
+            self.assertEqual(
+                fake.last_search[1],
+                [b'SUBJECT', '"instalación"'.encode('utf-8')],
+            )
 
     def test_search_uses_inbox_uppercase(self):
         """Ensure search operates with FakeIMAP when selecting 'INBOX'."""
