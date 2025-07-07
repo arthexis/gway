@@ -115,7 +115,6 @@ def _sanitize_filename(name: str) -> str:
     return cleaned.replace(" ", "_").strip("_") or "window"
 
 
-# TODO: Allow the screenshot to be named (overrides the date pattern)
 
 def shot(*, name: str = None, mode: str = "full") -> str:
     """

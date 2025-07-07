@@ -8,7 +8,6 @@ import base64
 from bottle import request
 import asyncio, json, random, time, websockets
 
-# TODO: Fix this issue found in the logs.
 # [Simulator:CPX] Exception: cannot call recv while another coroutine is already running recv or recv_streaming
 # It seems to ocurr intermitently. 
 
@@ -36,7 +35,6 @@ def _unique_cp_path(cp_path, idx, total_threads):
     rand_tag = secrets.token_hex(2).upper()  # 4 hex digits, e.g., '1A2B'
     return f"{cp_path}-{rand_tag}"
 
-# TODO: Update sigils to new model
 
 def simulate(
     *,
