@@ -1,6 +1,7 @@
 /* win95.css — Layered atop base.css */
 
-body {
+body,
+.page-wrap {
     background-color: #c0c0c0;
     color: #000000;
     font-family: 'MS Sans Serif', Tahoma, Geneva, Verdana, Arial, sans-serif;
