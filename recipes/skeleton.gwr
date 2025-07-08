@@ -3,7 +3,8 @@
 web app setup-app:
     --project web.site --home reader
     --project web.nav
+    --project cdv --home data-editor
 web:
  - static collect
- - server start-app
-forever
+- server start-app
+until --forever

@@ -41,18 +41,36 @@ class Runner:
         finally:
             loop.close()
 
-    def until(self, *, file=None, url=None, pypi=False, version=False, build=False, forever=False):
-        assert file or url or pypi or version or build or forever, "Use forever for unconditional looping."
+    def until(self, *, file=None, url=None, pypi=False, version=False, build=False,
+              forever=False, notify=False, notify_only=False, abort=False):
+        assert file or url or pypi or version or build or forever, "Use --forever for unconditional looping."
 
         if not self._async_threads and hasattr(self, "critical"):
             self.critical("No async threads detected before entering loop.")
 
-        def shutdown(reason):
-            if hasattr(self, "warning"):
-                self.warning(f"{reason} triggered async shutdown.")
-            os._exit(1)
-
         from gway import gw
+
+        abort_triggered = False
+        abort_message = None
+
+        def shutdown(reason):
+            message = f"{reason} triggered async shutdown."
+            if notify or notify_only:
+                try:
+                    gw.notify(message)
+                except Exception:
+                    pass
+            if notify_only:
+                if hasattr(self, "warning"):
+                    self.warning(message + " (notify-only)")
+                return
+            if hasattr(self, "warning"):
+                self.warning(message)
+            if abort:
+                nonlocal abort_triggered, abort_message
+                abort_triggered = True
+                abort_message = message
+            self._async_threads.clear()
 
         watchers = []
         if version:
@@ -64,13 +82,14 @@ class Runner:
             (url, watch_url, "Lock url"),
             (pypi if pypi is not False else None, watch_pypi_package, "PyPI package"),
         ])
+        events = []
         for target, watcher, reason in watchers:
             if target:
                 if hasattr(self, "info"):
                     self.info(f"Setup watcher for {reason}")
                 if target is True and pypi:
                     target = "gway"
-                watcher(target, on_change=lambda r=reason: shutdown(r))
+                events.append(watcher(target, on_change=lambda r=reason: shutdown(r)))
         try:
             while any(thread.is_alive() for thread in self._async_threads):
                 time.sleep(0.1)
@@ -78,8 +97,12 @@ class Runner:
             if hasattr(self, "critical"):
                 self.critical("KeyboardInterrupt received. Exiting immediately.")
             os._exit(1)
-
-    def forever(self): self.until(forever=True)
+        finally:
+            for e in events:
+                if e:
+                    e.set()
+        if abort and abort_triggered:
+            gw.abort(abort_message or "Async shutdown", exit_code=1)
 
 
 def watch_file(*filepaths, on_change, interval=10.0, hash=False, resource=True):
@@ -120,13 +143,15 @@ def watch_file(*filepaths, on_change, interval=10.0, hash=False, resource=True):
                                 current_hash = hashlib.md5(f.read()).hexdigest()
                             if path in last_hashes and current_hash != last_hashes[path]:
                                 on_change()
-                                os._exit(1)
+                                stop_event.set()
+                                return
                             last_hashes[path] = current_hash
                         last_mtimes[path] = current_mtime
                     else:
                         if path in last_mtimes and current_mtime != last_mtimes[path]:
                             on_change()
-                            os._exit(1)
+                            stop_event.set()
+                            return
                         last_mtimes[path] = current_mtime
                 except FileNotFoundError:
                     pass
@@ -160,26 +185,31 @@ def watch_url(url, on_change, *,
         if event == "up":
             if status_ok:
                 on_change()
-                os._exit(1)
+                stop_event.set()
+                return
         elif event == "down":
             if not status_ok:
                 on_change()
-                os._exit(1)
+                stop_event.set()
+                return
         elif event == "has" and isinstance(value, str):
             if value.lower() in content.decode(errors="ignore").lower():
                 on_change()
-                os._exit(1)
+                stop_event.set()
+                return
         elif event == "lacks" and isinstance(value, str):
             if value.lower() not in content.decode(errors="ignore").lower():
                 on_change()
-                os._exit(1)
+                stop_event.set()
+                return
         else:  # event == "change"
             response.raise_for_status()
             nonlocal last_hash
             current_hash = hashlib.sha256(content).hexdigest()
             if last_hash is not None and current_hash != last_hash:
                 on_change()
-                os._exit(1)
+                stop_event.set()
+                return
             last_hash = current_hash
 
     last_hash = None
@@ -201,7 +231,8 @@ def watch_pypi_package(package_name, on_change, *, interval=3000.0):
         current_version = data["info"]["version"]
         if last_version is not None and current_version != last_version:
             on_change()
-            os._exit(1)
+            stop_event.set()
+            return
         last_version = current_version
 
     last_version = None
