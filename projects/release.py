@@ -631,10 +631,15 @@ def update_changelog(version: str, build_hash: str, prev_build: str | None = Non
 
 
 def view_changelog():
-    """Render the changelog including any Unreleased section."""
-    from projects.web import site
+    """Render the changelog, hiding an empty ``Unreleased`` section."""
+    from docutils.core import publish_parts
 
-    return site.view_reader(title="CHANGELOG", ext="rst")
+    text = _ensure_changelog()
+    unreleased_body, trimmed = _pop_unreleased(text)
+    if not unreleased_body.strip():
+        text = trimmed
+
+    return publish_parts(source=text, writer_name="html")["html_body"]
 
 
 if __name__ == "__main__":

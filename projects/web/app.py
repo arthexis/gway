@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 import bottle
 import json
 import datetime
+import time
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
@@ -152,6 +153,17 @@ def setup_app(*,
     elif home:
         add_home(home, path)
         add_links(f"{path}/{home}", links)
+
+    if getattr(gw, "timed_enabled", False):
+        @app.hook('before_request')
+        def _gw_start_timer():
+            request.environ['gw.start'] = time.perf_counter()
+
+        @app.hook('after_request')
+        def _gw_stop_timer():
+            start = request.environ.pop('gw.start', None)
+            if start is not None:
+                gw.log(f"[web] {request.method} {request.path} took {time.perf_counter() - start:.3f}s")
 
     # Serve shared files (flat mount)
     if shared:

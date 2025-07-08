@@ -20,6 +20,7 @@ class Runner:
 
     def run_coroutine(self, func_name, coro_or_func, args=None, kwargs=None):
         try:
+            start_time = time.perf_counter() if getattr(self, 'timed_enabled', False) else None
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
@@ -40,6 +41,9 @@ class Runner:
                     self.exception(e)
         finally:
             loop.close()
+            if start_time is not None:
+                if hasattr(self, 'log'):
+                    self.log(f"[timed] {func_name} (async) took {time.perf_counter() - start_time:.3f}s")
 
     def until(self, *, file=None, url=None, pypi=False, version=False, build=False,
               forever=False, notify=False, notify_only=False, abort=False):

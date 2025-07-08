@@ -1,9 +1,6 @@
 import unittest
 from gway import gw
 
-def awg_val(s):
-    return -int(s.split('/')[0]) if '/' in s else int(s)
-
 class TestMaxAwg(unittest.TestCase):
     def test_warning_when_voltage_drop_exceeds_limit(self):
         res = gw.awg.find_awg(meters=250, amps=60, volts=240, material="cu", max_awg=4)
@@ -34,6 +31,12 @@ class TestMaxAwg(unittest.TestCase):
     def test_blank_max_lines_defaults_to_one(self):
         res = gw.awg.find_awg(meters=30, amps=40, max_lines="")
         self.assertEqual(res["lines"], 1)
+
+    def test_forced_awg_returns_warning(self):
+        res = gw.awg.find_awg(meters=30, amps=150, max_awg="14")
+        self.assertEqual(res["awg"], "14")
+        self.assertIn("warning", res)
+        self.assertGreater(res["vdperc"], 3)
 
 if __name__ == "__main__":
     unittest.main()

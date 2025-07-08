@@ -366,6 +366,23 @@ class EtronWebSocketTests(unittest.TestCase):
         lm = gw.ocpp.csms.extract_meter(tx4)
         self.assertEqual(lm, "-")
 
+        # meterStart with MeterValues only (no meterStop)
+        tx5 = {
+            "meterStart": 500000,
+            "MeterValues": [
+                {"timestamp": 1, "sampledValue": [
+                    {"value": 500.0, "measurand": "Energy.Active.Import.Register", "unit": "kWh"}
+                ]},
+                {"timestamp": 2, "sampledValue": [
+                    {"value": 501.0, "measurand": "Energy.Active.Import.Register", "unit": "kWh"}
+                ]},
+            ]
+        }
+        pc = gw.ocpp.csms.power_consumed(tx5)
+        self.assertAlmostEqual(pc, 1.0, places=2)
+        lm = gw.ocpp.csms.extract_meter(tx5)
+        self.assertAlmostEqual(lm, 501.0, places=2)
+
     def test_remote_stop_transaction(self):
         """Dashboard Stop action triggers RemoteStopTransaction on the CP."""
         uri = "ws://localhost:19000/stopper?token=foo"
