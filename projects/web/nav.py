@@ -4,12 +4,13 @@ import os
 from gway import gw
 from bottle import request
 
-def render(*, homes=None):
+def render(*, homes=None, links=None):
     """
     Renders the sidebar navigation including search, home links, visited links, and a QR compass.
     """
     cookies_ok = gw.web.app.is_setup('web.cookies') and gw.web.cookies.accepted()
-    gw.verbose(f"Render nav with {homes=} {cookies_ok=}")
+    links_map = links or {}
+    gw.verbose(f"Render nav with {homes=} {links_map=} {cookies_ok=}")
 
     visited = []
     if cookies_ok:
@@ -40,12 +41,23 @@ def render(*, homes=None):
         visited_set.add(current_route)
 
     # --- Build HTML links ---
-    links = ""
+    links_html = ""
     if homes:
         for home_title, home_route in homes:
             route = home_route.strip("/")
             is_current = ' class="current"' if route == current_route else ""
-            links += f'<li><a href="/{home_route}"{is_current}>{home_title.upper()}</a></li>'
+            proj_root = route.rsplit('/', 1)[0] if '/' in route else route
+            links_html += f'<li><a href="/{home_route}"{is_current}>{home_title.upper()}</a>'
+            sub = links_map.get(home_route)
+            if sub and current_route.startswith(proj_root):
+                links_html += '<ul class="sub-links">'
+                for name in sub:
+                    sub_route = f"{proj_root}/{name}".strip('/')
+                    active = ' class="active"' if sub_route == current_route else ''
+                    label = name.replace('-', ' ').replace('_',' ').title()
+                    links_html += f'<li><a href="/{sub_route}"{active}>{label}</a></li>'
+                links_html += '</ul>'
+            links_html += '</li>'
     if cookies_ok and entries:
         visited_rendered = set()
         for title, route in reversed(entries):
@@ -53,9 +65,9 @@ def render(*, homes=None):
                 continue
             visited_rendered.add(route)
             is_current = ' class="current"' if route == current_route else ""
-            links += f'<li><a href="/{route}"{is_current}>{title}</a></li>'
+            links_html += f'<li><a href="/{route}"{is_current}>{title}</a></li>'
     elif not homes:
-        links += f'<li class="current">{current_title.upper()}</li>'
+        links_html += f'<li class="current">{current_title.upper()}</li>'
 
     # --- Search box ---
     search_box = '''
@@ -84,7 +96,7 @@ def render(*, homes=None):
     except Exception as e:
         gw.debug(f"Could not generate QR compass: {e}")
         
-    return f"<aside>{search_box}<ul>{links}</ul><br>{compass}</aside>"
+    return f"<aside>{search_box}<ul>{links_html}</ul><br>{compass}</aside>"
 
 def active_style():
     """

@@ -11,6 +11,7 @@ from gway import gw
 
 _ver = None
 _homes = []   # (title, route)
+_links: dict[str, list[str]] = {}
 _enabled = set()
 _registered_routes: set[tuple[str, str]] = set()
 _fresh_mtime = None
@@ -69,7 +70,8 @@ def setup_app(*,
     project="web.site",
     path=None,
     home: str = None,
-    views: str = "view", 
+    links=None,
+    views: str = "view",
     apis: str = "api",
     renders: str = "render",
     static="static",
@@ -131,9 +133,11 @@ def setup_app(*,
         gw.info("No Bottle app found; creating a new Bottle app.")
         app = Bottle()
         _homes.clear()
+        _links.clear()
         _registered_routes.clear()
         if home:
             add_home(home, path)
+            add_links(f"{path}/{home}", links)
 
         def index():
             response.status = 302
@@ -147,6 +151,7 @@ def setup_app(*,
     
     elif home:
         add_home(home, path)
+        add_links(f"{path}/{home}", links)
 
     # Serve shared files (flat mount)
     if shared:
@@ -392,7 +397,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>, 
         <a href="https://pypi.org">PyPI</a> and <a href="https://github.com/arthexis/gway">Github</a>.</p>
     '''
-    nav = gw.web.nav.render(homes=_homes) if is_setup('web.nav') else ""
+    nav = gw.web.nav.render(homes=_homes, links=_links) if is_setup('web.nav') else ""
 
     html = template("""<!DOCTYPE html>
         <html lang="en">
@@ -460,3 +465,22 @@ def add_home(home, path):
     if (title, route) not in _homes:
         _homes.append((title, route))
         gw.debug(f"Added home: ({title}, {route})")
+
+def add_links(route: str, links=None):
+    global _links
+    parsed = parse_links(links)
+    if parsed:
+        _links[route] = parsed
+        gw.debug(f"Added links for {route}: {parsed}")
+
+def parse_links(links) -> list[str]:
+    if not links:
+        return []
+    if isinstance(links, str):
+        tokens = links.replace(',', ' ').split()
+    else:
+        try:
+            tokens = list(links)
+        except Exception:
+            tokens = []
+    return [t.strip() for t in tokens if t]
