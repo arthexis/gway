@@ -150,6 +150,18 @@ aside ul li a:hover, aside ul li a.active {
     text-decoration: underline;
 }
 
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
+}
+
 /* 8. Buttons & form controls */
 button, input[type="submit"], input[type="button"] {
     background: var(--accent-alt, #007bff);

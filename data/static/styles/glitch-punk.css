@@ -49,20 +49,33 @@ aside ul {
   padding: 0;
 }
 aside ul li a {
-  color: var(--accent-alt);
-  font-weight: bold;
-  padding: 0.6em 0;
-  border-radius: 8px;
-  text-shadow: 0 0 5px #ff0080, 0 0 2px #00fff3;
-  background: transparent;
+    color: var(--accent-alt);
+    font-weight: bold;
+    padding: 0.6em 0;
+    font-size: 0.93em;
+    border-radius: 8px;
+    text-shadow: 0 0 5px #ff0080, 0 0 2px #00fff3;
+    background: transparent;
   transition: background 0.15s, color 0.15s;
   animation: link-glitch 3.5s infinite alternate-reverse;
 }
 aside ul li a.active,
 aside ul li a:hover {
-  color: var(--accent);
-  background: #21214a55;
-  animation-duration: 1.1s;
+    color: var(--accent);
+    background: #21214a55;
+    animation-duration: 1.1s;
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 aside .compass,
 aside img.compass {

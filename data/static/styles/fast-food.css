@@ -41,7 +41,7 @@ aside ul li a {
     color: var(--fast-red);
     font-family: 'Bebas Neue', 'Montserrat', 'Arial Black', Arial, sans-serif;
     border-radius: 7px;
-    font-size: 1.12em;
+    font-size: 1.05em;
     padding-left: 1.05em;
     font-weight: bold;
     border-left: 5px solid var(--fast-yellow);
@@ -54,6 +54,18 @@ aside ul li a:hover {
     color: #fff;
     border-left: 5.5px solid var(--fast-red);
     text-shadow: 0 1px 0 #ffd100, 0 0 14px #ec1c2444;
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 
 main {

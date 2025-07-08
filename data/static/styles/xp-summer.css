@@ -34,6 +34,7 @@ aside ul li a {
     color: #1452b5;
     font-family: 'Trebuchet MS', 'Segoe UI', Arial, sans-serif;
     border-radius: 8px;
+    font-size: 0.93em;
     padding-left: 1em;
     transition: background 0.18s, color 0.18s;
 }
@@ -42,6 +43,18 @@ aside ul li a:hover {
     background: linear-gradient(90deg, #f2fcff 20%, #a7f6d3 80%);
     color: #15700b;
     font-weight: bold;
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 
 main {

@@ -55,6 +55,7 @@ aside ul li a {
     font-family: 'Special Elite', 'IM Fell DW Pica', serif;
     font-weight: 600;
     border-radius: 7px;
+    font-size: 0.93em;
     padding-left: 1.3em;
     transition: background 0.17s, color 0.12s;
     border-left: 3.3px double #ffe45e;
@@ -69,6 +70,18 @@ aside ul li a:hover {
     font-weight: bold;
     text-decoration: underline wavy #db2861;
     box-shadow: 0 0 8px #db286144;
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 
 main {

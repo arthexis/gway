@@ -85,6 +85,19 @@ aside {
     background: #d4d0c8 !important;
     border-right: 2px solid #808080 !important;
 }
+aside ul li a {
+    font-size: 0.93em;
+}
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
+}
 
 main {
     background: #fff;
