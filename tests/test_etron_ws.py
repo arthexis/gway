@@ -414,6 +414,8 @@ class EtronWebSocketTests(unittest.TestCase):
                     "SIMTEST",
                     1,
                     1,
+                    1,
+                    1,
                 )
             return buf.getvalue()
 
