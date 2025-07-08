@@ -57,7 +57,8 @@ def cli_main():
         name=args.username or "gw",
         project_path=args.projects,
         debug=args.debug,
-        wizard=args.wizard
+        wizard=args.wizard,
+        timed=args.timed
     )
 
     gw_local.verbose(
@@ -81,6 +82,8 @@ def cli_main():
         run_kwargs['client'] = args.client
     if args.server:
         run_kwargs['server'] = args.server
+    if args.timed:
+        run_kwargs['timed'] = True
     all_results, last_result = process(command_sources, **run_kwargs)
 
     # Resolve expression if requested
