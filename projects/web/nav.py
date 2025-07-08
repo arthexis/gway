@@ -83,7 +83,7 @@ def render(*, homes=None, links=None):
             >{}</textarea>
         </form>
     '''.format(request.query.get("topic", ""))
-
+    
     # --- Current user info (Basic Auth) ---
     user_html = ""
     try:
@@ -99,19 +99,60 @@ def render(*, homes=None, links=None):
         gw.debug(f"Could not resolve auth user: {e}")
 
     # --- QR code for this page ---
+
     compass = ""
+    toggle = ""
+
+    # Attempt to locate a view_compass function for the current route
+    view_compass_func = None
     try:
-        url = current_url()
-        qr_url = gw.qr.generate_url(url)
-        compass = f'''
-            <div class="compass">
-                <img src="{qr_url}" alt="QR Code" class="compass" />
-            </div>
-        '''
+        obj = gw
+        for part in current_route.split("/"):
+            attr = part.replace("-", "_")
+            if hasattr(obj, attr):
+                obj = getattr(obj, attr)
+                if hasattr(obj, "view_compass"):
+                    view_compass_func = getattr(obj, "view_compass")
+            else:
+                break
     except Exception as e:
-        gw.debug(f"Could not generate QR compass: {e}")
-        
-    return f"<aside>{search_box}<ul>{links_html}</ul>{user_html}<br>{compass}</aside>"
+        gw.debug(f"Error searching for view_compass: {e}")
+        view_compass_func = None
+
+    from urllib.parse import parse_qsl, urlencode
+    params = dict(parse_qsl(request.query_string))
+    mode = params.get("compass") or ("local" if view_compass_func else "qr")
+
+    if mode != "qr" and view_compass_func:
+        try:
+            compass = view_compass_func()
+        except Exception as e:
+            gw.debug(f"view_compass error: {e}")
+            compass = ""
+            mode = "qr"
+
+    if mode == "qr":
+        try:
+            url = current_url()
+            qr_url = gw.qr.generate_url(url)
+            compass = f'''
+                <div class="compass">
+                    <img src="{qr_url}" alt="QR Code" class="compass" />
+                </div>
+            '''
+        except Exception as e:
+            gw.debug(f"Could not generate QR compass: {e}")
+
+    if view_compass_func:
+        params["compass"] = "local" if mode == "qr" else "qr"
+        label = "Show local compass" if mode == "qr" else "Show QR to Here"
+        toggle_href = request.fullpath.split("?")[0]
+        qs = urlencode(params)
+        if qs:
+            toggle_href += "?" + qs
+        toggle = f'<p style="font-size:80%" class="compass-toggle"><a href="{toggle_href}">[{label}]</a></p>'
+
+    return f"<aside>{search_box}<ul>{links_html}</ul><br>{compass}{toggle}</aside>"
 
 def active_style():
     """
