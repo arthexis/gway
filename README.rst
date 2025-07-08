@@ -124,7 +124,7 @@ project with ``gw.web.app.setup`` and then launch the server using
 ``/static``. ``web.site.view_reader`` renders ``.rst`` or ``.md`` files when
 you visit ``/site/reader/PATH``; it first checks the workspace root and
 then ``data/static`` automatically. See the `Web README
-</site/reader/web/README>`_ for a more complete guide.
+</site/reader?tome=web>`_ for a more complete guide.
 
 Project READMEs
 ---------------
@@ -136,14 +136,14 @@ The following projects bundle additional documentation.  Each link uses
 +------------+--------------------------------------------------------------+
 | Project    | README                                                       |
 +============+==============================================================+
-| monitor    | `/site/reader/monitor/README`_           |
-| ocpp       | `/site/reader/ocpp/README`_              |
-| web        | `/site/reader/web/README`_               |
-| games/qpig | `/site/reader/games/qpig/README`_        |
+| monitor    | `/site/reader?tome=monitor`_           |
+| ocpp       | `/site/reader?tome=ocpp`_              |
+| web        | `/site/reader?tome=web`_               |
+| games/qpig | `/site/reader?tome=games/qpig`_        |
 +------------+--------------------------------------------------------------+
 
 You can generate these links yourself with
-``gw.web.app.build_url('reader', 'proj/README')``.
+``gw.web.build_url('site/reader', tome='proj')``.
 
 License
 -------
