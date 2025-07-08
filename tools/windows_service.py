@@ -2,7 +2,7 @@
 
 Usage examples::
 
-    python windows_service.py install --name gway-test --recipe demo
+    python windows_service.py install --name gway-test --recipe demo [--user USER --password PASS]
     python windows_service.py remove --name gway-test [--force]
     python windows_service.py start --name gway-test
     python windows_service.py stop  --name gway-test
@@ -53,7 +53,7 @@ except Exception:  # pragma: no cover - not on Windows
 
 
 class GatewayService(win32serviceutil.ServiceFramework if win32serviceutil else object):
-    """Service subclass launching ``gway.bat -r <recipe>``."""
+    """Service subclass launching ``python -m gway -r <recipe>``."""
 
     _svc_name_ = "gway"
     _svc_display_name_ = "GWAY"
@@ -81,13 +81,14 @@ class GatewayService(win32serviceutil.ServiceFramework if win32serviceutil else 
         win32event.SetEvent(self.stop_event)
 
     def SvcDoRun(self):  # pragma: no cover - requires Windows
-        bat = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "gway.bat"))
-        cmd = ["cmd", "/c", bat]
+        """Launch ``python -m gway`` using the service interpreter."""
+        cmd = [sys.executable, "-m", "gway"]
         if self.debug:
             cmd.append("-d")
         if self.recipe:
             cmd.extend(["-r", self.recipe])
-        self.process = subprocess.Popen(cmd, cwd=os.path.dirname(bat))
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        self.process = subprocess.Popen(cmd, cwd=root_dir)
         self.ReportServiceStatus(win32service.SERVICE_RUNNING)
         win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
         if self.process and self.process.poll() is None:
@@ -101,6 +102,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--recipe", help="Recipe to run")
     parser.add_argument("--force", action="store_true", help="Force kill on remove")
     parser.add_argument("--debug", action="store_true", help="Run gway in debug mode")
+    parser.add_argument("--user", help="Service account user name")
+    parser.add_argument("--password", help="Service account password")
     return parser.parse_args(argv)
 
 
@@ -136,6 +139,8 @@ def main(argv: list[str] | None = None) -> None:
             exeArgs=exe_args,
             startType=win32service.SERVICE_AUTO_START,
             description=f"GWAY Service ({args.recipe})",
+            userName=args.user,
+            password=args.password,
         )
         print(f"Service {args.name} installed.")
     elif args.command == "remove":

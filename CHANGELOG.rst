@@ -8,6 +8,8 @@ Unreleased
 ---------------------
 
 - 0b416ec fix ocpp.data to load directly
+- Allow specifying service user and password for Windows installer
+- Windows service runs `python -m gway` instead of `gway.bat`
 
 0.4.39 [build ccb94e]
 ---------------------
