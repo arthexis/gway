@@ -160,6 +160,87 @@ def load_csv(*, connection=None, folder="data", force=False):
     load_folder(base_path)
 
 
+def load_excel(*, connection=None, file=None, folder="data", force=False):
+    """Load Excel workbooks into tables, one table per sheet."""
+    assert connection
+    base_path = gw.resource(folder)
+
+    def load_file(path, prefix=""):
+        import pandas as pd
+        book = pd.read_excel(path, sheet_name=None)
+        base = os.path.splitext(os.path.basename(path))[0].replace("-", "_")
+        prefix_final = f"{prefix}_{base}" if prefix else base
+        for sheet_name, df in book.items():
+            sheet_clean = sheet_name.strip().replace(" ", "_").replace("-", "_")
+            table = f"{prefix_final}_{sheet_clean}" if sheet_clean else prefix_final
+            try:
+                df.to_sql(table, connection._connection,
+                           if_exists="replace" if force else "fail",
+                           index=False)
+                gw.info(f"Loaded sheet '{sheet_name}' as table '{table}'")
+            except ValueError as e:
+                if "exists" in str(e).lower() and not force:
+                    gw.debug(f"Skipped existing table: {table}")
+                else:
+                    raise
+
+    def load_folder(path, prefix=""):
+        for item in os.listdir(path):
+            full = os.path.join(path, item)
+            if os.path.isdir(full):
+                sub = f"{prefix}_{item}" if prefix else item
+                load_folder(full, sub)
+            elif item.lower().endswith((".xlsx", ".xls")):
+                load_file(full, prefix)
+
+    if file:
+        load_file(gw.resource(file))
+    else:
+        load_folder(base_path)
+
+
+def load_cdv(*, connection=None, file=None, folder="data", force=False):
+    """Load CDV tables (colon-delimited) into SQLite."""
+    assert connection
+    base_path = gw.resource(folder)
+
+    def load_file(path, prefix=""):
+        import pandas as pd
+        records = gw.cdv.load_all(path)
+        if not records:
+            gw.debug(f"No records in CDV: {path}")
+            return
+        df = pd.DataFrame.from_dict(records, orient="index")
+        df.index.name = "id"
+        df.reset_index(inplace=True)
+        base = os.path.splitext(os.path.basename(path))[0].replace("-", "_")
+        table = f"{prefix}_{base}" if prefix else base
+        try:
+            df.to_sql(table, connection._connection,
+                      if_exists="replace" if force else "fail",
+                      index=False)
+            gw.info(f"Loaded CDV '{os.path.basename(path)}' as table '{table}'")
+        except ValueError as e:
+            if "exists" in str(e).lower() and not force:
+                gw.debug(f"Skipped existing table: {table}")
+            else:
+                raise
+
+    def load_folder(path, prefix=""):
+        for item in os.listdir(path):
+            full = os.path.join(path, item)
+            if os.path.isdir(full):
+                sub = f"{prefix}_{item}" if prefix else item
+                load_folder(full, sub)
+            elif item.lower().endswith(".cdv"):
+                load_file(full, prefix)
+
+    if file:
+        load_file(gw.resource(file))
+    else:
+        load_folder(base_path)
+
+
 # --- Connection Management (Drop-in Replacement) ---
 
 _connection_cache = {}
@@ -219,6 +300,8 @@ def open_connection(
 
     if autoload and sql_engine == "sqlite":
         load_csv(connection=conn, force=force)
+        load_excel(connection=conn, force=force)
+        load_cdv(connection=conn, force=force)
 
     return conn
 
