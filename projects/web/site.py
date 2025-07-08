@@ -1,8 +1,11 @@
 # file: projects/web/site.py
 
 import os
+import html
+import shlex
 from docutils.core import publish_parts
 from gway import gw, __
+from gway.console import process, chunk
 import markdown as mdlib
 
 def view_reader(
@@ -122,9 +125,23 @@ def view_help(topic="", *args, **kwargs):
     If there is an exact match in the search, show it at the top (highlighted).
     """
 
-    # gw.gelp at all times, compliment this result with other information. 
+    # gw.gelp at all times, compliment this result with other information.
 
     topic_in = topic or ""
+
+    # --- Execute local CLI command if query starts with '>' and request is local ---
+    if topic_in.strip().startswith('>') and gw.web.server.is_local():
+        command = topic_in.strip()[1:].strip()
+        try:
+            tokens = shlex.split(command)
+            chunks = chunk(tokens)
+            _, last = process(chunks)
+            result_html = gw.to_html(last)
+        except Exception as e:
+            err = html.escape(str(e))
+            return f"<h1>&gt; {html.escape(command)}</h1><pre>{err}</pre>"
+        return f"<h1>&gt; {html.escape(command)}</h1>{result_html}"
+
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
 
