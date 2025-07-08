@@ -341,6 +341,53 @@ def setup_app(*,
 
         add_route(app, f"/render/{path}/<view>/<hash>", ["GET", "POST"], render_dispatch)
 
+        if views:
+            def render_view_dispatch(view):
+                nonlocal views, home
+                if (unauth := _maybe_auth("Unauthorized: Render view access denied.")):
+                    return unauth
+                gw.context['current_endpoint'] = path
+                segments = [s for s in view.strip("/").split("/") if s]
+                view_name = segments[0].replace("-", "_") if segments else home
+                args = segments[1:] if segments else []
+                kwargs = dict(request.query)
+                if request.method == "POST":
+                    try:
+                        kwargs.update(request.json or dict(request.forms))
+                    except Exception as e:
+                        return gw.web.error.redirect("Error loading JSON payload", err=e)
+                method = request.method.lower()
+                method_func_name = f"{views}_{method}_{view_name}"
+                generic_func_name = f"{views}_{view_name}"
+
+                view_func = getattr(source, method_func_name, None)
+                if not callable(view_func):
+                    view_func = getattr(source, generic_func_name, None)
+                if not callable(view_func):
+                    return gw.web.error.redirect(
+                        f"View not found: {method_func_name} or {generic_func_name} in {project}")
+
+                try:
+                    content = view_func(*args, **kwargs)
+                    if isinstance(content, HTTPResponse):
+                        return content
+                    elif isinstance(content, bytes):
+                        response.content_type = "application/octet-stream"
+                        response.body = content
+                        return response
+                    elif content is None:
+                        return ""
+                    elif not isinstance(content, str):
+                        content = gw.to_html(content)
+                    response.content_type = "text/html"
+                    return content
+                except HTTPResponse as res:
+                    return res
+                except Exception as e:
+                    return gw.web.error.redirect("Broken view", err=e)
+
+            add_route(app, f"/render/{path}/<view:path>", ["GET", "POST"], render_view_dispatch)
+
     def favicon():
         proj_parts = project.split('.')
         candidate = gw.resource("data", "static", *proj_parts, "favicon.ico")
