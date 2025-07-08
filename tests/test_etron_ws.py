@@ -400,6 +400,27 @@ class EtronWebSocketTests(unittest.TestCase):
 
         asyncio.run(run_stop_check())
 
+    def test_evcs_simulator_session_runs_without_recv_error(self):
+        """EVCS simulator should complete a short session without recv overlap errors."""
+        async def run_sim():
+            import io, contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                await gw.ocpp.evcs.simulate_cp.__wrapped__(
+                    0,
+                    "localhost",
+                    19000,
+                    KNOWN_GOOD_TAG,
+                    "SIMTEST",
+                    1,
+                    1,
+                )
+            return buf.getvalue()
+
+        output = asyncio.run(run_sim())
+        self.assertNotIn("cannot call recv", output)
+        self.assertIn("Simulation ended", output)
+
 
 if __name__ == "__main__":
     unittest.main()
