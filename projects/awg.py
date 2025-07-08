@@ -28,6 +28,7 @@ def find_awg(
     amps: Union[int, str] = "40",
     volts: Union[int, str] = "220",
     material: Literal["cu", "al", "?"] = "cu",
+    force_awg: Optional[Union[int, str]] = None,
     max_awg: Optional[Union[int, str]] = None,
     max_lines: Union[int, str] = "1",
     phases: Literal["1", "3", 1, 3] = "2",
@@ -43,6 +44,7 @@ def find_awg(
         amps: Load in Amperes. Default: 40 A.
         volts: System voltage. Default: 220 V.
         material: 'cu' (copper) or 'al' (aluminum). Default: cu.
+        force_awg: Fixed AWG size to evaluate instead of searching automatically.
         max_awg: Optional maximum gauge number allowed. If provided,
             cables thicker than this won't be considered. Example: ``6`` or ``1/0``.
         max_lines: Maximum number of line conductors allowed. Default: 1
@@ -66,6 +68,10 @@ def find_awg(
         max_awg = None
     else:
         max_awg = AWG(max_awg)
+    if force_awg in (None, ""):
+        force_awg = None
+    else:
+        force_awg = AWG(force_awg)
     phases = int(phases)
     temperature = None if temperature in (None, "", "auto") else int(temperature)
     ground = int(ground)
@@ -86,12 +92,16 @@ def find_awg(
             "FROM awg_cable_size "
             "WHERE (material = :material OR :material = '?') "
         )
-        if max_awg is not None:
+        if force_awg is not None:
+            sql += "AND awg_size = :awg_size "
+        elif max_awg is not None:
             sql += "AND awg_size >= :max_awg "
         sql += "AND line_num <= :max_lines ORDER BY awg_size DESC, line_num"
 
         params = {"material": material, "max_lines": max_lines}
-        if max_awg is not None:
+        if force_awg is not None:
+            params["awg_size"] = int(force_awg)
+        elif max_awg is not None:
             params["max_awg"] = int(max_awg)
         gw.debug(f"AWG base data SQL: {sql.strip()}, params: {params}")
         cursor.execute(sql, params)
@@ -117,7 +127,9 @@ def find_awg(
         best = None
         best_perc = 1e9
 
-        if max_awg is None:
+        if force_awg is not None:
+            sizes = [int(force_awg)] if int(force_awg) in awg_data else []
+        elif max_awg is None:
             sizes = sorted(awg_data.keys(), reverse=True)
         else:
             sizes = sorted([s for s in awg_data.keys() if s >= int(max_awg)])
@@ -135,7 +147,7 @@ def find_awg(
                 else:
                     tmap = {60: a60, 75: a75, 90: a90}
                     allowed = tmap.get(temperature, 0) >= amps
-                if not allowed:
+                if not allowed and force_awg is None:
                     continue
 
                 vdrop = base_vdrop * base["k"] / n
@@ -156,21 +168,38 @@ def find_awg(
                     "cables": f"{n * phases}+{n * ground}",
                     "total_meters": f"{n * phases * meters}+{meters * n * ground}",
                 }
-                if perc <= 0.03:
-                    if conduit:
-                        if conduit is True:
-                            conduit = "emt"
-                        fill = find_conduit(AWG(awg_size), n * (phases + ground), conduit=conduit)
-                        result["conduit"] = conduit
-                        result["pipe_inch"] = fill["size_inch"]
-                    gw.debug(f"Selected cable result: {result}")
-                    return result
-                if perc < best_perc:
-                    best = result
-                    best_perc = perc
+                if force_awg is None:
+                    if allowed and perc <= 0.03:
+                        if conduit:
+                            if conduit is True:
+                                conduit = "emt"
+                            fill = find_conduit(AWG(awg_size), n * (phases + ground), conduit=conduit)
+                            result["conduit"] = conduit
+                            result["pipe_inch"] = fill["size_inch"]
+                        gw.debug(f"Selected cable result: {result}")
+                        return result
+                    if perc < best_perc:
+                        best = result
+                        best_perc = perc
+                else:
+                    if allowed and perc <= 0.03:
+                        if conduit:
+                            if conduit is True:
+                                conduit = "emt"
+                            fill = find_conduit(AWG(awg_size), n * (phases + ground), conduit=conduit)
+                            result["conduit"] = conduit
+                            result["pipe_inch"] = fill["size_inch"]
+                        gw.debug(f"Selected cable result: {result}")
+                        return result
+                    if perc < best_perc:
+                        best = result
+                        best_perc = perc
 
-        if best and max_awg is not None:
-            best["warning"] = "Voltage drop exceeds 3% with given max_awg"
+        if best and (force_awg is not None or max_awg is not None):
+            if force_awg is not None:
+                best["warning"] = "Voltage drop may exceed 3% with chosen parameters"
+            else:
+                best["warning"] = "Voltage drop exceeds 3% with given max_awg"
             if conduit:
                 if conduit is True:
                     conduit = "emt"
@@ -210,7 +239,7 @@ def find_conduit(awg, cables, *, conduit="emt"):
 
 def view_cable_finder(
     *, meters=None, amps="40", volts="220", material="cu",
-    max_lines="1", max_awg=None, phases="1", temperature=None,
+    force_awg=None, max_lines="1", max_awg=None, phases="1", temperature=None,
     conduit=None, neutral="0", **kwargs
 ):
     """Page builder for AWG cable finder with HTML form and result."""
@@ -227,6 +256,7 @@ def view_cable_finder(
                         <option value="al">Aluminum (al)</option>
                     </select>
                 </label>
+                <label>AWG Size:<input type="text" name="awg" /></label>
                 <label>Phases:
                     <select name="phases">
                         <option value="2">AC Two Phases (2)</option>
@@ -259,7 +289,8 @@ def view_cable_finder(
     try:
         result = find_awg(
             meters=meters, amps=amps, volts=volts,
-            material=material, max_lines=max_lines, phases=phases,
+            material=material, force_awg=force_awg,
+            max_lines=max_lines, phases=phases,
             max_awg=max_awg, temperature=temperature,
         )
     except Exception as e:
@@ -274,7 +305,7 @@ def view_cable_finder(
         """
 
     return f"""
-        <h1>Recommended Cable <img src='/static/awg/sponsor_logo.svg' alt='Sponsor Logo' class='sponsor-logo'></h1>
+        <h1>Cable Result <img src='/static/awg/sponsor_logo.svg' alt='Sponsor Logo' class='sponsor-logo'></h1>
         <ul>
             <li><strong>AWG Size:</strong> {result['awg']}</li>
             <li><strong>Lines:</strong> {result['lines']}</li>

@@ -35,5 +35,11 @@ class TestMaxAwg(unittest.TestCase):
         res = gw.awg.find_awg(meters=30, amps=40, max_lines="")
         self.assertEqual(res["lines"], 1)
 
+    def test_forced_awg_returns_warning(self):
+        res = gw.awg.find_awg(meters=30, amps=150, force_awg="14")
+        self.assertEqual(res["awg"], "14")
+        self.assertIn("warning", res)
+        self.assertGreater(res["vdperc"], 3)
+
 if __name__ == "__main__":
     unittest.main()
