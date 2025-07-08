@@ -13,8 +13,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 from bottle import request, redirect, HTTPError
 from typing import Dict, Optional
 from gway import gw
-# Use the gateway to load the shared OCPP data helpers once
-ocpp_data = gw.ocpp.data
 
 _csms_loop: Optional[asyncio.AbstractEventLoop] = None
 _transactions: Dict[str, dict] = {}           # charger_id → latest transaction
@@ -657,7 +655,7 @@ def render_charger_transactions(*, charger_id=None, chargerId=None, since=None, 
     start_ts = to_epoch(since)
     end_ts = to_epoch(until)
     rows = list(
-        ocpp_data.iter_transactions(
+        gw.ocpp.data.iter_transactions(
             cid,
             start=start_ts,
             end=end_ts,
