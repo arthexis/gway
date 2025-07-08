@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.40 [build 225d99]
+---------------------
+
+- 0b416ec fix ocpp.data to load directly
+
 0.4.39 [build ccb94e]
 ---------------------
 
