@@ -348,9 +348,27 @@ View Example with Arguments
         """
         ...
 
-This view can be accessed as `/vbox/uploads` and will receive POST or GET parameters as arguments. 
+This view can be accessed as `/vbox/uploads` and will receive POST or GET parameters as arguments.
 
 Recipes make Gway scripting modular and composable. Include them in your automation flows for maximum reuse and clarity.
+
+Embedding Views as Fragments
+----------------------------
+
+When both ``view_*`` and ``render_*`` handlers are registered for a project, you
+can retrieve the raw output of a view without the surrounding template by
+requesting ``/render/<project>/<view>``. POST and query parameters are forwarded
+to the underlying view function.
+
+These fragments may be embedded in other sites with JavaScript or a simple
+``iframe``:
+
+.. code-block:: html
+
+   <iframe src="https://example.com/render/site/reader?title=README"></iframe>
+
+Only self-contained views display correctly in an iframe, but many simple pages
+such as ``reader`` work out of the box.
 
 
 Design Philosophies
