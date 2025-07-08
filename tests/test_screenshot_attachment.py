@@ -3,6 +3,7 @@ import subprocess
 import time
 import socket
 from pathlib import Path
+from gway.builtins import is_test_flag
 import importlib.util
 
 # Dynamically import the capture helpers without relying on projects as a package
@@ -44,7 +45,7 @@ class ScreenshotAttachmentTest(unittest.TestCase):
                 time.sleep(0.2)
         raise TimeoutError(f"Port {port} not responding after {timeout} seconds")
 
-    @unittest.skip("Screenshot tests disabled")
+    @unittest.skipUnless(is_test_flag("screenshot"), "Screenshot tests disabled")
     def test_capture_help_page_screenshot(self):
         screenshot_dir = Path("work/screenshots")
         screenshot_dir.mkdir(parents=True, exist_ok=True)

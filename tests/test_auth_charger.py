@@ -10,6 +10,7 @@ import requests
 import random
 import string
 from gway import gw
+from gway.builtins import is_test_flag
 import importlib.util
 from pathlib import Path
 
@@ -121,7 +122,7 @@ class AuthChargerStatusTests(unittest.TestCase):
         )
         self.assertIn("cookie", resp2.text.lower())
 
-    @unittest.skip("Screenshot tests disabled")
+    @unittest.skipUnless(is_test_flag("screenshot"), "Screenshot tests disabled")
     def test_charger_status_screenshot(self):
         """Capture charger status page screenshot using basic auth."""
         screenshot_dir = Path("work/screenshots")
