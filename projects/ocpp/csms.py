@@ -16,11 +16,20 @@ from typing import Dict, Optional
 from gway import gw
 
 _csms_loop: Optional[asyncio.AbstractEventLoop] = None
-_transactions: Dict[str, dict] = {}           # charger_id → latest transaction
-_active_cons: Dict[str, WebSocket] = {}      # charger_id → live WebSocket
-_latest_heartbeat: Dict[str, str] = {}  # charger_id → ISO8601 UTC time string
-_abnormal_status: Dict[str, dict] = {}  # charger_id → {"status": ..., "errorCode": ..., "info": ...}
-_msg_log: Dict[str, list] = {}          # charger_id → ["< msg", "> msg", ...]
+_transactions: Dict[str, dict] = {}
+_active_cons: Dict[str, WebSocket] = {}
+_latest_heartbeat: Dict[str, str] = {}
+_abnormal_status: Dict[str, dict] = {}
+_msg_log: Dict[str, list] = {}
+
+def bind_state(root):
+    """Bind shared dictionaries from ``ocpp`` root module."""
+    global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
+    _transactions = root._transactions
+    _active_cons = root._active_cons
+    _latest_heartbeat = root._latest_heartbeat
+    _abnormal_status = root._abnormal_status
+    _msg_log = root._msg_log
 
 def authorize_balance(**record):
     """
