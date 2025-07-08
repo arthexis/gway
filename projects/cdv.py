@@ -225,3 +225,85 @@ def delete(table_path: str, entry_id: str):
         gw.info(f"Deleted record '{entry_id}' from table.")
         return True
     return False
+
+
+def _sanitize_cdv_path(pathlike: str) -> str:
+    """Return a sanitized path string safe for gw.resource."""
+    from projects.web.site import _sanitize_filename
+
+    parts = [
+        _sanitize_filename(p)
+        for p in str(pathlike).replace("\\", "/").split("/")
+        if p and p not in {"..", "."}
+    ]
+    return "/".join(parts)
+
+
+def _parse_cdv_text(text: str) -> dict[str, dict[str, str]]:
+    """Parse colon-delimited text into a record dict."""
+    records = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        parts = line.split(":")
+        entry_id = parts[0].strip()
+        fields = {}
+        for part in parts[1:]:
+            if "=" in part:
+                k, v = part.split("=", 1)
+                fields[k.strip()] = _decode(v.strip())
+        if entry_id:
+            records[entry_id] = fields
+    return records
+
+
+def _records_to_text(records: dict[str, dict[str, str]]) -> str:
+    """Serialize record dict back to colon-delimited text."""
+    lines = []
+    for entry_id, fields in records.items():
+        line = entry_id + "".join(
+            f":{k}={_encode(v)}" for k, v in fields.items()
+        )
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def view_data_editor(*, cdv: str = None, text: str = None):
+    """Interactive editor for CDV files."""
+    from bottle import request, response
+    import html
+
+    if not cdv:
+        return (
+            "<h1>CDV Data Editor</h1>"
+            "<form method='get'>"
+            "<input name='cdv' placeholder='path/to/file.cdv' required> "
+            "<button type='submit'>Open</button>"
+            "</form>"
+        )
+
+    cdv_safe = _sanitize_cdv_path(cdv)
+    try:
+        path = gw.resource(*cdv_safe.split("/"))
+    except Exception as e:
+        return f"<p>Invalid CDV path: {html.escape(str(e))}</p>"
+
+    if request.method == "POST":
+        records = _parse_cdv_text(text or "")
+        save_all(path, records)
+        response.status = 303
+        url = gw.web.app.build_url("data-editor", cdv=cdv_safe)
+        response.set_header("Location", url)
+        return ""
+
+    records = load_all(path)
+    cdv_text = html.escape(_records_to_text(records))
+    return (
+        f"<h1>Editing {html.escape(cdv_safe)}</h1>"
+        "<form method='post'>"
+        f"<textarea name='text' rows='15' style='width:100%;'>{cdv_text}</textarea>"
+        f"<input type='hidden' name='cdv' value='{html.escape(cdv_safe)}'>"
+        "<button type='submit'>Save</button>"
+        "</form>"
+    )
