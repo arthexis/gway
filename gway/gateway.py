@@ -8,6 +8,7 @@ import logging
 import threading
 import importlib
 import functools
+import time
 from pathlib import Path
 
 from .envs import load_env, get_base_client, get_base_server
@@ -19,7 +20,7 @@ from .runner import Runner
 class Gateway(Resolver, Runner):
     _builtins = None  # Class-level: stores all discovered builtins only once
     _thread_local = threading.local()
-    defaults = {} 
+    defaults = {}
 
     Null = Null  # Null is a black-hole, assign with care.
 
@@ -28,10 +29,11 @@ class Gateway(Resolver, Runner):
     silent = False
     verbose = False
     wizard = False
+    timed = False
 
     def __init__(self, *,
                 client=None, server=None, name="gw", base_path=None, project_path=None,
-                verbose=None, silent=None, debug=None, wizard=None, quantity=1, **kwargs
+                verbose=None, silent=None, debug=None, wizard=None, timed=None, quantity=1, **kwargs
             ):
         self._cache = {}
         self._async_threads = []
@@ -45,7 +47,7 @@ class Gateway(Resolver, Runner):
 
         # --- Mode propagation logic: Set global flags via classmethod ---
         explicit_modes = {}
-        for flag in ('debug', 'silent', 'verbose', 'wizard'):
+        for flag in ('debug', 'silent', 'verbose', 'wizard', 'timed'):
             val = locals()[flag]
             if val is not None:
                 explicit_modes[flag] = val
@@ -55,6 +57,7 @@ class Gateway(Resolver, Runner):
         # Set instance mode flags to match class-level (which may have just changed)
         for flag in ('debug', 'silent', 'verbose', 'wizard'):
             setattr(self, f"{flag}_enabled", getattr(type(self), flag))
+        self.timed_enabled = timed if timed is not None else getattr(type(self), 'timed', False)
 
         # Instance-level log helpers: always use self.<flag>() to log
         self.debug = (lambda msg, *a, **k: self.logger.debug(msg, *a, stacklevel=2, **k)) if self.debug_enabled else Null
@@ -97,10 +100,10 @@ class Gateway(Resolver, Runner):
             }
 
     @classmethod
-    def update_modes(cls, *, debug=None, silent=None, verbose=None, wizard=None):
+    def update_modes(cls, *, debug=None, silent=None, verbose=None, wizard=None, timed=None):
         """Set global mode flags at the class level and on the global 'gw' instance, if present."""
         updated = {}
-        for flag, value in [('debug', debug), ('silent', silent), ('verbose', verbose), ('wizard', wizard)]:
+        for flag, value in [('debug', debug), ('silent', silent), ('verbose', verbose), ('wizard', wizard), ('timed', timed)]:
             if value is not None:
                 setattr(cls, flag, value)
                 updated[flag] = value
@@ -113,8 +116,8 @@ class Gateway(Resolver, Runner):
                 if isinstance(g, Gateway):
                     for flag, value in updated.items():
                         setattr(g, f"{flag}_enabled", value)
-                        # Update the instance method as well!
-                        setattr(g, flag, (lambda msg, *a, **k: g.logger.debug(msg, *a, stacklevel=2, **k)) if value else Null)
+                        if flag in ('debug', 'silent', 'verbose', 'wizard'):
+                            setattr(g, flag, (lambda msg, *a, **k: g.logger.debug(msg, *a, stacklevel=2, **k)) if value else Null)
         except Exception:
             pass
 
@@ -169,6 +172,7 @@ class Gateway(Resolver, Runner):
         @functools.wraps(func_obj)
         def wrap(*args, **kwargs):
             try:
+                start_time = time.perf_counter() if self.timed_enabled else None
                 kwarg_txt = ', '.join(f"{k}='{v}'" for k, v in kwargs.items())
                 arg_txt = ', '.join(f"'{x}'" for x in args)
                 if kwarg_txt and arg_txt:
@@ -254,6 +258,8 @@ class Gateway(Resolver, Runner):
                     )
                     self._async_threads.append(thread)
                     thread.start()
+                    if start_time is not None:
+                        self.log(f"[timed] {func_name} dispatch took {time.perf_counter() - start_time:.3f}s")
                     return f"ASYNC task started for {func_name}"
 
                 result = func_obj(*call_args, **call_kwargs)
@@ -266,6 +272,8 @@ class Gateway(Resolver, Runner):
                     )
                     self._async_threads.append(thread)
                     thread.start()
+                    if start_time is not None:
+                        self.log(f"[timed] {func_name} dispatch took {time.perf_counter() - start_time:.3f}s")
                     return f"ASYNC coroutine started for {func_name}"
 
                 # ---- Result storage logic ----
@@ -279,8 +287,12 @@ class Gateway(Resolver, Runner):
 
                     self.verbose(f"<- result['{subject}'] == {log_value}")
                     self.results.insert(subject, result)
+
                     if isinstance(result, dict):
                         self.context.update(result)
+
+                if start_time is not None:
+                    self.log(f"[timed] {func_name} took {time.perf_counter() - start_time:.3f}s")
 
                 return result
 

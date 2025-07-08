@@ -214,6 +214,7 @@ def test(*, root: str = 'tests', filter=None, on_success=None, on_failure=None, 
     """
     import unittest
     import os
+    import time
     from gway import gw
     from gway.logging import use_logging
     if flags:
@@ -264,7 +265,19 @@ def test(*, root: str = 'tests', filter=None, on_success=None, on_failure=None, 
             test_suite.addTests(test_loader.discover(
                 os.path.dirname(test_file), pattern=os.path.basename(test_file)))
 
-        runner = unittest.TextTestRunner(verbosity=2)
+        class TimedResult(unittest.TextTestResult):
+            def startTest(self, test):
+                super().startTest(test)
+                if getattr(gw, "timed_enabled", False):
+                    self._start_time = time.perf_counter()
+
+            def stopTest(self, test):
+                if getattr(gw, "timed_enabled", False) and hasattr(self, "_start_time"):
+                    elapsed = time.perf_counter() - self._start_time
+                    gw.log(f"[test] {test} took {elapsed:.3f}s")
+                super().stopTest(test)
+
+        runner = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult)
         result = runner.run(test_suite)
         gw.info(f"Test results: {str(result).strip()}")
 
