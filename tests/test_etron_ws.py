@@ -319,9 +319,9 @@ class EtronWebSocketTests(unittest.TestCase):
                 ]},
             ]
         }
-        pc = gw.ocpp.csms.power_consumed(tx1)
+        pc = gw.ocpp.power_consumed(tx1)
         self.assertAlmostEqual(pc, 2.0, places=2)
-        lm = gw.ocpp.csms.extract_meter(tx1)
+        lm = gw.ocpp.extract_meter(tx1)
         self.assertAlmostEqual(lm, 152.0, places=2)
 
         # Simulated transaction with MeterValues in Wh (should convert to kWh)
@@ -337,22 +337,22 @@ class EtronWebSocketTests(unittest.TestCase):
                 ]},
             ]
         }
-        pc = gw.ocpp.csms.power_consumed(tx2)
+        pc = gw.ocpp.power_consumed(tx2)
         self.assertAlmostEqual(pc, 2.5, places=2)
-        lm = gw.ocpp.csms.extract_meter(tx2)
+        lm = gw.ocpp.extract_meter(tx2)
         self.assertAlmostEqual(lm, 102.5, places=2)
 
         # Only meterStart/meterStop (no MeterValues)
         tx3 = {"meterStart": 123000, "meterStop": 124500, "MeterValues": []}
-        pc = gw.ocpp.csms.power_consumed(tx3)
+        pc = gw.ocpp.power_consumed(tx3)
         self.assertAlmostEqual(pc, 1.5, places=2)
-        lm = gw.ocpp.csms.extract_meter(tx3)
+        lm = gw.ocpp.extract_meter(tx3)
         self.assertAlmostEqual(lm, 124.5, places=2)
 
         # Edge: no data
-        pc = gw.ocpp.csms.power_consumed({})
+        pc = gw.ocpp.power_consumed({})
         self.assertEqual(pc, 0.0)
-        lm = gw.ocpp.csms.extract_meter({})
+        lm = gw.ocpp.extract_meter({})
         self.assertEqual(lm, "-")
 
         # Edge: MeterValues present but missing correct measurand
@@ -361,9 +361,9 @@ class EtronWebSocketTests(unittest.TestCase):
                 {"value": 12.34, "measurand": "NotEnergy", "unit": "kWh"}
             ]}
         ]}
-        pc = gw.ocpp.csms.power_consumed(tx4)
+        pc = gw.ocpp.power_consumed(tx4)
         self.assertEqual(pc, 0.0)
-        lm = gw.ocpp.csms.extract_meter(tx4)
+        lm = gw.ocpp.extract_meter(tx4)
         self.assertEqual(lm, "-")
 
         # meterStart with MeterValues only (no meterStop)
@@ -378,10 +378,17 @@ class EtronWebSocketTests(unittest.TestCase):
                 ]},
             ]
         }
-        pc = gw.ocpp.csms.power_consumed(tx5)
+        pc = gw.ocpp.power_consumed(tx5)
         self.assertAlmostEqual(pc, 1.0, places=2)
-        lm = gw.ocpp.csms.extract_meter(tx5)
+        lm = gw.ocpp.extract_meter(tx5)
         self.assertAlmostEqual(lm, 501.0, places=2)
+
+    def test_power_consumed_accepts_json(self):
+        """Helpers should parse JSON strings transparently."""
+        tx = {"meterStart": 0, "meterStop": 1000, "MeterValues": []}
+        js = json.dumps(tx)
+        self.assertAlmostEqual(gw.ocpp.power_consumed(js), 1.0, places=2)
+        self.assertAlmostEqual(gw.ocpp.extract_meter(js), 1.0, places=2)
 
     def test_remote_stop_transaction(self):
         """Dashboard Stop action triggers RemoteStopTransaction on the CP."""
