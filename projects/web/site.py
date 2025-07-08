@@ -125,6 +125,25 @@ def view_help(topic="", *args, **kwargs):
     # gw.gelp at all times, compliment this result with other information. 
 
     topic_in = topic or ""
+
+    # --- Local console commands via search box ---
+    if topic_in.strip().startswith(">"):
+        if gw.web.server.is_local():
+            cmd_str = topic_in.strip()[1:].strip()
+            if not cmd_str:
+                return "<i>No command provided.</i>"
+            import shlex, html
+            from gway.console import chunk, process
+            try:
+                tokens = shlex.split(cmd_str)
+                commands = chunk(tokens)
+                results, _ = process(commands)
+                html_parts = [gw.cast.to_html(r) for r in results if r is not None]
+                return "<div class='cli-result'>" + "<hr>".join(html_parts) + "</div>"
+            except Exception as ex:
+                return f"<pre>{html.escape(str(ex))}</pre>"
+        else:
+            return "<b>Console commands disabled (not local).</b>"
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
 
