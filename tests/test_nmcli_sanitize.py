@@ -17,15 +17,15 @@ class EnsureApProfileTests(unittest.TestCase):
         calls = []
         def fake_nmcli(*args):
             calls.append(args)
-            if args == ('connection', 'show'):
-                return 'NAME UUID TYPE DEVICE\nmyap 123 wifi --'
+            if args == ('-t', '-f', 'NAME,UUID,TYPE,DEVICE', 'connection', 'show'):
+                return 'myap:123:wifi:\n'
             if args == ('connection', 'show', 'myap'):
                 return '802-11-wireless.ssid: myssid\n802-11-wireless-security.psk: pass'
             return ''
         with patch.object(nmcli_mod, 'nmcli', side_effect=fake_nmcli):
             nmcli_mod.ensure_ap_profile('"myap"', '"myssid"', '"pass"')
         self.assertEqual(calls, [
-            ('connection', 'show'),
+            ('-t', '-f', 'NAME,UUID,TYPE,DEVICE', 'connection', 'show'),
             ('connection', 'show', 'myap'),
         ])
 

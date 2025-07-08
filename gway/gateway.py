@@ -322,7 +322,7 @@ class Gateway(Resolver, Runner):
             self.verbose(f"{project_name} <- Project('{base}')")
 
             def load_module_ns(py_path: str, dotted: str):
-                mod = self.load_py_file(py_path, dotted)
+                mod = self._load_py_file(py_path, dotted)
                 funcs = {}
                 for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                     if not fname.startswith("_"):
@@ -403,7 +403,11 @@ class Gateway(Resolver, Runner):
             "Tried base_path, GWAY_PROJECT_PATH, and package resources."
         )
     
-    def load_py_file(self, path: str, dotted_name: str):
+    def _load_py_file(self, path: str, dotted_name: str):
+        """
+        Don't manually use _load_py_file, instead simply access the proyect through Gateway:
+        gw.project.subproject.function(), where gw is any Gateway instance such as from gway import gw.
+        """
         module_name = dotted_name.replace(".", "_")
         spec = importlib.util.spec_from_file_location(module_name, path)
         if spec is None or spec.loader is None:
@@ -437,7 +441,7 @@ class Gateway(Resolver, Runner):
                 if subname == dir_basename:
                     continue  # defer loading the root file until later
                 dotted = f"{dotted_prefix}.{subname}"
-                mod = self.load_py_file(full, dotted)
+                mod = self._load_py_file(full, dotted)
                 sub_funcs = {}
                 for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                     if not fname.startswith("_"):
@@ -450,7 +454,7 @@ class Gateway(Resolver, Runner):
         # 2. Load the root file (e.g., web/web.py) if present
         root_funcs = {}
         if os.path.isfile(root_file):
-            mod = self.load_py_file(root_file, dotted_prefix)
+            mod = self._load_py_file(root_file, dotted_prefix)
             for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                 if not fname.startswith("_"):
                     root_funcs[fname] = self.wrap_callable(f"{dotted_prefix}.{fname}", obj)

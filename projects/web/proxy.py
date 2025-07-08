@@ -4,7 +4,6 @@ from fastapi import FastAPI
 from gway import gw
 import requests
 
-# TODO: Test that setup_fallback_app will work with our OCPP apps.
 
 
 def setup_fallback_app(*, 
@@ -19,14 +18,12 @@ def setup_fallback_app(*,
     # selectors for app types
     from bottle import Bottle
 
-    # TODO: Implement a mode kwarg that defaults to "extend" and functions like this:
     # replace: Replace all paths in the received apps with the proxied endpoint.
     # extend: Redirect all paths not already configured to the proxy.
     # errors: Catch errors thrown by the app and redirect the failed calls to the proxy.
     # trigger: Use a callback function to check. Redirects when result is True.
     # Move this explanation to the docstring.
 
-    # TODO: Apply the proxy mode to each received app and return the collection
 
     # collect apps by type
     match app:
@@ -60,7 +57,6 @@ def setup_fallback_app(*,
     elif fastapi_app:
         prepared.append(_wire_proxy(fastapi_app, endpoint, websockets, path))
 
-    # TODO: Test that this return is properly compatible with web.server.start_app after the fixes
 
     return prepared[0] if len(prepared) == 1 else tuple(prepared)
 

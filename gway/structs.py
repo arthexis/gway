@@ -164,6 +164,5 @@ null = Null()
 Null = null
 
 
-# TODO: Create a new Apeiron class that will hold "conversion" functions
 # Apeiron should be designed as a Mixin for Gateway. Its methods will be
 # to_html, to_list, to_yaml, etc. This will free space from gway/builtins.py

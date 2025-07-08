@@ -167,7 +167,12 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "start":
         win32serviceutil.StartService(args.name)
     elif args.command == "stop":
-        win32serviceutil.StopService(args.name)
+        try:
+            win32serviceutil.StopService(args.name)
+        except Exception as exc:  # pragma: no cover - requires Windows
+            # Ignore "service not started" errors when stopping
+            if getattr(exc, "winerror", None) != 1062:
+                raise
     elif args.command == "run":
         win32serviceutil.HandleCommandLine(Service)
     else:  # pragma: no cover - unreachable

@@ -3,23 +3,27 @@
 
 # Lines without a starting command repeat the previous with new params
 
-web app setup-app --home reader
+web app setup-app:
+    --home reader
     --project awg --home cable-finder
     --project web.nav --home style-switcher
     --project web.cookies --home cookie-jar
-    --project vbox --home uploads 
+    --project vbox --home uploads
     --project ocpp.csms --auth-required --home charger-status
     --project ocpp.evcs --auth-required --home cp-simulator
     --project games.conway --home game-of-life --path conway
-    --project games.mtg --home search-games 
-    --project web.auth 
+    --project games.mtg --home search-games
+    --project web.auth
 
-web static collect
-web auth config-basic --optional --temp-link
+web:
+ - static collect
+ - auth config-basic --optional --temp-link
 
-ocpp csms setup-app --location simulator
+ocpp csms setup-app:
+    --location simulator
 
-web server start-app --port 18888 --ws-port 19999
+web:
+ - server start-app --port 18888 --ws-port 19999
 
 # Loop until VERSION or BUILD or PyPI changes
 until --version --build --pypi

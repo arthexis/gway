@@ -1,4 +1,3 @@
-# TODO: Use the mail project to create a simple approval request workflow
 
 # projects/mail.py
 

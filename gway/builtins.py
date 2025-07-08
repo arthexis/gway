@@ -394,7 +394,6 @@ def help(*args, full=False):
 def sample_cli(func):
     """Generate a sample CLI string for a function."""
 
-    # TODO: Is this working properly? Are we not using it in view_help?
 
     from gway import gw
     if not callable(func):
