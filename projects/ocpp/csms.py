@@ -748,7 +748,14 @@ def extract_meter(tx):
         last_mv = mv[-1]
         for sv in last_mv.get("sampledValue", []):
             if sv.get("measurand") == "Energy.Active.Import.Register":
-                return sv.get("value")
+                val = sv.get("value")
+                try:
+                    val_f = float(val)
+                    if sv.get("unit") == "Wh":
+                        val_f = val_f / 1000.0
+                    return val_f
+                except Exception:
+                    return val
     return "-"
 
 
@@ -761,34 +768,47 @@ def power_consumed(tx):
     meter_values = tx.get("MeterValues", [])
     energy_vals = []
     for entry in meter_values:
-        # entry should be a dict with sampledValue: [...]
         for sv in entry.get("sampledValue", []):
             if sv.get("measurand") == "Energy.Active.Import.Register":
                 val = sv.get("value")
-                # Parse value as float (from string), handle missing
                 try:
                     val_f = float(val)
                     if sv.get("unit") == "Wh":
                         val_f = val_f / 1000.0
-                    # else assume kWh
                     energy_vals.append(val_f)
                 except Exception:
                     pass
 
+    meter_start = tx.get("meterStart")
+    start_val = None
     if energy_vals:
-        start = energy_vals[0]
-        end = energy_vals[-1]
-        return round(end - start, 3)
+        start_val = energy_vals[0]
+    elif meter_start is not None:
+        try:
+            start_val = float(meter_start) / 1000.0
+        except Exception:
+            start_val = None
+
+    end_val = None
+    if energy_vals:
+        end_val = energy_vals[-1]
+    elif tx.get("meterStop") is not None:
+        try:
+            end_val = float(tx["meterStop"]) / 1000.0
+        except Exception:
+            end_val = None
+
+    if start_val is not None and end_val is not None:
+        return round(end_val - start_val, 3)
 
     # Fallback to meterStart/meterStop if no sampled values
-    meter_start = tx.get("meterStart")
     meter_stop = tx.get("meterStop")
     # handle int or float or None
     try:
         if meter_start is not None and meter_stop is not None:
             return round(float(meter_stop) / 1000.0 - float(meter_start) / 1000.0, 3)
         if meter_start is not None:
-            return 0.0  # no consumption measured
+            return 0.0
     except Exception:
         pass
 
