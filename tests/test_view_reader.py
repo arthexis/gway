@@ -51,7 +51,13 @@ class ViewReaderTests(unittest.TestCase):
         html = site.view_reader(tome="dir")
         self.assertIn("Dir Doc", html)
 
+        html = site.view_reader("dir")
+        self.assertIn("Dir Doc", html)
+
         html = site.view_reader(tome="dir/")
+        self.assertIn("Dir Doc", html)
+
+        html = site.view_reader("dir/")
         self.assertIn("Dir Doc", html)
 
 

@@ -122,9 +122,9 @@ project with ``gw.web.app.setup`` and then launch the server using
 ``gw.web.server.start_app``. Routes of the form ``/project/view`` map to
 ``view_*`` functions and static files under ``data/static`` are served from
 ``/static``. ``web.site.view_reader`` renders ``.rst`` or ``.md`` files when
-you visit ``/site/reader?tome=PATH``; it first checks the workspace root and
+you visit ``/site/reader/PATH``; it first checks the workspace root and
 then ``data/static`` automatically. See the `Web README
-</site/reader?tome=web/README>`_ for a more complete guide.
+</site/reader/web/README>`_ for a more complete guide.
 
 Project READMEs
 ---------------
@@ -136,14 +136,14 @@ The following projects bundle additional documentation.  Each link uses
 +------------+--------------------------------------------------------------+
 | Project    | README                                                       |
 +============+==============================================================+
-| monitor    | `/site/reader?tome=monitor/README`_           |
-| ocpp       | `/site/reader?tome=ocpp/README`_              |
-| web        | `/site/reader?tome=web/README`_               |
-| games/qpig | `/site/reader?tome=games/qpig/README`_        |
+| monitor    | `/site/reader/monitor/README`_           |
+| ocpp       | `/site/reader/ocpp/README`_              |
+| web        | `/site/reader/web/README`_               |
+| games/qpig | `/site/reader/games/qpig/README`_        |
 +------------+--------------------------------------------------------------+
 
 You can generate these links yourself with
-``gw.web.app.build_url('reader', tome='proj/README')``.
+``gw.web.app.build_url('reader', 'proj/README')``.
 
 License
 -------

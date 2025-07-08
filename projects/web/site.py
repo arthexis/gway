@@ -9,9 +9,11 @@ from gway import gw, __
 from gway.console import process, chunk
 import markdown as mdlib
 
+_DEFAULT_TOME = __('[README]', 'README')
+
 def view_reader(
-    *,
-    tome=__('[README]', 'README'),
+    *parts,
+    tome=_DEFAULT_TOME,
     ext=None,
     origin="root",
     **kwargs,
@@ -21,6 +23,9 @@ def view_reader(
     If origin='root', only files in the resource root (no subfolders).
     Never serves files starting with dot or underscore.
     """
+    if parts and (tome == _DEFAULT_TOME or tome == "README"):
+        tome = "/".join(str(p).strip("/") for p in parts)
+
     gw.verbose(f"[reader] Called with tome={tome!r}, ext={ext!r}, origin={origin!r}")
     fname = _sanitize_filename(tome)
     gw.verbose(f"[reader] Sanitized filename: {fname}")
