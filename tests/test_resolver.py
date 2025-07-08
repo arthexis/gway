@@ -4,7 +4,7 @@ from gway.sigils import Resolver
 class ResolverDefaultTests(unittest.TestCase):
     def test_resolve_returns_default(self):
         resolver = Resolver([])
-        self.assertEqual(resolver.resolve('[missing]', default='fallback'), 'fallback')
+        self.assertEqual(resolver.resolve('[missing]', default='foo'), 'foo')
 
     def test_resolve_raises_with_sentinel(self):
         resolver = Resolver([])
@@ -39,6 +39,12 @@ class ResolverLookupTests(unittest.TestCase):
             self.assertEqual(env_resolver.resolve('[sigtest]'), 'ok')
         finally:
             del os.environ['SIGTEST']
+
+    def test_nested_lookup_via_path(self):
+        nested = {'app': {'name': 'Demo'}}
+        resolver = Resolver([('env', {}), ('ctx', nested)])
+        self.assertEqual(resolver.resolve('[app.name]'), 'Demo')
+        self.assertEqual(resolver['app.name'], 'Demo')
 
 if __name__ == '__main__':
     unittest.main()

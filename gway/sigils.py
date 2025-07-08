@@ -51,6 +51,30 @@ def _unquote(val):
         return val[1:-1]
     return val
 
+def _follow_path(value, parts):
+    for part in parts:
+        if isinstance(value, dict) and part in value:
+            value = value[part]
+            continue
+        try:
+            idx = int(part)
+            if isinstance(value, (list, tuple)):
+                value = value[idx]
+                continue
+        except (ValueError, TypeError):
+            pass
+        if hasattr(value, part):
+            value = getattr(value, part)
+            continue
+        if hasattr(value, '__getitem__'):
+            try:
+                value = value[part]
+                continue
+            except Exception:
+                pass
+        raise KeyError(f"Path segment '{part}' not found")
+    return value
+
 def _replace_sigils(text, lookup_fn):
     """
     Replace all sigils in the text, raising if any sigil is unresolved.
@@ -65,6 +89,15 @@ def _replace_sigils(text, lookup_fn):
         key = _unquote(raw) if quoted else raw
 
         val = lookup_fn(key)
+        if val is None:
+            parts = re.split(r"[. ]+", key)
+            if len(parts) > 1:
+                base = lookup_fn(parts[0])
+                if base is not None:
+                    try:
+                        val = _follow_path(base, parts[1:])
+                    except KeyError:
+                        val = None
         if val is not None:
             gw.verbose(f"Resolved sigil [{raw}] → {val}")
             return str(val)
@@ -106,7 +139,7 @@ class Resolver:
             except KeyError as e:
                 gw.verbose(f"Could not resolve sigil(s) in '{arg}': {e}")
                 last_exc = e
-        # return provided fallback unless user passed the '_raise' sentinel
+        # return provided default unless user passed the '_raise' sentinel
         if default != '_raise':
             return default
         if last_exc is not None:
@@ -133,10 +166,19 @@ class Resolver:
         return fallback
 
     def _resolve_key(self, key: str, fallback: str = None) -> str:
-        val = self.find_value(key, fallback)
+        val = self.find_value(key, None)
         if val is not None:
             return val
-        # Allow dash/underscore interchange in fallback search
+
+        parts = re.split(r"[. ]+", key.replace('-', '_'))
+        if len(parts) > 1:
+            base = self.find_value(parts[0], None)
+            if base is not None:
+                try:
+                    return _follow_path(base, parts[1:])
+                except KeyError:
+                    return fallback
+
         parts = key.replace('-', '_').split('.')
         current = self
         for part in parts:
@@ -145,7 +187,7 @@ class Resolver:
             elif isinstance(current, dict) and part in current:
                 current = current[part]
             else:
-                return None
+                return fallback
         return current
 
     def __getitem__(self, key):
