@@ -15,5 +15,18 @@ class FormatDisplayNameTests(unittest.TestCase):
         self.assertEqual(ws._format_display_name('foo_bar-baz'), 'Foo Bar Baz')
 
 
+class ParseArgsTests(unittest.TestCase):
+    def test_parse_args_user_password(self):
+        args = ws.parse_args([
+            'install',
+            '--name', 'svc',
+            '--recipe', 'demo',
+            '--user', 'testuser',
+            '--password', 'secret',
+        ])
+        self.assertEqual(args.user, 'testuser')
+        self.assertEqual(args.password, 'secret')
+
+
 if __name__ == '__main__':
     unittest.main()

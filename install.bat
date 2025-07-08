@@ -9,6 +9,8 @@ set "ACTION=install"
 set "RECIPE="
 set "FORCE_FLAG="
 set "DEBUG_FLAG="
+set "USER_FLAG="
+set "PASSWORD_FLAG="
 :parse_args
 if "%~1"=="" goto end_parse_args
 if "%~1"=="--remove" (
@@ -19,6 +21,20 @@ if "%~1"=="--remove" (
     set "FORCE_FLAG=--force"
  ) else if "%~1"=="--debug" (
     set "DEBUG_FLAG=--debug"
+ ) else if "%~1"=="--user" (
+    if "%~2"=="" (
+        echo ERROR: --user requires a value
+        exit /b 1
+    )
+    set "USER_FLAG=--user %~2"
+    shift
+ ) else if "%~1"=="--password" (
+    if "%~2"=="" (
+        echo ERROR: --password requires a value
+        exit /b 1
+    )
+    set "PASSWORD_FLAG=--password %~2"
+    shift
 ) else (
     if not defined RECIPE (
         set "RECIPE=%~1"
@@ -56,7 +72,7 @@ rem No-arg case
 if not defined RECIPE (
     echo GWAY has been set up in .venv.
     echo To install a Windows service for a recipe, run:
-    echo   install.bat ^<recipe^> [--debug]
+    echo   install.bat ^<recipe^> [--debug] [--user ^<account^> --password ^<pass^>]
     echo To remove a Windows service, run:
     echo   install.bat ^<recipe^> --remove [--force]
     echo To repair a Windows service, run:
@@ -78,7 +94,7 @@ set "SERVICE_PY=%~dp0tools\windows_service.py"
 
 if "%ACTION%"=="install" (
     echo Installing Windows service %SERVICE_NAME% for recipe %RECIPE%...
-    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE% %DEBUG_FLAG%
+    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE% %DEBUG_FLAG% %USER_FLAG% %PASSWORD_FLAG%
     python "%SERVICE_PY%" start --name %SERVICE_NAME%
 ) else if "%ACTION%"=="remove" (
     echo Removing Windows service %SERVICE_NAME% for recipe %RECIPE%...
@@ -88,7 +104,7 @@ if "%ACTION%"=="install" (
     echo Repairing Windows service %SERVICE_NAME% for recipe %RECIPE%...
     python "%SERVICE_PY%" stop --name %SERVICE_NAME%
     python "%SERVICE_PY%" remove --name %SERVICE_NAME% --recipe %RECIPE% %FORCE_FLAG%
-    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE% %DEBUG_FLAG%
+    python "%SERVICE_PY%" install --name %SERVICE_NAME% --recipe %RECIPE% %DEBUG_FLAG% %USER_FLAG% %PASSWORD_FLAG%
     python "%SERVICE_PY%" start --name %SERVICE_NAME%
 )
 
