@@ -1,6 +1,7 @@
 # file: projects/web/nav.py
 
 import os
+import html
 from gway import gw
 from bottle import request
 
@@ -82,8 +83,23 @@ def render(*, homes=None, links=None):
             >{}</textarea>
         </form>
     '''.format(request.query.get("topic", ""))
+    
+    # --- Current user info (Basic Auth) ---
+    user_html = ""
+    try:
+        auth_header = request.get_header("Authorization")
+        username, _ = gw.web.auth.parse_basic_auth_header(auth_header)
+        if username:
+            logout_url = gw.web.app.build_url("auth", "logout")
+            user_html = (
+                f'<p class="user-info">User: {html.escape(username)} '
+                f'<a href="{logout_url}" class="logout">Logout</a></p>'
+            )
+    except Exception as e:
+        gw.debug(f"Could not resolve auth user: {e}")
 
-    # --- Local compass or QR code ---
+    # --- QR code for this page ---
+
     compass = ""
     toggle = ""
 

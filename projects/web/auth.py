@@ -245,3 +245,10 @@ def create_user(username, password, *, allow='work/basic_auth.cdv', force=False,
     user_fields.update(fields)
     gw.cdv.update(allow, username, **user_fields)
     gw.info(f"[auth] Created/updated user '{username}' in '{allow}'")
+
+def view_logout():
+    """Force browser to prompt for credentials again."""
+    from bottle import response
+    response.status = 401
+    response.headers['WWW-Authenticate'] = 'Basic realm="GWAY"'
+    return "<b>Logged out</b>"

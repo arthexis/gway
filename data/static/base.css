@@ -260,6 +260,8 @@ img.compass {
 form.navbar { margin-bottom: 1em; }
 div.compass { margin-top: 1em; text-align: center; }
 p.compass { margin-bottom: 0.5em; }
+p.user-info { text-align: center; margin-bottom: 0.5em; font-size: 0.95em; }
+a.logout { margin-left: 0.4em; }
 
 /* 13. Utility classes */
 .hidden { display: none !important; }
