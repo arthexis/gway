@@ -13,12 +13,6 @@ if not exist ".venv" (
     python -m pip install --upgrade pip
     python -m pip install -e .
 
-    :: Install additional requirements if the file exists
-    if exist "temp\requirements.txt" (
-        echo Installing additional requirements from temp\requirements.txt...
-        python -m pip install -r temp\requirements.txt
-    )
-
     deactivate
 )
 

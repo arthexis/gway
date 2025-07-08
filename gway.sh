@@ -15,12 +15,6 @@ if [ ! -d ".venv" ]; then
   pip install --upgrade pip
   pip install -e .
 
-  # Install additional requirements if the file exists
-  if [ -f "temp/requirements.txt" ]; then
-    echo "Installing additional requirements from temp/requirements.txt..."
-    pip install -r temp/requirements.txt
-  fi
-
   deactivate
 fi
 
