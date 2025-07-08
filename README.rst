@@ -13,7 +13,7 @@ Fetch the source, changelogs and issues (or submit your own) here:
 
 https://github.com/arthexis/gway
 
-Browse the latest changes in the `CHANGELOG <https://arthexis.com/release/changelog>`_.
+Browse the latest changes in the `CHANGELOG <https://arthexis.com/site/reader?title=CHANGELOG&ext=rst>`_.
 
 See a demo and the full list of available projects and other help topics online here:
 
