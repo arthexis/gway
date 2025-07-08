@@ -8,6 +8,7 @@ import requests
 from bs4 import BeautifulSoup
 import importlib.util
 from pathlib import Path
+from gway.builtins import is_test_flag
 
 # Dynamically load the web.auto helpers for screenshot capture
 auto_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "auto.py"
@@ -157,7 +158,7 @@ class NavStyleTests(unittest.TestCase):
             f"Readme page did not include expected theme <link> for classic-95.css in <head>. Got links: {[str(l) for l in soup2.find_all('link', rel='stylesheet')]}"
         )
 
-    @unittest.skip("Screenshot tests disabled")
+    @unittest.skipUnless(is_test_flag("screenshot"), "Screenshot tests disabled")
     def test_style_switcher_screenshot(self):
         """Capture a screenshot of the style switcher page."""
         screenshot_dir = Path("work/screenshots")

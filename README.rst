@@ -27,7 +27,7 @@ Basic Features
 - 🧠 Sigil-based context resolution (e.g., ``[result-context-environ]``).
   Nested paths are supported via spaces or dots, e.g., ``[app.name]``
 - ⚙️ Automatic CLI generation, with support for ``*``, ``*args`` and ``**kwargs``
-- 🧪 Built-in test runner and self-packaging: ``gway test`` (use ``--coverage`` for coverage) and ``gway release build``
+- 🧪 Built-in test runner and self-packaging: ``gway test`` (use ``--coverage`` for coverage and ``--flags`` to enable optional tests) and ``gway release build``
 - 📦 Environment-aware loading (e.g., ``clients`` and ``servers`` .env files)
 
 
