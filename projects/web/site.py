@@ -325,3 +325,68 @@ def view_qr_code(*args, value=None, **kwargs):
         <p><a href="{back_link}">Generate another</a></p>
     """
 
+
+def _create_github_issue(title: str, body: str) -> str:
+    """Create an issue in the GWAY repository and return the issue URL."""
+    import requests
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise RuntimeError("GitHub token not configured")
+
+    url = "https://api.github.com/repos/arthexis/gway/issues"
+    headers = {
+        "Authorization": f"token {token}",
+        "User-Agent": "gway-feedback",
+        "Accept": "application/vnd.github+json",
+    }
+    resp = requests.post(url, json={"title": title, "body": body}, headers=headers, timeout=10)
+    if resp.status_code != 201:
+        raise RuntimeError(f"GitHub API error: {resp.status_code} {resp.text}")
+    data = resp.json()
+    return data.get("html_url", "")
+
+
+def view_feedback(*, name=None, email=None, topic=None, message=None):
+    """Display feedback form and submit feedback as a GitHub issue."""
+    import html
+    from bottle import request
+
+    if request.method == "POST":
+        name = (name or "").strip()
+        email = (email or "").strip()
+        topic = (topic or "").strip()
+        message = (message or "").strip()
+
+        missing = [field for field, val in [
+            ("Name", name),
+            ("Email", email),
+            ("Topic", topic),
+            ("Message", message),
+        ] if not val]
+        if missing:
+            miss = ", ".join(missing)
+            back = gw.web.app.build_url("feedback")
+            return f"<h1>Missing required fields: {html.escape(miss)}</h1><p><a href='{back}'>Back</a></p>"
+
+        body = f"**From:** {name} <{email}>\n\n{message}"
+        try:
+            issue_url = _create_github_issue(topic, body)
+        except Exception as e:
+            err = html.escape(str(e))
+            back = gw.web.app.build_url("feedback")
+            return f"<h1>Error submitting feedback</h1><pre>{err}</pre><p><a href='{back}'>Back</a></p>"
+
+        return f"<h1>Thank you for your feedback!</h1><p>It was recorded as <a href='{issue_url}'>GitHub issue</a>.</p>"
+
+    return """
+        <h1>Send Feedback</h1>
+        <form method="post">
+            <input type="text" name="name" placeholder="Your Name" required class="main" />
+            <input type="email" name="email" placeholder="Email" required class="main" />
+            <input type="text" name="topic" placeholder="Topic" required class="main" />
+            <textarea name="message" placeholder="Message" required rows="6" class="main"></textarea>
+            <button type="submit" class="submit">Submit</button>
+        </form>
+    """
+
+
