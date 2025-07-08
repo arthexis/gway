@@ -97,7 +97,7 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+--------------------------------------------------------------+
 | envs/servers/  | Per-host environment files (e.g., ``hostname.env``).         |
 +----------------+--------------------------------------------------------------+
-| projects/      | Included GWAY python projects. You may add your own.        |
+| projects/      | Included GWAY python projects. You may add your own.         |
 +----------------+--------------------------------------------------------------+
 | logs/          | Runtime logs and log backups.                                |
 +----------------+--------------------------------------------------------------+
