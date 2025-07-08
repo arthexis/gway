@@ -79,7 +79,7 @@ def setup_app(*,
     shared="shared",
     css="global",           # Default CSS (without .css extension)
     js="global",            # Default JS  (without .js extension)
-    auth_required=False,    # Default: Don't enforce --optional security
+    auth="disabled",       # Accept "optional"/"disabled" words to disable
     engine="bottle",
 ):
     """
@@ -87,6 +87,10 @@ def setup_app(*,
     Only one project can be setup per call. CSS/JS params are used as the only static includes.
     """
     global _ver, _homes, _enabled
+
+    auth_required = str(auth).strip().lower() not in {
+        "none", "false", "disabled", "optional"
+    }
 
     if engine != "bottle":
         raise NotImplementedError("Only Bottle is supported at the moment.")

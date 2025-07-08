@@ -39,10 +39,14 @@ def setup_app(*,
     location=None,
     authorize=authorize_balance,
     email=None,
-    auth_required=False,
+    auth="disabled",
 ):
     # no globals needed here; dictionaries are modified in-place
     email = email if isinstance(email, str) else (gw.resolve('[ADMIN_EMAIL]') if email else email)
+
+    auth_required = str(auth).strip().lower() not in {
+        "none", "false", "disabled", "optional"
+    }
 
     oapp = app
     from fastapi import FastAPI as _FastAPI
