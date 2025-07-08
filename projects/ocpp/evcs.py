@@ -213,6 +213,7 @@ async def simulate_cp(
                             print(f"[Simulator:{cp_name}] Warning: Expected list message", msg)
                 except websockets.ConnectionClosed:
                     print(f"[Simulator:{cp_name}] Connection closed by server")
+                    _simulator_state["last_status"] = "Connection closed"
                     stop_event.set()
 
             loop_count = 0
@@ -238,6 +239,7 @@ async def simulate_cp(
                 resp = await ws.recv()
                 tx_id = json.loads(resp)[2].get("transactionId")
                 print(f"[Simulator:{cp_name}] Transaction {tx_id} started at meter {meter_start}")
+                _simulator_state["last_status"] = "Running"
 
                 # Start listener only after transaction is active so recv calls don't overlap
                 listener = asyncio.create_task(listen_to_csms(stop_event, reset_event))
@@ -328,6 +330,7 @@ async def simulate_cp(
                     continue  # loop forever
 
             print(f"[Simulator:{cp_name}] Simulation ended.")
+            _simulator_state["last_status"] = "Stopped"
     except Exception as e:
         print(f"[Simulator:{cp_name}] Exception: {e}")
 
