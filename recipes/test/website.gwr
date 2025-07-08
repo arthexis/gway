@@ -10,8 +10,8 @@ web app setup-app:
     --project web.cookies --home cookie-jar
     --project vbox --home uploads
     --project ocpp.data --home charger-summary
-    --project ocpp.csms --auth-required --home charger-status
-    --project ocpp.evcs --auth-required --home cp-simulator
+    --project ocpp.csms --auth required --home charger-status
+    --project ocpp.evcs --auth required --home cp-simulator
     --project games.conway --home game-of-life --path conway
     --project games.mtg --home search-games
     --project web.auth
