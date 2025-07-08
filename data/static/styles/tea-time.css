@@ -105,9 +105,21 @@ footer {
 aside ul li a {
     text-transform: uppercase;
     font-weight: bold;
-    font-size: 0.8em;
+    font-size: 0.73em;
     display: block;
     margin: 0.4em 0;
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 input.main {
     width: 70%;

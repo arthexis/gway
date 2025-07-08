@@ -35,6 +35,7 @@ aside ul li a {
     color: #ff6f36;
     font-family: 'EB Garamond', 'Georgia', serif;
     border-radius: 7px;
+    font-size: 0.93em;
     padding-left: 1.1em;
     transition: background 0.15s, color 0.14s, text-shadow 0.16s;
     text-shadow: 0 0 4px #efbfff88;
@@ -45,6 +46,18 @@ aside ul li a:hover {
     color: #7cfe81;
     font-weight: bold;
     text-shadow: 0 0 6px #7cfe8188, 0 0 6px #180c1e;
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 
 main {

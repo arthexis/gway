@@ -53,6 +53,7 @@ aside ul li a {
     margin-bottom: 0.3em;
     box-shadow: 0 1px 4px 0 #ffd4fd26;
     font-weight: 600;
+    font-size: 0.93em;
     letter-spacing: 0.04em;
     border-left: 4px solid #fff0;
     transition: background 0.18s, color 0.17s, border-left 0.18s;
@@ -62,6 +63,18 @@ aside ul li a.active {
     background: linear-gradient(90deg, #fdffd5 0%, #ffb8e8 100%);
     color: #a8115e;
     border-left: 4px solid var(--accent-alt);
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 
 /* Main area - clean with a gentle shadow */

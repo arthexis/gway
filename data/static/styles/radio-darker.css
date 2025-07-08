@@ -47,7 +47,7 @@ aside ul li a {
     background: none;
     color: var(--fg);
     font-family: inherit;
-    font-size: 1em;
+    font-size: 0.93em;
     letter-spacing: 0.07em;
     font-weight: 500;
     border-left: 2.2px solid #0f2;
@@ -59,6 +59,18 @@ aside ul li a:hover {
     color: #fff;
     border-left: 2.5px solid var(--accent);
     text-shadow: 0 0 8px #3aff2b77;
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 
 main {

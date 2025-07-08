@@ -55,17 +55,30 @@ aside ul li {
 }
 
 aside ul li a {
-  color: var(--fg);
-  text-decoration: none;
-  display: block;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--border-radius);
+    color: var(--fg);
+    text-decoration: none;
+    display: block;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius);
+    font-size: 0.93em;
 }
 
 aside ul li a:hover,
 aside ul li a.active {
-  background-color: var(--accent);
-  color: var(--bg);
+    background-color: var(--accent);
+    color: var(--bg);
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 
 /* QR image cap */

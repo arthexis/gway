@@ -48,7 +48,7 @@ aside ul li a {
     font-family: inherit;
     border-radius: 10px;
     padding-left: 1.2em;
-    font-size: 1.04em;
+    font-size: 0.97em;
     font-weight: 500;
     letter-spacing: 0.09em;
     transition: background 0.16s, color 0.13s;
@@ -62,6 +62,18 @@ aside ul li a:hover {
     border-left: 3.4px solid var(--sigil-blue);
     font-weight: bold;
     text-shadow: 0 0 12px #9466dbcc, 0 0 6px #39e6c2bb;
+}
+
+aside ul.sub-links {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0.2em 0 0.4em;
+    font-size: 0.85em;
+}
+
+aside ul.sub-links li a {
+    text-transform: none;
+    padding: 0.2em 0;
 }
 
 main {
