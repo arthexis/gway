@@ -570,6 +570,24 @@ def random_id(length: int = 8, alphabet: str = _EZ_ALPHABET) -> str:
     """Generate a readable random ID, avoiding confusing characters."""
     return ''.join(random.choices(alphabet, k=length))
 
+def notify(message: str, *, title: str = "GWAY Notice", timeout: int = 10):
+    """Send a notification via GUI, email or console fallback."""
+    from gway import gw
+    try:
+        gw.screen.notify(message, title=title, timeout=timeout)
+        return "gui"
+    except Exception as e:
+        gw.debug(f"GUI notify failed: {e}")
+    try:
+        if hasattr(gw, "mail") and os.environ.get("ADMIN_EMAIL"):
+            gw.mail.send(title, body=message, to=os.environ.get("ADMIN_EMAIL"))
+            return "email"
+    except Exception as e:  # pragma: no cover - mail may not be configured
+        gw.debug(f"Email notify failed: {e}")
+    print(message)
+    gw.info(f"Console notify: {message}")
+    return "console"
+
 def shell():
     """Launch an interactive Python shell with 'from gway import gw' preloaded."""
     from gway import gw, __
