@@ -1,11 +1,10 @@
 import unittest
-import importlib.util
-from pathlib import Path
 from unittest.mock import patch
+from gway import gw
+import sys
+import os
 
-spec = importlib.util.spec_from_file_location("site", Path(__file__).resolve().parents[1] / "projects" / "web" / "site.py")
-site = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(site)
+site = gw.web.site
 
 class FeedbackViewTests(unittest.TestCase):
     def test_feedback_form_display(self):
@@ -21,10 +20,13 @@ class FeedbackViewTests(unittest.TestCase):
             def __init__(self):
                 self.method = "POST"
         with patch('bottle.request', FakeRequest()):
-            with patch.object(site, '_create_github_issue', return_value='http://example.com') as ci:
-                html = site.view_feedback(name='A', email='a@example.com', topic='Test', message='Hello')
-                self.assertIn('Thank you', html)
-                ci.assert_called_once()
+            with patch.dict(os.environ, {'GH_TOKEN': 'x'}):
+                with patch('requests.post') as p:
+                    p.return_value.status_code = 201
+                    p.return_value.json.return_value = {'html_url': 'http://example.com'}
+                    html = site.view_feedback(name='A', email='a@example.com', topic='Test', message='Hello')
+                    self.assertIn('Thank you', html)
+                    p.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()
