@@ -43,6 +43,8 @@ def simulate(
     rfid: str = "FFFFFFFF",
     cp_path: str = "CPX",
     duration: int = 60,
+    kwh_min: float = 0.5,
+    kwh_max: float = 1.5,
     repeat=False,
     threads: int = None,
     daemon: bool = True,
@@ -55,6 +57,7 @@ def simulate(
     - daemon=True: returns a coroutine for orchestration, user is responsible for awaiting/cancelling.
     - threads: None/1 for one session; >1 to simulate multiple charge points.
     - username/password: If provided, use HTTP Basic Auth on the WS handshake.
+    - kwh_min/kwh_max: approximate energy range per session in kWh.
     """
     host    = gw.resolve(host)
     ws_port = int(gw.resolve(ws_port))
@@ -75,6 +78,8 @@ def simulate(
                     rfid,
                     this_cp_path,
                     duration,
+                    kwh_min,
+                    kwh_max,
                     session_count,
                     username,
                     password,
@@ -92,6 +97,8 @@ def simulate(
                     rfid,
                     this_cp_path,
                     duration,
+                    kwh_min,
+                    kwh_max,
                     session_count,
                     username,
                     password,
@@ -125,13 +132,13 @@ def simulate(
         return orchestrate_all()
     else:
         if n_threads == 1:
-            asyncio.run(simulate_cp(0, host, ws_port, rfid, cp_path, duration, session_count, username, password))
+            asyncio.run(simulate_cp(0, host, ws_port, rfid, cp_path, duration, kwh_min, kwh_max, session_count, username, password))
         else:
             threads_list = []
             for idx in range(n_threads):
                 this_cp_path = _unique_cp_path(cp_path, idx, n_threads)
                 t = threading.Thread(target=_thread_runner, args=(
-                    simulate_cp, idx, host, ws_port, rfid, this_cp_path, duration, session_count, username, password
+                    simulate_cp, idx, host, ws_port, rfid, this_cp_path, duration, kwh_min, kwh_max, session_count, username, password
                 ), daemon=True)
                 t.start()
                 threads_list.append(t)
@@ -145,6 +152,8 @@ async def simulate_cp(
         rfid,
         cp_path,
         duration,
+        kwh_min,
+        kwh_max,
         session_count,
         username=None,
         password=None,
@@ -152,6 +161,7 @@ async def simulate_cp(
     """
     Simulate a single CP session (possibly many times if session_count>1).
     If username/password are provided, use HTTP Basic Auth in the handshake.
+    Energy increments are derived from kwh_min/kwh_max.
     """
     cp_name = cp_path
     uri     = f"ws://{host}:{ws_port}/{cp_name}"
@@ -237,11 +247,13 @@ async def simulate_cp(
                 interval = actual_duration / 10
                 meter = meter_start
 
+                step_min = int((kwh_min * 1000) / 10)
+                step_max = int((kwh_max * 1000) / 10)
                 for _ in range(10):
                     if stop_event.is_set():
                         print(f"[Simulator:{cp_name}] Stop event triggered—ending meter loop")
                         break
-                    meter += random.randint(50, 150)
+                    meter += random.randint(step_min, step_max)
                     meter_kwh = meter / 1000.0
                     await ws.send(json.dumps([2, "meter", "MeterValues", {
                         "connectorId": 1,
@@ -284,7 +296,8 @@ async def simulate_cp(
                     await ws.send(json.dumps([2, "hb", "Heartbeat", {}]))
                     await asyncio.sleep(5)
                     if time.monotonic() - last_meter_value >= 30:
-                        next_meter += random.randint(0, 2)
+                        idle_step_max = max(2, int(step_max / 100))
+                        next_meter += random.randint(0, idle_step_max)
                         next_meter_kwh = next_meter / 1000.0
                         await ws.send(json.dumps([2, "meter", "MeterValues", {
                             "connectorId": 1,
@@ -412,6 +425,8 @@ def view_cp_simulator(*args, **kwargs):
                 cp_path = request.forms.get("cp_path") or default_cp_path,
                 rfid = request.forms.get("rfid") or default_rfid,
                 duration = int(request.forms.get("duration") or 60),
+                kwh_min = float(request.forms.get("kwh_min") or 0.5),
+                kwh_max = float(request.forms.get("kwh_max") or 1.5),
                 repeat = request.forms.get("repeat") or False,
                 daemon = True,
                 username = request.forms.get("username") or None,
@@ -458,6 +473,14 @@ def view_cp_simulator(*args, **kwargs):
             <input name="duration" value="{duration}">
         </div>
         <div>
+            <label>Energy Min (kWh):</label>
+            <input name="kwh_min" value="{kwh_min}">
+        </div>
+        <div>
+            <label>Energy Max (kWh):</label>
+            <input name="kwh_max" value="{kwh_max}">
+        </div>
+        <div>
             <label>Repeat:</label>
             <select name="repeat">
                 <option value="False" {repeat_no}>No</option>
@@ -483,6 +506,8 @@ def view_cp_simulator(*args, **kwargs):
         cp_path=params.get('cp_path', default_cp_path),
         rfid=params.get('rfid', default_rfid),
         duration=params.get('duration', 60),
+        kwh_min=params.get('kwh_min', 0.5),
+        kwh_max=params.get('kwh_max', 1.5),
         repeat_no='selected' if not params.get('repeat') else '',
         repeat_yes='selected' if str(params.get('repeat')).lower() in ('true', '1') else '',
         start_dis='disabled' if running else '',

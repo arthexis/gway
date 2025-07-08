@@ -14,6 +14,10 @@ Launch a simulator session pointing at your CSMS with:
 
    gway ocpp.evcs simulate --host 127.0.0.1 --ws-port 9000 --cp-path CPX
 
+The simulator accepts ``--kwh-min`` and ``--kwh-max`` to control the
+approximate energy delivered per session. For example, ``--kwh-min 40
+--kwh-max 70`` will produce sessions around 40–70 kWh.
+
 Open ``/ocpp/csms/charger-status`` in your browser to view all
 connected chargers. Each card refreshes every few seconds so data
 stays current. Click a charger to open its detail page where you can
