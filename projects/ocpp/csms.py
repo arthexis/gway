@@ -3,6 +3,7 @@
 
 import json
 import os
+import shutil
 import time
 import uuid
 import traceback
@@ -884,3 +885,29 @@ def view_energy_graph(*, charger_id=None, date=None, **_):
         html.append('</div>')
 
     return "".join(html)
+
+
+def purge(*, database: bool = False, logs: bool = False):
+    """Clear in-memory CSMS data and optionally purge persistent storage."""
+
+    _transactions.clear()
+    _active_cons.clear()
+    _latest_heartbeat.clear()
+    _abnormal_status.clear()
+    _msg_log.clear()
+    gw.info("[OCPP] In-memory state purged.")
+
+    if database:
+        conn = gw.ocpp.data.open_db()
+        gw.sql.execute("DELETE FROM transactions", connection=conn)
+        gw.sql.execute("DELETE FROM meter_values", connection=conn)
+        gw.sql.execute("DELETE FROM errors", connection=conn)
+        gw.info("[OCPP] Database records purged.")
+
+    if logs:
+        for path in [gw.resource("work", "ocpp", "records"),
+                     gw.resource("work", "etron", "graphs")]:
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+                os.makedirs(path, exist_ok=True)
+        gw.info("[OCPP] Log files purged.")
