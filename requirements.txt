@@ -29,3 +29,4 @@ webdriver-manager
 bs4
 markdown
 pandas
+openpyxl

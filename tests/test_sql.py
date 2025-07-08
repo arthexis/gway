@@ -112,6 +112,48 @@ class SqlTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir)
 
+    def test_load_excel(self):
+        """Can load an Excel workbook with multiple sheets."""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            xls_path = os.path.join(tmpdir, "data.xlsx")
+            import pandas as pd
+            with pd.ExcelWriter(xls_path) as writer:
+                pd.DataFrame({"a": [1, 2]}).to_excel(writer, sheet_name="s1", index=False)
+                pd.DataFrame({"b": ["x", "y"]}).to_excel(writer, sheet_name="s2", index=False)
+
+            gw.sql.load_excel(connection=self.conn, file=xls_path)
+
+            rows1 = gw.sql.execute("SELECT * FROM data_s1 ORDER BY a", connection=self.conn)
+            rows2 = gw.sql.execute("SELECT * FROM data_s2 ORDER BY b", connection=self.conn)
+
+            self.assertEqual(len(rows1), 2)
+            self.assertEqual(rows2[1][0], "y")
+        finally:
+            shutil.rmtree(tmpdir)
+
+    def test_load_cdv(self):
+        """Load a CDV file into a table."""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            path = os.path.join(tmpdir, "vals.cdv")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("a:name=foo:age=1\n")
+                f.write("b:name=bar:age=2:extra=ok\n")
+
+            gw.sql.load_cdv(connection=self.conn, file=path)
+
+            rows = gw.sql.execute(
+                "SELECT id, name, age, extra FROM vals ORDER BY id",
+                connection=self.conn,
+            )
+
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0][1], "foo")
+            self.assertEqual(rows[1][3], "ok")
+        finally:
+            shutil.rmtree(tmpdir)
+
     def test_execute_script(self):
         """Can run an SQL script via execute()."""
         script_path = gw.resource("test_script.sql")
