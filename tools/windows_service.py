@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Service {args.name} installed.")
     elif args.command == "remove":
         def _svc_missing(exc: Exception) -> bool:
-            return getattr(exc, "winerror", None) == 1060
+            return getattr(exc, "winerror", None) in {1060, 1062}
 
         try:
             win32serviceutil.StopService(args.name)
@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> None:
             if getattr(exc, "winerror", None) != 1062:
                 raise
     elif args.command == "run":
-        win32serviceutil.HandleCommandLine(Service, argv=[sys.argv[0]])
+        win32serviceutil.HandleCommandLine(Service)
     else:  # pragma: no cover - unreachable
         raise SystemExit(f"Unknown command {args.command}")
 
