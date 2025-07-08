@@ -107,6 +107,18 @@ next non-indented command.
    # Watch for file changes
    until --file work/reload.txt
 
+Websites
+~~~~~~~~
+
+The ``web`` project assembles view functions into a small site. Register each
+project with ``gw.web.app.setup`` and then launch the server using
+``gw.web.server.start_app``. Routes of the form ``/project/view`` map to
+``view_*`` functions and static files under ``data/static`` are served from
+``/static``. ``web.site.view_reader`` renders ``.rst`` or ``.md`` files when
+you visit ``/site/reader/PATH``; it first checks the workspace root and
+then ``data/static`` automatically. See the `Web README
+</site/reader?tome=web>`_ for a more complete guide.
+
 Folder Structure
 ----------------
 
@@ -136,18 +148,6 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 | tools/         | Platform-specific scripts and files.                         |
 +----------------+--------------------------------------------------------------+
 
-Websites
---------
-
-The ``web`` project assembles view functions into a small site. Register each
-project with ``gw.web.app.setup`` and then launch the server using
-``gw.web.server.start_app``. Routes of the form ``/project/view`` map to
-``view_*`` functions and static files under ``data/static`` are served from
-``/static``. ``web.site.view_reader`` renders ``.rst`` or ``.md`` files when
-you visit ``/site/reader/PATH``; it first checks the workspace root and
-then ``data/static`` automatically. See the `Web README
-</site/reader?tome=web>`_ for a more complete guide.
-
 Project READMEs
 ---------------
 
@@ -156,15 +156,41 @@ The following projects bundle additional documentation.  Each link uses
 ``data/static`` folder.
 
 
+- `awg </site/reader?tome=awg>`_
+- `cdv </site/reader?tome=cdv>`_
+- `games </site/reader?tome=games>`_
+  - `conway </site/reader?tome=games/conway>`_
+  - `mtg </site/reader?tome=games/mtg>`_
+  - `qpig </site/reader?tome=games/qpig>`_
 - `monitor </site/reader?tome=monitor>`_
 - `ocpp </site/reader?tome=ocpp>`_
+  - `csms </site/reader?tome=ocpp/csms>`_
+  - `evcs </site/reader?tome=ocpp/evcs>`_
+  - `data </site/reader?tome=ocpp/data>`_
+- `release </site/reader?tome=release>`_
+- `vbox </site/reader?tome=vbox>`_
 - `web </site/reader?tome=web>`_
-- `games/qpig </site/reader?tome=games/qpig>`_
+  - `nav </site/reader?tome=web/nav>`_
+  - `cookies </site/reader?tome=web/cookies>`_
+  - `auth </site/reader?tome=web/auth>`_
 
+.. _/site/reader?tome=awg: /site/reader?tome=awg
+.. _/site/reader?tome=cdv: /site/reader?tome=cdv
+.. _/site/reader?tome=games: /site/reader?tome=games
+.. _/site/reader?tome=games/conway: /site/reader?tome=games/conway
+.. _/site/reader?tome=games/mtg: /site/reader?tome=games/mtg
+.. _/site/reader?tome=games/qpig: /site/reader?tome=games/qpig
 .. _/site/reader?tome=monitor: /site/reader?tome=monitor
 .. _/site/reader?tome=ocpp: /site/reader?tome=ocpp
+.. _/site/reader?tome=ocpp/csms: /site/reader?tome=ocpp/csms
+.. _/site/reader?tome=ocpp/evcs: /site/reader?tome=ocpp/evcs
+.. _/site/reader?tome=ocpp/data: /site/reader?tome=ocpp/data
+.. _/site/reader?tome=release: /site/reader?tome=release
+.. _/site/reader?tome=vbox: /site/reader?tome=vbox
 .. _/site/reader?tome=web: /site/reader?tome=web
-.. _/site/reader?tome=games/qpig: /site/reader?tome=games/qpig
+.. _/site/reader?tome=web/nav: /site/reader?tome=web/nav
+.. _/site/reader?tome=web/cookies: /site/reader?tome=web/cookies
+.. _/site/reader?tome=web/auth: /site/reader?tome=web/auth
 
 You can generate these links yourself with
 ``gw.web.build_url('site/reader', tome='proj')``.
