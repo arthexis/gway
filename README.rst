@@ -1,404 +1,149 @@
 GWAY
 ====
 
-Welcome, this is the GWAY project README file and demo website.
+Gateway (``gw``) is a lightweight dispatcher that turns every Python function
+into a command line entry.  It ships with a small set of helpers and a recipe
+runner so you can compose automations and simple web apps with only functions
+and ``.gwr`` files.
 
-**GWAY** is a CLI and function-dispatch framework that allows you to invoke and chain Python functions from your own projects or built-ins, with sigil in-context resolution, argument injection, control inversion, auto-wired recipes and multi-environment support. GWAY is async-compatible and fully instrumented.
+Quick Start
+-----------
 
-`Our Goal: Lower the barrier to a higher-level of systems integration.`
+Install from PyPI or from source and invoke ``gway`` on the command line.
+Every module inside ``projects/`` becomes a namespace on ``gw`` and a CLI
+sub-command.
 
-`Our Approach: Every function is an entry point and can be a full solution.`
+.. code-block:: bash
 
-Fetch the source, changelogs and issues (or submit your own) here:
-
-https://github.com/arthexis/gway
-
-Browse the latest changes in the `CHANGELOG <https://arthexis.com/site/reader?title=CHANGELOG&ext=rst>`_.
-
-See a demo and the full list of available projects and other help topics online here:
-
-https://arthexis.com/site/help
-
-Basic Features
---------------
-
-- 🔌 Seamless from CLI or code (e.g., ``gw.awg.find_cable()`` is ``gway awg find-cable``)
-- ⛓️ CLI chaining: ``proj1 func1 - proj2 func2`` (implicit parameter passing by name)
-- 🧠 Sigil-based context resolution (e.g., ``[result-context-environ]``).
-  Nested paths are supported via spaces or dots, e.g., ``[app.name]``
-- ⚙️ Automatic CLI generation, with support for ``*``, ``*args`` and ``**kwargs``
-- 🧪 Built-in test runner and self-packaging: ``gway test`` (use ``--coverage`` for coverage and ``--flags`` to enable optional tests) and ``gway release build``
-- 📦 Environment-aware loading (e.g., ``clients`` and ``servers`` .env files)
-
-
-Examples
---------
-
-AWG Cable Calculation
-~~~~~~~~~~~~~~~~~~~~~
-
-Given ``projects/awg.py`` containing logic to calculate cable sizes and conduit requirements:
-
-**Call from Python**
+   gway hello-world
+   gway awg find-cable --meters 30 --amps 60
 
 .. code-block:: python
 
-    from gway import gw
-
-    result = gw.awg.find_cable(meters=30, amps=60, material="cu", volts=240)
-    print(result)
-
-**Call from CLI**
-
-.. code-block:: bash
-
-    # Basic cable sizing
-    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240
-
-    # With conduit calculation
-    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240 --conduit emt
-
-    # Limit cable size to AWG 6
-    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240 --max-awg 6
-
-    # Specify 90C cable rating
-    gway awg find-cable --meters 30 --amps 60 --material cu --volts 240 --temperature 90
-
-**Chaining Example**
-
-.. code-block:: bash
-
-    # Chain cable calculation and echo the result
-    gway awg find-cable --meters 25 --amps 60 - print --text "[awg]"
-
-**Online Example**
-
-You can test the AWG cable sizer online here, or in your own instance:
-
-https://arthexis.com/awg/cable-finder
-
-
-GWAY Website Server
-~~~~~~~~~~~~~~~~~~~
-
-You can also run a bundled lightweight help/documentation server using a GWAY Recipe:
-
-.. code-block:: powershell
-
-    > gway -r website
-
-This launches an interactive web UI that lets you browse your project, inspect help docs, and search callable functions.
-
-
-Visit `http://localhost:8888` once it's running.
-
-Odoo Project Tasks
-~~~~~~~~~~~~~~~~~~
-
-You can add tasks to your Odoo projects without leaving the terminal.
-
-.. code-block:: bash
-
-    export ODOO_DEFAULT_PROJECT="Internal"
-    gway odoo create-task --customer "Acme Corp" \
-        --phone 5551234567 --notes "Requested callback next week" \
-        --new-customer
-
-Using ``--new-customer`` creates the partner before the task and the phone and
-note details are included in the task description. If ``--title`` is omitted,
-the task title defaults to the customer name.
-
-
-You can use a similar syntax to lunch any .gwr (GWAY Recipe) files you find. You can register them on your OS for automatic execution with the following command (Administrator/root privileges may be required):
-
-
-.. code-block:: powershell
-
-    > gway recipe register-gwr
-
-
-Online Help & Documentation
----------------------------
-
-Browse built-in and project-level function documentation online at:
-
-📘 https://arthexis.com/gway/help
-
-- Use the **search box** in the top left to find any callable by name (e.g., ``find_cable``, ``resource``, ``start_server``).
-- You can also navigate directly to: ``https://arthexis.com/gway/help?topic=<project-or-function>``
-
-This is useful for both the included out-of-the-box GWAY tools and your own projects, assuming they follow the GWAY format.
-
+   from gway import gw
+   gw.hello_world()
+   result = gw.awg.find_cable(meters=30, amps=60)
+   print(result["gauge"])
 
 Installation
 ------------
 
-Your chosen Installation method will depend on how you intend to use GWAY:
-
-1. If you intend to contribute to GWAY at some point or want to access the latest updates from the open source community, you should **Install from Source**. As a plus, you get everything in the basic ecosystem from the get go.
-2. If you want to use GWAY for a private use, such as work for a company or customer that prevents you from sharing your code, or you already have an open-source repo but want a second personal one, **Install via PyPI**.
-
-You may also install them either way and just experiment with what each mode offers. For example, PyPI install allows you to easily use GWAY within Google Colab or other IPython/Jupyter projects.
-
-Install via PyPI:
+``pip install gway`` pulls the latest released package from PyPI. Use this
+when you simply want to depend on GWAY in your own projects.  To work on the
+framework itself clone the repository and install it in editable mode:
 
 .. code-block:: bash
 
-    pip install gway
+   git clone https://github.com/arthexis/gway.git
+   cd gway
+   pip install -r requirements.txt
+   pip install -e .
+
+Core Concepts
+-------------
+
+- **Gateway Object** ``gw``: entry point for all operations.  Calling
+  ``gw.project.func()`` is equivalent to ``gway project func``.
+- **Projects**: any ``.py`` file or directory inside ``projects/`` is loaded on
+demand.  Nested modules use dotted notation (``gw.web.app.setup``).
+- **Builtins**: common utilities such as ``resource``, ``run_recipe``, ``help``,
+  ``test`` and ``notify`` are always available.
+- **Results & Context**: return values are stored in ``gw.results`` and are
+  referenced by name.  Use sigils like ``[result.key]`` to pull values into
+  later calls.
+- **Sigils**: ``[VAR]`` or ``[object.attr]`` placeholders resolve from previous
+  results, ``gw.context`` and environment variables.
+- **Recipes** ``.gwr``: text files listing commands.  Indented lines reuse the
+  previous command allowing very compact scripts.  Run them via
+  ``gway -r file`` or ``gw.run_recipe('file.gwr')``.
+- **Environment Loading**: ``envs/clients/<user>.env`` and
+  ``envs/servers/<host>.env`` are read automatically.  A file can specify a
+  ``BASE_ENV`` to inherit defaults from another file.
+- **Async & Watchers**: coroutines are executed in background threads.  Use
+  ``gw.until`` with file or URL watchers (and even PyPI version checks) to keep
+  services running until a condition changes.
+- **Web Helpers**: ``gw.web.app.setup`` registers views named ``view_*``
+  (HTML), ``api_*`` (JSON) and ``render_*`` (fragments).  ``gw.web.server.start_app``
+  launches a Bottle server.  Static assets live under ``data/static``.
+- **Resources**: ``gw.resource`` resolves a file path in the workspace and can
+  create files or directories.  ``gw.resource_list`` lists files matching
+  filters.
+- **Logging & Testing**: ``gw.setup_logging`` configures rotating logs in
+  ``logs/``.  ``gway test --coverage`` or ``gw.test()`` run the suite.
+
+Example Recipe
+--------------
+
+.. code-block:: text
+
+   web app setup --project web.navbar --home style-changer
+   web app setup --project web.site --home reader
+   web server start-app --host 127.0.0.1 --port 8888
+   until --forever
 
 
+Run ``gway -r recipes/site.gwr`` and visit ``http://127.0.0.1:8888`` to browse
+help pages rendered by ``web.site.view_reader``.
 
-
-Install from Source:
-
-.. code-block:: bash
-
-    git clone https://github.com/arthexis/gway.git
-    cd gway
-
-    # Run directly from shell or command prompt
-    ./gway.sh        # On Linux/macOS
-    gway.bat         # On Windows
-    # VS Code task configuration
-    tasks.json       # Provides a "Run Gway on Current File" task
-
-When running GWAY from source for the first time, it will **auto-install** dependencies if needed.
-
-To **upgrade** to the latest version from source:
-
-.. code-block:: bash
-
-    ./upgrade.sh     # On Linux/macOS
-    upgrade.bat      # On Windows
-    # Or run ./upgrade.sh via Git Bash or WSL
-
-To run GWAY automatically as a service using a recipe:
-
-.. code-block:: bash
-
-    sudo ./install.sh <recipe> [--debug] [--root]   # On Linux/macOS
-    sudo ./install.sh <recipe> --remove    # Remove on Linux/macOS
-
-To apply updated service definitions to all installed services:
-
-.. code-block:: bash
-
-    sudo ./install.sh --repair   # On Linux/macOS
-
-
-This pulls the latest updates from the `main` branch and refreshes dependencies.
-
-To make GWAY available from any directory (requires root access):
-
-.. code-block:: bash
-
-    sudo ln -s "$HOME/gway/gway.sh" /usr/local/bin/gway
-
-
-Project Structure
------------------
+Folder Structure
+----------------
 
 Here's a quick reference of the main directories in a typical GWAY workspace:
 
-+----------------+-------------------------------------------------------------+
-| Directory      | Description                                                 |
-+================+=============================================================+
-| envs/clients/  | Per-user environment files (e.g., ``username.env``).        |
-+----------------+-------------------------------------------------------------+
-| envs/servers/  | Per-host environment files (e.g., ``hostname.env``).        |
-+----------------+-------------------------------------------------------------+
++----------------+--------------------------------------------------------------+
+| Directory      | Description                                                  |
++================+==============================================================+
+| envs/clients/  | Per-user environment files (e.g., ``username.env``).         |
++----------------+--------------------------------------------------------------+
+| envs/servers/  | Per-host environment files (e.g., ``hostname.env``).         |
++----------------+--------------------------------------------------------------+
 | projects/      | Included GWAY python projects. You may add your own.        |
-+----------------+-------------------------------------------------------------+
-| logs/          | Runtime logs and log backups.                               |
-+----------------+-------------------------------------------------------------+
-| gway/          | Source code for core GWAY components.                       |
-+----------------+-------------------------------------------------------------+
-| tests/         | Unit tests for code in gway/ and projects/.                 |
-+----------------+-------------------------------------------------------------+
-| data/          | Static assets, resources, and other included data files.    |
-+----------------+-------------------------------------------------------------+
-| work/          | Working directory for output files and products.            |
-+----------------+-------------------------------------------------------------+
-| recipes/       | Included .gwr recipe files (-r mode). You may add more.     |
-+----------------+-------------------------------------------------------------+
-| tools/         | Platform-specific scripts and files.                        |
-+----------------+-------------------------------------------------------------+
++----------------+--------------------------------------------------------------+
+| logs/          | Runtime logs and log backups.                                |
++----------------+--------------------------------------------------------------+
+| gway/          | Source code for core GWAY components.                        |
++----------------+--------------------------------------------------------------+
+| tests/         | Unit tests for code in gway/ and projects/.                  |
++----------------+--------------------------------------------------------------+
+| data/          | Static assets, resources, and other included data files.     |
++----------------+--------------------------------------------------------------+
+| work/          | Working directory for output files and products.             |
++----------------+--------------------------------------------------------------+
+| recipes/       | Included .gwr recipe files (-r mode). You may add more.      |
++----------------+--------------------------------------------------------------+
+| tools/         | Platform-specific scripts and files.                         |
++----------------+--------------------------------------------------------------+
 
-
-After placing your modules under `projects/`, you can immediately invoke them from the CLI with:
-
-.. code-block:: bash
-
-    gway project-dir-or-script your-function argN --kwargN valueN
-
-
-By default, results get reused as context for future calls made with the same Gateway thread.
-
-
-
-
-Recipes and Web Views
-=====================
-
-GWAY comes with powerful primitives for building modular web applications out of ordinary Python functions. 
-You can declare site structure and custom views with just a few lines of code, and compose complex sites by chaining projects.
-
-Overview
+Websites
 --------
 
-- **Views** are simply Python functions in a project (e.g. `projects/web/site.py`) named according to a pattern (by default, `view_{name}`).
-- The `web.app.setup` function registers views from one or more projects and sets up all routing and static file handling.
-- The `web.server.start-app` function launches your site on a local server using Bottle (or FastAPI, for ASGI).
-- All configuration can be scripted using GWAY recipes (`.gwr` files) for full automation.
+The ``web`` project assembles view functions into a small site. Register each
+project with ``gw.web.app.setup`` and then launch the server using
+``gw.web.server.start_app``. Routes of the form ``/project/view`` map to
+``view_*`` functions and static files under ``data/static`` are served from
+``/static``. ``web.site.view_reader`` renders ``.rst`` or ``.md`` files when
+you visit ``/site/reader/PATH``; it first checks the workspace root and
+then ``data/static`` automatically. See the `Web README
+</site/reader?tome=web>`_ for a more complete guide.
 
-Minimal Example
+Project READMEs
 ---------------
 
-Suppose you want to create a very simple website:
+The following projects bundle additional documentation.  Each link uses
+``view_reader`` to render the ``README.rst`` file directly from the
+``data/static`` folder.
 
-.. code-block:: python
++------------+--------------------------------------------------------------+
+| Project    | README                                                       |
++============+==============================================================+
+| monitor    | `/site/reader?tome=monitor`_           |
+| ocpp       | `/site/reader?tome=ocpp`_              |
+| web        | `/site/reader?tome=web`_               |
+| games/qpig | `/site/reader?tome=games/qpig`_        |
++------------+--------------------------------------------------------------+
 
-    # projects/mysite.py
-
-    def view_hello():
-        return "<h1>Hello, World!</h1>"
-
-    def view_about():
-        return "<h2>About This Site</h2><p>Powered by GWAY.</p>"
-
-    def view_user(*, user_id=None):
-        if user_id:
-            # We have a user_id, so greet the user
-            return f"<h1>Welcome {user_id}</h1>"
-        else:
-            # No user_id, so render a form to collect it
-            return '''
-            <form method="get" action="">
-                <label for="user_id">Enter User ID:</label>
-                <input type="text" id="user_id" name="user_id" required />
-                <button type="submit">Submit</button>
-            </form>
-            '''
-
-Note that these views don't need to be decorated and you don't have to return the entire HTML document. You also don't have to specify http methods or where the variables come from (they can be read from a form or passed as a query param.) 
-
-Then in your own recipe:
-
-.. code-block:: text
-
-    # recipes/my-website.gwr
-    web app setup --project mysite --home hello
-    web app setup --project web.navbar
-    web server start-app --host 127.0.0.1 --port 8888
-    until --forever
-
-Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your views, including a handy navbar. Press Ctrl+D or close the terminal to end the process.
-
-The ``--forever`` option for ``until`` keeps the above apps and servers running indefinitely.
-
-
-Composing Sites from Multiple Projects
---------------------------------------
-
-You can chain as many projects as you want; each can define its own set of views and home page:
-
-.. code-block:: text
-
-    # recipes/my-website.gwr
-    web app setup --home readme
-        --project web.cookie 
-        --project web.navbar --home style-changer
-        --project vbox --home uploads
-        --project conway --home game-of-life --path games/conway
-
-    web server start-app --host 127.0.0.1 --port 8888
-    until --version --build --pypi --notify
-
-
-The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application.
-
-
-The above recipe also shows implicit repeated commands. For example, instead of writing "web app setup" multiple times, each line below that doesn't start with a command repeats the last command with new parameters.
-
-The **until** function, as used here, will keep the recipe going until the package updates in PyPI (checked hourly) or a manual update ocurrs.  Use ``--notify`` to send a desktop/email notification when the runner would stop, ``--notify-only`` to keep running after notifying, and ``--abort`` to exit the process when a watcher triggers.  By default ``until`` simply returns when its condition is met. This is appropriate for self-restarting services such as those managed by systemd or kubernetes.
-
-
-
-How It Works
-------------
-
-- `web.app.setup` wires up each project, registering all views (functions starting with the given prefix, default `view_`).
-- You call setup multiple times to configure each project. The project/function name can be skipped on repeat lines.
-- Each project can declare a "home" view, which becomes the landing page for its route.
-- Static files are served from your `data/static/` directory and are accessible at `/static/filename`.
-- The routing system matches `/project/viewname` to a function named `view_viewname` in the relevant project.
-- Query parameters and POST data are automatically passed as keyword arguments to your view function.
-
-View Example with Arguments
----------------------------
-
-.. code-block:: python
-
-    # projects/vbox.py
-
-    def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: str = None, **kwargs):
-        """
-        GET: Display upload interface or create a new upload box.
-        POST: Handle uploaded files to a specific vbid.
-        """
-        ...
-
-This view can be accessed as `/vbox/uploads` and will receive POST or GET parameters as arguments.
-
-Recipes make Gway scripting modular and composable. Include them in your automation flows for maximum reuse and clarity.
-
-Embedding Views as Fragments
-----------------------------
-
-When both ``view_*`` and ``render_*`` handlers are registered for a project, you
-can retrieve the raw output of a view without the surrounding template by
-requesting ``/render/<project>/<view>``. POST and query parameters are forwarded
-to the underlying view function.
-
-These fragments may be embedded in other sites with JavaScript or a simple
-``iframe``:
-
-.. code-block:: html
-
-   <iframe src="https://example.com/render/site/reader?title=README"></iframe>
-
-Only self-contained views display correctly in an iframe, but many simple pages
-such as ``reader`` work out of the box.
-
-
-Design Philosophies
-===================
-
-This section contains notes from the author that **may** provide insight to future developers.
-
-
-On Comments and the Code that Binds Them
-----------------------------------------
-
-Comments and code should be like DNA — two strings that reflect each other.
-
-This reflection creates a form of internal consistency and safety. When code and its comments are in alignment, they mutually verify each other.
-When they diverge, the inconsistency acts as a warning sign: something is broken, outdated, or misunderstood.
-
-Treat comments not as annotations, but as the complementary strand of the code itself. Keep them synchronized. A mismatch is not a small issue — it's a mutation worth investigating.
-
-
-The Holy Hand Grenade of Antioch Procedure
-------------------------------------------
-
-If there is *not* only one good way to do it, then you should have **three**.
-
-**Five is right out.**
-
-One way implies clarity. Two implies division. Three implies depth. Five implies confusion, and confusion leads to bugs. When offering choices — in interface, design, or abstraction — ensure there are no more than three strong forms. The third may be unexpected, but it must still be necessary.
-
-Beyond that, you're just multiplying uncertainty. This same principle applies to other aspects of coding. A simple function fits a single IDE screen. A complex one may span three. Five means: refactor this.
-
+You can generate these links yourself with
+``gw.web.build_url('site/reader', tome='proj')``.
 
 License
 -------
