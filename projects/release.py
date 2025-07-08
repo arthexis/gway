@@ -355,6 +355,34 @@ def loc(*paths):
     return file_counts
 
 
+def benchmark_sigils(iterations: int = 10000) -> float:
+    """Benchmark Sigil resolution performance."""
+    from time import perf_counter
+    from gway.sigils import Sigil
+
+    ctx = {
+        "name": "Bench",
+        "num": 42,
+        "info": {"x": 1, "y": 2},
+    }
+    samples = [
+        Sigil("[name]"),
+        Sigil("Value [num]"),
+        Sigil("[info.x]"),
+        Sigil("[info]")
+    ]
+
+    start = perf_counter()
+    for _ in range(iterations):
+        for s in samples:
+            _ = s % ctx
+    elapsed = perf_counter() - start
+    gw.info(
+        f"Resolved {iterations * len(samples)} sigils in {elapsed:.4f}s"
+    )
+    return elapsed
+
+
 def create_shortcut(
     name="Launch GWAY",
     target=r"gway.bat",

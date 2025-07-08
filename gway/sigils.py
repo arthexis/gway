@@ -2,6 +2,7 @@
 
 import re
 import os
+import json
 
 class Sigil:
     """
@@ -51,8 +52,39 @@ def _unquote(val):
         return val[1:-1]
     return val
 
+def _resolve_single(raw, lookup_fn):
+    """Resolve a single sigil value and return it without string conversion."""
+    from gway import gw
+
+    raw = raw.strip()
+    quoted = (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'"))
+    key = _unquote(raw) if quoted else raw
+
+    val = lookup_fn(key)
+    if val is None:
+        parts = re.split(r"[. ]+", key)
+        if len(parts) > 1:
+            base = lookup_fn(parts[0])
+            if base is not None:
+                try:
+                    val = _follow_path(base, parts[1:])
+                except KeyError:
+                    val = None
+
+    if val is not None:
+        gw.verbose(f"Resolved sigil [{raw}] → {val}")
+        return val
+
+    if quoted:
+        gw.verbose(f"Sigil [{raw}] not resolved, using quoted literal '{key}'")
+        return key
+
+    raise KeyError(f"Unresolved sigil: [{raw}]")
+
 def _follow_path(value, parts):
     for part in parts:
+        if part.startswith('_'):
+            raise KeyError(f"Path segment '{part}' not found")
         if isinstance(value, dict) and part in value:
             value = value[part]
             continue
@@ -80,32 +112,15 @@ def _replace_sigils(text, lookup_fn):
     Replace all sigils in the text, raising if any sigil is unresolved.
     """
 
+    matches = list(Sigil._pattern.finditer(text))
+    if len(matches) == 1 and matches[0].span() == (0, len(text)):
+        return _resolve_single(matches[0].group(1), lookup_fn)
+
     def replacer(match):
-        from gway import gw
-
-        raw = match.group(1).strip()
-        # Support quoted literals: ["FOO"] or ['BAR']
-        quoted = (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'"))
-        key = _unquote(raw) if quoted else raw
-
-        val = lookup_fn(key)
-        if val is None:
-            parts = re.split(r"[. ]+", key)
-            if len(parts) > 1:
-                base = lookup_fn(parts[0])
-                if base is not None:
-                    try:
-                        val = _follow_path(base, parts[1:])
-                    except KeyError:
-                        val = None
-        if val is not None:
-            gw.verbose(f"Resolved sigil [{raw}] → {val}")
-            return str(val)
-        if quoted:
-            gw.verbose(f"Sigil [{raw}] not resolved, using quoted literal '{key}'")
-            return key
-        # If unresolved and not quoted, always raise
-        raise KeyError(f"Unresolved sigil: [{raw}]")
+        val = _resolve_single(match.group(1), lookup_fn)
+        if isinstance(val, str):
+            return val
+        return json.dumps(val, default=str)
 
     return re.sub(Sigil._pattern, replacer, text)
 
@@ -182,6 +197,8 @@ class Resolver:
         parts = key.replace('-', '_').split('.')
         current = self
         for part in parts:
+            if part.startswith('_'):
+                return fallback
             if hasattr(current, part):
                 current = getattr(current, part)
             elif isinstance(current, dict) and part in current:
