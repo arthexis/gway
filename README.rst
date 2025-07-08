@@ -44,8 +44,7 @@ Core Concepts
 
 - **Gateway Object** ``gw``: entry point for all operations.  Calling
   ``gw.project.func()`` is equivalent to ``gway project func``.
-- **Projects**: any ``.py`` file or directory inside ``projects/`` is loaded on
-demand.  Nested modules use dotted notation (``gw.web.app.setup``).
+- **Projects**: any ``.py`` file or directory inside ``projects/`` is loaded on demand. Nested modules use dotted notation (``gw.web.app.setup``).
 - **Builtins**: common utilities such as ``resource``, ``run_recipe``, ``help``,
   ``test`` and ``notify`` are always available.
 - **Results & Context**: return values are stored in ``gw.results`` and are
@@ -84,6 +83,29 @@ Example Recipe
 
 Run ``gway -r recipes/site.gwr`` and visit ``http://127.0.0.1:8888`` to browse
 help pages rendered by ``web.site.view_reader``.
+
+Advanced Recipe Example
+-----------------------
+
+This example demonstrates the *colon* prefix for repeated commands and
+``#`` lines used as notes. Indented entries inherit the prefix until the
+next non-indented command.
+
+.. code-block:: text
+
+   # Configure multiple projects
+   web app setup-app:
+       --project web.site --home reader
+       --project web.nav
+       --project games.qpig --home qpig-farm
+
+   # Start the server
+   web:
+    - static collect
+    - server start-app --port 8888
+
+   # Watch for file changes
+   until --file work/reload.txt
 
 Folder Structure
 ----------------
@@ -136,11 +158,16 @@ The following projects bundle additional documentation.  Each link uses
 +------------+--------------------------------------------------------------+
 | Project    | README                                                       |
 +============+==============================================================+
-| monitor    | `/site/reader?tome=monitor`_           |
-| ocpp       | `/site/reader?tome=ocpp`_              |
-| web        | `/site/reader?tome=web`_               |
-| games/qpig | `/site/reader?tome=games/qpig`_        |
+| monitor    | `/site/reader?tome=monitor`_                                 |
+| ocpp       | `/site/reader?tome=ocpp`_                                    |
+| web        | `/site/reader?tome=web`_                                     |
+| games/qpig | `/site/reader?tome=games/qpig`_                              |
 +------------+--------------------------------------------------------------+
+
+.. _/site/reader?tome=monitor: /site/reader?tome=monitor
+.. _/site/reader?tome=ocpp: /site/reader?tome=ocpp
+.. _/site/reader?tome=web: /site/reader?tome=web
+.. _/site/reader?tome=games/qpig: /site/reader?tome=games/qpig
 
 You can generate these links yourself with
 ``gw.web.build_url('site/reader', tome='proj')``.
