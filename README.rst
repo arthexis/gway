@@ -155,14 +155,11 @@ The following projects bundle additional documentation.  Each link uses
 ``view_reader`` to render the ``README.rst`` file directly from the
 ``data/static`` folder.
 
-+------------+--------------------------------------------------------------+
-| Project    | README                                                       |
-+============+==============================================================+
-| monitor    | `/site/reader?tome=monitor`_                                 |
-| ocpp       | `/site/reader?tome=ocpp`_                                    |
-| web        | `/site/reader?tome=web`_                                     |
-| games/qpig | `/site/reader?tome=games/qpig`_                              |
-+------------+--------------------------------------------------------------+
+
+- `monitor </site/reader?tome=monitor>`_
+- `ocpp </site/reader?tome=ocpp>`_
+- `web </site/reader?tome=web>`_
+- `games/qpig </site/reader?tome=games/qpig>`_
 
 .. _/site/reader?tome=monitor: /site/reader?tome=monitor
 .. _/site/reader?tome=ocpp: /site/reader?tome=ocpp
