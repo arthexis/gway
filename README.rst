@@ -24,7 +24,8 @@ Basic Features
 
 - 🔌 Seamless from CLI or code (e.g., ``gw.awg.find_cable()`` is ``gway awg find-cable``)
 - ⛓️ CLI chaining: ``proj1 func1 - proj2 func2`` (implicit parameter passing by name)
-- 🧠 Sigil-based context resolution (e.g., ``[result-context-environ|fallback]``)
+- 🧠 Sigil-based context resolution (e.g., ``[result-context-environ]``).
+  Nested paths are supported via spaces or dots, e.g., ``[app.name]``
 - ⚙️ Automatic CLI generation, with support for ``*``, ``*args`` and ``**kwargs``
 - 🧪 Built-in test runner and self-packaging: ``gway test`` (use ``--coverage`` for coverage) and ``gway release build``
 - 📦 Environment-aware loading (e.g., ``clients`` and ``servers`` .env files)

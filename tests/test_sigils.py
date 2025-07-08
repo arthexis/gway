@@ -53,6 +53,16 @@ class SigilTests(unittest.TestCase):
         s = Sigil("Value [FOO-BAR]")
         self.assertEqual(s.resolve(finder), "Value bar")
 
+    def test_dotted_and_spaced_paths(self):
+        class Obj:
+            pass
+        obj = Obj()
+        obj.name = "Widget"
+        data = {"app": {"name": "dict"}, "obj": obj}
+        self.assertEqual(Sigil("[app.name]") % data, "dict")
+        self.assertEqual(Sigil("[app name]") % data, "dict")
+        self.assertEqual(Sigil("[obj.name]") % data, "Widget")
+
     def test_unquote_helper(self):
         from gway.sigils import _unquote
         self.assertEqual(_unquote('"hello"'), "hello")
