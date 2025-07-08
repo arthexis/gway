@@ -16,14 +16,14 @@ sub-command.
 .. code-block:: bash
 
    gway hello-world
-   gway awg find-cable --meters 30 --amps 60
+   gway awg find-awg --meters 30 --amps 60
 
 .. code-block:: python
 
    from gway import gw
    gw.hello_world()
-   result = gw.awg.find_cable(meters=30, amps=60)
-   print(result["gauge"])
+   result = gw.awg.find_awg(meters=30, amps=60)
+   print(result["awg"])
 
 Installation
 ------------
