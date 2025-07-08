@@ -4,13 +4,14 @@ import os
 import html
 import shlex
 from docutils.core import publish_parts
+from pathlib import Path
 from gway import gw, __
 from gway.console import process, chunk
 import markdown as mdlib
 
 def view_reader(
     *,
-    title=__('[README]', 'README'),
+    tome=__('[README]', 'README'),
     ext=None,
     origin="root",
     **kwargs,
@@ -20,8 +21,8 @@ def view_reader(
     If origin='root', only files in the resource root (no subfolders).
     Never serves files starting with dot or underscore.
     """
-    gw.verbose(f"[reader] Called with title={title!r}, ext={ext!r}, origin={origin!r}")
-    fname = _sanitize_filename(title)
+    gw.verbose(f"[reader] Called with tome={tome!r}, ext={ext!r}, origin={origin!r}")
+    fname = _sanitize_filename(tome)
     gw.verbose(f"[reader] Sanitized filename: {fname}")
 
     ext = (str(ext).strip().lower() if ext else None)
@@ -35,6 +36,8 @@ def view_reader(
         return "<b>Access denied.</b>"
 
     def file_variants(base):
+        if base.endswith('/'):
+            base = base.rstrip('/') + '/README'
         if ext in {'rst', 'md'}:
             variants = [f"{base}.{ext}"]
         else:
@@ -46,7 +49,8 @@ def view_reader(
         gw.verbose(f"[reader] Candidate variants for base {base}: {variants}")
         return variants
 
-    if origin == "root":
+    use_root = origin == "root" and "/" not in tome
+    if use_root:
         resource_dir = os.path.dirname(gw.resource('README.rst'))  # This IS the resource root
         gw.verbose(f"[reader] Resource root directory: {resource_dir}")
         for candidate in file_variants(fname):
@@ -87,8 +91,46 @@ def view_reader(
                 gw.verbose(f"[reader] Exception reading or rendering {resource_path}: {e}")
                 continue
         exts = ' or '.join(['.rst', '.md']) if not ext else f".{ext}"
-        gw.verbose(f"[reader] File not found or not allowed: {fname}{exts}")
-        return f"<b>File not found or not allowed: {fname}{exts}</b>"
+        gw.verbose(f"[reader] File not found or not allowed: {fname}{exts}; falling back to static")
+
+    if origin == "root":
+        origin = "static"
+
+    if origin == "static":
+        base_dir = Path(gw.resource('data', 'static'))
+        safe_path = _sanitize_relpath(tome)
+        gw.verbose(f"[reader] Static safe path: {safe_path!r}")
+        if not safe_path:
+            return "<b>Access denied.</b>"
+        candidate_dir = Path(base_dir, safe_path)
+        if candidate_dir.is_dir():
+            safe_path = f"{safe_path.rstrip('/')}/README"
+        for candidate in file_variants(safe_path):
+            gw.verbose(f"[reader] Checking static candidate: {candidate}")
+            parts = candidate.split('/')
+            resource_path = gw.resource('data', 'static', *parts)
+            resolved = Path(resource_path).resolve()
+            if not resolved.is_file() or base_dir not in resolved.parents:
+                gw.verbose(f"[reader] Invalid static path: {resolved}")
+                continue
+            if any(_is_hidden_or_private(p) for p in parts):
+                gw.verbose(f"[reader] Hidden/private segment in {candidate}")
+                continue
+            try:
+                with open(resolved, encoding='utf-8') as f:
+                    content = f.read()
+                if resolved.suffix == '.rst':
+                    html = publish_parts(source=content, writer_name='html')['html_body']
+                elif resolved.suffix == '.md':
+                    html = mdlib.markdown(content)
+                else:
+                    html = '<b>Unsupported file type.</b>'
+                return html
+            except Exception as e:
+                gw.verbose(f"[reader] Exception reading {resolved}: {e}")
+                continue
+        exts = ' or '.join(['.rst', '.md']) if not ext else f".{ext}"
+        return f"<b>File not found or not allowed: {safe_path}{exts}</b>"
 
     # Fallback for other origins (not fully implemented here)
     gw.verbose(f"[view_reader] Non-root origin {origin} not implemented in this snippet.")
@@ -102,6 +144,22 @@ def _sanitize_filename(fname):
     fname = fname.replace('/', '').replace('\\', '').replace('..', '')
     fname = ''.join(c for c in fname if c.isalnum() or c in '._-')
     return fname
+
+def _sanitize_relpath(path):
+    """Sanitize a relative path under data/static."""
+    parts = []
+    segments = str(path).split('/')
+    for i, segment in enumerate(segments):
+        segment = segment.strip()
+        if not segment:
+            if i == len(segments) - 1:
+                continue  # allow trailing slash
+            return None
+        if segment.startswith('.') or segment.startswith('_') or '..' in segment:
+            return None
+        clean = ''.join(c for c in segment if c.isalnum() or c in '._-')
+        parts.append(clean)
+    return '/'.join(parts)
 
 def _is_hidden_or_private(fname):
     """

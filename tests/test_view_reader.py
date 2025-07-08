@@ -30,12 +30,29 @@ class ViewReaderTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_view_reader_renders(self):
-        html = site.view_reader(title="README", origin="root")
+        html = site.view_reader(tome="README", origin="root")
         self.assertIn("Test RST resource", html)
 
     def test_hidden_or_private_denied(self):
-        self.assertIn("Access denied", site.view_reader(title=".secret", origin="root"))
-        self.assertIn("Access denied", site.view_reader(title="_private", origin="root"))
+        self.assertIn("Access denied", site.view_reader(tome=".secret", origin="root"))
+        self.assertIn("Access denied", site.view_reader(tome="_private", origin="root"))
+
+    def test_static_origin_subfolder(self):
+        static_dir = self.base / "data" / "static" / "proj"
+        static_dir.mkdir(parents=True)
+        (static_dir / "README.rst").write_text("Static Doc")
+        html = site.view_reader(tome="proj/README", origin="static")
+        self.assertIn("Static Doc", html)
+
+    def test_implicit_static_and_directory(self):
+        static_dir = self.base / "data" / "static" / "dir"
+        static_dir.mkdir(parents=True)
+        (static_dir / "README.rst").write_text("Dir Doc")
+        html = site.view_reader(tome="dir")
+        self.assertIn("Dir Doc", html)
+
+        html = site.view_reader(tome="dir/")
+        self.assertIn("Dir Doc", html)
 
 
 if __name__ == "__main__":
