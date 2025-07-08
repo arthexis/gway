@@ -6,7 +6,7 @@ import requests
 
 
 
-def setup_fallback_app(*, 
+def make_fallback_app(*,
         endpoint: str, app=None, websockets: bool = False, path: str = "/",
         mode: str = "extend", callback=None,
     ):

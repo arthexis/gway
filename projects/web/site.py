@@ -5,7 +5,7 @@ import html
 import shlex
 from docutils.core import publish_parts
 from gway import gw, __
-from gway.console import process, chunk
+from gway.console import process, chop
 import markdown as mdlib
 
 def view_reader(
@@ -136,10 +136,10 @@ def view_help(topic="", *args, **kwargs):
             if not cmd_str:
                 return "<i>No command provided.</i>"
             import shlex, html
-            from gway.console import chunk, process
+            from gway.console import chop, process
             try:
                 tokens = shlex.split(cmd_str)
-                commands = chunk(tokens)
+                commands = chop(tokens)
                 results, _ = process(commands)
                 html_parts = [gw.cast.to_html(r) for r in results if r is not None]
                 return "<div class='cli-result'>" + "<hr>".join(html_parts) + "</div>"

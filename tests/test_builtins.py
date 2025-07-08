@@ -33,7 +33,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('help', builtin_ls)
         self.assertIn('test', builtin_ls)
         self.assertIn('abort', builtin_ls)
-        self.assertIn('run_recipe', builtin_ls)
+        self.assertIn('do_recipe', builtin_ls)
 
     def test_list_projects(self):
         project_ls = gw.projects()

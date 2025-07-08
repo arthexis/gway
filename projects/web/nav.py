@@ -9,7 +9,7 @@ def render(*, homes=None, links=None):
     """
     Renders the sidebar navigation including search, home links, visited links, and a QR compass.
     """
-    cookies_ok = gw.web.app.is_setup('web.cookies') and gw.web.cookies.accepted()
+    cookies_ok = gw.web.app.is_make('web.cookies') and gw.web.cookies.accepted()
     links_map = links or {}
     gw.verbose(f"Render nav with {homes=} {links_map=} {cookies_ok=}")
 
@@ -163,7 +163,7 @@ def active_style():
     This should be called by render_template for every page load.
     """
     styles = list_styles()
-    style_cookie = gw.web.cookies.get("css") if gw.web.app.is_setup('web.cookies') else None
+    style_cookie = gw.web.cookies.get("css") if gw.web.app.is_make('web.cookies') else None
     style_query = request.query.get("css")
     style_path = None
 
@@ -241,7 +241,7 @@ def view_style_switcher(*, css=None, project=None):
     all_styles = [fname for _, fname in styles]
     style_sources = {fname: src for src, fname in styles}
 
-    cookies_enabled = gw.web.app.is_setup('web.cookies')
+    cookies_enabled = gw.web.app.is_make('web.cookies')
     cookies_accepted = gw.web.cookies.accepted() if cookies_enabled else False
     css_cookie = gw.web.cookies.get("css")
 

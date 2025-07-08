@@ -1,10 +1,10 @@
 # file: recipes/skeleton.gwr
 
-web app setup-app:
+web app make-app:
     --project web.site --home reader
     --project web.nav
     --project cdv --home data-editor
 web:
  - static collect
-- server start-app
+ - server serve-app
 until --forever

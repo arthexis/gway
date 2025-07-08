@@ -1,7 +1,7 @@
 # file: recipes/gamebox.gwr
 # Games-only demo with cookies, navbar and style switcher
 
-web app setup-app:
+web app make-app:
     --home reader
     --project games.conway --home game-of-life --path conway
     --project games.mtg --home search-games
@@ -12,7 +12,7 @@ web app setup-app:
 
 web:
  - static collect
-- server start-app --port 8888
+ - server serve-app --port 8888
 
 until --forever
 

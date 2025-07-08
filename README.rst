@@ -247,8 +247,8 @@ Overview
 --------
 
 - **Views** are simply Python functions in a project (e.g. `projects/web/site.py`) named according to a pattern (by default, `view_{name}`).
-- The `web.app.setup` function registers views from one or more projects and sets up all routing and static file handling.
-- The `web.server.start-app` function launches your site on a local server using Bottle (or FastAPI, for ASGI).
+- The `web.app.make` function registers views from one or more projects and sets up all routing and static file handling.
+- The `web.server.serve-app` function launches your site on a local server using Bottle (or FastAPI, for ASGI).
 - All configuration can be scripted using GWAY recipes (`.gwr` files) for full automation.
 
 Minimal Example
@@ -287,9 +287,9 @@ Then in your own recipe:
 .. code-block:: text
 
     # recipes/my-website.gwr
-    web app setup --project mysite --home hello
-    web app setup --project web.navbar
-    web server start-app --host 127.0.0.1 --port 8888
+    web app make --project mysite --home hello
+    web app make --project web.navbar
+    web server serve-app --host 127.0.0.1 --port 8888
     until --forever
 
 Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your views, including a handy navbar. Press Ctrl+D or close the terminal to end the process.
@@ -305,20 +305,20 @@ You can chain as many projects as you want; each can define its own set of views
 .. code-block:: text
 
     # recipes/my-website.gwr
-    web app setup --home readme
+    web app make --home readme
         --project web.cookie 
         --project web.navbar --home style-changer
         --project vbox --home uploads
         --project conway --home game-of-life --path games/conway
 
-    web server start-app --host 127.0.0.1 --port 8888
+    web server serve-app --host 127.0.0.1 --port 8888
     until --version --build --pypi --notify
 
 
 The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application.
 
 
-The above recipe also shows implicit repeated commands. For example, instead of writing "web app setup" multiple times, each line below that doesn't start with a command repeats the last command with new parameters.
+The above recipe also shows implicit repeated commands. For example, instead of writing "web app make" multiple times, each line below that doesn't start with a command repeats the last command with new parameters.
 
 The **until** function, as used here, will keep the recipe going until the package updates in PyPI (checked hourly) or a manual update ocurrs.  Use ``--notify`` to send a desktop/email notification when the runner would stop, ``--notify-only`` to keep running after notifying, and ``--abort`` to exit the process when a watcher triggers.  By default ``until`` simply returns when its condition is met. This is appropriate for self-restarting services such as those managed by systemd or kubernetes.
 
@@ -327,8 +327,8 @@ The **until** function, as used here, will keep the recipe going until the packa
 How It Works
 ------------
 
-- `web.app.setup` wires up each project, registering all views (functions starting with the given prefix, default `view_`).
-- You call setup multiple times to configure each project. The project/function name can be skipped on repeat lines.
+- `web.app.make` wires up each project, registering all views (functions starting with the given prefix, default `view_`).
+- You call make multiple times to configure each project. The project/function name can be skipped on repeat lines.
 - Each project can declare a "home" view, which becomes the landing page for its route.
 - Static files are served from your `data/static/` directory and are accessible at `/static/filename`.
 - The routing system matches `/project/viewname` to a function named `view_viewname` in the relevant project.

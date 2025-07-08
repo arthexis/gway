@@ -66,7 +66,7 @@ def current_endpoint():
     """
     return gw.context.get('current_endpoint')
 
-def setup_app(*,
+def make_app(*,
     app=None,
     project="web.site",
     path=None,
@@ -83,8 +83,8 @@ def setup_app(*,
     engine="bottle",
 ):
     """
-    Setup Bottle web application with symmetrical static/shared public folders.
-    Only one project can be setup per call. CSS/JS params are used as the only static includes.
+    Make Bottle web application with symmetrical static/shared public folders.
+    Only one project can be made per call. CSS/JS params are used as the only static includes.
     """
     global _ver, _homes, _enabled
 
@@ -186,7 +186,7 @@ def setup_app(*,
         add_route(app, f"/{static}/<filepath:path>", "GET", send_static)
         
     def _maybe_auth(message: str):
-        if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
+        if is_make('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
             return gw.web.error.unauthorized(message)
         return None
 
@@ -383,7 +383,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
 
     css_files = gw.cast.to_list(css_files)
     theme_css = None
-    if is_setup('web.nav'):
+    if is_make('web.nav'):
         try:
             theme_css = gw.web.nav.active_style()
         except Exception:
@@ -409,7 +409,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         Hosting by <a href="https://www.gelectriic.com/">Gelectriic Solutions</a>, 
         <a href="https://pypi.org">PyPI</a> and <a href="https://github.com/arthexis/gway">Github</a>.</p>
     '''
-    nav = gw.web.nav.render(homes=_homes, links=_links) if is_setup('web.nav') else ""
+    nav = gw.web.nav.render(homes=_homes, links=_links) if is_make('web.nav') else ""
 
     html = template("""<!DOCTYPE html>
         <html lang="en">
@@ -466,7 +466,7 @@ def add_route(app, rule: str, method, callback):
         _registered_routes.add(key)
         app.route(rule, method=m)(callback)
 
-def is_setup(project_name):
+def is_make(project_name):
     global _enabled
     return project_name in _enabled
 

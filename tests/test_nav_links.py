@@ -20,7 +20,7 @@ class NavLinksTests(unittest.TestCase):
         self.orig_request = nav.request
         nav.request = FakeRequest('/games/conway/game-of-life')
         self.orig_app = nav.gw.web.app
-        nav.gw.web.app = type('A', (), {'is_setup': lambda self2, n: False})()
+        nav.gw.web.app = type('A', (), {'is_make': lambda self2, n: False})()
         self.orig_cookies = nav.gw.web.cookies
         nav.gw.web.cookies = type('C', (), {'accepted': lambda self2: False})()
 

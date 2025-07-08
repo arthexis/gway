@@ -61,7 +61,7 @@ def _use_cookies():
     use = (
         hasattr(gw.web, "app")
         and hasattr(gw.web, "cookies")
-        and getattr(gw.web.app, "is_setup", lambda x: False)("web.cookies")
+        and getattr(gw.web.app, "is_make", lambda x: False)("web.cookies")
         and gw.web.cookies.accepted()
     )
     gw.debug(f"_use_cookies -> {use}")

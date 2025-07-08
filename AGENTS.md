@@ -7,7 +7,7 @@ Dispatcher helpers expose special functions as web routes:
 - ``view_*`` → ``/project/view`` (HTML output, optionally method specific ``view_get_*``/``view_post_*``).
 - ``api_*`` → ``/api/project/view`` (JSON output).
 - ``render_*`` → ``/render/project/view/hash`` (HTML/JSON fragments).
-Call ``gw.web.app.setup()`` to register views and ``gw.web.server.start_app()`` to launch the server.
+Call ``gw.web.app.make()`` to register views and ``gw.web.server.serve_app()`` to launch the server.
 Existing utilities (``gw.awg``, ``gw.ocpp``, ``gw.vbox`` etc.) are loaded lazily and should be reused via
 ``gw.<project>.<sub>.<function>``.
 

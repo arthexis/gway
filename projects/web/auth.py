@@ -86,8 +86,8 @@ def _basic_auth(allow, engine):
                 # Try to detect FastAPI context
                 if ctx.get("websocket", None):
                     engine_actual = "fastapi_ws"
-                elif hasattr(gw.web, "app") and hasattr(gw.web.app, "is_setup"):
-                    if gw.web.app.is_setup("fastapi"):
+                elif hasattr(gw.web, "app") and hasattr(gw.web.app, "is_make"):
+                    if gw.web.app.is_make("fastapi"):
                         engine_actual = "fastapi"
                 else:
                     engine_actual = "bottle"
@@ -178,7 +178,7 @@ def _temp_password(length=16):
     chars = string.ascii_letters + string.digits
     return ''.join(random.choices(chars, k=length))
 
-def config_basic(
+def prep_basic(
     *, 
     allow='work/basic_auth.cdv', 
     engine="auto", 
@@ -230,7 +230,7 @@ def config_basic(
 def clear():
     _challenges.clear()
 
-def is_setup():
+def is_make():
     return bool(_challenges)
 
 def create_user(username, password, *, allow='work/basic_auth.cdv', force=False, **fields):

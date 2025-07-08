@@ -22,7 +22,7 @@ class NavCompassTests(unittest.TestCase):
     def setUp(self):
         self.orig_request = nav.request
         self.orig_app = nav.gw.web.app
-        nav.gw.web.app = type('A', (), {'is_setup': lambda self2, n: False})()
+        nav.gw.web.app = type('A', (), {'is_make': lambda self2, n: False})()
         self.orig_cookies = nav.gw.web.cookies
         nav.gw.web.cookies = type('C', (), {'accepted': lambda self2: False})()
         self.orig_qr = nav.gw.qr.generate_url

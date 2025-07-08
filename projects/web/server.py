@@ -7,7 +7,7 @@ from gway import gw, __
 # Registry for active apps and their hosts/ports
 _active_servers = {}  # key: label or index, value: dict with host/port/ws_port
 
-def start_app(*,
+def serve_app(*,
     host            = __('[SITE_HOST]', '[BASE_HOST]', '0.0.0.0'),
     port : int      = __('[SITE_PORT]', '[BASE_PORT]', '8888'),
     ws_port : int   = __('[WS_PORT]', '[WEBSOCKET_PORT]', '9999'),
@@ -76,7 +76,7 @@ def start_app(*,
                 gw.info(f"  App {i+1}: type={app_type}, port={port_i}")
 
                 t = Thread(
-                    target=gw.web.server.start_app,
+                    target=gw.web.server.serve_app,
                     kwargs=dict(
                         host=host,
                         port=port_i,
@@ -110,7 +110,7 @@ def start_app(*,
 
         # Proxy setup (unchanged)
         if proxy:
-            from .proxy import setup_app as setup_proxy
+            from .proxy import make_fallback_app as setup_proxy
             app = setup_proxy(endpoint=proxy, app=app)
 
         # Factory support (unchanged)

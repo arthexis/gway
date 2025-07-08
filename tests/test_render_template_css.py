@@ -14,7 +14,7 @@ class RenderTemplateThemeCssTests(unittest.TestCase):
         dummy_theme = "/static/theme.css"
         with patch.object(webapp.gw.web.nav, 'active_style', return_value=dummy_theme), \
              patch.object(webapp.gw.web.nav, 'render', return_value=''), \
-             patch.object(webapp, 'is_setup', return_value=True):
+             patch.object(webapp, 'is_make', return_value=True):
             html = webapp.render_template(css_files=['/static/base.css'])
 
         soup = BeautifulSoup(html, 'html.parser')

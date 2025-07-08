@@ -7,11 +7,11 @@ from pathlib import Path
 from gway import gw
 
 
-def run(*script: str, **context):
-    return gw.run_recipe(*script, **context)
+def do(*script: str, **context):
+    return gw.do_recipe(*script, **context)
 
 
-def register_gwr():
+def register_recipes():
     """
     Register the .gwr file extension so that double-click launches:
         gway -r "<full path to file>"

@@ -29,7 +29,7 @@ class FakeCookies:
 class FakeApp:
     def __init__(self, enabled=True):
         self.enabled = enabled
-    def is_setup(self, name):
+    def is_make(self, name):
         return self.enabled
 
 

@@ -8,24 +8,24 @@ from pathlib import Path
 import gway.console as console
 
 
-class TestChunkFunction(unittest.TestCase):
-    def test_chunk_splits_on_dash_and_semicolon(self):
+class TestChopFunction(unittest.TestCase):
+    def test_chop_splits_on_dash_and_semicolon(self):
         self.assertEqual(
-            console.chunk(['a', 'b', '-', 'c', 'd']),
+            console.chop(['a', 'b', '-', 'c', 'd']),
             [['a', 'b'], ['c', 'd']]
         )
         self.assertEqual(
-            console.chunk(['x', 'y', ';', 'z']),
+            console.chop(['x', 'y', ';', 'z']),
             [['x', 'y'], ['z']]
         )
 
-    def test_chunk_handles_empty(self):
-        self.assertEqual(console.chunk([]), [])
+    def test_chop_handles_empty(self):
+        self.assertEqual(console.chop([]), [])
 
-    def test_chunk_preserves_tokens(self):
+    def test_chop_preserves_tokens(self):
         tokens = ['cmd', 'arg;with;semicolons', ';', 'next']
         self.assertEqual(
-            console.chunk(tokens),
+            console.chop(tokens),
             [['cmd', 'arg;with;semicolons'], ['next']]
         )
 
@@ -44,7 +44,7 @@ class TestNormalizeToken(unittest.TestCase):
 
 class TestLoadRecipeAbsolutePath(unittest.TestCase):
     def setUp(self):
-        # Create a temporary recipe file with comments and indented options
+        # Create a temporary recipe file with notes and indented options
         self.temp_file = tempfile.NamedTemporaryFile('w', delete=False)
         self.temp_file.write(
             """# comment1
@@ -60,15 +60,15 @@ cmd2 --flag
     def tearDown(self):
         os.remove(self.temp_file.name)
 
-    def test_load_recipe_parses_commands_and_comments(self):
-        commands, comments = console.load_recipe(self.temp_file.name)
-        expected_comments = ['# comment1', '# comment2']
+    def test_load_recipe_parses_commands_and_notes(self):
+        commands, notes = console.load_recipe(self.temp_file.name)
+        expected_notes = ['# comment1', '# comment2']
         expected_commands = [
             ['cmd1', 'arg1', '--opt1', 'val1'],
             ['cmd1', 'arg1', '--opt2', 'val2'],
             ['cmd2', '--flag']
         ]
-        self.assertEqual(comments, expected_comments)
+        self.assertEqual(notes, expected_notes)
         self.assertEqual(commands, expected_commands)
 
     def test_load_recipe_nonexistent_raises_file_not_found(self):
@@ -103,25 +103,25 @@ app start --port 8000
 
     def test_load_recipe_finds_gwr_extension(self):
         # Provide base name without extension
-        commands, comments = console.load_recipe('sample')
+        commands, notes = console.load_recipe('sample')
         expected_commands = [
             ['app', 'start', '--port', '8000'],
             ['app', 'start', '--debug']
         ]
-        expected_comments = ['# sample recipe']
+        expected_notes = ['# sample recipe']
         self.assertEqual(commands, expected_commands)
-        self.assertEqual(comments, expected_comments)
+        self.assertEqual(notes, expected_notes)
 
 
 class TestLoadRecipeColonSyntax(unittest.TestCase):
     def test_load_recipe_with_colon_repetition(self):
         content = (
-            """web app setup-app:
+            """web app make-app:
     --project one --home first
     --project two
 web:
  - static collect
- - server start-app --host 1 --port 2
+ - server serve-app --host 1 --port 2
 """
         )
         with tempfile.NamedTemporaryFile('w', delete=False) as f:
@@ -133,21 +133,21 @@ web:
             os.remove(temp_name)
 
         expected = [
-            ['web', 'app', 'setup-app', '--project', 'one', '--home', 'first'],
-            ['web', 'app', 'setup-app', '--project', 'two'],
+            ['web', 'app', 'make-app', '--project', 'one', '--home', 'first'],
+            ['web', 'app', 'make-app', '--project', 'two'],
             ['web', 'static', 'collect'],
-            ['web', 'server', 'start-app', '--host', '1', '--port', '2'],
+            ['web', 'server', 'serve-app', '--host', '1', '--port', '2'],
         ]
         self.assertEqual(commands, expected)
 
     def test_load_recipe_colon_without_indentation(self):
         content = (
-            """web app setup-app:
+            """web app make-app:
 --project one
 --project two
 web:
 - static collect
-- server start-app --host 1 --port 2
+- server serve-app --host 1 --port 2
 """
         )
         with tempfile.NamedTemporaryFile('w', delete=False) as f:
@@ -159,10 +159,10 @@ web:
             os.remove(temp_name)
 
         expected = [
-            ['web', 'app', 'setup-app', '--project', 'one'],
-            ['web', 'app', 'setup-app', '--project', 'two'],
+            ['web', 'app', 'make-app', '--project', 'one'],
+            ['web', 'app', 'make-app', '--project', 'two'],
             ['web', 'static', 'collect'],
-            ['web', 'server', 'start-app', '--host', '1', '--port', '2'],
+            ['web', 'server', 'serve-app', '--host', '1', '--port', '2'],
         ]
         self.assertEqual(commands, expected)
 

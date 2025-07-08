@@ -32,7 +32,7 @@ def authorize_balance(**record):
     except Exception:
         return False
     
-def setup_app(*,
+def make_app(*,
     app=None,
     allowlist=None,
     denylist=None,

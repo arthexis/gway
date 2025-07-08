@@ -6,7 +6,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from gway import gw
 
 
-def setup_sink_app(*, app=None):
+def make_sink_app(*, app=None):
     """
     Basic OCPP passive sink for messages, acting as a dummy CSMS server.
     This won't pass compliance or provide authentication. It just accepts and logs all.

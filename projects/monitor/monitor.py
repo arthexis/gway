@@ -39,7 +39,7 @@ def trigger_watch(project):
         return True
     return False
 
-def start_watch(
+def serve_watch(
     project, *,
     monitor=None,
     interval=120,

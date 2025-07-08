@@ -67,9 +67,9 @@ def cli_main():
 
     # Load command sources
     if args.recipe:
-        command_sources, comments = load_recipe(args.recipe)
+        command_sources, _notes = load_recipe(args.recipe)
     elif args.commands:
-        command_sources = chunk(args.commands)
+        command_sources = chop(args.commands)
     else:
         parser.print_help()
         sys.exit(1)
@@ -167,38 +167,37 @@ def process(command_sources, callback=None, **context):
 
         return obj, tokens, path
 
-    for chunk in command_sources:
-        if not chunk:
+    for chopped in command_sources:
+        if not chopped:
             continue
-
-        gw.debug(f"Next {chunk=}")
+        gw.debug(f"Next {chopped=}")
 
         # Invoke callback if provided
         if callback:
-            callback_result = callback(chunk)
+            callback_result = callback(chopped)
             if callback_result is False:
-                gw.debug(f"Skipping chunk due to callback: {chunk}")
+                gw.debug(f"Skipping chop due to callback: {chopped}")
                 continue
             elif isinstance(callback_result, list):
-                gw.debug(f"Callback replaced chunk: {callback_result}")
-                chunk = callback_result
+                gw.debug(f"Callback replaced chop: {callback_result}")
+                chopped = callback_result
             elif callback_result is None or callback_result is True:
                 pass
             else:
-                abort(f"Invalid callback return value for chunk: {callback_result}")
+                abort(f"Invalid callback return value for chop: {callback_result}")
 
-        if not chunk:
+        if not chopped:
             continue
 
         # Resolve nested project/function path
-        resolved_obj, func_args, path = resolve_nested_object(gw, list(chunk))
+        resolved_obj, func_args, path = resolve_nested_object(gw, list(chopped))
 
         if not callable(resolved_obj):
             if hasattr(resolved_obj, '__functions__'):
                 show_functions(resolved_obj.__functions__)
             else:
                 gw.error(f"Object at path {' '.join(path)} is not callable.")
-            abort(f"No project with name '{chunk[0]}'")
+            abort(f"No project with name '{chopped[0]}'")
 
         # Parse function arguments, using parse_known_args if **kwargs present
         func_parser = argparse.ArgumentParser(prog=".".join(path))
@@ -265,23 +264,23 @@ def prepare(parsed_args, func_obj):
 
     return func_args, {**func_kwargs, **extra_kwargs}
 
-def chunk(args_commands):
-    """Split args.commands into logical chunks without breaking quoted arguments."""
-    chunks = []
+def chop(args_commands):
+    """Split args.commands into logical chops without breaking quoted arguments."""
+    chops = []
     current_chunk = []
 
     for token in args_commands:
         if token in ('-', ';'):
             if current_chunk:
-                chunks.append(current_chunk)
+                chops.append(current_chunk)
                 current_chunk = []
         else:
             current_chunk.append(token)
 
     if current_chunk:
-        chunks.append(current_chunk)
+        chops.append(current_chunk)
 
-    return chunks
+    return chops
 
 def show_functions(functions: dict):
     """Display a formatted view of available functions."""
@@ -413,16 +412,16 @@ def get_arg_opts(arg_name, param, gw=None):
 # typically has an impact in the recipe parsing process and must be reviewed together.
 
 def load_recipe(recipe_filename):
-    """Load commands and comments from a .gwr file.
+    """Load commands and notes from a .gwr file.
     
     Supports indented 'chained' lines: If a line begins with whitespace and its first
     non-whitespace characters are `--`, prepend the last full non-indented command prefix.
     
     Example:
-        web app setup --home reader
+        web app make --home reader
             --project vbox --home upload
             --project games.conway --home board --path conway
-        web server start-app --host 127.0.0.1 --port 8888
+        web server serve-app --host 127.0.0.1 --port 8888
 
     This parses the indented lines as continuations of the previous non-indented command.
     """
@@ -430,7 +429,7 @@ def load_recipe(recipe_filename):
     from gway import gw
 
     commands = []
-    comments = []
+    notes = []
     recipe_path = None
 
     # --- Recipe file resolution (unchanged) ---
@@ -462,7 +461,7 @@ def load_recipe(recipe_filename):
                 colon_prefix = None
                 continue  # skip blank lines
             if stripped_line.startswith("#"):
-                comments.append(stripped_line)
+                notes.append(stripped_line)
                 colon_prefix = None
                 continue
             if colon_prefix:
@@ -500,7 +499,7 @@ def load_recipe(recipe_filename):
         if line.strip() and not line.strip().startswith("#"):
             commands.append(line.strip().split())
 
-    return commands, comments
+    return commands, notes
 
 
 def normalize_token(token):
@@ -517,5 +516,4 @@ def _rows_to_csv(rows):
         writer.writerows(rows)
         return output.getvalue()
     except Exception:
-        return None
-    
+        return None    

@@ -20,7 +20,7 @@ class FakeCookies:
         return True
 
 class FakeApp:
-    def is_setup(self, name):
+    def is_make(self, name):
         return True
 
 class QPigFarmButtonTests(unittest.TestCase):

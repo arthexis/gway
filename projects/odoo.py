@@ -361,7 +361,7 @@ def get_user_info(*, username: str) -> dict:
 
 chatbot_log: list[dict] = []
 
-def setup_chatbot_app(*, 
+def make_chatbot_app(*,
             path="/chatbot", username="[ODOO_USERNAME]", alias="Operator", apps=None
         ):
     """

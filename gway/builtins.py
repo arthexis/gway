@@ -488,7 +488,7 @@ def try_cast(value, default=None, **types) -> tuple:
             continue
     return default, value
 
-def run_recipe(*scripts: str, **context):
+def do_recipe(*scripts: str, **context):
     """
     Run commands parsed from one or more .gwr files, falling back to the 'recipes/' resource bundle.
     Recipes are just simple GWAY scripts: one command per line, with optional comments.
@@ -497,8 +497,8 @@ def run_recipe(*scripts: str, **context):
     from gway import gw
 
     if not scripts:
-        raise ValueError("At least one script must be provided to run_recipe()")
-    gw.debug(f"run_recipe called with scripts: {scripts!r}")
+        raise ValueError("At least one script must be provided to do_recipe()")
+    gw.debug(f"do_recipe called with scripts: {scripts!r}")
 
     results = []
     for script in scripts:
@@ -528,14 +528,14 @@ def run_recipe(*scripts: str, **context):
                 raise FileNotFoundError(msg) from second_exc
 
         # Load and run the recipe
-        command_sources, comments = load_recipe(script_path)
-        if comments:
-            gw.debug("Recipe comments:\n" + "\n".join(comments))
+        command_sources, notes = load_recipe(script_path)
+        if notes:
+            gw.debug("Recipe notes:\n" + "\n".join(notes))
         result = process(command_sources, **context)
         results.append(result)
     return results[-1] if len(results) == 1 else results
 
-def run(*script: str, **context):
+def do(*script: str, **context):
     """Run recipes. If recipes are not found, treat the input as the literal recipe to be run."""
     from gway import gw
     import uuid
@@ -544,13 +544,13 @@ def run(*script: str, **context):
 
     # Try to run all scripts as recipes first
     try:
-        return gw.run_recipe(*script, **context)
+        return gw.do_recipe(*script, **context)
     except FileNotFoundError:
         # Not found: treat script as raw lines, write to temp recipe and run that
         gw.debug(f"run(): Could not find one or more recipes, treating script as raw lines")
         work_dir = gw.resource("work", check=True)
         unique_id = str(uuid.uuid4())
-        recipe_name = f"run_{unique_id}.gwr"
+        recipe_name = f"do_{unique_id}.gwr"
         recipe_path = os.path.join(work_dir, recipe_name)
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -572,7 +572,7 @@ def run(*script: str, **context):
         gw.debug(f"Wrote ad-hoc script to {recipe_path}")
 
         # Now run the new recipe
-        return gw.run_recipe(recipe_path, **context)
+        return gw.do_recipe(recipe_path, **context)
 
 
 

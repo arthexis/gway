@@ -3,7 +3,7 @@
 
 # Lines without a starting command repeat the previous with new params
 
-web app setup-app:
+web app make-app:
     --home reader
     --project awg --home cable-finder
     --project release --home changelog
@@ -20,13 +20,13 @@ web app setup-app:
 
 web:
  - static collect
- - auth config-basic --optional --temp-link
+ - auth prep-basic --optional --temp-link
 
-ocpp csms setup-app:
+ocpp csms make-app:
     --location simulator
 
 web:
- - server start-app --port 8888 --ws-port 9999
+ - server serve-app --port 8888 --ws-port 9999
 
 # Loop until VERSION or BUILD or PyPI changes
 until --version --build --pypi
