@@ -177,20 +177,14 @@ To run GWAY automatically as a service using a recipe:
 .. code-block:: bash
 
     sudo ./install.sh <recipe> [--debug] [--root]   # On Linux/macOS
-    install.bat <recipe> [--debug] [--user <account> --password <pass>]         # On Windows
     sudo ./install.sh <recipe> --remove    # Remove on Linux/macOS
-    install.bat <recipe> --remove [--force]  # Remove on Windows
-    install.bat <recipe> --repair            # Repair one service on Windows
 
 To apply updated service definitions to all installed services:
 
 .. code-block:: bash
 
     sudo ./install.sh --repair   # On Linux/macOS
-    install.bat --repair         # Repair all services on Windows
 
-On Windows, the installed service will automatically restart if it exits
-unexpectedly.
 
 This pulls the latest updates from the `main` branch and refreshes dependencies.
 
