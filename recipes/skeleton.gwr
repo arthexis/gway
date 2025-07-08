@@ -5,5 +5,5 @@ web app setup-app:
     --project web.nav
 web:
  - static collect
- - server start-app
-forever
+- server start-app
+until --forever

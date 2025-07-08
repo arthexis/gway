@@ -290,11 +290,11 @@ Then in your own recipe:
     web app setup --project mysite --home hello
     web app setup --project web.navbar
     web server start-app --host 127.0.0.1 --port 8888
-    forever
+    until --forever
 
 Navigate to http://127.0.0.1:8888/mysite/hello or /mysite/about to see your views, including a handy navbar. Press Ctrl+D or close the terminal to end the process.
 
-The **forever** function keeps the above apps and servers running forever.
+The ``--forever`` option for ``until`` keeps the above apps and servers running indefinitely.
 
 
 Composing Sites from Multiple Projects
@@ -312,7 +312,7 @@ You can chain as many projects as you want; each can define its own set of views
         --project conway --home game-of-life --path games/conway
 
     web server start-app --host 127.0.0.1 --port 8888
-    until --version --build --pypi
+    until --version --build --pypi --notify
 
 
 The above example combines basic features such as cookies and navbar with custom projects, a virtual upload/download box system and Conway's Game of Life, into a single application.
@@ -320,7 +320,7 @@ The above example combines basic features such as cookies and navbar with custom
 
 The above recipe also shows implicit repeated commands. For example, instead of writing "web app setup" multiple times, each line below that doesn't start with a command repeats the last command with new parameters.
 
-The **until** function, as used here, will keep the recipe going until the package updates in PyPI (checked hourly) or a manual update ocurrs. This is appropriate for self-restarting services such as those managed by systemd or kubernetes.
+The **until** function, as used here, will keep the recipe going until the package updates in PyPI (checked hourly) or a manual update ocurrs.  Use ``--notify`` to send a desktop/email notification when the runner would stop, ``--notify-only`` to keep running after notifying, and ``--abort`` to exit the process when a watcher triggers.  By default ``until`` simply returns when its condition is met. This is appropriate for self-restarting services such as those managed by systemd or kubernetes.
 
 
 
