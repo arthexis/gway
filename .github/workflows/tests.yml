@@ -45,3 +45,27 @@ jobs:
 ![$(basename $img)](data:image/png;base64,$encoded)"
             done
           fi
+  raspi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: docker/setup-qemu-action@v2
+        with:
+          platforms: arm
+      - name: Run tests on Raspberry Pi 4B image
+        run: |
+          docker run --rm --platform linux/arm/v7 --cap-add NET_ADMIN \
+            -v ${{ github.workspace }}:/workspace -w /workspace \
+            arm32v7/python:3.11-slim bash -exc "\
+              apt-get update; \
+              apt-get install -y git iproute2; \
+              ip link add wlan0 type dummy; \
+              ip link add wlan1 type dummy; \
+              ip link add wlan2 type dummy; \
+              ip link add wlan3 type dummy; \
+              ip link add eth0 type dummy; \
+              pip install -r requirements.txt; \
+              pip install -e .; \
+              gway test --coverage; \
+            "
+
