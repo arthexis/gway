@@ -1,8 +1,11 @@
 # file: projects/web/site.py
 
 import os
+import html
+import shlex
 from docutils.core import publish_parts
 from gway import gw, __
+from gway.console import process, chunk
 import markdown as mdlib
 
 def view_reader(
@@ -122,7 +125,7 @@ def view_help(topic="", *args, **kwargs):
     If there is an exact match in the search, show it at the top (highlighted).
     """
 
-    # gw.gelp at all times, compliment this result with other information. 
+    # gw.gelp at all times, compliment this result with other information.
 
     topic_in = topic or ""
 
@@ -144,6 +147,7 @@ def view_help(topic="", *args, **kwargs):
                 return f"<pre>{html.escape(str(ex))}</pre>"
         else:
             return "<b>Console commands disabled (not local).</b>"
+          
     topic = topic.replace(" ", "/").replace(".", "/").replace("-", "_") if topic else ""
     parts = [p for p in topic.strip("/").split("/") if p]
 
