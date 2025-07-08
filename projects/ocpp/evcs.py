@@ -180,21 +180,27 @@ async def simulate_cp(
                         except json.JSONDecodeError:
                             print(f"[Simulator:{cp_name}] Warning: Received non-JSON message")
                             continue
-                        if isinstance(msg, list) and msg[0] == 2:
-                            msg_id, action = msg[1], msg[2]
-                            await ws.send(json.dumps([3, msg_id, {}]))
-                            if action == "RemoteStopTransaction":
-                                print(f"[Simulator:{cp_name}] Received RemoteStopTransaction → stopping transaction")
-                                stop_event.set()
-                            elif action == "Reset":
-                                reset_type = ""
-                                if len(msg) > 3 and isinstance(msg[3], dict):
-                                    reset_type = msg[3].get("type", "")
-                                print(f"[Simulator:{cp_name}] Received Reset ({reset_type}) → restarting session")
-                                reset_event.set()
-                                stop_event.set()
+                        if isinstance(msg, list):
+                            if msg[0] == 2:
+                                msg_id, action = msg[1], msg[2]
+                                await ws.send(json.dumps([3, msg_id, {}]))
+                                if action == "RemoteStopTransaction":
+                                    print(f"[Simulator:{cp_name}] Received RemoteStopTransaction → stopping transaction")
+                                    stop_event.set()
+                                elif action == "Reset":
+                                    reset_type = ""
+                                    if len(msg) > 3 and isinstance(msg[3], dict):
+                                        reset_type = msg[3].get("type", "")
+                                    print(f"[Simulator:{cp_name}] Received Reset ({reset_type}) → restarting session")
+                                    reset_event.set()
+                                    stop_event.set()
+                            elif msg[0] in (3, 4):
+                                # Ignore CallResult and CallError messages
+                                continue
+                            else:
+                                print(f"[Simulator:{cp_name}] Notice: Unexpected message format", msg)
                         else:
-                            print(f"[Simulator:{cp_name}] Notice: Unexpected message format", msg)
+                            print(f"[Simulator:{cp_name}] Warning: Expected list message", msg)
                 except websockets.ConnectionClosed:
                     print(f"[Simulator:{cp_name}] Connection closed by server")
                     stop_event.set()
@@ -203,8 +209,6 @@ async def simulate_cp(
             while loop_count < session_count:
                 stop_event = asyncio.Event()
                 reset_event = asyncio.Event()
-                # Start listener for this session
-                listener = asyncio.create_task(listen_to_csms(stop_event, reset_event))
                 # Initial handshake
                 await ws.send(json.dumps([2, "boot", "BootNotification", {
                     "chargePointModel": "Simulator",
