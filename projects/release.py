@@ -213,7 +213,16 @@ def build(
                 text=True
             )
             if check_result.returncode != 0:
-                gw.error(f"PyPI README rendering check failed, aborting upload:\n{check_result.stdout}")
+                gw.error(
+                    "PyPI README rendering check failed, aborting upload:\n"
+                    f"{check_result.stdout}"
+                )
+                gw.info("Stashing release changes due to build failure...")
+                subprocess.run(
+                    ["git", "stash", "--include-untracked", "-m", "gway-release-abort"],
+                    check=False,
+                )
+                gw.error("Build aborted. README syntax errors detected.")
                 return
 
             gw.info("Twine check passed. Uploading to PyPI...")
