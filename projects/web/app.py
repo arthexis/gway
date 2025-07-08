@@ -168,12 +168,16 @@ def setup_app(*,
         add_route(app, f"/{path}/{static}/<filepath:path>", "GET", send_static)
         add_route(app, f"/{static}/<filepath:path>", "GET", send_static)
         
+    def _maybe_auth(message: str):
+        if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
+            return gw.web.error.unauthorized(message)
+        return None
+
     if views:
         def view_dispatch(view):
             nonlocal home, views
-            # --- AUTH CHECK ---
-            if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
-                return gw.web.error.unauthorized("Unauthorized: You are not permitted to view this page.")
+            if (unauth := _maybe_auth("Unauthorized: You are not permitted to view this page.")):
+                return unauth
             # Set current endpoint in GWAY context (for helpers/build_url etc)
             gw.context['current_endpoint'] = path
             segments = [s for s in view.strip("/").split("/") if s]
@@ -226,11 +230,10 @@ def setup_app(*,
     if apis:
         def api_dispatch(view):
             nonlocal home, apis
-            # --- AUTH CHECK ---
-            if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
-                return gw.web.error.unauthorized("Unauthorized: API access denied.")
+            if (unauth := _maybe_auth("Unauthorized: API access denied.")):
+                return unauth
             # Set current endpoint in GWAY context (for helpers/build_url etc)
-            gw.context['current_endpoint'] = path 
+            gw.context['current_endpoint'] = path
             segments = [s for s in view.strip("/").split("/") if s]
             view_name = segments[0].replace("-", "_") if segments else home
             args = segments[1:] if segments else []
@@ -266,9 +269,8 @@ def setup_app(*,
     if renders:
         def render_dispatch(view, hash):
             nonlocal renders
-            # --- AUTH CHECK ---
-            if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
-                return gw.web.error.unauthorized("Unauthorized: Render access denied.")
+            if (unauth := _maybe_auth("Unauthorized: Render access denied.")):
+                return unauth
             kwargs = dict(request.query)
             gw.context['current_endpoint'] = path
 
