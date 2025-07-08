@@ -14,6 +14,7 @@ web app setup-app:
     --project ocpp.data --auth-required --home charger-summary
     --project games.conway --home game-of-life --path conway
     --project games.mtg --home search-games
+    --project release --home changelog
     --project web.auth
 
 web:
