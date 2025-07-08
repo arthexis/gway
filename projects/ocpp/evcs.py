@@ -264,6 +264,8 @@ async def simulate_cp(
                     await listener
                 except asyncio.CancelledError:
                     pass
+                # give the event loop a moment to finalize the cancelled recv
+                await asyncio.sleep(0)
 
                 # StopTransaction
                 await ws.send(json.dumps([2, "stop", "StopTransaction", {
