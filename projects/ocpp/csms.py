@@ -552,12 +552,13 @@ def view_charger_detail(*, charger_id=None, **_):
     """Detail view for a single charger with live log."""
     if not charger_id:
         return redirect("/ocpp/csms/charger-status")
-    if (
-        charger_id not in _active_cons
-        and charger_id not in _transactions
-        and charger_id not in _latest_heartbeat
-    ):
-        return redirect("/ocpp/csms/charger-status")
+    known_ids = set(_active_cons) | set(_transactions) | set(_latest_heartbeat)
+    if charger_id not in known_ids:
+        try:
+            if charger_id not in gw.ocpp.data.list_chargers():
+                return redirect("/ocpp/csms/charger-status")
+        except Exception:
+            return redirect("/ocpp/csms/charger-status")
 
     msg = ""
     if request.method == "POST":
