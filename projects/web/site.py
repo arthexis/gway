@@ -454,7 +454,7 @@ def view_feedback(*, name=None, email=None, topic=None, message=None):
             back = gw.web.app.build_url("feedback")
             return f"<h1>Missing required fields: {html.escape(miss)}</h1><p><a href='{back}'>Back</a></p>"
 
-        body = f"**From:** {name} <{email}>\n\n{message}"
+        body = f"**From:** {name}\n\n{message}"
         try:
             issue_url = _create_github_issue(topic, body)
         except Exception as e:
@@ -466,6 +466,7 @@ def view_feedback(*, name=None, email=None, topic=None, message=None):
 
     return """
         <h1>Send Feedback</h1>
+        <p>Your name and message may be publicly displayed and processed. Your email will be kept private.</p>
         <form method="post">
             <input type="text" name="name" placeholder="Your Name" required class="main" />
             <input type="email" name="email" placeholder="Email" required class="main" />

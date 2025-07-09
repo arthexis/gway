@@ -14,6 +14,7 @@ class FeedbackViewTests(unittest.TestCase):
         self.assertIn("name=\"email\"", html)
         self.assertIn("name=\"topic\"", html)
         self.assertIn("name=\"message\"", html)
+        self.assertIn("publicly displayed", html)
 
     def test_feedback_post_calls_issue(self):
         class FakeRequest:
@@ -27,6 +28,8 @@ class FeedbackViewTests(unittest.TestCase):
                     html = site.view_feedback(name='A', email='a@example.com', topic='Test', message='Hello')
                     self.assertIn('Thank you', html)
                     p.assert_called_once()
+                    body = p.call_args.kwargs['json']['body']
+                    self.assertNotIn('a@example.com', body)
 
 if __name__ == '__main__':
     unittest.main()
