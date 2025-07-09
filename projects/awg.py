@@ -264,16 +264,22 @@ def view_cable_finder(
             <form method="post" class="cable-form">
                 <table class="form-table two-col">
                     <tr>
-                        <td><label for="meters">Meters:</label></td>
-                        <td><input id="meters" type="number" name="meters" required min="1" /></td>
-                        <td><label for="amps">Amps:</label></td>
-                        <td><input id="amps" type="number" name="amps" value="40" /></td>
+                        <td>
+                            <label for="meters">Meters:</label>
+                            <input id="meters" type="number" name="meters" required min="1" />
+                        </td>
+                        <td>
+                            <label for="amps">Amps:</label>
+                            <input id="amps" type="number" name="amps" value="40" />
+                        </td>
                     </tr>
                     <tr>
-                        <td><label for="volts">Volts:</label></td>
-                        <td><input id="volts" type="number" name="volts" value="220" /></td>
-                        <td><label for="material">Material:</label></td>
                         <td>
+                            <label for="volts">Volts:</label>
+                            <input id="volts" type="number" name="volts" value="220" />
+                        </td>
+                        <td>
+                            <label for="material">Material:</label>
                             <select id="material" name="material">
                                 <option value="cu">Copper (cu)</option>
                                 <option value="al">Aluminum (al)</option>
@@ -281,16 +287,16 @@ def view_cable_finder(
                         </td>
                     </tr>
                     <tr>
-                        <td><label for="phases">Phases:</label></td>
                         <td>
+                            <label for="phases">Phases:</label>
                             <select id="phases" name="phases">
                                 <option value="2">AC Two Phases (2)</option>
                                 <option value="1">AC Single Phase (1)</option>
                                 <option value="3">AC Three Phases (3)</option>
                             </select>
                         </td>
-                        <td><label for="temperature">Temperature:</label></td>
                         <td>
+                            <label for="temperature">Temperature:</label>
                             <select id="temperature" name="temperature">
                                 <option value="auto">Auto</option>
                                 <option value="60">60C</option>
@@ -300,8 +306,8 @@ def view_cable_finder(
                         </td>
                     </tr>
                     <tr>
-                        <td><label for="conduit">Conduit:</label></td>
                         <td>
+                            <label for="conduit">Conduit:</label>
                             <select id="conduit" name="conduit">
                                 <option value="emt" selected>EMT</option>
                                 <option value="imc">IMC</option>
@@ -310,12 +316,14 @@ def view_cable_finder(
                                 <option value="none">None</option>
                             </select>
                         </td>
-                        <td><label for="max_awg">Max AWG:</label></td>
-                        <td><input id="max_awg" type="text" name="max_awg" /></td>
+                        <td>
+                            <label for="max_awg">Max AWG:</label>
+                            <input id="max_awg" type="text" name="max_awg" />
+                        </td>
                     </tr>
                     <tr>
-                        <td><label for="max_lines">Max Lines:</label></td>
                         <td>
+                            <label for="max_lines">Max Lines:</label>
                             <select id="max_lines" name="max_lines">
                                 <option value="1">1</option>
                                 <option value="2">2</option>
@@ -323,8 +331,8 @@ def view_cable_finder(
                                 <option value="4">4</option>
                             </select>
                         </td>
-                        <td><label for="ground">Ground:</label></td>
                         <td>
+                            <label for="ground">Ground:</label>
                             <select id="ground" name="ground">
                                 <option value="1" selected>1</option>
                                 <option value="0">0</option>
