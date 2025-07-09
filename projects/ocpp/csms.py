@@ -512,7 +512,7 @@ def view_charger_status(*, action=None, charger_id=None, **_):
 
     # --- The key block for autorefresh ---
     html.append(
-        '<div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5">'
+        '<div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5" data-gw-click="refresh">'
     )
     if not all_chargers:
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
@@ -603,7 +603,7 @@ def view_charger_detail(*, charger_id=None, **_):
         html.append(f'<p class="error">{msg}</p>')
 
     html.append(
-        f'<div id="charger-info" data-gw-render="charger_info" data-gw-refresh="5" data-charger-id="{charger_id}">' +
+        f'<div id="charger-info" data-gw-render="charger_info" data-gw-refresh="5" data-gw-click="refresh" data-charger-id="{charger_id}">' +
         _render_charger_card(charger_id, tx, state, raw_hb) +
         '</div>'
     )
@@ -625,7 +625,7 @@ def view_charger_detail(*, charger_id=None, **_):
     )
 
     html.append(
-        f'<div id="charger-log" data-gw-render="charger_log" data-gw-refresh="2" data-charger-id="{charger_id}">' +
+        f'<div id="charger-log" data-gw-render="charger_log" data-gw-refresh="2" data-gw-click="refresh" data-charger-id="{charger_id}">' +
         render_charger_log(charger_id=charger_id) +
         '</div>'
     )
