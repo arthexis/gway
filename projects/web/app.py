@@ -12,7 +12,7 @@ from gway import gw
 
 _ver = None
 _homes = []   # (title, route)
-_links: dict[str, list[str]] = {}
+_links: dict[str, list[object]] = {}
 _enabled = set()
 _registered_routes: set[tuple[str, str]] = set()
 _fresh_mtime = None
@@ -536,7 +536,7 @@ def add_links(route: str, links=None):
         _links[route] = parsed
         gw.debug(f"Added links for {route}: {parsed}")
 
-def parse_links(links) -> list[str]:
+def parse_links(links) -> list[object]:
     if not links:
         return []
     if isinstance(links, str):
@@ -546,4 +546,14 @@ def parse_links(links) -> list[str]:
             tokens = list(links)
         except Exception:
             tokens = []
-    return [t.strip() for t in tokens if t]
+    result: list[object] = []
+    for t in tokens:
+        token = str(t).strip()
+        if not token:
+            continue
+        if ':' in token:
+            proj, view = token.split(':', 1)
+            result.append((proj.strip(), view.strip()))
+        else:
+            result.append(token)
+    return result

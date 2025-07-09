@@ -167,5 +167,25 @@ web:
         self.assertEqual(commands, expected)
 
 
+class TestPrepareKwargParsing(unittest.TestCase):
+    def test_multi_word_kwargs(self):
+        import argparse
+
+        def dummy(**kwargs):
+            return kwargs
+
+        dummy.__var_keyword_name__ = "kwargs"
+
+        parsed = argparse.Namespace(kwargs=[
+            "--title", "My", "Great", "App", "--flag", "on"
+        ])
+
+        args, kw = console.prepare(parsed, dummy)
+
+        self.assertEqual(args, [])
+        self.assertEqual(kw["title"], "My Great App")
+        self.assertEqual(kw["flag"], "on")
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -248,19 +248,28 @@ def prepare(parsed_args, func_obj):
     var_kw_name = getattr(func_obj, "__var_keyword_name__", None)
     if var_kw_name:
         raw_items = getattr(parsed_args, var_kw_name, []) or []
-        it = iter(raw_items)
-        for token in it:
-            # support both “--key=value” and “--key value”
+        i = 0
+        while i < len(raw_items):
+            token = raw_items[i]
             if token.startswith("--") and "=" in token:
                 key, val = token[2:].split("=", 1)
+                i += 1
             elif token.startswith("--"):
                 key = token[2:]
-                try:
-                    val = next(it)
-                except StopIteration:
+                i += 1
+                if i >= len(raw_items):
                     abort(f"Expected a value after `{token}`")
+                val_tokens = []
+                while i < len(raw_items) and not raw_items[i].startswith("-"):
+                    val_tokens.append(raw_items[i])
+                    i += 1
+                if not val_tokens:
+                    abort(f"Expected a value after `{token}`")
+                val = " ".join(val_tokens)
             else:
-                abort(f"Invalid kwarg format `{token}`; expected `--key[=value]` or `--key value`.")
+                abort(
+                    f"Invalid kwarg format `{token}`; expected `--key[=value]` or `--key value`."
+                )
             extra_kwargs[key.replace("-", "_")] = val
 
     return func_args, {**func_kwargs, **extra_kwargs}
