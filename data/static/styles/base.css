@@ -190,6 +190,9 @@ input, textarea, select {
     font-family: inherit;
     box-sizing: border-box;
 }
+input[type="checkbox"], input[type="radio"] {
+    width: auto;
+}
 select {
     background: #fff;
     appearance: none;
