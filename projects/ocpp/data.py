@@ -244,12 +244,17 @@ def list_chargers() -> list[str]:
 def view_charger_summary(**_):
     """Simple HTML summary of charger data."""
     rows = get_summary()
-    html = ["<h1>OCPP Charger Summary</h1>"]
+    html = [
+        '<link rel="stylesheet" href="/static/ocpp/csms/charger_status.css">',
+        "<h1>OCPP Charger Summary</h1>",
+    ]
     if not rows:
         html.append("<p>No data.</p>")
         return "\n".join(html)
     html.append("<table class='ocpp-summary'>")
-    html.append("<tr><th>Charger</th><th>Sessions</th><th>Energy(kWh)</th><th>Last Stop</th><th>Last Error</th></tr>")
+    html.append(
+        "<tr><th>Charger</th><th>Sessions</th><th>Energy(kWh)</th><th>Last Stop</th><th>Last Error</th></tr>"
+    )
     for r in rows:
         html.append(
             f"<tr><td>{r['charger_id']}</td><td>{r['sessions']}</td><td>{r['energy']}</td>"
