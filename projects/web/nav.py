@@ -53,9 +53,15 @@ def render(*, homes=None, links=None):
             if sub and current_route.startswith(proj_root):
                 links_html += '<ul class="sub-links">'
                 for name in sub:
-                    sub_route = f"{proj_root}/{name}".strip('/')
+                    if isinstance(name, tuple):
+                        target_proj, view_name = name
+                        target_root = target_proj.replace('.', '/')
+                        sub_route = f"{target_root}/{view_name}".strip('/')
+                        label = view_name.replace('-', ' ').replace('_', ' ').title()
+                    else:
+                        sub_route = f"{proj_root}/{name}".strip('/')
+                        label = name.replace('-', ' ').replace('_',' ').title()
                     active = ' class="active"' if sub_route == current_route else ''
-                    label = name.replace('-', ' ').replace('_',' ').title()
                     links_html += f'<li><a href="/{sub_route}"{active}>{label}</a></li>'
                 links_html += '</ul>'
             links_html += '</li>'

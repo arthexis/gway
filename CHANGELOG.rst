@@ -4,6 +4,8 @@ Changelog
 Unreleased
 ----------
 
+- Allow spaces in kwarg values for CLI and recipes
+
 0.4.40 [build 225d99]
 ---------------------
 
