@@ -5,6 +5,7 @@ import html
 import shlex
 from docutils.core import publish_parts
 from pathlib import Path
+import re
 from gway import gw, __
 from gway.console import process, chunk
 import markdown as mdlib
@@ -182,6 +183,15 @@ def _is_hidden_or_private(fname):
         return True
     return False
 
+def _looks_like_html(text: str) -> bool:
+    """Heuristic check for HTML content."""
+    if not isinstance(text, str):
+        return False
+    stripped = text.strip()
+    if not stripped:
+        return False
+    return bool(re.search(r'<[a-zA-Z][^>]*>', stripped))
+
 def view_help(topic="", *args, **kwargs):
     """
     Render dynamic help based on GWAY introspection and search-style links.
@@ -204,7 +214,14 @@ def view_help(topic="", *args, **kwargs):
                 tokens = shlex.split(cmd_str)
                 commands = chunk(tokens)
                 results, _ = process(commands)
-                html_parts = [gw.cast.to_html(r) for r in results if r is not None]
+                html_parts = []
+                for r in results:
+                    if r is None:
+                        continue
+                    if isinstance(r, str) and _looks_like_html(r):
+                        html_parts.append(r)
+                    else:
+                        html_parts.append(gw.cast.to_html(r))
                 return "<div class='cli-result'>" + "<hr>".join(html_parts) + "</div>"
             except Exception as ex:
                 return f"<pre>{html.escape(str(ex))}</pre>"
