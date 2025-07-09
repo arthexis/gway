@@ -7,8 +7,16 @@
 }
 .form-table td {
     padding: 4px 8px;
+    vertical-align: middle;
 }
 .form-table td:first-child {
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 1.1em;
+}
+.form-table.two-col td:nth-child(1),
+.form-table.two-col td:nth-child(3) {
     text-align: right;
     white-space: nowrap;
     font-weight: 600;
@@ -20,6 +28,10 @@
     padding: 4px 6px;
     font-size: 1em;
     box-sizing: border-box;
+}
+.cable-form button.submit {
+    padding: 0.6em 2em;
+    min-width: 8em;
 }
 .warning {
     background: #fee;
