@@ -54,7 +54,7 @@ Core Concepts
   results, ``gw.context`` and environment variables.
 - **Recipes** ``.gwr``: text files listing commands.  Indented lines reuse the
   previous command allowing very compact scripts.  Run them via
-``gway -r file`` or ``gw.run_recipe('file.gwr')``.
+  ``gway -r file`` or ``gw.run_recipe('file.gwr')``.
 - **Unquoted Kwargs**: values after ``--key`` may include spaces up to the next
   ``-`` or ``--`` token; quoting is optional.
 - **Environment Loading**: ``envs/clients/<user>.env`` and
