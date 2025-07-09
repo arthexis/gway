@@ -207,6 +207,21 @@ class TestPrepareKwargParsing(unittest.TestCase):
         self.assertEqual(kw["title"], "My Great App")
         self.assertEqual(kw["flag"], "on")
 
+    def test_unquoted_known_option(self):
+        import argparse
+
+        def dummy(*, title=""):
+            return title
+
+        parser = argparse.ArgumentParser()
+        console.add_func_args(parser, dummy)
+        tokens = console.join_unquoted_kwargs(["--title", "My", "Great", "App"])
+        parsed = parser.parse_args(tokens)
+        args, kw = console.prepare(parsed, dummy)
+
+        self.assertEqual(args, [])
+        self.assertEqual(kw["title"], "My Great App")
+
 
 if __name__ == '__main__':
     unittest.main()

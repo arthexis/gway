@@ -190,6 +190,8 @@ def process(command_sources, callback=None, **context):
         if not chunk:
             continue
 
+        chunk = join_unquoted_kwargs(list(chunk))
+
         # Resolve nested project/function path
         resolved_obj, func_args, path = resolve_nested_object(gw, list(chunk))
 
@@ -273,6 +275,29 @@ def prepare(parsed_args, func_obj):
             extra_kwargs[key.replace("-", "_")] = val
 
     return func_args, {**func_kwargs, **extra_kwargs}
+
+def join_unquoted_kwargs(tokens: list[str]) -> list[str]:
+    """Combine values after ``--key`` up to the next dash token.
+
+    This allows passing multi-word strings without quoting as documented
+    in the "Unquoted Kwargs" section of :mod:`README`.
+    """
+    combined: list[str] = []
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        combined.append(token)
+        if token.startswith("--") and "=" not in token:
+            i += 1
+            value_parts = []
+            while i < len(tokens) and not tokens[i].startswith("-"):
+                value_parts.append(tokens[i])
+                i += 1
+            if value_parts:
+                combined.append(" ".join(value_parts))
+            continue
+        i += 1
+    return combined
 
 def chunk(args_commands):
     """Split args.commands into logical chunks without breaking quoted arguments."""
