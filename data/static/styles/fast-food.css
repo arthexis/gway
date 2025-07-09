@@ -65,7 +65,7 @@ aside ul.sub-links {
 
 aside ul.sub-links li a {
     text-transform: none;
-    padding: 0.2em 0;
+    padding: 0.2em 0 0.2em 1.05em;
 }
 
 main {
