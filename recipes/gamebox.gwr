@@ -3,10 +3,7 @@
 
 web app setup-app:
     --home reader
-    --project games.conway --home game-of-life --path conway
-    --project games.mtg --home search-games
-    --project games.qpig --home qpig-farm --path qpig
-    --project games.snl --home snl-board --path snl
+    --project games --home games --links game-of-life,search-games,qpig-farm,snl-board
     --project web.nav --home style-switcher
     --project web.cookies --home cookie-jar
 

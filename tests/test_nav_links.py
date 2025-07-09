@@ -18,7 +18,7 @@ class FakeRequest:
 class NavLinksTests(unittest.TestCase):
     def setUp(self):
         self.orig_request = nav.request
-        nav.request = FakeRequest('/games/conway/game-of-life')
+        nav.request = FakeRequest('/games/game-of-life')
         self.orig_app = nav.gw.web.app
         nav.gw.web.app = type('A', (), {'is_setup': lambda self2, n: False})()
         self.orig_cookies = nav.gw.web.cookies
@@ -30,14 +30,14 @@ class NavLinksTests(unittest.TestCase):
         nav.gw.web.cookies = self.orig_cookies
 
     def test_render_includes_project_links(self):
-        homes = [('Games', 'games/conway/game-of-life')]
-        html = nav.render(homes=homes, links={'games/conway/game-of-life': ['score', 'about']})
+        homes = [('Games', 'games/game-of-life')]
+        html = nav.render(homes=homes, links={'games/game-of-life': ['score', 'about']})
         soup = BeautifulSoup(html, 'html.parser')
         sub = soup.find('ul', class_='sub-links')
         self.assertIsNotNone(sub)
         hrefs = [a['href'] for a in sub.find_all('a')]
-        self.assertIn('/games/conway/score', hrefs)
-        self.assertIn('/games/conway/about', hrefs)
+        self.assertIn('/games/score', hrefs)
+        self.assertIn('/games/about', hrefs)
 
 if __name__ == '__main__':
     unittest.main()
