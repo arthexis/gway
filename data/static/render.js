@@ -7,6 +7,7 @@
  * - data-gw-refresh: interval in seconds (optional)
  * - data-gw-params: comma-separated data attributes to POST (optional; defaults to all except data-gw-*)
  * - data-gw-target: 'content' (default, replace innerHTML), or 'replace' (replace the whole element)
+ * - data-gw-click: any value starting with "re" to manually re-render the block on click (optional, case-insensitive)
  *
  * No external dependencies.
  */
@@ -82,6 +83,14 @@
         timers[id] = setInterval(() => renderBlock(el), refresh * 1000);
         // Render once immediately
         renderBlock(el);
+      }
+      let click = el.getAttribute('data-gw-click');
+      if (click && /^re/i.test(click) && !el.dataset.gwClickSetup) {
+        el.addEventListener('click', evt => {
+          evt.preventDefault();
+          renderBlock(el);
+        });
+        el.dataset.gwClickSetup = '1';
       }
     });
   }
