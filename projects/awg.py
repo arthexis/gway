@@ -245,7 +245,7 @@ def view_cable_finder(
     """Page builder for AWG cable finder with HTML form and result."""
     if not meters:
         return '''<link rel="stylesheet" href="/static/awg/cable_finder.css">
-            <h1>AWG Cable Finder</h1>
+            <h1>AWG Cable & Conduit Finder</h1>
             <form method="post" class="cable-form">
                 <table class="form-table">
                     <tr>
@@ -291,6 +291,18 @@ def view_cable_finder(
                         </td>
                     </tr>
                     <tr>
+                        <td><label for="conduit">Conduit:</label></td>
+                        <td>
+                            <select id="conduit" name="conduit">
+                                <option value="emt" selected>EMT</option>
+                                <option value="imc">IMC</option>
+                                <option value="rmc">RMC</option>
+                                <option value="fmc">FMC</option>
+                                <option value="none">None</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
                         <td><label for="max_awg">Max AWG:</label></td>
                         <td><input id="max_awg" type="text" name="max_awg" /></td>
                     </tr>
@@ -311,12 +323,17 @@ def view_cable_finder(
         '''
     if max_awg in (None, ""):
         max_awg = None
+    if conduit in (None, "", "none", "None"):
+        conduit_arg = None
+    else:
+        conduit_arg = conduit
     try:
         result = find_awg(
             meters=meters, amps=amps, volts=volts,
             material=material,
             max_lines=max_lines, phases=phases,
             max_awg=max_awg, temperature=temperature,
+            conduit=conduit_arg,
         )
     except Exception as e:
         return f"<p class='error'>Error: {e}</p><p><a href='/awg/cable-finder'>&#8592; Try again</a></p>"
@@ -339,6 +356,7 @@ def view_cable_finder(
             <li><strong>Voltage Drop:</strong> {result['vdrop']:.2f} V ({result['vdperc']:.2f}%)</li>
             <li><strong>Voltage at End:</strong> {result['vend']:.2f} V</li>
             <li><strong>Temperature Rating:</strong> {result['temperature']}C</li>
+            {f'<li><strong>Conduit:</strong> {result["conduit"].upper()} {result["pipe_inch"]}</li>' if result.get("pipe_inch") else ''}
         </ul>
         {f"<p class='warning'>{result['warning']}</p>" if result.get('warning') else ''}
         <p>
