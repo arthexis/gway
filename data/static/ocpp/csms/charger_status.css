@@ -164,3 +164,17 @@
     padding: 4px;
 }
 .ocpp-status form.inline { display: inline; }
+
+/* Summary table for stored charger data */
+.ocpp-summary {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.94em;
+}
+.ocpp-summary th, .ocpp-summary td {
+    border: 1px solid #bbb;
+    padding: 4px 6px;
+}
+.ocpp-summary td {
+    vertical-align: top;
+}
