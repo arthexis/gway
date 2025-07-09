@@ -202,6 +202,47 @@ select {
     background-size: 0.8em;
 }
 
+/* Basic form table layout */
+.form-table {
+    border-collapse: collapse;
+}
+.form-table td {
+    padding: 4px 8px;
+    vertical-align: top;
+}
+.form-table label {
+    display: block;
+    font-weight: 600;
+    font-size: 1.1em;
+    margin-bottom: 4px;
+}
+.form-table.two-col td {
+    width: 50%;
+    padding-bottom: 16px;
+}
+
+@media (min-width: 600px) {
+    .form-table.two-col td {
+        display: flex;
+        align-items: center;
+    }
+    .form-table.two-col label {
+        display: inline-block;
+        width: 6em;
+        margin: 0 8px 0 0;
+        text-align: right;
+    }
+    .form-table.two-col input,
+    .form-table.two-col select {
+        flex: 1 1 auto;
+        width: auto;
+    }
+    .form-table.two-col label + input,
+    .form-table.two-col label + select {
+        margin-top: 0;
+    }
+}
+
 /* 9. Responsive design: MOBILE OVERRIDES */
 @media (max-width: 650px) {
     .layout {

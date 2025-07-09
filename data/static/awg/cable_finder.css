@@ -7,21 +7,39 @@
 }
 .form-table td {
     padding: 4px 8px;
-    vertical-align: middle;
+    vertical-align: top;
 }
-.form-table td:first-child {
-    text-align: right;
-    white-space: nowrap;
+.form-table label {
+    display: block;
     font-weight: 600;
     font-size: 1.1em;
+    margin-bottom: 4px;
 }
-.form-table.two-col td:nth-child(1),
-.form-table.two-col td:nth-child(3) {
+.form-table.two-col td {
+    width: 50%;
     padding-bottom: 16px;
-    text-align: right;
-    white-space: nowrap;
-    font-weight: 600;
-    font-size: 1.1em;
+}
+
+@media (min-width: 600px) {
+    .form-table.two-col td {
+        display: flex;
+        align-items: center;
+    }
+    .form-table.two-col label {
+        display: inline-block;
+        width: 6em;
+        margin: 0 8px 0 0;
+        text-align: right;
+    }
+    .form-table.two-col input,
+    .form-table.two-col select {
+        flex: 1 1 auto;
+        width: auto;
+    }
+    .form-table.two-col label + input,
+    .form-table.two-col label + select {
+        margin-top: 0;
+    }
 }
 .cable-form input,
 .cable-form select {
