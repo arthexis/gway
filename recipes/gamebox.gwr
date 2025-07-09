@@ -3,7 +3,7 @@
 
 web app setup-app:
     --home reader
-    --project games --home games --links game-of-life,search-games,qpig-farm,snl-board
+    --project games --home games --links game-of-life,search-games,qpig-farm,massive-snake
     --project web.nav --home style-switcher
     --project web.cookies --home cookie-jar
 
