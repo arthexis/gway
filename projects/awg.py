@@ -311,7 +311,7 @@ def view_cable_finder(
                     </tr>
                     <tr>
                         <td><label for="max_lines">Max Lines:</label></td>
-                        <td colspan="3">
+                        <td>
                             <select id="max_lines" name="max_lines">
                                 <option value="1">1</option>
                                 <option value="2">2</option>
