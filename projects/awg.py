@@ -221,11 +221,12 @@ def find_conduit(awg, cables, *, conduit="emt"):
         assert 1 <= cables <= 30, "Valid for 1-30 cables per conduit."
 
         awg = AWG(awg)
+        col = f"awg_{str(awg)}"
         sql = f"""
-            SELECT trade_size
+            SELECT trade_size, {col}
             FROM awg_conduit_fill
             WHERE lower(conduit) = lower(:conduit)
-            AND awg_{str(awg)} >= :cables
+            AND {col} >= :cables
         """
 
         cursor.execute(sql, {"conduit": conduit, "cables": cables})
@@ -243,7 +244,10 @@ def find_conduit(awg, cables, *, conduit="emt"):
                     total += float(part)
             return total
 
-        size = min(rows, key=lambda r: _to_float(r[0]))[0]
+        rows.sort(key=lambda r: _to_float(r[0]))
+        size, capacity = rows[0]
+        if capacity == cables and len(rows) > 1:
+            size = rows[1][0]
 
         return {"size_inch": size}
 
