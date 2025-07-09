@@ -247,39 +247,65 @@ def view_cable_finder(
         return '''<link rel="stylesheet" href="/static/awg/cable_finder.css">
             <h1>AWG Cable Finder</h1>
             <form method="post" class="cable-form">
-                <label>Meters:<input type="number" name="meters" required min="1" /></label>
-                <label>Amps:<input type="number" name="amps" value="40" /></label>
-                <label>Volts:<input type="number" name="volts" value="220" /></label>
-                <label>Material:
-                    <select name="material">
-                        <option value="cu">Copper (cu)</option>
-                        <option value="al">Aluminum (al)</option>
-                    </select>
-                </label>
-                <label>Phases:
-                    <select name="phases">
-                        <option value="2">AC Two Phases (2)</option>
-                        <option value="1">AC Single Phase (1)</option>
-                        <option value="3">AC Three Phases (3)</option>
-                    </select>
-                </label>
-                <label>Temperature:
-                    <select name="temperature">
-                        <option value="auto">Auto</option>
-                        <option value="60">60C</option>
-                        <option value="75">75C</option>
-                        <option value="90">90C</option>
-                    </select>
-                </label>
-                <label>Max AWG:<input type="text" name="max_awg" /></label>
-                <label>Max Lines:
-                    <select name="max_lines">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                    </select>
-                </label>
+                <table class="form-table">
+                    <tr>
+                        <td><label for="meters">Meters:</label></td>
+                        <td><input id="meters" type="number" name="meters" required min="1" /></td>
+                    </tr>
+                    <tr>
+                        <td><label for="amps">Amps:</label></td>
+                        <td><input id="amps" type="number" name="amps" value="40" /></td>
+                    </tr>
+                    <tr>
+                        <td><label for="volts">Volts:</label></td>
+                        <td><input id="volts" type="number" name="volts" value="220" /></td>
+                    </tr>
+                    <tr>
+                        <td><label for="material">Material:</label></td>
+                        <td>
+                            <select id="material" name="material">
+                                <option value="cu">Copper (cu)</option>
+                                <option value="al">Aluminum (al)</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label for="phases">Phases:</label></td>
+                        <td>
+                            <select id="phases" name="phases">
+                                <option value="2">AC Two Phases (2)</option>
+                                <option value="1">AC Single Phase (1)</option>
+                                <option value="3">AC Three Phases (3)</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label for="temperature">Temperature:</label></td>
+                        <td>
+                            <select id="temperature" name="temperature">
+                                <option value="auto">Auto</option>
+                                <option value="60">60C</option>
+                                <option value="75">75C</option>
+                                <option value="90">90C</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label for="max_awg">Max AWG:</label></td>
+                        <td><input id="max_awg" type="text" name="max_awg" /></td>
+                    </tr>
+                    <tr>
+                        <td><label for="max_lines">Max Lines:</label></td>
+                        <td>
+                            <select id="max_lines" name="max_lines">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
                 <button type="submit" class="submit">Find Cable</button>
             </form>
         '''
