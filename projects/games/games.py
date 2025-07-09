@@ -17,7 +17,7 @@ def _load(mod_file: str, name: str):
 conway = _load("conway.py", "games.conway")
 mtg = _load("mtg.py", "games.mtg")
 qpig = _load("qpig.py", "games.qpig")
-snl = _load("snl.py", "games.snl")
+massive_snake = _load("snl.py", "games.massive_snake")
 
 WIKI_ICON = (
     '<svg viewBox="0 0 20 20" width="12" height="12" style="vertical-align:baseline">'
@@ -46,9 +46,9 @@ _DEF = [
         "https://en.wikipedia.org/wiki/Incremental_game",
     ),
     (
-        "Snakes and Ladders",
-        "snl-board",
-        "Race to 100 while snakes send you back down the board.",
+        "Massive Snake",
+        "massive-snake",
+        "A Massively Multiplayer Game of Snakes and Ladders.",
         "https://en.wikipedia.org/wiki/Snakes_and_Ladders",
     ),
 ]
@@ -78,6 +78,6 @@ def view_qpig_farm(*args, **kwargs):
     return qpig.view_qpig_farm(*args, **kwargs)
 
 
-def view_snl_board(*args, **kwargs):
-    return snl.view_snl_board(*args, **kwargs)
+def view_massive_snake(*args, **kwargs):
+    return massive_snake.view_massive_snake(*args, **kwargs)
 

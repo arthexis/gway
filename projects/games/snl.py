@@ -1,11 +1,11 @@
 # file: projects/games/snl.py
-"""Simple shared Snakes and Ladders game."""
+"""Simple shared Massive Snake game (multiplayer Snakes and Ladders)."""
 
 import json
 import random
 from gway import gw
 
-BOARD_FILE = gw.resource("work", "shared", "games", "snl.json", touch=True)
+BOARD_FILE = gw.resource("work", "shared", "games", "massive_snake.json", touch=True)
 BOARD_SIZE = 100
 
 # Basic snakes and ladders layout
@@ -41,12 +41,26 @@ def _use_cookies():
 
 
 def _get_player_id():
-    return gw.web.cookies.get("snl_id") if _use_cookies() else None
+    return gw.web.cookies.get("msnake_id") if _use_cookies() else None
 
 
 def _set_player_id(pid: str):
     if _use_cookies():
-        gw.web.cookies.set("snl_id", pid, path="/", max_age=30 * 24 * 3600)
+        gw.web.cookies.set("msnake_id", pid, path="/", max_age=30 * 24 * 3600)
+
+
+def _get_ascensions() -> int:
+    if not _use_cookies():
+        return 0
+    try:
+        return int(gw.web.cookies.get("msnake_asc") or "0")
+    except Exception:
+        return 0
+
+
+def _set_ascensions(val: int):
+    if _use_cookies():
+        gw.web.cookies.set("msnake_asc", str(val), path="/", max_age=365 * 24 * 3600)
 
 
 def _add_player(board, name: str, color: str) -> str:
@@ -57,17 +71,48 @@ def _add_player(board, name: str, color: str) -> str:
 
 def _apply_move(pos: int, roll: int) -> int:
     pos += roll
+    if pos > BOARD_SIZE:
+        pos = BOARD_SIZE - (pos - BOARD_SIZE)
     if pos in SNAKES:
         pos = SNAKES[pos]
     elif pos in LADDERS:
         pos = LADDERS[pos]
-    return min(pos, BOARD_SIZE)
+    return max(0, min(pos, BOARD_SIZE))
 
 
-def view_snl_board(*, action=None, name=None, color=None):
-    """Main Snakes and Ladders view."""
+def _board_html(board: dict) -> str:
+    """Return an abstract HTML board grid."""
+    # collect players per position for quick lookup
+    players_at = {}
+    for info in board.get("players", {}).values():
+        players_at.setdefault(info.get("pos", 0), []).append(info)
+
+    rows = []
+    for r in range(10):
+        start = BOARD_SIZE - r * 10
+        nums = range(start, start - 10, -1) if r % 2 == 0 else range(start - 9, start + 1)
+        cells = []
+        for n in nums:
+            classes = []
+            if n in SNAKES:
+                classes.append("snake")
+            if n in LADDERS:
+                classes.append("ladder")
+            marks = "".join(
+                f'<span class="player" style="color:{p.get("color", "#000")}">&#9679;</span>'
+                for p in players_at.get(n, [])
+            )
+            num = f'<div class="num">{n}</div>'
+            cells.append(f'<td class="{" ".join(classes)}">{num}{marks}</td>')
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+    return '<table class="snake-board">' + "".join(rows) + "</table>"
+
+
+def view_massive_snake(*, action=None, name=None, color=None):
+    """Main Massive Snake view."""
     board = load_board()
     pid = _get_player_id()
+    asc = _get_ascensions()
 
     if not pid and name and color:
         pid = _add_player(board, name, color)
@@ -75,7 +120,13 @@ def view_snl_board(*, action=None, name=None, color=None):
         _set_player_id(pid)
 
     message = ""
-    if action == "roll":
+    if action == "ascend" and pid and board["players"].get(pid, {}).get("pos") >= BOARD_SIZE:
+        asc += 1
+        _set_ascensions(asc)
+        board["players"][pid]["pos"] = 0
+        save_board(board)
+        message = "Ascended!"
+    elif action == "roll":
         roll = random.randint(1, 6)
         board["last_roll"] = roll
         for pdata in board["players"].values():
@@ -101,20 +152,32 @@ def view_snl_board(*, action=None, name=None, color=None):
         )
 
     roll_button = ""
+    ascend_button = ""
     if pid:
         roll_button = (
             "<form method='post'>"
             "<button type='submit' name='action' value='roll'>Roll Dice</button>"
             "</form>"
         )
+        if board["players"].get(pid, {}).get("pos") >= BOARD_SIZE:
+            ascend_button = (
+                "<form method='post'>"
+                "<button type='submit' name='action' value='ascend'>Ascend</button>"
+                "</form>"
+            )
 
     html = [
-        "<h1>Snakes and Ladders</h1>",
+        '<link rel="stylesheet" href="/static/games/massive_snake/board.css">',
+        "<h1>Massive Snake</h1>",
+        "<p><em>A Massively Multiplayer Game of Snakes and Ladders.</em></p>",
         join_form,
         f"<p>{message}</p>" if message else "",
+        f"<p>Ascensions: {asc}</p>" if pid else "",
         roll_button,
+        ascend_button,
         "<table><tr><th>Player</th><th>Position</th></tr>",
         "".join(rows),
         "</table>",
+        _board_html(board),
     ]
     return "\n".join(html)
