@@ -14,6 +14,13 @@
     font-weight: 600;
     font-size: 1.1em;
 }
+.form-table.two-col td:nth-child(1),
+.form-table.two-col td:nth-child(3) {
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 1.1em;
+}
 .cable-form input,
 .cable-form select {
     width: 100%;
