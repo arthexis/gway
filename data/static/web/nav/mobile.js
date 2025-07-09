@@ -9,6 +9,7 @@
     const SPLITTER_ID = 'nav-splitter';
     const ARROW_WIDTH = 54; // px
     let isOpen = true;
+    let initialized = false;
 
     function isMobile() {
         return window.innerWidth <= 650;
@@ -187,8 +188,19 @@
         const layout = document.querySelector(LAYOUT_SELECTOR);
         if (!layout) return;
 
+        const sameOrigin = document.referrer &&
+            new URL(document.referrer, location.href).origin === location.origin;
+
         if (isMobile()) {
-            rollNav(true); // mobile: start closed
+            if (!initialized) {
+                if (sameOrigin) {
+                    rollNav(true);
+                } else {
+                    rollNav(false);
+                    setTimeout(() => rollNav(true), 400);
+                }
+                initialized = true;
+            }
             showHandle();
             fixFooterOverlap();
             fixMainMargin();
