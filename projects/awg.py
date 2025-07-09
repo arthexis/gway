@@ -356,7 +356,7 @@ def view_cable_finder(
             <li><strong>Voltage Drop:</strong> {result['vdrop']:.2f} V ({result['vdperc']:.2f}%)</li>
             <li><strong>Voltage at End:</strong> {result['vend']:.2f} V</li>
             <li><strong>Temperature Rating:</strong> {result['temperature']}C</li>
-            {f'<li><strong>Conduit:</strong> {result["conduit"].upper()} {result["pipe_inch"]}"</li>' if result.get('pipe_inch') else ''}
+            {f'<li><strong>Conduit:</strong> {result["conduit"].upper()} {result["pipe_inch"]}</li>' if result.get("pipe_inch") else ''}
         </ul>
         {f"<p class='warning'>{result['warning']}</p>" if result.get('warning') else ''}
         <p>
