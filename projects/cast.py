@@ -158,17 +158,35 @@ def to_bool(val):
         # Fallback: use regular bool conversion
         return bool(val)
 
-def to_dict(obj):
+def to_dict(obj, *, max_depth: int = 4):
     """
-    Attempt to coerce input into a dict.
-    - If input is a dict, return as-is.
-    - If input is a string, parse as JSON or HTML form data.
-    - If input is bytes, decode as UTF-8 and parse.
-    - Raises ValueError if not possible.
+    Attempt to coerce ``obj`` into a sanitized ``dict``.
+
+    The result is limited to ``max_depth`` levels. Any deeper structures are
+    replaced with ``"..."`` to avoid runaway recursion.
+
+    Supported inputs:
+    - ``dict`` (returned as-is, but sanitized)
+    - ``str`` or ``bytes`` containing JSON or HTML form data
+    - objects with a ``__dict__`` attribute
+
+    ``ValueError`` is raised if conversion is impossible.
     """
+
+    def _sanitize(o, depth: int = 0):
+        if depth >= max_depth:
+            return "..."
+        if isinstance(o, dict):
+            return {k: _sanitize(v, depth + 1) for k, v in o.items()}
+        if isinstance(o, (list, tuple, set)):
+            return [_sanitize(v, depth + 1) for v in o]
+        if hasattr(o, "__dict__"):
+            return _sanitize(vars(o), depth + 1)
+        return o
+
     # Idempotent: already dict
     if isinstance(obj, dict):
-        return obj
+        return _sanitize(obj)
 
     # Accept bytes, decode to str
     if isinstance(obj, bytes):
@@ -181,7 +199,7 @@ def to_dict(obj):
         try:
             data = json.loads(text)
             if isinstance(data, dict):
-                return data
+                return _sanitize(data)
         except Exception:
             pass
 
@@ -239,9 +257,12 @@ def to_dict(obj):
             parsed = extract_fields(soup)
             if not parsed:
                 raise ValueError("No form-like data found in HTML")
-            return parsed
+            return _sanitize(parsed)
         except Exception:
             pass
+
+    if hasattr(obj, "__dict__"):
+        return _sanitize(vars(obj))
 
     raise ValueError("Cannot convert input to dict")
 
