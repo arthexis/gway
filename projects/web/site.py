@@ -432,7 +432,7 @@ def _create_github_issue(title: str, body: str) -> str:
     return data.get("html_url", "")
 
 
-def view_feedback(*, name=None, email=None, topic=None, message=None):
+def view_feedback(*, name=None, email=None, topic=None, message=None, create_issue=None):
     """Display feedback form and submit feedback as a GitHub issue."""
     import html
     from bottle import request
@@ -442,6 +442,7 @@ def view_feedback(*, name=None, email=None, topic=None, message=None):
         email = (email or "").strip()
         topic = (topic or "").strip()
         message = (message or "").strip()
+        create_issue = bool(create_issue)
 
         missing = [field for field, val in [
             ("Name", name),
@@ -454,23 +455,32 @@ def view_feedback(*, name=None, email=None, topic=None, message=None):
             back = gw.web.app.build_url("feedback")
             return f"<h1>Missing required fields: {html.escape(miss)}</h1><p><a href='{back}'>Back</a></p>"
 
-        body = f"**From:** {name} <{email}>\n\n{message}"
-        try:
-            issue_url = _create_github_issue(topic, body)
-        except Exception as e:
-            err = html.escape(str(e))
-            back = gw.web.app.build_url("feedback")
-            return f"<h1>Error submitting feedback</h1><pre>{err}</pre><p><a href='{back}'>Back</a></p>"
+        issue_url = ""
+        if create_issue:
+            body = f"**From:** {name}\n\n{message}"
+            try:
+                issue_url = _create_github_issue(topic, body)
+            except Exception as e:
+                err = html.escape(str(e))
+                back = gw.web.app.build_url("feedback")
+                return f"<h1>Error submitting feedback</h1><pre>{err}</pre><p><a href='{back}'>Back</a></p>"
+        else:
+            gw.mail.send(f"[Feedback] {topic}", body=f"From: {name} <{email}>\n\n{message}")
 
-        return f"<h1>Thank you for your feedback!</h1><p>It was recorded as <a href='{issue_url}'>GitHub issue</a>.</p>"
+        msg = "<h1>Thank you for your feedback!</h1>"
+        if issue_url:
+            msg += f"<p>It was recorded as <a href='{issue_url}'>GitHub issue</a>.</p>"
+        return msg
 
     return """
         <h1>Send Feedback</h1>
+        <p>Your name and message may be publicly displayed and processed. Your email will be kept private.</p>
         <form method="post">
             <input type="text" name="name" placeholder="Your Name" required class="main" />
             <input type="email" name="email" placeholder="Email" required class="main" />
             <input type="text" name="topic" placeholder="Topic" required class="main" />
             <textarea name="message" placeholder="Message" required rows="6" class="main"></textarea>
+            <label><input type="checkbox" name="create_issue" value="1" /> Optional: Create an Issue Report for GWAY or this website.</label>
             <button type="submit" class="submit">Submit</button>
         </form>
     """

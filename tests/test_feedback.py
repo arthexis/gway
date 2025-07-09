@@ -14,6 +14,8 @@ class FeedbackViewTests(unittest.TestCase):
         self.assertIn("name=\"email\"", html)
         self.assertIn("name=\"topic\"", html)
         self.assertIn("name=\"message\"", html)
+        self.assertIn("publicly displayed", html)
+        self.assertIn("Create an Issue Report", html)
 
     def test_feedback_post_calls_issue(self):
         class FakeRequest:
@@ -24,9 +26,24 @@ class FeedbackViewTests(unittest.TestCase):
                 with patch('requests.post') as p:
                     p.return_value.status_code = 201
                     p.return_value.json.return_value = {'html_url': 'http://example.com'}
-                    html = site.view_feedback(name='A', email='a@example.com', topic='Test', message='Hello')
+                    html = site.view_feedback(name='A', email='a@example.com', topic='Test', message='Hello', create_issue=True)
                     self.assertIn('Thank you', html)
                     p.assert_called_once()
+                    body = p.call_args.kwargs['json']['body']
+                    self.assertNotIn('a@example.com', body)
+
+    def test_feedback_post_without_checkbox(self):
+        class FakeRequest:
+            def __init__(self):
+                self.method = "POST"
+        with patch('bottle.request', FakeRequest()):
+            with patch.dict(os.environ, {'GH_TOKEN': 'x'}):
+                with patch('requests.post') as p:
+                    with patch.object(gw.mail, 'send') as mail_send:
+                        html = site.view_feedback(name='A', email='a@example.com', topic='Test', message='Hello')
+                        self.assertIn('Thank you', html)
+                        p.assert_not_called()
+                        mail_send.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()
