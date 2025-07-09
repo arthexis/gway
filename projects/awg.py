@@ -215,32 +215,43 @@ def find_awg(
 
 def find_conduit(awg, cables, *, conduit="emt"):
     """Calculate the kind of conduit required for a set of cables."""
-    with gw.sql.open_connection() as cursor:
+    with gw.sql.open_connection(autoload=True) as cursor:
 
         assert conduit in ("emt", "imc", "rmc", "fmc"), "Allowed: emt, imc, rmc, fmc."
         assert 1 <= cables <= 30, "Valid for 1-30 cables per conduit."
-        
+
         awg = AWG(awg)
         sql = f"""
             SELECT trade_size
             FROM awg_conduit_fill
             WHERE lower(conduit) = lower(:conduit)
             AND awg_{str(awg)} >= :cables
-            ORDER BY trade_size DESC LIMIT 1  
         """
 
         cursor.execute(sql, {"conduit": conduit, "cables": cables})
-        row = cursor.fetchone()
-        if not row:
+        rows = cursor.fetchall()
+        if not rows:
             return {"trade_size": "n/a"}
 
-        return {"size_inch": row[0]}
+        def _to_float(value: str) -> float:
+            total = 0.0
+            for part in value.split():
+                if "/" in part:
+                    num, den = part.split("/")
+                    total += float(num) / float(den)
+                else:
+                    total += float(part)
+            return total
+
+        size = min(rows, key=lambda r: _to_float(r[0]))[0]
+
+        return {"size_inch": size}
 
 
 def view_cable_finder(
     *, meters=None, amps="40", volts="220", material="cu",
     max_lines="1", max_awg=None, phases="1", temperature=None,
-    conduit=None, neutral="0", **kwargs
+    conduit=None, ground="1", neutral="0", **kwargs
 ):
     """Page builder for AWG cable finder with HTML form and result."""
     if not meters:
@@ -308,6 +319,13 @@ def view_cable_finder(
                                 <option value="4">4</option>
                             </select>
                         </td>
+                        <td><label for="ground">Ground:</label></td>
+                        <td>
+                            <select id="ground" name="ground">
+                                <option value="1" selected>1</option>
+                                <option value="0">0</option>
+                            </select>
+                        </td>
                     </tr>
                 </table>
                 <button type="submit" class="submit">Find Cable</button>
@@ -325,7 +343,7 @@ def view_cable_finder(
             material=material,
             max_lines=max_lines, phases=phases,
             max_awg=max_awg, temperature=temperature,
-            conduit=conduit_arg,
+            conduit=conduit_arg, ground=ground,
         )
     except Exception as e:
         return f"<p class='error'>Error: {e}</p><p><a href='/awg/cable-finder'>&#8592; Try again</a></p>"
@@ -348,7 +366,7 @@ def view_cable_finder(
             <li><strong>Voltage Drop:</strong> {result['vdrop']:.2f} V ({result['vdperc']:.2f}%)</li>
             <li><strong>Voltage at End:</strong> {result['vend']:.2f} V</li>
             <li><strong>Temperature Rating:</strong> {result['temperature']}C</li>
-            {f'<li><strong>Conduit:</strong> {result["conduit"].upper()} {result["pipe_inch"]}</li>' if result.get("pipe_inch") else ''}
+            {f'<li><strong>Conduit:</strong> {result["conduit"].upper()} {result["pipe_inch"]}&quot;</li>' if result.get("pipe_inch") else ''}
         </ul>
         {f"<p class='warning'>{result['warning']}</p>" if result.get('warning') else ''}
         <p>

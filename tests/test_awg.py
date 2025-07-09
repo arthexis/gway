@@ -32,6 +32,12 @@ class TestMaxAwg(unittest.TestCase):
         res = gw.awg.find_awg(meters=30, amps=40, max_lines="")
         self.assertEqual(res["lines"], 1)
 
+    def test_ground_parameter_controls_cable_count(self):
+        res0 = gw.awg.find_awg(meters=30, amps=40, ground=0)
+        self.assertTrue(res0["cables"].endswith("+0"))
+        res1 = gw.awg.find_awg(meters=30, amps=40, ground=1)
+        self.assertTrue(res1["cables"].endswith("+1"))
+
     def test_forced_awg_returns_warning(self):
         res = gw.awg.find_awg(meters=30, amps=150, max_awg="14")
         self.assertEqual(res["awg"], "14")
