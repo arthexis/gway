@@ -361,7 +361,7 @@ def view_cable_finder(
         """
 
     return f"""
-        <h1>Cable Result <img src='/static/awg/sponsor_logo.svg' alt='Sponsor Logo' class='sponsor-logo'></h1>
+        <h1>AWG Cable & Conduit Results <img src='/static/awg/sponsor_logo.svg' alt='Sponsor Logo' class='sponsor-logo'></h1>
         <ul>
             <li><strong>AWG Size:</strong> {result['awg']}</li>
             <li><strong>Lines:</strong> {result['lines']}</li>
@@ -374,9 +374,9 @@ def view_cable_finder(
         </ul>
         {f"<p class='warning'>{result['warning']}</p>" if result.get('warning') else ''}
         <p>
-        <em>Special thanks to the expert electrical engineers at <strong>
-        <a href="https://www.gelectriic.com">Gelectriic Solutions</a></strong> for their 
-        useful input and support while creating this calculator.</em>
+        <em>Special thanks to the expert engineers at <strong>
+        <a href="https://www.gelectriic.com">Gelectriic Solutions</a></strong> for their
+        support in creating this calculator.</em>
         </p>
         <p><a href="/awg/cable-finder">&#8592; Calculate again</a></p>
     """
