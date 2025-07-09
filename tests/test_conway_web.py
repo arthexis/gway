@@ -11,14 +11,6 @@ import requests
 from bs4 import BeautifulSoup
 from gway import gw
 from gway.builtins import is_test_flag
-import importlib.util
-from pathlib import Path
-
-# Dynamically load the web.auto helpers so we can capture screenshots
-auto_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "auto.py"
-spec = importlib.util.spec_from_file_location("webauto", auto_path)
-webauto = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(webauto)
 
 class ConwayWebTests(unittest.TestCase):
     @classmethod
@@ -160,7 +152,7 @@ class ConwayWebTests(unittest.TestCase):
         screenshot_dir.mkdir(parents=True, exist_ok=True)
         screenshot_file = screenshot_dir / "conway_game.png"
         try:
-            webauto.capture_page_source(
+            gw.web.auto.capture_page_source(
                 self.base_url + "/games/game-of-life",
                 screenshot=str(screenshot_file),
             )

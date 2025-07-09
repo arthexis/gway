@@ -4,13 +4,7 @@ import time
 import socket
 from pathlib import Path
 from gway.builtins import is_test_flag
-import importlib.util
-
-# Dynamically import the capture helpers without relying on projects as a package
-auto_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "auto.py"
-spec = importlib.util.spec_from_file_location("webauto", auto_path)
-webauto = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(webauto)
+from gway import gw
 
 class ScreenshotAttachmentTest(unittest.TestCase):
     @classmethod
@@ -51,7 +45,7 @@ class ScreenshotAttachmentTest(unittest.TestCase):
         screenshot_dir.mkdir(parents=True, exist_ok=True)
         screenshot_file = screenshot_dir / "help_page.png"
         try:
-            webauto.capture_page_source(
+            gw.web.auto.capture_page_source(
                 self.base_url + "/site/help",
                 screenshot=str(screenshot_file),
             )

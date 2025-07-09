@@ -465,13 +465,15 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
     </div>
     '''
 
-def view_charger_status(*, action=None, charger_id=None, **_):
+def view_charger_status(*, action=None, charger_id=None, show=None, **_):
     """
-    Card-based OCPP dashboard: summary of all charger connections.
+    Card-based OCPP dashboard: summary of charger connections.
     Renders <div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5">
     so the client can periodically refresh the list via render.js.
+    ``show=all`` includes historic chargers from the database.
     """
     msg = ""
+    show = show or request.query.get("show")
     if request.method == "POST":
         action = request.forms.get("action")
         charger_id = request.forms.get("charger_id")
@@ -484,6 +486,11 @@ def view_charger_status(*, action=None, charger_id=None, **_):
                 msg = f"Error: {e}"
 
     all_chargers = set(_active_cons) | set(_transactions)
+    if show == "all":
+        try:
+            all_chargers |= set(gw.ocpp.data.list_chargers())
+        except Exception:
+            pass
     html = [
         '<link rel="stylesheet" href="/static/ocpp/csms/charger_status.css">',
         '<script src="/static/render.js"></script>',
@@ -492,6 +499,10 @@ def view_charger_status(*, action=None, charger_id=None, **_):
     ]
     if msg:
         html.append(f'<p class="error">{msg}</p>')
+
+    link_all = '<a href="?show=all">Show all offline chargers</a>'
+    link_new = '<a href="?show=new">Show active and recent chargers</a>'
+    html.append(f"<p>{link_new if show == 'all' else link_all}</p>")
 
     # Abnormal status warning
     if _abnormal_status:
@@ -512,7 +523,7 @@ def view_charger_status(*, action=None, charger_id=None, **_):
 
     # --- The key block for autorefresh ---
     html.append(
-        '<div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5" data-gw-click="refresh">'
+        f'<div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5" data-gw-click="refresh" data-show="{show or ""}">' 
     )
     if not all_chargers:
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
@@ -542,13 +553,20 @@ def view_charger_status(*, action=None, charger_id=None, **_):
     """)
     return "".join(html)
 
-def render_charger_list(**kwargs):
+def render_charger_list(*, show=None, **kwargs):
     """
     Regenerate the full charger list HTML (all cards).
     No parsing of incoming HTML; just returns a new block of HTML for charger-list.
     Called via POST (or GET) from render.js, possibly with params in kwargs.
+    ``show=all`` includes historic chargers from the database.
     """
+    show = show or kwargs.get("show") or request.forms.get("show") or request.query.get("show")
     all_chargers = set(_active_cons) | set(_transactions)
+    if show == "all":
+        try:
+            all_chargers |= set(gw.ocpp.data.list_chargers())
+        except Exception:
+            pass
     html = []
     if not all_chargers:
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
