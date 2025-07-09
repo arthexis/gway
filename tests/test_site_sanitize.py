@@ -1,16 +1,20 @@
 import unittest
-import importlib.util
 from pathlib import Path
-
-# Dynamically import projects/web/site.py since projects isn't a package
-spec = importlib.util.spec_from_file_location(
-    "site", Path(__file__).resolve().parents[1] / "projects" / "web" / "site.py"
-)
-site = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(site)
+import importlib.util
 
 
 class SiteSanitizeTests(unittest.TestCase):
+    @staticmethod
+    def _load_site():
+        spec = importlib.util.spec_from_file_location(
+            "site", Path(__file__).resolve().parents[1] / "projects" / "web" / "site.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    @classmethod
+    def setUpClass(cls):
+        cls.site = cls._load_site()
     def test_sanitize_filename(self):
         cases = {
             "foo/bar": "foobar",
@@ -22,7 +26,7 @@ class SiteSanitizeTests(unittest.TestCase):
         }
         for raw, expected in cases.items():
             with self.subTest(raw=raw):
-                self.assertEqual(site._sanitize_filename(raw), expected)
+                self.assertEqual(self.site._sanitize_filename(raw), expected)
 
     def test_is_hidden_or_private(self):
         true_cases = [
@@ -36,7 +40,7 @@ class SiteSanitizeTests(unittest.TestCase):
         ]
         for fname in true_cases:
             with self.subTest(fname=fname):
-                self.assertTrue(site._is_hidden_or_private(fname))
+                self.assertTrue(self.site._is_hidden_or_private(fname))
 
         false_cases = [
             "normal",
@@ -46,7 +50,7 @@ class SiteSanitizeTests(unittest.TestCase):
         ]
         for fname in false_cases:
             with self.subTest(fname=fname):
-                self.assertFalse(site._is_hidden_or_private(fname))
+                self.assertFalse(self.site._is_hidden_or_private(fname))
 
 
 if __name__ == "__main__":

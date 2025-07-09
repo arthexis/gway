@@ -11,14 +11,6 @@ import random
 import string
 from gway import gw
 from gway.builtins import is_test_flag
-import importlib.util
-from pathlib import Path
-
-# Dynamically load the web.auto helpers for screenshots
-auto_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "auto.py"
-spec = importlib.util.spec_from_file_location("webauto", auto_path)
-webauto = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(webauto)
 
 CDV_PATH = os.path.abspath("work/basic_auth.cdv")  # Use production path
 # Generate a random user/pass for each test run
@@ -130,7 +122,7 @@ class AuthChargerStatusTests(unittest.TestCase):
         screenshot_file = screenshot_dir / "charger_status.png"
         url = f"http://{TEST_USER}:{TEST_PASS}@127.0.0.1:18888/ocpp/csms/charger-status"
         try:
-            webauto.capture_page_source(url, screenshot=str(screenshot_file))
+            gw.web.auto.capture_page_source(url, screenshot=str(screenshot_file))
         except Exception as e:
             self.skipTest(f"Webdriver unavailable: {e}")
         self.assertTrue(screenshot_file.exists())

@@ -1,18 +1,33 @@
 import unittest
-import importlib.util
-from pathlib import Path
 from unittest.mock import patch
-
-nmcli_path = Path(__file__).resolve().parents[1] / 'projects' / 'monitor' / 'nmcli.py'
-spec = importlib.util.spec_from_file_location('nmcli_mod', nmcli_path)
-nmcli_mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(nmcli_mod)
+from pathlib import Path
+import importlib.util
 
 class SanitizeHelperTests(unittest.TestCase):
+    @staticmethod
+    def _load_nmcli():
+        nmcli_path = Path(__file__).resolve().parents[1] / 'projects' / 'monitor' / 'nmcli.py'
+        spec = importlib.util.spec_from_file_location('nmcli_mod', nmcli_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    @classmethod
+    def setUpClass(cls):
+        cls.nmcli_mod = cls._load_nmcli()
     def test_sanitize_quotes(self):
-        self.assertEqual(nmcli_mod._sanitize('"foo"'), 'foo')
+        self.assertEqual(self.nmcli_mod._sanitize('"foo"'), 'foo')
 
 class EnsureApProfileTests(unittest.TestCase):
+    @staticmethod
+    def _load_nmcli():
+        nmcli_path = Path(__file__).resolve().parents[1] / 'projects' / 'monitor' / 'nmcli.py'
+        spec = importlib.util.spec_from_file_location('nmcli_mod', nmcli_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    @classmethod
+    def setUpClass(cls):
+        cls.nmcli_mod = cls._load_nmcli()
     def test_ensure_ap_profile_uses_unquoted_values(self):
         calls = []
         def fake_nmcli(*args):
@@ -22,8 +37,8 @@ class EnsureApProfileTests(unittest.TestCase):
             if args == ('connection', 'show', 'myap'):
                 return '802-11-wireless.ssid: myssid\n802-11-wireless-security.psk: pass'
             return ''
-        with patch.object(nmcli_mod, 'nmcli', side_effect=fake_nmcli):
-            nmcli_mod.ensure_ap_profile('"myap"', '"myssid"', '"pass"')
+        with patch.object(self.nmcli_mod, 'nmcli', side_effect=fake_nmcli):
+            self.nmcli_mod.ensure_ap_profile('"myap"', '"myssid"', '"pass"')
         self.assertEqual(calls, [
             ('-t', '-f', 'NAME,UUID,TYPE,DEVICE', 'connection', 'show'),
             ('connection', 'show', 'myap'),
@@ -34,8 +49,8 @@ class EnsureApProfileTests(unittest.TestCase):
         def fake_nmcli(*args):
             calls.append(args)
             return ''
-        with patch.object(nmcli_mod, 'nmcli', side_effect=fake_nmcli):
-            nmcli_mod.ensure_ap_profile('ap', 'ssid', 'pass')
+        with patch.object(self.nmcli_mod, 'nmcli', side_effect=fake_nmcli):
+            self.nmcli_mod.ensure_ap_profile('ap', 'ssid', 'pass')
         self.assertIn(
             (
                 'connection',

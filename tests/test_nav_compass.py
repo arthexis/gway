@@ -5,12 +5,6 @@ from urllib.parse import parse_qs
 
 from bs4 import BeautifulSoup
 
-# Load nav.py dynamically
-nav_path = Path(__file__).resolve().parents[1] / 'projects' / 'web' / 'nav.py'
-spec = importlib.util.spec_from_file_location('webnav', nav_path)
-nav = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(nav)
-
 class FakeRequest:
     def __init__(self, path, query=''):
         self.fullpath = path
@@ -19,6 +13,18 @@ class FakeRequest:
         self.query = type('Q', (), {'get': lambda self2, k, d=None, p=params: p.get(k, [d])[0]})()
 
 class NavCompassTests(unittest.TestCase):
+    @staticmethod
+    def _load_nav():
+        nav_path = Path(__file__).resolve().parents[1] / 'projects' / 'web' / 'nav.py'
+        spec = importlib.util.spec_from_file_location('webnav', nav_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @classmethod
+    def setUpClass(cls):
+        global nav
+        nav = cls._load_nav()
     def setUp(self):
         self.orig_request = nav.request
         self.orig_app = nav.gw.web.app

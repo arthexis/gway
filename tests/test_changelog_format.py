@@ -4,33 +4,8 @@ import os
 from pathlib import Path
 
 # Load release module as in other tests
-import importlib.util
-import types
-import sys
+from gway import gw
 
-# Setup pseudo package structure
-site_spec = importlib.util.spec_from_file_location(
-    "projects.web.site",
-    Path(__file__).resolve().parents[1] / "projects" / "web" / "site.py",
-)
-site_mod = importlib.util.module_from_spec(site_spec)
-site_spec.loader.exec_module(site_mod)
-
-projects_mod = types.ModuleType("projects")
-web_mod = types.ModuleType("projects.web")
-web_mod.site = site_mod
-projects_mod.web = web_mod
-sys.modules.setdefault("projects", projects_mod)
-sys.modules.setdefault("projects.web", web_mod)
-sys.modules.setdefault("projects.web.site", site_mod)
-
-# Load release module
-release_spec = importlib.util.spec_from_file_location(
-    "projects.release",
-    Path(__file__).resolve().parents[1] / "projects" / "release.py",
-)
-release_mod = importlib.util.module_from_spec(release_spec)
-release_spec.loader.exec_module(release_mod)
 
 class ChangelogUpdateTests(unittest.TestCase):
     def setUp(self):
@@ -55,7 +30,7 @@ Unreleased
 - first change
 """
         self._write_changelog(content)
-        release_mod.update_changelog("1.2.3", "abcdef")
+        gw.release.update_changelog("1.2.3", "abcdef")
         text = Path("CHANGELOG.rst").read_text()
         lines = text.splitlines()
         header = "1.2.3 [build abcdef]"

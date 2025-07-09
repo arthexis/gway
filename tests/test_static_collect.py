@@ -1,15 +1,8 @@
 import unittest
-import importlib.util
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
-
-# Dynamically import the static helpers
-spec = importlib.util.spec_from_file_location(
-    "webstatic", Path(__file__).resolve().parents[1] / "projects" / "web" / "static.py"
-)
-webstatic = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(webstatic)
+from gway import gw
 
 class StaticCollectTests(unittest.TestCase):
     def test_collect_concatenates_files(self):
@@ -32,9 +25,9 @@ class StaticCollectTests(unittest.TestCase):
             def fake_resource(*parts, **kw):
                 return tmp_path.joinpath(*parts)
 
-            with patch.object(webstatic.gw, "resource", fake_resource), \
-                 patch.object(webstatic.gw.web.app, "enabled_projects", lambda: {"web.site"}):
-                report = webstatic.collect(root="data/static", target="work/shared")
+            with patch.object(gw, "resource", fake_resource), \
+                 patch.object(gw.web.app, "enabled_projects", lambda: {"web.site"}):
+                report = gw.web.static.collect(root="data/static", target="work/shared")
 
             self.assertEqual(
                 {Path(rel).as_posix() for _, rel, _ in report["css"]},
@@ -75,9 +68,9 @@ class StaticCollectTests(unittest.TestCase):
             def fake_resource(*parts, **kw):
                 return tmp_path.joinpath(*parts)
 
-            with patch.object(webstatic.gw, "resource", fake_resource), \
-                 patch.object(webstatic.gw.web.app, "enabled_projects", lambda: {"monitor"}):
-                report = webstatic.collect(root="data/static", target="work/shared")
+            with patch.object(gw, "resource", fake_resource), \
+                 patch.object(gw.web.app, "enabled_projects", lambda: {"monitor"}):
+                report = gw.web.static.collect(root="data/static", target="work/shared")
 
             js_files = {Path(rel).as_posix() for _, rel, _ in report["js"]}
             self.assertIn("monitor/net_monitors.js", js_files)
