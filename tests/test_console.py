@@ -166,6 +166,27 @@ web:
         ]
         self.assertEqual(commands, expected)
 
+    def test_load_recipe_colon_after_flag_mid_line(self):
+        content = (
+            """web server start-app --port: --ws-port 9999
+    - 8888
+    - 7777
+"""
+        )
+        with tempfile.NamedTemporaryFile('w', delete=False) as f:
+            f.write(content)
+            temp_name = f.name
+        try:
+            commands, _ = console.load_recipe(temp_name)
+        finally:
+            os.remove(temp_name)
+
+        expected = [
+            ['web', 'server', 'start-app', '--port', '8888', '--ws-port', '9999'],
+            ['web', 'server', 'start-app', '--port', '7777', '--ws-port', '9999'],
+        ]
+        self.assertEqual(commands, expected)
+
 
 class TestPrepareKwargParsing(unittest.TestCase):
     def test_multi_word_kwargs(self):

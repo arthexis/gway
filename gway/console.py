@@ -463,6 +463,7 @@ def load_recipe(recipe_filename):
     deindented_lines = []
     last_prefix = ""
     colon_prefix = None
+    colon_suffix = ""
     with open(recipe_path) as f:
         for raw_line in f:
             line = raw_line.rstrip("\n")
@@ -477,15 +478,34 @@ def load_recipe(recipe_filename):
             if colon_prefix:
                 if stripped_line.startswith("- "):
                     addition = stripped_line[1:].lstrip()
-                    deindented_lines.append(colon_prefix + " " + addition)
+                    line_to_add = colon_prefix + " " + addition
+                    if colon_suffix:
+                        line_to_add += " " + colon_suffix
+                    deindented_lines.append(line_to_add)
                     continue
                 if stripped_line.startswith("--"):
-                    deindented_lines.append(colon_prefix + " " + stripped_line)
+                    line_to_add = colon_prefix + " " + stripped_line
+                    if colon_suffix:
+                        line_to_add += " " + colon_suffix
+                    deindented_lines.append(line_to_add)
                     continue
                 colon_prefix = None
+                colon_suffix = ""
             if stripped_line.endswith(":"):
                 colon_prefix = stripped_line[:-1].rstrip()
+                colon_suffix = ""
                 last_prefix = colon_prefix
+                continue
+            # Detect colon inside line after a flag
+            no_comment = stripped_line.split("#", 1)[0].rstrip()
+            tokens = no_comment.split()
+            for idx, token in enumerate(tokens):
+                if token.endswith(":"):
+                    colon_prefix = " ".join(tokens[:idx + 1])[:-1].rstrip()
+                    colon_suffix = " ".join(tokens[idx + 1:])
+                    last_prefix = colon_prefix + (" " + colon_suffix if colon_suffix else "")
+                    break
+            if colon_prefix:
                 continue
             # Detect if line is indented and starts with '--'
             if line[:1].isspace() and stripped_line.startswith("--"):
