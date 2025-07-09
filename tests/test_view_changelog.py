@@ -1,34 +1,8 @@
 import unittest
 import tempfile
 import os
-import importlib.util
-import types
-import sys
 from pathlib import Path
-
-# Load site module for pseudo package structure
-site_spec = importlib.util.spec_from_file_location(
-    "projects.web.site",
-    Path(__file__).resolve().parents[1] / "projects" / "web" / "site.py",
-)
-site_mod = importlib.util.module_from_spec(site_spec)
-site_spec.loader.exec_module(site_mod)
-
-projects_mod = types.ModuleType("projects")
-web_mod = types.ModuleType("projects.web")
-web_mod.site = site_mod
-projects_mod.web = web_mod
-sys.modules.setdefault("projects", projects_mod)
-sys.modules.setdefault("projects.web", web_mod)
-sys.modules.setdefault("projects.web.site", site_mod)
-
-# Load release module
-release_spec = importlib.util.spec_from_file_location(
-    "projects.release",
-    Path(__file__).resolve().parents[1] / "projects" / "release.py",
-)
-release_mod = importlib.util.module_from_spec(release_spec)
-release_spec.loader.exec_module(release_mod)
+from gway import gw
 
 class ViewChangelogTests(unittest.TestCase):
     def setUp(self):
@@ -57,7 +31,7 @@ Unreleased
 - first change
 """
         self._write_changelog(content)
-        html = release_mod.view_changelog()
+        html = gw.release.view_changelog()
         self.assertNotIn("Unreleased", html)
 
     def test_header_shown_when_has_entries(self):
@@ -74,7 +48,7 @@ Unreleased
 - first change
 """
         self._write_changelog(content)
-        html = release_mod.view_changelog()
+        html = gw.release.view_changelog()
         self.assertIn("Unreleased", html)
 
 

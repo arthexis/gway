@@ -6,15 +6,9 @@ import time
 import socket
 import requests
 from bs4 import BeautifulSoup
-import importlib.util
 from pathlib import Path
 from gway.builtins import is_test_flag
-
-# Dynamically load the web.auto helpers for screenshot capture
-auto_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "auto.py"
-spec = importlib.util.spec_from_file_location("webauto", auto_path)
-webauto = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(webauto)
+from gway import gw
 
 class NavStyleTests(unittest.TestCase):
     @classmethod
@@ -165,7 +159,7 @@ class NavStyleTests(unittest.TestCase):
         screenshot_dir.mkdir(parents=True, exist_ok=True)
         screenshot_file = screenshot_dir / "style_switcher.png"
         try:
-            webauto.capture_page_source(
+            gw.web.auto.capture_page_source(
                 self.base_url + "/nav/style-switcher",
                 screenshot=str(screenshot_file),
             )

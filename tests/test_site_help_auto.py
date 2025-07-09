@@ -5,14 +5,7 @@ import socket
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import importlib.util
-from pathlib import Path
-
-# Dynamically load the web.auto helpers since projects is not a package
-auto_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "auto.py"
-spec = importlib.util.spec_from_file_location("webauto", auto_path)
-webauto = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(webauto)
+from gway import gw
 
 class SiteHelpAutoTests(unittest.TestCase):
     @classmethod
@@ -36,7 +29,7 @@ class SiteHelpAutoTests(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 cls.proc.kill()
         try:
-            with webauto.browse(close=True):
+            with gw.web.auto.browse(close=True):
                 pass
         except Exception:
             pass
@@ -55,7 +48,7 @@ class SiteHelpAutoTests(unittest.TestCase):
     def test_help_search_finds_builtin(self):
         url = self.base_url + "/site/help"
         try:
-            with webauto.browse(url=url) as drv:
+            with gw.web.auto.browse(url=url) as drv:
                 textarea = drv.find_element(By.ID, "help-search")
                 textarea.clear()
                 textarea.send_keys("hello-world")
@@ -73,7 +66,7 @@ class SiteHelpAutoTests(unittest.TestCase):
         url = self.base_url + "/site/help"
         long_text = "word " * 50
         try:
-            with webauto.browse(url=url) as drv:
+            with gw.web.auto.browse(url=url) as drv:
                 textarea = drv.find_element(By.ID, "help-search")
                 start_height = drv.execute_script(
                     "return arguments[0].clientHeight", textarea
