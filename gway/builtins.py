@@ -21,12 +21,21 @@ def hello_world(name: str = "World", *, greeting: str = "Hello", **kwargs):
     from gway import gw
     version = gw.version()
     message = f"{greeting.title()}, {name.title()}!"
-    if hasattr(gw, "hello_world"): 
-        if not gw.silent: print(message)
-        else: print(f"{gw.silent=}")
-    else: 
+    if hasattr(gw, "hello_world"):
+        if not gw.silent:
+            print(message)
+        else:
+            print(f"{gw.silent=}")
+    else:
         print("Greeting protocol not found ((serious smoke)).")
-    return locals()
+
+    # Only return simple fields to avoid huge recursive HTML when rendered
+    return {
+        "greeting": greeting,
+        "name": name,
+        "message": message,
+        "version": version,
+    }
 
 def abort(message: str, *, exit_code: int = 13) -> int:
     """Abort with error message."""
