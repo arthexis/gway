@@ -39,9 +39,11 @@ class FeedbackViewTests(unittest.TestCase):
         with patch('bottle.request', FakeRequest()):
             with patch.dict(os.environ, {'GH_TOKEN': 'x'}):
                 with patch('requests.post') as p:
-                    html = site.view_feedback(name='A', email='a@example.com', topic='Test', message='Hello')
-                    self.assertIn('Thank you', html)
-                    p.assert_not_called()
+                    with patch.object(gw.mail, 'send') as mail_send:
+                        html = site.view_feedback(name='A', email='a@example.com', topic='Test', message='Hello')
+                        self.assertIn('Thank you', html)
+                        p.assert_not_called()
+                        mail_send.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()

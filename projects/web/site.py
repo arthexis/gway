@@ -464,6 +464,8 @@ def view_feedback(*, name=None, email=None, topic=None, message=None, create_iss
                 err = html.escape(str(e))
                 back = gw.web.app.build_url("feedback")
                 return f"<h1>Error submitting feedback</h1><pre>{err}</pre><p><a href='{back}'>Back</a></p>"
+        else:
+            gw.mail.send(f"[Feedback] {topic}", body=f"From: {name} <{email}>\n\n{message}")
 
         msg = "<h1>Thank you for your feedback!</h1>"
         if issue_url:
