@@ -44,5 +44,11 @@ class TestMaxAwg(unittest.TestCase):
         self.assertIn("warning", res)
         self.assertGreater(res["vdperc"], 3)
 
+
+class TestConduitSizing(unittest.TestCase):
+    def test_edge_capacity_selects_next_size(self):
+        res = gw.awg.find_conduit(awg=8, cables=3, conduit="emt")
+        self.assertEqual(res["size_inch"], "3/4")
+
 if __name__ == "__main__":
     unittest.main()
