@@ -76,7 +76,7 @@ Unreleased
 - f176ed3 fix windows service install args
 
 0.4.31 [build 937abe0]
----------------------
+----------------------
 
 - Initial CHANGELOG created.
 
