@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.41 [build 4a9512]
+---------------------
+
+- e31f6a4 install openpyxl
+
 - Allow spaces in kwarg values for CLI and recipes
 
 0.4.40 [build 225d99]
