@@ -465,6 +465,17 @@ def view_feedback(*, name=None, email=None, topic=None, message=None, create_iss
     import html
     from bottle import request
 
+    token = gw.hub.get_token()
+    mail_configured = all(
+        os.environ.get(k)
+        for k in ["MAIL_SENDER", "MAIL_PASSWORD", "SMTP_SERVER", "SMTP_PORT"]
+    )
+    if request.method != "POST" and not token and not mail_configured:
+        return (
+            "<h1>Feedback unavailable</h1>"
+            "<p>GitHub token and mail settings not configured.</p>"
+        )
+
     if request.method == "POST":
         name = (name or "").strip()
         email = (email or "").strip()
@@ -484,23 +495,36 @@ def view_feedback(*, name=None, email=None, topic=None, message=None, create_iss
             return f"<h1>Missing required fields: {html.escape(miss)}</h1><p><a href='{back}'>Back</a></p>"
 
         issue_url = ""
+        fallback_to_mail = False
         if create_issue:
             body = f"**From:** {name}\n\n{message}"
             try:
                 issue_url = _create_github_issue(topic, body)
-            except Exception as e:
-                err = html.escape(str(e))
-                back = gw.web.app.build_url("feedback")
-                return f"<h1>Error submitting feedback</h1><pre>{err}</pre><p><a href='{back}'>Back</a></p>"
+            except Exception:
+                fallback_to_mail = True
+                gw.mail.send(
+                    f"[Feedback] {topic}",
+                    body=f"From: {name} <{email}>\n\n{message}",
+                )
         else:
-            gw.mail.send(f"[Feedback] {topic}", body=f"From: {name} <{email}>\n\n{message}")
+            gw.mail.send(
+                f"[Feedback] {topic}", body=f"From: {name} <{email}>\n\n{message}"
+            )
 
         msg = "<h1>Thank you for your feedback!</h1>"
         if issue_url:
             msg += f"<p>It was recorded as <a href='{issue_url}'>GitHub issue</a>.</p>"
+        elif fallback_to_mail:
+            msg += "<p>GitHub issue creation failed; feedback sent via email.</p>"
         return msg
 
-    return """
+    issue_option = (
+        "<label class=\"checkbox-right\">"
+        "Optional: Create an Issue Report for GWAY or this website."
+        "<input type=\"checkbox\" name=\"create_issue\" value=\"1\" />"
+        "</label>"
+    ) if token else "<p>(GitHub issue creation unavailable)</p>"
+    return f"""
         <h1>Send Feedback</h1>
         <p>Your name and message may be publicly displayed and processed. Your email will be kept private.</p>
         <form method="post">
@@ -508,10 +532,7 @@ def view_feedback(*, name=None, email=None, topic=None, message=None, create_iss
             <input type="email" name="email" placeholder="Email" required class="main" />
             <input type="text" name="topic" placeholder="Topic" required class="main" />
             <textarea name="message" placeholder="Message" required rows="6" class="main"></textarea>
-            <label class="checkbox-right">
-                Optional: Create an Issue Report for GWAY or this website.
-                <input type="checkbox" name="create_issue" value="1" />
-            </label>
+            {issue_option}
             <button type="submit" class="submit btn-block">Submit</button>
         </form>
     """
