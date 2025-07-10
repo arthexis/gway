@@ -125,6 +125,7 @@ def view_massive_snake(*, action=None, name=None, color=None):
         _set_player_id(pid)
 
     message = ""
+    roll_msg = ""
     if action == "ascend" and pid and board["players"].get(pid, {}).get("pos") >= BOARD_SIZE:
         asc += 1
         _set_ascensions(asc)
@@ -149,6 +150,8 @@ def view_massive_snake(*, action=None, name=None, color=None):
         if pid and board["players"].get(pid, {}).get("pos", 0) >= BOARD_SIZE:
             ready_to_ascend = True
             message += " Ready to ascend!"
+        roll_msg = message
+        message = ""
 
     rows = []
     for pid_, info in board["players"].items():
@@ -176,6 +179,7 @@ def view_massive_snake(*, action=None, name=None, color=None):
             roll_button = (
                 "<form method='post' class='snake-roll'>"
                 "<button class='snake-button roll-button' type='submit' name='action' value='roll'>Roll Dice</button>"
+                f"<span class='roll-msg'>{gw.web.nav.html_escape(roll_msg)}</span>"
                 "</form>"
             )
         if player_pos >= BOARD_SIZE:
