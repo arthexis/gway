@@ -30,6 +30,8 @@ SET_SUGGESTIONS = [
     "New Capenna", "Phyrexia", "War", "Tarkir", "Ixalan",
 ]
 
+TOTAL_CARD_COUNT = 98256
+
 REMINDER_PATTERN = re.compile(r"\([^)]+reminder text[^)]+\)", re.IGNORECASE)
 
 def _remove_reminders(text):
@@ -110,6 +112,16 @@ def _get_cookie_turn():
 def _set_cookie_turn(turn: int):
     gw.web.cookies.set("mtg_turn", str(turn), path="/", max_age=14*24*3600)
 
+def _get_cookie_life():
+    val = gw.web.cookies.get("mtg_life")
+    try:
+        return int(val)
+    except Exception:
+        return 20
+
+def _set_cookie_life(life: int):
+    gw.web.cookies.set("mtg_life", str(life), path="/", max_age=14*24*3600)
+
 def _render_card(card):
     name = escape(card.get("name", "Unknown"))
     set_name = escape(card.get("set_name", "-"))
@@ -173,6 +185,9 @@ def view_search_games(
         turn += 1
         _set_cookie_turn(turn)
 
+    life = _get_cookie_life() if use_hand else 20
+    library = TOTAL_CARD_COUNT - len(hand_ids) - len(all_discards)
+
     # Hand size can be up to 8, but if at 8 only show discard
     HAND_LIMIT = 8
     hand_full = use_hand and len(hand_ids) >= HAND_LIMIT
@@ -226,8 +241,7 @@ def view_search_games(
     }};
     </script>
     """)
-    html.append("<h1>Garfield's Game of Trading Cards</h1>")
-    html.append(f"<div class='mtg-turn'>Turn: {turn}</div>")
+    html.append("<h1>Lookup Wars</h1>")
 
     # Show hand (if enabled and not empty)
     if use_hand and hand_ids:
@@ -291,13 +305,22 @@ def view_search_games(
                 <input type=\"text\" name=\"set_name\" value=\"{set_name}\" placeholder=\"Alpha\">
             </div>
         </div>
-        <button class=\"search-btn\" type=\"submit\">Search</button>
+        <div class=\"mtg-status\">
+            <button class=\"search-btn\" type=\"submit\">Search</button>
+            <span class=\"mtg-turn\">Turn: {turn}</span>
+            <span class=\"mtg-library\">Library: {library}</span>
+            <span class=\"mtg-life\">Life: <span class=\"mtg-life-value\">{life}</span>
+                <button type=\"button\" onclick=\"mtgUpdateLife(1)\">+</button>
+                <button type=\"button\" onclick=\"mtgUpdateLife(-1)\">-</button>
+            </span>
+        </div>
     </form>
     """.format(
         form_class=form_class,
         name=escape(name or ""), type_line=escape(type_line or ""),
-        oracle_text=escape(oracle_text or ""), set_name=escape(set_name or "")
-))
+        oracle_text=escape(oracle_text or ""), set_name=escape(set_name or ""),
+        turn=turn, library=library, life=life
+    ))
 
     html.append(
         '<div style="font-size:0.95em;color:#888;margin-top:2em;">Made using the <a href="https://scryfall.com/docs/api">Scryfall API</a>.</div>'

@@ -12,3 +12,14 @@ function mtgPickRandom(field) {
     var idx = Math.floor(Math.random() * vals.length);
     mtgFillField(field, vals[idx]);
 }
+
+function mtgUpdateLife(delta) {
+    var el = document.querySelector('.mtg-life-value');
+    if (!el) return;
+    var val = parseInt(el.textContent, 10);
+    if (isNaN(val)) val = 20;
+    val += delta;
+    if (val < 0) val = 0;
+    el.textContent = val;
+    document.cookie = 'mtg_life=' + val + ';path=/';
+}
