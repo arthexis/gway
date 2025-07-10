@@ -407,6 +407,17 @@ def setup_app(*,
         gw.info(f"Registered homes: {_homes}")
         debug_routes(app)
 
+    # --- Call project-level setup_app if defined ---
+    project_setup = getattr(source, "setup_app", None)
+    if callable(project_setup) and project_setup is not setup_app:
+        gw.verbose(f"Delegating to {project}.setup_app")
+        try:
+            maybe_app = project_setup(app=app)
+            if maybe_app is not None:
+                app = maybe_app
+        except Exception as exc:
+            gw.warn(f"{project}.setup_app failed: {exc}")
+
     return oapp if oapp else app
 
 # Use current_endpoint to get the current project route
