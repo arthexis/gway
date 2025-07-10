@@ -2,6 +2,7 @@
 
 import os
 import html
+import random
 from gway import gw
 from bottle import request
 
@@ -176,11 +177,16 @@ def active_style():
     style_path = None
 
     if _forced_style:
-        for src, fname in styles:
-            if fname == _forced_style:
+        if _forced_style == "random":
+            if styles:
+                src, fname = random.choice(styles)
                 return f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
-        if _forced_style.startswith("/"):
-            return _forced_style
+        else:
+            for src, fname in styles:
+                if fname == _forced_style:
+                    return f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+            if _forced_style.startswith("/"):
+                return _forced_style
 
     # Prefer query param (if exists and valid)
     if style_query:
@@ -379,7 +385,10 @@ def list_styles(project=None):
 
 
 def setup_app(*, app=None, style=None, **_):
-    """Optional hook to set a default style when the project is added."""
+    """Optional hook to set a default style when the project is added.
+
+    Pass ``style='random'`` to select a random theme on each request.
+    """
     global _forced_style
     if style:
         _forced_style = style

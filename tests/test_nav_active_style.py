@@ -82,6 +82,15 @@ class ActiveStyleTests(unittest.TestCase):
         result = nav.active_style()
         self.assertEqual(result, "/static/styles/classic-95.css")
 
+    def test_random_forced_style(self):
+        with mock.patch.object(nav.random, "choice", return_value=("global", "dark-material.css")) as mock_choice:
+            nav.setup_app(style="random")
+            nav.gw.web.cookies.store = {}
+            nav.request = FakeRequest({})
+            result = nav.active_style()
+            self.assertEqual(result, "/static/styles/dark-material.css")
+            mock_choice.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
