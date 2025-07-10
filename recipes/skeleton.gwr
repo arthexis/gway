@@ -2,7 +2,7 @@
 
 web app setup-app:
     --project web.site --home reader
-    --project web.nav
+    --project web.nav --style classic-95.css
     --project cdv --home data-editor
 web:
  - static collect
