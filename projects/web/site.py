@@ -3,6 +3,7 @@
 import os
 import html
 import shlex
+import traceback
 from docutils.core import publish_parts
 from pathlib import Path
 import re
@@ -222,8 +223,31 @@ def view_help(topic="", *args, **kwargs):
                         html_parts.append(r)
                     else:
                         html_parts.append(gw.cast.to_html(r))
+                if not html_parts:
+                    res_dict = gw.results.get_results()
+                    res_html = gw.cast.to_html(res_dict)
+                    return (
+                        "<div class='cli-result'>"
+                        "<i>No result returned. Showing gw.results:</i><hr>"
+                        + res_html + "</div>"
+                    )
                 return "<div class='cli-result'>" + "<hr>".join(html_parts) + "</div>"
             except Exception as ex:
+                if gw.debug_enabled:
+                    tb = traceback.format_exc()
+                    log_tail = ""
+                    try:
+                        log_path = gw.resource("logs", "gway.log")
+                        with open(log_path) as lf:
+                            log_tail = "".join(lf.readlines()[-20:])
+                    except Exception:
+                        log_tail = "(unable to read log)"
+                    return (
+                        "<h2>Command Error</h2>"
+                        f"<pre>{html.escape(str(ex))}</pre>"
+                        f"<pre>{html.escape(tb)}</pre>"
+                        f"<pre>{html.escape(log_tail)}</pre>"
+                    )
                 return f"<pre>{html.escape(str(ex))}</pre>"
         else:
             return "<b>Console commands disabled (not local).</b>"
