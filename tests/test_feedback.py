@@ -22,7 +22,7 @@ class FeedbackViewTests(unittest.TestCase):
             def __init__(self):
                 self.method = "POST"
         with patch('bottle.request', FakeRequest()):
-            with patch.dict(os.environ, {'GH_TOKEN': 'x'}):
+            with patch.dict(os.environ, {'GITHUB_TOKEN': 'x'}):
                 with patch('requests.post') as p:
                     p.return_value.status_code = 201
                     p.return_value.json.return_value = {'html_url': 'http://example.com'}
@@ -37,7 +37,7 @@ class FeedbackViewTests(unittest.TestCase):
             def __init__(self):
                 self.method = "POST"
         with patch('bottle.request', FakeRequest()):
-            with patch.dict(os.environ, {'GH_TOKEN': 'x'}):
+            with patch.dict(os.environ, {'GITHUB_TOKEN': 'x'}):
                 with patch('requests.post') as p:
                     with patch.object(gw.mail, 'send') as mail_send:
                         html = site.view_feedback(name='A', email='a@example.com', topic='Test', message='Hello')

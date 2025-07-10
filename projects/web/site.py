@@ -457,22 +457,7 @@ def view_qr_code(*args, value=None, **kwargs):
 
 def _create_github_issue(title: str, body: str) -> str:
     """Create an issue in the GWAY repository and return the issue URL."""
-    import requests
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not token:
-        raise RuntimeError("GitHub token not configured")
-
-    url = "https://api.github.com/repos/arthexis/gway/issues"
-    headers = {
-        "Authorization": f"token {token}",
-        "User-Agent": "gway-feedback",
-        "Accept": "application/vnd.github+json",
-    }
-    resp = requests.post(url, json={"title": title, "body": body}, headers=headers, timeout=10)
-    if resp.status_code != 201:
-        raise RuntimeError(f"GitHub API error: {resp.status_code} {resp.text}")
-    data = resp.json()
-    return data.get("html_url", "")
+    return gw.hub.create_issue(title, body)
 
 
 def view_feedback(*, name=None, email=None, topic=None, message=None, create_issue=None):
@@ -539,7 +524,7 @@ def view_debug_info():
     info.append(f"<b>Method:</b> {_html.escape(request.method or '')}")
     info.append(f"<b>Version:</b> {_html.escape(gw.version())}")
     try:
-        commit = gw.release.commit()
+        commit = gw.hub.commit()
         if commit:
             info.append(f"<b>Commit:</b> {_html.escape(commit)}")
     except Exception:

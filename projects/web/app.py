@@ -451,7 +451,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
     build = ""
     if getattr(gw, "debug_enabled", False):
         try:
-            build = f" Build: {gw.release.commit()}"
+            build = f" Build: {gw.hub.commit()}"
         except Exception:
             build = ""
 
