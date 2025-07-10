@@ -81,6 +81,7 @@ def setup_app(*,
     js="global",            # Default JS  (without .js extension)
     auth="disabled",       # Accept "optional"/"disabled" words to disable
     engine="bottle",
+    **setup_kwargs,
 ):
     """
     Setup Bottle web application with symmetrical static/shared public folders.
@@ -418,11 +419,15 @@ def setup_app(*,
     if callable(project_setup) and project_setup is not setup_app:
         gw.verbose(f"Delegating to {project}.setup_app")
         try:
-            maybe_app = project_setup(app=app)
+            maybe_app = project_setup(app=app, **setup_kwargs)
             if maybe_app is not None:
                 app = maybe_app
         except Exception as exc:
             gw.warn(f"{project}.setup_app failed: {exc}")
+    elif setup_kwargs:
+        gw.error(
+            f"Extra setup arguments ignored for {project}: {', '.join(setup_kwargs.keys())}"
+        )
 
     return oapp if oapp else app
 

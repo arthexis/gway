@@ -5,6 +5,8 @@ import html
 from gway import gw
 from bottle import request
 
+_forced_style = None
+
 def render(*, homes=None, links=None):
     """
     Renders the sidebar navigation including search, home links, visited links, and a QR compass.
@@ -172,6 +174,13 @@ def active_style():
     style_cookie = gw.web.cookies.get("css") if gw.web.app.is_setup('web.cookies') else None
     style_query = request.query.get("css")
     style_path = None
+
+    if _forced_style:
+        for src, fname in styles:
+            if fname == _forced_style:
+                return f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+        if _forced_style.startswith("/"):
+            return _forced_style
 
     # Prefer query param (if exists and valid)
     if style_query:
@@ -367,3 +376,13 @@ def list_styles(project=None):
                         styles.append((project, f))
                         seen.add(f)
     return styles
+
+
+def setup_app(*, app=None, style=None, **_):
+    """Optional hook to set a default style when the project is added."""
+    global _forced_style
+    if style:
+        _forced_style = style
+        gw.info(f"web.nav forced style: {style}")
+    return app
+

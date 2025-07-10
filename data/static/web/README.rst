@@ -4,6 +4,7 @@ Web Project Notes
 * `setup_app` can be invoked multiple times. Each call adds routes and homes for a single project.
 * Routes are registered with `add_route`, which skips duplicates so repeated setups won't register the same handler twice.
 * If the added project defines its own ``setup_app`` function, it is invoked with the app object.
+* Extra keyword arguments are passed to that project's ``setup_app``. If no such function exists, the unused argument names are logged as an error.
 * When reusing `setup_app`, provide unique paths or homes to avoid collisions.
 * CLI flags resolve to a single value. Lists like ``--home a,b,c`` are not supported. Call the command once per value instead.
 * `web.site.view_reader` serves ``.md`` or ``.rst`` files from the resource root and can be used for a lightweight blog. Subfolders and hidden files are not allowed.
