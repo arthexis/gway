@@ -45,6 +45,11 @@
     z-index: 20;
 }
 
+.roll-msg {
+    margin-left: 0.5em;
+    display: inline-block;
+}
+
 @keyframes snake-wave {
     0%, 100% { transform: scale(1.6) translateY(0); }
     25% { transform: scale(1.6) translateY(-6px) rotate(-5deg); }
