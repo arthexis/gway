@@ -6,7 +6,7 @@ import requests
 
 
 
-def setup_fallback_app(*, 
+def fallback_app(*,
         endpoint: str, app=None, websockets: bool = False, path: str = "/",
         mode: str = "extend", callback=None,
     ):
@@ -171,4 +171,4 @@ def _wire_proxy(app, endpoint: str, websockets: bool, path: str):
 
         return app
 
-    raise RuntimeError("Unsupported app type for setup_proxy: must be Bottle or FastAPI-compatible")
+    raise RuntimeError("Unsupported app type for fallback_app: must be Bottle or FastAPI-compatible")

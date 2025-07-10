@@ -1,0 +1,19 @@
+# file: recipes/test/etron/local_proxy.gwr
+# Local OCPP CSMS with proxy fallback for tests
+
+web app setup-app:
+    --project ocpp.data --home charger-summary
+    --project web.nav
+    --project vbox
+    --project ocpp.csms --home charger-status
+    --project ocpp.evcs --home cp-simulator
+    --project ocpp.data --home charger-summary
+
+ocpp csms setup-app:
+    --location proxy_test
+
+web:
+ - static collect
+ - server start-app --host 0.0.0.0 --port 18888 --ws-port 19900 --proxy http://127.0.0.1:18000
+
+until --file VERSION
