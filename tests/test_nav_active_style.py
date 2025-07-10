@@ -91,6 +91,22 @@ class ActiveStyleTests(unittest.TestCase):
             self.assertEqual(result, "/static/styles/dark-material.css")
             mock_choice.assert_called_once()
 
+    def test_random_cookie_style(self):
+        with mock.patch.object(nav.random, "choice", return_value=("global", "classic-95.css")) as mock_choice:
+            nav.gw.web.cookies.store = {"css": "random"}
+            nav.request = FakeRequest({})
+            result = nav.active_style()
+            self.assertEqual(result, "/static/styles/classic-95.css")
+            mock_choice.assert_called_once()
+
+    def test_random_query_param_style(self):
+        with mock.patch.object(nav.random, "choice", return_value=("global", "dark-material.css")) as mock_choice:
+            nav.gw.web.cookies.store = {}
+            nav.request = FakeRequest({"css": "random"})
+            result = nav.active_style()
+            self.assertEqual(result, "/static/styles/dark-material.css")
+            mock_choice.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
