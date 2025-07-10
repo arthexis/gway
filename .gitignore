@@ -53,3 +53,7 @@ coverage/
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+
+# Keep VS Code config
+!.vscode/
+!.vscode/launch.json
