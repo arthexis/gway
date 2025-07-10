@@ -27,7 +27,9 @@ class Challenge:
         if result:
             return True
         if not self.required and not strict:
-            gw.info(f"[auth] Optional challenge '{self.name}' failed (user not blocked).")
+            gw.verbose(
+                f"[auth] Optional challenge '{self.name}' failed (user not blocked)."
+            )
             return True
         # Set 401 if running under bottle
         if info.get("engine") == "bottle":
