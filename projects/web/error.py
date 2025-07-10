@@ -8,7 +8,8 @@ def view_debug_error(
     message="An error occurred.",
     err=None,
     status=500,
-    default=None
+    default=None,
+    extra=None
 ):
     """
     Render a debug error view with detailed traceback and request info.
@@ -21,6 +22,7 @@ def view_debug_error(
     if err:
         tb_str = "".join(traceback.format_exception(type(err), err, getattr(err, "__traceback__", None)))
 
+    extra = extra or ""
     debug_content = f"""
     <html>
     <head>
@@ -51,6 +53,7 @@ def view_debug_error(
                 <div class="traceback">{html.escape(tb_str or '(no traceback)')}</div>
             </div>
         </div>
+        {extra}
         <div><a href="{html.escape(default or gw.web.app.default_home())}">&#8592; Back to home</a></div>
     </body>
     </html>
@@ -118,12 +121,16 @@ def unauthorized(message="Unauthorized: You do not have access to this resource.
 
     debug_enabled = bool(getattr(gw, "debug", False))
     if debug_enabled:
+        from bottle import request
+        import html
+        orig_link = f'<div><a href="{html.escape(request.url)}">Go to original page</a></div>'
         return view_debug_error(
             title="401 Unauthorized",
             message=message,
             err=err,
             status=401,
-            default=default
+            default=default,
+            extra=orig_link
         )
 
     # 401 with auth header = browser will prompt for password
