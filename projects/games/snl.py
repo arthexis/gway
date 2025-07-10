@@ -117,6 +117,7 @@ def view_massive_snake(*, action=None, name=None, color=None):
     board = load_board()
     pid = _get_player_id()
     asc = _get_ascensions()
+    ready_to_ascend = False
 
     if not pid and name and color:
         pid = _add_player(board, name, color)
@@ -145,6 +146,9 @@ def view_massive_snake(*, action=None, name=None, color=None):
             message += " You went up a ladder!"
         elif event == "snake":
             message += " You fell down a snake!"
+        if pid and board["players"].get(pid, {}).get("pos", 0) >= BOARD_SIZE:
+            ready_to_ascend = True
+            message += " Ready to ascend!"
 
     rows = []
     for pid_, info in board["players"].items():
@@ -167,6 +171,7 @@ def view_massive_snake(*, action=None, name=None, color=None):
     ascend_button = ""
     if pid:
         player_pos = board["players"].get(pid, {}).get("pos", 0)
+        ready_to_ascend = ready_to_ascend or player_pos >= BOARD_SIZE
         if player_pos < BOARD_SIZE:
             roll_button = (
                 "<form method='post' class='snake-roll'>"
@@ -175,18 +180,27 @@ def view_massive_snake(*, action=None, name=None, color=None):
             )
         if player_pos >= BOARD_SIZE:
             ascend_button = (
-                "<form method='post' class='snake-ascend'>"
+                "<form method='post' class='snake-ascend' style='display:inline-block'>"
                 "<button class='snake-button ascend-button' type='submit' name='action' value='ascend'>Ascend</button>"
+                "<span id='ascend-msg' class='ascend-msg'></span>"
                 "</form>"
             )
 
     script = ""
-    if message == "Ascended!":
+    if ready_to_ascend and pid:
         script = (
-            "<script>"  # add animation class and remove it later
-            "const t=document.getElementById('msnake-title');"
-            "t.classList.add('ascended');"
-            "setTimeout(()=>t.classList.remove('ascended'),3000);"
+            "<script>"
+            "const title=document.getElementById('msnake-title');"
+            "const msg=document.getElementById('ascend-msg');"
+            "msg.textContent='Ready to ascend! ';"
+            "const span=document.createElement('span');"
+            "span.textContent=title.textContent;"
+            "span.className='snake-title ascended';"
+            "msg.appendChild(span);"
+            "const roll=document.querySelector('.roll-button');"
+            "const asc=document.querySelector('.snake-ascend button');"
+            "asc.disabled=true; if(roll) roll.disabled=true;"
+            "setTimeout(()=>{msg.remove();asc.disabled=false;if(roll) roll.disabled=false;},2000);"
             "</script>"
         )
 
