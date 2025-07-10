@@ -177,6 +177,7 @@ The following projects bundle additional documentation.  Each link uses
   - `conway </site/reader?tome=games/conway>`_
   - `mtg </site/reader?tome=games/mtg>`_
   - `qpig </site/reader?tome=games/qpig>`_
+  - `evennia </site/reader?tome=games/evennia>`_
 - `monitor </site/reader?tome=monitor>`_
 - `ocpp </site/reader?tome=ocpp>`_
   - `csms </site/reader?tome=ocpp/csms>`_
@@ -196,6 +197,7 @@ The following projects bundle additional documentation.  Each link uses
 .. _/site/reader?tome=games/conway: /site/reader?tome=games/conway
 .. _/site/reader?tome=games/mtg: /site/reader?tome=games/mtg
 .. _/site/reader?tome=games/qpig: /site/reader?tome=games/qpig
+.. _/site/reader?tome=games/evennia: /site/reader?tome=games/evennia
 .. _/site/reader?tome=monitor: /site/reader?tome=monitor
 .. _/site/reader?tome=ocpp: /site/reader?tome=ocpp
 .. _/site/reader?tome=ocpp/csms: /site/reader?tome=ocpp/csms
