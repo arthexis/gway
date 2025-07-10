@@ -69,15 +69,19 @@ def _add_player(board, name: str, color: str) -> str:
     return pid
 
 
-def _apply_move(pos: int, roll: int) -> int:
+def _apply_move(pos: int, roll: int) -> tuple[int, str | None]:
+    """Apply a dice roll and return the new position and event."""
     pos += roll
     if pos > BOARD_SIZE:
         pos = BOARD_SIZE - (pos - BOARD_SIZE)
+    event = None
     if pos in SNAKES:
         pos = SNAKES[pos]
+        event = "snake"
     elif pos in LADDERS:
         pos = LADDERS[pos]
-    return max(0, min(pos, BOARD_SIZE))
+        event = "ladder"
+    return max(0, min(pos, BOARD_SIZE)), event
 
 
 def _board_html(board: dict) -> str:
@@ -129,10 +133,18 @@ def view_massive_snake(*, action=None, name=None, color=None):
     elif action == "roll":
         roll = random.randint(1, 6)
         board["last_roll"] = roll
-        for pdata in board["players"].values():
-            pdata["pos"] = _apply_move(pdata.get("pos", 0), roll)
+        event = None
+        for pid_, pdata in board["players"].items():
+            new_pos, ev = _apply_move(pdata.get("pos", 0), roll)
+            pdata["pos"] = new_pos
+            if pid_ == pid:
+                event = ev
         save_board(board)
         message = f"Rolled {roll}!"
+        if event == "ladder":
+            message += " You went up a ladder!"
+        elif event == "snake":
+            message += " You fell down a snake!"
 
     rows = []
     for pid_, info in board["players"].items():
