@@ -100,6 +100,16 @@ def _add_cookie_discard(card_id):
     discards.add(card_id)
     gw.web.cookies.set("mtg_discards", "|".join(discards), path="/", max_age=14*24*3600)
 
+def _get_cookie_turn():
+    val = gw.web.cookies.get("mtg_turn")
+    try:
+        return int(val)
+    except Exception:
+        return 0
+
+def _set_cookie_turn(turn: int):
+    gw.web.cookies.set("mtg_turn", str(turn), path="/", max_age=14*24*3600)
+
 def _render_card(card):
     name = escape(card.get("name", "Unknown"))
     set_name = escape(card.get("set_name", "-"))
@@ -158,6 +168,11 @@ def view_search_games(
     query = " ".join(query_parts).strip()
     all_discards = set(discards)
 
+    turn = _get_cookie_turn() if use_hand else 0
+    if query and use_hand:
+        turn += 1
+        _set_cookie_turn(turn)
+
     # Hand size can be up to 8, but if at 8 only show discard
     HAND_LIMIT = 8
     hand_full = use_hand and len(hand_ids) >= HAND_LIMIT
@@ -212,6 +227,7 @@ def view_search_games(
     </script>
     """)
     html.append("<h1>Garfield's Game of Trading Cards</h1>")
+    html.append(f"<div class='mtg-turn'>Turn: {turn}</div>")
 
     # Show hand (if enabled and not empty)
     if use_hand and hand_ids:
@@ -253,37 +269,35 @@ def view_search_games(
     elif searched and (not use_hand or not hand_full):
         html.append('<div style="color:#ba1c0c;">No results found and no random card could be found.</div>')
 
-    # Search form (below hand/results)
+    no_cards = not hand_ids and not main_card
+    form_class = "mtg-search-form" + (" no-cards" if no_cards else "")
     html.append("""
-    <form class="mtg-search-form" method="get">
-        <div class="mtg-grid">
-            <div class="mtg-form-row">
-                <label>NAME:</label>
-                <input type="text" name="name" value="{name}" placeholder="Black Lotus">
-                <button class="mtg-random-btn" type="button" title="Random name" onclick="mtgPickRandom('name')">&#x1f3b2;</button>
+    <form class=\"{form_class}\" method=\"get\">
+        <div class=\"mtg-grid\">
+            <div class=\"mtg-form-row\">
+                <div class=\"mtg-label-row\"><label>NAME:</label><button class=\"mtg-random-btn\" type=\"button\" title=\"Random name\" onclick=\"mtgPickRandom('name')\">&#x1f3b2;</button></div>
+                <input type=\"text\" name=\"name\" value=\"{name}\" placeholder=\"Black Lotus\">
             </div>
-            <div class="mtg-form-row">
-                <label>TYPE:</label>
-                <input type="text" name="type_line" value="{type_line}" placeholder="Creature">
-                <button class="mtg-random-btn" type="button" title="Random type" onclick="mtgPickRandom('type_line')">&#x1f3b2;</button>
+            <div class=\"mtg-form-row\">
+                <div class=\"mtg-label-row\"><label>TYPE:</label><button class=\"mtg-random-btn\" type=\"button\" title=\"Random type\" onclick=\"mtgPickRandom('type_line')\">&#x1f3b2;</button></div>
+                <input type=\"text\" name=\"type_line\" value=\"{type_line}\" placeholder=\"Creature\">
             </div>
-            <div class="mtg-form-row">
-                <label>RULES:</label>
-                <input type="text" name="oracle_text" value="{oracle_text}" placeholder="draw a card">
-                <button class="mtg-random-btn" type="button" title="Random text" onclick="mtgPickRandom('oracle_text')">&#x1f3b2;</button>
+            <div class=\"mtg-form-row\">
+                <div class=\"mtg-label-row\"><label>RULES:</label><button class=\"mtg-random-btn\" type=\"button\" title=\"Random text\" onclick=\"mtgPickRandom('oracle_text')\">&#x1f3b2;</button></div>
+                <input type=\"text\" name=\"oracle_text\" value=\"{oracle_text}\" placeholder=\"draw a card\">
             </div>
-            <div class="mtg-form-row">
-                <label>SET:</label>
-                <input type="text" name="set_name" value="{set_name}" placeholder="Alpha">
-                <button class="mtg-random-btn" type="button" title="Random set" onclick="mtgPickRandom('set_name')">&#x1f3b2;</button>
+            <div class=\"mtg-form-row\">
+                <div class=\"mtg-label-row\"><label>SET:</label><button class=\"mtg-random-btn\" type=\"button\" title=\"Random set\" onclick=\"mtgPickRandom('set_name')\">&#x1f3b2;</button></div>
+                <input type=\"text\" name=\"set_name\" value=\"{set_name}\" placeholder=\"Alpha\">
             </div>
         </div>
-        <button class="search-btn" type="submit">Search</button>
+        <button class=\"search-btn\" type=\"submit\">Search</button>
     </form>
     """.format(
+        form_class=form_class,
         name=escape(name or ""), type_line=escape(type_line or ""),
         oracle_text=escape(oracle_text or ""), set_name=escape(set_name or "")
-    ))
+))
 
     html.append(
         '<div style="font-size:0.95em;color:#888;margin-top:2em;">Made using the <a href="https://scryfall.com/docs/api">Scryfall API</a>.</div>'

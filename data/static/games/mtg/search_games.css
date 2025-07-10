@@ -26,18 +26,21 @@
     .mtg-grid { display:block; }
 }
 .mtg-form-row {
-    margin-bottom:12px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    margin-bottom:18px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+}
+.mtg-label-row {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
 }
 .mtg-form-row label {
-    min-width: 66px;
-    margin-right: 3px;
-    margin-bottom: 16px;
-    font-weight: 500;
-    font-size: larger;
-    color: #5a5100;
+    margin:0;
+    font-weight:500;
+    font-size:larger;
+    color:#5a5100;
 }
 .mtg-form-row input[type="text"] {
     flex: 1 1 80%;
@@ -48,16 +51,13 @@
     box-sizing: border-box;
 }
 .mtg-random-btn {
-    background: none;
+    background:none;
     border:none;
     cursor:pointer;
     color:#84763d;
-    margin-left:2px;
-    margin-bottom:16px;
     font-size:1.1em;
-    vertical-align:middle;
-    padding: 2px 3px;
-    transition: color 0.15s;
+    padding:2px 3px;
+    transition:color 0.15s;
 }
 .mtg-random-btn:hover { color:#ff8800; }
 .mtg-hand-full {
@@ -70,13 +70,18 @@
 .mtg-search-form {
     width: 100%;
     margin: 0 auto 12px auto;
+    padding: 16px 0;
+}
+.mtg-search-form.no-cards {
+    padding-top: 32px;
+    padding-bottom: 32px;
 }
 .mtg-search-form .search-btn {
     min-width: 320px;
     margin: 18px auto 0 auto;
     display: block;
-    font-size: 1.09em;
-    padding: 8px 0 8px 0;
+    font-size: 1.25em;
+    padding: 12px 0;
     border-radius: 7px;
     background: #1566e6;
     color: #fff;
@@ -88,3 +93,4 @@
 .mtg-search-form .search-btn:hover {
     background: #00397a;
 }
+.mtg-turn { text-align:center; margin:0.6em 0 1em; font-size:1.1em; font-weight:600; color:#5a5100; }
