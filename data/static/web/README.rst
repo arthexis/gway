@@ -21,6 +21,13 @@ Parameters are handled exactly like the regular ``/project/view`` route, so you
 can use GET or POST to pass values. Returned content is suitable for dynamic
 insertion via ``render.js`` or inclusion in an ``iframe``.
 
+``render.js`` also supports manual refresh hooks:
+
+- ``data-gw-click``/``data-gw-left-click`` – refresh on left click.
+- ``data-gw-right-click`` – refresh on right click.
+- ``data-gw-double-click`` – refresh on double click.
+- ``data-gw-on-load`` – refresh once when the page loads.
+
 For example, to embed the ``reader`` page:
 
 .. code-block:: html
