@@ -1,0 +1,68 @@
+# file: projects/games/evennia.py
+"""Helpers to install and control an Evennia game environment."""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from gway import gw
+
+DEFAULT_DIR = gw.resource("work", "games", "evennia")
+
+
+def _run(cmd, *, cwd=None):
+    """Execute a command list, logging and streaming output."""
+    gw.info(f"Running: {' '.join(cmd)} (cwd={cwd})")
+    process = subprocess.run(cmd, cwd=cwd, check=False)
+    if process.returncode != 0:
+        gw.error(f"Command {cmd[0]} exited with code {process.returncode}")
+    return process.returncode
+
+
+def install(*, target: str | Path = DEFAULT_DIR, version: str | None = None):
+    """Install Evennia and initialize a game environment.
+
+    Parameters:
+        target: Path where the game environment lives. Defaults to
+            ``work/games/evennia``.
+        version: Optional version specifier passed to ``pip install``.
+    """
+    target = Path(target)
+    os.makedirs(target, exist_ok=True)
+    spec = "evennia" + (version or "")
+    _run([sys.executable, "-m", "pip", "install", spec])
+    if not (target / "server" / "settings.py").exists():
+        _run([sys.executable, "-m", "evennia", "--init", "."], cwd=target)
+    return str(target)
+
+
+def manage(*args, path: str | Path = DEFAULT_DIR):
+    """Run ``evennia`` management command in the environment."""
+    path = Path(path)
+    cmd = [sys.executable, "-m", "evennia", *args]
+    return _run(cmd, cwd=path)
+
+
+def start(*, path: str | Path = DEFAULT_DIR):
+    """Start the Evennia server."""
+    return manage("start", path=path)
+
+
+def stop(*, path: str | Path = DEFAULT_DIR):
+    """Stop the Evennia server."""
+    return manage("stop", path=path)
+
+
+def view_evennia(*, action: str = None):
+    """Simple HTML control for the Evennia server."""
+    if action == "start":
+        start()
+        return "<p>Evennia server started.</p>"
+    if action == "stop":
+        stop()
+        return "<p>Evennia server stopped.</p>"
+    return (
+        "<h1>Evennia</h1><p>Use ?action=start or ?action=stop to control the "
+        "local server in work/games/evennia.</p>"
+    )
