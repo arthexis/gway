@@ -131,6 +131,7 @@ class NavStyleTests(unittest.TestCase):
         assert select, "Could not find theme selector"
         options = [o['value'] for o in select.find_all("option")]
         assert "classic-95.css" in options, f"classic-95.css not in options: {options}"
+        assert "random" in options, f"random option missing: {options}"
 
         # 3. POST to switch theme
         resp = session.post(
@@ -151,6 +152,23 @@ class NavStyleTests(unittest.TestCase):
             link,
             f"Readme page did not include expected theme <link> for classic-95.css in <head>. Got links: {[str(l) for l in soup2.find_all('link', rel='stylesheet')]}"
         )
+
+    def test_random_cookie_and_css_link(self):
+        session = requests.Session()
+        session.post(self.base_url + "/cookies/accept")
+        resp = session.post(
+            self.base_url + "/nav/style-switcher",
+            data={"css": "random"},
+            allow_redirects=True,
+        )
+        self.assertEqual(
+            session.cookies.get_dict().get("css"), "random",
+            f"Random theme did not set cookie: {session.cookies.get_dict()}"
+        )
+        resp2 = session.get(self.base_url + "/site/reader")
+        soup2 = BeautifulSoup(resp2.text, "html.parser")
+        link = soup2.find("link", rel="stylesheet", href=lambda h: h and "styles/" in h and h.endswith(".css"))
+        self.assertIsNotNone(link, "Page missing stylesheet link for random theme")
 
     @unittest.skipUnless(is_test_flag("screenshot"), "Screenshot tests disabled")
     def test_style_switcher_screenshot(self):

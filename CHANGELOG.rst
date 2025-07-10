@@ -4,6 +4,9 @@ Changelog
 Unreleased
 ----------
 
+- Add **Random** option to the style switcher drop-down and support
+  saving it in the ``css`` cookie.
+
 0.4.41 [build 4a9512]
 ---------------------
 
