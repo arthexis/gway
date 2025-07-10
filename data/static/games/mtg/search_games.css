@@ -43,9 +43,9 @@
     color:#5a5100;
 }
 .mtg-form-row input[type="text"] {
-    flex: 1 1 80%;
+    flex: 1 1 auto;
     min-width: 0;
-    max-width: 80%;
+    max-width: 100%;
     font-size: 1em;
     padding: 5px 8px;
     box-sizing: border-box;
@@ -78,7 +78,7 @@
 }
 .mtg-search-form .search-btn {
     min-width: 320px;
-    margin: 18px auto 0 auto;
+    margin: 18px 0 0 0;
     display: block;
     font-size: 1.25em;
     padding: 12px 0;
@@ -93,4 +93,23 @@
 .mtg-search-form .search-btn:hover {
     background: #00397a;
 }
-.mtg-turn { text-align:center; margin:0.6em 0 1em; font-size:1.1em; font-weight:600; color:#5a5100; }
+
+.mtg-status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1em;
+    margin-top: 18px;
+}
+.mtg-status .search-btn {
+    margin-right: auto;
+}
+.mtg-status span {
+    font-weight: 600;
+    color: #5a5100;
+}
+.mtg-life button {
+    margin-left: 4px;
+    padding: 2px 6px;
+    font-size: 1em;
+}
