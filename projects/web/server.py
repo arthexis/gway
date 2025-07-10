@@ -110,7 +110,7 @@ def start_app(*,
 
         # Proxy setup (unchanged)
         if proxy:
-            from .proxy import setup_app as setup_proxy
+            setup_proxy = gw.web.proxy.setup_fallback_app
             app = setup_proxy(endpoint=proxy, app=app)
 
         # Factory support (unchanged)

@@ -28,6 +28,7 @@ class UntilAbortTests(unittest.TestCase):
         time.sleep(0.2)
         with open(path, 'w') as f:
             f.write('changed')
+        time.sleep(0.1)
         stop_event.set()
 
     def test_until_returns_on_change(self):
