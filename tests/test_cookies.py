@@ -98,5 +98,6 @@ class CookiesUtilTests(unittest.TestCase):
         del self.request.cookies['cookies_accepted']
         self.assertFalse(self.cookies.accepted())
 
+
 if __name__ == '__main__':
     unittest.main()

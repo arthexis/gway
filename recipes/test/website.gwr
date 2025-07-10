@@ -8,6 +8,7 @@ web app setup-app:
     --project awg --home cable-finder
     --project web.nav --home style-switcher
     --project web.cookies --home cookie-jar
+    --project web.message
     --project vbox --home uploads
     --project ocpp.data --home charger-summary
     --project ocpp.csms --auth required --home charger-status

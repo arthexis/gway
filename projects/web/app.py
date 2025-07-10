@@ -6,6 +6,7 @@ import bottle
 import json
 import datetime
 import time
+import html
 from bottle import Bottle, static_file, request, response, template, HTTPResponse
 from gway import gw
 
@@ -507,6 +508,8 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
             </script>
         """
 
+    message_html = gw.web.message.render() if is_setup('web.message') else ""
+
     html = template("""<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -519,7 +522,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         <body>
             <div class="page-wrap">
                 <div class="layout">
-                    {{!nav}}<main>{{!content}}</main>
+                    {{!nav}}<main>{{!message_html}}{{!content}}</main>
                 </div>
                 <footer><p>This website was <strong>built</strong>, <strong>tested</strong>
                     and <strong>released</strong> with <a href="https://arthexis.com">GWAY</a>

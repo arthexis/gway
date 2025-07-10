@@ -80,6 +80,7 @@ def append(name: str, label: str, value: str, sep: str = "|") -> list:
     set(name, cookie_value)
     return items
 
+
 # --- Views ---
 
 def view_accept(*, next="/cookies/cookie-jar"):
