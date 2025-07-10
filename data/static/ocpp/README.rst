@@ -40,12 +40,20 @@ demos:
   same machine for quick testing.
 - ``cloud.gwr`` – run a CSMS instance for cloud deployments with an
   optional RFID allow list.
+- ``local_proxy.gwr`` – run a local CSMS that forwards unknown requests
+  to a remote instance. This keeps sessions operational when offline and
+  syncs with the cloud once connectivity returns.
 
 Run them via ``gway run <recipe>``. For example:
 
 .. code-block:: bash
 
    gway run recipes/etron/local.gwr
+
+The integration suite includes ``tests/test_proxy_fallback.py`` which
+starts both the local and cloud recipes to verify that requests are
+proxied once the cloud is available. This harness can serve as a
+template for offline-first deployments.
 
 OCPP Data Storage
 -----------------
