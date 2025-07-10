@@ -47,6 +47,7 @@ Thumbs.db
 
 # Coverage & test results (if using Jest, Mocha, etc.)
 coverage/
+\.coverage
 *.lcov
 
 # Package lock (optional; use only one lockfile)
