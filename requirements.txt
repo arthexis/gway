@@ -31,3 +31,4 @@ markdown
 pandas
 openpyxl
 coverage
+argcomplete
