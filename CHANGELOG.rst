@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.42 [build 68c493]
+---------------------
+
+- 2dee342 fix classic-95 text input styling
+
 - Add **Random** option to the style switcher drop-down and support
   saving it in the ``css`` cookie.
 
