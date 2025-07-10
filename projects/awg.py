@@ -232,7 +232,7 @@ def find_conduit(awg, cables, *, conduit="emt"):
         cursor.execute(sql, {"conduit": conduit, "cables": cables})
         rows = cursor.fetchall()
         if not rows:
-            return {"trade_size": "n/a"}
+            return {"size_inch": "n/a"}
 
         def _to_float(value: str) -> float:
             total = 0.0
