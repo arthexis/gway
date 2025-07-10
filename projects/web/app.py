@@ -462,6 +462,29 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
     '''
     nav = gw.web.nav.render(homes=_homes, links=_links) if is_setup('web.nav') else ""
 
+    debug_html = ""
+    if getattr(gw, "debug_enabled", False):
+        debug_html = """
+            <div id='gw-debug-overlay' style='display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);color:#fff;overflow:auto;z-index:10000;padding:1em;'>
+                <div style='text-align:right;'><a href='#' id='gw-debug-close' style='color:#fff;text-decoration:none;'>[x] Close</a></div>
+                <div id='gw-debug-content'>Loading...</div>
+            </div>
+            <div id='gw-debug-btn' style='position:fixed;bottom:1em;right:1em;background:#333;color:#fff;border-radius:50%;padding:0.4em 0.6em;cursor:pointer;z-index:10001;font-weight:bold;'>&#9881;?</div>
+            <script>
+            (function(){
+                var btn=document.getElementById('gw-debug-btn');
+                var overlay=document.getElementById('gw-debug-overlay');
+                var close=document.getElementById('gw-debug-close');
+                function show(){
+                    overlay.style.display='block';
+                    fetch('/render/site/debug_info').then(r=>r.text()).then(t=>{document.getElementById('gw-debug-content').innerHTML=t;});
+                }
+                btn.addEventListener('click',function(e){e.preventDefault();show();});
+                close.addEventListener('click',function(e){e.preventDefault();overlay.style.display='none';});
+            })();
+            </script>
+        """
+
     html = template("""<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -480,9 +503,10 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
                     and <strong>released</strong> with <a href="https://arthexis.com">GWAY</a>
                     <a href="https://pypi.org/project/gway/{{!version}}/">v{{!version}}</a>,
                     fresh since {{!fresh}}{{!build}}.</p>
-                    {{!credits}}
-                </footer>
+            {{!credits}}
+            </footer>
             </div>
+            {{!debug_html}}
             {{!js_links}}
         </body>
         </html>
