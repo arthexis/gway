@@ -321,6 +321,10 @@ class Gateway(Resolver, Runner):
         try:
             project_obj = self.load_project(project_name=name)
             return project_obj
+        except FileNotFoundError as e:
+            # Avoid noisy stack traces for expected missing modules
+            self.debug(f"Project not found for attribute '{name}': {e}")
+            raise AttributeError(f"Unable to find GWAY attribute ({str(e)})")
         except Exception as e:
             self.exception(e)
             raise AttributeError(f"Unable to find GWAY attribute ({str(e)})")
