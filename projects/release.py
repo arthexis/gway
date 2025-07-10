@@ -102,7 +102,7 @@ def build(
     # Write BUILD file with current commit hash
     build_path = Path("BUILD")
     prev_build = build_path.read_text().strip() if build_path.exists() else None
-    build_hash = commit()
+    build_hash = gw.hub.commit()
     build_path.write_text(build_hash + "\n")
     gw.info(f"Wrote BUILD file with commit {build_hash}")
     update_changelog(version, build_hash, prev_build)
@@ -422,81 +422,18 @@ def create_shortcut(
 
 
 def commit(length: int = 6) -> str:
-    """Return the current git commit hash (optionally truncated)."""
-    import subprocess
-
-    try:
-        full = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
-        ).strip()
-        if length:
-            return full[-length:]
-        return full
-    except Exception:
-        return "unknown"
+    """Return the current git commit hash via :mod:`hub` utilities."""
+    return gw.hub.commit(length)
 
 
 def get_build(length: int = 6) -> str:
-    """Return the build hash stored in the BUILD file."""
-    build_path = Path("BUILD")
-    if build_path.exists():
-        commit_hash = build_path.read_text().strip()
-        return commit_hash[-length:] if length else commit_hash
-    else:
-        gw.warning("BUILD file not found.")
-        return "unknown"
+    """Return the build hash stored in the BUILD file via :mod:`hub`."""
+    return gw.hub.get_build(length)
 
 
 def changes(*, files=None, staged=False, context=3, max_bytes=200_000, clip=False):
-    """
-    Returns a unified diff of all recent textual changes in the git repo.
-
-    - Shows added/removed lines (ignores binary files).
-    - Includes unstaged (working directory) by default. Use staged=True to see only staged.
-    - 'files': Optionally filter by path(s) or file glob(s).
-    - 'context': Number of context lines in the diff (default 3).
-    - 'max_bytes': Truncate diff if too large (default 200,000).
-    """
-    import subprocess
-
-    cmd = ["git", "diff", "--unified=%d" % context]
-    if staged:
-        cmd.insert(2, "--staged")
-    if files:
-        if isinstance(files, str):
-            files = [files]
-        cmd += list(files)
-
-    try:
-        diff = subprocess.check_output(cmd, encoding="utf-8", errors="replace")
-    except subprocess.CalledProcessError as e:
-        return f"[ERROR] Unable to get git diff: {e}"
-    except FileNotFoundError:
-        return "[ERROR] git command not found. Are you in a git repo?"
-
-    # Remove any diff blocks for binary files
-    filtered = []
-    skip = False
-    for line in diff.splitlines(keepends=True):
-        # Exclude blocks marking a binary difference
-        if line.startswith("Binary files "):
-            continue
-        if line.startswith("diff --git"):
-            skip = False  # new file block
-        if "GIT binary patch" in line:
-            skip = True
-        if skip:
-            continue
-        filtered.append(line)
-
-    result = "".join(filtered)
-    if len(result) > max_bytes:
-        return result[:max_bytes] + "\n[...Diff truncated at %d bytes...]" % max_bytes
-    
-    if clip: 
-        gw.clip.copy(result)
-    if not gw.silent:
-        return result or "[No changes detected]"
+    """Return a unified diff using :mod:`hub` utilities."""
+    return gw.hub.changes(files=files, staged=staged, context=context, max_bytes=max_bytes, clip=clip)
 
 
 def _last_changelog_build():
