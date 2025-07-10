@@ -192,6 +192,21 @@ input, textarea, select {
     font-family: inherit;
     box-sizing: border-box;
 }
+input[type="checkbox"], input[type="radio"] {
+    width: auto;
+}
+label.checkbox-right {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 1em;
+}
+
+button.btn-block {
+    display: block;
+    width: 100%;
+}
 select {
     background: #fff;
     appearance: none;

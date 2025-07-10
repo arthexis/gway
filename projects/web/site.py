@@ -523,8 +523,11 @@ def view_feedback(*, name=None, email=None, topic=None, message=None, create_iss
             <input type="email" name="email" placeholder="Email" required class="main" />
             <input type="text" name="topic" placeholder="Topic" required class="main" />
             <textarea name="message" placeholder="Message" required rows="6" class="main"></textarea>
-            <label><input type="checkbox" name="create_issue" value="1" /> Optional: Create an Issue Report for GWAY or this website.</label>
-            <button type="submit" class="submit">Submit</button>
+            <label class="checkbox-right">
+                Optional: Create an Issue Report for GWAY or this website.
+                <input type="checkbox" name="create_issue" value="1" />
+            </label>
+            <button type="submit" class="submit btn-block">Submit</button>
         </form>
     """
 
