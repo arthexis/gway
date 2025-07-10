@@ -67,7 +67,7 @@ def start_watch(
     project_name = str(project)
     log_prefix = f"[monitor:{project_name}] "
 
-    gproj = gw.get(f"monitor.{project_name}")
+    gproj = gw.find_project(f"monitor.{project_name}")
     if not gproj:
         raise ValueError(f"{log_prefix}Project not found in GWAY: 'monitor.{project_name}'")
 
@@ -182,7 +182,7 @@ def view_monitor_panel(**_):
     for project in NETWORK_STATE:
         state = get_state(project)
         html.append(f'<div class="monitor-block">')
-        gproj = gw.get(f"monitor.{project}")
+        gproj = gw.find_project(f"monitor.{project}")
         renders = MONITOR_RENDER.get(project) or [project]
         rendered = False
         for rname in renders:

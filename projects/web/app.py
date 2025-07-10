@@ -86,7 +86,9 @@ def setup_app(*,
 ):
     """
     Setup Bottle web application with symmetrical static/shared public folders.
-    Only one project can be setup per call. CSS/JS params are used as the only static includes.
+    ``project`` may be a single name or sequence of fallback names. The first
+    project found is loaded and used. CSS/JS params are used as the only static
+    includes.
     """
     global _ver, _homes, _enabled
 
@@ -100,17 +102,23 @@ def setup_app(*,
     _ver = _ver or gw.version()
     bottle.BaseRequest.MEMFILE_MAX = UPLOAD_MB * 1024 * 1024
 
-    if not isinstance(project, str) or not project:
-        gw.abort("Project must be a non-empty string.")
+    project_names = gw.cast.to_list(project)
+    if not project_names:
+        gw.abort("Project must be a non-empty string or list of names.")
+
+    source = gw.find_project(*project_names)
+    if not source:
+        gw.abort(
+            "Project {} not found in Gateway during app setup.".format(
+                ", ".join(project_names)
+            )
+        )
+
+    # Normalize project name to the one actually loaded
+    project = getattr(source, "_name", project_names[0])
 
     # Track project for later global static collection
     _enabled.add(project)
-
-    # Always use the given project, never a list
-    try:
-        source = gw[project]
-    except Exception:
-        gw.abort(f"Project {project} not found in Gateway during app setup.")
 
     # Default path is the dotted project name, minus any leading web/
     if path is None:
