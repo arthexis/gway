@@ -5,6 +5,7 @@ Unreleased
 ----------
 
 - support data-gw-on-load for one-time refresh events in render.js
+- add ChatGPT actions with passphrase trust system (web.chat.actions)
  
 0.4.42 [build 68c493]
 ---------------------
