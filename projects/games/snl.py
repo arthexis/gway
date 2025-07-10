@@ -169,20 +169,31 @@ def view_massive_snake(*, action=None, name=None, color=None):
         player_pos = board["players"].get(pid, {}).get("pos", 0)
         if player_pos < BOARD_SIZE:
             roll_button = (
-                "<form method='post'>"
-                "<button type='submit' name='action' value='roll'>Roll Dice</button>"
+                "<form method='post' class='snake-roll'>"
+                "<button class='snake-button roll-button' type='submit' name='action' value='roll'>Roll Dice</button>"
                 "</form>"
             )
         if player_pos >= BOARD_SIZE:
             ascend_button = (
-                "<form method='post'>"
-                "<button type='submit' name='action' value='ascend'>Ascend</button>"
+                "<form method='post' class='snake-ascend'>"
+                "<button class='snake-button ascend-button' type='submit' name='action' value='ascend'>Ascend</button>"
                 "</form>"
             )
 
+    script = ""
+    if message == "Ascended!":
+        script = (
+            "<script>"  # add animation class and remove it later
+            "const t=document.getElementById('msnake-title');"
+            "t.classList.add('ascended');"
+            "setTimeout(()=>t.classList.remove('ascended'),3000);"
+            "</script>"
+        )
+
     html = [
         '<link rel="stylesheet" href="/static/games/massive_snake/board.css">',
-        "<h1>Massive Snake</h1>",
+        "<h1 id='msnake-title' class='snake-title'>Massive Snake</h1>",
+        script,
         "<p><em>A Massively Multiplayer Game of Snakes and Ladders.</em></p>",
         join_form,
         f"<p>{message}</p>" if message else "",

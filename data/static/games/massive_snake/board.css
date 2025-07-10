@@ -16,3 +16,29 @@
 .snake-board td.snake::before { content: "🐍"; }
 .snake-board td.ladder::before { content: "🪜"; }
 .snake-board td .num { display:block; font-size:0.7em; color:#555; }
+
+/* Larger controls */
+.snake-button {
+    font-size: 1.1em;
+    padding: 0.4em 1.2em;
+}
+
+/* Distinct color for the Ascend button */
+.ascend-button {
+    background-color: #f08030;
+    color: #fff;
+}
+
+/* Animated title when a player ascends */
+.snake-title.ascended {
+    display: inline-block;
+    animation: snake-wave 1.5s ease-in-out 3;
+    transform: scale(1.6);
+}
+
+@keyframes snake-wave {
+    0%, 100% { transform: scale(1.6) translateY(0); }
+    25% { transform: scale(1.6) translateY(-6px) rotate(-5deg); }
+    50% { transform: scale(1.6) translateY(6px) rotate(5deg); }
+    75% { transform: scale(1.6) translateY(-6px) rotate(-5deg); }
+}
