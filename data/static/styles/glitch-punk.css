@@ -159,12 +159,7 @@ code {
 }
 
 /* Inputs */
-input[type="text"],
-input[type="email"],
-input[type="password"],
-input[type="search"],
-input[type="number"],
-input[type="url"],
+input:not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]),
 textarea,
 select {
   background: #13131a;
