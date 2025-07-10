@@ -529,7 +529,7 @@ def view_feedback(*, name=None, email=None, topic=None, message=None, create_iss
     """
 
 
-def render_debug_info():
+def view_debug_info():
     """Return HTML with debug info about the current request and log tail."""
     from bottle import request
     import html as _html
