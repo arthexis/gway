@@ -83,5 +83,12 @@ class GatewayTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             wrapped()
 
+    def test_find_project_returns_first(self):
+        project = gw.find_project("does.not.exist", "qr")
+        self.assertIsNotNone(project)
+        self.assertTrue(hasattr(project, "generate_url"))
+        none_proj = gw.find_project("nope1", "nope2")
+        self.assertIsNone(none_proj)
+
 if __name__ == "__main__":
     unittest.main()

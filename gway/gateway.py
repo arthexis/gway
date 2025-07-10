@@ -380,6 +380,20 @@ class Gateway(Resolver, Runner):
             f"base_path/projects, env var, site-packages, and '{root}'."
         )
 
+    def find_project(self, *project_names: str, root: str = "projects"):
+        """Return the first successfully loaded project from ``project_names``.
+
+        Each name is passed to :meth:`load_project`. Projects that are not
+        found are ignored without logging any errors. ``None`` is returned if
+        none of the names can be loaded.
+        """
+        for proj in project_names:
+            try:
+                return self.load_project(proj, root=root)
+            except FileNotFoundError:
+                continue
+        return None
+
     def _projects_path(self):
         """
         Find the projects directory in source, install, or user-specified locations.

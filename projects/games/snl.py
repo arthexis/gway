@@ -166,12 +166,14 @@ def view_massive_snake(*, action=None, name=None, color=None):
     roll_button = ""
     ascend_button = ""
     if pid:
-        roll_button = (
-            "<form method='post'>"
-            "<button type='submit' name='action' value='roll'>Roll Dice</button>"
-            "</form>"
-        )
-        if board["players"].get(pid, {}).get("pos") >= BOARD_SIZE:
+        player_pos = board["players"].get(pid, {}).get("pos", 0)
+        if player_pos < BOARD_SIZE:
+            roll_button = (
+                "<form method='post'>"
+                "<button type='submit' name='action' value='roll'>Roll Dice</button>"
+                "</form>"
+            )
+        if player_pos >= BOARD_SIZE:
             ascend_button = (
                 "<form method='post'>"
                 "<button type='submit' name='action' value='ascend'>Ascend</button>"

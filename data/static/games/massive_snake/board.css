@@ -1,6 +1,18 @@
 /* file: data/static/games/massive_snake/board.css */
 .snake-board { border-collapse: collapse; margin-top: 1em; }
 .snake-board td { width: 26px; height: 26px; border: 1px solid #555; text-align: center; font-size: 0.78em; line-height: 1.1; }
-.snake-board td.snake { background: #ffecec; }
-.snake-board td.ladder { background: #ecffec; }
+.snake-board td.snake { background: #ffecec; position: relative; }
+.snake-board td.ladder { background: #ecffec; position: relative; }
+.snake-board td.snake .num { color: #900; }
+.snake-board td.ladder .num { color: #060; }
+.snake-board td.snake::before,
+.snake-board td.ladder::before {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    font-size: 0.8em;
+    line-height: 1;
+}
+.snake-board td.snake::before { content: "🐍"; }
+.snake-board td.ladder::before { content: "🪜"; }
 .snake-board td .num { display:block; font-size:0.7em; color:#555; }
