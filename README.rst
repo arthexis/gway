@@ -98,7 +98,7 @@ next non-indented command.
    # Configure multiple projects
    web app setup-app:
        --project web.site --home reader
-       --project web.nav
+       --project web.nav --style random
        --project games.qpig --home qpig-farm
 
    # Start the server
