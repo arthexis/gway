@@ -175,6 +175,7 @@ The following projects bundle additional documentation.  Each link uses
   - `nav </site/reader?tome=web/nav>`_
   - `cookies </site/reader?tome=web/cookies>`_
   - `auth </site/reader?tome=web/auth>`_
+  - `chat </site/reader?tome=web/chat>`_
 
 .. _/site/reader?tome=awg: /site/reader?tome=awg
 .. _/site/reader?tome=cdv: /site/reader?tome=cdv
@@ -193,6 +194,7 @@ The following projects bundle additional documentation.  Each link uses
 .. _/site/reader?tome=web/nav: /site/reader?tome=web/nav
 .. _/site/reader?tome=web/cookies: /site/reader?tome=web/cookies
 .. _/site/reader?tome=web/auth: /site/reader?tome=web/auth
+.. _/site/reader?tome=web/chat: /site/reader?tome=web/chat
 
 You can generate these links yourself with
 ``gw.web.build_url('site/reader', tome='proj')``.
