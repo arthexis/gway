@@ -56,8 +56,8 @@ def send(subject, body=None, to=None, threaded=None, **kwargs):
             gw.debug("Missing one or more required email configuration details.")
             return "Missing email configuration details."
 
-        # Construct the MIMEText message
-        msg = MIMEText(body)
+        # Construct the MIMEText message with explicit UTF-8 encoding
+        msg = MIMEText(body, _charset="utf-8")
         msg['Subject'] = gw.resolve(subject)
         msg['From']    = sender_email
         msg['To']      = _to
