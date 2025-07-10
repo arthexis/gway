@@ -141,7 +141,7 @@ def setup_app(*,
         _links.clear()
         _registered_routes.clear()
         if home:
-            add_home(home, path)
+            add_home(home, path, project)
             add_links(f"{path}/{home}", links)
 
         def index():
@@ -155,7 +155,7 @@ def setup_app(*,
             return gw.web.error.redirect(f"404 Not Found: {request.url}", err=error)
     
     elif home:
-        add_home(home, path)
+        add_home(home, path, project)
         add_links(f"{path}/{home}", links)
 
     if getattr(gw, "timed_enabled", False):
@@ -245,6 +245,12 @@ def setup_app(*,
                 css_files=(f"{media_origin}/{css}.css",),
                 js_files=(f"{media_origin}/{js}.js",),
             )
+
+        def index_dispatch():
+            return view_dispatch("index")
+
+        add_route(app, f"/{path}", ["GET", "POST"], index_dispatch)
+        add_route(app, f"/{path}/", ["GET", "POST"], index_dispatch)
         add_route(app, f"/{path}/<view:path>", ["GET", "POST"], view_dispatch)
 
     # API dispatcher (only if apis is not None)
@@ -556,9 +562,13 @@ def is_setup(project_name):
     global _enabled
     return project_name in _enabled
 
-def add_home(home, path):
+def add_home(home, path, project=None):
     global _homes
-    title = home.replace('-', ' ').replace('_', ' ').title()
+    if home.lower() == "index" and project:
+        title_src = project
+    else:
+        title_src = home
+    title = title_src.replace('.', ' ').replace('-', ' ').replace('_', ' ').title()
     route = f"{path}/{home}"
     if (title, route) not in _homes:
         _homes.append((title, route))
