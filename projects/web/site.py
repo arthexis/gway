@@ -314,15 +314,17 @@ def view_help(topic="", *args, **kwargs):
             sections.append(section_html)
 
         multi = f"<div class='help-multi'>{''.join(sections)}</div>"
-        if "Full Code" in str(help_info):
-            multi += highlight_js
-        return f"<h1>{title}</h1>{multi}"
+        page = f"<h1>{title}</h1>{multi}"
+        if "class='python'" in page:
+            page += highlight_js
+        return page
 
     # Not a multi-match result: just render normally
     body = _render_help_section(help_info, use_query_links=True)
-    if "Full Code" in str(help_info):
-        body += highlight_js
-    return f"<h1>{title}</h1>{body}"
+    page = f"<h1>{title}</h1>{body}"
+    if "class='python'" in page:
+        page += highlight_js
+    return page
 
 def _render_help_section(info, use_query_links=False, highlight=False, *args, **kwargs):
     import html
