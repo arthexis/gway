@@ -205,14 +205,26 @@ def setup_app(*,
         return None
 
     if views:
+        def _looks_like_document(text: str) -> bool:
+            if not isinstance(text, str):
+                return False
+            check = text.lstrip().lower()
+            return check.startswith("<!doctype") or check.startswith("<html")
+
         def view_dispatch(view):
             nonlocal home, views
-            if (unauth := _maybe_auth("Unauthorized: You are not permitted to view this page.")):
+            if (
+                unauth := _maybe_auth(
+                    "Unauthorized: You are not permitted to view this page."
+                )
+            ):
                 return unauth
             # Set current endpoint in GWAY context (for helpers/build_url etc)
-            gw.context['current_endpoint'] = path
+            gw.context["current_endpoint"] = path
+
             segments = [s for s in view.strip("/").split("/") if s]
-            view_name = segments[0].replace("-", "_") if segments else home
+            raw_names = segments[0] if segments else home
+            view_names = [n.replace("-", "_") for n in raw_names.replace("+", " ").split()]
             args = segments[1:] if segments else []
             kwargs = dict(request.query)
             if request.method == "POST":
@@ -220,38 +232,56 @@ def setup_app(*,
                     kwargs.update(request.json or dict(request.forms))
                 except Exception as e:
                     return gw.web.error.redirect("Error loading JSON payload", err=e)
+
             method = request.method.lower()  # 'get' or 'post'
-            method_func_name = f"{views}_{method}_{view_name}"
-            generic_func_name = f"{views}_{view_name}"
+            contents = []
+            titles = []
 
-            # Prefer view_get_x/view_post_x before view_x
-            view_func = getattr(source, method_func_name, None)
-            if not callable(view_func):
-                view_func = getattr(source, generic_func_name, None)
-            if not callable(view_func):
-                return gw.web.error.redirect(f"View not found: {method_func_name} or {generic_func_name} in {project}")
+            for view_name in view_names:
+                method_func_name = f"{views}_{method}_{view_name}"
+                generic_func_name = f"{views}_{view_name}"
 
-            try:
-                content = view_func(*args, **kwargs)
-                if isinstance(content, HTTPResponse):
+                # Prefer view_get_x/view_post_x before view_x
+                view_func = getattr(source, method_func_name, None)
+                if not callable(view_func):
+                    view_func = getattr(source, generic_func_name, None)
+                if not callable(view_func):
+                    return gw.web.error.redirect(
+                        f"View not found: {method_func_name} or {generic_func_name} in {project}"
+                    )
+
+                try:
+                    content = view_func(*args, **kwargs)
+                    if isinstance(content, HTTPResponse):
+                        return content
+                    elif isinstance(content, bytes):
+                        response.content_type = "application/octet-stream"
+                        response.body = content
+                        return response
+                    elif content is None:
+                        content = ""
+                    elif not isinstance(content, str):
+                        content = gw.to_html(content)
+                except HTTPResponse as res:
+                    return res
+                except Exception as e:
+                    return gw.web.error.redirect("Broken view", err=e)
+
+                if _looks_like_document(content):
+                    if contents:
+                        gw.warning(
+                            f"Mashup aborted: {view_name} returned full document, previous output discarded"
+                        )
                     return content
-                elif isinstance(content, bytes):
-                    response.content_type = "application/octet-stream"
-                    response.body = content
-                    return response
-                elif content is None:
-                    return ""
-                elif not isinstance(content, str):
-                    content = gw.to_html(content)
-            except HTTPResponse as res:
-                return res
-            except Exception as e:
-                return gw.web.error.redirect("Broken view", err=e)
 
+                contents.append(content)
+                titles.append(view_func.__name__.replace("_", " ").title())
+
+            final_content = "".join(contents)
             media_origin = "/shared" if shared else ("static" if static else "")
             return render_template(
-                title="GWAY - " + view_func.__name__.replace("_", " ").title(),
-                content=content,
+                title="GWAY - " + " + ".join(titles),
+                content=final_content,
                 css_files=(f"{media_origin}/{css}.css",),
                 js_files=(f"{media_origin}/{js}.js",),
             )
