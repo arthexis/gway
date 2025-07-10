@@ -66,3 +66,12 @@ def view_evennia(*, action: str = None):
         "<h1>Evennia</h1><p>Use ?action=start or ?action=stop to control the "
         "local server in work/games/evennia.</p>"
     )
+
+
+def view_fantastic_client(*, url: str | None = None):
+    """Display the Evennia web client in an iframe."""
+    url = url or "http://localhost:4001/webclient"
+    return (
+        "<h1>Fantastic Client</h1>"
+        f"<iframe src='{url}' style='width:100%;height:600px;border:0;'></iframe>"
+    )

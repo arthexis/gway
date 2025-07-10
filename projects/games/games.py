@@ -58,6 +58,12 @@ _DEF = [
         "Install and control a local Evennia server.",
         "https://www.evennia.com/",
     ),
+    (
+        "Fantastic Client",
+        "fantastic-client",
+        "Login to the Evennia server using the web client.",
+        "https://www.evennia.com/",
+    ),
 ]
 
 
@@ -91,4 +97,8 @@ def view_massive_snake(*args, **kwargs):
 
 def view_evennia(*args, **kwargs):
     return evennia.view_evennia(*args, **kwargs)
+
+
+def view_fantastic_client(*args, **kwargs):
+    return evennia.view_fantastic_client(*args, **kwargs)
 
