@@ -94,7 +94,7 @@ app start --port 8000
         (self.recipes_dir / 'sample.gwr').write_text(content)
         # Monkey-patch gw.resource to point to our fake recipes directory
         self.original_resource = console.gw.resource
-        console.gw.resource = lambda category, name: str(self.recipes_dir / name)
+        console.gw.resource = lambda *parts, **kw: str(self.recipes_dir / parts[-1])
 
     def tearDown(self):
         # Restore original resource resolver

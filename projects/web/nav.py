@@ -111,16 +111,22 @@ def render(*, homes=None, links=None):
 
     # Attempt to locate a view_compass function for the current route
     view_compass_func = None
+
+    def _find_view_compass():
+        parts = [p.replace("-", "_") for p in current_route.split("/") if p]
+        for i in range(len(parts), 0, -1):
+            prefix = ".".join(parts[:i])
+            for candidate in (prefix, f"web.{prefix}"):
+                try:
+                    vc = gw[f"{candidate}.view_compass"]
+                    if callable(vc):
+                        return vc
+                except Exception:
+                    continue
+        return None
+
     try:
-        obj = gw
-        for part in current_route.split("/"):
-            attr = part.replace("-", "_")
-            if hasattr(obj, attr):
-                obj = getattr(obj, attr)
-                if hasattr(obj, "view_compass"):
-                    view_compass_func = getattr(obj, "view_compass")
-            else:
-                break
+        view_compass_func = _find_view_compass()
     except Exception as e:
         gw.debug(f"Error searching for view_compass: {e}")
         view_compass_func = None
@@ -226,7 +232,7 @@ def view_style_switcher(*, css=None, project=None):
         seen = set()
         styles = []
         # Global styles
-        global_dir = gw.resource("data", "static", "styles")
+        global_dir = gw.resource("data", "static", "styles", parents=False)
         if os.path.isdir(global_dir):
             for f in sorted(os.listdir(global_dir)):
                 if f.endswith(".css") and os.path.isfile(os.path.join(global_dir, f)):
@@ -234,7 +240,7 @@ def view_style_switcher(*, css=None, project=None):
                         styles.append(("global", f))
                         seen.add(f)
         if project:
-            proj_dir = gw.resource("data", "static", project, "styles")
+            proj_dir = gw.resource("data", "static", project, "styles", parents=False)
             if os.path.isdir(proj_dir):
                 for f in sorted(os.listdir(proj_dir)):
                     if f.endswith(".css") and os.path.isfile(os.path.join(proj_dir, f)):
@@ -276,11 +282,11 @@ def view_style_switcher(*, css=None, project=None):
     # Determine preview link and path for raw CSS
     if style_sources.get(selected_style) == "global":
         preview_href = f"/static/styles/{selected_style}"
-        css_path = gw.resource("data", "static", "styles", selected_style)
+        css_path = gw.resource("data", "static", "styles", selected_style, parents=False)
         css_link = f'<link rel="stylesheet" href="/static/styles/{selected_style}">'
     else:
         preview_href = f"/static/{project}/styles/{selected_style}"
-        css_path = gw.resource("data", "static", project, "styles", selected_style)
+        css_path = gw.resource("data", "static", project, "styles", selected_style, parents=False)
         css_link = f'<link rel="stylesheet" href="/static/{project}/styles/{selected_style}">'
 
     preview_html = f"""
@@ -351,7 +357,7 @@ def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_acc
 def list_styles(project=None):
     seen = set()
     styles = []
-    global_dir = gw.resource("data", "static", "styles")
+    global_dir = gw.resource("data", "static", "styles", parents=False)
     if os.path.isdir(global_dir):
         for f in sorted(os.listdir(global_dir)):
             if f.endswith(".css") and os.path.isfile(os.path.join(global_dir, f)):
@@ -359,7 +365,7 @@ def list_styles(project=None):
                     styles.append(("global", f))
                     seen.add(f)
     if project:
-        proj_dir = gw.resource("data", "static", project, "styles")
+        proj_dir = gw.resource("data", "static", project, "styles", parents=False)
         if os.path.isdir(proj_dir):
             for f in sorted(os.listdir(proj_dir)):
                 if f.endswith(".css") and os.path.isfile(os.path.join(proj_dir, f)):

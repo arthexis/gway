@@ -78,9 +78,9 @@ class Runner:
 
         watchers = []
         if version:
-            watchers.append((gw.resource("VERSION"), watch_file, "VERSION file"))
+            watchers.append((gw.resource("VERSION", parents=False), watch_file, "VERSION file"))
         if build:
-            watchers.append((gw.resource("BUILD"), watch_file, "BUILD file"))
+            watchers.append((gw.resource("BUILD", parents=False), watch_file, "BUILD file"))
         watchers.extend([
             (file, watch_file, "Lock file"),
             (url, watch_url, "Lock url"),
@@ -114,7 +114,7 @@ def watch_file(*filepaths, on_change, interval=10.0, hash=False, resource=True):
 
     paths = []
     for path in filepaths:
-        resolved = gw.resource(path) if resource else path
+        resolved = gw.resource(path, parents=False) if resource else path
         if os.path.isdir(resolved):
             for root, _, files in os.walk(resolved):
                 for file in files:

@@ -330,7 +330,7 @@ class Gateway(Resolver, Runner):
         Attempt to load a project by name from all supported project locations.
         """
         def try_path(base_dir):
-            base = gw.resource(base_dir, *project_name.split("."))
+            base = gw.resource(base_dir, *project_name.split("."), parents=False)
             self.verbose(f"{project_name} <- Project('{base}')")
 
             def load_module_ns(py_path: str, dotted: str):

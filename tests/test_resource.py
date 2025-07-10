@@ -83,5 +83,10 @@ class ResourceTests(unittest.TestCase):
         result = gw.resource("work", "test", SUITE, testdir, "empty.txt", text=True)
         self.assertEqual(result, "")
 
+    def test_parents_false_does_not_create_directories(self):
+        testdir = "test_parents_false_does_not_create_directories"
+        path = gw.resource("work", "test", SUITE, testdir, "file.txt", parents=False)
+        self.assertFalse(path.parent.exists())
+
 if __name__ == "__main__":
     unittest.main()

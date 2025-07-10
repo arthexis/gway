@@ -67,7 +67,7 @@ def version(check=None) -> str:
         return tuple(int(part) for part in parts)
 
     # Get the version in the VERSION file
-    version_path = gw.resource("VERSION")
+    version_path = gw.resource("VERSION", parents=False)
     if os.path.exists(version_path):
         with open(version_path, "r") as version_file:
             current_version = version_file.read().strip()
@@ -86,7 +86,7 @@ def version(check=None) -> str:
 def normalize_ext(e):
     return e if e.startswith('.') else f'.{e}'
 
-def resource(*parts, touch=False, check=False, text=False, dir=False):
+def resource(*parts, touch=False, check=False, text=False, dir=False, parents=True):
     """
     Locate or create a resource by searching in:
     1. Current working directory
@@ -100,6 +100,8 @@ def resource(*parts, touch=False, check=False, text=False, dir=False):
     - dir: if True, create the final path as a directory, not a file.
     - text: if True, return file contents as text, not a Path.
     - check: if True, abort if resource does not exist.
+    - parents: if False, do not create parent directories unless ``touch`` or
+      ``dir`` is True.
     """
     import os
     import pathlib
@@ -141,14 +143,13 @@ def resource(*parts, touch=False, check=False, text=False, dir=False):
     if not (touch or dir) and check and not path.exists():
         gw.abort(f"Required resource {path} missing. Tried: {tried}")
 
-    # Ensure parents exist
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # Create directories/files only when requested or parents=True
+    if touch or dir or parents:
+        path.parent.mkdir(parents=True, exist_ok=True)
 
-    # If dir=True, create final directory (even if doesn't exist)
     if dir:
         path.mkdir(parents=True, exist_ok=True)
     elif touch:
-        # Optionally create the file (not directory)
         if not path.exists():
             path.touch()
 
@@ -179,7 +180,7 @@ def resource_list(*parts, ext=None, prefix=None, suffix=None):
     from gway import gw
 
     # Build the base directory path using resource
-    base_dir = resource(*parts)
+    base_dir = resource(*parts, parents=False)
     if not base_dir.exists() or not base_dir.is_dir():
         gw.abort(f"Resource directory {base_dir} does not exist or is not a directory")
 
@@ -359,7 +360,7 @@ def help(*args, full=False):
         GwVisitor().visit(tree)
         return refs
 
-    db_path = gw.resource("data", "help.sqlite")
+    db_path = gw.resource("data", "help.sqlite", parents=False)
     if not os.path.isfile(db_path):
         gw.release.build_help_db()
 
@@ -519,13 +520,13 @@ def run_recipe(*scripts: str, **context):
 
         # Try to resolve the script as given
         try:
-            script_path = gw.resource(script, check=True)
+            script_path = gw.resource(script, check=True, parents=False)
             gw.debug(f"Found script at: {script_path}")
         except (FileNotFoundError, KeyError) as first_exc:
             # Fallback: look in the 'recipes' directory of the package
             gw.debug(f"Script not found at {script!r}: {first_exc!r}")
             try:
-                script_path = gw.resource("recipes", script)
+                script_path = gw.resource("recipes", script, parents=False)
                 gw.debug(f"Found script in 'recipes/': {script_path}")
             except Exception as second_exc:
                 # If still not found, re-raise with a clear message
