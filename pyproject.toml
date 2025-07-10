@@ -30,4 +30,4 @@ Homepage = "https://arthexis.com"
 Sponsor = "https://www.gelectriic.com/"
 
 [tool.setuptools]
-packages = [ "gway",]
+packages = [ "gway", "gway.builtins" ]

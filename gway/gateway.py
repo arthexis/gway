@@ -91,13 +91,13 @@ class Gateway(Resolver, Runner):
         # Load builtins ONCE, at class level
         if Gateway._builtins is None:
             builtins_module = importlib.import_module("gway.builtins")
-            Gateway._builtins = {
-                name: obj
-                for name, obj in inspect.getmembers(builtins_module)
-                if inspect.isfunction(obj)
-                and not name.startswith("_")
-                and inspect.getmodule(obj) == builtins_module
-            }
+            Gateway._builtins = {}
+            for name, obj in inspect.getmembers(builtins_module):
+                if not inspect.isfunction(obj) or name.startswith("_"):
+                    continue
+                mod = inspect.getmodule(obj)
+                if mod and mod.__name__.startswith("gway.builtins"):
+                    Gateway._builtins[name] = obj
 
     @classmethod
     def update_modes(cls, *, debug=None, silent=None, verbose=None, wizard=None, timed=None):
