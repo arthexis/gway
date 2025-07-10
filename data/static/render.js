@@ -11,6 +11,7 @@
  * - data-gw-left-click: same as data-gw-click (optional)
  * - data-gw-right-click: any value starting with "re" to re-render on right click (optional, case-insensitive)
  * - data-gw-double-click: any value starting with "re" to re-render on double click (optional, case-insensitive)
+ * - data-gw-on-load: load block once on page load (optional)
  *
  * No external dependencies.
  */
@@ -86,7 +87,13 @@
         timers[id] = setInterval(() => renderBlock(el), refresh * 1000);
         // Render once immediately
         renderBlock(el);
+        el.dataset.gwLoaded = "1";
       }
+        let onLoad = el.getAttribute("data-gw-on-load");
+        if (onLoad !== null && !el.dataset.gwLoaded) {
+          renderBlock(el);
+          el.dataset.gwLoaded = "1";
+        }
       let leftClick = el.getAttribute('data-gw-click') || el.getAttribute('data-gw-left-click');
       if (leftClick && /^re/i.test(leftClick) && !el.dataset.gwLeftClickSetup) {
         el.addEventListener('click', evt => {

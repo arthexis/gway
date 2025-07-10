@@ -4,6 +4,8 @@ Changelog
 Unreleased
 ----------
 
+- support data-gw-on-load for one-time refresh events in render.js
+ 
 0.4.42 [build 68c493]
 ---------------------
 
