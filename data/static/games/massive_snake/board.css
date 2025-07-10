@@ -34,6 +34,15 @@
     display: inline-block;
     animation: snake-wave 1.5s ease-in-out 3;
     transform: scale(1.6);
+    position: relative;
+    z-index: 20;
+}
+
+.ascend-msg {
+    margin-left: 0.5em;
+    display: inline-block;
+    position: relative;
+    z-index: 20;
 }
 
 @keyframes snake-wave {
