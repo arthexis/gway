@@ -35,7 +35,8 @@ h1, h2, h3, h4 {
 }
 
 .search-box input[type="text"],
-input[type="text"], input[type="password"], input[type="email"], textarea {
+input:not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]),
+textarea {
     background-color: #ffffff;
     color: #000000;
     border: 2px inset #fff;
