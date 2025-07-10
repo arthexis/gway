@@ -529,3 +529,34 @@ def view_feedback(*, name=None, email=None, topic=None, message=None, create_iss
     """
 
 
+def view_debug_info():
+    """Return HTML with debug info about the current request and log tail."""
+    from bottle import request
+    import html as _html
+
+    info = []
+    info.append(f"<b>URL:</b> {_html.escape(request.url or '')}")
+    info.append(f"<b>Method:</b> {_html.escape(request.method or '')}")
+    info.append(f"<b>Version:</b> {_html.escape(gw.version())}")
+    try:
+        commit = gw.release.commit()
+        if commit:
+            info.append(f"<b>Commit:</b> {_html.escape(commit)}")
+    except Exception:
+        pass
+
+    log_tail = ""
+    try:
+        log_path = gw.resource("logs", "gway.log")
+        with open(log_path, "r", encoding="utf-8") as lf:
+            lines = lf.readlines()[-20:]
+            log_tail = "".join(lines)
+    except Exception:
+        log_tail = "(log unavailable)"
+
+    return (
+        "<div class='debug-info'>" + "<br>".join(info) +
+        f"<pre>{_html.escape(log_tail)}</pre></div>"
+    )
+
+
