@@ -39,6 +39,19 @@ framework itself clone the repository and install it in editable mode:
    pip install -r requirements.txt
    pip install -e .
 
+Shell Autocompletion
+--------------------
+
+GWAY uses ``argcomplete`` to offer optional tab completion. Install the
+package and register the completion script for your shell::
+
+   pip install argcomplete
+   register-python-argcomplete gway >> ~/.bashrc
+
+For PowerShell::
+
+   register-python-argcomplete gway -s powershell | Out-String | Invoke-Expression
+
 Core Concepts
 -------------
 

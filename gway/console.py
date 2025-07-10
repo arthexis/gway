@@ -6,6 +6,7 @@ import json
 import time
 import inspect
 import argparse
+import argcomplete
 import csv
 from typing import get_origin, get_args, Literal, Union
 
@@ -36,6 +37,7 @@ def cli_main():
     add("-z", dest="silent", action="store_true", help="Suppress all non-critical output")
     add("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
 
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     # Setup logging
