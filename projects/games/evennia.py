@@ -5,6 +5,9 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+import urllib.request
+
+from bottle import request
 
 from gway import gw
 
@@ -54,6 +57,21 @@ def stop(*, path: str | Path = DEFAULT_DIR):
     return manage("stop", path=path)
 
 
+def installed(path: str | Path = DEFAULT_DIR) -> bool:
+    """Return True if an Evennia environment exists at ``path``."""
+    path = Path(path)
+    return (path / "server" / "settings.py").is_file()
+
+
+def running(url: str = "http://localhost:4001/webclient") -> bool:
+    """Return True if the Evennia web client responds at ``url``."""
+    try:
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            return resp.status < 500
+    except Exception:
+        return False
+
+
 def view_evennia(*, action: str = None):
     """Simple HTML control for the Evennia server."""
     if action == "start":
@@ -68,10 +86,45 @@ def view_evennia(*, action: str = None):
     )
 
 
-def view_fantastic_client(*, url: str | None = None):
-    """Display the Evennia web client in an iframe."""
+def view_fantastic_client(*, url: str | None = None, action: str | None = None):
+    """Display the Evennia web client or local setup helpers."""
     url = url or "http://localhost:4001/webclient"
+
+    local = gw.web.server.is_local(request=request)
+
+    if local and action:
+        if action == "install":
+            install()
+            return "<p>Evennia installed. <a href=''>Refresh</a></p>"
+        if action == "start":
+            start()
+            return "<p>Evennia server started. <a href=''>Refresh</a></p>"
+        if action == "stop":
+            stop()
+            return "<p>Evennia server stopped. <a href=''>Refresh</a></p>"
+
+    if running(url):
+        return (
+            "<h1>Fantastic Client</h1>"
+            f"<iframe src='{url}' style='width:100%;height:600px;border:0;'></iframe>"
+        )
+
+    if not local:
+        return "<p>Evennia server is not available.</p>"
+
+    buttons = []
+    if not installed():
+        buttons.append(
+            "<button type='submit' name='action' value='install'>Install Evennia</button>"
+        )
+    else:
+        buttons.append(
+            "<button type='submit' name='action' value='start'>Start Server</button>"
+        )
+
+    btn_html = "".join(buttons)
     return (
         "<h1>Fantastic Client</h1>"
-        f"<iframe src='{url}' style='width:100%;height:600px;border:0;'></iframe>"
+        "<p>The local Evennia server is not running.</p>"
+        "<form method='post'>" + btn_html + "</form>"
     )
