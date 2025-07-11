@@ -35,7 +35,8 @@ def install(*, target: str | Path = DEFAULT_DIR, version: str | None = None):
     os.makedirs(target, exist_ok=True)
     spec = "evennia" + (version or "")
     _run([sys.executable, "-m", "pip", "install", spec])
-    if not (target / "server" / "settings.py").exists():
+    settings = target / "server" / "conf" / "settings.py"
+    if not settings.exists():
         _run([sys.executable, "-m", "evennia", "--init", "."], cwd=target)
     return str(target)
 
@@ -60,7 +61,7 @@ def stop(*, path: str | Path = DEFAULT_DIR):
 def installed(path: str | Path = DEFAULT_DIR) -> bool:
     """Return True if an Evennia environment exists at ``path``."""
     path = Path(path)
-    return (path / "server" / "settings.py").is_file()
+    return (path / "server" / "conf" / "settings.py").is_file()
 
 
 def running(url: str = "http://localhost:4001/webclient") -> bool:
