@@ -18,6 +18,7 @@ conway = _load("conway.py", "games.conway")
 mtg = _load("mtg.py", "games.mtg")
 qpig = _load("qpig.py", "games.qpig")
 massive_snake = _load("snl.py", "games.massive_snake")
+evennia = _load("evennia.py", "games.evennia")
 
 WIKI_ICON = (
     '<svg viewBox="0 0 20 20" width="12" height="12" style="vertical-align:baseline">'
@@ -51,6 +52,18 @@ _DEF = [
         "A Massively Multiplayer Game of Snakes and Ladders.",
         "https://en.wikipedia.org/wiki/Snakes_and_Ladders",
     ),
+    (
+        "Evennia MUD",
+        "evennia",
+        "Install and control a local Evennia server.",
+        "https://www.evennia.com/",
+    ),
+    (
+        "Fantastic Client",
+        "fantastic-client",
+        "Login to the Evennia server using the web client.",
+        "https://www.evennia.com/",
+    ),
 ]
 
 
@@ -80,4 +93,12 @@ def view_qpig_farm(*args, **kwargs):
 
 def view_massive_snake(*args, **kwargs):
     return massive_snake.view_massive_snake(*args, **kwargs)
+
+
+def view_evennia(*args, **kwargs):
+    return evennia.view_evennia(*args, **kwargs)
+
+
+def view_fantastic_client(*args, **kwargs):
+    return evennia.view_fantastic_client(*args, **kwargs)
 

@@ -2,7 +2,17 @@
 
 import os
 import inspect
+import threading
+import time
+import html
 from pathlib import Path
+from io import StringIO
+import unittest
+
+try:
+    from coverage import Coverage
+except Exception:
+    Coverage = None
 
 
 from gway import gw
@@ -586,6 +596,190 @@ def view_changelog():
         text = trimmed
 
     return publish_parts(source=text, writer_name="html")["html_body"]
+
+
+# === Background Test Cache ===
+_TEST_CACHE = {
+    "running": False,
+    "progress": 0.0,
+    "total": 0,
+    "tests": [],
+    "coverage": {},
+}
+
+
+def _update_progress(result, total):
+    if total:
+        _TEST_CACHE["progress"] = result / total * 100.0
+
+
+def _run_tests():
+    _TEST_CACHE.update({
+        "running": True,
+        "progress": 0.0,
+        "tests": [],
+        "coverage": {},
+    })
+
+    suite = unittest.defaultTestLoader.discover("tests")
+    total = suite.countTestCases()
+    _TEST_CACHE["total"] = total
+
+    cov = Coverage() if Coverage else None
+    if cov:
+        cov.start()
+
+    class CacheResult(unittest.TextTestResult):
+        def startTest(self, test):
+            super().startTest(test)
+            self._start_time = time.perf_counter()
+            _TEST_CACHE["tests"].append({
+                "name": str(test),
+                "status": "?",
+                "time": 0.0,
+            })
+
+        def addSuccess(self, test):
+            for t in _TEST_CACHE["tests"]:
+                if t["name"] == str(test):
+                    t["status"] = "\u2713"  # check mark
+                    break
+            super().addSuccess(test)
+
+        def addFailure(self, test, err):
+            for t in _TEST_CACHE["tests"]:
+                if t["name"] == str(test):
+                    t["status"] = "\u2717"  # cross mark
+                    break
+            super().addFailure(test, err)
+
+        def addError(self, test, err):
+            for t in _TEST_CACHE["tests"]:
+                if t["name"] == str(test):
+                    t["status"] = "\u2717"
+                    break
+            super().addError(test, err)
+
+        def stopTest(self, test):
+            elapsed = time.perf_counter() - getattr(self, "_start_time", time.perf_counter())
+            for t in _TEST_CACHE["tests"]:
+                if t["name"] == str(test):
+                    t["time"] = elapsed
+                    break
+            _update_progress(self.testsRun, total)
+            super().stopTest(test)
+
+    runner = unittest.TextTestRunner(verbosity=2, resultclass=CacheResult)
+    runner.run(suite)
+
+    if cov:
+        cov.stop()
+        data = cov.get_data()
+        built_run = built_total = 0
+        proj_totals = {}
+        for f in data.measured_files():
+            if not f.endswith(".py"):
+                continue
+            try:
+                filename, stmts, exc, miss, _ = cov.analysis2(f)
+            except Exception:
+                continue
+            total_lines = len(stmts)
+            run_lines = total_lines - len(miss)
+            rel = os.path.relpath(f)
+            if rel.startswith("projects" + os.sep):
+                parts = rel.split(os.sep)
+                key = "/".join(parts[:2]) if len(parts) > 1 else parts[0]
+                run, tot = proj_totals.get(key, (0, 0))
+                proj_totals[key] = (run + run_lines, tot + total_lines)
+            else:
+                built_run += run_lines
+                built_total += total_lines
+
+        proj_cov = {k: (r / t * 100 if t else 100.0) for k, (r, t) in proj_totals.items()}
+        proj_total_run = sum(r for r, _ in proj_totals.values())
+        proj_total_lines = sum(t for _, t in proj_totals.values())
+        _TEST_CACHE["coverage"] = {
+            "builtins_total": built_run / built_total * 100 if built_total else 100.0,
+            "projects": proj_cov,
+            "projects_total": proj_total_run / proj_total_lines * 100 if proj_total_lines else 100.0,
+        }
+
+    _TEST_CACHE["running"] = False
+
+
+def setup_app(*, app=None, **_):
+    gw.update_modes(timed=True)
+    if not _TEST_CACHE.get("running"):
+        thread = threading.Thread(target=_run_tests, daemon=True)
+        thread.start()
+    return app
+
+
+def view_test_cache():
+    html_parts = ["<h1>Test Cache</h1>"]
+    prog = _TEST_CACHE.get("progress", 0.0)
+    html_parts.append(
+        f"<div class='gw-progress'><div class='gw-progress-bar' style='width:{prog:.1f}%'>{prog:.1f}%</div></div>"
+    )
+
+    tests_rows = []
+    for t in _TEST_CACHE.get("tests", []):
+        tests_rows.append(
+            f"<tr><td>{html.escape(t['name'])}</td><td>{t['status']}</td><td>{t['time']:.2f}s</td></tr>"
+        )
+    tests_table = (
+        "<table><tr><th>Test</th><th>Status</th><th>Time</th></tr>" + "".join(tests_rows) + "</table>"
+    )
+
+    cov = _TEST_CACHE.get("coverage", {})
+    cov_rows = []
+    for name, pct in sorted(cov.get("projects", {}).items()):
+        cov_rows.append(f"<tr><td>{html.escape(name)}</td><td>{pct:.1f}%</td></tr>")
+    cov_table = "<table><tr><th>Project</th><th>Coverage</th></tr>" + "".join(cov_rows)
+    if "projects_total" in cov:
+        cov_table += f"<tr><td><b>Projects Total</b></td><td>{cov['projects_total']:.1f}%</td></tr>"
+    if "builtins_total" in cov:
+        cov_table += f"<tr><td><b>Builtins Total</b></td><td>{cov['builtins_total']:.1f}%</td></tr>"
+    cov_table += "</table>"
+
+    log_block = (
+        "<div id='test-log' data-gw-render='test_log' data-gw-refresh='2'>"
+        + render_test_log()
+        + "</div>"
+    )
+
+    html_parts.append(
+        "<div class='gw-tabs'>"
+        "<div class='gw-tabs-bar'>"
+        "<div class='gw-tab'>Tests</div>"
+        "<div class='gw-tab'>Coverage</div>"
+        "<div class='gw-tab'>Log</div>"
+        "</div>"
+        "<div class='gw-tab-block'>" + tests_table + "</div>"
+        "<div class='gw-tab-block'>" + cov_table + "</div>"
+        "<div class='gw-tab-block'>" + log_block + "</div>"
+        "</div>"
+    )
+
+    return gw.web.app.render_template(
+        title="Test Cache",
+        content="".join(html_parts),
+        css_files=["/static/tabs.css"],
+        js_files=["/static/render.js", "/static/tabs.js"],
+    )
+
+
+def render_test_log(lines: int = 50):
+    try:
+        path = gw.resource("logs", "test.log")
+        with open(path, "r", encoding="utf-8") as lf:
+            tail = lf.readlines()[-lines:]
+    except Exception:
+        tail = ["(log unavailable)"]
+    tail.reverse()
+    esc = html.escape
+    return "<pre>" + "".join(esc(t) for t in tail) + "</pre>"
 
 
 if __name__ == "__main__":

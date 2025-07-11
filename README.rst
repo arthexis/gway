@@ -170,7 +170,6 @@ The following projects bundle additional documentation.  Each link uses
 ``view_reader`` to render the ``README.rst`` file directly from the
 ``data/static`` folder.
 
-
 - `awg </web/site/reader?tome=awg>`_
 - `cdv </web/site/reader?tome=cdv>`_
 - `games </web/site/reader?tome=games>`_
