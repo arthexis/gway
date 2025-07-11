@@ -8,6 +8,7 @@ import smtplib
 import asyncio
 import threading
 import contextlib
+from datetime import date, datetime
 from email.mime.text import MIMEText
 from email import message_from_bytes
 
@@ -15,6 +16,13 @@ from email import message_from_bytes
 def _escape_imap_string(value: str) -> str:
     """Escape backslashes and quotes for IMAP SEARCH."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _format_imap_date(value):
+    """Return date in IMAP DD-Mon-YYYY format."""
+    if isinstance(value, (datetime, date)):
+        return value.strftime('%d-%b-%Y')
+    return str(value)
 
 
 def send(subject, body=None, to=None, threaded=None, **kwargs):
@@ -108,9 +116,21 @@ def send(subject, body=None, to=None, threaded=None, **kwargs):
         return _send_email()
 
 
-def search(subject_fragment, body_fragment=None):
-    """
-    Search emails by subject and optionally body. Use "*" to match any subject.
+def read(subject_fragment, body_fragment=None, sender=None, since=None, before=None):
+    """Read the most recent email matching criteria.
+
+    Parameters
+    ----------
+    subject_fragment : str
+        Fragment of the subject to search for. Use "*" to match any subject.
+    body_fragment : str, optional
+        Text to search for within the body.
+    sender : str, optional
+        Limit results to emails from this sender.
+    since : str or :class:`datetime.date`, optional
+        Only return messages on or after this date.
+    before : str or :class:`datetime.date`, optional
+        Only return messages before this date.
     """
     EMAIL_SENDER = os.environ.get("MAIL_SENDER")
     EMAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
@@ -141,6 +161,13 @@ def search(subject_fragment, body_fragment=None):
         if body_fragment:
             esc_body = _escape_imap_string(body_fragment)
             criteria.extend(["BODY", f'"{esc_body}"'])
+        if sender:
+            esc_sender = _escape_imap_string(sender)
+            criteria.extend(["FROM", f'"{esc_sender}"'])
+        if since:
+            criteria.extend(["SINCE", _format_imap_date(since)])
+        if before:
+            criteria.extend(["BEFORE", _format_imap_date(before)])
 
         if not criteria:
             gw.warning("No search criteria provided.")
@@ -201,9 +228,87 @@ def search(subject_fragment, body_fragment=None):
         return email_content, attachments
 
     except Exception as e:
-        gw.error(f"Error searching email: {str(e)}")
+        gw.error(f"Error reading email: {str(e)}")
         raise
 
+    finally:
+        if mail:
+            with contextlib.suppress(imaplib.IMAP4.error):
+                mail.close()
+            with contextlib.suppress(Exception):
+                mail.logout()
+
+
+def search(subject_fragment="*", body_fragment=None, sender=None, since=None, before=None):
+    """Search for emails and return summaries (subject, date, sender)."""
+    EMAIL_SENDER = os.environ.get("MAIL_SENDER")
+    EMAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
+    IMAP_SERVER = os.environ.get("IMAP_SERVER")
+    IMAP_PORT = os.environ.get("IMAP_PORT")
+
+    if not all([EMAIL_SENDER, EMAIL_PASSWORD, IMAP_SERVER, IMAP_PORT]):
+        raise RuntimeError(
+            "Missing email configuration: MAIL_SENDER, MAIL_PASSWORD, IMAP_SERVER, IMAP_PORT"
+        )
+
+    mail = None
+    try:
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+        mail.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        try:
+            mail.enable('UTF8=ACCEPT')
+        except Exception:
+            pass
+        mail.select('INBOX')
+
+        criteria = []
+        if subject_fragment and subject_fragment != "*":
+            esc_subject = _escape_imap_string(subject_fragment)
+            criteria.extend(["SUBJECT", f'"{esc_subject}"'])
+        if body_fragment:
+            esc_body = _escape_imap_string(body_fragment)
+            criteria.extend(["BODY", f'"{esc_body}"'])
+        if sender:
+            esc_sender = _escape_imap_string(sender)
+            criteria.extend(["FROM", f'"{esc_sender}"'])
+        if since:
+            criteria.extend(["SINCE", _format_imap_date(since)])
+        if before:
+            criteria.extend(["BEFORE", _format_imap_date(before)])
+
+        if not criteria:
+            gw.warning("No search criteria provided.")
+            return []
+
+        if getattr(mail, 'utf8_enabled', False):
+            status, data = mail.search(None, *criteria)
+        else:
+            encoded_criteria = [c.encode('utf-8') if isinstance(c, str) else c for c in criteria]
+            try:
+                status, data = mail.search('UTF-8', *encoded_criteria)
+            except imaplib.IMAP4.error as e:
+                if 'bad' in str(e).lower() or 'parse' in str(e).lower():
+                    gw.warning(f"Search charset failed ({e}); retrying without charset")
+                    status, data = mail.search(None, *encoded_criteria)
+                else:
+                    raise
+
+        mail_ids = data[0].split()
+        results = []
+        for m_id in mail_ids:
+            status, fdata = mail.fetch(m_id, '(RFC822)')
+            email_msg = message_from_bytes(fdata[0][1])
+            results.append({
+                'subject': email_msg.get('Subject'),
+                'from': email_msg.get('From'),
+                'date': email_msg.get('Date'),
+            })
+
+        return results
+
+    except Exception as e:
+        gw.error(f"Error searching email summaries: {str(e)}")
+        raise
     finally:
         if mail:
             with contextlib.suppress(imaplib.IMAP4.error):

@@ -258,7 +258,7 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
     Create a vbox on a remote system, retrieve the upload link from email, and store it locally.
     - server_url: Base URL of the remote server (e.g., 'https://example.com')
     - path:       Path on remote server where vbox upload is handled (default 'vbox')
-    - email:      Email address to receive the upload link (should be accessible by local mail.search)
+    - email:      Email address to receive the upload link (should be accessible by local mail.read)
     
     Returns: dict of stored record fields, or None if unsuccessful.
     """
@@ -295,7 +295,7 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
 
     for attempt in range(max_wait // poll_interval):
         try:
-            result = gw.mail.search(subject_fragment)
+            result = gw.mail.read(subject_fragment)
             if result:
                 body, _ = result
                 match = re.search(access_url_pattern, body)
@@ -309,7 +309,7 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
                         gw.info(f"[open_remote] Parsed vbid: {found_vbid}")
                         break
         except Exception as e:
-            gw.error(f"[open_remote] Error during mail.search: {e}")
+            gw.error(f"[open_remote] Error during mail.read: {e}")
         time.sleep(poll_interval)
 
     if not (found_url and found_vbid):
