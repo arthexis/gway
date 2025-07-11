@@ -34,7 +34,7 @@ _DEF = [
         "https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life",
     ),
     (
-        "Lookup Wars",
+        "Divination Wars",
         "search-games",
         "Look up Magic: The Gathering cards using the Scryfall API.",
         "https://en.wikipedia.org/wiki/Magic:_The_Gathering",
