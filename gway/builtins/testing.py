@@ -54,22 +54,13 @@ def test(*, root: str = "tests", filter=None, on_success=None, on_failure=None, 
     ):
         print("Running the test suite...")
 
-        def is_test_file(file):
-            if filter:
-                return file.endswith('.py') and filter in file
-            return file.endswith('.py') and not file.startswith('_')
-
-        test_files = [
-            os.path.join(root, f) for f in os.listdir(root)
-            if is_test_file(f)
-        ]
-
         test_loader = unittest.defaultTestLoader
-        test_suite = unittest.TestSuite()
+        if filter:
+            pattern = f"test*{filter}*.py"
+        else:
+            pattern = "test*.py"
 
-        for test_file in test_files:
-            test_suite.addTests(test_loader.discover(
-                os.path.dirname(test_file), pattern=os.path.basename(test_file)))
+        test_suite = test_loader.discover(root, pattern=pattern)
 
         class TimedResult(unittest.TextTestResult):
             def startTest(self, test):
