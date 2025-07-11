@@ -5,32 +5,8 @@ import unittest.mock as mock
 import importlib.util
 
 
-class FakeCookies:
-    def __init__(self):
-        self.store = {}
-    def set(self, name, value, **kwargs):
-        self.store[name] = value
-    def get(self, name, default=None):
-        return self.store.get(name, default)
-    def delete(self, name, **kwargs):
-        self.store.pop(name, None)
-    # Some parts of the code use remove()
-    remove = delete
-    def accepted(self):
-        return True
-
-class FakeApp:
-    def is_setup(self, name):
-        return True
-
 class QPigFarmButtonTests(unittest.TestCase):
     def setUp(self):
-        # Preserve existing app/cookie objects
-        self._orig_app = getattr(gw.web, 'app', None)
-        self._orig_cookies = getattr(gw.web, 'cookies', None)
-        gw.web.app = FakeApp()
-        gw.web.cookies = FakeCookies()
-        gw.web.cookies.set('cookies_accepted', 'yes')
         self.time_patch = mock.patch('time.time', lambda: 0)
         self.time_patch.start()
         # Load the underlying module for constants
@@ -41,35 +17,55 @@ class QPigFarmButtonTests(unittest.TestCase):
 
     def tearDown(self):
         self.time_patch.stop()
-        gw.web.app = self._orig_app
-        gw.web.cookies = self._orig_cookies
 
     def test_buy_small_and_adopt(self):
-        gw.web.cookies.set('qpig_mc', '1000')
-        gw.games.qpig.view_qpig_farm(action='buy_small')
-        self.assertEqual(int(gw.web.cookies.get('qpig_enc_small')), 2)
-        self.assertEqual(float(gw.web.cookies.get('qpig_mc')), 1000 - self.qpig_mod.SMALL_COST)
+        state = {
+            'pigs': self.qpig_mod.DEFAULT_PIGS,
+            'mc': 1000.0,
+            'pellets': 0.0,
+            'time': 0.0,
+            'avail': self.qpig_mod.DEFAULT_AVAILABLE,
+            'enc_small': self.qpig_mod.DEFAULT_ENC_SMALL,
+            'enc_large': self.qpig_mod.DEFAULT_ENC_LARGE,
+            'last_add': 0.0,
+            'veggies': {},
+            'food': [],
+            'offer': {'kind': 'carrot', 'qty': 1, 'price': 10, 'time': 0.0},
+        }
+        state = self.qpig_mod._process_state(state, 'buy_small')
+        self.assertEqual(state['enc_small'], 2)
+        self.assertEqual(state['mc'], 1000 - self.qpig_mod.SMALL_COST)
 
-        gw.games.qpig.view_qpig_farm(action='adopt')
-        self.assertEqual(int(gw.web.cookies.get('qpig_pigs')), 2)
-        self.assertEqual(int(gw.web.cookies.get('qpig_avail')), self.qpig_mod.DEFAULT_AVAILABLE - 1)
+        state = self.qpig_mod._process_state(state, 'adopt')
+        self.assertEqual(state['pigs'], 2)
+        self.assertEqual(state['avail'], self.qpig_mod.DEFAULT_AVAILABLE - 1)
 
     def test_buy_and_place_veggie(self):
-        gw.web.cookies.set('qpig_mc', '1000')
-        gw.web.cookies.set('qpig_offer_kind', 'carrot')
-        gw.web.cookies.set('qpig_offer_qty', '2')
-        gw.web.cookies.set('qpig_offer_price', '10')
-        gw.games.qpig.view_qpig_farm(action='buy_veggie')
-        veggies = json.loads(gw.web.cookies.get('qpig_veggies'))
-        self.assertEqual(veggies.get('carrot'), 2)
-        self.assertEqual(float(gw.web.cookies.get('qpig_mc')), 1000 - 20)
+        state = {
+            'pigs': self.qpig_mod.DEFAULT_PIGS,
+            'mc': 1000.0,
+            'pellets': 0.0,
+            'time': 0.0,
+            'avail': self.qpig_mod.DEFAULT_AVAILABLE,
+            'enc_small': self.qpig_mod.DEFAULT_ENC_SMALL,
+            'enc_large': self.qpig_mod.DEFAULT_ENC_LARGE,
+            'last_add': 0.0,
+            'veggies': {},
+            'food': [],
+            'offer': {'kind': 'carrot', 'qty': 2, 'price': 10, 'time': 0.0},
+        }
+        state = self.qpig_mod._process_state(state, 'buy_veggie')
+        self.assertEqual(state['veggies'].get('carrot'), 2)
+        self.assertEqual(state['mc'], 1000 - 20)
 
-        gw.games.qpig.view_qpig_farm(action='place_carrot')
-        veggies_after = json.loads(gw.web.cookies.get('qpig_veggies'))
-        food = json.loads(gw.web.cookies.get('qpig_food'))
-        self.assertEqual(veggies_after.get('carrot'), 1)
-        self.assertEqual(len(food), 1)
-        self.assertEqual(food[0][0], 'carrot')
+        state = self.qpig_mod._process_state(state, 'place_carrot')
+        self.assertEqual(state['veggies'].get('carrot'), 1)
+        self.assertEqual(len(state['food']), 1)
+        self.assertEqual(state['food'][0][0], 'carrot')
+
+    def test_view_contains_canvas(self):
+        html = self.qpig_mod.view_qpig_farm()
+        self.assertIn("qpig-canvas", html)
 
 if __name__ == '__main__':
     unittest.main()
