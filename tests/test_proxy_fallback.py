@@ -1,6 +1,7 @@
 # file: tests/test_proxy_fallback.py
 
 import unittest
+from gway.builtins import is_test_flag
 import subprocess
 import time
 import socket
@@ -14,7 +15,7 @@ from gway import gw
 
 KNOWN_TAG = "FFFFFFFF"
 
-@unittest.skip("integration environment unavailable")
+@unittest.skipUnless(is_test_flag("integration"), "Integration tests disabled")
 class ProxyFallbackTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

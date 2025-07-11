@@ -472,7 +472,7 @@ def load_recipe(recipe_filename):
     non-whitespace characters are `--`, prepend the last full non-indented command prefix.
     
     Example:
-        web app setup-app:
+        web app setup:
             - web.site --home reader
             - vbox --home upload
             - games.conway --home board --path conway

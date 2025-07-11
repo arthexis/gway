@@ -1,7 +1,7 @@
 # file: recipes/etron/local.gwr
 # OCPP 1.6 CSMS runnable GWAY Recipe with basic RFID auth
 
-web app setup-app:
+web app setup:
     - ocpp.data --home charger-summary
     - web.nav
     - vbox
@@ -11,8 +11,8 @@ web app setup-app:
     - ocpp.data --home charger-summary
 
 # Toggle this version to apply the allowlist  
-# ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre
-ocpp csms setup-app:
+# ocpp csms setup --allow data/etron/rfids.cdv --location porsche_centre
+ocpp csms setup:
     --location porsche_centre
 
 web:

@@ -20,14 +20,28 @@ class TestCreateTask(unittest.TestCase):
                 return [{**calls['task'], 'id': 10}]
             return []
 
-        with patch('odoo.execute_kw', side_effect=fake_execute_kw):
-            task = odoo.create_task(
-                project=1,
-                customer='ACME',
-                phone='123',
-                notes='Hello',
-                new_customer=True,
-            )
+        env = {
+            'ODOO_BASE_URL': 'http://example.com',
+            'ODOO_DB_NAME': 'testdb',
+            'ODOO_ADMIN_USER': 'user',
+            'ODOO_ADMIN_PASSWORD': 'pass',
+        }
+
+        with patch.dict('os.environ', env, clear=False):
+            import sys
+            mod = sys.modules['odoo']
+            original = mod.execute_kw
+            mod.execute_kw = fake_execute_kw
+            try:
+                task = odoo.create_task(
+                    project=1,
+                    customer='ACME',
+                    phone='123',
+                    notes='Hello',
+                    new_customer=True,
+                )
+            finally:
+                mod.execute_kw = original
         self.assertEqual(task[0]['name'], 'ACME')
         self.assertEqual(calls['task']['name'], 'ACME')
         self.assertEqual(calls['task']['project_id'], 1)

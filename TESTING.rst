@@ -22,6 +22,13 @@ can enable them by passing feature flags to ``gway test``:
 
    gway test --flags screenshot
 
+Integration suites that launch helper servers are disabled unless the
+``integration`` flag is present:
+
+.. code-block:: bash
+
+   gway test --flags integration
+
 The flags are stored in the ``GW_TEST_FLAGS`` environment variable, which test
 cases can check via ``is_test_flag('flag')``.
 
