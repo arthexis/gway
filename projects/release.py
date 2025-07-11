@@ -5,6 +5,7 @@ import inspect
 import threading
 import time
 import html
+import re
 from pathlib import Path
 from io import StringIO
 import unittest
@@ -16,6 +17,13 @@ except Exception:
 
 
 from gway import gw
+
+# List of project docs relative to data/static
+PROJECT_READMES = [
+    'awg', 'cdv', 'games', 'games/conway', 'games/mtg', 'games/qpig',
+    'monitor', 'ocpp', 'ocpp/csms', 'ocpp/evcs', 'ocpp/data', 'release',
+    'vbox', 'web', 'web/nav', 'web/cookies', 'web/auth', 'web/chat'
+]
 
 
 def build(
@@ -169,6 +177,9 @@ def build(
 
     pyproject_path.write_text(toml.dumps(pyproject_content), encoding="utf-8")
     gw.info(f"Generated {pyproject_path}")
+
+    if projects:
+        update_readme_links()
 
     manifest_path = Path("MANIFEST.in")
     if not manifest_path.exists():
@@ -584,6 +595,23 @@ def update_changelog(version: str, build_hash: str, prev_build: str | None = Non
     new_text = base_header + "Unreleased\n----------\n\n" + entry + remaining
 
     Path("CHANGELOG.rst").write_text(new_text, encoding="utf-8")
+
+
+def update_readme_links(readme_path: str | Path = "README.rst") -> None:
+    """Rewrite project README links with the resolved DOMAIN."""
+    domain = gw.resolve("[DOMAIN]", "")
+    if not domain:
+        gw.warning("DOMAIN not configured, skipping README link update.")
+        return
+    base = domain if domain.startswith(("http://", "https://")) else f"https://{domain}"
+    path = Path(readme_path)
+    text = path.read_text(encoding="utf-8")
+    pattern_link = re.compile(r'<(?:https?://[\w.-]+)?(/web/site/reader\?tome=[\w/_-]+)>')
+    text = pattern_link.sub(lambda m: f'<{base}{m.group(1)}>', text)
+    pattern_ref = re.compile(r'(:\s*)(?:https?://[\w.-]+)?(/web/site/reader\?tome=[\w/_-]+)')
+    new_text = pattern_ref.sub(lambda m: m.group(1) + base + m.group(2), text)
+    path.write_text(new_text, encoding="utf-8")
+    gw.info(f"Updated README links using domain {domain}")
 
 
 def view_changelog():

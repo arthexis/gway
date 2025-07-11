@@ -3,25 +3,25 @@
 
 # Lines without a starting command repeat the previous with new params
 
-web app setup-app:
-    --home reader --links feedback
-    --project awg --home cable-finder
-    --project web.nav --home style-switcher
-    --project web.cookies --home cookie-jar
-    --project web.message
-    --project web.chat
-    --project vbox --home uploads
-    --project ocpp.data --home charger-summary
-    --project ocpp.csms --auth required --home charger-status
-    --project ocpp.evcs --auth required --home cp-simulator
-    --project games --home games --links game-of-life,search-games,qpig-farm,massive-snake,fantastic-client
-    --project web.auth
+web app setup:
+    - web.site --home reader --links feedback
+    - awg --home cable-finder
+    - web.nav --home style-switcher
+    - web.cookies --home cookie-jar
+    - web.message
+    - web.chat
+    - vbox --home uploads
+    - ocpp.data --home charger-summary
+    - ocpp.csms --auth required --home charger-status
+    - ocpp.evcs --auth required --home cp-simulator
+    - games --home games --links game-of-life,search-games,qpig-farm,massive-snake,fantastic-client
+    - web.auth
 
 web:
  - static collect
  - auth config-basic --optional --temp-link
 
-ocpp csms setup-app:
+ocpp csms setup:
     --location simulator
 
 web:

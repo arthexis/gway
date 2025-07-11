@@ -44,3 +44,17 @@
     max-width: 140px;
 }
 
+.calc-result {
+    margin-top: 1em;
+}
+
+.result-list {
+    margin-top: 0;
+}
+
+@media (min-width: 768px) {
+    .result-list {
+        font-size: 1.5em;
+    }
+}
+

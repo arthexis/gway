@@ -53,7 +53,6 @@ def stop(*, pattern: str = "manage.py", signal: str = "TERM"):
     """Stop the Django development server using pkill if available."""
     return _run(["pkill", f"-{signal}", "-f", pattern])
 
-
 def view_dj(*, action: str = None, host: str = "127.0.0.1", port: int = 8000):
     """Install and control the embedded Django server."""
     project_dir = Path(DEFAULT_DIR)

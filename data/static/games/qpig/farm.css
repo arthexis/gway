@@ -23,6 +23,13 @@
     color: #000;
 }
 
+.qpig-garden #qpig-canvas {
+    display: block;
+    margin: 8px auto;
+    image-rendering: pixelated;
+    border: 1px solid #333;
+}
+
 .qpig-garden .qpig-warning {
 
     margin-top: 1em;

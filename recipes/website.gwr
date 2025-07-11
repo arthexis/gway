@@ -3,19 +3,19 @@
 
 # Lines without a starting command repeat the previous with new params
 
-web app setup-app:
-    --home reader --links feedback 
-    --project awg --home cable-finder
-    --project web.nav --home style-switcher
-    --project web.cookies --home cookie-jar
-    --project web.message
-    --project web.chat.actions --home audit-chatlog
-    --project vbox --home uploads
-    --project ocpp.csms --auth required --home charger-status
-    --project ocpp.evcs --auth required --home cp-simulator
-    --project ocpp.data --auth required --home charger-summary
-    --project games --home games --links game-of-life,search-games,qpig-farm,massive-snake,fantastic-client
-    --project web.auth
+web app setup:
+    - web.site --home reader --links feedback 
+    - web.nav --home style-switcher
+    - web.cookies --home cookie-jar
+    - web.message
+    - awg --home cable-finder
+    - vbox --home uploads
+    - ocpp.csms --auth required --home charger-status
+    - ocpp.evcs --auth required --home cp-simulator
+    - ocpp.data --auth required --home charger-summary
+    - web.chat.actions --home audit-chatlog --auth required
+    - games --home games --links game-of-life,search-games,qpig-farm,massive-snake,fantastic-client
+    - web.auth
 
 web:
  - static collect
