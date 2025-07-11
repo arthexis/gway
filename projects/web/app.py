@@ -275,7 +275,7 @@ def setup_app(project,
                     elif content is None:
                         content = ""
                     elif not isinstance(content, str):
-                        content = gw.to_html(content)
+                        content = gw.cast.to_html(content)
                 except HTTPResponse as res:
                     return res
                 except Exception as e:
@@ -388,7 +388,7 @@ def setup_app(project,
                     return json.dumps(result)
                 # List: treat as a list of HTML fragments (return as JSON)
                 if isinstance(result, list):
-                    html_list = [x if isinstance(x, str) else gw.to_html(x) for x in result]
+                    html_list = [x if isinstance(x, str) else gw.cast.to_html(x) for x in result]
                     response.content_type = "application/json"
                     return json.dumps(html_list)
                 # String/bytes: send as plain text (fragment)
@@ -442,7 +442,7 @@ def setup_app(project,
                     elif content is None:
                         return ""
                     elif not isinstance(content, str):
-                        content = gw.to_html(content)
+                        content = gw.cast.to_html(content)
                     response.content_type = "text/html"
                     return content
                 except HTTPResponse as res:
