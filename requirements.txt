@@ -32,3 +32,4 @@ pandas
 openpyxl
 coverage
 argcomplete
+PyJWT
