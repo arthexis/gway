@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.44 [build 640ce4]
+---------------------
+
+- 7ee813d Use gw.cast helpers in web
+
 0.4.43 [build cf2bd4]
 ---------------------
 
