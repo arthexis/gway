@@ -162,7 +162,7 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+--------------------------------------------------------------+
 | gway/          | Source code for core GWAY components.                        |
 +----------------+--------------------------------------------------------------+
-| tests/         | Unit tests for code in gway/ and projects/.                  |
+| tests/         | Hierarchical unit tests (e.g., ``tests/gway``).              |
 +----------------+--------------------------------------------------------------+
 | data/          | Static assets, resources, and other included data files.     |
 +----------------+--------------------------------------------------------------+
@@ -172,6 +172,16 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+--------------------------------------------------------------+
 | tools/         | Platform-specific scripts and files.                         |
 +----------------+--------------------------------------------------------------+
+
+
+Test Layout
+-----------
+
+Tests are discovered recursively so directories under ``tests`` may mirror the source tree. A suggested structure is::
+
+    tests/
+        gway/
+        projects/
 
 Project READMEs
 ---------------
