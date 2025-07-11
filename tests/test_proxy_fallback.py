@@ -50,7 +50,7 @@ class ProxyFallbackTests(unittest.TestCase):
         start = time.time()
         while time.time() - start < timeout:
             try:
-                with socket.create_connection(("localhost", port), timeout=1):
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
                     return
             except OSError:
                 time.sleep(0.2)
@@ -60,7 +60,7 @@ class ProxyFallbackTests(unittest.TestCase):
         async def run_session():
             await gw.ocpp.evcs.simulate_cp.__wrapped__(
                 0,
-                "localhost",
+                "127.0.0.1",
                 19900,
                 KNOWN_TAG,
                 "SIM1",
