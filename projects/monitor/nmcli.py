@@ -518,12 +518,12 @@ def _render_run_form(cmd: str = "", output: str = "") -> str:
     url = gw.web.app.build_url("run") if hasattr(gw, "web") else "run"
     form = [
         f"<form method='post' action='{url}' style='margin-top:8px;'>",
-        f"<input type='text' name='cmd' value='{gw.to_html(cmd)}' placeholder='nmcli arguments' style='width:70%;'>",
+        f"<input type='text' name='cmd' value='{gw.cast.to_html(cmd)}' placeholder='nmcli arguments' style='width:70%;'>",
         "<button type='submit'>Run</button>",
         "</form>",
     ]
     if output:
-        form.append(f"<pre>{gw.to_html(output)}</pre>")
+        form.append(f"<pre>{gw.cast.to_html(output)}</pre>")
     return "".join(form)
 
 
