@@ -7,11 +7,11 @@ class HubGithubTokenTests(unittest.TestCase):
     def test_get_token_priority(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertIsNone(gw.hub.get_token())
-        with patch.dict(os.environ, {'REPO_TOKEN': 'a'}):
+        with patch.dict(os.environ, {'REPO_TOKEN': 'a'}, clear=True):
             self.assertEqual(gw.hub.get_token(), 'a')
-        with patch.dict(os.environ, {'GH_TOKEN': 'b', 'REPO_TOKEN': 'a'}):
+        with patch.dict(os.environ, {'GH_TOKEN': 'b', 'REPO_TOKEN': 'a'}, clear=True):
             self.assertEqual(gw.hub.get_token(), 'b')
-        with patch.dict(os.environ, {'GITHUB_TOKEN': 'c', 'GH_TOKEN': 'b', 'REPO_TOKEN': 'a'}):
+        with patch.dict(os.environ, {'GITHUB_TOKEN': 'c', 'GH_TOKEN': 'b', 'REPO_TOKEN': 'a'}, clear=True):
             self.assertEqual(gw.hub.get_token(), 'c')
 
 
