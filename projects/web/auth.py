@@ -5,6 +5,8 @@ import base64
 import random
 import string
 import time
+import os
+import jwt
 
 class Challenge:
     """
@@ -72,6 +74,17 @@ def parse_basic_auth_header(header):
     except Exception as e:
         gw.debug(f"[auth] Failed to parse basic auth header: {e}")
         return None, None
+
+def parse_bearer_token_header(header):
+    """Extract token from an HTTP Bearer Auth header."""
+    if not header or not header.lower().startswith("bearer "):
+        return None
+    try:
+        token = header.split(" ", 1)[1].strip()
+        return token or None
+    except Exception as e:
+        gw.debug(f"[auth] Failed to parse bearer token header: {e}")
+        return None
 
 def _basic_auth(allow, engine):
     """
@@ -162,6 +175,58 @@ def _basic_auth(allow, engine):
 
     return challenge
 
+def _jwt_auth(secret, algorithms, engine):
+    """Return a challenge that checks a JWT Bearer token."""
+    algorithms = algorithms or ["HS256"]
+
+    def challenge(context=None):
+        ctx = {} if context is None else dict(context)
+        try:
+            if engine == "auto":
+                engine_actual = "bottle"
+                if ctx.get("websocket"):
+                    engine_actual = "fastapi_ws"
+                elif hasattr(gw.web, "app") and hasattr(gw.web.app, "is_setup"):
+                    if gw.web.app.is_setup("fastapi"):
+                        engine_actual = "fastapi"
+            else:
+                engine_actual = engine
+            ctx["engine"] = engine_actual
+
+            if engine_actual == "bottle":
+                from bottle import request, response
+                ctx["response"] = response
+                auth_header = request.get_header("Authorization")
+            elif engine_actual == "fastapi":
+                req = ctx.get("request")
+                resp = ctx.get("response")
+                ctx["response"] = resp
+                auth_header = req.headers.get("authorization") if req else None
+            elif engine_actual == "fastapi_ws":
+                ws = ctx.get("websocket")
+                auth_header = None
+                if ws:
+                    headers = getattr(ws, "headers", None)
+                    if headers:
+                        auth_header = headers.get("authorization") or headers.get("Authorization")
+            else:
+                gw.error(f"[auth] Unknown engine: {engine_actual}")
+                return False, ctx
+
+            token = parse_bearer_token_header(auth_header)
+            if not token:
+                return False, ctx
+
+            payload = jwt.decode(token, secret, algorithms=algorithms)
+            ctx["jwt_payload"] = payload
+            return True, ctx
+
+        except Exception as e:
+            gw.error(f"[auth] JWT exception: {e}")
+            return False, ctx
+
+    return challenge
+
 def check_websocket_auth(websocket, allow="work/basic_auth.cdv"):
     """
     Explicit utility for FastAPI WebSocket routes.
@@ -169,6 +234,11 @@ def check_websocket_auth(websocket, allow="work/basic_auth.cdv"):
     Returns True if authorized, otherwise False (should close connection).
     """
     challenge = _basic_auth(allow, "fastapi_ws")
+    return challenge(context={"websocket": websocket})[0]
+
+def check_websocket_jwt(websocket, *, secret, algorithms=None):
+    """Utility for FastAPI WebSocket routes using JWT."""
+    challenge = _jwt_auth(secret, algorithms, "fastapi_ws")
     return challenge(context={"websocket": websocket})[0]
 
 def _temp_username(length=8):
@@ -228,6 +298,27 @@ def config_basic(
             "url": resource_url,
             "basic_url": basic_url,
         }
+
+def config_jwt(
+    *,
+    secret=None,
+    secret_env="GWAY_JWT_SECRET",
+    algorithms=None,
+    engine="auto",
+    optional=False,
+):
+    """Configure JWT authentication."""
+    if not secret:
+        secret = os.environ.get(secret_env)
+    if not secret:
+        gw.error("[auth] No JWT secret provided")
+        return
+
+    required = not optional
+    challenge_fn = _jwt_auth(secret, algorithms, engine)
+    _challenges.append(Challenge(challenge_fn, required=required, name="jwt_auth"))
+    typ = "REQUIRED" if required else "OPTIONAL"
+    gw.info(f"[auth] Registered {typ} JWT auth challenge")
 
 def clear():
     _challenges.clear()
