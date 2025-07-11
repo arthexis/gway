@@ -53,15 +53,31 @@ def stop(*, pattern: str = "manage.py", signal: str = "TERM"):
     """Stop the Django development server using pkill if available."""
     return _run(["pkill", f"-{signal}", "-f", pattern])
 
+def view_dj(*, action: str = None, host: str = "127.0.0.1", port: int = 8000):
+    """Install and control the embedded Django server."""
+    project_dir = Path(DEFAULT_DIR)
+    manage_py = project_dir / "manage.py"
 
-def view_dj(*, action: str = None):
-    """Simple HTML control for the Django server."""
+    if action == "install":
+        install(target=project_dir)
+        return "<p>Django installed.</p>"
+
     if action == "start":
-        start()
-        return "<p>Django server started.</p>"
+        if not manage_py.exists():
+            install(target=project_dir)
+        start(path=project_dir, addrport=f"{host}:{port}")
+        url = f"http://{host}:{port}/"
+        return f"<p>Django server started at <a href='{url}'>{url}</a></p>"
+
     if action == "stop":
         stop()
         return "<p>Django server stopped.</p>"
+
+    if not manage_py.exists():
+        return (
+            "<p>Django not installed. Use ?action=install to install it</p>"
+        )
+
     return (
         "<h1>Django</h1><p>Use ?action=start or ?action=stop to control the "
         "local server in work/web/dj.</p>"
