@@ -46,7 +46,7 @@ class ScreenshotAttachmentTest(unittest.TestCase):
         screenshot_file = screenshot_dir / "help_page.png"
         try:
             gw.web.auto.capture_page_source(
-                self.base_url + "/site/help",
+                self.base_url + "/web/site/help",
                 screenshot=str(screenshot_file),
             )
         except Exception as e:

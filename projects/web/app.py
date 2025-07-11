@@ -120,11 +120,9 @@ def setup_app(*,
     # Track project for later global static collection
     _enabled.add(project)
 
-    # Default path is the dotted project name, minus any leading web/
+    # Default path is the dotted project name
     if path is None:
         path = project.replace('.', '/')
-        if path.startswith('web/'):
-            path = path.removeprefix('web/')
             
     oapp = app
     match app:
@@ -538,7 +536,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
                 var close=document.getElementById('gw-debug-close');
                 function show(){
                     overlay.style.display='block';
-                    fetch('/render/site/debug_info').then(r=>r.text()).then(t=>{document.getElementById('gw-debug-content').innerHTML=t;});
+                    fetch('/render/web/site/debug_info').then(r=>r.text()).then(t=>{document.getElementById('gw-debug-content').innerHTML=t;});
                 }
                 btn.addEventListener('click',function(e){e.preventDefault();show();});
                 close.addEventListener('click',function(e){e.preventDefault();overlay.style.display='none';});
@@ -580,7 +578,7 @@ def default_home():
     for _, route in _homes:
         if route:
             return "/" + route.lstrip("/")
-    return "/site/reader"
+    return "/web/site/reader"
 
 def debug_routes(app):
     for route in app.routes:
