@@ -202,6 +202,7 @@ The following projects bundle additional documentation.  Each link uses
   - `evcs <https://arthexis.com/web/site/reader?tome=ocpp/evcs>`_
   - `data <https://arthexis.com/web/site/reader?tome=ocpp/data>`_
 - `release <https://arthexis.com/web/site/reader?tome=release>`_
+- `rpi <https://arthexis.com/web/site/reader?tome=rpi>`_
 - `vbox <https://arthexis.com/web/site/reader?tome=vbox>`_
 - `web <https://arthexis.com/web/site/reader?tome=web>`_
   - `nav <https://arthexis.com/web/site/reader?tome=web/nav>`_
@@ -221,6 +222,7 @@ The following projects bundle additional documentation.  Each link uses
 .. _/web/site/reader?tome=ocpp/evcs: https://arthexis.com/web/site/reader?tome=ocpp/evcs
 .. _/web/site/reader?tome=ocpp/data: https://arthexis.com/web/site/reader?tome=ocpp/data
 .. _/web/site/reader?tome=release: https://arthexis.com/web/site/reader?tome=release
+.. _/web/site/reader?tome=rpi: https://arthexis.com/web/site/reader?tome=rpi
 .. _/web/site/reader?tome=vbox: https://arthexis.com/web/site/reader?tome=vbox
 .. _/web/site/reader?tome=web: https://arthexis.com/web/site/reader?tome=web
 .. _/web/site/reader?tome=web/nav: https://arthexis.com/web/site/reader?tome=web/nav
