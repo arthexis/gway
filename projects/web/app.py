@@ -120,6 +120,22 @@ def setup_app(project,
     # Track project for later global static collection
     _enabled.add(project)
 
+    if home is None:
+        setup_home_func = getattr(source, "setup_home", None)
+        if callable(setup_home_func):
+            try:
+                home = setup_home_func()
+            except Exception as exc:
+                gw.warn(f"{project}.setup_home failed: {exc}")
+
+    if links is None:
+        setup_links_func = getattr(source, "setup_links", None)
+        if callable(setup_links_func):
+            try:
+                links = setup_links_func()
+            except Exception as exc:
+                gw.warn(f"{project}.setup_links failed: {exc}")
+
     # Default path is the dotted project name
     if path is None:
         path = project.replace('.', '/')
