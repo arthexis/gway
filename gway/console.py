@@ -489,9 +489,24 @@ def load_recipe(recipe_filename):
 
     # --- Recipe file resolution (unchanged) ---
     if not os.path.isabs(recipe_filename):
-        candidate_names = [recipe_filename]
-        if not os.path.splitext(recipe_filename)[1]:
-            candidate_names += [f"{recipe_filename}.gwr", f"{recipe_filename}.txt"]
+        candidate_names = []
+        base_names = [recipe_filename]
+        if "." in recipe_filename:
+            base_names.append(recipe_filename.replace(".", "_"))
+            base_names.append(recipe_filename.replace(".", os.sep))
+
+        seen = set()
+        for base in base_names:
+            if base not in seen:
+                candidate_names.append(base)
+                seen.add(base)
+            if not os.path.splitext(base)[1]:
+                for ext in (".gwr", ".txt"):
+                    name = base + ext
+                    if name not in seen:
+                        candidate_names.append(name)
+                        seen.add(name)
+
         for name in candidate_names:
             recipe_path = gw.resource("recipes", name)
             if os.path.isfile(recipe_path):
