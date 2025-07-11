@@ -223,6 +223,7 @@ def view_search_games(
     hand_ids = _get_cookie_hand() if use_hand else []
     discard_count = _get_cookie_discard_count() if use_hand else 0
     card_data_map = {}
+    random_query = None
 
     # Handle discarding from hand
     if discard and use_hand:
@@ -324,19 +325,10 @@ def view_search_games(
     main_card = None
     searched = bool(query or random_query)
     message = ""
-    if query and (not use_hand or not hand_full):
-        found = _scryfall_search(query, limit=3)
-        found = [c for c in found if c.get("id") not in hand_ids]
-        if not found:
-            attempts = 0
-            card = None
-            while attempts < 7:
-                card = _scryfall_random()
-                if not card:
-                    break
-                if card.get("id") not in hand_ids:
-                    break
-                attempts += 1
+    if (random_query or query) and (not use_hand or not hand_full):
+        if random_query:
+            card = _scryfall_random(random_query)
+
             if card:
                 main_card = card
             else:
