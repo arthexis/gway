@@ -100,8 +100,8 @@ Example Recipe
 
 .. code-block:: text
 
-   web app setup-app web.navbar --home style-changer
-   web app setup-app web.site --home reader
+   web app setup web.navbar --home style-changer
+   web app setup web.site --home reader
    web server start-app --host 127.0.0.1 --port 8888
    until --forever
 
@@ -119,7 +119,7 @@ next non-indented command.
 .. code-block:: text
 
    # Configure multiple projects
-   web app setup-app:
+   web app setup:
        - web.site --home reader
        - web.nav --style random
        - games.qpig --home qpig-farm
