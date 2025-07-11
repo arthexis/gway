@@ -8,12 +8,12 @@ web app setup-app --project:
     - web.nav --home style-switcher
     - web.cookies --home cookie-jar
     - web.message
-    - web.chat.actions --home audit-chatlog --auth required
     - awg --home cable-finder
     - vbox --home uploads
     - ocpp.csms --auth required --home charger-status
     - ocpp.evcs --auth required --home cp-simulator
     - ocpp.data --auth required --home charger-summary
+    - web.chat.actions --home audit-chatlog --auth required
     - games --home games --links game-of-life,search-games,qpig-farm,massive-snake,fantastic-client
     - web.auth
 
