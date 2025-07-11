@@ -53,15 +53,9 @@ _DEF = [
         "https://en.wikipedia.org/wiki/Snakes_and_Ladders",
     ),
     (
-        "Evennia MUD",
-        "evennia",
-        "Install and control a local Evennia server.",
-        "https://www.evennia.com/",
-    ),
-    (
         "Fantastic Client",
         "fantastic-client",
-        "Login to the Evennia server using the web client.",
+        "Login to the embedded Evennia server using the web client.",
         "https://www.evennia.com/",
     ),
 ]
