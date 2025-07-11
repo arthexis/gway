@@ -52,6 +52,16 @@ For PowerShell::
 
    register-python-argcomplete gway -s powershell | Out-String | Invoke-Expression
 
+CLI Helpers
+-----------
+
+An experimental project ``cli`` exposes utilities related to the command
+line interface. The ``cli.completions`` function lists available
+builtin and project commands and can aid in building custom completion
+scripts::
+
+   gway cli completions
+
 Core Concepts
 -------------
 
