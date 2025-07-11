@@ -323,19 +323,19 @@ def view_cable_finder(
                     </tr>
                     <tr>
                         <td>
+                            <label for="ground">Ground:</label>
+                            <select id="ground" name="ground">
+                                <option value="1" selected>1</option>
+                                <option value="0">0</option>
+                            </select>
+                        </td>
+                        <td>
                             <label for="max_lines">Max Lines:</label>
                             <select id="max_lines" name="max_lines">
                                 <option value="1">1</option>
                                 <option value="2">2</option>
                                 <option value="3">3</option>
                                 <option value="4">4</option>
-                            </select>
-                        </td>
-                        <td>
-                            <label for="ground">Ground:</label>
-                            <select id="ground" name="ground">
-                                <option value="1" selected>1</option>
-                                <option value="0">0</option>
                             </select>
                         </td>
                     </tr>
@@ -369,8 +369,9 @@ def view_cable_finder(
         """
 
     return f"""
+        <div class='calc-result'>
         <h1>AWG Cable & Conduit Results <img src='/static/awg/sponsor_logo.svg' alt='Sponsor Logo' class='sponsor-logo'></h1>
-        <ul>
+        <ul class='result-list'>
             <li><strong>AWG Size:</strong> {result['awg']}</li>
             <li><strong>Lines:</strong> {result['lines']}</li>
             <li><strong>Total Cables:</strong> {result['cables']}</li>
@@ -383,8 +384,9 @@ def view_cable_finder(
         {f"<p class='warning'>{result['warning']}</p>" if result.get('warning') else ''}
         <p>
         <em>Special thanks to the expert engineers at <strong>
-        <a href="https://www.gelectriic.com">Gelectriic Solutions</a></strong> for their
+        <a href="https://www.gelectriic.com" target="_blank">Gelectriic Solutions</a></strong> for their
         support in creating this calculator.</em>
         </p>
         <p><a href="/awg/cable-finder">&#8592; Calculate again</a></p>
+        </div>
     """
