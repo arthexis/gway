@@ -32,6 +32,27 @@ class SqlCrudTests(unittest.TestCase):
         row3 = gw.sql.crud.api_read(table='items', id=item_id, dbfile=self.DB)
         self.assertIsNone(row3)
 
+    def test_setup_table_adds_columns(self):
+        gw.sql.crud.setup_table(
+            table='extras',
+            columns={'id': 'INTEGER PRIMARY KEY', 'name': 'TEXT'},
+            dbfile=self.DB,
+        )
+        with gw.sql.open_connection(self.DB) as cur:
+            cur.execute('PRAGMA table_info(extras)')
+            cols = {r[1] for r in cur.fetchall()}
+        self.assertIn('name', cols)
+
+        gw.sql.crud.setup_table(
+            table='extras',
+            columns={'qty': 'INT'},
+            dbfile=self.DB,
+        )
+        with gw.sql.open_connection(self.DB) as cur:
+            cur.execute('PRAGMA table_info(extras)')
+            cols2 = {r[1] for r in cur.fetchall()}
+        self.assertIn('qty', cols2)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -93,3 +93,77 @@ def view_table(*, table: str, id_col: str = "id", dbfile=None):
     body_rows.append(create_row)
     body = "".join(body_rows)
     return f"<table><tr>{head}<th>Actions</th></tr>{body}</table>"
+  
+
+def setup_table(*, table: str, columns: dict, dbfile=None, drop=False):
+    """Create or alter ``table`` ensuring all ``columns`` exist.
+
+    Parameters
+    ----------
+    table: str
+        Name of the table to create or modify.
+    columns: dict
+        Mapping of column name to SQL type specification.
+    dbfile: str, optional
+        Database file to operate on. Defaults to ``work/data.sqlite``.
+    drop: bool, optional
+        Drop the existing table before creating it.
+    """
+    assert columns, "columns required"
+    with gw.sql.open_connection(dbfile) as cur:
+        if drop:
+            cur.execute(f"DROP TABLE IF EXISTS [{table}]")
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+        exists = cur.fetchone()
+        if not exists:
+            colspec = ", ".join(f"[{c}] {t}" for c, t in columns.items())
+            cur.execute(f"CREATE TABLE [{table}] ({colspec})")
+            return
+        cur.execute(f"PRAGMA table_info([{table}])")
+        existing = {row[1] for row in cur.fetchall()}
+        for col, ctype in columns.items():
+            if col not in existing:
+                cur.execute(f"ALTER TABLE [{table}] ADD COLUMN [{col}] {ctype}")
+
+
+def view_setup_table(*, table: str, dbfile=None):
+    """HTML form for :func:`setup_table`. POST to add columns or drop."""
+    from bottle import request, response
+
+    if request.method == "POST":
+        action = request.forms.get("action") or "add"
+        if action == "drop":
+            setup_table(table=table, columns={}, dbfile=dbfile, drop=True)
+        else:
+            name = request.forms.get("name")
+            ctype = request.forms.get("type") or "TEXT"
+            if name:
+                setup_table(table=table, columns={name: ctype}, dbfile=dbfile)
+        response.status = 303
+        response.set_header("Location", request.path_qs)
+        return ""
+
+    cols = []
+    with gw.sql.open_connection(dbfile) as cur:
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+        if cur.fetchone():
+            cur.execute(f"PRAGMA table_info([{table}])")
+            cols = [(r[1], r[2]) for r in cur.fetchall()]
+
+    rows = "".join(f"<tr><td>{html.escape(n)}</td><td>{html.escape(t)}</td></tr>" for n, t in cols)
+    add_form = (
+        "<form method='post'>"
+        "<input name='name' placeholder='Column name'> "
+        "<input name='type' placeholder='Type' value='TEXT'> "
+        "<button>Add Column</button></form>"
+    )
+    drop_form = (
+        (
+            "<form method='post'>"
+            "<input type='hidden' name='action' value='drop'>"
+            "<button>Drop Table</button></form>"
+        )
+        if cols
+        else ""
+    )
+    return f"<h1>{html.escape(table)}</h1><table>{rows}</table>{add_form}{drop_form}"
