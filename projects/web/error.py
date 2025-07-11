@@ -117,7 +117,7 @@ def unauthorized(message="Unauthorized: You do not have access to this resource.
     If in debug mode: show detailed error.
     If not in debug: return a 401 Unauthorized and a WWW-Authenticate header to trigger the browser auth dialog.
     """
-    from bottle import response
+    from bottle import response, request
 
     debug_enabled = bool(getattr(gw, "debug", False))
     if debug_enabled:
@@ -136,5 +136,23 @@ def unauthorized(message="Unauthorized: You do not have access to this resource.
     # 401 with auth header = browser will prompt for password
     response.status = 401
     response.headers['WWW-Authenticate'] = 'Basic realm="GWAY"'
-    response.content_type = "text/plain"
-    return message
+    response.content_type = "text/html"
+    import html
+    target = request.headers.get("Referer") or default or gw.web.app.default_home()
+    esc_target = html.escape(target)
+    esc_msg = html.escape(str(message))
+    html_page = f"""
+    <html>
+    <head>
+        <meta http-equiv='refresh' content='5; url={esc_target}'>
+        <title>401 Unauthorized</title>
+    </head>
+    <body>
+        <h1>401 Unauthorized</h1>
+        <p>{esc_msg}</p>
+        <p>Username and password are required.</p>
+        <p>You will be redirected in 5 seconds. If not, <a href='{esc_target}'>click here</a>.</p>
+    </body>
+    </html>
+    """
+    return html_page
