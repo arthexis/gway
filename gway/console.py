@@ -147,27 +147,40 @@ def process(command_sources, callback=None, **context):
     gw = Gateway(**context) if context else _global_gw
 
     def resolve_nested_object(root, tokens):
-        """Resolve a sequence of command tokens to a nested object (e.g. gw.project.module.func)."""
+        """Resolve a sequence of command tokens to a nested object (e.g. gw.project.module.func).
+
+        Returns a tuple ``(obj, remaining, path, error)`` where ``error`` is the
+        last ``AttributeError`` encountered while traversing the path. This lets
+        callers surface import failures instead of showing a generic 'No project'
+        message.
+        """
         path = []
         obj = root
+        last_error = None
 
         while tokens:
             normalized = normalize_token(tokens[0])
-            if hasattr(obj, normalized):
+            try:
                 obj = getattr(obj, normalized)
                 path.append(tokens.pop(0))
-            else:
-                # Try to resolve composite function names from remaining tokens
-                for i in range(len(tokens), 0, -1):
-                    joined = "_".join(normalize_token(t) for t in tokens[:i])
-                    if hasattr(obj, joined):
-                        obj = getattr(obj, joined)
-                        path.extend(tokens[:i])
-                        tokens[:] = tokens[i:]
-                        return obj, tokens, path
-                break  # No match found; exit lookup loop
+                continue
+            except AttributeError as e:
+                last_error = e
 
-        return obj, tokens, path
+            # Try to resolve composite function names from remaining tokens
+            for i in range(len(tokens), 0, -1):
+                joined = "_".join(normalize_token(t) for t in tokens[:i])
+                try:
+                    obj = getattr(obj, joined)
+                    path.extend(tokens[:i])
+                    tokens[:] = tokens[i:]
+                    return obj, tokens, path, last_error
+                except AttributeError as e:
+                    last_error = e
+                    continue
+            break  # No match found; exit lookup loop
+
+        return obj, tokens, path, last_error
 
     for chunk in command_sources:
         if not chunk:
@@ -195,9 +208,13 @@ def process(command_sources, callback=None, **context):
         chunk = join_unquoted_kwargs(list(chunk))
 
         # Resolve nested project/function path
-        resolved_obj, func_args, path = resolve_nested_object(gw, list(chunk))
+        resolved_obj, func_args, path, attr_error = resolve_nested_object(
+            gw, list(chunk)
+        )
 
         if not callable(resolved_obj):
+            if attr_error is not None:
+                abort(str(attr_error))
             if hasattr(resolved_obj, '__functions__'):
                 show_functions(resolved_obj.__functions__)
             else:

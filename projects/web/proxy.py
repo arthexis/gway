@@ -51,7 +51,7 @@ def fallback_app(*,
             bottle_app = fastapi_app = None
 
     prepared = []
-
+    
     # in replace mode, ignore existing routes and return proxy-only apps
     if mode == "replace":
         if bottle_app:
@@ -84,7 +84,6 @@ def fallback_app(*,
                 _wire_error_fallback(fastapi_app, endpoint, path)
             elif mode == "trigger":
                 _wire_trigger_fallback(fastapi_app, endpoint, callback)
-
 
     return prepared[0] if len(prepared) == 1 else tuple(prepared)
 

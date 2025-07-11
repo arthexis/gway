@@ -124,6 +124,9 @@
   }
 
   document.addEventListener('DOMContentLoaded', setupAll);
+  if (document.readyState !== 'loading') {
+    setupAll();
+  }
   // If you want to support adding elements after the fact, you may re-call setupAll as needed.
   window.gwRenderSetup = setupAll;
 })();
