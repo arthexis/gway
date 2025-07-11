@@ -53,7 +53,7 @@ class MailQuoteEscapeTests(unittest.TestCase):
 
     def test_subject_with_quotes(self):
         with patch('imaplib.IMAP4_SSL', FakeIMAP):
-            content, attachments = gw.mail.search('He said "Hi"')
+            content, attachments = gw.mail.read('He said "Hi"')
             self.assertEqual(content, 'respuesta')
             fake = FakeIMAP.instances[0]
             expected = ['SUBJECT', '"He said \\"Hi\\""']

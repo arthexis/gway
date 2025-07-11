@@ -1,6 +1,7 @@
 # file: tests/test_etron_ws.py
 
 import unittest
+from gway.builtins import is_test_flag
 import sys
 import subprocess
 import time
@@ -19,6 +20,7 @@ UNKNOWN_TAG = "ZZZZZZZZ"
 
 import signal
 
+@unittest.skipUnless(is_test_flag("integration"), "Integration tests disabled")
 class EtronWebSocketTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -107,7 +109,7 @@ class EtronWebSocketTests(unittest.TestCase):
         start = time.time()
         while time.time() - start < timeout:
             try:
-                with socket.create_connection(("localhost", port), timeout=1):
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
                     return
             except OSError:
                 time.sleep(0.2)
@@ -122,7 +124,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_websocket_connection(self):
         """Confirm we can connect to the OCPP server and receive BootNotification response."""
-        uri = "ws://localhost:19000/charger123?token=foo"
+        uri = "ws://127.0.0.1:19000/charger123?token=foo"
         async def run_ws_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"], open_timeout=15) as websocket:
                 message_id = "boot-test"
@@ -141,7 +143,7 @@ class EtronWebSocketTests(unittest.TestCase):
     def test_authorize_valid_rfid(self):
         """RFID in allowlist with balance >=1 should be Accepted"""
         self._set_balance(KNOWN_GOOD_TAG, 100)
-        uri = "ws://localhost:19000/tester1?token=foo"
+        uri = "ws://127.0.0.1:19000/tester1?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
                 message_id = "auth-valid"
@@ -158,7 +160,7 @@ class EtronWebSocketTests(unittest.TestCase):
     def test_authorize_with_extra_fields(self):
         """RFID with additional fields in CDV still authorizes correctly"""
         self.__class__.gw_cdv_update(KNOWN_GOOD_TAG, balance="55", foo="bar", baz="qux")
-        uri = "ws://localhost:19000/tester2?token=foo"
+        uri = "ws://127.0.0.1:19000/tester2?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
                 message_id = "auth-extra"
@@ -175,7 +177,7 @@ class EtronWebSocketTests(unittest.TestCase):
     def test_authorize_low_balance(self):
         """RFID present but balance <1 should be Rejected"""
         self._set_balance(KNOWN_GOOD_TAG, 0)
-        uri = "ws://localhost:19000/tester3?token=foo"
+        uri = "ws://127.0.0.1:19000/tester3?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
                 message_id = "auth-lowbal"
@@ -192,7 +194,7 @@ class EtronWebSocketTests(unittest.TestCase):
     def test_authorize_admin_tag(self):
         """Admin tag should be accepted (if balance >=1)"""
         self._set_balance(ADMIN_TAG, 150)
-        uri = "ws://localhost:19000/admin?token=foo"
+        uri = "ws://127.0.0.1:19000/admin?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
                 message_id = "auth-admin"
@@ -208,7 +210,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_authorize_unknown_rfid(self):
         """Unknown tag must be rejected"""
-        uri = "ws://localhost:19000/unknown?token=foo"
+        uri = "ws://127.0.0.1:19000/unknown?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
                 message_id = "auth-unknown"
@@ -227,8 +229,8 @@ class EtronWebSocketTests(unittest.TestCase):
         self._set_balance(KNOWN_GOOD_TAG, 100)
         self._set_balance(ADMIN_TAG, 0)
         uris = [
-            "ws://localhost:19000/chargerA?token=foo",
-            "ws://localhost:19000/chargerB?token=foo"
+            "ws://127.0.0.1:19000/chargerA?token=foo",
+            "ws://127.0.0.1:19000/chargerB?token=foo"
         ]
         async def run_concurrent():
             async def connect_and_auth(uri, idtag):
@@ -250,7 +252,7 @@ class EtronWebSocketTests(unittest.TestCase):
     def test_authorize_missing_balance(self):
         """If balance is missing, should be treated as 0 and Rejected."""
         self.__class__.gw_cdv_update(KNOWN_GOOD_TAG, user="test")  # No balance field!
-        uri = "ws://localhost:19000/missingbal?token=foo"
+        uri = "ws://127.0.0.1:19000/missingbal?token=foo"
         async def run_authorize_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
                 message_id = "auth-missingbal"
@@ -266,7 +268,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_server_ignores_callresult_messages(self):
         """Server should ignore valid [3, ...] CALLRESULT messages from client."""
-        uri = "ws://localhost:19000/callresult1?token=foo"
+        uri = "ws://127.0.0.1:19000/callresult1?token=foo"
         async def run_ignore_callresult():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
                 message_id = "irrelevant-id"
@@ -286,7 +288,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
     def test_server_ignores_callerror_messages(self):
         """Server should ignore valid [4, ...] CALLERROR messages from client."""
-        uri = "ws://localhost:19000/callerror1?token=foo"
+        uri = "ws://127.0.0.1:19000/callerror1?token=foo"
         async def run_ignore_callerror():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as websocket:
                 message_id = "irrelevant-id"
@@ -390,10 +392,10 @@ class EtronWebSocketTests(unittest.TestCase):
         self.assertAlmostEqual(gw.ocpp.power_consumed(js), 1.0, places=2)
         self.assertAlmostEqual(gw.ocpp.extract_meter(js), 1.0, places=2)
 
-    @unittest.skip("integration environment unavailable")
+    @unittest.skipUnless(is_test_flag("integration"), "Integration tests disabled")
     def test_remote_stop_transaction(self):
         """Dashboard Stop action triggers RemoteStopTransaction on the CP."""
-        uri = "ws://localhost:19000/stopper?token=foo"
+        uri = "ws://127.0.0.1:19000/stopper?token=foo"
 
         async def run_stop_check():
             async with websockets.connect(uri, subprotocols=["ocpp1.6"]) as ws:
@@ -433,7 +435,7 @@ class EtronWebSocketTests(unittest.TestCase):
             with contextlib.redirect_stdout(buf):
                 await gw.ocpp.evcs.simulate_cp.__wrapped__(
                     0,
-                    "localhost",
+                    "127.0.0.1",
                     19000,
                     KNOWN_GOOD_TAG,
                     "SIMTEST",

@@ -5,6 +5,8 @@ from gway import gw
 import time
 import json
 import math
+import base64
+from bottle import request
 
 DEFAULT_PIGS = 1
 DEFAULT_MICROCERTS = 500  # 0.5 Cert
@@ -56,153 +58,76 @@ VEGGIE_EFFECTS = {
 }
 
 
-def _use_cookies():
-    """Return True if cookie support is available and accepted."""
-    use = (
-        hasattr(gw.web, "app")
-        and hasattr(gw.web, "cookies")
-        and getattr(gw.web.app, "is_setup", lambda x: False)("web.cookies")
-        and gw.web.cookies.accepted()
-    )
-    gw.debug(f"_use_cookies -> {use}")
-    return use
+OFFER_EXPIRY = 300  # seconds
 
 
-def _get_offer():
-    """Return the current veggie offer, generating a new one if needed."""
-    if not _use_cookies():
-        import random
+def _load_state() -> dict:
+    """Load state from request or return defaults."""
+    data = request.forms.get("state") or request.query.get("state") or ""
+    state = {}
+    if data:
+        try:
+            raw = base64.b64decode(data.encode()).decode()
+            state = json.loads(raw)
+        except Exception:
+            gw.debug("invalid state input")
+    return {
+        "pigs": int(state.get("pigs", DEFAULT_PIGS)),
+        "mc": float(state.get("mc", DEFAULT_MICROCERTS)),
+        "pellets": float(state.get("pellets", 0.0)),
+        "time": float(state.get("time", time.time())),
+        "avail": int(state.get("avail", DEFAULT_AVAILABLE)),
+        "enc_small": int(state.get("enc_small", DEFAULT_ENC_SMALL)),
+        "enc_large": int(state.get("enc_large", DEFAULT_ENC_LARGE)),
+        "last_add": float(state.get("last_add", time.time())),
+        "veggies": state.get("veggies", {}).copy(),
+        "food": state.get("food", []).copy(),
+        "offer": state.get("offer"),
+    }
 
-        kind = random.choice(VEGGIE_TYPES)
-        qty = random.randint(1, 3)
-        price = VEGGIE_BASE_PRICE + random.randint(-VEGGIE_PRICE_SPREAD, VEGGIE_PRICE_SPREAD)
-        offer = kind, qty, max(5, min(20, price))
-        gw.debug(f"_get_offer (no cookies) -> {offer}")
-        return offer
 
-    cookies = gw.web.cookies
-    kind = cookies.get("qpig_offer_kind")
-    qty = cookies.get("qpig_offer_qty")
-    price = cookies.get("qpig_offer_price")
-    if kind and qty and price:
-        offer = (kind, int(qty), int(price))
-        gw.debug(f"_get_offer (existing) -> {offer}")
-        return offer
+def _dump_state(state: dict) -> str:
+    raw = json.dumps(state)
+    return base64.b64encode(raw.encode()).decode()
+
+
+def _get_offer(state: dict, now: float) -> tuple[str, int, int]:
+    offer = state.get("offer")
+    if offer and now - offer.get("time", 0) < OFFER_EXPIRY:
+        return offer["kind"], int(offer["qty"]), int(offer["price"])
     import random
 
     kind = random.choice(VEGGIE_TYPES)
     qty = random.randint(1, 3)
     price = VEGGIE_BASE_PRICE + random.randint(-VEGGIE_PRICE_SPREAD, VEGGIE_PRICE_SPREAD)
     price = max(5, min(20, price))
-    cookies.set("qpig_offer_kind", kind, path="/", max_age=300)
-    cookies.set("qpig_offer_qty", str(qty), path="/", max_age=300)
-    cookies.set("qpig_offer_price", str(price), path="/", max_age=300)
-    offer = (kind, qty, price)
-    gw.debug(f"_get_offer (new) -> {offer}")
-    return offer
+    state["offer"] = {"kind": kind, "qty": qty, "price": price, "time": now}
+    return kind, qty, price
 
 
-def _clear_offer():
-    if not _use_cookies():
-        return
-
-    cookies = gw.web.cookies
-    for k in ["qpig_offer_kind", "qpig_offer_qty", "qpig_offer_price"]:
-        cookies.delete(k, path="/")
-    gw.debug("_clear_offer: offer cookies cleared")
-
-
-def _get_state():
-    cookies = gw.web.cookies
-    pigs = int(cookies.get("qpig_pigs") or DEFAULT_PIGS)
-    mc = float(cookies.get("qpig_mc") or DEFAULT_MICROCERTS)
-    pellets = float(cookies.get("qpig_qp") or 0.0)
-    last_time = float(cookies.get("qpig_time") or time.time())
-    avail = int(cookies.get("qpig_avail") or DEFAULT_AVAILABLE)
-    enc_small = int(cookies.get("qpig_enc_small") or DEFAULT_ENC_SMALL)
-    enc_large = int(cookies.get("qpig_enc_large") or DEFAULT_ENC_LARGE)
-    last_add = float(cookies.get("qpig_last_add") or last_time)
-    veggies = json.loads(cookies.get("qpig_veggies") or "{}")
-    food = json.loads(cookies.get("qpig_food") or "[]")
-    state = (
-        pigs,
-        mc,
-        pellets,
-        last_time,
-        avail,
-        enc_small,
-        enc_large,
-        last_add,
-        veggies,
-        food,
-    )
-    gw.debug(f"_get_state -> {state}")
-    return state
-
-
-def _set_state(
-    pigs: int,
-    mc: float,
-    pellets: float,
-    timestamp: float,
-    avail: int,
-    enc_small: int,
-    enc_large: int,
-    last_add: float,
-    veggies: dict,
-    food: list,
-) -> None:
-    cookies = gw.web.cookies
-    cookies.set("qpig_pigs", str(pigs), path="/", max_age=30 * 24 * 3600)
-    cookies.set("qpig_mc", str(mc), path="/", max_age=30 * 24 * 3600)
-    cookies.set("qpig_qp", str(pellets), path="/", max_age=30 * 24 * 3600)
-    cookies.set("qpig_time", str(timestamp), path="/", max_age=30 * 24 * 3600)
-    cookies.set("qpig_avail", str(avail), path="/", max_age=30 * 24 * 3600)
-    cookies.set("qpig_enc_small", str(enc_small), path="/", max_age=30 * 24 * 3600)
-    cookies.set("qpig_enc_large", str(enc_large), path="/", max_age=30 * 24 * 3600)
-    cookies.set("qpig_last_add", str(last_add), path="/", max_age=30 * 24 * 3600)
-    cookies.set("qpig_veggies", json.dumps(veggies), path="/", max_age=30 * 24 * 3600)
-    cookies.set("qpig_food", json.dumps(food), path="/", max_age=30 * 24 * 3600)
-    gw.debug(
-        "_set_state: pigs=%s mc=%s pellets=%s avail=%s enc_small=%s enc_large=%s veggies=%s food=%s"
-        % (pigs, mc, pellets, avail, enc_small, enc_large, veggies, food)
-    )
-
-
-def _process_state(action: str | None = None):
+def _process_state(state: dict, action: str | None = None) -> dict:
     """Update and optionally mutate the farm state."""
-    use_cookies = _use_cookies()
-    gw.debug(f"_process_state start: action={action} use_cookies={use_cookies}")
-    (
+    gw.debug(f"_process_state start: action={action}")
+    pigs = state["pigs"]
+    mc = state["mc"]
+    pellets = state["pellets"]
+    last_time = state["time"]
+    avail = state["avail"]
+    enc_small = state["enc_small"]
+    enc_large = state["enc_large"]
+    last_add = state["last_add"]
+    veggies = state["veggies"]
+    food = state["food"]
+    gw.debug(
+        "initial state: pigs=%s mc=%s pellets=%s avail=%s enc_small=%s enc_large=%s veggies=%s food=%s",
         pigs,
         mc,
         pellets,
-        last_time,
         avail,
         enc_small,
         enc_large,
-        last_add,
         veggies,
         food,
-    ) = (
-        _get_state()
-        if use_cookies
-        else (
-            DEFAULT_PIGS,
-            DEFAULT_MICROCERTS,
-            0.0,
-            time.time(),
-            DEFAULT_AVAILABLE,
-            DEFAULT_ENC_SMALL,
-            DEFAULT_ENC_LARGE,
-            time.time(),
-            DEFAULT_VEGGIES.copy(),
-            DEFAULT_FOOD.copy(),
-        )
-    )
-    gw.debug(
-        "initial state: pigs=%s mc=%s pellets=%s avail=%s enc_small=%s enc_large=%s veggies=%s food=%s"
-        % (pigs, mc, pellets, avail, enc_small, enc_large, veggies, food)
     )
 
     now = time.time()
@@ -256,7 +181,7 @@ def _process_state(action: str | None = None):
         last_add += ADOPTION_INTERVAL
         gw.debug(f"adoption queue replenished -> avail={avail}")
 
-    offer_kind, offer_qty, offer_price = _get_offer()
+    offer_kind, offer_qty, offer_price = _get_offer(state, now)
 
     capacity = enc_small + enc_large * 2
     if action == "adopt" and avail > 0 and pigs < capacity:
@@ -276,8 +201,7 @@ def _process_state(action: str | None = None):
         if mc >= total:
             mc -= total
             veggies[offer_kind] = veggies.get(offer_kind, 0) + offer_qty
-            _clear_offer()
-            offer_kind, offer_qty, offer_price = _get_offer()
+            offer_kind, offer_qty, offer_price = _get_offer(state, now)
             gw.debug(f"action buy_veggie -> veggies={veggies} mc={mc}")
     elif action and action.startswith("place_"):
         kind = action.split("_", 1)[1]
@@ -290,53 +214,41 @@ def _process_state(action: str | None = None):
             food.append([kind, now + eat, now + eat + linger])
             gw.debug(f"action place_{kind} -> food={food} veggies={veggies}")
 
-    if use_cookies:
-        _set_state(
-            pigs,
-            mc,
-            pellets,
-            last_time,
-            avail,
-            enc_small,
-            enc_large,
-            last_add,
-            veggies,
-            food,
-        )
-
-    state = (
-        pigs,
-        mc,
-        pellets,
-        last_time,
-        avail,
-        enc_small,
-        enc_large,
-        veggies,
-        food,
-        (offer_kind, offer_qty, offer_price),
-        use_cookies,
+    state.update(
+        {
+            "pigs": pigs,
+            "mc": mc,
+            "pellets": pellets,
+            "time": last_time,
+            "avail": avail,
+            "enc_small": enc_small,
+            "enc_large": enc_large,
+            "last_add": last_add,
+            "veggies": veggies,
+            "food": food,
+            "offer": {
+                "kind": offer_kind,
+                "qty": offer_qty,
+                "price": offer_price,
+                "time": state.get("offer", {}).get("time", now),
+            },
+        }
     )
     gw.debug(f"_process_state end -> {state}")
     return state
 
 
-def render_qpig_farm_stats(*_, **__):
-    """Return the farm stats block (used by render.js)."""
+def render_qpig_farm_stats(state: dict) -> str:
+    """Return the farm stats block."""
     gw.debug("render_qpig_farm_stats called")
-    (
-        pigs,
-        mc,
-        pellets,
-        _now,
-        avail,
-        enc_small,
-        enc_large,
-        veggies,
-        food,
-        offer,
-        _use,
-    ) = _process_state()
+    pigs = state["pigs"]
+    mc = state["mc"]
+    pellets = state["pellets"]
+    avail = state["avail"]
+    enc_small = state["enc_small"]
+    enc_large = state["enc_large"]
+    veggies = state["veggies"]
+    food = state["food"]
     capacity = enc_small + enc_large * 2
     veg_list = ", ".join(f"{k}:{v}" for k, v in veggies.items()) or "none"
     food_list = ", ".join(f"{f[0]}" for f in food) or "none"
@@ -354,33 +266,26 @@ def render_qpig_farm_stats(*_, **__):
 def view_qpig_farm(*, action: str = None, **_):
     """Main Quantum Piggy farm view."""
     gw.debug(f"view_qpig_farm called with action={action}")
-    (
-        pigs,
-        mc,
-        pellets,
-        _now,
-        avail,
-        enc_small,
-        enc_large,
-        veggies,
-        food,
-        offer,
-        use_cookies,
-    ) = _process_state(action)
+    state = _load_state()
+    state = _process_state(state, action)
+    state_b64 = _dump_state(state)
 
-    offer_kind, offer_qty, offer_price = offer
-    capacity = enc_small + enc_large * 2
-    refresh = 3 if any(f[1] > time.time() for f in food) else 5
+    offer = state["offer"]
+    offer_kind, offer_qty, offer_price = offer["kind"], offer["qty"], offer["price"]
+    capacity = state["enc_small"] + state["enc_large"] * 2
+
     html = [
         '<link rel="stylesheet" href="/static/games/qpig/farm.css">',
         '<div class="qpig-garden">',
         "<h1>Quantum Piggy Farm</h1>",
-        f'<div id="qpig-stats" data-gw-render="stats" data-gw-refresh="{refresh}">',
-        render_qpig_farm_stats(),
+        "<canvas id='qpig-canvas' width='32' height='32'></canvas>",
+        '<div id="qpig-stats">',
+        render_qpig_farm_stats(state),
         "</div>",
-        "<form method='post' class='qpig-buttons'>",
+        "<form method='post' id='qpig-form' class='qpig-buttons'>",
+        "<input type='hidden' name='state' id='qpig-state'>",
     ]
-    if avail > 0 and pigs < capacity:
+    if state["avail"] > 0 and state["pigs"] < capacity:
         html.append("<button type='submit' name='action' value='adopt'>Adopt Pig</button>")
     html.extend(
         [
@@ -390,15 +295,34 @@ def view_qpig_farm(*, action: str = None, **_):
         ]
     )
 
-    slots = (enc_small + enc_large) * 3
-    if len(food) < slots:
-        for k, v in veggies.items():
+    slots = (state["enc_small"] + state["enc_large"]) * 3
+    if len(state["food"]) < slots:
+        for k, v in state["veggies"].items():
             if v > 0:
                 html.append(f"<button type='submit' name='action' value='place_{k}'>Feed {k}</button>")
-    html.append("</form>")
-    if not use_cookies:
-        html.append(
-            "<div class='qpig-warning'>Enable cookies to save your progress.</div>"
-        )
-    html.append("</div>")
+
+    html.extend([
+        "<button type='button' id='qpig-save' title='Save'>\ud83d\udcbe</button>",
+        "<button type='button' id='qpig-load' title='Load'>\ud83d\udcc2</button>",
+        "</form>",
+        "</div>",
+    ])
+
+    script = """
+<script>
+const KEY='qpig_state';
+sessionStorage.setItem(KEY, '{state_b64}');
+const form=document.getElementById('qpig-form');
+const hidden=document.getElementById('qpig-state');
+if(form){{form.addEventListener('submit',()=>{{hidden.value=sessionStorage.getItem(KEY)||'';}});}}
+const save=document.getElementById('qpig-save');
+if(save){{save.addEventListener('click',()=>{{const data=sessionStorage.getItem(KEY)||'';const blob=new Blob([data],{{type:'application/octet-stream'}});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='qpig-save.qpg';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}});}}
+const load=document.getElementById('qpig-load');
+if(load){{load.addEventListener('click',()=>{{const inp=document.createElement('input');inp.type='file';inp.accept='.qpg';inp.onchange=e=>{{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{{sessionStorage.setItem(KEY, ev.target.result.trim());location.reload();}};r.readAsText(f);}};inp.click();}});}}
+const canvas=document.getElementById('qpig-canvas');
+if(canvas){{const ctx=canvas.getContext('2d');const img=new Image();img.src='/static/games/qpig/pig.png';img.onload=()=>{{ctx.imageSmoothingEnabled=false;ctx.drawImage(img,0,0);}};}}
+</script>
+""".format(state_b64=state_b64)
+
+    html.append(script)
     return "\n".join(html)

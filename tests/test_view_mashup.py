@@ -4,7 +4,7 @@ from paste.fixture import TestApp
 
 class ViewMashupTests(unittest.TestCase):
     def setUp(self):
-        self.app = gw.web.app.setup_app(project="games")
+        self.app = gw.web.app.setup_app("games")
         self.client = TestApp(self.app)
 
     def test_mashup_returns_combined_content(self):

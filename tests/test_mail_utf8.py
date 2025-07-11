@@ -54,7 +54,7 @@ class MailUTF8Tests(unittest.TestCase):
 
     def test_unicode_subject_search(self):
         with patch('imaplib.IMAP4_SSL', FakeIMAP):
-            content, attachments = gw.mail.search('instalación')
+            content, attachments = gw.mail.read('instalación')
             self.assertEqual(content, 'respuesta')
             fake = FakeIMAP.instances[0]
             self.assertTrue(fake.utf8_enabled)
@@ -76,7 +76,7 @@ class MailUTF8Tests(unittest.TestCase):
                 return super().search(charset, *criteria)
 
         with patch('imaplib.IMAP4_SSL', RejectIMAP):
-            content, attachments = gw.mail.search('instalación')
+            content, attachments = gw.mail.read('instalación')
             self.assertEqual(content, 'respuesta')
             fake = FakeIMAP.instances[0]
             self.assertTrue(getattr(fake, 'failed', False))
@@ -89,7 +89,7 @@ class MailUTF8Tests(unittest.TestCase):
     def test_search_uses_inbox_uppercase(self):
         """Ensure search operates with FakeIMAP when selecting 'INBOX'."""
         with patch('imaplib.IMAP4_SSL', FakeIMAP):
-            content, attachments = gw.mail.search('hello')
+            content, attachments = gw.mail.read('hello')
             self.assertEqual(content, 'respuesta')
             fake = FakeIMAP.instances[0]
             self.assertEqual(fake.selected_mailbox, 'INBOX')

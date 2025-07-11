@@ -1,4 +1,5 @@
 import unittest
+from gway.builtins import is_test_flag
 import os
 import base64
 import random
@@ -35,6 +36,7 @@ def _auth_header(username, password):
     b64 = base64.b64encode(up.encode()).decode()
     return {"Authorization": f"Basic {b64}"}
 
+@unittest.skipUnless(is_test_flag("integration"), "Integration tests disabled")
 class ChargerDashboardRefreshTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -77,7 +79,7 @@ class ChargerDashboardRefreshTests(unittest.TestCase):
             except OSError:
                 time.sleep(0.2)
         raise TimeoutError(f"Port {port} not responding after {timeout} seconds")
-    @unittest.skip("integration environment unavailable")
+    @unittest.skipUnless(is_test_flag("integration"), "Integration tests disabled")
 
     def test_dashboard_updates_with_simulator(self):
         async def run_sim_and_check():

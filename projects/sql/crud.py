@@ -93,7 +93,7 @@ def view_table(*, table: str, id_col: str = "id", dbfile=None):
     body_rows.append(create_row)
     body = "".join(body_rows)
     return f"<table><tr>{head}<th>Actions</th></tr>{body}</table>"
-
+  
 
 def setup_table(*, table: str, columns: dict, dbfile=None, drop=False):
     """Create or alter ``table`` ensuring all ``columns`` exist.
