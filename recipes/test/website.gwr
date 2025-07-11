@@ -14,7 +14,7 @@ web app setup-app:
     --project ocpp.data --home charger-summary
     --project ocpp.csms --auth required --home charger-status
     --project ocpp.evcs --auth required --home cp-simulator
-    --project games --home games --links game-of-life,search-games,qpig-farm,massive-snake
+    --project games --home games --links game-of-life,search-games,qpig-farm,massive-snake,fantastic-client
     --project web.auth
 
 web:

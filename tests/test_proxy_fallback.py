@@ -75,7 +75,7 @@ class ProxyFallbackTests(unittest.TestCase):
         self.assertTrue(os.path.isdir(records))
         self.assertTrue(os.listdir(records))
 
-        resp = requests.get("http://127.0.0.1:18888/cookies/cookie-jar")
+        resp = requests.get("http://127.0.0.1:18888/web/cookies/cookie-jar")
         self.assertNotEqual(resp.status_code, 200)
 
         self.__class__.remote_dir = tempfile.mkdtemp(prefix="remote_gw_")
@@ -88,7 +88,7 @@ class ProxyFallbackTests(unittest.TestCase):
         self._wait_for_port(19000, timeout=15)
         time.sleep(2)
 
-        resp2 = requests.get("http://127.0.0.1:18888/cookies/cookie-jar")
+        resp2 = requests.get("http://127.0.0.1:18888/web/cookies/cookie-jar")
         self.assertEqual(resp2.status_code, 200)
 
 

@@ -503,12 +503,13 @@ def view_feedback(*, name=None, email=None, topic=None, message=None, create_iss
             except Exception:
                 fallback_to_mail = True
                 gw.mail.send(
-                    f"[Feedback] {topic}",
+                    f"Feedback: {topic}",
                     body=f"From: {name} <{email}>\n\n{message}",
                 )
         else:
             gw.mail.send(
-                f"[Feedback] {topic}", body=f"From: {name} <{email}>\n\n{message}"
+                f"Feedback: {topic}",
+                body=f"From: {name} <{email}>\n\n{message}",
             )
 
         msg = "<h1>Thank you for your feedback!</h1>"

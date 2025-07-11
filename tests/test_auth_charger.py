@@ -100,17 +100,17 @@ class AuthChargerStatusTests(unittest.TestCase):
         self.assertIn("OCPP", resp.text)
 
     def test_cookie_jar_no_auth_required(self):
-        url = self.base_url + "/cookies/cookie-jar"
+        url = self.base_url + "/web/cookies/cookie-jar"
         resp = requests.get(url)
         self.assertEqual(
             resp.status_code, 200,
-            f"Expected 200 for unauthenticated /cookies/cookie-jar, got {resp.status_code}"
+            f"Expected 200 for unauthenticated /web/cookies/cookie-jar, got {resp.status_code}"
         )
         headers = self._auth_header(TEST_USER, TEST_PASS)
         resp2 = requests.get(url, headers=headers)
         self.assertEqual(
             resp2.status_code, 200,
-            f"Expected 200 for authenticated /cookies/cookie-jar, got {resp2.status_code}"
+            f"Expected 200 for authenticated /web/cookies/cookie-jar, got {resp2.status_code}"
         )
         self.assertIn("cookie", resp2.text.lower())
 

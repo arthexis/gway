@@ -81,7 +81,7 @@ def render(*, homes=None, links=None):
 
     # --- Search box ---
     search_box = '''
-        <form action="/site/help" method="get" class="nav">
+        <form action="/web/site/help" method="get" class="nav">
             <textarea name="topic" id="help-search"
                 placeholder="Search this GWAY"
                 class="help" rows="1"
@@ -369,13 +369,13 @@ def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_acc
 
     info = ""
     if cookies_enabled and not cookies_accepted:
-        info = "<p><b><a href='/cookies/cookie-jar'>Accept cookies to save your style preference.</a></b></p>"
+        info = "<p><b><a href='/web/cookies/cookie-jar'>Accept cookies to save your style preference.</a></b></p>"
 
     # No JS redirect actually needed.
     if cookies_enabled and cookies_accepted:
         return f"""
             {info}
-            <form method="post" action="/nav/style-switcher" class="style-form" style="margin-bottom: 0.5em">
+            <form method="post" action="/web/nav/style-switcher" class="style-form" style="margin-bottom: 0.5em">
                 <select id="css-style" name="css" class="style-selector" style="width:100%" onchange="this.form.submit()">
                     {''.join(options)}
                 </select>
