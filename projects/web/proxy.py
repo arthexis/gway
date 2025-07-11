@@ -16,11 +16,13 @@ def fallback_app(*,
     entire service if it can't be provided locally.
 
     ``mode`` controls how the proxy is used:
-    - ``replace``: replace all paths in the received app with the proxied endpoint.
+    - ``replace``: forward all requests directly to the proxied endpoint.
     - ``extend``: redirect paths not configured locally to the proxy.
     - ``errors``: call the proxy only when the local handler raises an error or
       returns no data.
-    - ``trigger``: use ``callback(request)`` to decide when to proxy.
+    - ``trigger``: call ``callback(request)``. Proxy if the callback returns
+      ``True`` (supports async callbacks on FastAPI). ``callback`` must be
+      provided for this mode.
     """
     # selectors for app types
     from bottle import Bottle
@@ -49,22 +51,39 @@ def fallback_app(*,
             bottle_app = fastapi_app = None
 
     prepared = []
-
-    # if no matching apps, default to a new Bottle
-    if not bottle_app and not fastapi_app:
-        default = Bottle()
-        prepared.append(_wire_proxy(default, endpoint, websockets, path))
-        if mode == "errors":
-            _wire_error_fallback(default, endpoint, path)
-    elif bottle_app:
-        prepared.append(_wire_proxy(bottle_app, endpoint, websockets, path))
-        if mode == "errors":
-            _wire_error_fallback(bottle_app, endpoint, path)
-    elif fastapi_app:
-        prepared.append(_wire_proxy(fastapi_app, endpoint, websockets, path))
-        if mode == "errors":
-            _wire_error_fallback(fastapi_app, endpoint, path)
-
+    
+    # in replace mode, ignore existing routes and return proxy-only apps
+    if mode == "replace":
+        if bottle_app:
+            new_bottle = Bottle()
+            prepared.append(_wire_proxy(new_bottle, endpoint, websockets, path))
+        if fastapi_app:
+            new_fastapi = FastAPI()
+            prepared.append(_wire_proxy(new_fastapi, endpoint, websockets, path))
+        if not prepared:
+            default = Bottle()
+            prepared.append(_wire_proxy(default, endpoint, websockets, path))
+    else:
+        # if no matching apps, default to a new Bottle
+        if not bottle_app and not fastapi_app:
+            default = Bottle()
+            prepared.append(_wire_proxy(default, endpoint, websockets, path))
+            if mode == "errors":
+                _wire_error_fallback(default, endpoint, path)
+            elif mode == "trigger":
+                _wire_trigger_fallback(default, endpoint, callback)
+        elif bottle_app:
+            prepared.append(_wire_proxy(bottle_app, endpoint, websockets, path))
+            if mode == "errors":
+                _wire_error_fallback(bottle_app, endpoint, path)
+            elif mode == "trigger":
+                _wire_trigger_fallback(bottle_app, endpoint, callback)
+        elif fastapi_app:
+            prepared.append(_wire_proxy(fastapi_app, endpoint, websockets, path))
+            if mode == "errors":
+                _wire_error_fallback(fastapi_app, endpoint, path)
+            elif mode == "trigger":
+                _wire_trigger_fallback(fastapi_app, endpoint, callback)
 
     return prepared[0] if len(prepared) == 1 else tuple(prepared)
 
@@ -233,6 +252,74 @@ def _wire_error_fallback(app, endpoint: str, path: str):
         def _after_req():
             if not response.body:
                 response.body = _do_proxy()
+
+        return app
+
+    raise RuntimeError("Unsupported app type for fallback_app: must be Bottle or FastAPI-compatible")
+
+
+def _wire_trigger_fallback(app, endpoint: str, callback):
+    """Attach middleware/hooks to proxy when callback(request) returns True."""
+    if not callable(callback):
+        raise ValueError("callback must be callable for trigger mode")
+
+    is_fastapi = hasattr(app, "websocket")
+
+    if is_fastapi:
+        from fastapi import Request, Response
+        import httpx, inspect
+
+        async def _do_proxy(request: Request) -> Response:
+            url = endpoint.rstrip("/") + request.url.path
+            if request.url.query:
+                url += "?" + request.url.query
+            async with httpx.AsyncClient() as client:
+                proxied = await client.request(
+                    request.method,
+                    url,
+                    headers=dict(request.headers),
+                    content=await request.body(),
+                )
+            return Response(
+                content=proxied.content,
+                status_code=proxied.status_code,
+                headers=proxied.headers,
+            )
+
+        @app.middleware("http")
+        async def _proxy_on_trigger(request: Request, call_next):
+            result = callback(request)
+            if inspect.isawaitable(result):
+                result = await result
+            if result:
+                return await _do_proxy(request)
+            return await call_next(request)
+
+        return app
+
+    if hasattr(app, "route"):
+        from bottle import request, HTTPResponse
+
+        def _do_proxy():
+            target = endpoint.rstrip("/") + request.fullpath
+            headers = {k: v for k, v in request.headers.items()}
+            try:
+                resp = requests.request(
+                    request.method,
+                    target,
+                    headers=headers,
+                    data=request.body.read(),
+                    stream=True,
+                )
+                return HTTPResponse(resp.content, status=resp.status_code, headers=resp.headers)
+            except Exception as e:
+                gw.error("Proxy request failed: %s", e)
+                return HTTPResponse(f"Proxy error: {e}", status=502)
+
+        @app.hook("before_request")
+        def _before_req():
+            if callback(request):
+                raise _do_proxy()
 
         return app
 
