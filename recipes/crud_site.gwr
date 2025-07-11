@@ -5,7 +5,7 @@
 sql open-connection --datafile work/blog.sqlite
 sql execute "CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, body TEXT)" --connection [sql.open_connection]
 
-web app setup-app:
+web app setup:
     --project web.nav --home style-switcher
     --project web.site --home reader
     --project sql.crud --home posts?table=posts&dbfile=work/blog.sqlite

@@ -21,7 +21,7 @@ web:
  - static collect
  - auth config-basic --optional --temp-link
 
-ocpp csms setup:
+ocpp csms setup-app:
     --location simulator
 
 web:

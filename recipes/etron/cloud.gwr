@@ -11,7 +11,7 @@ web app setup:
     - ocpp.data --home charger-summary
    
 # Toggle this version to apply the allow list  
-ocpp csms setup:
+ocpp csms setup-app:
     --allow data/etron/rfids.cdv --location etron_cloud
 
 # Without --allow, all transactions will be allowed by default

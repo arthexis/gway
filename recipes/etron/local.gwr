@@ -11,8 +11,8 @@ web app setup:
     - ocpp.data --home charger-summary
 
 # Toggle this version to apply the allowlist  
-# ocpp csms setup --allow data/etron/rfids.cdv --location porsche_centre
-ocpp csms setup:
+# ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre
+ocpp csms setup-app:
     --location porsche_centre
 
 web:
