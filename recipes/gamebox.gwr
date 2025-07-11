@@ -2,10 +2,10 @@
 # Games-only demo with cookies, navbar and style switcher
 
 web app setup-app:
-    --home reader
-    --project games --home games --links game-of-life,search-games,qpig-farm,massive-snake,fantastic-client
-    --project web.nav --home style-switcher
-    --project web.cookies --home cookie-jar
+    - web.site --home reader
+    - games --home games --links game-of-life,search-games,qpig-farm,massive-snake,fantastic-client
+    - web.nav --home style-switcher
+    - web.cookies --home cookie-jar
 
 web:
  - static collect

@@ -2,13 +2,13 @@
 # OCPP 1.6 CSMS runnable GWAY Recipe with basic RFID auth
 
 web app setup-app:
-    --project ocpp.data --home charger-summary
-    --project web.nav
-    --project vbox
-    --project ocpp.csms --home charger-status
-    --project ocpp.evcs --home cp-simulator
-    --project monitor --home monitor-panel
-    --project ocpp.data --home charger-summary
+    - ocpp.data --home charger-summary
+    - web.nav
+    - vbox
+    - ocpp.csms --home charger-status
+    - ocpp.evcs --home cp-simulator
+    - monitor --home monitor-panel
+    - ocpp.data --home charger-summary
 
 # Toggle this version to apply the allowlist  
 # ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre

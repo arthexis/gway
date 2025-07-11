@@ -472,9 +472,10 @@ def load_recipe(recipe_filename):
     non-whitespace characters are `--`, prepend the last full non-indented command prefix.
     
     Example:
-        web app setup --home reader
-            --project vbox --home upload
-            --project games.conway --home board --path conway
+        web app setup-app:
+            - web.site --home reader
+            - vbox --home upload
+            - games.conway --home board --path conway
         web server start-app --host 127.0.0.1 --port 8888
 
     This parses the indented lines as continuations of the previous non-indented command.

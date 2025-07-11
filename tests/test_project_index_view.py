@@ -4,7 +4,7 @@ from paste.fixture import TestApp
 
 class ProjectIndexViewTests(unittest.TestCase):
     def setUp(self):
-        self.app = gw.web.app.setup_app(project="dummy")
+        self.app = gw.web.app.setup_app("dummy")
         self.client = TestApp(self.app)
 
     def test_index_route(self):

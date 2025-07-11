@@ -18,7 +18,7 @@ This virtual box (vbox) system allows users with admin access to upload and down
 files to/from a secure folder in the remote server. 
 
 In CLI/Recipes you may use:
-> [gway] web app setup --project vbox --home upload
+> [gway] web app setup-app vbox --home upload
 
 To deploy it and sey the home to [BASE_URL]/vbox/upload.
 """
