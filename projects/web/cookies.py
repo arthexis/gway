@@ -83,13 +83,13 @@ def append(name: str, label: str, value: str, sep: str = "|") -> list:
 
 # --- Views ---
 
-def view_accept(*, next="/cookies/cookie-jar"):
+def view_accept(*, next="/web/cookies/cookie-jar"):
     set("cookies_accepted", "yes")
     response.status = 303
     response.set_header("Location", next)
     return ""
 
-def view_remove(*, next="/cookies/cookie-jar", confirm = False):
+def view_remove(*, next="/web/cookies/cookie-jar", confirm = False):
     # Only proceed if the confirmation checkbox was passed in the form
     if not confirm:
         response.status = 303
@@ -118,7 +118,7 @@ def view_cookie_jar(*, eat=None):
                 eaten_count = 0
             set("cookies_eaten", str(eaten_count + 1))
             response.status = 303
-            response.set_header("Location", "/cookies/cookie-jar")
+            response.set_header("Location", "/web/cookies/cookie-jar")
             return ""
 
     def describe_cookie(key, value):
@@ -128,7 +128,7 @@ def view_cookie_jar(*, eat=None):
         x_link = ""
         if not protected:
             x_link = (
-                f" <a href='/cookies/cookie-jar?eat={key}' "
+                f" <a href='/web/cookies/cookie-jar?eat={key}' "
                 "style='color:#a00;text-decoration:none;font-weight:bold;font-size:1.1em;margin-left:0.5em;' "
                 "title='Remove this cookie' onclick=\"return confirm('Remove cookie: {0}?');\">[X]</a>".format(key)
             )
@@ -155,7 +155,7 @@ def view_cookie_jar(*, eat=None):
         on this site will not be recorded, but your interaction may also be limited.</p>
         <p>This restriction exists because some functionality (like navigation history,
         styling preferences, or shopping carts) depends on cookies.</p>
-        <form method="POST" action="/cookies/accept" style="margin-top: 2em;">
+        <form method="POST" action="/web/cookies/accept" style="margin-top: 2em;">
             <button type="submit" style="font-size:1.2em; padding:0.5em 2em;">Accept our cookies</button>
         </form>
         """
@@ -168,7 +168,7 @@ def view_cookie_jar(*, eat=None):
         cookies_html = "<ul>" + "".join(stored) + "</ul>" if stored else "<p>No stored cookies found.</p>"
 
         removal_form = """
-            <form method="POST" action="/cookies/remove" style="margin-top:2em;">
+            <form method="POST" action="/web/cookies/remove" style="margin-top:2em;">
                 <div style="display: flex; align-items: center; margin-bottom: 1em; gap: 0.5em;">
                     <input type="checkbox" id="confirm" name="confirm" value="1" required
                         style="width:1.2em; height:1.2em; vertical-align:middle; margin:0;" />

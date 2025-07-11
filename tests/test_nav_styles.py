@@ -56,7 +56,7 @@ class NavStyleTests(unittest.TestCase):
 
     def test_one_theme_css_link_in_head(self):
         """Ensure exactly one active theme CSS link in <head> and it's the correct one."""
-        soup, _ = self._get_soup(self.base_url + "/nav/style-switcher?css=dark-material.css")
+        soup, _ = self._get_soup(self.base_url + "/web/nav/style-switcher?css=dark-material.css")
         head = soup.head
         theme_links = [link for link in head.find_all('link', rel="stylesheet") if "styles" in link.get('href', '')]
         self.assertEqual(
@@ -70,7 +70,7 @@ class NavStyleTests(unittest.TestCase):
 
     def test_style_switcher_preview_injects_theme(self):
         """Style preview must inject the selected theme as a <link> for preview."""
-        soup, _ = self._get_soup(self.base_url + "/nav/style-switcher?css=palimpsesto.css")
+        soup, _ = self._get_soup(self.base_url + "/web/nav/style-switcher?css=palimpsesto.css")
         preview_links = [link for link in soup.find_all('link', rel="stylesheet") if "palimpsesto.css" in link.get('href', '')]
         self.assertTrue(preview_links, "Preview theme link for palimpsesto.css not found.")
         preview_div = soup.find('div', class_="style-preview")
@@ -82,10 +82,10 @@ class NavStyleTests(unittest.TestCase):
         """Test POST to change theme sets cookie and updates <head> <link>."""
         session = requests.Session()
         # Accept cookies
-        session.post(self.base_url + "/cookies/accept")
+        session.post(self.base_url + "/web/cookies/accept")
         # POST to set theme to classic-95.css
         resp = session.post(
-            self.base_url + "/nav/style-switcher",
+            self.base_url + "/web/nav/style-switcher",
             data={"css": "classic-95.css"},
             allow_redirects=True
         )
@@ -95,14 +95,14 @@ class NavStyleTests(unittest.TestCase):
             f"Theme change did not set css cookie, got cookies: {session.cookies.get_dict()}"
         )
         # Now reload style-switcher and check <head>
-        soup, _ = self._get_soup(self.base_url + "/nav/style-switcher", session)
+        soup, _ = self._get_soup(self.base_url + "/web/nav/style-switcher", session)
         head = soup.head
         links = [l for l in head.find_all('link', rel="stylesheet") if "classic-95.css" in l.get('href', '')]
         self.assertTrue(links, "Theme change did not update main <link> to classic-95.css")
 
     def test_sidebar_has_no_theme_link(self):
         """Sidebar should NOT contain a <link> for the current theme."""
-        resp = requests.get(self.base_url + "/nav/style-switcher")
+        resp = requests.get(self.base_url + "/web/nav/style-switcher")
         soup = BeautifulSoup(resp.text, "html.parser")
         aside = soup.find("aside")
         links = aside.find_all("link", rel="stylesheet") if aside else []
@@ -119,13 +119,13 @@ class NavStyleTests(unittest.TestCase):
         """
         session = requests.Session()
         # 1. Accept cookies (must be a POST)
-        resp = session.post(self.base_url + "/cookies/accept")
+        resp = session.post(self.base_url + "/web/cookies/accept")
         self.assertIn(
             "cookies_accepted", session.cookies.get_dict(),
             f"Did not set cookies_accepted cookie: {session.cookies.get_dict()}"
         )
         # 2. Visit style switcher and pick a theme
-        resp = session.get(self.base_url + "/nav/style-switcher")
+        resp = session.get(self.base_url + "/web/nav/style-switcher")
         soup = BeautifulSoup(resp.text, "html.parser")
         select = soup.find("select", id="css-style")
         assert select, "Could not find theme selector"
@@ -135,7 +135,7 @@ class NavStyleTests(unittest.TestCase):
 
         # 3. POST to switch theme
         resp = session.post(
-            self.base_url + "/nav/style-switcher",
+            self.base_url + "/web/nav/style-switcher",
             data={"css": "classic-95.css"},
             allow_redirects=True
         )
@@ -144,8 +144,8 @@ class NavStyleTests(unittest.TestCase):
             f"Theme change did not set css cookie, got cookies: {session.cookies.get_dict()}"
         )
 
-        # 4. Now visit /site/reader (or any other page)
-        resp2 = session.get(self.base_url + "/site/reader")
+        # 4. Now visit /web/site/reader (or any other page)
+        resp2 = session.get(self.base_url + "/web/site/reader")
         soup2 = BeautifulSoup(resp2.text, "html.parser")
         link = soup2.find("link", rel="stylesheet", href=lambda h: h and "classic-95.css" in h)
         self.assertIsNotNone(
@@ -155,9 +155,9 @@ class NavStyleTests(unittest.TestCase):
 
     def test_random_cookie_and_css_link(self):
         session = requests.Session()
-        session.post(self.base_url + "/cookies/accept")
+        session.post(self.base_url + "/web/cookies/accept")
         resp = session.post(
-            self.base_url + "/nav/style-switcher",
+            self.base_url + "/web/nav/style-switcher",
             data={"css": "random"},
             allow_redirects=True,
         )
@@ -165,7 +165,7 @@ class NavStyleTests(unittest.TestCase):
             session.cookies.get_dict().get("css"), "random",
             f"Random theme did not set cookie: {session.cookies.get_dict()}"
         )
-        resp2 = session.get(self.base_url + "/site/reader")
+        resp2 = session.get(self.base_url + "/web/site/reader")
         soup2 = BeautifulSoup(resp2.text, "html.parser")
         link = soup2.find("link", rel="stylesheet", href=lambda h: h and "styles/" in h and h.endswith(".css"))
         self.assertIsNotNone(link, "Page missing stylesheet link for random theme")
@@ -178,7 +178,7 @@ class NavStyleTests(unittest.TestCase):
         screenshot_file = screenshot_dir / "style_switcher.png"
         try:
             gw.web.auto.capture_page_source(
-                self.base_url + "/nav/style-switcher",
+                self.base_url + "/web/nav/style-switcher",
                 screenshot=str(screenshot_file),
             )
         except Exception as e:

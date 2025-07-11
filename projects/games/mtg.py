@@ -148,19 +148,18 @@ def _get_cookie_hand():
 def _set_cookie_hand(card_ids):
     gw.web.cookies.set("mtg_hand", "|".join(card_ids), path="/", max_age=14*24*3600)
 
-def _get_cookie_discards():
-    discards = gw.web.cookies.get("mtg_discards")
-    if discards:
-        try:
-            return set(discards.split("|"))
-        except Exception:
-            return set()
-    return set()
+def _get_cookie_discard_count() -> int:
+    """Return total number of discarded cards stored in cookie."""
+    val = gw.web.cookies.get("mtg_discards")
+    try:
+        return int(val)
+    except Exception:
+        return 0
 
-def _add_cookie_discard(card_id):
-    discards = _get_cookie_discards()
-    discards.add(card_id)
-    gw.web.cookies.set("mtg_discards", "|".join(discards), path="/", max_age=14*24*3600)
+def _increment_cookie_discard_count():
+    """Increase the discard count cookie by one."""
+    count = _get_cookie_discard_count() + 1
+    gw.web.cookies.set("mtg_discards", str(count), path="/", max_age=14*24*3600)
 
 def _get_cookie_turn():
     val = gw.web.cookies.get("mtg_turn")
@@ -222,7 +221,7 @@ def view_search_games(
     )
 
     hand_ids = _get_cookie_hand() if use_hand else []
-    discards = _get_cookie_discards() if use_hand else set()
+    discard_count = _get_cookie_discard_count() if use_hand else 0
     card_data_map = {}
 
     # Handle discarding from hand
@@ -230,7 +229,7 @@ def view_search_games(
         if discard in hand_ids:
             hand_ids.remove(discard)
             _set_cookie_hand(hand_ids)
-            _add_cookie_discard(discard)
+            _increment_cookie_discard_count()
 
     # --- Build query string ---
     query_parts = []
@@ -315,7 +314,7 @@ def view_search_games(
         _set_cookie_turn(turn)
 
     life = _get_cookie_life() if use_hand else 20
-    library = TOTAL_CARD_COUNT - len(hand_ids) - len(all_discards)
+    library = TOTAL_CARD_COUNT - len(hand_ids) - discard_count
 
     # Hand size can be up to 8, but if at 8 only show discard
     HAND_LIMIT = 8
@@ -325,9 +324,19 @@ def view_search_games(
     main_card = None
     searched = bool(query or random_query)
     message = ""
-    if (random_query or query) and (not use_hand or not hand_full):
-        if random_query:
-            card = _scryfall_random(random_query)
+    if query and (not use_hand or not hand_full):
+        found = _scryfall_search(query, limit=3)
+        found = [c for c in found if c.get("id") not in hand_ids]
+        if not found:
+            attempts = 0
+            card = None
+            while attempts < 7:
+                card = _scryfall_random()
+                if not card:
+                    break
+                if card.get("id") not in hand_ids:
+                    break
+                attempts += 1
             if card:
                 main_card = card
             else:
@@ -356,7 +365,7 @@ def view_search_games(
 
     # If we got a main_card and use_hand, add it to hand and clear form fields
     card_added = False
-    if main_card and use_hand and main_card.get("id") not in hand_ids and main_card.get("id") not in all_discards:
+    if main_card and use_hand and main_card.get("id") not in hand_ids:
         hand_ids.append(main_card.get("id"))
         _set_cookie_hand(hand_ids)
         card_added = True

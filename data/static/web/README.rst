@@ -32,7 +32,7 @@ For example, to embed the ``reader`` page:
 
 .. code-block:: html
 
-   <iframe src="https://your.domain.com/render/site/reader?title=README"></iframe>
+   <iframe src="https://your.domain.com/render/web/site/reader?title=README"></iframe>
 
 Only self-contained views display correctly when framed.
 
