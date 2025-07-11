@@ -2,12 +2,12 @@
 # Local OCPP CSMS with proxy fallback for tests
 
 web app setup-app:
-    --project ocpp.data --home charger-summary
-    --project web.nav
-    --project vbox
-    --project ocpp.csms --home charger-status
-    --project ocpp.evcs --home cp-simulator
-    --project ocpp.data --home charger-summary
+    - ocpp.data --home charger-summary
+    - web.nav
+    - vbox
+    - ocpp.csms --home charger-status
+    - ocpp.evcs --home cp-simulator
+    - ocpp.data --home charger-summary
 
 ocpp csms setup-app:
     --location proxy_test

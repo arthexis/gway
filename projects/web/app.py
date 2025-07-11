@@ -67,9 +67,9 @@ def current_endpoint():
     """
     return gw.context.get('current_endpoint')
 
-def setup_app(*,
+def setup_app(project,
+    *,
     app=None,
-    project="web.site",
     path=None,
     home: str = None,
     links=None,

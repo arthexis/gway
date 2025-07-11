@@ -5,7 +5,7 @@ from paste.fixture import TestApp
 class UnauthorizedDebugLinkTests(unittest.TestCase):
     def setUp(self):
         gw.update_modes(debug=True)
-        self.app = gw.web.app.setup_app(project="dummy")
+        self.app = gw.web.app.setup_app("dummy")
         # simple route that always triggers unauthorized
         self.app.route('/unauth', callback=lambda: gw.web.error.unauthorized("Access denied"))
         self.client = TestApp(self.app)
