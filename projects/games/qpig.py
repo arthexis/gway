@@ -302,8 +302,8 @@ def view_qpig_farm(*, action: str = None, **_):
                 html.append(f"<button type='submit' name='action' value='place_{k}'>Feed {k}</button>")
 
     html.extend([
-        "<button type='button' id='qpig-save' title='Save'>\ud83d\udcbe</button>",
-        "<button type='button' id='qpig-load' title='Load'>\ud83d\udcc2</button>",
+        "<button type='button' id='qpig-save' title='Save'>💾</button>",
+        "<button type='button' id='qpig-load' title='Load'>📂</button>",
         "</form>",
         "</div>",
     ])
