@@ -204,10 +204,9 @@ def _render_card(card):
     """
     return html
 
-def view_search_games(
+def view_divination_wars(
     name=None,
     type_line=None,
-    card_type=None,
     oracle_text=None,
     set_name=None,
     discard=None,
@@ -259,17 +258,6 @@ def view_search_games(
                 elif type_line:
                     query_parts.append(f'type:"{type_line}"')
 
-    if card_type:
-        card_type, cs = _extract_colors(card_type)
-        colors.update(cs)
-        ct = card_type.strip().lower()
-        if ct in ("legendary", "snow"):
-            random_query = f"t:{ct} -t:creature"
-        else:
-            if ct in ("artifact", "enchantment"):
-                query_parts.append(f"t:{ct} -t:creature")
-            elif card_type:
-                query_parts.append(f'type:{ct}')
 
     if oracle_text:
         oracle_text, cs = _extract_colors(oracle_text)
@@ -377,7 +365,6 @@ def view_search_games(
     window.mtgSuggestions = {{
         name: {json.dumps(NAME_SUGGESTIONS)},
         type_line: {json.dumps(TYPE_SUGGESTIONS)},
-        card_type: {json.dumps(TYPE_SUGGESTIONS)},
         oracle_text: {json.dumps(TEXT_SUGGESTIONS)},
         set_name: {json.dumps(SET_SUGGESTIONS)},
     }};
@@ -439,10 +426,6 @@ def view_search_games(
                 <input type=\"text\" name=\"type_line\" value=\"{type_line}\" placeholder=\"Creature\">
             </div>
             <div class=\"mtg-form-row\">
-                <div class=\"mtg-label-row\"><label>CARD TYPE:</label><button class=\"mtg-random-btn\" type=\"button\" title=\"Random type\" onclick=\"mtgPickRandom('card_type')\">&#x1f3b2;</button></div>
-                <input type=\"text\" name=\"card_type\" value=\"{card_type}\" placeholder=\"Instant\">
-            </div>
-            <div class=\"mtg-form-row\">
                 <div class=\"mtg-label-row\"><label>RULES:</label><button class=\"mtg-random-btn\" type=\"button\" title=\"Random text\" onclick=\"mtgPickRandom('oracle_text')\">&#x1f3b2;</button></div>
                 <input type=\"text\" name=\"oracle_text\" value=\"{oracle_text}\" placeholder=\"draw a card\">
             </div>
@@ -464,7 +447,6 @@ def view_search_games(
     """.format(
         form_class=form_class,
         name=escape(name or ""), type_line=escape(type_line or ""),
-        card_type=escape(card_type or ""),
         oracle_text=escape(oracle_text or ""), set_name=escape(set_name or ""),
         turn=turn, library=library, life=life
     ))
