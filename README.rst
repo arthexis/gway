@@ -202,9 +202,7 @@ The following projects bundle additional documentation.  Each link uses
   - `csms <https://arthexis.com/web/site/reader?tome=ocpp/csms>`_
   - `evcs <https://arthexis.com/web/site/reader?tome=ocpp/evcs>`_
   - `data <https://arthexis.com/web/site/reader?tome=ocpp/data>`_
-
 - `release <https://arthexis.com/web/site/reader?tome=release>`_
-- `rpi <https://arthexis.com/web/site/reader?tome=rpi>`_
 - `vbox <https://arthexis.com/web/site/reader?tome=vbox>`_
 - `web <https://arthexis.com/web/site/reader?tome=web>`_
   - `nav <https://arthexis.com/web/site/reader?tome=web/nav>`_
