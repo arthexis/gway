@@ -1,6 +1,7 @@
 # file: tests/test_proxy_fallback.py
 
 import unittest
+from gway.builtins import is_test_flag
 import subprocess
 import time
 import socket
@@ -14,7 +15,7 @@ from gway import gw
 
 KNOWN_TAG = "FFFFFFFF"
 
-@unittest.skip("integration environment unavailable")
+@unittest.skipUnless(is_test_flag("integration"), "Integration tests disabled")
 class ProxyFallbackTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -50,7 +51,7 @@ class ProxyFallbackTests(unittest.TestCase):
         start = time.time()
         while time.time() - start < timeout:
             try:
-                with socket.create_connection(("localhost", port), timeout=1):
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
                     return
             except OSError:
                 time.sleep(0.2)
@@ -60,7 +61,7 @@ class ProxyFallbackTests(unittest.TestCase):
         async def run_session():
             await gw.ocpp.evcs.simulate_cp.__wrapped__(
                 0,
-                "localhost",
+                "127.0.0.1",
                 19900,
                 KNOWN_TAG,
                 "SIM1",

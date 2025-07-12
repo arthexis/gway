@@ -113,12 +113,55 @@ if [[ -z "$RECIPE" && "$ACTION" == "install" ]]; then
 fi
 
 # 3) Recipe-based service install
-RECIPE_FILE="recipes/${RECIPE}.gwr"
-if [[ ! -f "$RECIPE_FILE" ]]; then
-  echo "ERROR: Recipe '$RECIPE' not found at $RECIPE_FILE" >&2
+# Resolve recipe filename similar to gway's internal lookup
+find_recipe_file() {
+  local recipe="$1"
+  # Absolute path provided
+  if [[ "$recipe" = /* && -f "$recipe" ]]; then
+    echo "$recipe"
+    return 0
+  fi
+
+  local base_names=()
+  base_names+=("$recipe")
+  if [[ "$recipe" == *.* ]]; then
+    base_names+=("${recipe//./_}")
+    base_names+=("${recipe//./\/}")
+  fi
+
+  declare -A seen
+  local candidates=()
+  for base in "${base_names[@]}"; do
+    if [[ -z "${seen[$base]+x}" ]]; then
+      candidates+=("$base")
+      seen[$base]=1
+    fi
+    if [[ "$base" != *.* ]]; then
+      for ext in ".gwr" ".txt"; do
+        local name="$base$ext"
+        if [[ -z "${seen[$name]+x}" ]]; then
+          candidates+=("$name")
+          seen[$name]=1
+        fi
+      done
+    fi
+  done
+
+  for name in "${candidates[@]}"; do
+    local path="recipes/$name"
+    if [[ -f "$path" ]]; then
+      echo "$path"
+      return 0
+    fi
+  done
+  return 1
+}
+
+RECIPE_FILE=$(find_recipe_file "$RECIPE") || {
+  echo "ERROR: Recipe '$RECIPE' not found in recipes/" >&2
   deactivate
   exit 1
-fi
+}
 
 # Clean up the service name: replace slashes and illegal chars with '-'
 SERVICE_SAFE_RECIPE="${RECIPE//\//-}"

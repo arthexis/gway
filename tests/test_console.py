@@ -112,6 +112,18 @@ app start --port 8000
         self.assertEqual(commands, expected_commands)
         self.assertEqual(comments, expected_comments)
 
+    def test_load_recipe_accepts_dotted_name(self):
+        # File exists as arthexis_com.gwr but load with dot
+        (self.recipes_dir / 'arthexis_com.gwr').write_text('cmd run')
+        commands, _ = console.load_recipe('arthexis.com')
+        self.assertEqual(commands, [['cmd', 'run']])
+
+    def test_load_recipe_accepts_dotted_path(self):
+        (self.recipes_dir / 'foo').mkdir()
+        (self.recipes_dir / 'foo' / 'bar.gwr').write_text('cmd go')
+        commands, _ = console.load_recipe('foo.bar')
+        self.assertEqual(commands, [['cmd', 'go']])
+
 
 class TestLoadRecipeColonSyntax(unittest.TestCase):
     def test_load_recipe_with_colon_repetition(self):

@@ -38,3 +38,4 @@ can add columns or drop a table through your browser.
 The ``recipes/midblog.gwr`` file shows how to combine this view with
 ``web.nav`` and ``web.site`` to create a minimal website.  For a slightly
 more complete example with basic authentication see ``recipes/micro_blog.gwr``.
+

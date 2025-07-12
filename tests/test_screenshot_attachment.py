@@ -33,7 +33,7 @@ class ScreenshotAttachmentTest(unittest.TestCase):
         start = time.time()
         while time.time() - start < timeout:
             try:
-                with socket.create_connection(("localhost", port), timeout=1):
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
                     return
             except OSError:
                 time.sleep(0.2)

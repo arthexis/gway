@@ -10,7 +10,7 @@ class MailConfigTests(unittest.TestCase):
     def test_missing_config_raises(self):
         os.environ.pop('MAIL_SENDER', None)
         with self.assertRaises(RuntimeError):
-            gw.mail.search('hello')
+            gw.mail.read('hello')
 
 if __name__ == '__main__':
     unittest.main()

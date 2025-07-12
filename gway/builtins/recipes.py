@@ -16,28 +16,7 @@ def run_recipe(*scripts: str, **context):
 
     results = []
     for script in scripts:
-        orig_script = script
-        if not script.endswith('.gwr'):
-            script += '.gwr'
-            gw.debug(f"Appended .gwr extension: {script!r}")
-
-        try:
-            script_path = gw.resource(script, check=True)
-            gw.debug(f"Found script at: {script_path}")
-        except (FileNotFoundError, KeyError) as first_exc:
-            gw.debug(f"Script not found at {script!r}: {first_exc!r}")
-            try:
-                script_path = gw.resource("recipes", script)
-                gw.debug(f"Found script in 'recipes/': {script_path}")
-            except Exception as second_exc:
-                msg = (
-                    f"Could not locate script {script!r} "
-                    f"(tried direct lookup and under 'recipes/')."
-                )
-                gw.debug(f"{msg} Last error: {second_exc!r}")
-                raise FileNotFoundError(msg) from second_exc
-
-        command_sources, comments = load_recipe(script_path)
+        command_sources, comments = load_recipe(script)
         if comments:
             gw.debug("Recipe comments:\n" + "\n".join(comments))
         result = process(command_sources, **context)

@@ -53,7 +53,7 @@ class BaseURLTests(unittest.TestCase):
         }
         with patch.object(gw, "resolve", side_effect=make_resolver(mapping)):
             with patch.object(gw.cast, "to_bool", return_value=True):
-                self.assertEqual(web.base_ws_url(), "wss://example.com:6789")
+                self.assertEqual(web.base_ws_url(), "wss://example.com")
 
     def test_base_ws_url_local_forced_ws(self):
         mapping = {

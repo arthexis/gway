@@ -472,9 +472,10 @@ def load_recipe(recipe_filename):
     non-whitespace characters are `--`, prepend the last full non-indented command prefix.
     
     Example:
-        web app setup --home reader
-            --project vbox --home upload
-            --project games.conway --home board --path conway
+        web app setup:
+            - web.site --home reader
+            - vbox --home upload
+            - games.conway --home board --path conway
         web server start-app --host 127.0.0.1 --port 8888
 
     This parses the indented lines as continuations of the previous non-indented command.
@@ -488,9 +489,24 @@ def load_recipe(recipe_filename):
 
     # --- Recipe file resolution (unchanged) ---
     if not os.path.isabs(recipe_filename):
-        candidate_names = [recipe_filename]
-        if not os.path.splitext(recipe_filename)[1]:
-            candidate_names += [f"{recipe_filename}.gwr", f"{recipe_filename}.txt"]
+        candidate_names = []
+        base_names = [recipe_filename]
+        if "." in recipe_filename:
+            base_names.append(recipe_filename.replace(".", "_"))
+            base_names.append(recipe_filename.replace(".", os.sep))
+
+        seen = set()
+        for base in base_names:
+            if base not in seen:
+                candidate_names.append(base)
+                seen.add(base)
+            if not os.path.splitext(base)[1]:
+                for ext in (".gwr", ".txt"):
+                    name = base + ext
+                    if name not in seen:
+                        candidate_names.append(name)
+                        seen.add(name)
+
         for name in candidate_names:
             recipe_path = gw.resource("recipes", name)
             if os.path.isfile(recipe_path):
