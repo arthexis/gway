@@ -571,19 +571,41 @@ def view_debug_info():
 
 
 def view_project_readmes():
-    """Render an HTML list of README links discovered under ``data/static``."""
-    base_dir = Path(gw.resource('data', 'static'))
-    items = []
-    for path in sorted(base_dir.rglob('README.rst')):
-        rel = path.relative_to(base_dir).with_suffix('')
+    """Render an HTML tree of README links discovered under ``data/static``."""
+    base_dir = Path(gw.resource("data", "static"))
+
+    def insert(tree: dict, parts: tuple[str, ...], url: str) -> None:
+        node = tree
+        for part in parts:
+            node = node.setdefault(part, {})
+        node["_url"] = url
+
+    tree: dict = {}
+    for path in sorted(base_dir.rglob("README.rst")):
+        rel = path.relative_to(base_dir).with_suffix("")
         parts = rel.parts
         if any(_is_hidden_or_private(p) for p in parts):
             continue
-        tome = '/'.join(parts)
-        url = gw.web.app.build_url('web', 'site', 'reader', tome=tome)
-        label = tome.replace('_', ' ')
-        items.append(f"<li><a href='{url}'>{html.escape(label)}</a></li>")
-    body = '<ul>' + ''.join(items) + '</ul>' if items else '<p>No READMEs found.</p>'
-    return '<h1>Project READMEs</h1>' + body
+        if parts and parts[-1].lower() == "readme":
+            parts = parts[:-1]
+        tome = "/".join(parts)
+        url = gw.web.app.build_url("web", "site", "reader", tome=tome)
+        insert(tree, parts, url)
+
+    def render(node: dict, root: bool = False) -> str:
+        items = []
+        for name, child in sorted(node.items()):
+            if name == "_url":
+                continue
+            label = html.escape(name.replace("_", " "))
+            url = child.get("_url")
+            link = f"<a href='{url}'>{label}</a>" if url else label
+            sub = render(child, False)
+            items.append(f"<li>{link}{sub}</li>")
+        cls = " class='readme-list'" if root else ""
+        return f"<ul{cls}>" + "".join(items) + "</ul>" if items else ""
+
+    body = render(tree, True) if tree else "<p>No READMEs found.</p>"
+    return "<h1>Project READMEs</h1>" + body
 
 

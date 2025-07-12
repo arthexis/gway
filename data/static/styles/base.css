@@ -160,6 +160,19 @@ aside ul.sub-links li a {
     padding: 0.2em 0.5em;
 }
 
+/* Project README tree */
+.readme-list,
+.readme-list ul {
+    list-style: none;
+    padding-left: 1em;
+    margin: 0;
+}
+.readme-list > li { margin-bottom: 0.4em; }
+@media (min-width: 700px) {
+    .readme-list { display: flex; flex-wrap: wrap; }
+    .readme-list > li { width: 50%; box-sizing: border-box; padding-right: 1em; }
+}
+
 /* 8. Buttons & form controls */
 button, input[type="submit"], input[type="button"] {
     background: var(--accent-alt, #007bff);
