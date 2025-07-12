@@ -2,6 +2,18 @@
 
 from gway import gw
 
+def _is_domain_name(host: str) -> bool:
+    """Return True if host looks like a domain name (not an IP or localhost)."""
+    import ipaddress
+    host = host.strip().lower()
+    if host in {"", "localhost"}:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        return "." in host
+
 def build_url(*args, **kwargs):
     """Build a fully-qualified context-aware URL given a path sequence and query params."""
     try:
@@ -102,9 +114,14 @@ def base_ws_url(*, ssl_default=False):
     parsed = urlparse(s if "://" in s else f"//{s}", scheme="")
 
     host = parsed.hostname or ""
-    # Use ws_port, replacing any existing port
-    netloc = f"{host}:{ws_port}" if host else f"127.0.0.1:{ws_port}"
+    host = host.replace("0.0.0.0", "127.0.0.1")
+
+    # Use ws_port only for IP/localhost hosts
+    if _is_domain_name(host):
+        netloc = host
+    else:
+        netloc = f"{host}:{ws_port}" if host else f"127.0.0.1:{ws_port}"
 
     use_wss = gw.cast.to_bool(gw.resolve('[USE_WSS]', '[ENABLE_SSL]', '[USE_SSL]', ssl_default))
-    protocol = _get_protocol(netloc, use_wss, kind="ws")
+    protocol = _get_protocol(host, use_wss, kind="ws")
     return f"{protocol}://{netloc}"
