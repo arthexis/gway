@@ -128,7 +128,7 @@ app start --port 8000
 class TestLoadRecipeColonSyntax(unittest.TestCase):
     def test_load_recipe_with_colon_repetition(self):
         content = (
-            """web app setup:
+            """web app setup-app:
     - one --home first
     - two
 web:
@@ -145,8 +145,8 @@ web:
             os.remove(temp_name)
 
         expected = [
-            ['web', 'app', 'setup', 'one', '--home', 'first'],
-            ['web', 'app', 'setup', 'two'],
+            ['web', 'app', 'setup-app', 'one', '--home', 'first'],
+            ['web', 'app', 'setup-app', 'two'],
             ['web', 'static', 'collect'],
             ['web', 'server', 'start-app', '--host', '1', '--port', '2'],
         ]
@@ -154,9 +154,9 @@ web:
 
     def test_load_recipe_colon_without_indentation(self):
         content = (
-            """web app setup:
-- one
-- two
+            """web app setup-app:
+    - one
+    - two
 web:
 - static collect
 - server start-app --host 1 --port 2
@@ -171,8 +171,8 @@ web:
             os.remove(temp_name)
 
         expected = [
-            ['web', 'app', 'setup', 'one'],
-            ['web', 'app', 'setup', 'two'],
+            ['web', 'app', 'setup-app', 'one'],
+            ['web', 'app', 'setup-app', 'two'],
             ['web', 'static', 'collect'],
             ['web', 'server', 'start-app', '--host', '1', '--port', '2'],
         ]

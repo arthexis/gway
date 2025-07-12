@@ -20,6 +20,8 @@ class SqlCrudTests(unittest.TestCase):
         path = gw.resource(self.DB)
         if os.path.exists(path):
             os.remove(path)
+        if hasattr(gw.sql.setup_table, "_created"):
+            gw.sql.setup_table._created.clear()
 
     def test_basic_crud_cycle(self):
         item_id = gw.sql.crud.api_create(table='items', name='apple', qty=5, dbfile=self.DB)
@@ -32,26 +34,15 @@ class SqlCrudTests(unittest.TestCase):
         row3 = gw.sql.crud.api_read(table='items', id=item_id, dbfile=self.DB)
         self.assertIsNone(row3)
 
-    def test_setup_table_adds_columns(self):
-        gw.sql.crud.setup_table(
-            table='extras',
-            columns={'id': 'INTEGER PRIMARY KEY', 'name': 'TEXT'},
-            dbfile=self.DB,
-        )
+    def test_setup_table_and_migrate(self):
+        gw.sql.setup_table('extras', 'id', 'INTEGER', primary=True, dbfile=self.DB)
+        gw.sql.setup_table('extras', 'name', 'TEXT', dbfile=self.DB)
+        gw.sql.setup_table('extras', 'qty', 'INT', dbfile=self.DB)
+        gw.sql.migrate(dbfile=self.DB)
         with gw.sql.open_connection(self.DB) as cur:
             cur.execute('PRAGMA table_info(extras)')
             cols = {r[1] for r in cur.fetchall()}
-        self.assertIn('name', cols)
-
-        gw.sql.crud.setup_table(
-            table='extras',
-            columns={'qty': 'INT'},
-            dbfile=self.DB,
-        )
-        with gw.sql.open_connection(self.DB) as cur:
-            cur.execute('PRAGMA table_info(extras)')
-            cols2 = {r[1] for r in cur.fetchall()}
-        self.assertIn('qty', cols2)
+        self.assertEqual({'id', 'name', 'qty'}, cols)
 
 
 if __name__ == '__main__':
