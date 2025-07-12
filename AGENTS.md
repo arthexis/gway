@@ -21,6 +21,8 @@ Existing utilities (``gw.awg``, ``gw.ocpp``, ``gw.vbox`` etc.) are loaded lazily
 * Reuse built-in helpers by importing ``gw`` and calling ``gw.<project>.<function>``.
 * Results from previous calls are stored in ``gw.results`` and may be referenced with sigils for chaining.
 * Check ``README.rst`` for full documentation of available projects and commands.
+* Don't add to the main ``README.rst`` unless instructed otherwise. Enrich the
+  static ``README`` files of individual projects instead.
 
 ## Testing
 - Install requirements and the package in editable mode before running tests:
