@@ -12,4 +12,4 @@ web app setup:
 web:
  - static collect
  - server start-app --port 8888
-until --forever
+until --done

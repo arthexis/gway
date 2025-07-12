@@ -103,7 +103,7 @@ Example Recipe
    web app setup web.navbar --home style-changer
    web app setup web.site --home reader
    web server start-app --host 127.0.0.1 --port 8888
-   until --forever
+   until --done
 
 
 Run ``gway -r recipes/site.gwr`` and visit ``http://127.0.0.1:8888`` to browse
