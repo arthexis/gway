@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.45 [build 22d8d2]
+---------------------
+
+- b56c0dd cleanup intents
+
 0.4.44 [build 640ce4]
 ---------------------
 
