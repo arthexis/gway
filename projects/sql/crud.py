@@ -94,7 +94,6 @@ def view_table(*, table: str, id_col: str = "id", dbfile=None):
     body = "".join(body_rows)
     return f"<table><tr>{head}<th>Actions</th></tr>{body}</table>"
 
-
 def view_setup_table(*, table: str, dbfile=None):
     """HTML form for :func:`setup_table`. POST to add columns or drop."""
     from bottle import request, response

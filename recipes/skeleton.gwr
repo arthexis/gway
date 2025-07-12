@@ -1,10 +1,10 @@
 # file: recipes/skeleton.gwr
 
-web app setup-app:
-    --project web.site --home reader
-    --project web.nav --style random
-    --project cdv --home data-editor
+web app setup:
+    - web.site --home reader
+    - web.nav --style random
+    - cdv --home data-editor
 web:
  - static collect
 - server start-app
-until --forever
+until --done

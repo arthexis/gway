@@ -46,8 +46,9 @@ class Runner:
                     self.log(f"[timed] {func_name} (async) took {time.perf_counter() - start_time:.3f}s")
 
     def until(self, *, file=None, url=None, pypi=False, version=False, build=False,
-              forever=False, notify=False, notify_only=False, abort=False):
-        assert file or url or pypi or version or build or forever, "Use --forever for unconditional looping."
+              done=False, notify=False, notify_only=False, abort=False,
+              minor=False, major=False):
+        assert file or url or pypi or version or build or done, "Use --done for unconditional looping."
 
         if not self._async_threads and hasattr(self, "critical"):
             self.critical("No async threads detected before entering loop.")
@@ -78,7 +79,15 @@ class Runner:
 
         watchers = []
         if version:
-            watchers.append((gw.resource("VERSION"), watch_file, "VERSION file"))
+            if minor or major:
+                part = "major" if major else "minor"
+                watchers.append((
+                    gw.resource("VERSION"),
+                    lambda t, on_change, p=part: watch_version(t, on_change, part=p),
+                    "VERSION file",
+                ))
+            else:
+                watchers.append((gw.resource("VERSION"), watch_file, "VERSION file"))
         if build:
             watchers.append((gw.resource("BUILD"), watch_file, "BUILD file"))
         watchers.extend([
@@ -159,6 +168,60 @@ def watch_file(*filepaths, on_change, interval=10.0, hash=False, resource=True):
                         last_mtimes[path] = current_mtime
                 except FileNotFoundError:
                     pass
+            time.sleep(interval)
+
+    thread = threading.Thread(target=_watch, daemon=True)
+    thread.start()
+    return stop_event
+
+
+def watch_version(path, on_change, *, interval=10.0, part=None):
+    """Watch VERSION file and trigger only on specific version part changes."""
+    from gway import gw
+
+    resolved = gw.resource(path)
+    stop_event = threading.Event()
+
+    def parse_version(vstr):
+        parts = [p or '0' for p in vstr.strip().split('.')]
+        while len(parts) < 3:
+            parts.append('0')
+        try:
+            return [int(p) for p in parts[:3]]
+        except Exception:
+            return [0, 0, 0]
+
+    def _watch():
+        try:
+            last_mtime = os.path.getmtime(resolved)
+            with open(resolved) as f:
+                last_version = parse_version(f.read())
+        except FileNotFoundError:
+            last_mtime = None
+            last_version = None
+
+        while not stop_event.is_set():
+            try:
+                current_mtime = os.path.getmtime(resolved)
+                if last_mtime is None or current_mtime != last_mtime:
+                    with open(resolved) as f:
+                        current_version = parse_version(f.read())
+                    changed = False
+                    if last_version is not None:
+                        if part == 'minor':
+                            changed = current_version[1] != last_version[1]
+                        elif part == 'major':
+                            changed = current_version[0] != last_version[0]
+                        else:
+                            changed = current_version != last_version
+                    last_mtime = current_mtime
+                    last_version = current_version
+                    if changed:
+                        on_change()
+                        stop_event.set()
+                        return
+            except FileNotFoundError:
+                pass
             time.sleep(interval)
 
     thread = threading.Thread(target=_watch, daemon=True)

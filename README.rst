@@ -52,6 +52,16 @@ For PowerShell::
 
    register-python-argcomplete gway -s powershell | Out-String | Invoke-Expression
 
+CLI Helpers
+-----------
+
+An experimental project ``cli`` exposes utilities related to the command
+line interface. The ``cli.completions`` function lists available
+builtin and project commands and can aid in building custom completion
+scripts::
+
+   gway cli completions
+
 Core Concepts
 -------------
 
@@ -90,10 +100,10 @@ Example Recipe
 
 .. code-block:: text
 
-   web app setup --project web.navbar --home style-changer
-   web app setup --project web.site --home reader
+   web app setup web.navbar --home style-changer
+   web app setup web.site --home reader
    web server start-app --host 127.0.0.1 --port 8888
-   until --forever
+   until --done
 
 
 Run ``gway -r recipes/site.gwr`` and visit ``http://127.0.0.1:8888`` to browse
@@ -132,7 +142,7 @@ project with ``gw.web.app.setup`` and then launch the server using
 ``/static``. ``web.site.view_reader`` renders ``.rst`` or ``.md`` files when
 you visit ``/web/site/reader/PATH``; it first checks the workspace root and
 then ``data/static`` automatically. See the `Web README
-</web/site/reader?tome=web>`_ for a more complete guide.
+<https://arthexis.com/web/site/reader?tome=web>`_ for a more complete guide.
 
 Folder Structure
 ----------------
@@ -152,7 +162,7 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+--------------------------------------------------------------+
 | gway/          | Source code for core GWAY components.                        |
 +----------------+--------------------------------------------------------------+
-| tests/         | Unit tests for code in gway/ and projects/.                  |
+| tests/         | Hierarchical unit tests (e.g., ``tests/gway``).              |
 +----------------+--------------------------------------------------------------+
 | data/          | Static assets, resources, and other included data files.     |
 +----------------+--------------------------------------------------------------+
@@ -162,6 +172,16 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 +----------------+--------------------------------------------------------------+
 | tools/         | Platform-specific scripts and files.                         |
 +----------------+--------------------------------------------------------------+
+
+
+Test Layout
+-----------
+
+Tests are discovered recursively so directories under ``tests`` may mirror the source tree. A suggested structure is::
+
+    tests/
+        gway/
+        projects/
 
 Project READMEs
 ---------------
@@ -209,6 +229,7 @@ The following projects bundle additional documentation.  Each link uses
 .. _/web/site/reader?tome=web/cookies: /web/site/reader?tome=web/cookies
 .. _/web/site/reader?tome=web/auth: /web/site/reader?tome=web/auth
 .. _/web/site/reader?tome=web/chat: /web/site/reader?tome=web/chat
+
 
 You can generate these links yourself with
 ``gw.web.build_url('web/site/reader', tome='proj')``.

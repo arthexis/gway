@@ -67,9 +67,9 @@ def current_endpoint():
     """
     return gw.context.get('current_endpoint')
 
-def setup_app(*,
+def setup_app(project,
+    *,
     app=None,
-    project="web.site",
     path=None,
     home: str = None,
     links=None,
@@ -119,6 +119,22 @@ def setup_app(*,
 
     # Track project for later global static collection
     _enabled.add(project)
+
+    if home is None:
+        setup_home_func = getattr(source, "setup_home", None)
+        if callable(setup_home_func):
+            try:
+                home = setup_home_func()
+            except Exception as exc:
+                gw.warn(f"{project}.setup_home failed: {exc}")
+
+    if links is None:
+        setup_links_func = getattr(source, "setup_links", None)
+        if callable(setup_links_func):
+            try:
+                links = setup_links_func()
+            except Exception as exc:
+                gw.warn(f"{project}.setup_links failed: {exc}")
 
     # Default path is the dotted project name
     if path is None:
@@ -259,7 +275,7 @@ def setup_app(*,
                     elif content is None:
                         content = ""
                     elif not isinstance(content, str):
-                        content = gw.to_html(content)
+                        content = gw.cast.to_html(content)
                 except HTTPResponse as res:
                     return res
                 except Exception as e:
@@ -372,7 +388,7 @@ def setup_app(*,
                     return json.dumps(result)
                 # List: treat as a list of HTML fragments (return as JSON)
                 if isinstance(result, list):
-                    html_list = [x if isinstance(x, str) else gw.to_html(x) for x in result]
+                    html_list = [x if isinstance(x, str) else gw.cast.to_html(x) for x in result]
                     response.content_type = "application/json"
                     return json.dumps(html_list)
                 # String/bytes: send as plain text (fragment)
@@ -426,7 +442,7 @@ def setup_app(*,
                     elif content is None:
                         return ""
                     elif not isinstance(content, str):
-                        content = gw.to_html(content)
+                        content = gw.cast.to_html(content)
                     response.content_type = "text/html"
                     return content
                 except HTTPResponse as res:

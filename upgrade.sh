@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # file: upgrade.sh
 
 set -e

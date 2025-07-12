@@ -323,10 +323,6 @@ async def simulate_cp(
                     print(f"[Simulator:{cp_name}] Session reset requested.")
                     continue
 
-                if reset_event.is_set():
-                    print(f"[Simulator:{cp_name}] Session reset requested.")
-                    continue
-
                 loop_count += 1
                 if session_count == float('inf'):
                     continue  # loop forever
@@ -548,3 +544,8 @@ def view_cp_simulator(*args, **kwargs):
     html.append(f'<pre>{_simulator_status_json()}</pre></details>')
 
     return "".join(html)
+
+
+def view_simulator(*args, **kwargs):
+    """Alias for :func:`view_cp_simulator`."""
+    return view_cp_simulator(*args, **kwargs)

@@ -574,3 +574,4 @@ def setup_table(table: str, column: str = None, ctype: str = "TEXT", *,
 
     if immediate:
         migrate(dbfile=dbfile)
+

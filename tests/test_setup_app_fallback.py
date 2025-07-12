@@ -6,7 +6,7 @@ from paste.fixture import TestApp
 
 class SetupAppFallbackTests(unittest.TestCase):
     def test_first_available_project_is_loaded(self):
-        app = gw.web.app.setup_app(project=["nope", "dummy"])
+        app = gw.web.app.setup_app(["nope", "dummy"])
         client = TestApp(app)
         resp = client.get("/dummy")
         self.assertEqual(resp.status, 200)

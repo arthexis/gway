@@ -81,6 +81,19 @@ class Project(SimpleNamespace):
         # Display available functions to the user
         show_functions(functions)
 
+    def __getattr__(self, name):
+        """Fallback to ``<verb>_<project>`` for single-word verbs."""
+        if "_" not in name and "-" not in name:
+            suffix = self._name.rsplit(".", 1)[-1]
+            alt_name = f"{name}_{suffix}"
+            if alt_name in self.__dict__:
+                attr = self.__dict__[alt_name]
+                if callable(attr):
+                    # Cache the alias for future lookups
+                    setattr(self, name, attr)
+                    return attr
+        raise AttributeError(f"{self._name} has no attribute '{name}'")
+
 
 class Null:
     # aka. The Black Hole Structure
