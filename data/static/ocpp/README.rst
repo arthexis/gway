@@ -52,8 +52,9 @@ Run them via ``gway run <recipe>``. For example:
 
 The integration suite includes ``tests/test_proxy_fallback.py`` which
 starts both the local and cloud recipes to verify that requests are
-proxied once the cloud is available. This harness can serve as a
-template for offline-first deployments.
+proxied once the cloud is available. Enable it with the ``proxy`` test
+flag. This harness can serve as a template for offline-first
+deployments.
 
 OCPP Data Storage
 -----------------

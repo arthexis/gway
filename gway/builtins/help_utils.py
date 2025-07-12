@@ -8,8 +8,11 @@ __all__ = [
 ]
 
 
-def help(*args, full: bool = False):
+def help(*args, full: bool = False, list_flags: bool = False):
     from gway import gw
+    if list_flags:
+        from .testing import list_flags as _list_flags
+        return {"Test Flags": _list_flags()}
     gw.info(f"Help on {' '.join(args)} requested")
 
     def extract_gw_refs(source: str):

@@ -67,6 +67,13 @@ class GatewayBuiltinsTests(unittest.TestCase):
         help_result = gw.help('hello-world')
         self.assertEqual(help_result['Sample CLI'], 'gway hello-world')
 
+    def test_help_list_flags(self):
+        flags = gw.help(list_flags=True)["Test Flags"]
+        expected = {"failure", "ocpp", "proxy", "screen"}
+        self.assertEqual(set(flags.keys()), expected)
+        for tests in flags.values():
+            self.assertIsInstance(tests, list)
+
     def test_abort(self):
         """Test that the abort function raises a SystemExit exception."""
         with self.assertRaises(SystemExit):

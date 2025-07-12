@@ -20,7 +20,7 @@ UNKNOWN_TAG = "ZZZZZZZZ"
 
 import signal
 
-@unittest.skipUnless(is_test_flag("integration"), "Integration tests disabled")
+@unittest.skipUnless(is_test_flag("ocpp"), "OCPP tests disabled")
 class EtronWebSocketTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -392,7 +392,7 @@ class EtronWebSocketTests(unittest.TestCase):
         self.assertAlmostEqual(gw.ocpp.power_consumed(js), 1.0, places=2)
         self.assertAlmostEqual(gw.ocpp.extract_meter(js), 1.0, places=2)
 
-    @unittest.skipUnless(is_test_flag("integration"), "Integration tests disabled")
+    @unittest.skipUnless(is_test_flag("ocpp"), "OCPP tests disabled")
     def test_remote_stop_transaction(self):
         """Dashboard Stop action triggers RemoteStopTransaction on the CP."""
         uri = "ws://127.0.0.1:19000/stopper?token=foo"

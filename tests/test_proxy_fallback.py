@@ -15,7 +15,7 @@ from gway import gw
 
 KNOWN_TAG = "FFFFFFFF"
 
-@unittest.skipUnless(is_test_flag("integration"), "Integration tests disabled")
+@unittest.skipUnless(is_test_flag("proxy"), "Proxy tests disabled")
 class ProxyFallbackTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

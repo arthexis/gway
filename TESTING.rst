@@ -20,17 +20,28 @@ can enable them by passing feature flags to ``gway test``:
 
 .. code-block:: bash
 
-   gway test --flags screenshot
+   gway test --flags screen
 
-Integration suites that launch helper servers are disabled unless the
-``integration`` flag is present:
+Integration suites that launch helper servers require specific flags.
+Use ``ocpp`` for the charger and Etron tests or ``proxy`` for the
+fallback proxy suite:
 
 .. code-block:: bash
 
-   gway test --flags integration
+   gway test --flags ocpp
+
+.. code-block:: bash
+
+   gway test --flags proxy
 
 The flags are stored in the ``GW_TEST_FLAGS`` environment variable, which test
 cases can check via ``is_test_flag('flag')``.
+
+To list all available flags, run:
+
+.. code-block:: bash
+
+   gway help --list-flags
 
 Importing Project Modules
 -------------------------

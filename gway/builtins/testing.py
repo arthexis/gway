@@ -2,6 +2,7 @@
 __all__ = [
     "is_test_flag",
     "test",
+    "list_flags",
 ]
 
 
@@ -116,3 +117,39 @@ def test(*, root: str = "tests", filter=None, on_success=None, on_failure=None, 
         gw.abort(f"Tests failed with --abort flag. Results: {str(result).strip()}")
 
     return result.wasSuccessful()
+
+
+def list_flags(root: str = "tests") -> dict[str, list[str]]:
+    """Return mapping of flags to tests referencing them."""
+    import os
+    import re
+
+    flag_pat = re.compile(r"is_test_flag\([\"']([^\"']+)[\"']\)")
+    def_pat = re.compile(r"\s*(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
+    result: dict[str, list[str]] = {}
+
+    for dirpath, _, files in os.walk(root):
+        for fname in files:
+            if not fname.endswith(".py"):
+                continue
+            path = os.path.join(dirpath, fname)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+            except Exception:
+                continue
+            for i, line in enumerate(lines):
+                m = flag_pat.search(line)
+                if not m:
+                    continue
+                flag = m.group(1)
+                test_name = None
+                for j in range(i + 1, len(lines)):
+                    match = def_pat.match(lines[j])
+                    if match:
+                        test_name = match.group(1)
+                        break
+                if test_name:
+                    result.setdefault(flag, []).append(f"{fname}::{test_name}")
+
+    return {k: sorted(v) for k, v in sorted(result.items())}
