@@ -1,0 +1,18 @@
+# file: recipes/midblog.gwr
+# Minimal website using sql.crud to manage a table
+
+# Ensure the posts table exists
+sql setup-table posts --dbfile work/blog.sqlite:
+    - id integer --primary --auto
+    - title text
+    - body text
+sql migrate --dbfile work/blog.sqlite
+
+web app setup-app:
+    - web.nav --home style-switcher
+    - web.site --home reader
+    - sql.crud --home posts?table=posts&dbfile=work/blog.sqlite
+web:
+ - static collect
+ - server start-app --port 8888
+until --forever

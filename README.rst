@@ -119,7 +119,7 @@ next non-indented command.
 .. code-block:: text
 
    # Configure multiple projects
-   web app setup:
+   web app setup-app:
        - web.site --home reader
        - web.nav --style random
        - games.qpig --home qpig-farm
@@ -190,45 +190,46 @@ The following projects bundle additional documentation.  Each link uses
 ``view_reader`` to render the ``README.rst`` file directly from the
 ``data/static`` folder.
 
-- `awg <https://arthexis.com/web/site/reader?tome=awg>`_
-- `cdv <https://arthexis.com/web/site/reader?tome=cdv>`_
-- `games <https://arthexis.com/web/site/reader?tome=games>`_
-  - `conway <https://arthexis.com/web/site/reader?tome=games/conway>`_
-  - `mtg <https://arthexis.com/web/site/reader?tome=games/mtg>`_
-  - `qpig <https://arthexis.com/web/site/reader?tome=games/qpig>`_
-- `monitor <https://arthexis.com/web/site/reader?tome=monitor>`_
-  - `rpi <https://arthexis.com/web/site/reader?tome=monitor/rpi>`_
-- `ocpp <https://arthexis.com/web/site/reader?tome=ocpp>`_
-  - `csms <https://arthexis.com/web/site/reader?tome=ocpp/csms>`_
-  - `evcs <https://arthexis.com/web/site/reader?tome=ocpp/evcs>`_
-  - `data <https://arthexis.com/web/site/reader?tome=ocpp/data>`_
-- `release <https://arthexis.com/web/site/reader?tome=release>`_
-- `vbox <https://arthexis.com/web/site/reader?tome=vbox>`_
-- `web <https://arthexis.com/web/site/reader?tome=web>`_
-  - `nav <https://arthexis.com/web/site/reader?tome=web/nav>`_
-  - `cookies <https://arthexis.com/web/site/reader?tome=web/cookies>`_
-  - `auth <https://arthexis.com/web/site/reader?tome=web/auth>`_
-  - `chat <https://arthexis.com/web/site/reader?tome=web/chat>`_
+- `awg </web/site/reader?tome=awg>`_
+- `cdv </web/site/reader?tome=cdv>`_
+- `sql </web/site/reader?tome=sql>`_
+- `games </web/site/reader?tome=games>`_
+  - `conway </web/site/reader?tome=games/conway>`_
+  - `mtg </web/site/reader?tome=games/mtg>`_
+  - `qpig </web/site/reader?tome=games/qpig>`_
+- `monitor </web/site/reader?tome=monitor>`_
+- `ocpp </web/site/reader?tome=ocpp>`_
+  - `csms </web/site/reader?tome=ocpp/csms>`_
+  - `evcs </web/site/reader?tome=ocpp/evcs>`_
+  - `data </web/site/reader?tome=ocpp/data>`_
+- `release </web/site/reader?tome=release>`_
+- `vbox </web/site/reader?tome=vbox>`_
+- `web </web/site/reader?tome=web>`_
+  - `nav </web/site/reader?tome=web/nav>`_
+  - `cookies </web/site/reader?tome=web/cookies>`_
+  - `auth </web/site/reader?tome=web/auth>`_
+  - `chat </web/site/reader?tome=web/chat>`_
 
-.. _/web/site/reader?tome=awg: https://arthexis.com/web/site/reader?tome=awg
-.. _/web/site/reader?tome=cdv: https://arthexis.com/web/site/reader?tome=cdv
-.. _/web/site/reader?tome=games: https://arthexis.com/web/site/reader?tome=games
-.. _/web/site/reader?tome=games/conway: https://arthexis.com/web/site/reader?tome=games/conway
-.. _/web/site/reader?tome=games/mtg: https://arthexis.com/web/site/reader?tome=games/mtg
-.. _/web/site/reader?tome=games/qpig: https://arthexis.com/web/site/reader?tome=games/qpig
-.. _/web/site/reader?tome=monitor: https://arthexis.com/web/site/reader?tome=monitor
-.. _/web/site/reader?tome=ocpp: https://arthexis.com/web/site/reader?tome=ocpp
-.. _/web/site/reader?tome=ocpp/csms: https://arthexis.com/web/site/reader?tome=ocpp/csms
-.. _/web/site/reader?tome=ocpp/evcs: https://arthexis.com/web/site/reader?tome=ocpp/evcs
-.. _/web/site/reader?tome=ocpp/data: https://arthexis.com/web/site/reader?tome=ocpp/data
-.. _/web/site/reader?tome=release: https://arthexis.com/web/site/reader?tome=release
-.. _/web/site/reader?tome=monitor/rpi: https://arthexis.com/web/site/reader?tome=monitor/rpi
-.. _/web/site/reader?tome=vbox: https://arthexis.com/web/site/reader?tome=vbox
-.. _/web/site/reader?tome=web: https://arthexis.com/web/site/reader?tome=web
-.. _/web/site/reader?tome=web/nav: https://arthexis.com/web/site/reader?tome=web/nav
-.. _/web/site/reader?tome=web/cookies: https://arthexis.com/web/site/reader?tome=web/cookies
-.. _/web/site/reader?tome=web/auth: https://arthexis.com/web/site/reader?tome=web/auth
-.. _/web/site/reader?tome=web/chat: https://arthexis.com/web/site/reader?tome=web/chat
+.. _/web/site/reader?tome=awg: /web/site/reader?tome=awg
+.. _/web/site/reader?tome=cdv: /web/site/reader?tome=cdv
+.. _/web/site/reader?tome=sql: /web/site/reader?tome=sql
+.. _/web/site/reader?tome=games: /web/site/reader?tome=games
+.. _/web/site/reader?tome=games/conway: /web/site/reader?tome=games/conway
+.. _/web/site/reader?tome=games/mtg: /web/site/reader?tome=games/mtg
+.. _/web/site/reader?tome=games/qpig: /web/site/reader?tome=games/qpig
+.. _/web/site/reader?tome=monitor: /web/site/reader?tome=monitor
+.. _/web/site/reader?tome=ocpp: /web/site/reader?tome=ocpp
+.. _/web/site/reader?tome=ocpp/csms: /web/site/reader?tome=ocpp/csms
+.. _/web/site/reader?tome=ocpp/evcs: /web/site/reader?tome=ocpp/evcs
+.. _/web/site/reader?tome=ocpp/data: /web/site/reader?tome=ocpp/data
+.. _/web/site/reader?tome=release: /web/site/reader?tome=release
+.. _/web/site/reader?tome=vbox: /web/site/reader?tome=vbox
+.. _/web/site/reader?tome=web: /web/site/reader?tome=web
+.. _/web/site/reader?tome=web/nav: /web/site/reader?tome=web/nav
+.. _/web/site/reader?tome=web/cookies: /web/site/reader?tome=web/cookies
+.. _/web/site/reader?tome=web/auth: /web/site/reader?tome=web/auth
+.. _/web/site/reader?tome=web/chat: /web/site/reader?tome=web/chat
+
 
 You can generate these links yourself with
 ``gw.web.build_url('web/site/reader', tome='proj')``.

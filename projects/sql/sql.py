@@ -503,3 +503,75 @@ def parse_log(
             )
 
     return stop_event
+
+# --- Migration Helpers ---
+_STAGED_SQL = {}
+
+def stage(sql: str, *, dbfile=None):
+    """Store SQL to apply later with :func:`migrate`."""
+    key = dbfile or 'default'
+    _STAGED_SQL.setdefault(key, []).append(sql)
+    gw.debug(f"Staged SQL for {key}: {sql}")
+
+
+def migrate(*, dbfile=None):
+    """Execute staged SQL statements for ``dbfile``."""
+    key = dbfile or 'default'
+    sql_list = _STAGED_SQL.pop(key, [])
+    if not sql_list:
+        gw.info("No staged SQL to migrate")
+        return 0
+    with open_connection(dbfile) as cur:
+        for stmt in sql_list:
+            cur.executescript(stmt)
+    gw.info(f"Applied {len(sql_list)} statements to {key}")
+    return len(sql_list)
+
+
+def setup_table(table: str, column: str = None, ctype: str = "TEXT", *,
+                primary: bool = False, auto: bool = False,
+                dbfile=None, drop: bool = False, immediate: bool = False):
+    """Stage creation or modification of ``table``.
+
+    Parameters
+    ----------
+    table: str
+        Table to create or extend.
+    column: str, optional
+        Name of the column to add. If omitted, only ``drop`` is honored.
+    ctype: str, optional
+        Column type, defaults to ``TEXT``.
+    primary: bool
+        Mark column as ``PRIMARY KEY``.
+    auto: bool
+        Add ``AUTOINCREMENT`` to the column.
+    dbfile: str, optional
+        Target database file.
+    drop: bool
+        Drop the table before creating it again.
+    immediate: bool
+        Apply staged SQL immediately via :func:`migrate`.
+    """
+
+    if drop:
+        stage(f"DROP TABLE IF EXISTS [{table}]", dbfile=dbfile)
+
+    if column:
+        spec = f"[{column}] {ctype}"
+        if primary:
+            spec += " PRIMARY KEY"
+        if auto:
+            spec += " AUTOINCREMENT"
+
+        key = (dbfile or 'default', table)
+        created = getattr(setup_table, "_created", set())
+        if key not in created:
+            stage(f"CREATE TABLE IF NOT EXISTS [{table}] ({spec})", dbfile=dbfile)
+            created.add(key)
+            setattr(setup_table, "_created", created)
+        else:
+            stage(f"ALTER TABLE [{table}] ADD COLUMN {spec}", dbfile=dbfile)
+
+    if immediate:
+        migrate(dbfile=dbfile)
+
