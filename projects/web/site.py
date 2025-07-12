@@ -570,3 +570,20 @@ def view_debug_info():
     )
 
 
+def view_project_readmes():
+    """Render an HTML list of README links discovered under ``data/static``."""
+    base_dir = Path(gw.resource('data', 'static'))
+    items = []
+    for path in sorted(base_dir.rglob('README.rst')):
+        rel = path.relative_to(base_dir).with_suffix('')
+        parts = rel.parts
+        if any(_is_hidden_or_private(p) for p in parts):
+            continue
+        tome = '/'.join(parts)
+        url = gw.web.app.build_url('web', 'site', 'reader', tome=tome)
+        label = tome.replace('_', ' ')
+        items.append(f"<li><a href='{url}'>{html.escape(label)}</a></li>")
+    body = '<ul>' + ''.join(items) + '</ul>' if items else '<p>No READMEs found.</p>'
+    return '<h1>Project READMEs</h1>' + body
+
+
