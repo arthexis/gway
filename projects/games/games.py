@@ -36,7 +36,7 @@ _DEF = [
     ),
     (
         "Divination Wars",
-        "search-games",
+        "divination-wars",
         "Look up Magic: The Gathering cards using the Scryfall API.",
         "https://en.wikipedia.org/wiki/Magic:_The_Gathering",
     ),
@@ -77,8 +77,8 @@ def view_game_of_life(*args, **kwargs):
     return conway.view_game_of_life(*args, **kwargs)
 
 
-def view_search_games(*args, **kwargs):
-    return mtg.view_search_games(*args, **kwargs)
+def view_divination_wars(*args, **kwargs):
+    return mtg.view_divination_wars(*args, **kwargs)
 
 
 def view_qpig_farm(*args, **kwargs):
