@@ -31,6 +31,14 @@ class UntilAbortTests(unittest.TestCase):
         time.sleep(0.1)
         stop_event.set()
 
+    def _trigger_version_changes(self, path, stop_event, versions):
+        for ver in versions:
+            time.sleep(0.2)
+            with open(path, 'w') as f:
+                f.write(ver)
+        time.sleep(0.1)
+        stop_event.set()
+
     def test_until_returns_on_change(self):
         stop = threading.Event()
         dummy = self._start_dummy_async(stop)
@@ -69,6 +77,58 @@ class UntilAbortTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     gw.until(file=path, abort=True)
                 abort_fn.assert_called_once()
+        dummy.join(1)
+        trig.join(1)
+        os.unlink(path)
+
+    def test_until_minor_version_change(self):
+        stop = threading.Event()
+        dummy = self._start_dummy_async(stop)
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            path = tmp.name
+            tmp.write(b"1.0.0")
+            tmp.flush()
+        trig = threading.Thread(
+            target=self._trigger_version_changes,
+            args=(path, stop, ["1.0.1", "1.1.0"]),
+            daemon=True,
+        )
+        trig.start()
+        orig_watch = runner.watch_version
+        def fast_watch(*a, **k):
+            k['interval'] = 0.05
+            return orig_watch(*a, **k)
+        with patch('gway.runner.watch_version', side_effect=fast_watch), \
+             patch('gway.gw.resource', return_value=path), \
+             patch.object(gw, 'abort') as abort_fn:
+            gw.until(version=True, minor=True)
+            abort_fn.assert_not_called()
+        dummy.join(1)
+        trig.join(1)
+        os.unlink(path)
+
+    def test_until_major_version_change(self):
+        stop = threading.Event()
+        dummy = self._start_dummy_async(stop)
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            path = tmp.name
+            tmp.write(b"1.0.0")
+            tmp.flush()
+        trig = threading.Thread(
+            target=self._trigger_version_changes,
+            args=(path, stop, ["1.0.1", "2.0.0"]),
+            daemon=True,
+        )
+        trig.start()
+        orig_watch = runner.watch_version
+        def fast_watch(*a, **k):
+            k['interval'] = 0.05
+            return orig_watch(*a, **k)
+        with patch('gway.runner.watch_version', side_effect=fast_watch), \
+             patch('gway.gw.resource', return_value=path), \
+             patch.object(gw, 'abort') as abort_fn:
+            gw.until(version=True, major=True)
+            abort_fn.assert_not_called()
         dummy.join(1)
         trig.join(1)
         os.unlink(path)
