@@ -12,7 +12,12 @@ Launch a simulator session pointing at your CSMS with:
 
 .. code-block:: bash
 
-   gway ocpp.evcs simulate --host 127.0.0.1 --ws-port 9000 --cp-path CPX
+   gway ocpp.evcs simulate \
+       --host 127.0.0.1 --ws-port 9000 \
+       --cp-path ocpp/csms/CPX
+
+The simulator can also be controlled via the web UI at
+``/ocpp/evcs/cp-simulator`` (call ``gw.ocpp.evcs.view_simulator``).
 
 The simulator accepts ``--kwh-min`` and ``--kwh-max`` to control the
 approximate energy delivered per session. For example, ``--kwh-min 40
