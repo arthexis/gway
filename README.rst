@@ -2,7 +2,7 @@ GWAY
 ====
 
 Gateway (``gw``) is a lightweight dispatcher that turns every Python function
-into a command line entry.  It ships with a small set of helpers and a recipe
+into a command line entry.  It includes a recipe
 runner so you can compose automations and simple web apps with only functions
 and ``.gwr`` files.
 
@@ -38,7 +38,6 @@ framework itself clone the repository and install it in editable mode:
    cd gway
    pip install -r requirements.txt
    pip install -e .
-
 
 Core Concepts
 -------------
@@ -164,53 +163,15 @@ Tests are discovered recursively so directories under ``tests`` may mirror the s
 Project READMEs
 ---------------
 
-The following projects bundle additional documentation.  Each link uses
-``view_reader`` to render the ``README.rst`` file directly from the
-``data/static`` folder.
-
-- `awg </web/site/reader?tome=awg>`_
-- `cdv </web/site/reader?tome=cdv>`_
-- `sql </web/site/reader?tome=sql>`_
-- `games </web/site/reader?tome=games>`_
-  - `conway </web/site/reader?tome=games/conway>`_
-  - `mtg </web/site/reader?tome=games/mtg>`_
-  - `qpig </web/site/reader?tome=games/qpig>`_
-- `monitor </web/site/reader?tome=monitor>`_
-- `ocpp </web/site/reader?tome=ocpp>`_
-  - `csms </web/site/reader?tome=ocpp/csms>`_
-  - `evcs </web/site/reader?tome=ocpp/evcs>`_
-  - `data </web/site/reader?tome=ocpp/data>`_
-- `release </web/site/reader?tome=release>`_
-- `vbox </web/site/reader?tome=vbox>`_
-- `web </web/site/reader?tome=web>`_
-  - `nav </web/site/reader?tome=web/nav>`_
-  - `cookies </web/site/reader?tome=web/cookies>`_
-  - `auth </web/site/reader?tome=web/auth>`_
-  - `chat </web/site/reader?tome=web/chat>`_
-
-.. _/web/site/reader?tome=awg: /web/site/reader?tome=awg
-.. _/web/site/reader?tome=cdv: /web/site/reader?tome=cdv
-.. _/web/site/reader?tome=sql: /web/site/reader?tome=sql
-.. _/web/site/reader?tome=games: /web/site/reader?tome=games
-.. _/web/site/reader?tome=games/conway: /web/site/reader?tome=games/conway
-.. _/web/site/reader?tome=games/mtg: /web/site/reader?tome=games/mtg
-.. _/web/site/reader?tome=games/qpig: /web/site/reader?tome=games/qpig
-.. _/web/site/reader?tome=monitor: /web/site/reader?tome=monitor
-.. _/web/site/reader?tome=ocpp: /web/site/reader?tome=ocpp
-.. _/web/site/reader?tome=ocpp/csms: /web/site/reader?tome=ocpp/csms
-.. _/web/site/reader?tome=ocpp/evcs: /web/site/reader?tome=ocpp/evcs
-.. _/web/site/reader?tome=ocpp/data: /web/site/reader?tome=ocpp/data
-.. _/web/site/reader?tome=release: /web/site/reader?tome=release
-.. _/web/site/reader?tome=vbox: /web/site/reader?tome=vbox
-.. _/web/site/reader?tome=web: /web/site/reader?tome=web
-.. _/web/site/reader?tome=web/nav: /web/site/reader?tome=web/nav
-.. _/web/site/reader?tome=web/cookies: /web/site/reader?tome=web/cookies
-.. _/web/site/reader?tome=web/auth: /web/site/reader?tome=web/auth
-.. _/web/site/reader?tome=web/chat: /web/site/reader?tome=web/chat
-
+Visit `/web/site/project-readmes`_ to browse the documentation bundled with
+each project. The page is generated automatically using ``view_project_readmes``
+so newly added README files appear without edits to this list.
 
 You can generate these links yourself with
 ``gw.web.build_url('web/site/reader', tome='proj')``.
+
+.. _/web/site/project-readmes: /web/site/project-readmes
+
 
 License
 -------

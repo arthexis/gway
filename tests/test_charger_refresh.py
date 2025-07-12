@@ -106,6 +106,7 @@ class ChargerDashboardRefreshTests(unittest.TestCase):
                 timeout=5,
             )
             self.assertIn("SIMDASH", resp.text)
+            self.assertRegex(resp.text, r"kWh\.</td>\s*<td class=\"value\">[0-9.]+")
             await sim_task
         asyncio.run(run_sim_and_check())
 

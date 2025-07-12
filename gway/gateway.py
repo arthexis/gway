@@ -158,7 +158,7 @@ class Gateway(Resolver, Runner):
 
         result = set(discover_projects(projects_path))
         sorted_result = sorted(result)
-        self.verbose(f"Discovered projects: {sorted_result}", func="projects")
+        self.verbose(f"[projects] Discovered projects: {sorted_result}")
         return sorted_result
 
     def builtins(self):
@@ -223,7 +223,7 @@ class Gateway(Resolver, Runner):
                         if (value is inspect.Parameter.empty or value is None) and name in type(self).defaults:
                             value = type(self).defaults[name]
                             if self.verbose:
-                                self.verbose(f"Injected default {name}={value!r} from Gateway.defaults", func="wrap_callable")
+                                self.verbose(f"[wrap_callable] Injected default {name}={value!r} from Gateway.defaults")
 
                     ann = param.annotation
                     if ann in (int, float, str, bool) and value is not None and not isinstance(value, ann):
