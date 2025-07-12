@@ -2,7 +2,7 @@ GWAY
 ====
 
 Gateway (``gw``) is a lightweight dispatcher that turns every Python function
-into a command line entry.  It ships with a small set of helpers and a recipe
+into a command line entry.  It includes a recipe
 runner so you can compose automations and simple web apps with only functions
 and ``.gwr`` files.
 
@@ -38,29 +38,6 @@ framework itself clone the repository and install it in editable mode:
    cd gway
    pip install -r requirements.txt
    pip install -e .
-
-Shell Autocompletion
---------------------
-
-GWAY uses ``argcomplete`` to offer optional tab completion. Install the
-package and register the completion script for your shell::
-
-   pip install argcomplete
-   register-python-argcomplete gway >> ~/.bashrc
-
-For PowerShell::
-
-   register-python-argcomplete gway -s powershell | Out-String | Invoke-Expression
-
-CLI Helpers
------------
-
-An experimental project ``cli`` exposes utilities related to the command
-line interface. The ``cli.completions`` function lists available
-builtin and project commands and can aid in building custom completion
-scripts::
-
-   gway cli completions
 
 Core Concepts
 -------------
