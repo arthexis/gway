@@ -170,7 +170,7 @@ class NavStyleTests(unittest.TestCase):
         link = soup2.find("link", rel="stylesheet", href=lambda h: h and "styles/" in h and h.endswith(".css"))
         self.assertIsNotNone(link, "Page missing stylesheet link for random theme")
 
-    @unittest.skipUnless(is_test_flag("screenshot"), "Screenshot tests disabled")
+    @unittest.skipUnless(is_test_flag("screen"), "Screen tests disabled")
     def test_style_switcher_screenshot(self):
         """Capture a screenshot of the style switcher page."""
         screenshot_dir = Path("work/screenshots")
