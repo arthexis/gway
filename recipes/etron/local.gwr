@@ -8,6 +8,7 @@ web app setup:
     - ocpp.csms --home charger-status
     - ocpp.evcs --home cp-simulator
     - monitor --home monitor-panel
+    - monitor.rpi --home pi-remote
     - ocpp.data --home charger-summary
 
 # Toggle this version to apply the allowlist  
@@ -20,6 +21,7 @@ web:
  - server start-app --host 0.0.0.0 --port 8000 --ws-port 9000
 
 # This only makes sense for NetworkManager in Linux 
-monitor start-watch nmcli 
+monitor start-watch nmcli
+monitor start-watch rpi
 
 until --version --build
