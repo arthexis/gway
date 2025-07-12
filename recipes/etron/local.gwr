@@ -8,6 +8,7 @@ web app setup:
     - ocpp.csms --home charger-status
     - ocpp.evcs --home cp-simulator
     - monitor --home monitor-panel
+    - monitor.nmcli 
     - monitor.rpi --home pi-remote
     - ocpp.data --home charger-summary
 
