@@ -24,4 +24,4 @@ web:
 monitor start-watch nmcli
 monitor start-watch rpi
 
-until --file VERSION
+until --version --build

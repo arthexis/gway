@@ -307,7 +307,12 @@ def view_search_games(
             query_parts.append(color_filter)
 
     query = " ".join(query_parts).strip() if not random_query else ""
-    all_discards = set(discards)
+    # Previously this view attempted to filter cards that had been discarded
+    # by looking at a ``discards`` variable, but no such list is currently
+    # tracked.  This resulted in a ``NameError`` when rendering the page.
+    # Simply initialize an empty set so search results are not filtered by
+    # discarded IDs and the view works correctly.
+    all_discards = set()
 
     turn = _get_cookie_turn() if use_hand else 0
     if query and use_hand:

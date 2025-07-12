@@ -33,3 +33,4 @@ openpyxl
 coverage
 argcomplete
 PyJWT
+sounddevice

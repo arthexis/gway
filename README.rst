@@ -103,7 +103,7 @@ Example Recipe
    web app setup web.navbar --home style-changer
    web app setup web.site --home reader
    web server start-app --host 127.0.0.1 --port 8888
-   until --forever
+   until --done
 
 
 Run ``gway -r recipes/site.gwr`` and visit ``http://127.0.0.1:8888`` to browse
@@ -204,6 +204,7 @@ The following projects bundle additional documentation.  Each link uses
   - `data <https://arthexis.com/web/site/reader?tome=ocpp/data>`_
 
 - `release <https://arthexis.com/web/site/reader?tome=release>`_
+- `rpi <https://arthexis.com/web/site/reader?tome=rpi>`_
 - `vbox <https://arthexis.com/web/site/reader?tome=vbox>`_
 - `web <https://arthexis.com/web/site/reader?tome=web>`_
   - `nav <https://arthexis.com/web/site/reader?tome=web/nav>`_

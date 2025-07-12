@@ -46,8 +46,8 @@ class Runner:
                     self.log(f"[timed] {func_name} (async) took {time.perf_counter() - start_time:.3f}s")
 
     def until(self, *, file=None, url=None, pypi=False, version=False, build=False,
-              forever=False, notify=False, notify_only=False, abort=False):
-        assert file or url or pypi or version or build or forever, "Use --forever for unconditional looping."
+              done=False, notify=False, notify_only=False, abort=False):
+        assert file or url or pypi or version or build or done, "Use --done for unconditional looping."
 
         if not self._async_threads and hasattr(self, "critical"):
             self.critical("No async threads detected before entering loop.")

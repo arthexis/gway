@@ -95,6 +95,7 @@ def api_post_action(*, request=None, action=None, trust=None, **kwargs):
         secret = _random_passphrase()
         _TRUSTS[sid] = {"trust": secret, "ts": now, "count": 0}
         print(f"[web.chat] Session {sid} requires passphrase: {secret}")
+        gw.info(f"[web.chat] Session {sid} requires passphrase: {secret}")
         res = {
             "auth_required": True,
             "message": "Please provide the passphrase displayed in the server console.",

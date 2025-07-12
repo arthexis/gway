@@ -4,6 +4,16 @@ Changelog
 Unreleased
 ----------
 
+0.4.45 [build 22d8d2]
+---------------------
+
+- b56c0dd cleanup intents
+
+0.4.44 [build 640ce4]
+---------------------
+
+- 7ee813d Use gw.cast helpers in web
+
 0.4.43 [build cf2bd4]
 ---------------------
 
