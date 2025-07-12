@@ -22,4 +22,4 @@ web:
 # This only makes sense for NetworkManager in Linux 
 monitor start-watch nmcli 
 
-until --version
+until --version --build
