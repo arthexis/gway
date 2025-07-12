@@ -110,9 +110,9 @@ next non-indented command.
 
    # Configure multiple projects
    web app setup-app:
-       --project web.site --home reader
-       --project web.nav --style random
-       --project games.qpig --home qpig-farm
+       - web.site --home reader
+       - web.nav --style random
+       - games.qpig --home qpig-farm
 
    # Start the server
    web:
@@ -172,6 +172,7 @@ The following projects bundle additional documentation.  Each link uses
 
 - `awg </web/site/reader?tome=awg>`_
 - `cdv </web/site/reader?tome=cdv>`_
+- `sql </web/site/reader?tome=sql>`_
 - `games </web/site/reader?tome=games>`_
   - `conway </web/site/reader?tome=games/conway>`_
   - `mtg </web/site/reader?tome=games/mtg>`_
@@ -191,6 +192,7 @@ The following projects bundle additional documentation.  Each link uses
 
 .. _/web/site/reader?tome=awg: /web/site/reader?tome=awg
 .. _/web/site/reader?tome=cdv: /web/site/reader?tome=cdv
+.. _/web/site/reader?tome=sql: /web/site/reader?tome=sql
 .. _/web/site/reader?tome=games: /web/site/reader?tome=games
 .. _/web/site/reader?tome=games/conway: /web/site/reader?tome=games/conway
 .. _/web/site/reader?tome=games/mtg: /web/site/reader?tome=games/mtg
