@@ -3,7 +3,7 @@
 
 web app setup:
     - web.site --home reader
-    - games --home games --links game-of-life,search-games,qpig-farm,massive-snake,fantastic-client
+    - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
     - web.nav --home style-switcher
     - web.cookies --home cookie-jar
 
