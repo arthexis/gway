@@ -197,10 +197,12 @@ The following projects bundle additional documentation.  Each link uses
   - `mtg <https://arthexis.com/web/site/reader?tome=games/mtg>`_
   - `qpig <https://arthexis.com/web/site/reader?tome=games/qpig>`_
 - `monitor <https://arthexis.com/web/site/reader?tome=monitor>`_
+  - `rpi <https://arthexis.com/web/site/reader?tome=monitor/rpi>`_
 - `ocpp <https://arthexis.com/web/site/reader?tome=ocpp>`_
   - `csms <https://arthexis.com/web/site/reader?tome=ocpp/csms>`_
   - `evcs <https://arthexis.com/web/site/reader?tome=ocpp/evcs>`_
   - `data <https://arthexis.com/web/site/reader?tome=ocpp/data>`_
+
 - `release <https://arthexis.com/web/site/reader?tome=release>`_
 - `vbox <https://arthexis.com/web/site/reader?tome=vbox>`_
 - `web <https://arthexis.com/web/site/reader?tome=web>`_
@@ -221,6 +223,7 @@ The following projects bundle additional documentation.  Each link uses
 .. _/web/site/reader?tome=ocpp/evcs: https://arthexis.com/web/site/reader?tome=ocpp/evcs
 .. _/web/site/reader?tome=ocpp/data: https://arthexis.com/web/site/reader?tome=ocpp/data
 .. _/web/site/reader?tome=release: https://arthexis.com/web/site/reader?tome=release
+.. _/web/site/reader?tome=monitor/rpi: https://arthexis.com/web/site/reader?tome=monitor/rpi
 .. _/web/site/reader?tome=vbox: https://arthexis.com/web/site/reader?tome=vbox
 .. _/web/site/reader?tome=web: https://arthexis.com/web/site/reader?tome=web
 .. _/web/site/reader?tome=web/nav: https://arthexis.com/web/site/reader?tome=web/nav
