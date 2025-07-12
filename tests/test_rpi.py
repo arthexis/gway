@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 class RpiCloneTests(unittest.TestCase):
     @staticmethod
     def _load_rpi():
-        rpi_path = Path(__file__).resolve().parents[1] / 'projects' / 'rpi.py'
+        rpi_path = Path(__file__).resolve().parents[1] / 'projects' / 'monitor' / 'rpi.py'
         spec = importlib.util.spec_from_file_location('rpi', rpi_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
