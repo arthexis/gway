@@ -475,8 +475,7 @@ def view_charger_status(*, action=None, charger_id=None, show=None, **_):
     msg = ""
     show = show or request.query.get("show")
     gw.verbose(
-        f"view_charger_status start: action={action} charger_id={charger_id} show={show}",
-        func="view_charger_status",
+        f"[view_charger_status] start: action={action} charger_id={charger_id} show={show}"
     )
     if request.method == "POST":
         action = request.forms.get("action")
@@ -490,10 +489,10 @@ def view_charger_status(*, action=None, charger_id=None, show=None, **_):
                 msg = f"Error: {e}"
 
     gw.verbose(
-        f"active_cons={list(_active_cons.keys())}", func="view_charger_status"
+        f"[view_charger_status] active_cons={list(_active_cons.keys())}"
     )
     gw.verbose(
-        f"transactions={list(_transactions.keys())}", func="view_charger_status"
+        f"[view_charger_status] transactions={list(_transactions.keys())}"
     )
 
     all_chargers = set(_active_cons) | set(_transactions)
@@ -503,8 +502,7 @@ def view_charger_status(*, action=None, charger_id=None, show=None, **_):
         except Exception:
             pass
     gw.verbose(
-        f"all_chargers={sorted(all_chargers)} show={show}",
-        func="view_charger_status",
+        f"[view_charger_status] all_chargers={sorted(all_chargers)} show={show}"
     )
     html = [
         '<link rel="stylesheet" href="/static/ocpp/csms/charger_status.css">',
