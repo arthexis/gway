@@ -8,6 +8,22 @@
             "module": "gway",
             "args": ["-dr", "website"],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Gway Website (Normal)",
+            "type": "python",
+            "request": "launch",
+            "module": "gway",
+            "args": ["-r", "website"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug Gway Website Verbose",
+            "type": "python",
+            "request": "launch",
+            "module": "gway",
+            "args": ["-dv", "-r", "website"],
+            "console": "integratedTerminal"
         }
     ]
 }
