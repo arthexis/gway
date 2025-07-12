@@ -31,3 +31,13 @@ Sponsor = "https://www.gelectriic.com/"
 
 [tool.setuptools]
 packages = [ "gway",]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = [
+    "data/**/*",
+    "projects/**/*",
+    "recipes/**/*",
+]
+# envs/ is intentionally excluded to avoid packaging
+# user-specific environment files

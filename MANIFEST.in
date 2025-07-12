@@ -3,3 +3,8 @@ include VERSION
 include requirements.txt
 include pyproject.toml
 recursive-include projects *
+recursive-include data *
+recursive-include recipes *
+# NOTE: environment files under envs/ are intentionally
+# excluded from the package because they may contain
+# sensitive user-specific data.
