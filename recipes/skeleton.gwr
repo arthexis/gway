@@ -7,4 +7,4 @@ web app setup:
 web:
  - static collect
 - server start-app
-until --forever
+until --done
