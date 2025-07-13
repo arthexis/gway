@@ -5,6 +5,7 @@ from gway import gw
 import json
 import base64
 import random
+import yaml
 from bottle import request
 
 DEFAULT_MAX_QPIGS = 2
@@ -119,6 +120,84 @@ def _process_state(state: dict, action: str | None = None) -> dict:
     return state
 
 
+# -------------------------------------------------------------
+# Activity state machine helpers
+# -------------------------------------------------------------
+
+def fitness_chance(attrs: dict) -> bool:
+    """Return True if a fitness-based roll succeeds."""
+    return random.random() * 100 < float(attrs.get("fitness", 0))
+
+
+def curiosity_chance(attrs: dict) -> bool:
+    """Return True if a curiosity-based roll succeeds."""
+    return random.random() * 100 < float(attrs.get("curiosity", 0))
+
+
+def handling_chance(attrs: dict) -> bool:
+    """Return True if a handling-based roll succeeds."""
+    return random.random() * 100 < float(attrs.get("handling", 0))
+
+
+def alertness_chance(attrs: dict) -> bool:
+    """Return True if an alertness-based roll succeeds."""
+    return random.random() * 100 < float(attrs.get("alertness", 0))
+
+
+_DEFAULT_STATE_MACHINE: dict[str, dict[str, str]] = {
+    "Resting": {"Resting placidly": "fitness_chance"},
+    "Resting placidly": {"Exploring pen": "curiosity_chance"},
+    "Exploring pen": {"Running laps": "fitness_chance"},
+    "Running laps": {"Resting": "handling_chance"},
+}
+
+
+def _load_state_machine() -> dict[str, dict[str, str]]:
+    """Load transitions from YAML file or return defaults."""
+    try:
+        path = gw.resource("work", "games", "qpig", "transitions.yml")
+        if path.is_file():
+            with open(path, "r", encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+                if isinstance(data, dict):
+                    return data
+    except Exception as exc:  # pragma: no cover - file IO
+        gw.debug(f"failed to load transitions: {exc}")
+    return _DEFAULT_STATE_MACHINE
+
+
+
+# Simple finite state machine for pig activities
+_STATE_MACHINE: dict[str, dict[str, str]] = _load_state_machine()
+
+
+def api_next_activity(*, act: str = "Resting", alertness: float = 0.0,
+                      curiosity: float = 0.0, fitness: float = 0.0,
+                      handling: float = 0.0, **_):
+    """Determine the next activity using the FSM based on pig stats."""
+    attrs = {
+        "alertness": float(alertness or 0),
+        "curiosity": float(curiosity or 0),
+        "fitness": float(fitness or 0),
+        "handling": float(handling or 0),
+    }
+
+    transitions = _STATE_MACHINE.get(act, {})
+    for nxt, cond in transitions.items():
+        if isinstance(cond, str):
+            func = globals().get(cond)
+            if callable(func):
+                if func(attrs):
+                    return {"activity": nxt}
+            elif cond.endswith('%'):
+                attr = cond[:-1].lower()
+                chance = attrs.get(attr, 0)
+                if random.random() * 100 < chance:
+                    return {"activity": nxt}
+
+    return {"activity": act}
+
+
 
 
 def view_qpig_farm(*, action: str = None, **_):
@@ -149,7 +228,7 @@ def view_qpig_farm(*, action: str = None, **_):
     for pig in pigs:
         html.extend([
             '<div class="qpig-pig-card">',
-            f'<div><div class="qpig-pig-name">{pig["name"]} — '
+            f'<div><span class="qpig-pig-name">{pig["name"]}</span> — '
             f'<em>{pig.get("activity", "Resting")}</em></div>',
             f'<div class="qpig-pig-stats">Alertness: {pig["alertness"]} '
             f'Curiosity: {pig["curiosity"]} Fitness: {pig["fitness"]} '
@@ -192,18 +271,26 @@ function updateCounters(st){{
   if(pel) pel.textContent=`Q-Pellets: ${{st.garden.qpellets}}`;
 }}
 
-function tick(){{
+async function tick(){{
   const st=loadState();
-  (st.garden.pigs||[]).forEach(p=>{{
+  for(const p of (st.garden.pigs||[])){{
+    if(Math.random()*100 < (p.curiosity||0)){{
+      try{{
+        const url=`/api/games/qpig/next-activity?act=${{encodeURIComponent(p.activity||'')}}&alertness=${{p.alertness}}&curiosity=${{p.curiosity}}&fitness=${{p.fitness}}&handling=${{p.handling}}`;
+        const res=await fetch(url);
+        const data=await res.json();
+        if(data.activity){{p.activity=data.activity;}}
+      }}catch(e){{}}
+    }}
     if(Math.random()*100 < (p.fitness||0)){{
       st.garden.qpellets=(st.garden.qpellets||0)+1;
     }}
-  }});
+  }}
   saveState(st);
   updateCounters(st);
 }}
 updateCounters(loadState());
-setInterval(tick,1000);
+setInterval(()=>{{tick();}},1000);
 const save=document.getElementById('qpig-save');
 if(save){{save.addEventListener('click',()=>{{const data=sessionStorage.getItem(KEY)||'';const blob=new Blob([data],{{type:'application/octet-stream'}});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='qpig-save.qpg';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}});}}
 const load=document.getElementById('qpig-load');

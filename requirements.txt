@@ -34,3 +34,4 @@ coverage
 argcomplete
 PyJWT
 sounddevice
+PyYAML
