@@ -468,7 +468,7 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
 def view_charger_status(*, action=None, charger_id=None, show=None, **_):
     """
     Card-based OCPP dashboard: summary of charger connections.
-    Renders <div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5">
+    Renders <div id="charger-list" gw-render="charger_list" gw-refresh="5">
     so the client can periodically refresh the list via render.js.
     ``show=all`` includes historic chargers from the database.
     """
@@ -536,7 +536,7 @@ def view_charger_status(*, action=None, charger_id=None, show=None, **_):
 
     # --- The key block for autorefresh ---
     html.append(
-        f'<div id="charger-list" data-gw-render="charger_list" data-gw-refresh="5" data-gw-click="refresh" data-show="{show or ""}">' 
+        f'<div id="charger-list" gw-render="charger_list" gw-refresh="5" gw-click="refresh" data-show="{show or ""}">'
     )
     if not all_chargers:
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
@@ -634,7 +634,7 @@ def view_charger_detail(*, charger_id=None, **_):
         html.append(f'<p class="error">{msg}</p>')
 
     html.append(
-        f'<div id="charger-info" data-gw-render="charger_info" data-gw-refresh="5" data-gw-click="refresh" data-charger-id="{charger_id}">' +
+        f'<div id="charger-info" gw-render="charger_info" gw-refresh="5" gw-click="refresh" data-charger-id="{charger_id}">' +
         _render_charger_card(charger_id, tx, state, raw_hb) +
         '</div>'
     )
@@ -649,14 +649,14 @@ def view_charger_detail(*, charger_id=None, **_):
     )
 
     html.append(
-        f'<div id="charger-transactions" data-gw-render="charger_transactions" '
+        f'<div id="charger-transactions" gw-render="charger_transactions" '
         f'data-charger-id="{charger_id}" data-since="{since}" data-until="{until}">' +
         render_charger_transactions(charger_id=charger_id, since=since, until=until) +
         '</div>'
     )
 
     html.append(
-        f'<div id="charger-log" data-gw-render="charger_log" data-gw-refresh="2" data-gw-click="refresh" data-charger-id="{charger_id}">' +
+        f'<div id="charger-log" gw-render="charger_log" gw-refresh="2" gw-click="refresh" data-charger-id="{charger_id}">' +
         render_charger_log(charger_id=charger_id) +
         '</div>'
     )

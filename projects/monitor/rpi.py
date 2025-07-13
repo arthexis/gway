@@ -111,8 +111,8 @@ def render_rpi(target: str | None = None) -> str:
         "</form>"
     )
     progress = (
-        "<div id='clone-progress' data-gw-render='clone_progress' "
-        "data-gw-refresh='1' data-gw-on-load></div>"
+        "<div id='clone-progress' gw-render='clone_progress' "
+        "gw-refresh='1' gw-on-load></div>"
     )
     return "".join(["<h2>Pi Remote Clone</h2>", form, progress])
 

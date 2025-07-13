@@ -88,8 +88,8 @@ class NavCompassTests(unittest.TestCase):
         soup = BeautifulSoup(html, "html.parser")
         comp = soup.find("div", {"class": "compass"})
         self.assertIsNotNone(comp)
-        self.assertEqual(comp.get("data-gw-render"), "compass")
-        self.assertEqual(comp.get("data-gw-double-click"), "refresh")
+        self.assertEqual(comp.get("gw-render"), "compass")
+        self.assertEqual(comp.get("gw-double-click"), "refresh")
 
 
 if __name__ == "__main__":

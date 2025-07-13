@@ -772,7 +772,7 @@ def view_test_cache():
     cov_table += "</table>"
 
     log_block = (
-        "<div id='test-log' data-gw-render='test_log' data-gw-refresh='2'>"
+        "<div id='test-log' gw-render='test_log' gw-refresh='2'>"
         + render_test_log()
         + "</div>"
     )
