@@ -2,13 +2,19 @@
 
 .qpig-garden {
     font-family: monospace;
-    background: #7ec87e;
-    border: 2px solid #2b7a2b;
     padding: 8px;
     margin: 0 auto;
     display: inline-block;
     width: 600px;
+    border: 2px solid #2b7a2b;
+    background: #b2f0b2;
 }
+
+.qpig-garden.tab-garden { background: #b2f0b2; border-color: #2b7a2b; }
+.qpig-garden.tab-market { background: #ffe0b2; border-color: #cc6600; }
+.qpig-garden.tab-lab { background: #e0b2ff; border-color: purple; }
+.qpig-garden.tab-travel { background: #b2d0ff; border-color: blue; }
+.qpig-garden.tab-settings { background: #eee; border-color: grey; }
 
 .qpig-garden .qpig-buttons {
     display: flex;
@@ -50,13 +56,15 @@
     color: #fff;
     cursor: pointer;
     font-weight: bold;
+    box-sizing: border-box;
 }
+.qpig-tab.active { filter: brightness(1.2); }
 
-.qpig-tab[data-tab='garden'] { background: green; }
+.qpig-tab[data-tab='garden'] { background: #2b7a2b; }
 .qpig-tab[data-tab='market'] { background: #cc6600; }
 .qpig-tab[data-tab='lab'] { background: purple; }
 .qpig-tab[data-tab='travel'] { background: blue; }
-.qpig-tab[data-tab='settings'] { background: grey; }
+.qpig-tab[data-tab='settings'] { background: #666; }
 
 .qpig-panel { display: none; padding: 4px; }
 .qpig-panel.active { display: block; }
@@ -87,6 +95,12 @@
     padding: 4px;
     margin-bottom: 4px;
     box-sizing: border-box;
+}
+
+.qpig-pig-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
 }
 
 .qpig-pig-name { font-weight: bold; }

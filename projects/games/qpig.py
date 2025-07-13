@@ -211,9 +211,9 @@ def view_qpig_farm(*, action: str = None, **_):
     pigs = garden.get("pigs", [])
 
     html = [
-        '<link rel="stylesheet" href="/static/games/qpig/farm.css">',
+        '<link rel="stylesheet" href="/static/games/qpig/qpig_farm.css">',
         '<h1>Quantum Piggy Farm</h1>',
-        '<div class="qpig-garden">',
+        '<div class="qpig-garden tab-garden">',
         '<div class="qpig-tabs">',
         '<button class="qpig-tab active" data-tab="garden">Garden Shed</button>',
         '<button class="qpig-tab" data-tab="market">Market Street</button>',
@@ -228,12 +228,15 @@ def view_qpig_farm(*, action: str = None, **_):
     for pig in pigs:
         html.extend([
             '<div class="qpig-pig-card">',
+            '<div class="qpig-pig-info">',
             f'<div><span class="qpig-pig-name">{pig["name"]}</span> — '
             f'<em>{pig.get("activity", "Resting")}</em></div>',
             f'<div class="qpig-pig-stats">Alertness: {pig["alertness"]} '
             f'Curiosity: {pig["curiosity"]} Fitness: {pig["fitness"]} '
-            f'Handling: {pig["handling"]}</div></div>',
-            f'<img class="qpig-photo" src="https://i.pravatar.cc/30?img={pig.get("face",1)}" width="30" height="30"></div>',
+            f'Handling: {pig["handling"]}</div>',
+            '</div>',
+            f'<img class="qpig-photo" src="https://i.pravatar.cc/30?img={pig.get("face",1)}" width="30" height="30">',
+            '</div>',
         ])
     html.extend([
         '</div>',  # close qpig-pigs
@@ -297,12 +300,17 @@ const load=document.getElementById('qpig-load');
 if(load){{load.addEventListener('click',()=>{{const inp=document.createElement('input');inp.type='file';inp.accept='.qpg';inp.onchange=e=>{{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{{sessionStorage.setItem(KEY, ev.target.result.trim());location.reload();}};r.readAsText(f);}};inp.click();}});}}
 const tabs=document.querySelectorAll('.qpig-tab');
 const panels=document.querySelectorAll('.qpig-panel');
+const garden=document.querySelector('.qpig-garden');
 tabs.forEach(t=>t.addEventListener('click',()=>{{
   tabs.forEach(x=>x.classList.remove('active'));
   panels.forEach(p=>p.classList.remove('active'));
   t.classList.add('active');
   const panel=document.getElementById('qpig-panel-'+t.dataset.tab);
   if(panel) panel.classList.add('active');
+  if(garden){{
+    garden.className = garden.className.replace(/\btab-\w+\b/, '').trim();
+    garden.classList.add('tab-'+t.dataset.tab);
+  }}
 }}));
 </script>
 """.format(state_b64=state_b64)
