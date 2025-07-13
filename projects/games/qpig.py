@@ -4,6 +4,7 @@
 from gway import gw
 import json
 import base64
+import random
 from bottle import request
 
 DEFAULT_MAX_QPIGS = 1
@@ -61,6 +62,27 @@ VEGGIE_EFFECTS = {
 OFFER_EXPIRY = 300  # seconds
 
 
+_ADJECTIVES = ["Fluffy", "Happy", "Cheery", "Bouncy", "Chubby", "Sunny"]
+_NOUNS = ["Nibbler", "Snout", "Whisker", "Hopper", "Wiggler", "Sniffer"]
+
+
+def _random_name() -> str:
+    """Generate a cute two-word name."""
+    return f"{random.choice(_ADJECTIVES)} {random.choice(_NOUNS)}"
+
+
+def _new_pig() -> dict:
+    """Create a new pig with random stats."""
+    return {
+        "name": _random_name(),
+        "alertness": round(random.uniform(1, 4), 2),
+        "curiosity": round(random.uniform(1, 4), 2),
+        "fitness": round(random.uniform(1, 4), 2),
+        "handling": round(random.uniform(1, 4), 2),
+        "face": random.randint(1, 70),
+    }
+
+
 def _load_state() -> dict:
     """Load simplified state from request or defaults."""
     data = request.forms.get("state") or request.query.get("state") or ""
@@ -72,7 +94,12 @@ def _load_state() -> dict:
         except Exception:
             gw.debug("invalid state input")
     garden = state.get("garden", {}) if isinstance(state, dict) else {}
-    return {"garden": {"max_qpigs": int(garden.get("max_qpigs", DEFAULT_MAX_QPIGS))}}
+    max_qpigs = int(garden.get("max_qpigs", DEFAULT_MAX_QPIGS))
+    qpellets = int(garden.get("qpellets", 0))
+    pigs = garden.get("pigs") if isinstance(garden, dict) else None
+    if not isinstance(pigs, list) or not pigs:
+        pigs = [_new_pig() for _ in range(DEFAULT_PIGS)]
+    return {"garden": {"max_qpigs": max_qpigs, "qpellets": qpellets, "pigs": pigs}}
 
 
 def _dump_state(state: dict) -> str:
@@ -94,7 +121,10 @@ def view_qpig_farm(*, action: str = None, **_):
     gw.debug("view_qpig_farm called")
     state = _load_state()
     state_b64 = _dump_state(state)
-    max_qpigs = state["garden"]["max_qpigs"]
+    garden = state["garden"]
+    max_qpigs = garden["max_qpigs"]
+    qpellets = garden.get("qpellets", 0)
+    pigs = garden.get("pigs", [])
 
     html = [
         '<link rel="stylesheet" href="/static/games/qpig/farm.css">',
@@ -107,7 +137,20 @@ def view_qpig_farm(*, action: str = None, **_):
         '<button class="qpig-tab" data-tab="travel">Travel Abroad</button>',
         '</div>',
         '<div id="qpig-panel-garden" class="qpig-panel active">',
-        f'<div class="qpig-top">Max Q-Pigs: {max_qpigs}</div>',
+        f'<div class="qpig-top"><span>Max Q-Pigs: {max_qpigs}</span><span>Q-Pellets: {qpellets}</span></div>',
+        '<div class="qpig-pigs">',
+    ]
+    for pig in pigs:
+        html.extend([
+            '<div class="qpig-pig-card">',
+            f'<div><div class="qpig-pig-name">{pig["name"]}</div>',
+            f'<div class="qpig-pig-stats">Alertness: {pig["alertness"]} '
+            f'Curiosity: {pig["curiosity"]} Fitness: {pig["fitness"]} '
+            f'Handling: {pig["handling"]}</div></div>',
+            f'<img class="qpig-photo" src="https://i.pravatar.cc/30?img={pig.get("face",1)}" width="30" height="30"></div>',
+        ])
+    html.extend([
+        '</div>',  # close qpig-pigs
         "<canvas id='qpig-canvas' width='32' height='32'></canvas>",
         '<div class="qpig-buttons">',
         "<button type='button' id='qpig-save' title='Save'>💾</button>",
@@ -118,7 +161,7 @@ def view_qpig_farm(*, action: str = None, **_):
         '<div id="qpig-panel-lab" class="qpig-panel"><div class="qpig-top"></div>Laboratory coming soon</div>',
         '<div id="qpig-panel-travel" class="qpig-panel"><div class="qpig-top"></div>Travel Abroad coming soon</div>',
         '</div>',  # close qpig-garden
-    ]
+    ])
 
     script = """
 <script>

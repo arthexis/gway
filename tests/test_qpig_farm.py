@@ -15,6 +15,8 @@ class QPigFarmTests(unittest.TestCase):
         self.assertIn('qpig-canvas', html)
         self.assertIn('qpig-save', html)
         self.assertIn('qpig-load', html)
+        self.assertIn('Q-Pellets', html)
+        self.assertIn('qpig-pig-card', html)
 
     def test_tab_names_updated(self):
         html = self.qpig_mod.view_qpig_farm()
