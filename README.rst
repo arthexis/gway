@@ -160,6 +160,11 @@ Tests are discovered recursively so directories under ``tests`` may mirror the s
         gway/
         projects/
 
+Running Tests
+-------------
+
+Before executing the suite, ensure the package and all dependencies are installed. Follow the commands in ``TESTING.rst`` to install ``requirements.txt`` and the editable package, then invoke ``gway test``.
+
 Project READMEs
 ---------------
 
