@@ -6,6 +6,7 @@
 :root {
   --bg: #090a10;
   --bg-alt: #16151e;
+  --main-bg: #090a10;
   --fg: #e0e0e0;
   --accent: #00fff3;
   --accent-alt: #ff0080;
@@ -30,8 +31,8 @@
 }
 
 /* Body and backgrounds */
-body {
-  background: var(--bg);
+body, .page-wrap {
+  background: var(--bg) !important;
   color: var(--fg);
   font-family: 'Roboto Mono', 'Fira Mono', 'Consolas', monospace;
 }
