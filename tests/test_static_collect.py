@@ -77,5 +77,32 @@ class StaticCollectTests(unittest.TestCase):
             js_bundle = Path(report["js_bundle"]).read_text()
             self.assertIn("net_monitors.js", js_bundle)
 
+    def test_collect_full_option_gathers_all_files(self):
+        """--full ignores enabled projects and scans the entire tree."""
+        with TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            dir1 = tmp_path / "data" / "static" / "one"
+            dir2 = tmp_path / "data" / "static" / "two"
+            dir1.mkdir(parents=True)
+            dir2.mkdir(parents=True)
+            (dir1 / "a.css").write_text("a{}")
+            (dir1 / "a.js").write_text("console.log('a')")
+            (dir2 / "b.css").write_text("b{}")
+            (dir2 / "b.js").write_text("console.log('b')")
+            target_dir = tmp_path / "work" / "shared"
+            target_dir.mkdir(parents=True)
+
+            def fake_resource(*parts, **kw):
+                return tmp_path.joinpath(*parts)
+
+            with patch.object(gw, "resource", fake_resource), \
+                 patch.object(gw.web.app, "enabled_projects", lambda: set()):
+                report = gw.web.static.collect(root="data/static", target="work/shared", full=True)
+
+            css_files = {Path(rel).as_posix() for _, rel, _ in report["css"]}
+            js_files = {Path(rel).as_posix() for _, rel, _ in report["js"]}
+            self.assertEqual(css_files, {"one/a.css", "two/b.css"})
+            self.assertEqual(js_files, {"one/a.js", "two/b.js"})
+
 if __name__ == "__main__":
     unittest.main()
