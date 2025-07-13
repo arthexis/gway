@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.46 [build 6c1819]
+---------------------
+
+- 843e8f8 Ensure glitch-punk background stays dark
+
 0.4.45 [build 22d8d2]
 ---------------------
 
