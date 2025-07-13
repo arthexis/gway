@@ -28,6 +28,9 @@ insertion via ``render.js`` or inclusion in an ``iframe``.
 - ``data-gw-double-click`` – refresh on double click.
 - ``data-gw-on-load`` – refresh once when the page loads.
 
+Double clicking the QR compass in the sidebar triggers a dynamic refresh via
+``render.js`` if the active project provides a ``render_compass`` function.
+
 For example, to embed the ``reader`` page:
 
 .. code-block:: html

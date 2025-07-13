@@ -8,11 +8,14 @@ from bottle import request
 
 _forced_style = None
 
+
 def render(*, homes=None, links=None):
     """
     Renders the sidebar navigation including search, home links, visited links, and a QR compass.
     """
-    cookies_ok = gw.web.app.is_setup('web.cookies') and gw.web.cookies.accepted()
+    cookies_ok = (
+        gw.web.app.is_setup("web.cookies") and gw.web.cookies.accepted()
+    )
     links_map = links or {}
     gw.verbose(f"Render nav with {homes=} {links_map=} {cookies_ok=}")
 
@@ -23,7 +26,12 @@ def render(*, homes=None, links=None):
             visited = visited_cookie.split("|")
 
     current_route = request.fullpath.strip("/")
-    current_title = current_route.split("/")[-1].replace('-', ' ').replace('_', ' ').title()
+    current_title = (
+        current_route.split("/")[-1]
+        .replace("-", " ")
+        .replace("_", " ")
+        .title()
+    )
 
     visited_set = set()
     entries = []
@@ -40,7 +48,11 @@ def render(*, homes=None, links=None):
     if homes:
         for home_title, home_route in homes:
             home_routes.add(home_route.strip("/"))
-    if cookies_ok and current_route not in home_routes and current_route not in visited_set:
+    if (
+        cookies_ok
+        and current_route not in home_routes
+        and current_route not in visited_set
+    ):
         entries.append((current_title, current_route))
         visited_set.add(current_route)
 
@@ -50,7 +62,7 @@ def render(*, homes=None, links=None):
         for home_title, home_route in homes:
             route = home_route.strip("/")
             is_current = ' class="current"' if route == current_route else ""
-            proj_root = route.rsplit('/', 1)[0] if '/' in route else route
+            proj_root = route.rsplit("/", 1)[0] if "/" in route else route
             links_html += f'<li><a href="/{home_route}"{is_current}>{home_title.upper()}</a>'
             sub = links_map.get(home_route)
             if sub and current_route.startswith(proj_root):
@@ -58,16 +70,26 @@ def render(*, homes=None, links=None):
                 for name in sub:
                     if isinstance(name, tuple):
                         target_proj, view_name = name
-                        target_root = target_proj.replace('.', '/')
-                        sub_route = f"{target_root}/{view_name}".strip('/')
-                        label = view_name.replace('-', ' ').replace('_', ' ').title()
+                        target_root = target_proj.replace(".", "/")
+                        sub_route = f"{target_root}/{view_name}".strip("/")
+                        label = (
+                            view_name.replace("-", " ")
+                            .replace("_", " ")
+                            .title()
+                        )
                     else:
-                        sub_route = f"{proj_root}/{name}".strip('/')
-                        label = name.replace('-', ' ').replace('_',' ').title()
-                    active = ' class="active"' if sub_route == current_route else ''
-                    links_html += f'<li><a href="/{sub_route}"{active}>{label}</a></li>'
-                links_html += '</ul>'
-            links_html += '</li>'
+                        sub_route = f"{proj_root}/{name}".strip("/")
+                        label = (
+                            name.replace("-", " ").replace("_", " ").title()
+                        )
+                    active = (
+                        ' class="active"' if sub_route == current_route else ""
+                    )
+                    links_html += (
+                        f'<li><a href="/{sub_route}"{active}>{label}</a></li>'
+                    )
+                links_html += "</ul>"
+            links_html += "</li>"
     if cookies_ok and entries:
         visited_rendered = set()
         for title, route in reversed(entries):
@@ -75,12 +97,14 @@ def render(*, homes=None, links=None):
                 continue
             visited_rendered.add(route)
             is_current = ' class="current"' if route == current_route else ""
-            links_html += f'<li><a href="/{route}"{is_current}>{title}</a></li>'
+            links_html += (
+                f'<li><a href="/{route}"{is_current}>{title}</a></li>'
+            )
     elif not homes:
         links_html += f'<li class="current">{current_title.upper()}</li>'
 
     # --- Search box ---
-    search_box = '''
+    search_box = """
         <form action="/web/site/help" method="get" class="nav">
             <textarea name="topic" id="help-search"
                 placeholder="Search this GWAY"
@@ -91,8 +115,10 @@ def render(*, homes=None, links=None):
                 oninput="autoExpand(this)"
             >{}</textarea>
         </form>
-    '''.format(request.query.get("topic", ""))
-    
+    """.format(
+        request.query.get("topic", "")
+    )
+
     # --- Current user info (Basic Auth) ---
     user_html = ""
     try:
@@ -111,9 +137,11 @@ def render(*, homes=None, links=None):
 
     compass = ""
     toggle = ""
+    render_compass_exists = False
 
     # Attempt to locate a view_compass function for the current route
     view_compass_func = None
+    view_part = None
     try:
         obj = gw
         for part in current_route.split("/"):
@@ -123,12 +151,18 @@ def render(*, homes=None, links=None):
                 if hasattr(obj, "view_compass"):
                     view_compass_func = getattr(obj, "view_compass")
             else:
+                view_part = attr
                 break
+        if hasattr(obj, "render_compass"):
+            render_compass_exists = True
+        elif view_part and hasattr(obj, f"render_{view_part}_compass"):
+            render_compass_exists = True
     except Exception as e:
         gw.debug(f"Error searching for view_compass: {e}")
         view_compass_func = None
 
     from urllib.parse import parse_qsl, urlencode
+
     params = dict(parse_qsl(request.query_string))
     mode = params.get("compass") or ("local" if view_compass_func else "qr")
 
@@ -144,11 +178,7 @@ def render(*, homes=None, links=None):
         try:
             url = current_url()
             qr_url = gw.qr.generate_url(url)
-            compass = f'''
-                <div class="compass">
-                    <img src="{qr_url}" alt="QR Code" class="compass" />
-                </div>
-            '''
+            compass = f'<img src="{qr_url}" alt="QR Code" class="compass" />'
         except Exception as e:
             gw.debug(f"Could not generate QR compass: {e}")
 
@@ -161,7 +191,16 @@ def render(*, homes=None, links=None):
             toggle_href += "?" + qs
         toggle = f'<p style="font-size:80%" class="compass-toggle"><a href="{toggle_href}">[{label}]</a></p>'
 
+    if compass:
+        data_attr = ""
+        if render_compass_exists:
+            data_attr = (
+                ' data-gw-render="compass" data-gw-double-click="refresh"'
+            )
+        compass = f'<div class="compass"{data_attr}>{compass}</div>'
+
     return f"<aside>{search_box}<ul>{links_html}</ul><br>{compass}{toggle}</aside>"
+
 
 def active_style():
     """
@@ -172,7 +211,11 @@ def active_style():
     This should be called by render_template for every page load.
     """
     styles = list_styles()
-    style_cookie = gw.web.cookies.get("css") if gw.web.app.is_setup('web.cookies') else None
+    style_cookie = (
+        gw.web.cookies.get("css")
+        if gw.web.app.is_setup("web.cookies")
+        else None
+    )
     style_query = request.query.get("css")
     style_path = None
 
@@ -180,11 +223,19 @@ def active_style():
         if _forced_style == "random":
             if styles:
                 src, fname = random.choice(styles)
-                return f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+                return (
+                    f"/static/styles/{fname}"
+                    if src == "global"
+                    else f"/static/{src}/styles/{fname}"
+                )
         else:
             for src, fname in styles:
                 if fname == _forced_style:
-                    return f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+                    return (
+                        f"/static/styles/{fname}"
+                        if src == "global"
+                        else f"/static/{src}/styles/{fname}"
+                    )
             if _forced_style.startswith("/"):
                 return _forced_style
 
@@ -192,26 +243,47 @@ def active_style():
     if style_query:
         if style_query == "random" and styles:
             src, fname = random.choice(styles)
-            return f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+            return (
+                f"/static/styles/{fname}"
+                if src == "global"
+                else f"/static/{src}/styles/{fname}"
+            )
         for src, fname in styles:
             if fname == style_query:
-                style_path = f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+                style_path = (
+                    f"/static/styles/{fname}"
+                    if src == "global"
+                    else f"/static/{src}/styles/{fname}"
+                )
                 break
     # Otherwise, prefer cookie
     if not style_path and style_cookie:
         if style_cookie == "random" and styles:
             src, fname = random.choice(styles)
-            return f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+            return (
+                f"/static/styles/{fname}"
+                if src == "global"
+                else f"/static/{src}/styles/{fname}"
+            )
         for src, fname in styles:
             if fname == style_cookie:
-                style_path = f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+                style_path = (
+                    f"/static/styles/{fname}"
+                    if src == "global"
+                    else f"/static/{src}/styles/{fname}"
+                )
                 break
     # Otherwise, first available style
     if not style_path and styles:
         src, fname = styles[0]
-        style_path = f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+        style_path = (
+            f"/static/styles/{fname}"
+            if src == "global"
+            else f"/static/{src}/styles/{fname}"
+        )
     # Fallback to base
     return style_path or "/static/styles/base.css"
+
 
 def current_url():
     """Returns the current full URL path (with querystring)."""
@@ -220,11 +292,15 @@ def current_url():
         url += "?" + request.query_string
     return url
 
+
 def html_escape(text):
     import html
+
     return html.escape(text or "")
 
+
 # --- Style view endpoints ---
+
 
 def view_style_switcher(*, css=None, project=None):
     """
@@ -250,7 +326,9 @@ def view_style_switcher(*, css=None, project=None):
         global_dir = gw.resource("data", "static", "styles")
         if os.path.isdir(global_dir):
             for f in sorted(os.listdir(global_dir)):
-                if f.endswith(".css") and os.path.isfile(os.path.join(global_dir, f)):
+                if f.endswith(".css") and os.path.isfile(
+                    os.path.join(global_dir, f)
+                ):
                     if f not in seen:
                         styles.append(("global", f))
                         seen.add(f)
@@ -258,7 +336,9 @@ def view_style_switcher(*, css=None, project=None):
             proj_dir = gw.resource("data", "static", project, "styles")
             if os.path.isdir(proj_dir):
                 for f in sorted(os.listdir(proj_dir)):
-                    if f.endswith(".css") and os.path.isfile(os.path.join(proj_dir, f)):
+                    if f.endswith(".css") and os.path.isfile(
+                        os.path.join(proj_dir, f)
+                    ):
                         if f not in seen:
                             styles.append((project, f))
                             seen.add(f)
@@ -270,14 +350,19 @@ def view_style_switcher(*, css=None, project=None):
     # Include the special 'random' option
     all_styles.append("random")
 
-    cookies_enabled = gw.web.app.is_setup('web.cookies')
+    cookies_enabled = gw.web.app.is_setup("web.cookies")
     cookies_accepted = gw.web.cookies.accepted() if cookies_enabled else False
     css_cookie = gw.web.cookies.get("css")
 
     # Handle POST
     if request.method == "POST":
         selected_style = request.forms.get("css")
-        if cookies_enabled and cookies_accepted and selected_style and selected_style in all_styles:
+        if (
+            cookies_enabled
+            and cookies_accepted
+            and selected_style
+            and selected_style in all_styles
+        ):
             gw.web.cookies.set("css", selected_style)
             response.status = 303
             response.set_header("Location", request.fullpath)
@@ -287,10 +372,17 @@ def view_style_switcher(*, css=None, project=None):
     # Priority: query param > explicit function arg > cookie > default
     style_query = request.query.get("css")
     selected_style = (
-        style_query if style_query in all_styles else
-        (css if css in all_styles else
-         (css_cookie if css_cookie in all_styles else
-          (all_styles[0] if all_styles else "base.css")))
+        style_query
+        if style_query in all_styles
+        else (
+            css
+            if css in all_styles
+            else (
+                css_cookie
+                if css_cookie in all_styles
+                else (all_styles[0] if all_styles else "base.css")
+            )
+        )
     )
     # If still not valid, fallback to default
     if selected_style not in all_styles:
@@ -301,7 +393,11 @@ def view_style_switcher(*, css=None, project=None):
         css_link = ""
         if styles:
             src, fname = random.choice(styles)
-            preview_href = f"/static/styles/{fname}" if src == "global" else f"/static/{src}/styles/{fname}"
+            preview_href = (
+                f"/static/styles/{fname}"
+                if src == "global"
+                else f"/static/{src}/styles/{fname}"
+            )
             css_link = f'<link rel="stylesheet" href="{preview_href}">'
         preview_html = f"""
         {css_link}
@@ -315,11 +411,13 @@ def view_style_switcher(*, css=None, project=None):
         if style_sources.get(selected_style) == "global":
             preview_href = f"/static/styles/{selected_style}"
             css_path = gw.resource("data", "static", "styles", selected_style)
-            css_link = f'<link rel="stylesheet" href="/static/styles/{selected_style}">' 
+            css_link = f'<link rel="stylesheet" href="/static/styles/{selected_style}">'
         else:
             preview_href = f"/static/{project}/styles/{selected_style}"
-            css_path = gw.resource("data", "static", project, "styles", selected_style)
-            css_link = f'<link rel="stylesheet" href="/static/{project}/styles/{selected_style}">' 
+            css_path = gw.resource(
+                "data", "static", project, "styles", selected_style
+            )
+            css_link = f'<link rel="stylesheet" href="/static/{project}/styles/{selected_style}">'
 
         preview_html = f"""
         {css_link}
@@ -343,7 +441,7 @@ def view_style_switcher(*, css=None, project=None):
         selected_style=selected_style,
         cookies_enabled=cookies_enabled,
         cookies_accepted=cookies_accepted,
-        project=project
+        project=project,
     )
 
     return f"""
@@ -355,7 +453,9 @@ def view_style_switcher(*, css=None, project=None):
     """
 
 
-def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_accepted, project):
+def style_selector_form(
+    all_styles, selected_style, cookies_enabled, cookies_accepted, project
+):
     options = []
     for src, fname in all_styles:
         if fname == "random":
@@ -363,7 +463,11 @@ def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_acc
             options.append(f'<option value="random"{selected}>RANDOM</option>')
             continue
         label = fname[:-4].upper()
-        label = f"GLOBAL: {label}" if src == "global" else f"{src.upper()}: {label}"
+        label = (
+            f"GLOBAL: {label}"
+            if src == "global"
+            else f"{src.upper()}: {label}"
+        )
         selected = " selected" if fname == selected_style else ""
         options.append(f'<option value="{fname}"{selected}>{label}</option>')
 
@@ -391,13 +495,16 @@ def style_selector_form(all_styles, selected_style, cookies_enabled, cookies_acc
             </select>
         """
 
+
 def list_styles(project=None):
     seen = set()
     styles = []
     global_dir = gw.resource("data", "static", "styles")
     if os.path.isdir(global_dir):
         for f in sorted(os.listdir(global_dir)):
-            if f.endswith(".css") and os.path.isfile(os.path.join(global_dir, f)):
+            if f.endswith(".css") and os.path.isfile(
+                os.path.join(global_dir, f)
+            ):
                 if f not in seen:
                     styles.append(("global", f))
                     seen.add(f)
@@ -405,7 +512,9 @@ def list_styles(project=None):
         proj_dir = gw.resource("data", "static", project, "styles")
         if os.path.isdir(proj_dir):
             for f in sorted(os.listdir(proj_dir)):
-                if f.endswith(".css") and os.path.isfile(os.path.join(proj_dir, f)):
+                if f.endswith(".css") and os.path.isfile(
+                    os.path.join(proj_dir, f)
+                ):
                     if f not in seen:
                         styles.append((project, f))
                         seen.add(f)
@@ -422,4 +531,3 @@ def setup_app(*, app=None, style=None, **_):
         _forced_style = style
         gw.info(f"web.nav forced style: {style}")
     return app
-
