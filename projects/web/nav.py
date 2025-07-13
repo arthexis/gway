@@ -195,7 +195,7 @@ def render(*, homes=None, links=None):
         data_attr = ""
         if render_compass_exists:
             data_attr = (
-                ' data-gw-render="compass" data-gw-double-click="refresh"'
+                ' gw-render="compass" gw-double-click="refresh"'
             )
         compass = f'<div class="compass"{data_attr}>{compass}</div>'
 

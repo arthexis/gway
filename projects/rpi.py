@@ -117,8 +117,8 @@ def view_pi_remote(*, target: str = None):
     )
 
     progress = (
-        "<div id='clone-progress' data-gw-render='clone_progress' "
-        "data-gw-refresh='1' data-gw-on-load></div>"
+        "<div id='clone-progress' gw-render='clone_progress' "
+        "gw-refresh='1' gw-on-load></div>"
     )
 
     html = "".join(["<h1>Pi Remote Clone</h1>", form, progress])

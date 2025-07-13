@@ -24,7 +24,7 @@ Unreleased
 
 - da736a6 fix missing setup-app for csms
 
-- support data-gw-on-load for one-time refresh events in render.js
+- support gw-on-load for one-time refresh events in render.js
 - add ChatGPT actions with passphrase trust system (web.chat.actions)
 - add audit log page for chat actions (view_audit_chatlog)
  

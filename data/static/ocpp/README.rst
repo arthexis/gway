@@ -28,7 +28,7 @@ connected chargers. Each card refreshes every few seconds so data
 stays current. Click a charger to open its detail page where you can
 send commands like ``Stop`` or ``Soft Reset`` and watch the log update
 in real time. The auto-refresh will collapse any open panels; you can
-temporarily disable it by removing the ``data-gw-refresh`` attribute
+temporarily disable it by removing the ``gw-refresh`` attribute
 from the page.
 
 The charger detail view also lists recent transactions. By default it

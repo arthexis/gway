@@ -1,27 +1,37 @@
 /**
  * GWAY Minimal Render Client (render.js)
  *
- * Finds all elements with data-gw-render. If data-gw-refresh is present, 
+ * Finds all elements with gw-render (also supports x-gw-render or data-gw-render).
+ * If gw-refresh is present,
  * auto-refreshes them using the named render endpoint, passing their params.
- * - data-gw-render: name of render function (without 'render_' prefix)
- * - data-gw-refresh: interval in seconds (optional)
- * - data-gw-params: comma-separated data attributes to POST (optional; defaults to all except data-gw-*)
- * - data-gw-target: 'content' (default, replace innerHTML), or 'replace' (replace the whole element)
- * - data-gw-click: any value starting with "re" to manually re-render the block on left click (optional, case-insensitive)
- * - data-gw-left-click: same as data-gw-click (optional)
- * - data-gw-right-click: any value starting with "re" to re-render on right click (optional, case-insensitive)
- * - data-gw-double-click: any value starting with "re" to re-render on double click (optional, case-insensitive)
- * - data-gw-on-load: load block once on page load (optional)
+ * - gw-render: name of render function (without 'render_' prefix)
+ * - gw-refresh: interval in seconds (optional)
+ * - gw-params: comma-separated data attributes to POST (optional; defaults to all except gw-*)
+ * - gw-target: 'content' (default, replace innerHTML), or 'replace' (replace the whole element)
+ * - gw-click: any value starting with "re" to manually re-render the block on left click (optional, case-insensitive)
+ * - gw-left-click: same as gw-click (optional)
+ * - gw-right-click: any value starting with "re" to re-render on right click (optional, case-insensitive)
+ * - gw-double-click: any value starting with "re" to re-render on double click (optional, case-insensitive)
+ * - gw-on-load: load block once on page load (optional)
  *
  * No external dependencies.
  */
 
 (function() {
   let timers = {};
+  const prefixes = ['gw-', 'x-gw-', 'data-gw-'];
 
-  // Extract params from data attributes as specified by data-gw-params or all non-gw- data attrs
+  function getAttr(el, name) {
+    for (let pre of prefixes) {
+      let val = el.getAttribute(pre + name);
+      if (val !== null) return val;
+    }
+    return null;
+  }
+
+  // Extract params from data attributes as specified by gw-params or all non-gw- data attrs
   function extractParams(el) {
-    let paramsAttr = el.getAttribute('data-gw-params');
+    let paramsAttr = getAttr(el, 'params');
     let params = {};
     if (paramsAttr) {
       paramsAttr.split(',').map(s => s.trim()).forEach(key => {
@@ -30,7 +40,7 @@
         if (val !== null) params[key.replace(/-([a-z])/g, g => g[1].toUpperCase())] = val;
       });
     } else {
-      // Use all data- attributes except data-gw-*
+      // Use all data- attributes except gw-* variants
       for (let { name, value } of Array.from(el.attributes)) {
         if (name.startsWith('data-') && !name.startsWith('data-gw-')) {
           let key = name.slice(5).replace(/-([a-z])/g, g => g[1].toUpperCase());
@@ -41,9 +51,9 @@
     return params;
   }
 
-  // Render a block using its data-gw-render attribute
+  // Render a block using its gw-render attribute
   function renderBlock(el) {
-    let func = el.getAttribute('data-gw-render');
+    let func = getAttr(el, 'render');
     if (!func) return;
     let params = extractParams(el);
     let urlBase = location.pathname.replace(/\/$/, '');
@@ -57,7 +67,7 @@
     })
     .then(res => res.text())
     .then(html => {
-      let target = el.getAttribute('data-gw-target') || 'content';
+      let target = getAttr(el, 'target') || 'content';
       if (target === 'replace') {
         let temp = document.createElement('div');
         temp.innerHTML = html;
@@ -74,14 +84,14 @@
     });
   }
 
-  // Set up auto-refresh for all data-gw-render blocks
+  // Set up auto-refresh for all gw-render blocks
   function setupAll() {
     // Clear existing timers
     Object.values(timers).forEach(clearInterval);
     timers = {};
-    // For each data-gw-render element
-    document.querySelectorAll('[data-gw-render]').forEach(el => {
-      let refresh = parseFloat(el.getAttribute('data-gw-refresh'));
+    // For each gw-render element
+    document.querySelectorAll('[gw-render],[x-gw-render],[data-gw-render]').forEach(el => {
+      let refresh = parseFloat(getAttr(el, 'refresh'));
       if (!isNaN(refresh) && refresh > 0) {
         let id = el.id || Math.random().toString(36).slice(2);
         timers[id] = setInterval(() => renderBlock(el), refresh * 1000);
@@ -89,12 +99,12 @@
         renderBlock(el);
         el.dataset.gwLoaded = "1";
       }
-        let onLoad = el.getAttribute("data-gw-on-load");
+        let onLoad = getAttr(el, 'on-load');
         if (onLoad !== null && !el.dataset.gwLoaded) {
           renderBlock(el);
           el.dataset.gwLoaded = "1";
         }
-      let leftClick = el.getAttribute('data-gw-click') || el.getAttribute('data-gw-left-click');
+      let leftClick = getAttr(el, 'click') || getAttr(el, 'left-click');
       if (leftClick && /^re/i.test(leftClick) && !el.dataset.gwLeftClickSetup) {
         el.addEventListener('click', evt => {
           evt.preventDefault();
@@ -103,7 +113,7 @@
         el.dataset.gwLeftClickSetup = '1';
       }
 
-      let rightClick = el.getAttribute('data-gw-right-click');
+      let rightClick = getAttr(el, 'right-click');
       if (rightClick && /^re/i.test(rightClick) && !el.dataset.gwRightClickSetup) {
         el.addEventListener('contextmenu', evt => {
           evt.preventDefault();
@@ -112,7 +122,7 @@
         el.dataset.gwRightClickSetup = '1';
       }
 
-      let dblClick = el.getAttribute('data-gw-double-click');
+      let dblClick = getAttr(el, 'double-click');
       if (dblClick && /^re/i.test(dblClick) && !el.dataset.gwDoubleClickSetup) {
         el.addEventListener('dblclick', evt => {
           evt.preventDefault();
