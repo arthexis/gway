@@ -316,6 +316,8 @@ a.logout { margin-left: 0.4em; }
     box-shadow: none !important;
     opacity: 1 !important;
     pointer-events: none;
+    width: 0 !important;
+    min-width: 0 !important;
 }
 .layout aside {
     transform: none;
