@@ -536,6 +536,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         <a href="https://pypi.org">PyPI</a> and <a href="https://github.com/arthexis/gway">Github</a>.</p>
     '''
     nav = gw.web.nav.render(homes=_homes, links=_links) if is_setup('web.nav') else ""
+    nav_side = gw.web.nav.side() if is_setup('web.nav') else "left"
 
     debug_html = ""
     if getattr(gw, "debug_enabled", False):
@@ -573,8 +574,12 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         </head>
         <body>
             <div class="page-wrap">
-                <div class="layout">
+                <div class="layout{{' nav-right' if nav_side == 'right' else ''}}">
+                    % if nav_side == 'right':
+                    <main>{{!message_html}}{{!content}}</main>{{!nav}}
+                    % else:
                     {{!nav}}<main>{{!message_html}}{{!content}}</main>
+                    % end
                 </div>
                 <footer><p>This website was <strong>built</strong>, <strong>tested</strong>
                     and <strong>released</strong> with <a href="https://arthexis.com">GWAY</a>
