@@ -41,7 +41,7 @@ class EtronWebSocketTests(unittest.TestCase):
 
             # --- START SERVER ---
             cls.proc = subprocess.Popen(
-                ["gway", "-r", "test/etron/cloud"],
+                [sys.executable, "-m", "gway", "-r", "test/etron/cloud"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,

@@ -7,6 +7,7 @@ import unittest
 import subprocess
 import time
 import socket
+import sys
 import requests
 from bs4 import BeautifulSoup
 from gway import gw
@@ -17,7 +18,7 @@ class ConwayWebTests(unittest.TestCase):
     def setUpClass(cls):
         # Start the demo website (port 8888)
         cls.proc = subprocess.Popen(
-            ["gway", "-r", "test/website"],
+            [sys.executable, "-m", "gway", "-r", "test/website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

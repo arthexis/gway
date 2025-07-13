@@ -4,6 +4,7 @@ import unittest
 import subprocess
 import time
 import socket
+import sys
 import requests
 from bs4 import BeautifulSoup
 from pathlib import Path
@@ -15,7 +16,7 @@ class NavStyleTests(unittest.TestCase):
     def setUpClass(cls):
         # Launch the website recipe on a test port (8888)
         cls.proc = subprocess.Popen(
-            ["gway", "-r", "test/website"],
+            [sys.executable, "-m", "gway", "-r", "test/website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

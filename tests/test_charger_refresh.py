@@ -7,6 +7,7 @@ import string
 import subprocess
 import time
 import socket
+import sys
 import asyncio
 import requests
 
@@ -42,7 +43,7 @@ class ChargerDashboardRefreshTests(unittest.TestCase):
     def setUpClass(cls):
         _remove_test_user()
         cls.proc = subprocess.Popen(
-            ["gway", "-r", "test/website"],
+            [sys.executable, "-m", "gway", "-r", "test/website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
