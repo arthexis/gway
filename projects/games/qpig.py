@@ -2,11 +2,11 @@
 """Prototype incremental game about quantum guinea pigs."""
 
 from gway import gw
-import time
 import json
-import math
 import base64
 from bottle import request
+
+DEFAULT_MAX_QPIGS = 1
 
 DEFAULT_PIGS = 1
 DEFAULT_MICROCERTS = 500  # 0.5 Cert
@@ -62,7 +62,7 @@ OFFER_EXPIRY = 300  # seconds
 
 
 def _load_state() -> dict:
-    """Load state from request or return defaults."""
+    """Load simplified state from request or defaults."""
     data = request.forms.get("state") or request.query.get("state") or ""
     state = {}
     if data:
@@ -71,19 +71,8 @@ def _load_state() -> dict:
             state = json.loads(raw)
         except Exception:
             gw.debug("invalid state input")
-    return {
-        "pigs": int(state.get("pigs", DEFAULT_PIGS)),
-        "mc": float(state.get("mc", DEFAULT_MICROCERTS)),
-        "pellets": float(state.get("pellets", 0.0)),
-        "time": float(state.get("time", time.time())),
-        "avail": int(state.get("avail", DEFAULT_AVAILABLE)),
-        "enc_small": int(state.get("enc_small", DEFAULT_ENC_SMALL)),
-        "enc_large": int(state.get("enc_large", DEFAULT_ENC_LARGE)),
-        "last_add": float(state.get("last_add", time.time())),
-        "veggies": state.get("veggies", {}).copy(),
-        "food": state.get("food", []).copy(),
-        "offer": state.get("offer"),
-    }
+    garden = state.get("garden", {}) if isinstance(state, dict) else {}
+    return {"garden": {"max_qpigs": int(garden.get("max_qpigs", DEFAULT_MAX_QPIGS))}}
 
 
 def _dump_state(state: dict) -> str:
@@ -91,241 +80,50 @@ def _dump_state(state: dict) -> str:
     return base64.b64encode(raw.encode()).decode()
 
 
-def _get_offer(state: dict, now: float) -> tuple[str, int, int]:
-    offer = state.get("offer")
-    if offer and now - offer.get("time", 0) < OFFER_EXPIRY:
-        return offer["kind"], int(offer["qty"]), int(offer["price"])
-    import random
-
-    kind = random.choice(VEGGIE_TYPES)
-    qty = random.randint(1, 3)
-    price = VEGGIE_BASE_PRICE + random.randint(-VEGGIE_PRICE_SPREAD, VEGGIE_PRICE_SPREAD)
-    price = max(5, min(20, price))
-    state["offer"] = {"kind": kind, "qty": qty, "price": price, "time": now}
-    return kind, qty, price
-
 
 def _process_state(state: dict, action: str | None = None) -> dict:
-    """Update and optionally mutate the farm state."""
-    gw.debug(f"_process_state start: action={action}")
-    pigs = state["pigs"]
-    mc = state["mc"]
-    pellets = state["pellets"]
-    last_time = state["time"]
-    avail = state["avail"]
-    enc_small = state["enc_small"]
-    enc_large = state["enc_large"]
-    last_add = state["last_add"]
-    veggies = state["veggies"]
-    food = state["food"]
-    gw.debug(
-        "initial state: pigs=%s mc=%s pellets=%s avail=%s enc_small=%s enc_large=%s veggies=%s food=%s",
-        pigs,
-        mc,
-        pellets,
-        avail,
-        enc_small,
-        enc_large,
-        veggies,
-        food,
-    )
-
-    now = time.time()
-    dt = max(0.0, min(now - last_time, 3600))
-    gw.debug(f"time delta={dt}")
-
-    upkeep_mc = ((UPKEEP_SMALL_HR * enc_small) + (UPKEEP_LARGE_HR * enc_large)) * (
-        dt / 3600
-    )
-    mc = max(0.0, mc - upkeep_mc)
-    gw.debug(f"after upkeep: mc={mc}")
-
-    fill_time = FILL_TIME + enc_small * ENC_TIME_SMALL + enc_large * ENC_TIME_LARGE
-    cert_frac = mc / CERTAINTY_MAX
-    cert_frac = 1.0 - (1.0 - cert_frac) * math.exp(-dt / fill_time)
-    mc = min(CERTAINTY_MAX, cert_frac * CERTAINTY_MAX)
-    gw.debug(f"after fill: mc={mc}")
-
-    # handle food buffs
-    food = [f for f in food if f[1] > now]
-    buff_active = any(f[2] > now for f in food)
-    buff_mult = 2.0 if buff_active else 1.0
-
-    intervals = int(dt / QP_INTERVAL)
-    if intervals > 0:
-        import random
-        base_prob = QP_BASE_CHANCE * (1 + (cert_frac - 0.5) * QP_CERT_BONUS * 2)
-        prob = min(1.0, base_prob * buff_mult)
-        gw.debug(f"pellet gen: intervals={intervals} prob={prob} pigs={pigs}")
-        for _ in range(intervals):
-            for _ in range(pigs):
-                if random.random() < prob:
-                    pellets += 1
-                    if random.random() < prob:
-                        pellets += 1
-        last_time += intervals * QP_INTERVAL
-
-    # chance for bonus pellets from active veggies
-    nibbling = [f[0] for f in food if f[1] > now]
-    if nibbling:
-        import random
-        gw.debug(f"nibbling: {nibbling}")
-        for kind in nibbling:
-            chance = VEGGIE_BONUS.get(kind, 0.0)
-            if random.random() < chance:
-                pellets += 1
-
-    # replenish adoption queue
-    while now - last_add >= ADOPTION_INTERVAL and avail <= ADOPTION_THRESHOLD:
-        avail = min(avail + ADOPTION_ADD, ADOPTION_THRESHOLD)
-        last_add += ADOPTION_INTERVAL
-        gw.debug(f"adoption queue replenished -> avail={avail}")
-
-    offer_kind, offer_qty, offer_price = _get_offer(state, now)
-
-    capacity = enc_small + enc_large * 2
-    if action == "adopt" and avail > 0 and pigs < capacity:
-        pigs += 1
-        avail -= 1
-        gw.debug(f"action adopt -> pigs={pigs} avail={avail}")
-    elif action == "buy_small" and mc >= SMALL_COST and (enc_small + enc_large) < ENCLOSURE_MAX:
-        mc -= SMALL_COST
-        enc_small += 1
-        gw.debug(f"action buy_small -> enc_small={enc_small} mc={mc}")
-    elif action == "buy_large" and mc >= LARGE_COST and (enc_small + enc_large) < ENCLOSURE_MAX:
-        mc -= LARGE_COST
-        enc_large += 1
-        gw.debug(f"action buy_large -> enc_large={enc_large} mc={mc}")
-    elif action == "buy_veggie":
-        total = offer_price * offer_qty
-        if mc >= total:
-            mc -= total
-            veggies[offer_kind] = veggies.get(offer_kind, 0) + offer_qty
-            offer_kind, offer_qty, offer_price = _get_offer(state, now)
-            gw.debug(f"action buy_veggie -> veggies={veggies} mc={mc}")
-    elif action and action.startswith("place_"):
-        kind = action.split("_", 1)[1]
-        slots = (enc_small + enc_large) * 3
-        if veggies.get(kind, 0) > 0 and len(food) < slots:
-            veggies[kind] -= 1
-            if veggies[kind] == 0:
-                del veggies[kind]
-            eat, linger = VEGGIE_EFFECTS.get(kind, (60, 30))
-            food.append([kind, now + eat, now + eat + linger])
-            gw.debug(f"action place_{kind} -> food={food} veggies={veggies}")
-
-    state.update(
-        {
-            "pigs": pigs,
-            "mc": mc,
-            "pellets": pellets,
-            "time": last_time,
-            "avail": avail,
-            "enc_small": enc_small,
-            "enc_large": enc_large,
-            "last_add": last_add,
-            "veggies": veggies,
-            "food": food,
-            "offer": {
-                "kind": offer_kind,
-                "qty": offer_qty,
-                "price": offer_price,
-                "time": state.get("offer", {}).get("time", now),
-            },
-        }
-    )
-    gw.debug(f"_process_state end -> {state}")
+    """Minimal state processor (placeholder for future logic)."""
+    gw.debug(f"_process_state called with action={action}")
     return state
 
 
-def render_qpig_farm_stats(state: dict) -> str:
-    """Return the farm stats block."""
-    gw.debug("render_qpig_farm_stats called")
-    pigs = state["pigs"]
-    mc = state["mc"]
-    pellets = state["pellets"]
-    avail = state["avail"]
-    enc_small = state["enc_small"]
-    enc_large = state["enc_large"]
-    veggies = state["veggies"]
-    food = state["food"]
-    capacity = enc_small + enc_large * 2
-    veg_list = ", ".join(f"{k}:{v}" for k, v in veggies.items()) or "none"
-    food_list = ", ".join(f"{f[0]}" for f in food) or "none"
-    html = [
-        f"<p>You have <b>{pigs}</b> quantum pigs (capacity {capacity}).</p>",
-        f"<p>Certainty: <b>{int(mc)}</b> MC / {CERTAINTY_MAX}</p>",
-        f"<p>QPellets: <b>{int(pellets)}</b></p>",
-        f"<p>Veggies: {veg_list}</p>",
-        f"<p>Food placed: {food_list}</p>",
-        f"<p>Pigs waiting for adoption: {avail}</p>",
-    ]
-    return "\n".join(html)
 
 
 def view_qpig_farm(*, action: str = None, **_):
     """Main Quantum Piggy farm view."""
-    gw.debug(f"view_qpig_farm called with action={action}")
+    gw.debug("view_qpig_farm called")
     state = _load_state()
-    state = _process_state(state, action)
     state_b64 = _dump_state(state)
-
-    offer = state["offer"]
-    offer_kind, offer_qty, offer_price = offer["kind"], offer["qty"], offer["price"]
-    capacity = state["enc_small"] + state["enc_large"] * 2
+    max_qpigs = state["garden"]["max_qpigs"]
 
     html = [
         '<link rel="stylesheet" href="/static/games/qpig/farm.css">',
         '<h1>Quantum Piggy Farm</h1>',
         '<div class="qpig-garden">',
         '<div class="qpig-tabs">',
-        '<button class="qpig-tab active" data-tab="garden">Garden</button>',
-        '<button class="qpig-tab" data-tab="market">Market</button>',
-        '<button class="qpig-tab" data-tab="lab">Lab</button>',
-        '<button class="qpig-tab" data-tab="travel">Travel</button>',
+        '<button class="qpig-tab active" data-tab="garden">Garden Shed</button>',
+        '<button class="qpig-tab" data-tab="market">Market Street</button>',
+        '<button class="qpig-tab" data-tab="lab">Laboratory</button>',
+        '<button class="qpig-tab" data-tab="travel">Travel Abroad</button>',
         '</div>',
         '<div id="qpig-panel-garden" class="qpig-panel active">',
+        f'<div class="qpig-top">Max Q-Pigs: {max_qpigs}</div>',
         "<canvas id='qpig-canvas' width='32' height='32'></canvas>",
-        '<div id="qpig-stats">',
-        render_qpig_farm_stats(state),
-        "</div>",
-        "<form method='post' id='qpig-form' class='qpig-buttons'>",
-        "<input type='hidden' name='state' id='qpig-state'>",
-    ]
-    if state["avail"] > 0 and state["pigs"] < capacity:
-        html.append("<button type='submit' name='action' value='adopt'>Adopt Pig</button>")
-    html.extend(
-        [
-            f"<button type='submit' name='action' value='buy_small'>Buy Enclosure ({SMALL_COST} MC)</button>",
-            f"<button type='submit' name='action' value='buy_large'>Buy Large Enclosure ({LARGE_COST} MC)</button>",
-            f"<button type='submit' name='action' value='buy_veggie'>Buy {offer_qty} {offer_kind}(s) ({offer_price * offer_qty} MC)</button>",
-        ]
-    )
-
-    slots = (state["enc_small"] + state["enc_large"]) * 3
-    if len(state["food"]) < slots:
-        for k, v in state["veggies"].items():
-            if v > 0:
-                html.append(f"<button type='submit' name='action' value='place_{k}'>Feed {k}</button>")
-
-    html.extend([
+        '<div class="qpig-buttons">',
         "<button type='button' id='qpig-save' title='Save'>💾</button>",
         "<button type='button' id='qpig-load' title='Load'>📂</button>",
-        "</form>",
-        "</div>",  # close qpig-panel-garden
-        '<div id="qpig-panel-market" class="qpig-panel">Market coming soon</div>',
-        '<div id="qpig-panel-lab" class="qpig-panel">Lab coming soon</div>',
-        '<div id="qpig-panel-travel" class="qpig-panel">Travel coming soon</div>',
-        "</div>",  # close qpig-garden
-    ])
+        '</div>',
+        '</div>',  # close qpig-panel-garden
+        '<div id="qpig-panel-market" class="qpig-panel"><div class="qpig-top"></div>Market Street coming soon</div>',
+        '<div id="qpig-panel-lab" class="qpig-panel"><div class="qpig-top"></div>Laboratory coming soon</div>',
+        '<div id="qpig-panel-travel" class="qpig-panel"><div class="qpig-top"></div>Travel Abroad coming soon</div>',
+        '</div>',  # close qpig-garden
+    ]
 
     script = """
 <script>
 const KEY='qpig_state';
 sessionStorage.setItem(KEY, '{state_b64}');
-const form=document.getElementById('qpig-form');
-const hidden=document.getElementById('qpig-state');
-if(form){{form.addEventListener('submit',()=>{{hidden.value=sessionStorage.getItem(KEY)||'';}});}}
 const save=document.getElementById('qpig-save');
 if(save){{save.addEventListener('click',()=>{{const data=sessionStorage.getItem(KEY)||'';const blob=new Blob([data],{{type:'application/octet-stream'}});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='qpig-save.qpg';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}});}}
 const load=document.getElementById('qpig-load');

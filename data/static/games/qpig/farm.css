@@ -48,12 +48,23 @@
     border: 1px solid #333;
     color: #fff;
     cursor: pointer;
+    font-weight: bold;
 }
 
 .qpig-tab[data-tab='garden'] { background: green; }
-.qpig-tab[data-tab='market'] { background: orange; }
+.qpig-tab[data-tab='market'] { background: #cc6600; }
 .qpig-tab[data-tab='lab'] { background: purple; }
 .qpig-tab[data-tab='travel'] { background: blue; }
 
 .qpig-panel { display: none; padding: 4px; }
 .qpig-panel.active { display: block; }
+
+#qpig-panel-garden { background: #b2f0b2; }
+#qpig-panel-market { background: #ffe0b2; }
+#qpig-panel-lab { background: #e0b2ff; }
+#qpig-panel-travel { background: #b2d0ff; }
+
+.qpig-top {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
