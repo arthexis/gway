@@ -168,6 +168,8 @@ select {
   border: 1px solid #333;
   border-radius: 7px;
   padding: 0.6em 1em;
+  width: 100%;
+  box-sizing: border-box;
   font-size: 1rem;
   transition: box-shadow 0.15s, border-color 0.15s;
 }

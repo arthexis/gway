@@ -126,6 +126,8 @@ select {
     border-radius: 8px;
     box-shadow: 0 1px 6px #7cfe8140;
     font-family: 'EB Garamond', 'Georgia', serif;
+    width: 100%;
+    box-sizing: border-box;
 }
 input:focus,
 textarea:focus,
