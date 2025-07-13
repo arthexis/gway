@@ -208,8 +208,6 @@ const save=document.getElementById('qpig-save');
 if(save){{save.addEventListener('click',()=>{{const data=sessionStorage.getItem(KEY)||'';const blob=new Blob([data],{{type:'application/octet-stream'}});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='qpig-save.qpg';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}});}}
 const load=document.getElementById('qpig-load');
 if(load){{load.addEventListener('click',()=>{{const inp=document.createElement('input');inp.type='file';inp.accept='.qpg';inp.onchange=e=>{{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{{sessionStorage.setItem(KEY, ev.target.result.trim());location.reload();}};r.readAsText(f);}};inp.click();}});}}
-const canvas=document.getElementById('qpig-canvas');
-if(canvas){{const ctx=canvas.getContext('2d');const img=new Image();img.src='/static/games/qpig/pig.png';img.onload=()=>{{ctx.imageSmoothingEnabled=false;ctx.drawImage(img,0,0);}};}}
 const tabs=document.querySelectorAll('.qpig-tab');
 const panels=document.querySelectorAll('.qpig-panel');
 tabs.forEach(t=>t.addEventListener('click',()=>{{
