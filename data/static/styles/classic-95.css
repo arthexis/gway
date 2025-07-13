@@ -45,6 +45,8 @@ textarea {
     font-family: inherit;
     outline: none;
     box-shadow: none;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 footer {
@@ -59,6 +61,8 @@ input.main, input.help, select {
     border: 2px inset #fff;
     border-radius: 0;
     font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 button, input[type="submit"], input[type="button"] {

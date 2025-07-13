@@ -182,6 +182,8 @@ select {
     box-shadow: 0 1px 3px #ffe45e22;
     font-family: 'Special Elite', 'IM Fell DW Pica', 'Georgia', serif;
     letter-spacing: 0.02em;
+    width: 100%;
+    box-sizing: border-box;
 }
 input:focus,
 textarea:focus,
