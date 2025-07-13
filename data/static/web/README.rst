@@ -21,12 +21,20 @@ Parameters are handled exactly like the regular ``/project/view`` route, so you
 can use GET or POST to pass values. Returned content is suitable for dynamic
 insertion via ``render.js`` or inclusion in an ``iframe``.
 
-``render.js`` also supports manual refresh hooks:
+``render.js`` also supports manual refresh hooks and a lightweight API helper.
 
 - ``gw-click``/``gw-left-click`` – refresh on left click.
 - ``gw-right-click`` – refresh on right click.
 - ``gw-double-click`` – refresh on double click.
 - ``gw-on-load`` – refresh once when the page loads.
+- ``gw-render`` – refresh using the named ``render_*`` function. If the element
+  is or contains a form, fields are posted along with data attributes.
+- ``gw-view`` – call the named ``view_*`` function without the page layout. Form
+  values are sent just like ``gw-render``.
+- ``gw-api`` – call the named ``api_*`` function and replace any ``[sigils]``
+  in the element with values from the JSON response. If the element is a form,
+  or contains one, form fields are posted as parameters. A different form can
+  be specified with ``gw-form``.
 
 Double clicking the QR compass in the sidebar triggers a dynamic refresh via
 ``render.js`` if the active project provides a ``render_compass`` function.
