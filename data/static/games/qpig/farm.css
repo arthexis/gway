@@ -7,6 +7,7 @@
     padding: 8px;
     margin: 0 auto;
     display: inline-block;
+    width: 300px;
 }
 
 .qpig-garden .qpig-buttons {
@@ -55,6 +56,7 @@
 .qpig-tab[data-tab='market'] { background: #cc6600; }
 .qpig-tab[data-tab='lab'] { background: purple; }
 .qpig-tab[data-tab='travel'] { background: blue; }
+.qpig-tab[data-tab='settings'] { background: grey; }
 
 .qpig-panel { display: none; padding: 4px; }
 .qpig-panel.active { display: block; }
@@ -63,6 +65,7 @@
 #qpig-panel-market { background: #ffe0b2; }
 #qpig-panel-lab { background: #e0b2ff; }
 #qpig-panel-travel { background: #b2d0ff; }
+#qpig-panel-settings { background: #ccc; }
 
 .qpig-top {
     font-weight: bold;

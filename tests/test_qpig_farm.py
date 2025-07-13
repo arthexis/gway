@@ -18,6 +18,7 @@ class QPigFarmTests(unittest.TestCase):
         self.assertIn('Q-Pellets', html)
         self.assertIn('qpig-pig-card', html)
         self.assertIn('Q-Pigs:', html)
+        self.assertIn('Resting', html)
 
     def test_tab_names_updated(self):
         html = self.qpig_mod.view_qpig_farm()
@@ -25,6 +26,7 @@ class QPigFarmTests(unittest.TestCase):
         self.assertIn('Market Street', html)
         self.assertIn('Laboratory', html)
         self.assertIn('Travel Abroad', html)
+        self.assertIn('Game Settings', html)
 
 
 if __name__ == '__main__':
