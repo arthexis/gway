@@ -24,6 +24,14 @@
             "module": "gway",
             "args": ["-dv", "-r", "website"],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Build Release",
+            "type": "python",
+            "request": "launch",
+            "module": "gway",
+            "args": ["release", "build", "--all"],
+            "console": "integratedTerminal"
         }
     ]
 }
