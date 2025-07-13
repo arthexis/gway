@@ -57,8 +57,8 @@ Additional Tools
 
 ``find_conduit``
   Utility to calculate conduit diameter for a given AWG and number of cables.
-``view_cable_finder``
-  Renders ``/awg/cable-finder`` – an HTML form backed by ``find_awg`` for quick
+``view_awg_calculator``
+  Renders ``/awg/awg-calculator`` – an HTML form backed by ``find_awg`` for quick
   calculations in the browser.
 
 Data Files
