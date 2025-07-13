@@ -339,8 +339,13 @@ def view_awg_calculator(
                             </select>
                         </td>
                     </tr>
+                    <tr>
+                        <td>
+                            <button type="submit" class="submit">Calculate</button>
+                        </td>
+                        <td></td>
+                    </tr>
                 </table>
-                <button type="submit" class="submit">Calculate</button>
             </form>
         '''
     if max_awg in (None, ""):
