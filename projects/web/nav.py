@@ -7,6 +7,7 @@ from gway import gw
 from bottle import request
 
 _forced_style = None
+_side = "left"
 
 
 def render(*, homes=None, links=None):
@@ -521,13 +522,24 @@ def list_styles(project=None):
     return styles
 
 
-def setup_app(*, app=None, style=None, **_):
-    """Optional hook to set a default style when the project is added.
+def setup_app(*, app=None, style=None, side="left", **_):
+    """Optional hook to set a default style and nav side when the project is added.
 
     Pass ``style='random'`` to select a random theme on each request.
+    Use ``side='right'`` to place the navigation on the right side.
     """
-    global _forced_style
+    global _forced_style, _side
     if style:
         _forced_style = style
         gw.info(f"web.nav forced style: {style}")
+    if side in {"left", "right"}:
+        _side = side
+        gw.info(f"web.nav side set to {side}")
+    else:
+        gw.error(f"Invalid nav side: {side}")
     return app
+
+
+def side() -> str:
+    """Return the configured navigation side ('left' or 'right')."""
+    return _side

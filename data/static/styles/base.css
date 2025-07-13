@@ -43,6 +43,15 @@ html, body {
     min-height: 0;
     background: none;
 }
+.layout.nav-right {
+    flex-direction: row-reverse;
+}
+
+/* Nav on the right tweaks */
+.layout.nav-right aside {
+    border-right: none;
+    border-left: 1px solid #ccc;
+}
 
 /* 3. Sidebar (aside) */
 aside {
@@ -236,6 +245,9 @@ select {
         position: relative;
         background: none;
     }
+    .layout.nav-right {
+        flex-direction: row-reverse !important;
+    }
     aside {
         width: 76vw;
         max-width: 350px;
@@ -249,6 +261,13 @@ select {
         transition: background 0.22s;
         box-shadow: 3px 0 16px #0004;
     }
+    .layout.nav-right aside {
+        left: auto;
+        right: 0;
+        border-right: none;
+        border-left: 1px solid #222;
+        box-shadow: -3px 0 16px #0004;
+    }
     main {
         padding: 0.8rem 0.3rem 0.3rem 0.7rem;
         width: 100%;
@@ -259,6 +278,9 @@ select {
         z-index: 1;
         background: var(--main-bg, #fff); /* always light by default for readability */
         /* To support dark theme, set --main-bg via JS or a theme class */
+    }
+    .layout.nav-right main {
+        padding: 0.8rem 0.7rem 0.3rem 0.3rem;
     }
 }
 
@@ -328,6 +350,9 @@ p.compass { margin-bottom: 0.5em; }
     pointer-events: none;
     width: 0 !important;
     min-width: 0 !important;
+}
+.layout.nav-right.nav-rolled aside {
+    transform: translateX(110%);
 }
 .layout aside {
     transform: none;
