@@ -6,6 +6,8 @@ import threading
 import time
 import html
 import re
+import ast
+import importlib.util
 from pathlib import Path
 from io import StringIO
 import unittest
@@ -455,6 +457,74 @@ def get_build(length: int = 6) -> str:
 def changes(*, files=None, staged=False, context=3, max_bytes=200_000, clip=False):
     """Return a unified diff using :mod:`hub` utilities."""
     return gw.hub.changes(files=files, staged=staged, context=context, max_bytes=max_bytes, clip=clip)
+
+
+def build_requirements(func):
+    """Generate a requirements file for ``func`` and its callees."""
+
+    if isinstance(func, str):
+        module_name, attr = func.rsplit(".", 1)
+        mod = __import__(module_name, fromlist=[attr])
+        func = getattr(mod, attr)
+
+    visited = set()
+    modules = set()
+
+    def is_stdlib(name: str) -> bool:
+        try:
+            spec = importlib.util.find_spec(name)
+        except ModuleNotFoundError:
+            return False
+        if not spec or not spec.origin:
+            return True
+        path = spec.origin or ""
+        return "site-packages" not in path and "dist-packages" not in path
+
+    def gather(f):
+        if not callable(f) or f in visited:
+            return
+        visited.add(f)
+        try:
+            source = inspect.getsource(f)
+        except Exception:
+            return
+        tree = ast.parse(source)
+        globals_ = getattr(f, "__globals__", {})
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    name = alias.name.split(".")[0]
+                    if not is_stdlib(name):
+                        modules.add(name)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    name = node.module.split(".")[0]
+                    if not is_stdlib(name):
+                        modules.add(name)
+            elif isinstance(node, ast.Call):
+                target = None
+                if isinstance(node.func, ast.Name):
+                    target = globals_.get(node.func.id)
+                elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                    base = globals_.get(node.func.value.id)
+                    if base is not None:
+                        target = getattr(base, node.func.attr, None)
+                if inspect.isfunction(target):
+                    gather(target)
+                elif inspect.ismodule(target):
+                    name = target.__name__.split(".")[0]
+                    if not is_stdlib(name):
+                        modules.add(name)
+
+    gather(func)
+
+    qualname = getattr(func, "__qualname__", getattr(func, "__name__", "func"))
+    dest = Path("work") / "release" / qualname.replace(".", "_")
+    dest.mkdir(parents=True, exist_ok=True)
+    req_file = dest / "requirements.txt"
+    req_file.write_text("\n".join(sorted(modules)) + "\n", encoding="utf-8")
+    gw.info(f"Wrote requirements to {req_file}")
+    return req_file
 
 
 def _last_changelog_build():
