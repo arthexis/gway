@@ -10,13 +10,14 @@ class QPigFarmTests(unittest.TestCase):
         self.qpig_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.qpig_mod)
 
-    def test_view_contains_canvas_and_buttons(self):
+    def test_view_contains_basic_elements(self):
         html = self.qpig_mod.view_qpig_farm()
-        self.assertIn('qpig-canvas', html)
+        self.assertNotIn("<canvas id='qpig-canvas'", html)
         self.assertIn('qpig-save', html)
         self.assertIn('qpig-load', html)
         self.assertIn('Q-Pellets', html)
         self.assertIn('qpig-pig-card', html)
+        self.assertIn('Q-Pigs:', html)
 
     def test_tab_names_updated(self):
         html = self.qpig_mod.view_qpig_farm()
