@@ -35,3 +35,25 @@
     margin-top: 1em;
     color: #a00;
 }
+
+.qpig-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.qpig-tab {
+    flex: 1;
+    padding: 4px;
+    border: 1px solid #333;
+    color: #fff;
+    cursor: pointer;
+}
+
+.qpig-tab[data-tab='garden'] { background: green; }
+.qpig-tab[data-tab='market'] { background: orange; }
+.qpig-tab[data-tab='lab'] { background: purple; }
+.qpig-tab[data-tab='travel'] { background: blue; }
+
+.qpig-panel { display: none; padding: 4px; }
+.qpig-panel.active { display: block; }
