@@ -239,8 +239,31 @@ def read(subject_fragment, body_fragment=None, sender=None, since=None, before=N
                 mail.logout()
 
 
-def search(subject_fragment="*", body_fragment=None, sender=None, since=None, before=None):
-    """Search for emails and return summaries (subject, date, sender)."""
+def search(subject_fragment="*", body_fragment=None, sender=None, to=None, since=None, before=None, limit=10, reverse=False):
+    """Search for emails and return summaries (subject, date, sender).
+
+    Parameters
+    ----------
+    subject_fragment : str
+        Part of the subject to match. ``"*"`` matches any subject.
+    body_fragment : str, optional
+        Text to search for in the body.
+    sender : str, optional
+        Only return messages from this sender.
+    to : str or bool, optional
+        Filter by destination address. If ``True`` use ``ADMIN_EMAIL`` from the
+        environment.
+    since : str or :class:`datetime.date`, optional
+        Only return messages on or after this date.
+    before : str or :class:`datetime.date`, optional
+        Only return messages before this date.
+    limit : int, optional
+        Maximum number of results to return. ``None`` returns all. Defaults to
+        ``10``.
+    reverse : bool, optional
+        If ``True`` return results from oldest to newest instead of newest to
+        oldest.
+    """
     EMAIL_SENDER = os.environ.get("MAIL_SENDER")
     EMAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     IMAP_SERVER = os.environ.get("IMAP_SERVER")
@@ -271,6 +294,11 @@ def search(subject_fragment="*", body_fragment=None, sender=None, since=None, be
         if sender:
             esc_sender = _escape_imap_string(sender)
             criteria.extend(["FROM", f'"{esc_sender}"'])
+        if to is True:
+            to = os.environ.get("ADMIN_EMAIL")
+        if to:
+            esc_to = _escape_imap_string(to)
+            criteria.extend(["TO", f'"{esc_to}"'])
         if since:
             criteria.extend(["SINCE", _format_imap_date(since)])
         if before:
@@ -303,6 +331,20 @@ def search(subject_fragment="*", body_fragment=None, sender=None, since=None, be
                 'from': email_msg.get('From'),
                 'date': email_msg.get('Date'),
             })
+
+        try:
+            from email.utils import parsedate_to_datetime
+            def _date_key(item):
+                try:
+                    return parsedate_to_datetime(item.get('date'))
+                except Exception:
+                    return datetime.min
+            results.sort(key=_date_key, reverse=not reverse)
+        except Exception:
+            pass
+
+        if limit is not None:
+            results = results[:limit]
 
         return results
 
