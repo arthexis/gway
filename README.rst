@@ -72,8 +72,14 @@ Core Concepts
 - **Logging & Testing**: ``gw.setup_logging`` configures rotating logs in
   ``logs/``.  ``gway test --coverage`` or ``gw.test()`` run the suite.
 
-Example Recipe
---------------
+Recipes
+-------
+
+Recipes are ``.gwr`` files listing commands to automate tasks. Run them with
+``gway -r file`` or ``gw.run_recipe('file.gwr')``.
+
+Example Basic Recipe
+~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
 
@@ -87,7 +93,7 @@ Run ``gway -r recipes/site.gwr`` and visit ``http://127.0.0.1:8888`` to browse
 help pages rendered by ``web.site.view_reader``.
 
 Advanced Recipe Example
------------------------
+~~~~~~~~~~~~~~~~~~~~~~~
 
 This example demonstrates the *colon* prefix for repeated commands and
 ``#`` lines used as notes. Indented entries inherit the prefix until the
@@ -150,10 +156,14 @@ Here's a quick reference of the main directories in a typical GWAY workspace:
 | tools/         | Platform-specific scripts and files.                         |
 +----------------+--------------------------------------------------------------+
 
+Testing
+-------
+
+The test suite verifies projects using the ``gw`` dispatcher. Install all
+dependencies and run ``gway test`` to execute it.
 
 Test Layout
------------
-
+~~~~~~~~~~~
 Tests are discovered recursively so directories under ``tests`` may mirror the source tree. A suggested structure is::
 
     tests/
@@ -161,7 +171,7 @@ Tests are discovered recursively so directories under ``tests`` may mirror the s
         projects/
 
 Running Tests
--------------
+~~~~~~~~~~~~~
 
 Before executing the suite, ensure the package and all dependencies are installed. Follow the commands in ``TESTING.rst`` to install ``requirements.txt`` and the editable package, then invoke ``gway test``.
 
