@@ -7,7 +7,7 @@ import base64
 import random
 from bottle import request
 
-DEFAULT_MAX_QPIGS = 1
+DEFAULT_MAX_QPIGS = 2
 
 DEFAULT_PIGS = 1
 DEFAULT_MICROCERTS = 500  # 0.5 Cert
@@ -137,7 +137,7 @@ def view_qpig_farm(*, action: str = None, **_):
         '<button class="qpig-tab" data-tab="travel">Travel Abroad</button>',
         '</div>',
         '<div id="qpig-panel-garden" class="qpig-panel active">',
-        f'<div class="qpig-top"><span>Max Q-Pigs: {max_qpigs}</span><span>Q-Pellets: {qpellets}</span></div>',
+        f'<div class="qpig-top"><span id="qpig-count">Q-Pigs: {len(pigs)}/{max_qpigs}</span><span id="qpig-pellets">Q-Pellets: {qpellets}</span></div>',
         '<div class="qpig-pigs">',
     ]
     for pig in pigs:
@@ -151,7 +151,6 @@ def view_qpig_farm(*, action: str = None, **_):
         ])
     html.extend([
         '</div>',  # close qpig-pigs
-        "<canvas id='qpig-canvas' width='32' height='32'></canvas>",
         '<div class="qpig-buttons">',
         "<button type='button' id='qpig-save' title='Save'>💾</button>",
         "<button type='button' id='qpig-load' title='Load'>📂</button>",
@@ -166,7 +165,36 @@ def view_qpig_farm(*, action: str = None, **_):
     script = """
 <script>
 const KEY='qpig_state';
-sessionStorage.setItem(KEY, '{state_b64}');
+if(!sessionStorage.getItem(KEY)) sessionStorage.setItem(KEY, '{state_b64}');
+
+function loadState(){{
+  const data=sessionStorage.getItem(KEY)||'{state_b64}';
+  try{{return JSON.parse(atob(data));}}catch(e){{return {{}};}}
+}}
+
+function saveState(st){{
+  sessionStorage.setItem(KEY, btoa(JSON.stringify(st)));
+}}
+
+function updateCounters(st){{
+  const cnt=document.getElementById('qpig-count');
+  if(cnt) cnt.textContent=`Q-Pigs: ${{st.garden.pigs.length}}/${{st.garden.max_qpigs}}`;
+  const pel=document.getElementById('qpig-pellets');
+  if(pel) pel.textContent=`Q-Pellets: ${{st.garden.qpellets}}`;
+}}
+
+function tick(){{
+  const st=loadState();
+  (st.garden.pigs||[]).forEach(p=>{{
+    if(Math.random()*100 < (p.fitness||0)){{
+      st.garden.qpellets=(st.garden.qpellets||0)+1;
+    }}
+  }});
+  saveState(st);
+  updateCounters(st);
+}}
+updateCounters(loadState());
+setInterval(tick,1000);
 const save=document.getElementById('qpig-save');
 if(save){{save.addEventListener('click',()=>{{const data=sessionStorage.getItem(KEY)||'';const blob=new Blob([data],{{type:'application/octet-stream'}});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='qpig-save.qpg';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}});}}
 const load=document.getElementById('qpig-load');
