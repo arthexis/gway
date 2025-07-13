@@ -5,7 +5,7 @@
 
 web app setup:
     - web.site --home reader --links feedback
-    - awg --home cable-finder
+    - awg --home awg-calculator
     - web.nav --home style-switcher
     - web.cookies --home cookie-jar
     - web.message

@@ -37,3 +37,11 @@ Existing utilities (``gw.awg``, ``gw.ocpp``, ``gw.vbox`` etc.) are loaded lazily
   (omit `--coverage` if not needed)
 
 These instructions apply to CODEX and CI environments.
+## Renaming functions
+When changing a function name, update all related assets to keep the project consistent:
+- Python modules inside `projects/`
+- project documentation under `data/static`
+- static assets such as CSS or templates
+- recipe files in `recipes/`
+- tests and helper tooling
+- help database entries

@@ -252,15 +252,15 @@ def find_conduit(awg, cables, *, conduit="emt"):
         return {"size_inch": size}
 
 
-def view_cable_finder(
+def view_awg_calculator(
     *, meters=None, amps="40", volts="220", material="cu",
     max_lines="1", max_awg=None, phases="1", temperature=None,
     conduit=None, ground="1", neutral="0", **kwargs
 ):
-    """Page builder for AWG cable finder with HTML form and result."""
+    """Page builder for AWG calculator with HTML form and result."""
     if not meters:
         return '''<link rel="stylesheet" href="/static/awg/cable_finder.css">
-            <h1>AWG Cable & Conduit Finder</h1>
+            <h1>Cable & Conduit Calculator</h1>
             <form method="post" class="cable-form">
                 <table class="form-table two-col">
                     <tr>
@@ -340,7 +340,7 @@ def view_cable_finder(
                         </td>
                     </tr>
                 </table>
-                <button type="submit" class="submit">Find Cable</button>
+                <button type="submit" class="submit">Calculate</button>
             </form>
         '''
     if max_awg in (None, ""):
@@ -358,14 +358,14 @@ def view_cable_finder(
             conduit=conduit_arg, ground=ground,
         )
     except Exception as e:
-        return f"<p class='error'>Error: {e}</p><p><a href='/awg/cable-finder'>&#8592; Try again</a></p>"
+        return f"<p class='error'>Error: {e}</p><p><a href='/awg/awg-calculator'>&#8592; Try again</a></p>"
 
     if result.get("awg") == "n/a":
         return """
             <h1>No Suitable Cable Found</h1>
             <p>No cable was found that meets the requirements within a 3% voltage drop.<br>
             Try adjusting the <b>cable size, amps, length, or material</b> and try again.</p>
-            <p><a href="/awg/cable-finder">&#8592; Calculate again</a></p>
+            <p><a href="/awg/awg-calculator">&#8592; Calculate again</a></p>
         """
 
     return f"""
@@ -387,6 +387,6 @@ def view_cable_finder(
         <a href="https://www.gelectriic.com" target="_blank">Gelectriic Solutions</a></strong> for their
         support in creating this calculator.</em>
         </p>
-        <p><a href="/awg/cable-finder">&#8592; Calculate again</a></p>
+        <p><a href="/awg/awg-calculator">&#8592; Calculate again</a></p>
         </div>
     """
