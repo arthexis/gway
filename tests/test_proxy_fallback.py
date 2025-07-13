@@ -5,6 +5,7 @@ from gway.builtins import is_test_flag
 import subprocess
 import time
 import socket
+import sys
 import os
 import tempfile
 import shutil
@@ -21,7 +22,7 @@ class ProxyFallbackTests(unittest.TestCase):
     def setUpClass(cls):
         cls.local_dir = tempfile.mkdtemp(prefix="local_gw_")
         cls.local_proc = subprocess.Popen(
-            ["gway", "-r", "test/etron/local_proxy"],
+            [sys.executable, "-m", "gway", "-r", "test/etron/local_proxy"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -81,7 +82,7 @@ class ProxyFallbackTests(unittest.TestCase):
 
         self.__class__.remote_dir = tempfile.mkdtemp(prefix="remote_gw_")
         self.__class__.remote_proc = subprocess.Popen(
-            ["gway", "-r", "test/etron/cloud"],
+            [sys.executable, "-m", "gway", "-r", "test/etron/cloud"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

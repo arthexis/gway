@@ -2,6 +2,7 @@ import unittest
 import subprocess
 import time
 import socket
+import sys
 from pathlib import Path
 from gway.builtins import is_test_flag
 from gway import gw
@@ -10,7 +11,7 @@ class ScreenshotAttachmentTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.proc = subprocess.Popen([
-            "gway", "-r", "test/website"],
+            sys.executable, "-m", "gway", "-r", "test/website"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
