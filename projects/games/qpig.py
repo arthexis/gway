@@ -80,6 +80,7 @@ def _new_pig() -> dict:
         "fitness": round(random.uniform(1, 4), 2),
         "handling": round(random.uniform(1, 4), 2),
         "face": random.randint(1, 70),
+        "activity": "Resting",
     }
 
 
@@ -99,6 +100,10 @@ def _load_state() -> dict:
     pigs = garden.get("pigs") if isinstance(garden, dict) else None
     if not isinstance(pigs, list) or not pigs:
         pigs = [_new_pig() for _ in range(DEFAULT_PIGS)]
+    else:
+        for pig in pigs:
+            if isinstance(pig, dict):
+                pig.setdefault("activity", "Resting")
     return {"garden": {"max_qpigs": max_qpigs, "qpellets": qpellets, "pigs": pigs}}
 
 
@@ -135,6 +140,7 @@ def view_qpig_farm(*, action: str = None, **_):
         '<button class="qpig-tab" data-tab="market">Market Street</button>',
         '<button class="qpig-tab" data-tab="lab">Laboratory</button>',
         '<button class="qpig-tab" data-tab="travel">Travel Abroad</button>',
+        '<button class="qpig-tab" data-tab="settings">Game Settings</button>',
         '</div>',
         '<div id="qpig-panel-garden" class="qpig-panel active">',
         f'<div class="qpig-top"><span id="qpig-count">Q-Pigs: {len(pigs)}/{max_qpigs}</span><span id="qpig-pellets">Q-Pellets: {qpellets}</span></div>',
@@ -143,7 +149,8 @@ def view_qpig_farm(*, action: str = None, **_):
     for pig in pigs:
         html.extend([
             '<div class="qpig-pig-card">',
-            f'<div><div class="qpig-pig-name">{pig["name"]}</div>',
+            f'<div><div class="qpig-pig-name">{pig["name"]} — '
+            f'<em>{pig.get("activity", "Resting")}</em></div>',
             f'<div class="qpig-pig-stats">Alertness: {pig["alertness"]} '
             f'Curiosity: {pig["curiosity"]} Fitness: {pig["fitness"]} '
             f'Handling: {pig["handling"]}</div></div>',
@@ -151,14 +158,16 @@ def view_qpig_farm(*, action: str = None, **_):
         ])
     html.extend([
         '</div>',  # close qpig-pigs
-        '<div class="qpig-buttons">',
-        "<button type='button' id='qpig-save' title='Save'>💾</button>",
-        "<button type='button' id='qpig-load' title='Load'>📂</button>",
-        '</div>',
         '</div>',  # close qpig-panel-garden
         '<div id="qpig-panel-market" class="qpig-panel"><div class="qpig-top"></div>Market Street coming soon</div>',
         '<div id="qpig-panel-lab" class="qpig-panel"><div class="qpig-top"></div>Laboratory coming soon</div>',
         '<div id="qpig-panel-travel" class="qpig-panel"><div class="qpig-top"></div>Travel Abroad coming soon</div>',
+        '<div id="qpig-panel-settings" class="qpig-panel"><div class="qpig-top"></div>',
+        '<div class="qpig-buttons">',
+        "<button type='button' id='qpig-save' title='Save'>💾 Save</button>",
+        "<button type='button' id='qpig-load' title='Load'>📂 Load</button>",
+        '</div>',
+        '</div>',
         '</div>',  # close qpig-garden
     ])
 
