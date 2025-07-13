@@ -2,6 +2,7 @@ import unittest
 import tempfile
 import subprocess
 import os
+import sys
 from pathlib import Path
 from gway import gw
 
@@ -34,6 +35,8 @@ class InitRootTests(unittest.TestCase):
             env['GWAY_ROOT'] = str(root_path)
 
             cmd = [
+                sys.executable,
+                '-m',
                 'gway',
                 '-p', str(project_dir),
                 'demo',
