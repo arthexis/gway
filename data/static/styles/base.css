@@ -326,6 +326,8 @@ p.compass { margin-bottom: 0.5em; }
     box-shadow: none !important;
     opacity: 1 !important;
     pointer-events: none;
+    width: 0 !important;
+    min-width: 0 !important;
 }
 .layout aside {
     transform: none;
