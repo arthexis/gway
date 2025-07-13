@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.47 [build 32d6a9]
+---------------------
+
+- d2bde7a qpig.css renamed and tweaked
+
 0.4.46 [build 6c1819]
 ---------------------
 
