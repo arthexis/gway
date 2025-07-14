@@ -253,12 +253,13 @@ def view_qpig_farm(*, action: str = None, **_):
 
     html = [
         '<link rel="stylesheet" href="/static/games/qpig/qpig_farm.css">',
+        '<script src="/static/games/qpig/qpig_farm.js"></script>',
         '<h1>Quantum Piggy Farm</h1>',
         '<div class="qpig-garden tab-garden">',
         '<div class="qpig-tabs">',
         '<button class="qpig-tab active" data-tab="garden">Garden Shed</button>',
         '<button class="qpig-tab" data-tab="market">Market Street</button>',
-        '<button class="qpig-tab" data-tab="lab">Laboratory</button>',
+        '<button class="qpig-tab" data-tab="lab">Quantum Lab</button>',
         '<button class="qpig-tab" data-tab="travel">Travel Abroad</button>',
         '<button class="qpig-tab" data-tab="settings">Game Settings</button>',
         '</div>',
@@ -289,7 +290,15 @@ def view_qpig_farm(*, action: str = None, **_):
         f'<div class="qpig-top">'
         f'<span id="qpig-lab-pellets">Q-Pellets: {qpellets}</span>'
         f'<span id="qpig-lab-vcreds">V-Creds: {vcreds}</span>'
-        '</div>Laboratory coming soon</div>',
+        '</div>'
+        '<table id="qpig-lab-ops" class="lab-ops">'
+        '<tr><th>Operation</th><th>Time</th><th></th></tr>'
+        '<tr><td>Measure Spin</td><td>5s</td><td><button data-op="measure" data-time="5">Start</button></td></tr>'
+        '<tr><td>Entangle Pair</td><td>10s</td><td><button data-op="entangle" data-time="10">Start</button></td></tr>'
+        '<tr><td>Collect Quantum Pellets</td><td>3s</td><td><button data-op="collect" data-time="3">Start</button></td></tr>'
+        '</table>'
+        '<progress id="lab-progress" value="0" max="100" style="display:none;width:100%"></progress>'
+        '</div>',
         '<div id="qpig-panel-travel" class="qpig-panel"><div class="qpig-top"></div>Travel Abroad coming soon</div>',
         '<div id="qpig-panel-settings" class="qpig-panel"><div class="qpig-top"></div>',
         '<div class="qpig-buttons">',

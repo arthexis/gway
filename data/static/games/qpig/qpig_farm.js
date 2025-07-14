@@ -122,3 +122,83 @@ tabs.forEach(t => t.addEventListener('click', () => {
         garden.classList.add('tab-' + t.dataset.tab);
     }
 }));
+
+// Quantum Lab operations
+const LAB_KEY = 'qpig_lab';
+
+function loadLabState() {
+    try { return JSON.parse(sessionStorage.getItem(LAB_KEY) || '{}'); } catch (e) { return {}; }
+}
+
+function saveLabState(st) {
+    sessionStorage.setItem(LAB_KEY, JSON.stringify(st));
+}
+
+function startLabOp(op, secs) {
+    const finish = Date.now() + secs * 1000;
+    saveLabState({ op, finish, duration: secs * 1000 });
+    updateLabProgress();
+}
+
+function handleLabOpComplete(op) {
+    if (op === 'collect') {
+        collectPellets();
+    } else {
+        console.log('lab operation complete:', op);
+    }
+}
+
+function collectPellets() {
+    const state = loadState();
+    let pellets = state.garden.qpellets || 0;
+    if (pellets <= 0) return;
+    const rewards = Array.from({ length: pellets }, () => 1 + Math.floor(Math.random() * 4));
+    let drained = 0;
+    const drain = setInterval(() => {
+        const st = loadState();
+        if (st.garden.qpellets > 0) {
+            st.garden.qpellets -= 1;
+            saveState(st);
+            updateCounters(st);
+        }
+        drained += 1;
+        if (drained >= pellets) {
+            clearInterval(drain);
+            const fin = loadState();
+            fin.vcreds = (fin.vcreds || 0) + rewards.reduce((a, b) => a + b, 0);
+            saveState(fin);
+            updateCounters(fin);
+        }
+    }, 100);
+}
+
+function updateLabProgress() {
+    const st = loadLabState();
+    const bar = document.getElementById('lab-progress');
+    const btns = document.querySelectorAll('#qpig-lab-ops button');
+    if (!bar) return;
+    if (!st.finish || Date.now() >= st.finish) {
+        bar.style.display = 'none';
+        btns.forEach(b => b.disabled = false);
+        if (st.finish && Date.now() >= st.finish) {
+            handleLabOpComplete(st.op);
+        }
+        saveLabState({});
+        return;
+    }
+    const remaining = st.finish - Date.now();
+    bar.style.display = 'block';
+    bar.max = st.duration;
+    bar.value = st.duration - remaining;
+    btns.forEach(b => b.disabled = true);
+}
+
+document.querySelectorAll('#qpig-lab-ops button').forEach(b => {
+    b.addEventListener('click', () => {
+        const secs = parseInt(b.dataset.time || '0', 10);
+        if (secs > 0) startLabOp(b.dataset.op, secs);
+    });
+});
+
+updateLabProgress();
+setInterval(updateLabProgress, 500);
