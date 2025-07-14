@@ -32,6 +32,14 @@
             "module": "gway",
             "args": ["release", "build", "--all"],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Install Requirements",
+            "type": "python",
+            "request": "launch",
+            "module": "pip",
+            "args": ["install", "-U", "-r", "requirements.txt"],
+            "console": "integratedTerminal"
         }
     ]
 }
