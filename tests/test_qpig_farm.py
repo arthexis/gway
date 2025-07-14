@@ -33,9 +33,15 @@ class QPigFarmTests(unittest.TestCase):
         html = self.qpig_mod.view_qpig_farm()
         self.assertIn('Garden Shed', html)
         self.assertIn('Market Street', html)
-        self.assertIn('Laboratory', html)
+        self.assertIn('Quantum Lab', html)
         self.assertIn('Travel Abroad', html)
         self.assertIn('Game Settings', html)
+
+    def test_lab_operations_table_present(self):
+        html = self.qpig_mod.view_qpig_farm()
+        self.assertIn('qpig-lab-ops', html)
+        self.assertIn('Measure Spin', html)
+        self.assertIn('Collect Quantum Pellets', html)
 
 
 if __name__ == '__main__':

@@ -533,7 +533,6 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None, 
 
     css_files = [c for c in gw.cast.to_list(css_files) if c] if mode == "collect" else []
     js_files = [j for j in gw.cast.to_list(js_files) if j] if mode == "collect" else []
-
     theme_css = None
     if is_setup('web.nav'):
         try:

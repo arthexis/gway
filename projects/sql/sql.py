@@ -48,7 +48,7 @@ class WrappedConnection:
     def __exit__(self, exc_type, *_):
         if exc_type is None:
             self._connection.commit()
-            gw.debug("Transaction committed.")
+            gw.verbose("Transaction committed.")
         else:
             self._connection.rollback()
             gw.warning("Transaction rolled back due to exception.")
@@ -154,7 +154,7 @@ def load_csv(*, connection=None, folder="data", force=False):
                             f"{len(unique_headers)} columns"
                         )
                     else:
-                        gw.debug(f"Skipped existing table: {table_name}")
+                        gw.verbose(f"Skipped existing table: {table_name}")
         cursor.close()
 
     load_folder(base_path)
@@ -180,7 +180,7 @@ def load_excel(*, connection=None, file=None, folder="data", force=False):
                 gw.info(f"Loaded sheet '{sheet_name}' as table '{table}'")
             except ValueError as e:
                 if "exists" in str(e).lower() and not force:
-                    gw.debug(f"Skipped existing table: {table}")
+                    gw.verbose(f"Skipped existing table: {table}")
                 else:
                     raise
 
@@ -222,7 +222,7 @@ def load_cdv(*, connection=None, file=None, folder="data", force=False):
             gw.info(f"Loaded CDV '{os.path.basename(path)}' as table '{table}'")
         except ValueError as e:
             if "exists" in str(e).lower() and not force:
-                gw.debug(f"Skipped existing table: {table}")
+                gw.verbose(f"Skipped existing table: {table}")
             else:
                 raise
 
@@ -264,7 +264,7 @@ def open_connection(
         conn = _connection_cache[key]
         if row_factory:
             gw.warning("Row factory change requires close_connection(). Reconnect manually.")
-        gw.debug(f"Reusing connection: {key}")
+        gw.verbose(f"Reusing connection: {key}")
         return conn
 
     # Create connection per backend
