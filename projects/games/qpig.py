@@ -17,6 +17,7 @@ DEFAULT_ENC_LARGE = 0
 DEFAULT_AVAILABLE = 3
 DEFAULT_VEGGIES = {}
 DEFAULT_FOOD = []
+DEFAULT_VCREDS = 100  # starting amount of V-Creds
 
 ENCLOSURE_MAX = 8
 
@@ -62,6 +63,25 @@ VEGGIE_EFFECTS = {
 
 OFFER_EXPIRY = 300  # seconds
 
+# Example market stall inventory
+_MARKET_STALLS = [
+    (
+        "Veggie Wagon",
+        [
+            {"cost": 5, "icon": "🥕", "name": "Carrot Bundle"},
+            {"cost": 8, "icon": "🥬", "name": "Lettuce Head"},
+            {"cost": 10, "icon": "🌿", "name": "Cilantro Bunch"},
+        ],
+    ),
+    (
+        "Piggery Provisions",
+        [
+            {"cost": 15, "icon": "🧴", "name": "Water Bottle"},
+            {"cost": 20, "icon": "🛏️", "name": "Straw Bedding"},
+        ],
+    ),
+]
+
 
 _ADJECTIVES = ["Fluffy", "Happy", "Cheery", "Bouncy", "Chubby", "Sunny"]
 _NOUNS = ["Nibbler", "Snout", "Whisker", "Hopper", "Wiggler", "Sniffer"]
@@ -99,13 +119,15 @@ def _load_state() -> dict:
     max_qpigs = int(garden.get("max_qpigs", DEFAULT_MAX_QPIGS))
     qpellets = int(garden.get("qpellets", 0))
     pigs = garden.get("pigs") if isinstance(garden, dict) else None
+    vcreds = int(state.get("vcreds", DEFAULT_VCREDS)) if isinstance(state, dict) else DEFAULT_VCREDS
     if not isinstance(pigs, list) or not pigs:
         pigs = [_new_pig() for _ in range(DEFAULT_PIGS)]
     else:
         for pig in pigs:
             if isinstance(pig, dict):
                 pig.setdefault("activity", "Resting")
-    return {"garden": {"max_qpigs": max_qpigs, "qpellets": qpellets, "pigs": pigs}}
+    return {"garden": {"max_qpigs": max_qpigs, "qpellets": qpellets, "pigs": pigs},
+            "vcreds": vcreds}
 
 
 def _dump_state(state: dict) -> str:
@@ -198,6 +220,24 @@ def api_next_activity(*, act: str = "Resting", alertness: float = 0.0,
     return {"activity": act}
 
 
+def render_market_stalls():
+    """Render available stalls and their wares."""
+    rows = []
+    for stall, items in _MARKET_STALLS:
+        rows.append(f'<div class="market-stall"><strong>{stall}</strong>')
+        rows.append('<table>')
+        for item in items:
+            cost = item.get("cost", 0)
+            icon = item.get("icon", "")
+            name = item.get("name", "")
+            rows.append(
+                f'<tr><td><button data-cost="{cost}">{cost} VC</button>'
+                f'</td><td>{icon}</td><td>{name}</td></tr>'
+            )
+        rows.append('</table></div>')
+    return "\n".join(rows)
+
+
 
 
 def view_qpig_farm(*, action: str = None, **_):
@@ -209,6 +249,7 @@ def view_qpig_farm(*, action: str = None, **_):
     max_qpigs = garden["max_qpigs"]
     qpellets = garden.get("qpellets", 0)
     pigs = garden.get("pigs", [])
+    vcreds = state.get("vcreds", DEFAULT_VCREDS)
 
     html = [
         '<link rel="stylesheet" href="/static/games/qpig/qpig_farm.css">',
@@ -241,8 +282,14 @@ def view_qpig_farm(*, action: str = None, **_):
     html.extend([
         '</div>',  # close qpig-pigs
         '</div>',  # close qpig-panel-garden
-        '<div id="qpig-panel-market" class="qpig-panel"><div class="qpig-top"></div>Market Street coming soon</div>',
-        '<div id="qpig-panel-lab" class="qpig-panel"><div class="qpig-top"></div>Laboratory coming soon</div>',
+        f'<div id="qpig-panel-market" class="qpig-panel">'
+        f'<div class="qpig-top"><span id="qpig-vcreds">Available V-Creds: {vcreds}</span></div>'
+        f'<div id="market-stalls" gw-render="market_stalls">{render_market_stalls()}</div></div>',
+        '<div id="qpig-panel-lab" class="qpig-panel">'
+        f'<div class="qpig-top">'
+        f'<span id="qpig-lab-pellets">Q-Pellets: {qpellets}</span>'
+        f'<span id="qpig-lab-vcreds">V-Creds: {vcreds}</span>'
+        '</div>Laboratory coming soon</div>',
         '<div id="qpig-panel-travel" class="qpig-panel"><div class="qpig-top"></div>Travel Abroad coming soon</div>',
         '<div id="qpig-panel-settings" class="qpig-panel"><div class="qpig-top"></div>',
         '<div class="qpig-buttons">',
@@ -272,6 +319,12 @@ function updateCounters(st){{
   if(cnt) cnt.textContent=`Q-Pigs: ${{st.garden.pigs.length}}/${{st.garden.max_qpigs}}`;
   const pel=document.getElementById('qpig-pellets');
   if(pel) pel.textContent=`Q-Pellets: ${{st.garden.qpellets}}`;
+  const vc=document.getElementById('qpig-vcreds');
+  if(vc) vc.textContent=`Available V-Creds: ${{st.vcreds}}`;
+  const pelLab=document.getElementById('qpig-lab-pellets');
+  if(pelLab) pelLab.textContent=`Q-Pellets: ${{st.garden.qpellets}}`;
+  const vcLab=document.getElementById('qpig-lab-vcreds');
+  if(vcLab) vcLab.textContent=`V-Creds: ${{st.vcreds}}`;
 }}
 
 async function tick(){{
