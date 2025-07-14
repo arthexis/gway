@@ -3,6 +3,47 @@
 import os
 from gway import gw
 
+def include(*, css=None, js=None):
+    """Decorator to mark a view function as requiring extra CSS/JS files.
+
+    If ``css`` or ``js`` is ``None``, a default name based on the wrapped
+    function will be used. The base name is the function name with any
+    ``view_``, ``render_`` or ``api_`` prefix removed. The file path is
+    constructed as ``<module>/<basename>.css`` or ``.js`` using the function's
+    ``__module__`` attribute.
+    """
+
+    def decorator(func):
+        base_name = func.__name__
+        for prefix in ("view_", "render_", "api_"):
+            if base_name.startswith(prefix):
+                base_name = base_name[len(prefix) :]
+                break
+
+        mod_path = func.__module__.replace(".", "/") if func.__module__ else ""
+        css_list = []
+        js_list = []
+
+        if css is None:
+            css_list = [f"{mod_path}/{base_name}.css" if mod_path else f"{base_name}.css"]
+        elif css:
+            css_list = gw.cast.to_list(css)
+
+        if js is None:
+            js_list = [f"{mod_path}/{base_name}.js" if mod_path else f"{base_name}.js"]
+        elif js:
+            js_list = gw.cast.to_list(js)
+
+        if css_list:
+            existing = set(getattr(func, "_include_css", []))
+            func._include_css = list(existing.union(css_list))
+        if js_list:
+            existing = set(getattr(func, "_include_js", []))
+            func._include_js = list(existing.union(js_list))
+        return func
+
+    return decorator
+
 def collect(*, css="global", js="global", root="data/static", target="work/shared", full=False):
     """Collect static assets from enabled projects or the entire tree."""
     gw.verbose(
