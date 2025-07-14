@@ -1,0 +1,27 @@
+# file: recipes/static_site.gwr
+# Demo website using per-view static assets instead of bundled CSS/JS
+
+web app setup-app --mode manual:
+    - web.site --home reader --links feedback
+    - web.nav --home style-switcher
+    - web.cookies --home cookie-jar
+    - web.message
+    - awg --home awg-calculator
+    - vbox --home uploads
+    - ocpp.csms --auth required --home charger-status
+    - ocpp.evcs --auth required --home cp-simulator
+    - ocpp.data --auth required --home charger-summary
+    - web.chat.actions --home audit-chatlog --auth required
+    - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
+    - web.auth
+
+web:
+ - auth config-basic --optional --temp-link
+
+ocpp csms setup-app:
+    --location simulator
+
+web:
+ - server start-app --port 8888 --ws-port 9999
+
+until --version --build --pypi
