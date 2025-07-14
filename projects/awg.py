@@ -98,10 +98,10 @@ def find_awg(
                 params["awg_size"] = int(force_awg)
             elif limit_awg is not None:
                 params["max_awg"] = int(limit_awg)
-            gw.debug(f"AWG base data SQL: {sql.strip()}, params: {params}")
+            gw.verbose(f"AWG base data SQL: {sql.strip()}, params: {params}")
             cursor.execute(sql, params)
             rows = cursor.fetchall()
-            gw.debug(f"AWG base rows fetched: {rows}")
+            gw.verbose(f"AWG base rows fetched: {rows}")
 
             awg_data = {}
             for awg_size, line_num, k_ohm, a60, a75, a90 in rows:
@@ -144,7 +144,7 @@ def find_awg(
 
                     vdrop = base_vdrop * base["k"] / n
                     perc = vdrop / volts
-                    gw.debug(
+                    gw.verbose(
                         f"Eval AWG={awg_size} lines={n} drop={vdrop:.4f} perc={perc*100:.4f}%"
                     )
                     result = {
@@ -167,7 +167,7 @@ def find_awg(
                                 fill = find_conduit(AWG(awg_size), n * (phases + ground), conduit=c)
                                 result["conduit"] = c
                                 result["pipe_inch"] = fill["size_inch"]
-                            gw.debug(f"Selected cable result: {result}")
+                            gw.verbose(f"Selected cable result: {result}")
                             return result
                         if perc < best_perc:
                             best = result
@@ -179,7 +179,7 @@ def find_awg(
                                 fill = find_conduit(AWG(awg_size), n * (phases + ground), conduit=c)
                                 result["conduit"] = c
                                 result["pipe_inch"] = fill["size_inch"]
-                            gw.debug(f"Selected cable result: {result}")
+                            gw.verbose(f"Selected cable result: {result}")
                             return result
                         if perc < best_perc:
                             best = result
