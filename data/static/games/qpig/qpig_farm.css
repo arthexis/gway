@@ -27,7 +27,11 @@
     border: 1px solid #333;
     background: #d6f5d6;
     cursor: pointer;
-    color: #fff;
+    color: #000;
+}
+
+.qpig-garden button:disabled {
+    color: grey;
 }
 
 .qpig-garden #qpig-canvas {
