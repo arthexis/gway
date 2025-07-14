@@ -20,6 +20,17 @@
         "reveal": "always",
         "panel": "shared"
       }
+    },
+    {
+      "label": "Install Requirements",
+      "type": "shell",
+      "command": "python -m pip install -U -r requirements.txt",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "shared"
+      }
     }
   ]
 }
