@@ -20,6 +20,7 @@ _fresh_mtime = None
 _fresh_dt = None
 _static_route = "static"
 _shared_route = "shared"
+_default_include_mode = "collect"
 UPLOAD_MB = 100
 
 def _refresh_fresh_date():
@@ -82,6 +83,7 @@ def setup_app(project,
     shared="shared",
     css="global",           # Default CSS (without .css extension)
     js="global",            # Default JS  (without .js extension)
+    mode="collect",        # collect | manual | embedded
     auth="disabled",       # Accept "optional"/"disabled" words to disable
     engine="bottle",
     **setup_kwargs,
@@ -89,8 +91,9 @@ def setup_app(project,
     """
     Setup Bottle web application with symmetrical static/shared public folders.
     ``project`` may be a single name or sequence of fallback names. The first
-    project found is loaded and used. CSS/JS params are used as the only static
-    includes.
+    project found is loaded and used. ``mode`` controls how CSS/JS files are
+    included: ``collect`` (default) uses bundled files, ``manual`` links each
+    file individually, and ``embedded`` inlines the contents into the page.
     """
     global _ver, _homes, _enabled, _static_route, _shared_route
 
@@ -107,6 +110,7 @@ def setup_app(project,
         _static_route = static
     if shared:
         _shared_route = shared
+    include_mode = str(mode or _default_include_mode).strip().lower()
 
     project_names = gw.cast.to_list(project)
     if not project_names:
@@ -233,6 +237,7 @@ def setup_app(project,
 
         def view_dispatch(view):
             nonlocal home, views
+            request.environ['gw.include_mode'] = include_mode
             if (
                 unauth := _maybe_auth(
                     "Unauthorized: You are not permitted to view this page."
@@ -300,13 +305,18 @@ def setup_app(project,
 
             final_content = "".join(contents)
             media_origin = "/shared" if shared else ("static" if static else "")
-            css_files = (f"{media_origin}/{css}.css",) if css else None
-            js_files = (f"{media_origin}/{js}.js",) if js else None
+            if include_mode == "collect":
+                css_files = (f"{media_origin}/{css}.css",) if css else None
+                js_files = (f"{media_origin}/{js}.js",) if js else None
+            else:
+                css_files = None
+                js_files = None
             return render_template(
                 title="GWAY - " + " + ".join(titles),
                 content=final_content,
                 css_files=css_files,
                 js_files=js_files,
+                mode=include_mode,
             )
 
         def index_dispatch():
@@ -506,7 +516,7 @@ def build_url(*args, **kwargs):
         url += "?" + urlencode(kwargs)
     return url
 
-def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
+def render_template(*, title="GWAY", content="", css_files=None, js_files=None, mode=None):
     global _ver
     version = _ver = _ver or gw.version()
     fresh = _format_fresh(_refresh_fresh_date())
@@ -517,33 +527,58 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         except Exception:
             build = ""
 
-    css_files = [c for c in gw.cast.to_list(css_files) if c]
-    if not css_files:
-        extra = request.environ.get("gw.include_css", [])
-        css_files = [f"/{_static_route}/" + str(p).lstrip("/") for p in extra]
+    mode = str(mode or getattr(request, 'environ', {}).get('gw.include_mode') or _default_include_mode).lower()
+    extra_css = request.environ.get("gw.include_css", [])
+    extra_js = request.environ.get("gw.include_js", [])
+
+    css_files = [c for c in gw.cast.to_list(css_files) if c] if mode == "collect" else []
+    js_files = [j for j in gw.cast.to_list(js_files) if j] if mode == "collect" else []
     theme_css = None
     if is_setup('web.nav'):
         try:
             theme_css = gw.web.nav.active_style()
         except Exception:
             theme_css = None
-    # <<< Patch: APPEND, don't prepend! >>>
-    if theme_css and theme_css not in css_files:
-        css_files.append(theme_css)
 
     css_links = ""
-    if css_files:
+    js_links = ""
+
+    if mode == "collect":
+        if theme_css and theme_css not in css_files:
+            css_files.append(theme_css)
         for href in css_files:
             css_links += f'<link rel="stylesheet" href="{href}">\n'
-
-    js_files = [j for j in gw.cast.to_list(js_files) if j]
-    if not js_files:
-        extra_js = request.environ.get("gw.include_js", [])
-        js_files = [f"/{_static_route}/" + str(p).lstrip("/") for p in extra_js]
-    js_links = ""
-    if js_files:
         for src in js_files:
             js_links += f'<script src="{src}"></script>\n'
+    elif mode == "manual":
+        css_refs = [f"/{_static_route}/" + str(p).lstrip("/") for p in extra_css]
+        if theme_css:
+            css_refs.append(theme_css)
+        for href in css_refs:
+            css_links += f'<link rel="stylesheet" href="{href}">\n'
+        for src in [f"/{_static_route}/" + str(p).lstrip("/") for p in extra_js]:
+            js_links += f'<script src="{src}"></script>\n'
+    else:  # embedded
+        css_paths = [gw.resource("data", "static", p) for p in extra_css]
+        if theme_css:
+            parts = theme_css.lstrip("/").split("/")
+            if parts and parts[0] == _static_route:
+                css_paths.append(gw.resource("data", "static", *parts[1:]))
+            elif parts and parts[0] == _shared_route:
+                css_paths.append(gw.resource("work", "shared", *parts[1:]))
+        for path in css_paths:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    css_links += f"<style>\n{f.read()}\n</style>\n"
+            except Exception:
+                gw.debug(f"Missing CSS to embed: {path}")
+        js_paths = [gw.resource("data", "static", p) for p in extra_js]
+        for path in js_paths:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    js_links += f"<script>\n{f.read()}\n</script>\n"
+            except Exception:
+                gw.debug(f"Missing JS to embed: {path}")
 
     favicon = f'<link rel="icon" href="/favicon.ico" type="image/x-icon" />'
     credits = f'''
