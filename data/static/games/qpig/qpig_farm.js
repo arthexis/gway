@@ -1,12 +1,12 @@
 // file: data/static/games/qpig/qpig_farm.js
 
-const KEY = 'qpig_state';
-if (!sessionStorage.getItem(KEY) && window.qpigInitState) {
-    sessionStorage.setItem(KEY, window.qpigInitState);
+const QPIG_KEY = 'qpig_state';
+if (!sessionStorage.getItem(QPIG_KEY) && window.qpigInitState) {
+    sessionStorage.setItem(QPIG_KEY, window.qpigInitState);
 }
 
 function loadState() {
-    const data = sessionStorage.getItem(KEY) || window.qpigInitState || '';
+    const data = sessionStorage.getItem(QPIG_KEY) || window.qpigInitState || '';
     try {
         return JSON.parse(atob(data));
     } catch (e) {
@@ -15,7 +15,7 @@ function loadState() {
 }
 
 function saveState(st) {
-    sessionStorage.setItem(KEY, btoa(JSON.stringify(st)));
+    sessionStorage.setItem(QPIG_KEY, btoa(JSON.stringify(st)));
 }
 
 function updateCounters(st) {
@@ -31,9 +31,33 @@ function updateCounters(st) {
     if (vcLab) vcLab.textContent = `V-Creds: ${st.vcreds}`;
 }
 
+function producePellet(st, idx) {
+    const p = st.garden.pigs[idx];
+    if (!p || p.pooping) {
+        return;
+    }
+    p.pooping = true;
+    p.prevActivity = p.activity;
+    p.activity = 'Pooping.';
+    setTimeout(() => {
+        const cur = loadState();
+        const pig = (cur.garden.pigs || [])[idx];
+        if (!pig) return;
+        cur.garden.qpellets = (cur.garden.qpellets || 0) + 1;
+        if (pig.activity === 'Pooping.' && pig.pooping) {
+            pig.activity = pig.prevActivity || pig.activity;
+        }
+        delete pig.prevActivity;
+        delete pig.pooping;
+        saveState(cur);
+        updateCounters(cur);
+    }, 2000);
+}
+
 async function tick() {
     const st = loadState();
-    for (const p of (st.garden.pigs || [])) {
+    for (let i = 0; i < (st.garden.pigs || []).length; i++) {
+        const p = st.garden.pigs[i];
         if (Math.random() * 100 < (p.curiosity || 0)) {
             try {
                 const url = `/api/games/qpig/next-activity?act=${encodeURIComponent(p.activity || '')}&alertness=${p.alertness}&curiosity=${p.curiosity}&fitness=${p.fitness}&handling=${p.handling}`;
@@ -45,7 +69,7 @@ async function tick() {
             } catch (e) {}
         }
         if (Math.random() * 100 < (p.fitness || 0)) {
-            st.garden.qpellets = (st.garden.qpellets || 0) + 1;
+            producePellet(st, i);
         }
     }
     saveState(st);
@@ -56,7 +80,7 @@ setInterval(() => { tick(); }, 1000);
 const save = document.getElementById('qpig-save');
 if (save) {
     save.addEventListener('click', () => {
-        const data = sessionStorage.getItem(KEY) || '';
+        const data = sessionStorage.getItem(QPIG_KEY) || '';
         const blob = new Blob([data], { type: 'application/octet-stream' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -76,7 +100,7 @@ if (load) {
             if (!f) return;
             const r = new FileReader();
             r.onload = ev => {
-                sessionStorage.setItem(KEY, ev.target.result.trim());
+                sessionStorage.setItem(QPIG_KEY, ev.target.result.trim());
                 location.reload();
             };
             r.readAsText(f);
