@@ -18,6 +18,8 @@ _enabled = set()
 _registered_routes: set[tuple[str, str]] = set()
 _fresh_mtime = None
 _fresh_dt = None
+_static_route = "static"
+_shared_route = "shared"
 UPLOAD_MB = 100
 
 def _refresh_fresh_date():
@@ -90,7 +92,7 @@ def setup_app(project,
     project found is loaded and used. CSS/JS params are used as the only static
     includes.
     """
-    global _ver, _homes, _enabled
+    global _ver, _homes, _enabled, _static_route, _shared_route
 
     auth_required = str(auth).strip().lower() not in {
         "none", "false", "disabled", "optional"
@@ -101,6 +103,10 @@ def setup_app(project,
 
     _ver = _ver or gw.version()
     bottle.BaseRequest.MEMFILE_MAX = UPLOAD_MB * 1024 * 1024
+    if static:
+        _static_route = static
+    if shared:
+        _shared_route = shared
 
     project_names = gw.cast.to_list(project)
     if not project_names:
@@ -263,6 +269,7 @@ def setup_app(project,
                     return gw.web.error.redirect(
                         f"View not found: {method_func_name} or {generic_func_name} in {project}"
                     )
+                _record_includes(view_func)
 
                 try:
                     content = view_func(*args, **kwargs)
@@ -293,11 +300,13 @@ def setup_app(project,
 
             final_content = "".join(contents)
             media_origin = "/shared" if shared else ("static" if static else "")
+            css_files = (f"{media_origin}/{css}.css",) if css else None
+            js_files = (f"{media_origin}/{js}.js",) if js else None
             return render_template(
                 title="GWAY - " + " + ".join(titles),
                 content=final_content,
-                css_files=(f"{media_origin}/{css}.css",),
-                js_files=(f"{media_origin}/{js}.js",),
+                css_files=css_files,
+                js_files=js_files,
             )
 
         def index_dispatch():
@@ -430,6 +439,7 @@ def setup_app(project,
                 if not callable(view_func):
                     return gw.web.error.redirect(
                         f"View not found: {method_func_name} or {generic_func_name} in {project}")
+                _record_includes(view_func)
 
                 try:
                     content = view_func(*args, **kwargs)
@@ -507,7 +517,10 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         except Exception:
             build = ""
 
-    css_files = gw.cast.to_list(css_files)
+    css_files = [c for c in gw.cast.to_list(css_files) if c]
+    if not css_files:
+        extra = request.environ.get("gw.include_css", [])
+        css_files = [f"/{_static_route}/" + str(p).lstrip("/") for p in extra]
     theme_css = None
     if is_setup('web.nav'):
         try:
@@ -523,7 +536,10 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None):
         for href in css_files:
             css_links += f'<link rel="stylesheet" href="{href}">\n'
 
-    js_files = gw.cast.to_list(js_files)
+    js_files = [j for j in gw.cast.to_list(js_files) if j]
+    if not js_files:
+        extra_js = request.environ.get("gw.include_js", [])
+        js_files = [f"/{_static_route}/" + str(p).lstrip("/") for p in extra_js]
     js_links = ""
     if js_files:
         for src in js_files:
@@ -622,6 +638,15 @@ def add_route(app, rule: str, method, callback):
             continue
         _registered_routes.add(key)
         app.route(rule, method=m)(callback)
+
+def _record_includes(func):
+    """Record CSS/JS includes for the current request if present."""
+    css = getattr(func, "_include_css", [])
+    js = getattr(func, "_include_js", [])
+    if css:
+        request.environ.setdefault("gw.include_css", set()).update(css)
+    if js:
+        request.environ.setdefault("gw.include_js", set()).update(js)
 
 def is_setup(project_name):
     global _enabled
