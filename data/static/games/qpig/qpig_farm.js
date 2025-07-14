@@ -31,9 +31,33 @@ function updateCounters(st) {
     if (vcLab) vcLab.textContent = `V-Creds: ${st.vcreds}`;
 }
 
+function producePellet(st, idx) {
+    const p = st.garden.pigs[idx];
+    if (!p || p.pooping) {
+        return;
+    }
+    p.pooping = true;
+    p.prevActivity = p.activity;
+    p.activity = 'Pooping.';
+    setTimeout(() => {
+        const cur = loadState();
+        const pig = (cur.garden.pigs || [])[idx];
+        if (!pig) return;
+        cur.garden.qpellets = (cur.garden.qpellets || 0) + 1;
+        if (pig.activity === 'Pooping.' && pig.pooping) {
+            pig.activity = pig.prevActivity || pig.activity;
+        }
+        delete pig.prevActivity;
+        delete pig.pooping;
+        saveState(cur);
+        updateCounters(cur);
+    }, 2000);
+}
+
 async function tick() {
     const st = loadState();
-    for (const p of (st.garden.pigs || [])) {
+    for (let i = 0; i < (st.garden.pigs || []).length; i++) {
+        const p = st.garden.pigs[i];
         if (Math.random() * 100 < (p.curiosity || 0)) {
             try {
                 const url = `/api/games/qpig/next-activity?act=${encodeURIComponent(p.activity || '')}&alertness=${p.alertness}&curiosity=${p.curiosity}&fitness=${p.fitness}&handling=${p.handling}`;
@@ -45,7 +69,7 @@ async function tick() {
             } catch (e) {}
         }
         if (Math.random() * 100 < (p.fitness || 0)) {
-            st.garden.qpellets = (st.garden.qpellets || 0) + 1;
+            producePellet(st, i);
         }
     }
     saveState(st);
