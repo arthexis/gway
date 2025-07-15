@@ -4,12 +4,19 @@ import subprocess
 import os
 import sys
 from pathlib import Path
-from gway import gw
+from gway import Gateway
+import gway.gateway as gateway_module
 
 class InitRootTests(unittest.TestCase):
     def test_creates_expected_structure(self):
         with tempfile.TemporaryDirectory() as tmp:
-            result = gw.init_root(tmp)
+            local_gw = Gateway()
+            old = gateway_module.gw
+            gateway_module.gw = local_gw
+            try:
+                result = local_gw.init_root(tmp)
+            finally:
+                gateway_module.gw = old
             root_path = Path(result)
             expected = [
                 'envs/clients',
@@ -26,7 +33,13 @@ class InitRootTests(unittest.TestCase):
 
     def test_cli_runs_project_from_anywhere(self):
         with tempfile.TemporaryDirectory() as root_tmp, tempfile.TemporaryDirectory() as cwd_tmp:
-            root_path = Path(gw.init_root(root_tmp))
+            local_gw = Gateway()
+            old = gateway_module.gw
+            gateway_module.gw = local_gw
+            try:
+                root_path = Path(local_gw.init_root(root_tmp))
+            finally:
+                gateway_module.gw = old
             project_dir = root_path / 'projects'
             proj_file = project_dir / 'demo.py'
             proj_file.write_text('def say_hi(name="World"):\n    print(f"hello {name}")\n')
