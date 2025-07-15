@@ -200,6 +200,8 @@ def render(*, homes=None, links=None):
             )
         compass = f'<div class="compass"{data_attr}>{compass}</div>'
 
+    if _side == "top":
+        return f"<nav class='top-bar'><ul class='top-links'>{links_html}</ul>{search_box}</nav>"
     return f"<aside>{search_box}<ul>{links_html}</ul><br>{compass}{toggle}</aside>"
 
 
@@ -526,13 +528,14 @@ def setup_app(*, app=None, style=None, side="left", **_):
     """Optional hook to set a default style and nav side when the project is added.
 
     Pass ``style='random'`` to select a random theme on each request.
-    Use ``side='right'`` to place the navigation on the right side.
+    Use ``side='right'`` to place the navigation on the right side or ``side='top'``
+    for a horizontal bar with drop-down menus.
     """
     global _forced_style, _side
     if style:
         _forced_style = style
         gw.info(f"web.nav forced style: {style}")
-    if side in {"left", "right"}:
+    if side in {"left", "right", "top"}:
         _side = side
         gw.info(f"web.nav side set to {side}")
     else:
@@ -541,5 +544,5 @@ def setup_app(*, app=None, style=None, side="left", **_):
 
 
 def side() -> str:
-    """Return the configured navigation side ('left' or 'right')."""
+    """Return the configured navigation side ('left', 'right' or 'top')."""
     return _side
