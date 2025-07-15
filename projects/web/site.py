@@ -609,3 +609,11 @@ def view_project_readmes():
     return "<h1>Project READMEs</h1>" + body
 
 
+def build_help_db(*, update: bool = False):
+    """Compatibility wrapper for :func:`gw.help_db.build`."""
+    gw.warning(
+        "web.site.build_help_db is deprecated; use help-db.build instead"
+    )
+    return gw.help_db.build(update=update)
+
+

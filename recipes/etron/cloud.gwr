@@ -9,8 +9,9 @@ web app setup:
     - web.nav
     - vbox
     - ocpp.data --home charger-summary
-   
-# Toggle this version to apply the allow list  
+help-db build
+
+# Toggle this version to apply the allow list
 ocpp csms setup-app:
     --allow data/etron/rfids.cdv --location etron_cloud
 
