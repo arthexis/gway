@@ -40,7 +40,7 @@ def help(*args, full: bool = False, list_flags: bool = False):
 
     db_path = gw.resource("data", "help.sqlite")
     if not os.path.isfile(db_path):
-        gw.web.site.build_help_db()
+        gw.help_db.build()
 
     joined_args = " ".join(args).strip().replace("-", "_")
     norm_args = [a.replace("-", "_").replace("/", ".") for a in args]

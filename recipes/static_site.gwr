@@ -15,7 +15,7 @@ web app setup-app --mode manual:
     - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
     - web.auth
 
-web site build-help-db
+help-db build
 
 web:
  - auth config-basic --optional --temp-link
