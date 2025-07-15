@@ -11,8 +11,9 @@ web app setup:
     - monitor.nmcli 
     - monitor.rpi --home pi-remote
     - ocpp.data --home charger-summary
+web site build-help-db
 
-# Toggle this version to apply the allowlist  
+# Toggle this version to apply the allowlist
 # ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre
 ocpp csms setup-app:
     --location porsche_centre
