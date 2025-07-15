@@ -100,9 +100,16 @@ class ChargerDashboardRefreshTests(unittest.TestCase):
                 )
             )
             await asyncio.sleep(3)
+            view_resp = await asyncio.to_thread(
+                requests.get,
+                "http://127.0.0.1:18888/ocpp/csms/active-chargers",
+                headers=_auth_header(TEST_USER, TEST_PASS),
+                timeout=5,
+            )
+            self.assertIn("SIMDASH", view_resp.text)
             resp = await asyncio.to_thread(
                 requests.post,
-                "http://127.0.0.1:18888/render/ocpp/csms/charger-status/charger_list",
+                "http://127.0.0.1:18888/render/ocpp/csms/active-chargers/charger_list",
                 headers=_auth_header(TEST_USER, TEST_PASS),
                 timeout=5,
             )
