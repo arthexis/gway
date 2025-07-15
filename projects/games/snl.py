@@ -126,12 +126,14 @@ def view_massive_snake(*, action=None, name=None, color=None):
 
     message = ""
     roll_msg = ""
+    disable_roll = False
     if action == "ascend" and pid and board["players"].get(pid, {}).get("pos") >= BOARD_SIZE:
         asc += 1
         _set_ascensions(asc)
         board["players"][pid]["pos"] = 0
         save_board(board)
         message = "Ascended!"
+        disable_roll = True
     elif action == "roll":
         roll = random.randint(1, 6)
         board["last_roll"] = roll
@@ -145,8 +147,10 @@ def view_massive_snake(*, action=None, name=None, color=None):
         message = f"Rolled {roll}!"
         if event == "ladder":
             message += " You went up a ladder!"
+            disable_roll = True
         elif event == "snake":
             message += " You fell down a snake!"
+            disable_roll = True
         if pid and board["players"].get(pid, {}).get("pos", 0) >= BOARD_SIZE:
             ready_to_ascend = True
             message += " Ready to ascend!"
@@ -190,26 +194,16 @@ def view_massive_snake(*, action=None, name=None, color=None):
                 "</form>"
             )
 
-    script = ""
+    script_parts = []
     if ready_to_ascend and pid:
-        script = (
-            "<script>"
-            "const title=document.getElementById('msnake-title');"
-            "const msg=document.getElementById('ascend-msg');"
-            "msg.textContent='Ready to ascend! ';"
-            "const span=document.createElement('span');"
-            "span.textContent=title.textContent;"
-            "span.className='snake-title ascended';"
-            "msg.appendChild(span);"
-            "const roll=document.querySelector('.roll-button');"
-            "const asc=document.querySelector('.snake-ascend button');"
-            "asc.disabled=true; if(roll) roll.disabled=true;"
-            "setTimeout(()=>{msg.remove();asc.disabled=false;if(roll) roll.disabled=false;},2000);"
-            "</script>"
-        )
+        script_parts.append("<script>window.msnakeReadyToAscend=true;</script>")
+    if disable_roll:
+        script_parts.append("<script>window.msnakeDisableRoll=true;</script>")
+    script = ''.join(script_parts)
 
     html = [
         '<link rel="stylesheet" href="/static/games/massive_snake/board.css">',
+        '<script src="/static/games/massive_snake/massive_snake.js"></script>',
         "<h1 id='msnake-title' class='snake-title'>Massive Snake</h1>",
         script,
         "<p><em>A Massively Multiplayer Game of Snakes and Ladders.</em></p>",
