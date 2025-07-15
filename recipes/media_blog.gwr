@@ -12,6 +12,7 @@ web app setup-app:
     - web.nav --home style-switcher
     - web.site --home reader
     - sql.crud --home posts?table=posts&dbfile=work/blog.sqlite
+web site build-help-db
 web:
  - static collect
  - server start-app --port 8888

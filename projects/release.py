@@ -33,7 +33,7 @@ def build(
     bump: bool = False,
     dist: bool = False,
     twine: bool = False,
-    help_db: bool = True,
+    help_db: bool = False,
     projects: bool = False,
     git: bool = False,
     all: bool = False,
@@ -63,7 +63,6 @@ def build(
         bump = True
         dist = True
         twine = True
-        help_db = True
         git = True
         projects = True
 
@@ -77,8 +76,7 @@ def build(
         if status.stdout.strip():
             gw.abort("Git repository is not clean. Commit or stash changes before building.")
 
-    if help_db:
-        build_help_db()
+
 
     if projects:
         project_dir = gw.resource("projects")
@@ -265,8 +263,6 @@ def build(
 
     if git:
         files_to_add = ["VERSION", "BUILD", "pyproject.toml", "CHANGELOG.rst"]
-        if help_db:
-            files_to_add.append("data/help.sqlite")
         if projects:
             files_to_add.append("README.rst")
         subprocess.run(["git", "add"] + files_to_add, check=True)
@@ -277,81 +273,10 @@ def build(
 
 
 def build_help_db():
-    with gw.sql.open_connection(datafile="data/help.sqlite") as cursor:
-        cursor.execute("DROP TABLE IF EXISTS help")
-        cursor.execute("""
-            CREATE VIRTUAL TABLE help USING fts5(
-                project, function, signature, docstring, source, todos, tokenize='porter')
-        """)
-
-        for dotted_path in _walk_projects("projects"):
-            try:
-                project_obj = gw.load_project(dotted_path)
-                for fname in dir(project_obj):
-                    if fname.startswith("_"):
-                        continue
-                    func = getattr(project_obj, fname, None)
-                    if not callable(func):
-                        continue
-                    raw_func = getattr(func, "__wrapped__", func)
-                    doc = inspect.getdoc(raw_func) or ""
-                    sig = str(inspect.signature(raw_func))
-                    try:
-                        source = "".join(inspect.getsourcelines(raw_func)[0])
-                    except OSError:
-                        source = ""
-                    todos = _extract_todos(source)
-                    cursor.execute("INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)",
-                                   (dotted_path, fname, sig, doc, source, "\n".join(todos)))
-            except Exception as e:
-                gw.warning(f"Skipping project {dotted_path}: {e}")
-
-        # Add builtin functions under synthetic project "builtin"
-        for name, func in gw._builtins.items():
-            raw_func = getattr(func, "__wrapped__", func)
-            doc = inspect.getdoc(raw_func) or ""
-            sig = str(inspect.signature(raw_func))
-            try:
-                source = "".join(inspect.getsourcelines(raw_func)[0])
-            except OSError:
-                source = ""
-            todos = _extract_todos(source)
-
-            cursor.execute("INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)",
-                           ("builtin", name, sig, doc, source, "\n".join(todos)))
-
-        cursor.execute("COMMIT")
+    """Compatibility wrapper that delegates to :mod:`web.site`."""
+    return gw.web.site.build_help_db(update=True)
 
 
-def _walk_projects(base="projects"):
-    """Yield all project modules as dotted paths."""
-    for dirpath, _, filenames in os.walk(base):
-        for fname in filenames:
-            if not fname.endswith(".py") or fname.startswith("_"):
-                continue
-            rel_path = os.path.relpath(os.path.join(dirpath, fname), base)
-            dotted = rel_path.replace(os.sep, ".").removesuffix(".py")
-            yield dotted
-
-
-def _extract_todos(source):
-    todos = []
-    lines = source.splitlines()
-    current = []
-    for line in lines:
-        stripped = line.strip()
-        if "# TODO" in stripped:
-            if current:
-                todos.append("\n".join(current))
-            current = [stripped]
-        elif current and (stripped.startswith("#") or not stripped):
-            current.append(stripped)
-        elif current:
-            todos.append("\n".join(current))
-            current = []
-    if current:
-        todos.append("\n".join(current))
-    return todos
 
 
 def loc(*paths):
