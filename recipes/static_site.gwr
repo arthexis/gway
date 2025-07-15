@@ -8,7 +8,7 @@ web app setup-app --mode manual:
     - web.message
     - awg --home awg-calculator
     - vbox --home uploads
-    - ocpp.csms --auth required --home charger-status
+    - ocpp.csms --auth required --home active-chargers
     - ocpp.evcs --auth required --home cp-simulator
     - ocpp.data --auth required --home charger-summary
     - web.chat.actions --home audit-chatlog --auth required

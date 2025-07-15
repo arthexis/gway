@@ -465,17 +465,15 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
     </div>
     '''
 
-def view_charger_status(*, action=None, charger_id=None, show=None, **_):
+def view_active_chargers(*, action=None, charger_id=None, **_):
     """
-    Card-based OCPP dashboard: summary of charger connections.
+    Card-based OCPP dashboard: summary of currently active chargers.
     Renders <div id="charger-list" gw-render="charger_list" gw-refresh="5">
     so the client can periodically refresh the list via render.js.
-    ``show=all`` includes historic chargers from the database.
     """
     msg = ""
-    show = show or request.query.get("show")
     gw.verbose(
-        f"[view_charger_status] start: action={action} charger_id={charger_id} show={show}"
+        f"[view_active_chargers] start: action={action} charger_id={charger_id}"
     )
     if request.method == "POST":
         action = request.forms.get("action")
@@ -489,20 +487,15 @@ def view_charger_status(*, action=None, charger_id=None, show=None, **_):
                 msg = f"Error: {e}"
 
     gw.verbose(
-        f"[view_charger_status] active_cons={list(_active_cons.keys())}"
+        f"[view_active_chargers] active_cons={list(_active_cons.keys())}"
     )
     gw.verbose(
-        f"[view_charger_status] transactions={list(_transactions.keys())}"
+        f"[view_active_chargers] transactions={list(_transactions.keys())}"
     )
 
     all_chargers = set(_active_cons) | set(_transactions)
-    if show == "all":
-        try:
-            all_chargers |= set(gw.ocpp.data.list_chargers())
-        except Exception:
-            pass
     gw.verbose(
-        f"[view_charger_status] all_chargers={sorted(all_chargers)} show={show}"
+        f"[view_active_chargers] all_chargers={sorted(all_chargers)}"
     )
     html = [
         '<link rel="stylesheet" href="/static/ocpp/csms/charger_status.css">',
@@ -513,9 +506,6 @@ def view_charger_status(*, action=None, charger_id=None, show=None, **_):
     if msg:
         html.append(f'<p class="error">{msg}</p>')
 
-    link_all = '<a href="?show=all">Show all offline chargers</a>'
-    link_new = '<a href="?show=new">Show active and recent chargers</a>'
-    html.append(f"<p>{link_new if show == 'all' else link_all}</p>")
 
     # Abnormal status warning
     if _abnormal_status:
@@ -536,7 +526,7 @@ def view_charger_status(*, action=None, charger_id=None, show=None, **_):
 
     # --- The key block for autorefresh ---
     html.append(
-        f'<div id="charger-list" gw-render="charger_list" gw-refresh="5" gw-click="refresh" data-show="{show or ""}">'
+        '<div id="charger-list" gw-render="charger_list" gw-refresh="5" gw-click="refresh">'
     )
     if not all_chargers:
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
@@ -566,20 +556,13 @@ def view_charger_status(*, action=None, charger_id=None, show=None, **_):
     """)
     return "".join(html)
 
-def render_charger_list(*, show=None, **kwargs):
+def render_charger_list(**kwargs):
     """
     Regenerate the full charger list HTML (all cards).
     No parsing of incoming HTML; just returns a new block of HTML for charger-list.
     Called via POST (or GET) from render.js, possibly with params in kwargs.
-    ``show=all`` includes historic chargers from the database.
     """
-    show = show or kwargs.get("show") or request.forms.get("show") or request.query.get("show")
     all_chargers = set(_active_cons) | set(_transactions)
-    if show == "all":
-        try:
-            all_chargers |= set(gw.ocpp.data.list_chargers())
-        except Exception:
-            pass
     html = []
     if not all_chargers:
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
@@ -595,14 +578,14 @@ def render_charger_list(*, show=None, **kwargs):
 def view_charger_detail(*, charger_id=None, **_):
     """Detail view for a single charger with live log."""
     if not charger_id:
-        return redirect("/ocpp/csms/charger-status")
+        return redirect("/ocpp/csms/active-chargers")
     known_ids = set(_active_cons) | set(_transactions) | set(_latest_heartbeat)
     if charger_id not in known_ids:
         try:
             if charger_id not in gw.ocpp.data.list_chargers():
-                return redirect("/ocpp/csms/charger-status")
+                return redirect("/ocpp/csms/active-chargers")
         except Exception:
-            return redirect("/ocpp/csms/charger-status")
+            return redirect("/ocpp/csms/active-chargers")
 
     msg = ""
     if request.method == "POST":
@@ -628,7 +611,7 @@ def view_charger_detail(*, charger_id=None, **_):
     html = [
         '<link rel="stylesheet" href="/static/ocpp/csms/charger_status.css">',
         '<script src="/static/render.js"></script>',
-        f'<h1><a href="/ocpp/csms/charger-status">All Chargers</a> / {charger_id} Details</h1>'
+        f'<h1><a href="/ocpp/csms/active-chargers">All Chargers</a> / {charger_id} Details</h1>'
     ]
     if msg:
         html.append(f'<p class="error">{msg}</p>')

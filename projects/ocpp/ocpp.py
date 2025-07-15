@@ -238,7 +238,7 @@ csms.bind_state(sys.modules[__name__])
 def view_dashboard(**_):
     """Landing page linking to sub-project dashboards."""
     links = [
-        ("CSMS Status", "/ocpp/csms/charger-status"),
+        ("CSMS Status", "/ocpp/csms/active-chargers"),
         ("Charger Summary", "/ocpp/data/summary"),
         ("Energy Time Series", "/ocpp/data/time-series"),
         ("CP Simulator", "/ocpp/evcs/cp-simulator"),
@@ -249,8 +249,8 @@ def view_dashboard(**_):
     return "\n".join(html)
 
 
-def view_charger_status(*args, **kwargs):
-    return csms.view_charger_status(*args, **kwargs)
+def view_active_chargers(*args, **kwargs):
+    return csms.view_active_chargers(*args, **kwargs)
 
 
 def view_charger_detail(*args, **kwargs):
