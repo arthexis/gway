@@ -9,7 +9,7 @@ web app setup:
     - web.nav
     - vbox
     - ocpp.data --home charger-summary
-web site build-help-db
+help-db build
 
 # Toggle this version to apply the allow list
 ocpp csms setup-app:

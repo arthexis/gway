@@ -17,7 +17,7 @@ web app setup:
     - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
     - web.auth
 
-web site build-help-db
+help-db build
 
 web:
  - static collect

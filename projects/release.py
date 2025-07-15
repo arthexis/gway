@@ -273,8 +273,8 @@ def build(
 
 
 def build_help_db():
-    """Compatibility wrapper that delegates to :mod:`web.site`."""
-    return gw.web.site.build_help_db(update=True)
+    """Compatibility wrapper that delegates to :mod:`help_db`."""
+    return gw.help_db.build(update=True)
 
 
 

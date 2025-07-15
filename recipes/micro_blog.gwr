@@ -13,7 +13,7 @@ web app setup-app:
     - web.site --home reader
     - web.auth --home login
     - sql.crud --home table?table=posts&dbfile=work/blog.sqlite
-web site build-help-db
+help-db build
 web:
  - static collect
  - auth config-basic --optional --temp-link
