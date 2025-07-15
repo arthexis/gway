@@ -47,3 +47,19 @@ For example, to embed the ``reader`` page:
 
 Only self-contained views display correctly when framed.
 
+Function Naming and Routing
+---------------------------
+
+Functions prefixed with ``view_`` render HTML pages. ``api_`` functions return
+JSON and ``render_`` functions return fragments for dynamic updates. Their names
+map directly to URL paths:
+
+* ``view_home`` -> ``/project/home``
+* ``view_get_stats`` -> ``/project/stats`` for GET requests only
+* ``api_update`` -> ``/api/project/update``
+* ``render_status_charger`` -> ``/render/project/status/charger``
+
+Multiple views may be combined in one request using ``+`` in the path, e.g.
+``/project/view1+view2``. Render functions can return HTML strings, JSON lists
+or dictionaries and are often used with ``render.js`` for auto-refresh blocks.
+
