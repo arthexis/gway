@@ -1,4 +1,22 @@
 # file: projects/web/app.py
+"""Web application dispatcher for GWAY.
+
+`setup_app` registers a project and exposes any ``view_*`` functions under
+``/project`` for HTML responses, ``api_*`` under ``/api/project`` for JSON, and
+``render_*`` under ``/render/project/<view>/<hash>`` for fragment updates.
+
+Functions can be specialized by HTTP method (``view_get_*``/``view_post_*``) and
+multiple view names may be combined with ``+`` in the path to build a mashup.
+``render_*`` functions may return HTML or JSON and are ideal for dynamic
+refreshes via ``render.js``.
+
+CSS and JavaScript from enabled projects are bundled via
+``web.static.collect``. ``setup_app`` defaults to ``mode='collect'`` so pages
+load ``/shared/global.css`` and ``/shared/global.js`` automatically. Add
+``<view>.css`` or ``<view>.js`` (without the ``view_`` prefix) to
+``data/static/<project>`` for view-specific assets and avoid manual ``<link>`` or
+``<script>`` tags unless ``mode='manual'`` is requested.
+"""
 
 import os
 from urllib.parse import urlencode

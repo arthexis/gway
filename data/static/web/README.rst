@@ -47,3 +47,30 @@ For example, to embed the ``reader`` page:
 
 Only self-contained views display correctly when framed.
 
+Function Naming and Routing
+---------------------------
+
+Functions prefixed with ``view_`` render HTML pages. ``api_`` functions return
+JSON and ``render_`` functions return fragments for dynamic updates. Their names
+map directly to URL paths:
+
+* ``view_home`` -> ``/project/home``
+* ``view_get_stats`` -> ``/project/stats`` for GET requests only
+* ``api_update`` -> ``/api/project/update``
+* ``render_status_charger`` -> ``/render/project/status/charger``
+
+Multiple views may be combined in one request using ``+`` in the path, e.g.
+``/project/view1+view2``. Render functions can return HTML strings, JSON lists
+or dictionaries and are often used with ``render.js`` for auto-refresh blocks.
+
+Static Collection
+-----------------
+
+``setup_app`` bundles CSS and JavaScript from enabled projects into
+``/shared/global.css`` and ``/shared/global.js``. Call ``web static collect``
+before starting the server to create or update these bundles. To add files for a
+specific view, create ``<view>.css`` or ``<view>.js`` (without the ``view_``
+prefix) inside ``data/static/<project>``. These assets are picked up
+automatically during ``static collect`` so manual ``<link>`` or ``<script>``
+tags are unnecessary unless ``mode='manual'`` is requested.
+
