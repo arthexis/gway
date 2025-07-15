@@ -44,6 +44,7 @@ class InitRootTests(unittest.TestCase):
     def test_cli_runs_project_from_anywhere(self):
         with tempfile.TemporaryDirectory() as root_tmp, tempfile.TemporaryDirectory() as cwd_tmp:
             local_gw = Gateway()
+            root_path = Path(local_gw.init_root(root_tmp))
             project_dir = root_path / 'projects'
             proj_file = project_dir / 'demo.py'
             proj_file.write_text('def say_hi(name="World"):\n    print(f"hello {name}")\n')
