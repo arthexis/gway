@@ -47,6 +47,51 @@ html, body {
     flex-direction: row-reverse;
 }
 
+.layout.nav-top {
+    flex-direction: column;
+}
+
+.layout.nav-top nav {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: var(--bg-alt, #f0f0f0);
+    border-bottom: 1px solid #ccc;
+}
+
+.layout.nav-top nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+}
+
+.layout.nav-top nav li {
+    position: relative;
+    margin-right: 1em;
+}
+
+.layout.nav-top nav li ul.sub-links {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: 100%;
+    background: var(--bg-alt, #f0f0f0);
+    border: 1px solid #ccc;
+    padding: 0.3em 0.5em;
+    list-style: none;
+    min-width: 10em;
+    z-index: 1000;
+}
+
+.layout.nav-top nav li:hover ul.sub-links {
+    display: block;
+}
+
+.layout.nav-top nav form.nav {
+    margin-left: auto;
+}
+
 /* Nav on the right tweaks */
 .layout.nav-right aside {
     border-right: none;

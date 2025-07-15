@@ -9,7 +9,6 @@ Functions can be specialized by HTTP method (``view_get_*``/``view_post_*``) and
 multiple view names may be combined with ``+`` in the path to build a mashup.
 ``render_*`` functions may return HTML or JSON and are ideal for dynamic
 refreshes via ``render.js``.
-
 CSS and JavaScript from enabled projects are bundled via
 ``web.static.collect``. ``setup_app`` defaults to ``mode='collect'`` so pages
 load ``/shared/global.css`` and ``/shared/global.js`` automatically. Add
@@ -643,9 +642,11 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None, 
         </head>
         <body>
             <div class="page-wrap">
-                <div class="layout{{' nav-right' if nav_side == 'right' else ''}}">
+                <div class="layout{{' nav-right' if nav_side == 'right' else (' nav-top' if nav_side == 'top' else '')}}">
                     % if nav_side == 'right':
                     <main>{{!message_html}}{{!content}}</main>{{!nav}}
+                    % elif nav_side == 'top':
+                    {{!nav}}<main>{{!message_html}}{{!content}}</main>
                     % else:
                     {{!nav}}<main>{{!message_html}}{{!content}}</main>
                     % end
