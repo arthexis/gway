@@ -6,7 +6,6 @@ __all__ = [
     "envs",
     "version",
     "shell",
-    "init_root",
 ]
 
 def hello_world(name: str = "World", *, greeting: str = "Hello", **kwargs):
@@ -90,38 +89,3 @@ def shell():
     code.interact(banner=banner, local=local_vars)
 
 
-def init_root(path: str | None = None) -> str:
-    """Create a minimal GWAY workspace at the resolved path."""
-    from pathlib import Path
-    from gway import gw
-
-    target = Path(
-        gw.resolve(
-            path,
-            "[GWAY_ROOT]",
-            "[GWAY_PATH]",
-            "[BASE_PATH]",
-            "[APP_ROOT]",
-            default=".",
-        )
-    ).resolve()
-
-    subdirs = [
-        "envs/clients",
-        "envs/servers",
-        "projects",
-        "data/static",
-        "logs",
-        "work",
-        "recipes",
-    ]
-
-    for sub in subdirs:
-        (target / sub).mkdir(parents=True, exist_ok=True)
-
-    readme = target / "README.rst"
-    if not readme.exists():
-        readme.write_text("# GWAY Workspace\nCreated by `gway init-root`\n")
-
-    gw.info(f"Initialized root at {target}")
-    return str(target)
