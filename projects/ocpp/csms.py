@@ -579,13 +579,9 @@ def view_charger_detail(*, charger_id=None, **_):
     """Detail view for a single charger with live log."""
     if not charger_id:
         return redirect("/ocpp/csms/active-chargers")
-    known_ids = set(_active_cons) | set(_transactions) | set(_latest_heartbeat)
-    if charger_id not in known_ids:
-        try:
-            if charger_id not in gw.ocpp.data.list_chargers():
-                return redirect("/ocpp/csms/active-chargers")
-        except Exception:
-            return redirect("/ocpp/csms/active-chargers")
+    # Allow viewing details even if the charger hasn't connected yet.
+    # If the ID truly doesn't exist we simply render an empty placeholder
+    # instead of redirecting back to the dashboard.
 
     msg = ""
     if request.method == "POST":
