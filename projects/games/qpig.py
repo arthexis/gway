@@ -1,7 +1,6 @@
 """Quantum Piggy Farm view skeleton served by GWAY."""
 from gway import gw
 
-
 def view_qpig_farm(*_, **__):
     """Return the basic HTML frame for the Quantum Piggy Farm game."""
     gw.debug("view_qpig_farm called")
@@ -54,11 +53,11 @@ def view_qpig_farm(*_, **__):
         '<div id="qpig-panel-travel" class="qpig-panel">'
         '<div class="qpig-top"></div>Travel Abroad coming soon</div>',
         '<div id="qpig-panel-settings" class="qpig-panel">'
-        '<div class="qpig-top"></div></div>',
+        '<div class="qpig-top"></div>',
         '<div class="qpig-buttons">',
         "<button type='button' id='qpig-save' title='Save'>💾 Save</button>",
         "<button type='button' id='qpig-load' title='Load'>📂 Load</button>",
-        '</div>',
+        '</div></div>',
         '</div>',
         '</div>',
     ]

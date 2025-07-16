@@ -114,21 +114,19 @@ function nextActivity(act, attrs) {
     return act;
 }
 
-function producePellet(st, idx) {
+function startPooping(st, idx) {
     const p = st.garden.pigs[idx];
     if (!p || p.pooping) return;
     p.pooping = true;
     p.prevActivity = p.activity;
-    p.activity = 'Pooping.';
+    p.activity = 'Pooping';
     renderPigs(st);
     setTimeout(() => {
         const cur = loadState();
         const pig = (cur.garden.pigs || [])[idx];
-        if (!pig) return;
+        if (!pig || !pig.pooping) return;
         cur.garden.qpellets = (cur.garden.qpellets || 0) + 1;
-        if (pig.activity === 'Pooping.' && pig.pooping) {
-            pig.activity = pig.prevActivity || pig.activity;
-        }
+        pig.activity = pig.prevActivity || pig.activity;
         delete pig.prevActivity;
         delete pig.pooping;
         saveState(cur);
@@ -137,15 +135,23 @@ function producePellet(st, idx) {
     }, 2000);
 }
 
-function tick() {
-    const st = loadState();
-    st.garden.pigs.forEach((p, i) => {
-        if (Math.random() * 100 < (p.curiosity || 0)) {
+const ACTIVITY_TRANSITIONS = [
+    function checkPooping(st, p, idx) {
+        if (Math.random() * 100 < (p.fitness || 0)) {
+            startPooping(st, idx);
+        }
+    },
+    function checkStateMachine(_st, p) {
+        if (!p.pooping && Math.random() * 100 < (p.curiosity || 0)) {
             p.activity = nextActivity(p.activity, p);
         }
-        if (Math.random() * 100 < (p.fitness || 0)) {
-            producePellet(st, i);
-        }
+    }
+];
+
+function tick() {
+    const st = loadState();
+    st.garden.pigs.forEach((p, idx) => {
+        ACTIVITY_TRANSITIONS.forEach(fn => fn(st, p, idx));
     });
     saveState(st);
     renderPigs(st);
