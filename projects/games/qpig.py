@@ -1,7 +1,6 @@
 """Quantum Piggy Farm view skeleton served by GWAY."""
 from gway import gw
 
-
 def view_qpig_farm(*_, **__):
     """Return the basic HTML frame for the Quantum Piggy Farm game."""
     gw.debug("view_qpig_farm called")
