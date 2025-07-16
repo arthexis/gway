@@ -3,7 +3,7 @@
 
 web app setup:
     - ocpp.data --home charger-summary
-    - ocpp.csms --home charger-status
+    - ocpp.csms --home active-chargers
     - ocpp.csms --home cp-simulator
     - web.cookies
     - web.nav

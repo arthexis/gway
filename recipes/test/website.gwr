@@ -12,7 +12,7 @@ web app setup:
     - web.chat
     - vbox --home uploads
     - ocpp.data --home charger-summary
-    - ocpp.csms --auth required --home charger-status
+    - ocpp.csms --auth required --home active-chargers
     - ocpp.evcs --auth required --home cp-simulator
     - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
     - web.auth

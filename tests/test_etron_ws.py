@@ -416,7 +416,7 @@ class EtronWebSocketTests(unittest.TestCase):
                 # Issue Stop from dashboard
                 await asyncio.to_thread(
                     requests.post,
-                    "http://127.0.0.1:18000/ocpp/csms/charger-status",
+                    "http://127.0.0.1:18000/ocpp/csms/active-chargers",
                     data={"charger_id": "stopper", "action": "remote_stop", "do": "send"},
                     timeout=5,
                 )

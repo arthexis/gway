@@ -82,21 +82,21 @@ class AuthChargerStatusTests(unittest.TestCase):
         b64 = base64.b64encode(up.encode()).decode()
         return {"Authorization": f"Basic {b64}"}
 
-    def test_unauthenticated_blocked_on_charger_status(self):
-        url = self.base_url + "/ocpp/csms/charger-status"
+    def test_unauthenticated_blocked_on_active_chargers(self):
+        url = self.base_url + "/ocpp/csms/active-chargers"
         resp = requests.get(url)
         self.assertEqual(
             resp.status_code, 401,
-            f"Expected 401 for unauthenticated /ocpp/csms/charger-status, got {resp.status_code}"
+            f"Expected 401 for unauthenticated /ocpp/csms/active-chargers, got {resp.status_code}"
         )
 
-    def test_authenticated_allows_on_charger_status(self):
-        url = self.base_url + "/ocpp/csms/charger-status"
+    def test_authenticated_allows_on_active_chargers(self):
+        url = self.base_url + "/ocpp/csms/active-chargers"
         headers = self._auth_header(TEST_USER, TEST_PASS)
         resp = requests.get(url, headers=headers)
         self.assertEqual(
             resp.status_code, 200,
-            f"Expected 200 for authenticated /ocpp/csms/charger-status, got {resp.status_code}"
+            f"Expected 200 for authenticated /ocpp/csms/active-chargers, got {resp.status_code}"
         )
         self.assertIn("OCPP", resp.text)
 
@@ -121,7 +121,7 @@ class AuthChargerStatusTests(unittest.TestCase):
         screenshot_dir = Path("work/screenshots")
         screenshot_dir.mkdir(parents=True, exist_ok=True)
         screenshot_file = screenshot_dir / "charger_status.png"
-        url = f"http://{TEST_USER}:{TEST_PASS}@127.0.0.1:18888/ocpp/csms/charger-status"
+        url = f"http://{TEST_USER}:{TEST_PASS}@127.0.0.1:18888/ocpp/csms/active-chargers"
         try:
             gw.web.auto.capture_page_source(url, screenshot=str(screenshot_file))
         except Exception as e:
