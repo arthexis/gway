@@ -114,25 +114,37 @@ function nextActivity(act, attrs) {
     return act;
 }
 
+const POOP_DURATION_MS = 2000;
+
+function finishPooping(idx) {
+    const cur = loadState();
+    const pig = (cur.garden.pigs || [])[idx];
+    if (!pig || !pig.pooping) return;
+    const remaining = (pig.poopingFinish || 0) - Date.now();
+    if (remaining > 0) {
+        setTimeout(() => finishPooping(idx), remaining);
+        return;
+    }
+    cur.garden.qpellets = (cur.garden.qpellets || 0) + 1;
+    pig.activity = pig.prevActivity || pig.activity;
+    delete pig.prevActivity;
+    delete pig.pooping;
+    delete pig.poopingFinish;
+    saveState(cur);
+    renderPigs(cur);
+    updateCounters(cur);
+}
+
 function startPooping(st, idx) {
     const p = st.garden.pigs[idx];
     if (!p || p.pooping) return;
     p.pooping = true;
+    p.poopingFinish = Date.now() + POOP_DURATION_MS;
     p.prevActivity = p.activity;
     p.activity = 'Pooping';
+    saveState(st);
     renderPigs(st);
-    setTimeout(() => {
-        const cur = loadState();
-        const pig = (cur.garden.pigs || [])[idx];
-        if (!pig || !pig.pooping) return;
-        cur.garden.qpellets = (cur.garden.qpellets || 0) + 1;
-        pig.activity = pig.prevActivity || pig.activity;
-        delete pig.prevActivity;
-        delete pig.pooping;
-        saveState(cur);
-        renderPigs(cur);
-        updateCounters(cur);
-    }, 2000);
+    setTimeout(() => finishPooping(idx), POOP_DURATION_MS);
 }
 
 const ACTIVITY_TRANSITIONS = [
@@ -152,6 +164,9 @@ function tick() {
     const st = loadState();
     st.garden.pigs.forEach((p, idx) => {
         ACTIVITY_TRANSITIONS.forEach(fn => fn(st, p, idx));
+        if (p.pooping && Date.now() >= (p.poopingFinish || 0)) {
+            finishPooping(idx);
+        }
     });
     saveState(st);
     renderPigs(st);
