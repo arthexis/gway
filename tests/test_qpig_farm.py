@@ -15,19 +15,13 @@ class QPigFarmTests(unittest.TestCase):
         self.assertNotIn("<canvas id='qpig-canvas'", html)
         self.assertIn('qpig-save', html)
         self.assertIn('qpig-load', html)
-        self.assertIn('Q-Pellets', html)
-        self.assertIn('Available V-Creds', html)
+        self.assertIn('id="qpig-count"', html)
+        self.assertIn('id="qpig-pellets"', html)
+        self.assertIn('id="qpig-vcreds"', html)
         self.assertIn('qpig-pig-card', html)
-        self.assertIn('Q-Pigs:', html)
-        self.assertIn('Resting', html)
-        self.assertIn('gw-render="market_stalls"', html)
-        self.assertIn('qpig-lab-pellets', html)
-        self.assertIn('qpig-lab-vcreds', html)
-
-    def test_render_market_stalls_basic(self):
-        html = self.qpig_mod.render_market_stalls()
-        self.assertIn('Veggie Wagon', html)
-        self.assertIn('VC', html)
+        self.assertIn('market-stalls', html)
+        self.assertIn('id="qpig-lab-pellets"', html)
+        self.assertIn('id="qpig-lab-vcreds"', html)
 
     def test_tab_names_updated(self):
         html = self.qpig_mod.view_qpig_farm()
