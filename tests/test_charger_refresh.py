@@ -140,5 +140,48 @@ class ChargerDashboardRefreshTests(unittest.TestCase):
             await sim_task
         asyncio.run(run_sim_and_check())
 
+    @unittest.skipUnless(is_test_flag("ocpp"), "OCPP tests disabled")
+    def test_charger_detail_view_with_simulator(self):
+        async def run_sim_and_check():
+            sim_task = asyncio.create_task(
+                gw.ocpp.evcs.simulate_cp.__wrapped__(
+                    0,
+                    "localhost",
+                    19999,
+                    "FFFFFFFF",
+                    "ocpp/csms/SIMDASH",
+                    2,
+                    1,
+                    1,
+                    1,
+                    username=TEST_USER,
+                    password=TEST_PASS,
+                )
+            )
+            await asyncio.sleep(3)
+            detail_url = (
+                "http://127.0.0.1:18888/ocpp/csms/charger-detail?charger_id=SIMDASH"
+            )
+            resp = await asyncio.to_thread(
+                requests.get,
+                detail_url,
+                headers=_auth_header(TEST_USER, TEST_PASS),
+                timeout=5,
+            )
+            for _ in range(5):
+                if "SIMDASH Details" in resp.text:
+                    break
+                await asyncio.sleep(1)
+                resp = await asyncio.to_thread(
+                    requests.get,
+                    detail_url,
+                    headers=_auth_header(TEST_USER, TEST_PASS),
+                    timeout=5,
+                )
+            self.assertIn("SIMDASH Details", resp.text)
+            self.assertIn("id=\"charger-info\"", resp.text)
+            await sim_task
+        asyncio.run(run_sim_and_check())
+
 if __name__ == "__main__":
     unittest.main()
