@@ -6,7 +6,6 @@ def view_qpig_farm(*_, **__):
     gw.debug("view_qpig_farm called")
     html = [
         '<link rel="stylesheet" href="/static/games/qpig/qpig_farm.css">',
-        '<script src="/static/games/qpig/qpig_farm.js"></script>',
         '<h1>Quantum Piggy Farm</h1>',
         '<div class="qpig-garden tab-garden">',
         '<div class="qpig-tabs">',
