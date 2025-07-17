@@ -5,13 +5,25 @@ import traceback
 from gway import gw
 
 
+# TODO: This validatior should continue to exist, but now it should manually find the 
+#       customer's ID by finding the RFID in the provided payload and looking it up 
+#       (reloading the file each time) from a CDV (see projects/cdb.py) stored in 
+#       work/ocpp/rfids.cdv and storing two extra keys: balance (float) and allowed (default True)
+#       See the params ocpp.csms.setup_app sends to this function to fix the signature.
+
 def authorize_balance(record=None, **_):
     """Default validator: allow if record balance >= 1."""
     try:
         return float((record or {}).get("balance", "0")) >= 1
     except Exception:
         return False
+    
+# TODO: Create another authorizer that just checks that allowed is True and not the balance (authorize_allowed)
+#       If possible create some common functions so we can add more authorizers on the same file later
+    
+# TODO: Create functions to manually create RFID entries, delete them, update them, enable, disable, credit and debit
 
+# TODO: Remove the allowlist and denylist parameters from approve and everywhere else. 
 
 def approve(*, payload=None, charger_id=None, allowlist=None, denylist=None, validator=authorize_balance, **_):
     """Return True if the given RFID payload is approved.
