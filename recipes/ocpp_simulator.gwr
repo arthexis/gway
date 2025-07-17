@@ -1,0 +1,13 @@
+# file: recipes/ocpp_simulator.gwr
+# Run only the OCPP simulator view
+
+web app setup:
+    - ocpp.evcs --home cp-simulator
+
+help-db build
+
+web:
+ - static collect
+ - server start-app --port 8080 --ws-port 9001
+
+until --done
