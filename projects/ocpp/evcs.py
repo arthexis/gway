@@ -48,6 +48,7 @@ def simulate(
     repeat=False,
     threads: int = None,
     daemon: bool = True,
+    interval: float = 5,
     username: str = None,
     password: str = None,
 ):
@@ -81,6 +82,7 @@ def simulate(
                     kwh_min,
                     kwh_max,
                     session_count,
+                    interval,
                     username,
                     password,
                 )
@@ -100,6 +102,7 @@ def simulate(
                     kwh_min,
                     kwh_max,
                     session_count,
+                    interval,
                     username,
                     password,
                 ))
@@ -132,13 +135,13 @@ def simulate(
         return orchestrate_all()
     else:
         if n_threads == 1:
-            asyncio.run(simulate_cp(0, host, ws_port, rfid, cp_path, duration, kwh_min, kwh_max, session_count, username, password))
+            asyncio.run(simulate_cp(0, host, ws_port, rfid, cp_path, duration, kwh_min, kwh_max, session_count, interval, username, password))
         else:
             threads_list = []
             for idx in range(n_threads):
                 this_cp_path = _unique_cp_path(cp_path, idx, n_threads)
                 t = threading.Thread(target=_thread_runner, args=(
-                    simulate_cp, idx, host, ws_port, rfid, this_cp_path, duration, kwh_min, kwh_max, session_count, username, password
+                    simulate_cp, idx, host, ws_port, rfid, this_cp_path, duration, kwh_min, kwh_max, session_count, interval, username, password
                 ), daemon=True)
                 t.start()
                 threads_list.append(t)
@@ -155,13 +158,15 @@ async def simulate_cp(
         kwh_min,
         kwh_max,
         session_count,
+        interval=5,
         username=None,
         password=None,
     ):
     """
-    Simulate a single CP session (possibly many times if session_count>1).
+    Simulate a single CP session (possibly many times if ``session_count`` > 1).
+    ``interval`` controls how often MeterValues are sent.
     If username/password are provided, use HTTP Basic Auth in the handshake.
-    Energy increments are derived from kwh_min/kwh_max.
+    Energy increments are derived from ``kwh_min``/``kwh_max``.
     """
     cp_name = cp_path
     uri     = f"ws://{host}:{ws_port}/{cp_name}"
@@ -246,12 +251,12 @@ async def simulate_cp(
 
                 # MeterValues loop
                 actual_duration = random.uniform(duration * 0.75, duration * 1.25)
-                interval = actual_duration / 10
+                steps = max(1, int(actual_duration / interval))
                 meter = meter_start
 
-                step_min = int((kwh_min * 1000) / 10)
-                step_max = int((kwh_max * 1000) / 10)
-                for _ in range(10):
+                step_min = max(1, int((kwh_min * 1000) / steps))
+                step_max = max(1, int((kwh_max * 1000) / steps))
+                for _ in range(steps):
                     if stop_event.is_set():
                         print(f"[Simulator:{cp_name}] Stop event triggered—ending meter loop")
                         break
@@ -426,6 +431,7 @@ def view_cp_simulator(*args, **kwargs):
                 cp_path = request.forms.get("cp_path") or default_cp_path,
                 rfid = request.forms.get("rfid") or default_rfid,
                 duration = int(request.forms.get("duration") or 600),
+                interval = float(request.forms.get("interval") or 5),
                 kwh_min = float(request.forms.get("kwh_min") or 30),
                 kwh_max = float(request.forms.get("kwh_max") or 60),
                 repeat = request.forms.get("repeat") or False,
@@ -474,6 +480,10 @@ def view_cp_simulator(*args, **kwargs):
             <input name="duration" value="{duration}">
         </div>
         <div>
+            <label>Interval (s):</label>
+            <input name="interval" value="{interval}">
+        </div>
+        <div>
             <label>Energy Min (kWh):</label>
             <input name="kwh_min" value="{kwh_min}">
         </div>
@@ -507,6 +517,7 @@ def view_cp_simulator(*args, **kwargs):
         cp_path=params.get('cp_path', default_cp_path),
         rfid=params.get('rfid', default_rfid),
         duration=params.get('duration', 600),
+        interval=params.get('interval', 5),
         kwh_min=params.get('kwh_min', 30),
         kwh_max=params.get('kwh_max', 60),
         repeat_no='selected' if not params.get('repeat') else '',
