@@ -7,6 +7,7 @@ The submodules are:
 - ``csms`` – a simple Central System with a status dashboard.
 - ``evcs`` – a charge point simulator that connects to ``csms``.
 - ``sink`` – a message logger for debugging.
+- ``rfid`` – helpers for RFID allow/deny checks.
 
 Launch a simulator session pointing at your CSMS with:
 
@@ -43,8 +44,8 @@ demos:
 
 - ``local.gwr`` – start both the CSMS dashboard and a simulator on the
   same machine for quick testing.
-- ``cloud.gwr`` – run a CSMS instance for cloud deployments with an
-  optional RFID allow list.
+- ``cloud.gwr`` – run a CSMS instance for cloud deployments. Use
+  ``ocpp.rfid.approve`` with a CDV table to control RFID access.
 - ``local_proxy.gwr`` – run a local CSMS that forwards unknown requests
   to a remote instance. This keeps sessions operational when offline and
   syncs with the cloud once connectivity returns.
