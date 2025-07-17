@@ -25,10 +25,8 @@ _msg_log: Dict[str, list] = {}
     
 def setup_app(*,
     app=None,
-    allowlist=None,
-    denylist=None,
     location=None,
-    authorize="ocpp.rfid.approve",
+    authorize=None,
     email=None,
     auth="disabled",
 ):
@@ -88,8 +86,6 @@ def setup_app(*,
                         payload=payload,
                         charger_id=charger_id,
                         action=action,
-                        allowlist=allowlist,
-                        denylist=denylist,
                     )
                 )
             except Exception as e:

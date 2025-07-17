@@ -21,8 +21,7 @@ web:
  - auth config-basic --optional --temp-link
 
 ocpp csms setup-app:
-    --location simulator \
-    --authorize ocpp.rfid.approve
+    --location simulator
 
 web:
  - server start-app --port 8888 --ws-port 9999

@@ -141,7 +141,7 @@ class EtronWebSocketTests(unittest.TestCase):
         asyncio.run(run_ws_check())
 
     def test_authorize_valid_rfid(self):
-        """RFID in allowlist with balance >=1 should be Accepted"""
+        """Known RFID should be accepted."""
         self._set_balance(KNOWN_GOOD_TAG, 100)
         uri = "ws://127.0.0.1:19000/tester1?token=foo"
         async def run_authorize_check():

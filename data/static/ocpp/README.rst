@@ -22,7 +22,8 @@ The simulator can also be controlled via the web UI at
 
 The simulator accepts ``--kwh-min`` and ``--kwh-max`` to control the
 approximate energy delivered per session. For example, ``--kwh-min 40
---kwh-max 70`` will produce sessions around 40–70 kWh.
+--kwh-max 70`` will produce sessions around 40–70 kWh. Use ``--interval``
+to specify how often MeterValues are sent (default 5s).
 
 Open ``/ocpp/csms/active-chargers`` in your browser to view all
 connected chargers. Each card refreshes every few seconds so data
