@@ -6,8 +6,6 @@ import os
 import shutil
 import uuid
 import asyncio
-import sys
-import importlib
 from datetime import datetime
 from typing import Dict, Optional
 from fastapi import WebSocket
@@ -229,10 +227,6 @@ def purge(*, database: bool = False, logs: bool = False):
 # Dashboard and view aliases
 # ---------------------------------------------------------------------------
 
-csms = importlib.import_module('ocpp_csms')
-data = importlib.import_module('ocpp_data')
-evcs = importlib.import_module('ocpp_evcs')
-csms.bind_state(sys.modules[__name__])
 
 
 def view_dashboard(**_):
@@ -250,28 +244,28 @@ def view_dashboard(**_):
 
 
 def view_active_chargers(*args, **kwargs):
-    return csms.view_active_chargers(*args, **kwargs)
+    return gw.ocpp.csms.view_active_chargers(*args, **kwargs)
 
 
 def view_charger_detail(*args, **kwargs):
-    return csms.view_charger_detail(*args, **kwargs)
+    return gw.ocpp.csms.view_charger_detail(*args, **kwargs)
 
 
 def view_energy_graph(*args, **kwargs):
-    return csms.view_energy_graph(*args, **kwargs)
+    return gw.ocpp.csms.view_energy_graph(*args, **kwargs)
 
 
 def view_charger_summary(*args, **kwargs):
-    return data.view_charger_summary(*args, **kwargs)
+    return gw.ocpp.data.view_charger_summary(*args, **kwargs)
 
 
 def view_charger_details(*args, **kwargs):
-    return data.view_charger_details(*args, **kwargs)
+    return gw.ocpp.data.view_charger_details(*args, **kwargs)
 
 
 def view_time_series(*args, **kwargs):
-    return data.view_time_series(*args, **kwargs)
+    return gw.ocpp.data.view_time_series(*args, **kwargs)
 
 
 def view_cp_simulator(*args, **kwargs):
-    return evcs.view_cp_simulator(*args, **kwargs)
+    return gw.ocpp.evcs.view_cp_simulator(*args, **kwargs)
