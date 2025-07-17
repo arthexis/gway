@@ -14,7 +14,8 @@ web app setup:
 help-db build
 
 # Toggle this version to apply the allowlist
-# ocpp csms setup-app --allow data/etron/rfids.cdv --location porsche_centre
+# ocpp csms setup-app --allow data/etron/rfids.cdv \
+#     --authorize ocpp.rfid.approve --location porsche_centre
 ocpp csms setup-app:
     --location porsche_centre
 

@@ -232,6 +232,7 @@ def purge(*, database: bool = False, logs: bool = False):
 csms = importlib.import_module('ocpp_csms')
 data = importlib.import_module('ocpp_data')
 evcs = importlib.import_module('ocpp_evcs')
+rfid = importlib.import_module('ocpp_rfid')
 csms.bind_state(sys.modules[__name__])
 
 

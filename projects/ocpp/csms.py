@@ -31,22 +31,13 @@ def bind_state(root):
     _abnormal_status = root._abnormal_status
     _msg_log = root._msg_log
 
-def authorize_balance(**record):
-    """
-    Default OCPP RFID secondary validator: Only authorize if balance >= 1.
-    The RFID needs to exist already for this to be called in the first place.
-    """
-    try:
-        return float(record.get("balance", "0")) >= 1
-    except Exception:
-        return False
     
 def setup_app(*,
     app=None,
     allowlist=None,
     denylist=None,
     location=None,
-    authorize=authorize_balance,
+    authorize="ocpp.rfid.approve",
     email=None,
     auth="disabled",
 ):
@@ -84,15 +75,6 @@ def setup_app(*,
     elif callable(authorize):
         validator = authorize
 
-    def is_authorized_rfid(rfid: str) -> bool:
-        if denylist and gw.cdv.validate(denylist, rfid):
-            gw.info(f"[OCPP] RFID {rfid!r} is present in denylist. Authorization denied.")
-            return False
-        if not allowlist:
-            gw.warn("[OCPP] No RFID allowlist configured — rejecting all authorization requests.")
-            return False
-        return gw.cdv.validate(allowlist, rfid, validator=validator)
-
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
         global _csms_loop
@@ -105,6 +87,24 @@ def setup_app(*,
         _csms_loop = asyncio.get_running_loop()
         charger_id = path.strip("/").split("/")[-1]
         gw.info(f"[OCPP] WebSocket connected: charger_id={charger_id}")
+
+        def call_authorize(payload, action):
+            if not validator:
+                return True
+            try:
+                return bool(
+                    validator(
+                        payload=payload,
+                        charger_id=charger_id,
+                        action=action,
+                        allowlist=allowlist,
+                        denylist=denylist,
+                    )
+                )
+            except Exception as e:
+                gw.error(f"[OCPP] authorization failed: {e}")
+                gw.debug(traceback.format_exc())
+                return False
 
         protos = websocket.headers.get("sec-websocket-protocol", "").split(",")
         protos = [p.strip() for p in protos if p.strip()]
@@ -134,7 +134,7 @@ def setup_app(*,
                     response_payload = {}
 
                     if action == "Authorize":
-                        status = "Accepted" if is_authorized_rfid(payload.get("idTag")) else "Rejected"
+                        status = "Accepted" if call_authorize(payload, action) else "Rejected"
                         response_payload = {"idTagInfo": {"status": status}}
 
                     elif action == "BootNotification":
@@ -148,38 +148,41 @@ def setup_app(*,
                         response_payload = {"currentTime": datetime.utcnow().isoformat() + "Z"}
 
                     elif action == "StartTransaction":
-                        now = int(time.time())
-                        transaction_id = now
-                        _transactions[charger_id] = {
-                            "syncStart": 1,
-                            "connectorId": payload.get("connectorId"),
-                            "idTagStart": payload.get("idTag"),
-                            "meterStart": payload.get("meterStart"),
-                            "reservationId": payload.get("reservationId", -1),
-                            "startTime": now,
-                            "startTimeStr": datetime.utcfromtimestamp(now).isoformat() + "Z",
-                            "startMs": int(time.time() * 1000) % 1000,
-                            "transactionId": transaction_id,
-                            "MeterValues": []
-                        }
-                        cp_ts = None
-                        if payload.get("timestamp"):
-                            try:
-                                cp_ts = int(datetime.fromisoformat(payload["timestamp"].rstrip("Z")).timestamp())
-                            except Exception:
-                                cp_ts = None
-                        gw.ocpp.data.record_transaction_start(
-                            charger_id,
-                            transaction_id,
-                            now,
-                            id_tag=payload.get("idTag"),
-                            meter_start=payload.get("meterStart"),
-                            charger_timestamp=cp_ts,
-                        )
-                        response_payload = {
-                            "transactionId": transaction_id,
-                            "idTagInfo": {"status": "Accepted"}
-                        }
+                        if not call_authorize(payload, action):
+                            response_payload = {"transactionId": 0, "idTagInfo": {"status": "Rejected"}}
+                        else:
+                            now = int(time.time())
+                            transaction_id = now
+                            _transactions[charger_id] = {
+                                "syncStart": 1,
+                                "connectorId": payload.get("connectorId"),
+                                "idTagStart": payload.get("idTag"),
+                                "meterStart": payload.get("meterStart"),
+                                "reservationId": payload.get("reservationId", -1),
+                                "startTime": now,
+                                "startTimeStr": datetime.utcfromtimestamp(now).isoformat() + "Z",
+                                "startMs": int(time.time() * 1000) % 1000,
+                                "transactionId": transaction_id,
+                                "MeterValues": []
+                            }
+                            cp_ts = None
+                            if payload.get("timestamp"):
+                                try:
+                                    cp_ts = int(datetime.fromisoformat(payload["timestamp"].rstrip("Z")).timestamp())
+                                except Exception:
+                                    cp_ts = None
+                            gw.ocpp.data.record_transaction_start(
+                                charger_id,
+                                transaction_id,
+                                now,
+                                id_tag=payload.get("idTag"),
+                                meter_start=payload.get("meterStart"),
+                                charger_timestamp=cp_ts,
+                            )
+                            response_payload = {
+                                "transactionId": transaction_id,
+                                "idTagInfo": {"status": "Accepted"}
+                            }
 
                         if email:
                             subject = f"OCPP: Charger {charger_id} STARTED transaction {transaction_id}"
