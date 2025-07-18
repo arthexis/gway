@@ -176,53 +176,53 @@ async def simulate_cp(
         b64 = base64.b64encode(userpass.encode("utf-8")).decode("ascii")
         headers["Authorization"] = f"Basic {b64}"
 
-    try:
-        async with websockets.connect(
-            uri,
-            subprotocols=["ocpp1.6"],
-            additional_headers=headers,
-        ) as ws:
-            print(f"[Simulator:{cp_name}] Connected to {uri} (auth={'yes' if headers else 'no'})")
+    loop_count = 0
+    while loop_count < session_count:
+        try:
+            async with websockets.connect(
+                uri,
+                subprotocols=["ocpp1.6"],
+                additional_headers=headers,
+            ) as ws:
+                print(f"[Simulator:{cp_name}] Connected to {uri} (auth={'yes' if headers else 'no'})")
 
-            async def listen_to_csms(stop_event, reset_event):
-                """Handle incoming CSMS messages until cancelled."""
-                try:
-                    while True:
-                        raw = await ws.recv()
-                        print(f"[Simulator:{cp_name} ← CSMS] {raw}")
-                        try:
-                            msg = json.loads(raw)
-                        except json.JSONDecodeError:
-                            print(f"[Simulator:{cp_name}] Warning: Received non-JSON message")
-                            continue
-                        if isinstance(msg, list):
-                            if msg[0] == 2:
-                                msg_id, action = msg[1], msg[2]
-                                await ws.send(json.dumps([3, msg_id, {}]))
-                                if action == "RemoteStopTransaction":
-                                    print(f"[Simulator:{cp_name}] Received RemoteStopTransaction → stopping transaction")
-                                    stop_event.set()
-                                elif action == "Reset":
-                                    reset_type = ""
-                                    if len(msg) > 3 and isinstance(msg[3], dict):
-                                        reset_type = msg[3].get("type", "")
-                                    print(f"[Simulator:{cp_name}] Received Reset ({reset_type}) → restarting session")
-                                    reset_event.set()
-                                    stop_event.set()
-                            elif msg[0] in (3, 4):
-                                # Ignore CallResult and CallError messages
+                async def listen_to_csms(stop_event, reset_event):
+                    """Handle incoming CSMS messages until cancelled."""
+                    try:
+                        while True:
+                            raw = await ws.recv()
+                            print(f"[Simulator:{cp_name} ← CSMS] {raw}")
+                            try:
+                                msg = json.loads(raw)
+                            except json.JSONDecodeError:
+                                print(f"[Simulator:{cp_name}] Warning: Received non-JSON message")
                                 continue
+                            if isinstance(msg, list):
+                                if msg[0] == 2:
+                                    msg_id, action = msg[1], msg[2]
+                                    await ws.send(json.dumps([3, msg_id, {}]))
+                                    if action == "RemoteStopTransaction":
+                                        print(f"[Simulator:{cp_name}] Received RemoteStopTransaction → stopping transaction")
+                                        stop_event.set()
+                                    elif action == "Reset":
+                                        reset_type = ""
+                                        if len(msg) > 3 and isinstance(msg[3], dict):
+                                            reset_type = msg[3].get("type", "")
+                                        print(f"[Simulator:{cp_name}] Received Reset ({reset_type}) → restarting session")
+                                        reset_event.set()
+                                        stop_event.set()
+                                elif msg[0] in (3, 4):
+                                    # Ignore CallResult and CallError messages
+                                    continue
+                                else:
+                                    print(f"[Simulator:{cp_name}] Notice: Unexpected message format", msg)
                             else:
-                                print(f"[Simulator:{cp_name}] Notice: Unexpected message format", msg)
-                        else:
-                            print(f"[Simulator:{cp_name}] Warning: Expected list message", msg)
-                except websockets.ConnectionClosed:
-                    print(f"[Simulator:{cp_name}] Connection closed by server")
-                    _simulator_state["last_status"] = "Connection closed"
-                    stop_event.set()
+                                print(f"[Simulator:{cp_name}] Warning: Expected list message", msg)
+                    except websockets.ConnectionClosed:
+                        print(f"[Simulator:{cp_name}] Connection closed by server")
+                        _simulator_state["last_status"] = "Connection closed"
+                        stop_event.set()
 
-            loop_count = 0
-            while loop_count < session_count:
                 stop_event = asyncio.Event()
                 reset_event = asyncio.Event()
                 # Initial handshake
@@ -332,10 +332,17 @@ async def simulate_cp(
                 if session_count == float('inf'):
                     continue  # loop forever
 
-            print(f"[Simulator:{cp_name}] Simulation ended.")
-            _simulator_state["last_status"] = "Stopped"
-    except Exception as e:
-        print(f"[Simulator:{cp_name}] Exception: {e}")
+        except websockets.ConnectionClosedError as e:
+            print(f"[Simulator:{cp_name}] Warning: {e} -- reconnecting")
+            _simulator_state["last_status"] = "Reconnecting"
+            await asyncio.sleep(1)
+            continue
+        except Exception as e:
+            print(f"[Simulator:{cp_name}] Exception: {e}")
+            break
+
+    print(f"[Simulator:{cp_name}] Simulation ended.")
+    _simulator_state["last_status"] = "Stopped"
 
 
 # --- Simulator control state ---
