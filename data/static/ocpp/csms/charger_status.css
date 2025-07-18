@@ -128,8 +128,9 @@
 .charger-card.status-online    { border-right-color: #48e16c; }
 .charger-card.status-available { border-right-color: #48e16c; }
 .charger-card.status-error     { border-right-color: #ff3e3e; }
-.charger-card.status-offline,
-.charger-card.status-unknown   { border-right-color: #3a4b5c; }
+.charger-card.status-offline   { border-right-color: #3a4b5c; }
+.charger-card.status-unknown   { border-right-color: #f6d94c; }
+
 
 
 /* Responsive adjustments */
