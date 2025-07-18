@@ -146,6 +146,7 @@ def setup_app(*,
 
                     elif action == "Heartbeat":
                         response_payload = {"currentTime": datetime.utcnow().isoformat() + "Z"}
+                        gw.ocpp.data.record_heartbeat(charger_id, response_payload["currentTime"])
 
                     elif action == "StartTransaction":
                         if not call_authorize(payload, action):
@@ -305,11 +306,7 @@ def setup_app(*,
                     await websocket.send_text(json.dumps(response))
 
                 elif isinstance(msg, list) and msg[0] == 3:
-                    # Handle CALLRESULT, check for Heartbeat ACK to record latest heartbeat time
-                    payload = msg[2] if len(msg) > 2 else {}
-                    if isinstance(payload, dict) and "currentTime" in payload:
-                        gw.ocpp.data.record_heartbeat(charger_id, payload["currentTime"])
-                        gw.debug(f"[OCPP:{charger_id}] Updated latest heartbeat to {payload['currentTime']}")
+                    # Handle CALLRESULT
                     continue
 
                 elif isinstance(msg, list) and msg[0] == 4:
@@ -406,6 +403,8 @@ def _render_card_link(cid):
 
 def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
     """Render a charger card with the appropriate status stripe."""
+    from datetime import datetime
+
     status_class = f"status-{state}"
     tx_id       = tx.get("transactionId") if tx else '-'
     meter_start = tx.get("meterStart") if tx else '-'
@@ -427,17 +426,23 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
     latest_hb = "-"
     if raw_hb:
         try:
-            from datetime import datetime
-            dt = datetime.fromisoformat(raw_hb.replace("Z", "+00:00")).astimezone()
+            dt = datetime.fromisoformat(str(raw_hb).replace("Z", "+00:00"))
             latest_hb = dt.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
-            latest_hb = raw_hb
+            try:
+                dt = datetime.utcfromtimestamp(int(float(raw_hb)))
+                latest_hb = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                latest_hb = str(raw_hb)
 
     conn = gw.ocpp.data.get_connection(cid) or {}
     last_msg_ts = conn.get("last_msg")
     if last_msg_ts:
         try:
-            last_updated = datetime.utcfromtimestamp(int(last_msg_ts)).strftime("%Y-%m-%d %H:%M:%S")
+
+            last_updated = (
+                datetime.utcfromtimestamp(int(float(last_msg_ts))).isoformat() + "Z"
+            )
         except Exception:
             last_updated = str(last_msg_ts)
     else:

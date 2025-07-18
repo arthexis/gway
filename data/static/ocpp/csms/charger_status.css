@@ -132,7 +132,6 @@
 .charger-card.status-unknown   { border-right-color: #f6d94c; }
 
 
-
 /* Responsive adjustments */
 @media (max-width: 1300px) {
     .charger-card {
