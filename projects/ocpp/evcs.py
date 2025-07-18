@@ -45,6 +45,7 @@ def simulate(
     duration: int = 600,
     kwh_min: float = 30,
     kwh_max: float = 60,
+    pre_charge_delay: float = 0,
     repeat=False,
     threads: int = None,
     daemon: bool = True,
@@ -59,6 +60,8 @@ def simulate(
     - threads: None/1 for one session; >1 to simulate multiple charge points.
     - username/password: If provided, use HTTP Basic Auth on the WS handshake.
     - kwh_min/kwh_max: approximate energy range per session in kWh.
+    - pre_charge_delay: wait this many seconds before starting a session while
+      still sending Heartbeats.
     """
     host    = gw.resolve(host)
     ws_port = int(gw.resolve(ws_port))
@@ -81,6 +84,7 @@ def simulate(
                     duration,
                     kwh_min,
                     kwh_max,
+                    pre_charge_delay,
                     session_count,
                     interval,
                     username,
@@ -101,6 +105,7 @@ def simulate(
                     duration,
                     kwh_min,
                     kwh_max,
+                    pre_charge_delay,
                     session_count,
                     interval,
                     username,
@@ -135,13 +140,13 @@ def simulate(
         return orchestrate_all()
     else:
         if n_threads == 1:
-            asyncio.run(simulate_cp(0, host, ws_port, rfid, cp_path, duration, kwh_min, kwh_max, session_count, interval, username, password))
+            asyncio.run(simulate_cp(0, host, ws_port, rfid, cp_path, duration, kwh_min, kwh_max, pre_charge_delay, session_count, interval, username, password))
         else:
             threads_list = []
             for idx in range(n_threads):
                 this_cp_path = _unique_cp_path(cp_path, idx, n_threads)
                 t = threading.Thread(target=_thread_runner, args=(
-                    simulate_cp, idx, host, ws_port, rfid, this_cp_path, duration, kwh_min, kwh_max, session_count, interval, username, password
+                    simulate_cp, idx, host, ws_port, rfid, this_cp_path, duration, kwh_min, kwh_max, pre_charge_delay, session_count, interval, username, password
                 ), daemon=True)
                 t.start()
                 threads_list.append(t)
@@ -157,6 +162,7 @@ async def simulate_cp(
         duration,
         kwh_min,
         kwh_max,
+        pre_charge_delay,
         session_count,
         interval=5,
         username=None,
@@ -165,6 +171,8 @@ async def simulate_cp(
     """
     Simulate a single CP session (possibly many times if ``session_count`` > 1).
     ``interval`` controls how often MeterValues are sent.
+    ``pre_charge_delay`` specifies how long to wait before starting a
+    transaction while still sending Heartbeats and idle MeterValues.
     If username/password are provided, use HTTP Basic Auth in the handshake.
     Energy increments are derived from ``kwh_min``/``kwh_max``.
     """
@@ -234,8 +242,41 @@ async def simulate_cp(
                 await ws.send(json.dumps([2, "auth", "Authorize", {"idTag": rfid}]))
                 await ws.recv()
 
-                # StartTransaction
                 meter_start = random.randint(1000, 2000)
+                actual_duration = random.uniform(duration * 0.75, duration * 1.25)
+                steps = max(1, int(actual_duration / interval))
+                step_min = max(1, int((kwh_min * 1000) / steps))
+                step_max = max(1, int((kwh_max * 1000) / steps))
+
+                if pre_charge_delay > 0:
+                    _simulator_state["last_status"] = "Waiting"
+                    next_meter = meter_start
+                    last_mv = time.monotonic()
+                    start_delay = time.monotonic()
+                    while (time.monotonic() - start_delay) < pre_charge_delay:
+                        await ws.send(json.dumps([2, "hb", "Heartbeat", {}]))
+                        await ws.recv()
+                        await asyncio.sleep(5)
+                        if time.monotonic() - last_mv >= 30:
+                            idle_step_max = max(2, int(step_max / 100))
+                            next_meter += random.randint(0, idle_step_max)
+                            next_kwh = next_meter / 1000.0
+                            await ws.send(json.dumps([2, "meter", "MeterValues", {
+                                "connectorId": 1,
+                                "meterValue": [{
+                                    "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S') + "Z",
+                                    "sampledValue": [{
+                                        "value": f"{next_kwh:.3f}",
+                                        "measurand": "Energy.Active.Import.Register",
+                                        "unit": "kWh",
+                                        "context": "Sample.Clock"
+                                    }]
+                                }]
+                            }]))
+                            await ws.recv()
+                            last_mv = time.monotonic()
+
+                # StartTransaction
                 await ws.send(json.dumps([2, "start", "StartTransaction", {
                     "connectorId": 1,
                     "idTag": rfid,
@@ -250,12 +291,7 @@ async def simulate_cp(
                 listener = asyncio.create_task(listen_to_csms(stop_event, reset_event))
 
                 # MeterValues loop
-                actual_duration = random.uniform(duration * 0.75, duration * 1.25)
-                steps = max(1, int(actual_duration / interval))
                 meter = meter_start
-
-                step_min = max(1, int((kwh_min * 1000) / steps))
-                step_max = max(1, int((kwh_max * 1000) / steps))
                 for _ in range(steps):
                     if stop_event.is_set():
                         print(f"[Simulator:{cp_name}] Stop event triggered—ending meter loop")
@@ -441,6 +477,7 @@ def view_cp_simulator(*args, **kwargs):
                 interval = float(request.forms.get("interval") or 5),
                 kwh_min = float(request.forms.get("kwh_min") or 30),
                 kwh_max = float(request.forms.get("kwh_max") or 60),
+                pre_charge_delay = float(request.forms.get("pre_charge_delay") or 0),
                 repeat = request.forms.get("repeat") or False,
                 daemon = True,
                 username = request.forms.get("username") or None,
@@ -491,6 +528,10 @@ def view_cp_simulator(*args, **kwargs):
             <input name="interval" value="{interval}">
         </div>
         <div>
+            <label>Pre-charge Delay (s):</label>
+            <input name="pre_charge_delay" value="{pre_charge_delay}">
+        </div>
+        <div>
             <label>Energy Min (kWh):</label>
             <input name="kwh_min" value="{kwh_min}">
         </div>
@@ -525,6 +566,7 @@ def view_cp_simulator(*args, **kwargs):
         rfid=params.get('rfid', default_rfid),
         duration=params.get('duration', 600),
         interval=params.get('interval', 5),
+        pre_charge_delay=params.get('pre_charge_delay', 0),
         kwh_min=params.get('kwh_min', 30),
         kwh_max=params.get('kwh_max', 60),
         repeat_no='selected' if not params.get('repeat') else '',
