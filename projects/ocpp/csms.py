@@ -13,20 +13,13 @@ from datetime import datetime, timedelta
 from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 from bottle import request, redirect, HTTPError
-from typing import Dict, Optional
-from gway import gw
 
-_csms_loop: Optional[asyncio.AbstractEventLoop] = None
-_transactions: Dict[str, dict] = {}
-_active_cons: Dict[str, Optional[WebSocket]] = {}
-_latest_heartbeat: Dict[str, str] = {}
-_abnormal_status: Dict[str, dict] = {}
-_msg_log: Dict[str, list] = {}
+from gway import gw
 
 
 def _is_ws_live(cid: str) -> bool:
     """Return True if the charger has an active websocket connection."""
-    ws = _active_cons.get(cid)
+    ws = globals().get("_active_cons", {}).get(cid)
     if not ws:
         return False
     try:
@@ -79,12 +72,19 @@ def setup_app(*,
 
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
-        global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
+        global _csms_loop, _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
         if auth_required:
             if not gw.web.auth.check_websocket_auth(websocket):
                 await websocket.close(code=4401, reason="Unauthorized")
                 gw.warn(f"[OCPP] Unauthorized WebSocket connection attempt for charger_id={path}")
                 return
+
+        g = globals()
+        g.setdefault("_transactions", {})
+        g.setdefault("_active_cons", {})
+        g.setdefault("_latest_heartbeat", {})
+        g.setdefault("_abnormal_status", {})
+        g.setdefault("_msg_log", {})
 
         _csms_loop = asyncio.get_running_loop()
         charger_id = path.strip("/").split("/")[-1]
@@ -119,7 +119,7 @@ def setup_app(*,
             while True:
                 raw = await websocket.receive_text()
                 gw.info(f"[OCPP:{charger_id}] → {raw}")
-                _msg_log.setdefault(charger_id, []).append(f"> {raw}")
+                globals().setdefault("_msg_log", {}).setdefault(charger_id, []).append(f"> {raw}")
                 try:
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
@@ -201,7 +201,8 @@ def setup_app(*,
                             gw.mail.send(subject, body, to=email)
 
                     elif action == "MeterValues":
-                        tx = _transactions.get(charger_id)
+
+                        tx = globals().get("_transactions", {}).get(charger_id)
                         if not tx:
                             gw.warning(f"No transaction for {charger_id=}")
                         if tx:
@@ -247,7 +248,7 @@ def setup_app(*,
 
                     elif action == "StopTransaction":
                         now = int(time.time())
-                        tx = _transactions.get(charger_id)
+                        tx = globals().get("_transactions", {}).get(charger_id)
                         if tx:
                             if tx.get("MeterValues"):
                                 try:
@@ -340,9 +341,10 @@ def setup_app(*,
             gw.debug(traceback.format_exc())
         finally:
             # Mark the connection as offline but retain the record
-            if charger_id in _active_cons:
+            acons = globals().get("_active_cons", {})
+            if charger_id in acons:
                 gw.warning(f"[OCPP] {charger_id}")
-                _active_cons[charger_id] = None
+                acons[charger_id] = None
 
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 
@@ -371,7 +373,7 @@ def get_charger_state(cid, tx, ws_live, raw_hb):
     - "unknown": not live, not abnormal, default
     """
     # Priority: error > online > available > unknown
-    if cid in _abnormal_status:
+    if cid in globals().get("_abnormal_status", {}):
         return "error"
     if ws_live and tx and not tx.get("syncStop"):
         return "online"
@@ -497,14 +499,16 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
                 gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
                 msg = f"Error: {e}"
 
+    acons = globals().get("_active_cons", {})
+    txs = globals().get("_transactions", {})
     gw.debug(
-        f"[view_active_chargers] active_cons={list(_active_cons.keys())}"
+        f"[view_active_chargers] active_cons={list(acons.keys())}"
     )
     gw.debug(
-        f"[view_active_chargers] transactions={list(_transactions.keys())}"
+        f"[view_active_chargers] transactions={list(txs.keys())}"
     )
 
-    all_chargers = set(_active_cons) | set(_transactions)
+    all_chargers = set(acons) | set(txs)
     gw.debug(
         f"[view_active_chargers] all_chargers={sorted(all_chargers)}"
     )
@@ -519,12 +523,13 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
 
 
     # Abnormal status warning
-    if _abnormal_status:
+    ab_status = globals().get("_abnormal_status", {})
+    if ab_status:
         html.append(
             '<div class="ocpp-alert">'
             "⚠️ Abnormal Charger Status Detected:<ul>"
         )
-        for cid, err in sorted(_abnormal_status.items()):
+        for cid, err in sorted(ab_status.items()):
             status = err.get("status", "")
             error_code = err.get("errorCode", "")
             info = err.get("info", "")
@@ -544,8 +549,8 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
     else:
         for cid in sorted(all_chargers):
             ws_live = _is_ws_live(cid)
-            tx = _transactions.get(cid)
-            raw_hb = _latest_heartbeat.get(cid)
+            tx = globals().get("_transactions", {}).get(cid)
+            raw_hb = globals().get("_latest_heartbeat", {}).get(cid)
             state = get_charger_state(cid, tx, ws_live, raw_hb)
             html.append(_render_charger_card(cid, tx, state, raw_hb, show_controls=False))
     html.append('</div>')
@@ -574,16 +579,18 @@ def render_charger_list(**kwargs):
     Called via POST (or GET) from render.js, possibly with params in kwargs.
     """
     global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
-    gw.debug(f"[OCPP] Render CL {_latest_heartbeat=}")
-    all_chargers = set(_active_cons) | set(_transactions)
+    gw.debug(f"[OCPP] Render CL {globals().get('_latest_heartbeat', {})=}")
+    acons = globals().get("_active_cons", {})
+    txs = globals().get("_transactions", {})
+    all_chargers = set(acons) | set(txs)
     html = []
     if not all_chargers:
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
     else:
         for cid in sorted(all_chargers):
             ws_live = _is_ws_live(cid)
-            tx = _transactions.get(cid)
-            raw_hb = _latest_heartbeat.get(cid)
+            tx = globals().get("_transactions", {}).get(cid)
+            raw_hb = globals().get("_latest_heartbeat", {}).get(cid)
             state = get_charger_state(cid, tx, ws_live, raw_hb)
             html.append(_render_charger_card(cid, tx, state, raw_hb, show_controls=False))
     return "\n".join(html)
@@ -608,8 +615,8 @@ def view_charger_detail(*, charger_id=None, **_):
                 msg = f"Error: {e}"
 
     ws_live = _is_ws_live(charger_id)
-    tx = _transactions.get(charger_id)
-    raw_hb = _latest_heartbeat.get(charger_id)
+    tx = globals().get("_transactions", {}).get(charger_id)
+    raw_hb = globals().get("_latest_heartbeat", {}).get(charger_id)
     state = get_charger_state(charger_id, tx, ws_live, raw_hb)
     now = datetime.utcnow()
     since_default = (now - timedelta(days=1)).date().isoformat()
@@ -659,8 +666,8 @@ def render_charger_info(*, charger_id=None, chargerId=None, **_):
     cid = charger_id or chargerId
     if not cid:
         return ""
-    tx = _transactions.get(cid)
-    raw_hb = _latest_heartbeat.get(cid)
+    tx = globals().get("_transactions", {}).get(cid)
+    raw_hb = globals().get("_latest_heartbeat", {}).get(cid)
     state = get_charger_state(cid, tx, _is_ws_live(cid), raw_hb)
     return _render_charger_card(cid, tx, state, raw_hb)
 
@@ -668,7 +675,7 @@ def render_charger_log(*, charger_id=None, chargerId=None, **_):
     cid = charger_id or chargerId
     if not cid:
         return ""
-    lines = _msg_log.get(cid, [])[-50:]
+    lines = globals().get("_msg_log", {}).get(cid, [])[-50:]
     esc = lambda s: html.escape(s)
     return '<pre>' + '\n'.join(esc(line) for line in lines) + '</pre>'
 
@@ -729,7 +736,7 @@ def dispatch_action(charger_id: str, action: str):
     """
     Dispatch a remote admin action to the charger over OCPP via websocket.
     """
-    ws = _active_cons.get(charger_id)
+    ws = globals().get("_active_cons", {}).get(charger_id)
     if not ws:
         raise HTTPError(404, "No active connection")
     msg_id = str(uuid.uuid4())
@@ -737,7 +744,7 @@ def dispatch_action(charger_id: str, action: str):
     # Compose and send the appropriate OCPP message for the requested action
     msg_text = None
     if action == "remote_stop":
-        tx = _transactions.get(charger_id)
+        tx = globals().get("_transactions", {}).get(charger_id)
         if not tx:
             raise HTTPError(404, "No transaction to stop")
         msg_text = json.dumps([2, msg_id, "RemoteStopTransaction",
@@ -752,13 +759,14 @@ def dispatch_action(charger_id: str, action: str):
     else:
         raise HTTPError(400, f"Unknown action: {action}")
 
-    if _csms_loop:
-        _csms_loop.call_soon_threadsafe(lambda: _csms_loop.create_task(coro))
+    loop = globals().get("_csms_loop")
+    if loop:
+        loop.call_soon_threadsafe(lambda: loop.create_task(coro))
     else:
         gw.warn("No CSMS event loop; action not sent")
 
     if msg_text:
-        _msg_log.setdefault(charger_id, []).append(f"< {msg_text}")
+        globals().setdefault("_msg_log", {}).setdefault(charger_id, []).append(f"< {msg_text}")
 
     return {"status": "requested", "messageId": msg_id}
 
@@ -947,11 +955,11 @@ def view_energy_graph(*, charger_id=None, date=None, **_):
 def purge(*, database: bool = False, logs: bool = False):
     """Clear in-memory CSMS data and optionally purge persistent storage."""
 
-    _transactions.clear()
-    _active_cons.clear()
-    _latest_heartbeat.clear()
-    _abnormal_status.clear()
-    _msg_log.clear()
+    globals().get("_transactions", {}).clear()
+    globals().get("_active_cons", {}).clear()
+    globals().get("_latest_heartbeat", {}).clear()
+    globals().get("_abnormal_status", {}).clear()
+    globals().get("_msg_log", {}).clear()
     gw.info("[OCPP] In-memory state purged.")
 
     if database:
