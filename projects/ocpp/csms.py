@@ -351,20 +351,26 @@ def is_abnormal_status(status: str, error_code: str) -> bool:
 
 def get_charger_state(cid, tx, ws_live, raw_hb):
     """
-    Determine charger state for stripe:
-    - "error": charger is abnormal/faulted
-    - "online": live socket, active transaction, not closed
-    - "available": live socket, no open transaction
-    - "unknown": not live, not abnormal, default
+    Determine charger state for status stripe and text.
+
+    - ``error``: abnormal status reported by charger
+    - ``online``: connection active with an open transaction
+    - ``available``: connection active but idle/no transaction
+    - ``offline``: charger known but currently disconnected
+    - ``unknown``: no record of this charger yet
     """
-    # Priority: error > online > available > unknown
     conn_info = gw.ocpp.data.get_connection(cid) or {}
     if conn_info.get("status"):
         return "error"
-    if ws_live and tx and not tx.get("syncStop"):
-        return "online"
-    if ws_live and (not tx or tx.get("syncStop")):
+
+    connected = bool(ws_live or conn_info.get("connected"))
+    if connected:
+        if tx and not tx.get("syncStop"):
+            return "online"
         return "available"
+
+    if conn_info:
+        return "offline"
     return "unknown"
 
 ...
@@ -394,9 +400,7 @@ def _render_card_link(cid):
     )
 
 def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
-    """
-    Render a charger card with the right status stripe (state: "online", "available", "error", "unknown").
-    """
+    """Render a charger card with the appropriate status stripe."""
     status_class = f"status-{state}"
     tx_id       = tx.get("transactionId") if tx else '-'
     meter_start = tx.get("meterStart") if tx else '-'
