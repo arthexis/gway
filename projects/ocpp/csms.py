@@ -482,6 +482,7 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
     Renders <div id="charger-list" gw-render="charger_list" gw-refresh="5">
     so the client can periodically refresh the list via render.js.
     """
+    global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
     msg = ""
     gw.debug(
         f"[view_active_chargers] start: action={action} charger_id={charger_id}"
@@ -573,6 +574,8 @@ def render_charger_list(**kwargs):
     No parsing of incoming HTML; just returns a new block of HTML for charger-list.
     Called via POST (or GET) from render.js, possibly with params in kwargs.
     """
+    global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
+    gw.debug(f"[OCPP] Render CL {_latest_heartbeat=}")
     all_chargers = set(_active_cons) | set(_transactions)
     html = []
     if not all_chargers:
