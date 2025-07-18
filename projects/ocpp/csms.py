@@ -35,7 +35,7 @@ def setup_app(*,
     email=None,
     auth="disabled",
 ):
-    global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
+    global _active_cons, _msg_log
     # no globals needed here; dictionaries are modified in-place
     email = email if isinstance(email, str) else (gw.resolve('[ADMIN_EMAIL]') if email else email)
 
@@ -72,7 +72,7 @@ def setup_app(*,
 
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
-        global _csms_loop, _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
+        global _csms_loop, _active_cons, _msg_log
         if auth_required:
             if not gw.web.auth.check_websocket_auth(websocket):
                 await websocket.close(code=4401, reason="Unauthorized")
@@ -80,10 +80,7 @@ def setup_app(*,
                 return
 
         g = globals()
-        g.setdefault("_transactions", {})
         g.setdefault("_active_cons", {})
-        g.setdefault("_latest_heartbeat", {})
-        g.setdefault("_abnormal_status", {})
         g.setdefault("_msg_log", {})
 
         _csms_loop = asyncio.get_running_loop()
@@ -114,6 +111,8 @@ def setup_app(*,
             await websocket.accept()
 
         _active_cons[charger_id] = websocket
+        gw.ocpp.data.set_connection_status(charger_id, True)
+        tx_data = None
 
         try:
             while True:
@@ -148,14 +147,12 @@ def setup_app(*,
                         response_payload = {"currentTime": datetime.utcnow().isoformat() + "Z"}
 
                     elif action == "StartTransaction":
-                        gw.debug(f"[OCPP] {action} {_transactions} {_active_cons}")
                         if not call_authorize(payload, action):
                             response_payload = {"transactionId": 0, "idTagInfo": {"status": "Rejected"}}
                         else:
                             now = int(time.time())
                             transaction_id = now
-                            _transactions[charger_id] = {
-                                "syncStart": 1,
+                            tx_data = {
                                 "connectorId": payload.get("connectorId"),
                                 "idTagStart": payload.get("idTag"),
                                 "meterStart": payload.get("meterStart"),
@@ -184,7 +181,6 @@ def setup_app(*,
                                 "transactionId": transaction_id,
                                 "idTagInfo": {"status": "Accepted"}
                             }
-                            gw.debug(f"[OCPP] {action} {_transactions} {_active_cons}")
 
                         if email:
                             subject = f"OCPP: Charger {charger_id} STARTED transaction {transaction_id}"
@@ -202,10 +198,7 @@ def setup_app(*,
 
                     elif action == "MeterValues":
 
-                        tx = globals().get("_transactions", {}).get(charger_id)
-                        if not tx:
-                            gw.warning(f"No transaction for {charger_id=}")
-                        if tx:
+                        if tx_data:
                             for entry in payload.get("meterValue", []):
                                 ts = entry.get("timestamp")
                                 ts_epoch = (
@@ -229,7 +222,7 @@ def setup_app(*,
                                         })
                                         gw.ocpp.data.record_meter_value(
                                             charger_id,
-                                            tx.get("transactionId"),
+                                            tx_data.get("transactionId"),
                                             ts_epoch,
                                             measurand,
                                             fval,
@@ -238,7 +231,7 @@ def setup_app(*,
                                         )
                                     except Exception:
                                         continue
-                                tx["MeterValues"].append({
+                                tx_data["MeterValues"].append({
                                     "timestamp": ts_epoch,
                                     "timestampStr": datetime.utcfromtimestamp(ts_epoch).isoformat() + "Z",
                                     "timeMs": int(time.time() * 1000) % 1000,
@@ -248,16 +241,14 @@ def setup_app(*,
 
                     elif action == "StopTransaction":
                         now = int(time.time())
-                        tx = globals().get("_transactions", {}).get(charger_id)
-                        if tx:
-                            if tx.get("MeterValues"):
+                        if tx_data:
+                            if tx_data.get("MeterValues"):
                                 try:
-                                    archive_energy(charger_id, tx["transactionId"], tx["MeterValues"])
+                                    archive_energy(charger_id, tx_data["transactionId"], tx_data["MeterValues"])
                                 except Exception as e:
                                     gw.error("Error recording energy chart.")
                                     gw.exception(e)
-                            tx.update({
-                                "syncStop": 1,
+                            tx_data.update({
                                 "idTagStop": payload.get("idTag"),
                                 "meterStop": payload.get("meterStop"),
                                 "stopTime": now,
@@ -274,41 +265,35 @@ def setup_app(*,
                                     cp_stop = None
                             gw.ocpp.data.record_transaction_stop(
                                 charger_id,
-                                tx.get("transactionId"),
+                                tx_data.get("transactionId"),
                                 now,
                                 meter_stop=payload.get("meterStop"),
                                 reason="Local",
                                 charger_timestamp=cp_stop,
                             )
-                            archive_transaction(charger_id, tx)
+                            archive_transaction(charger_id, tx_data)
                             if location:
                                 file_path = gw.resource(
                                     "work", "etron", "records", location,
-                                    f"{charger_id}_{tx['transactionId']}.dat"
+                                    f"{charger_id}_{tx_data['transactionId']}.dat"
                                 )
                                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                                 with open(file_path, "w") as f:
-                                    json.dump(tx, f, indent=2)
+                                    json.dump(tx_data, f, indent=2)
+                            tx_data = None
                         response_payload = {"idTagInfo": {"status": "Accepted"}}
 
                     elif action == "StatusNotification":
                         status = payload.get("status")
                         error_code = payload.get("errorCode")
                         info = payload.get("info", "")
-                        # Only store if abnormal; remove if cleared
                         if is_abnormal_status(status, error_code):
-                            _abnormal_status[charger_id] = {
-                                "status": status,
-                                "errorCode": error_code,
-                                "info": info,
-                                "timestamp": datetime.utcnow().isoformat() + "Z"
-                            }
+                            gw.ocpp.data.update_status(charger_id, status, error_code, info)
                             gw.warn(f"[OCPP] Abnormal status for {charger_id}: {status}/{error_code} - {info}")
                             gw.ocpp.data.record_error(charger_id, status, error_code, info)
                         else:
-                            if charger_id in _abnormal_status:
-                                gw.info(f"[OCPP] Status normalized for {charger_id}: {status}/{error_code}")
-                                _abnormal_status.pop(charger_id, None)
+                            gw.ocpp.data.clear_status(charger_id)
+                            gw.info(f"[OCPP] Status normalized for {charger_id}: {status}/{error_code}")
                         response_payload = {}
 
                     else:
@@ -322,9 +307,8 @@ def setup_app(*,
                     # Handle CALLRESULT, check for Heartbeat ACK to record latest heartbeat time
                     payload = msg[2] if len(msg) > 2 else {}
                     if isinstance(payload, dict) and "currentTime" in payload:
-                        # Only update for Heartbeat (or any other call with currentTime)
-                        _latest_heartbeat[charger_id] = payload["currentTime"]
-                        gw.debug(f"[OCPP:{charger_id}] Updated latest heartbeat to {_latest_heartbeat[charger_id]}")
+                        gw.ocpp.data.record_heartbeat(charger_id, payload["currentTime"])
+                        gw.debug(f"[OCPP:{charger_id}] Updated latest heartbeat to {payload['currentTime']}")
                     continue
 
                 elif isinstance(msg, list) and msg[0] == 4:
@@ -345,6 +329,7 @@ def setup_app(*,
             if charger_id in acons:
                 gw.warning(f"[OCPP] {charger_id}")
                 acons[charger_id] = None
+            gw.ocpp.data.set_connection_status(charger_id, False)
 
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 
@@ -373,7 +358,8 @@ def get_charger_state(cid, tx, ws_live, raw_hb):
     - "unknown": not live, not abnormal, default
     """
     # Priority: error > online > available > unknown
-    if cid in globals().get("_abnormal_status", {}):
+    conn_info = gw.ocpp.data.get_connection(cid) or {}
+    if conn_info.get("status"):
         return "error"
     if ws_live and tx and not tx.get("syncStop"):
         return "online"
@@ -483,7 +469,7 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
     Renders <div id="charger-list" gw-render="charger_list" gw-refresh="5">
     so the client can periodically refresh the list via render.js.
     """
-    global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
+    global _active_cons, _msg_log
     msg = ""
     gw.debug(
         f"[view_active_chargers] start: action={action} charger_id={charger_id}"
@@ -500,13 +486,9 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
                 msg = f"Error: {e}"
 
     acons = globals().get("_active_cons", {})
-    txs = globals().get("_transactions", {})
-    gw.debug(
-        f"[view_active_chargers] active_cons={list(acons.keys())}"
-    )
-    gw.debug(
-        f"[view_active_chargers] transactions={list(txs.keys())}"
-    )
+    txs = gw.ocpp.data.get_active_transactions()
+    gw.debug(f"[view_active_chargers] active_cons={list(acons.keys())}")
+    gw.debug(f"[view_active_chargers] transactions={list(txs.keys())}")
 
     all_chargers = set(acons) | set(txs)
     gw.debug(
@@ -523,7 +505,11 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
 
 
     # Abnormal status warning
-    ab_status = globals().get("_abnormal_status", {})
+    ab_status = {
+        cid: info
+        for cid in all_chargers
+        if (info := gw.ocpp.data.get_connection(cid)) and info.get("status")
+    }
     if ab_status:
         html.append(
             '<div class="ocpp-alert">'
@@ -549,8 +535,9 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
     else:
         for cid in sorted(all_chargers):
             ws_live = _is_ws_live(cid)
-            tx = globals().get("_transactions", {}).get(cid)
-            raw_hb = globals().get("_latest_heartbeat", {}).get(cid)
+            tx = txs.get(cid)
+            conn_info = gw.ocpp.data.get_connection(cid) or {}
+            raw_hb = conn_info.get("last_heartbeat")
             state = get_charger_state(cid, tx, ws_live, raw_hb)
             html.append(_render_charger_card(cid, tx, state, raw_hb, show_controls=False))
     html.append('</div>')
@@ -578,10 +565,10 @@ def render_charger_list(**kwargs):
     No parsing of incoming HTML; just returns a new block of HTML for charger-list.
     Called via POST (or GET) from render.js, possibly with params in kwargs.
     """
-    global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
-    gw.debug(f"[OCPP] Render CL {globals().get('_latest_heartbeat', {})=}")
+    global _active_cons, _msg_log
+    gw.debug("[OCPP] Render CL")
     acons = globals().get("_active_cons", {})
-    txs = globals().get("_transactions", {})
+    txs = gw.ocpp.data.get_active_transactions()
     all_chargers = set(acons) | set(txs)
     html = []
     if not all_chargers:
@@ -589,8 +576,9 @@ def render_charger_list(**kwargs):
     else:
         for cid in sorted(all_chargers):
             ws_live = _is_ws_live(cid)
-            tx = globals().get("_transactions", {}).get(cid)
-            raw_hb = globals().get("_latest_heartbeat", {}).get(cid)
+            tx = txs.get(cid)
+            conn_info = gw.ocpp.data.get_connection(cid) or {}
+            raw_hb = conn_info.get("last_heartbeat")
             state = get_charger_state(cid, tx, ws_live, raw_hb)
             html.append(_render_charger_card(cid, tx, state, raw_hb, show_controls=False))
     return "\n".join(html)
@@ -615,8 +603,9 @@ def view_charger_detail(*, charger_id=None, **_):
                 msg = f"Error: {e}"
 
     ws_live = _is_ws_live(charger_id)
-    tx = globals().get("_transactions", {}).get(charger_id)
-    raw_hb = globals().get("_latest_heartbeat", {}).get(charger_id)
+    tx = gw.ocpp.data.get_active_transaction(charger_id)
+    conn_info = gw.ocpp.data.get_connection(charger_id) or {}
+    raw_hb = conn_info.get("last_heartbeat")
     state = get_charger_state(charger_id, tx, ws_live, raw_hb)
     now = datetime.utcnow()
     since_default = (now - timedelta(days=1)).date().isoformat()
@@ -666,8 +655,9 @@ def render_charger_info(*, charger_id=None, chargerId=None, **_):
     cid = charger_id or chargerId
     if not cid:
         return ""
-    tx = globals().get("_transactions", {}).get(cid)
-    raw_hb = globals().get("_latest_heartbeat", {}).get(cid)
+    tx = gw.ocpp.data.get_active_transaction(cid)
+    conn_info = gw.ocpp.data.get_connection(cid) or {}
+    raw_hb = conn_info.get("last_heartbeat")
     state = get_charger_state(cid, tx, _is_ws_live(cid), raw_hb)
     return _render_charger_card(cid, tx, state, raw_hb)
 
@@ -744,7 +734,7 @@ def dispatch_action(charger_id: str, action: str):
     # Compose and send the appropriate OCPP message for the requested action
     msg_text = None
     if action == "remote_stop":
-        tx = globals().get("_transactions", {}).get(charger_id)
+        tx = gw.ocpp.data.get_active_transaction(charger_id)
         if not tx:
             raise HTTPError(404, "No transaction to stop")
         msg_text = json.dumps([2, msg_id, "RemoteStopTransaction",
@@ -955,10 +945,7 @@ def view_energy_graph(*, charger_id=None, date=None, **_):
 def purge(*, database: bool = False, logs: bool = False):
     """Clear in-memory CSMS data and optionally purge persistent storage."""
 
-    globals().get("_transactions", {}).clear()
     globals().get("_active_cons", {}).clear()
-    globals().get("_latest_heartbeat", {}).clear()
-    globals().get("_abnormal_status", {}).clear()
     globals().get("_msg_log", {}).clear()
     gw.info("[OCPP] In-memory state purged.")
 

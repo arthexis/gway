@@ -256,7 +256,7 @@ def open_connection(
     # Build cache key (engine, datafile, thread)
     _start_writer_thread()
     base_key = (sql_engine, datafile or "default")
-    thread_key = threading.get_ident() if sql_engine == "sqlite" else "*"
+    thread_key = threading.get_ident() if sql_engine in ("sqlite", "duckdb") else "*"
     key = (base_key, thread_key)
 
     # Reuse cached connection if available
