@@ -351,6 +351,33 @@ def get_meter_values(charger_id: str, transaction_id: int):
         )
     return list(grouped.values())
 
+def get_latest_meter_value(charger_id: str, transaction_id: int):
+    """Return the most recent Energy.Active.Import.Register value in kWh."""
+    conn = open_db()
+    rows = gw.sql.execute(
+        """
+        SELECT value, unit FROM meter_values
+        WHERE charger_id=? AND transaction_id=?
+          AND measurand='Energy.Active.Import.Register'
+        ORDER BY timestamp DESC LIMIT 1
+        """,
+        connection=conn,
+        args=(charger_id, transaction_id),
+    )
+    if rows:
+        val, unit = rows[0]
+        try:
+            fval = float(val)
+            if unit == 'Wh':
+                fval /= 1000.0
+            return fval
+        except Exception:
+            try:
+                return float(val)
+            except Exception:
+                return None
+    return None
+
 def get_meter_series(chargers: Sequence[str], *, start: int = None, end: int = None):
     """Return dict of charger_id -> list of (timestamp, kWh)."""
     conn = open_db()
