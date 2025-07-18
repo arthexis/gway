@@ -159,7 +159,7 @@ def start_app(*,
                 port=port_to_use,
                 log_level="debug" if debug else "info",
                 workers=workers or 1,
-                reload=debug,
+                reload=False,
             )
             return
 
