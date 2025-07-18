@@ -187,6 +187,8 @@ def setup_app(*,
 
                     elif action == "MeterValues":
                         tx = _transactions.get(charger_id)
+                        if not tx:
+                            gw.warning(f"No transaction for {charger_id=}")
                         if tx:
                             for entry in payload.get("meterValue", []):
                                 ts = entry.get("timestamp")
@@ -322,6 +324,7 @@ def setup_app(*,
             gw.error(f"[OCPP:{charger_id}] WebSocket failure: {e}")
             gw.debug(traceback.format_exc())
         finally:
+            # TODO: Instead of popping the connection, update the status but keep it in memory
             _active_cons.pop(charger_id, None)
 
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
