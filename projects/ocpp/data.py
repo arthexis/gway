@@ -315,6 +315,15 @@ def get_active_transactions():
         }
     return result
 
+def get_active_chargers() -> list[str]:
+    """Return list of charger IDs currently marked as connected."""
+    conn = open_db()
+    rows = gw.sql.execute(
+        "SELECT charger_id FROM connections WHERE connected=1",
+        connection=conn,
+    )
+    return [r[0] for r in rows]
+
 def get_meter_values(charger_id: str, transaction_id: int):
     conn = open_db()
     rows = gw.sql.execute(

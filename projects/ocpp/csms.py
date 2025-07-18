@@ -485,12 +485,12 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
                 gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
                 msg = f"Error: {e}"
 
-    acons = globals().get("_active_cons", {})
     txs = gw.ocpp.data.get_active_transactions()
-    gw.debug(f"[view_active_chargers] active_cons={list(acons.keys())}")
+    db_active = gw.ocpp.data.get_active_chargers()
+    gw.debug(f"[view_active_chargers] active_db={db_active}")
     gw.debug(f"[view_active_chargers] transactions={list(txs.keys())}")
 
-    all_chargers = set(acons) | set(txs)
+    all_chargers = set(db_active) | set(txs)
     gw.debug(
         f"[view_active_chargers] all_chargers={sorted(all_chargers)}"
     )
@@ -567,9 +567,9 @@ def render_charger_list(**kwargs):
     """
     global _active_cons, _msg_log
     gw.debug("[OCPP] Render CL")
-    acons = globals().get("_active_cons", {})
     txs = gw.ocpp.data.get_active_transactions()
-    all_chargers = set(acons) | set(txs)
+    db_active = gw.ocpp.data.get_active_chargers()
+    all_chargers = set(db_active) | set(txs)
     html = []
     if not all_chargers:
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
