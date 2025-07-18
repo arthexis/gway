@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.50 [build a319ee]
+---------------------
+
+- 8fed401 Track last heartbeat and format update times
+
 0.4.49 [build 339f37]
 ---------------------
 
