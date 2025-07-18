@@ -575,3 +575,114 @@ def setup_table(table: str, column: str = None, ctype: str = "TEXT", *,
     if immediate:
         migrate(dbfile=dbfile)
 
+
+class TableProxy:
+    """Lightweight helper exposing CRUD operations for a table."""
+
+    def __init__(self, name: str, *, dbfile=None):
+        self.name = name
+        self.dbfile = dbfile
+
+    def create(self, **fields):
+        """Insert a record and return the last row id."""
+        return gw.sql.crud.api_create(table=self.name, dbfile=self.dbfile, **fields)
+
+    def read(self, id, id_col: str = "id"):
+        """Read a record by ``id``."""
+        return gw.sql.crud.api_read(table=self.name, id=id, id_col=id_col, dbfile=self.dbfile)
+
+    def update(self, id, id_col: str = "id", **fields):
+        """Update fields for ``id``."""
+        gw.sql.crud.api_update(table=self.name, id=id, id_col=id_col, dbfile=self.dbfile, **fields)
+
+    def delete(self, id, id_col: str = "id"):
+        """Delete record by ``id``."""
+        gw.sql.crud.api_delete(table=self.name, id=id, id_col=id_col, dbfile=self.dbfile)
+
+    def all(self):
+        """Return all rows from the table."""
+        conn = gw.sql.open_connection(self.dbfile)
+        return gw.sql.execute(f"SELECT * FROM [{self.name}]", connection=conn)
+
+
+def _python_type_to_sql(tp):
+    """Best effort mapping of Python type to SQLite type."""
+    if tp in (int, bool):
+        return "INTEGER"
+    if tp is float:
+        return "REAL"
+    if tp is bytes:
+        return "BLOB"
+    return "TEXT"
+
+
+def _parse_model_definition(defn, name=None):
+    """Return (table_name, column_spec) from various definitions."""
+    import dataclasses
+    import inspect
+
+    if isinstance(defn, str):
+        if "(" in defn:
+            # Either full CREATE statement or "name(col type, ...)"
+            m = re.match(r"\s*create\s+table\s+(?:if\s+not\s+exists\s+)?\[?(?P<name>\w+)\]?\s*\((?P<cols>.+)\)" , defn, re.I | re.S)
+            if m:
+                return m.group("name"), m.group("cols")
+            m = re.match(r"\s*(?P<name>\w+)\s*\((?P<cols>.+)\)\s*", defn)
+            if m:
+                return m.group("name"), m.group("cols")
+        return defn, None
+
+    if isinstance(defn, dict):
+        tbl = name or defn.get("__name__") or defn.get("name") or defn.get("table")
+        if not tbl:
+            raise ValueError("Table name required for dict definition")
+        cols = [f"[{k}] {v}" for k, v in defn.items() if not k.startswith("__") and k not in ("name", "table")]
+        return tbl, ", ".join(cols) if cols else None
+
+    if dataclasses.is_dataclass(defn):
+        tbl = name or getattr(defn, "__name__", None)
+        cols = []
+        for f in dataclasses.fields(defn):
+            ctype = _python_type_to_sql(f.type)
+            spec = f"[{f.name}] {ctype}"
+            if f.name == "id" and ctype == "INTEGER":
+                spec += " PRIMARY KEY AUTOINCREMENT"
+            cols.append(spec)
+        return tbl, ", ".join(cols)
+
+    if inspect.isclass(defn) and hasattr(defn, "_fields"):
+        tbl = name or getattr(defn, "__name__", None)
+        cols = [f"[{f}] TEXT" for f in defn._fields]
+        return tbl, ", ".join(cols)
+
+    ann = getattr(defn, "__annotations__", None)
+    if ann:
+        tbl = name or getattr(defn, "__name__", None)
+        cols = [f"[{k}] {_python_type_to_sql(t)}" for k, t in ann.items()]
+        return tbl, ", ".join(cols)
+
+    return str(defn), None
+
+
+def model(defn, *, dbfile=None, create=True, name=None):
+    """Return a :class:`TableProxy` for ``defn``.
+
+    ``defn`` may be a table name, mapping, dataclass, namedtuple or SQL spec.
+    If column definitions are available and ``create`` is True the table is
+    created automatically using ``CREATE TABLE IF NOT EXISTS``.
+    """
+
+    table, colspec = _parse_model_definition(defn, name)
+    if not table:
+        raise ValueError("Could not determine table name from definition")
+
+    if colspec and create:
+        conn = gw.sql.open_connection(dbfile)
+        gw.sql.execute(
+            f"CREATE TABLE IF NOT EXISTS [{table}] ({colspec})",
+            connection=conn,
+        )
+
+    return TableProxy(table, dbfile=dbfile)
+
+
