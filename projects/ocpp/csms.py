@@ -404,6 +404,7 @@ def _render_card_link(cid):
 def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
     """Render a charger card with the appropriate status stripe."""
     from datetime import datetime
+
     status_class = f"status-{state}"
     tx_id       = tx.get("transactionId") if tx else '-'
     meter_start = tx.get("meterStart") if tx else '-'
@@ -438,6 +439,7 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
     last_msg_ts = conn.get("last_msg")
     if last_msg_ts:
         try:
+
             last_updated = (
                 datetime.utcfromtimestamp(int(float(last_msg_ts))).isoformat() + "Z"
             )
