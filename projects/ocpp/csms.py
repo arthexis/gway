@@ -147,6 +147,7 @@ def setup_app(*,
                         response_payload = {"currentTime": datetime.utcnow().isoformat() + "Z"}
 
                     elif action == "StartTransaction":
+                        gw.debug(f"[OCPP] {action} {_transactions} {_active_cons}")
                         if not call_authorize(payload, action):
                             response_payload = {"transactionId": 0, "idTagInfo": {"status": "Rejected"}}
                         else:
@@ -182,6 +183,7 @@ def setup_app(*,
                                 "transactionId": transaction_id,
                                 "idTagInfo": {"status": "Accepted"}
                             }
+                            gw.debug(f"[OCPP] {action} {_transactions} {_active_cons}")
 
                         if email:
                             subject = f"OCPP: Charger {charger_id} STARTED transaction {transaction_id}"
@@ -198,6 +200,7 @@ def setup_app(*,
                             gw.mail.send(subject, body, to=email)
 
                     elif action == "MeterValues":
+                        gw.debug(f"[OCPP] {action} {_transactions} {_active_cons} {charger_id=}")
                         tx = _transactions.get(charger_id)
                         if not tx:
                             gw.warning(f"No transaction for {charger_id=}")
@@ -478,7 +481,7 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
     so the client can periodically refresh the list via render.js.
     """
     msg = ""
-    gw.verbose(
+    gw.debug(
         f"[view_active_chargers] start: action={action} charger_id={charger_id}"
     )
     if request.method == "POST":
@@ -492,15 +495,15 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
                 gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
                 msg = f"Error: {e}"
 
-    gw.verbose(
+    gw.debug(
         f"[view_active_chargers] active_cons={list(_active_cons.keys())}"
     )
-    gw.verbose(
+    gw.debug(
         f"[view_active_chargers] transactions={list(_transactions.keys())}"
     )
 
     all_chargers = set(_active_cons) | set(_transactions)
-    gw.verbose(
+    gw.debug(
         f"[view_active_chargers] all_chargers={sorted(all_chargers)}"
     )
     html = [
