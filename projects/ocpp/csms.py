@@ -790,6 +790,12 @@ def extract_meter(tx):
                     return val_f
                 except Exception:
                     return val
+    elif tx.get("transactionId") is not None and tx.get("charger_id"):
+        val = gw.ocpp.data.get_latest_meter_value(
+            tx["charger_id"], tx["transactionId"]
+        )
+        if val is not None:
+            return val
     return "-"
 
 
@@ -831,6 +837,12 @@ def power_consumed(tx):
             end_val = float(tx["meterStop"]) / 1000.0
         except Exception:
             end_val = None
+    elif tx.get("transactionId") is not None and tx.get("charger_id"):
+        latest = gw.ocpp.data.get_latest_meter_value(
+            tx["charger_id"], tx["transactionId"]
+        )
+        if latest is not None:
+            end_val = latest
 
     if start_val is not None and end_val is not None:
         return round(end_val - start_val, 3)
