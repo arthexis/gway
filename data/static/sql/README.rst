@@ -39,3 +39,20 @@ The ``recipes/midblog.gwr`` file shows how to combine this view with
 ``web.nav`` and ``web.site`` to create a minimal website.  For a slightly
 more complete example with basic authentication see ``recipes/micro_blog.gwr``.
 
+``gw.sql.model`` returns a proxy object with CRUD helpers for a specific
+table. Pass an existing table name or a definition such as a mapping or
+dataclass and the table will be created automatically::
+
+    from dataclasses import dataclass
+    from gway import gw
+
+    @dataclass
+    class Item:
+        id: int
+        name: str
+        qty: int
+
+    items = gw.sql.model(Item, dbfile='work/shop.sqlite')
+    new_id = items.create(name='apple', qty=5)
+    row = items.read(new_id)
+
