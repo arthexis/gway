@@ -139,3 +139,59 @@ def summary_report(report_path, *, output_path=None):
 
     gw.info(f"Summary written to {output_path}")
     return {"status": "success", "output_csv": output_path}
+
+
+def view_extract_records(
+    *,
+    location: str = None,
+    add_days: int = 0,
+    after: str = None,
+    before: str = None,
+    batch: str = None,
+):
+    """Simple web form to run :func:`extract_records`."""
+    from bottle import request
+    import html
+
+    msg = ""
+    if request.method == "POST":
+        location = request.forms.get("location") or location
+        add_days = int(request.forms.get("add_days") or 0)
+        after = request.forms.get("after") or None
+        before = request.forms.get("before") or None
+        batch = request.forms.get("batch") or None
+
+        if not location:
+            msg = "<p class='error'>Location is required.</p>"
+        else:
+            try:
+                result = extract_records(
+                    location,
+                    add_days=add_days,
+                    after=after,
+                    before=before,
+                    batch=batch,
+                )
+                out = html.escape(result.get("output_csv", ""))
+                msg = f"<p>Records written to {out}</p>"
+            except Exception as exc:
+                gw.exception(exc)
+                msg = f"<p class='error'>Error: {html.escape(str(exc))}</p>"
+
+    location_val = html.escape(location or "")
+    after_val = html.escape(after or "")
+    before_val = html.escape(before or "")
+    batch_val = html.escape(batch or "")
+
+    return (
+        "<h1>Extract eTRON Records</h1>"
+        f"{msg}"
+        "<form method='post'>"
+        f"<input name='location' placeholder='Location' required value='{location_val}'> "
+        f"<input type='number' name='add_days' value='{add_days}' placeholder='Add Days'> "
+        f"<input name='after' placeholder='After YYYYMMDD' value='{after_val}'> "
+        f"<input name='before' placeholder='Before YYYYMMDD' value='{before_val}'> "
+        f"<input name='batch' placeholder='Batch' value='{batch_val}'> "
+        "<button type='submit'>Extract</button>"
+        "</form>"
+    )
