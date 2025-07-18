@@ -74,6 +74,11 @@ def _init_db(conn):
         """,
         connection=conn,
     )
+    # track when we last received any message from the charger
+    gw.sql.execute(
+        "ALTER TABLE connections ADD COLUMN IF NOT EXISTS last_msg INTEGER",
+        connection=conn,
+    )
 
 def record_transaction_start(
     charger_id: str,
@@ -97,6 +102,7 @@ def record_transaction_start(
             charger_timestamp,
         ),
     )
+    record_last_msg(charger_id, start_time)
 
 def record_transaction_stop(
     charger_id: str,
@@ -120,6 +126,7 @@ def record_transaction_stop(
             transaction_id,
         ),
     )
+    record_last_msg(charger_id, stop_time)
 
 def record_meter_value(charger_id: str, transaction_id: int, timestamp: int, measurand: str, value: float, unit: str = "", context: str = ""):
     conn = open_db()
@@ -128,6 +135,7 @@ def record_meter_value(charger_id: str, transaction_id: int, timestamp: int, mea
         connection=conn,
         args=(charger_id, transaction_id, int(timestamp), measurand, float(value), unit, context),
     )
+    record_last_msg(charger_id, timestamp)
 
 def record_error(charger_id: str, status: str, error_code: str = "", info: str = ""):
     conn = open_db()
@@ -137,6 +145,7 @@ def record_error(charger_id: str, status: str, error_code: str = "", info: str =
         connection=conn,
         args=(charger_id, status, error_code, info, ts),
     )
+    record_last_msg(charger_id, ts)
 
 def set_connection_status(charger_id: str, connected: bool):
     """Mark charger connection as active or inactive."""
@@ -147,9 +156,9 @@ def set_connection_status(charger_id: str, connected: bool):
         args=(charger_id,),
     )
     gw.sql.execute(
-        "INSERT INTO connections(charger_id, connected) VALUES (?, ?)",
+        "INSERT INTO connections(charger_id, connected, last_msg) VALUES (?, ?, ?)",
         connection=conn,
-        args=(charger_id, 1 if connected else 0),
+        args=(charger_id, 1 if connected else 0, int(time.time())),
     )
 
 def record_heartbeat(charger_id: str, timestamp: str):
@@ -159,6 +168,7 @@ def record_heartbeat(charger_id: str, timestamp: str):
         connection=conn,
         args=(timestamp, charger_id),
     )
+    record_last_msg(charger_id)
 
 def update_status(charger_id: str, status: str = None, error_code: str = None, info: str = None):
     conn = open_db()
@@ -176,21 +186,32 @@ def clear_status(charger_id: str):
         args=(charger_id,),
     )
 
+def record_last_msg(charger_id: str, timestamp: int | None = None):
+    """Update the last_msg timestamp for a charger."""
+    conn = open_db()
+    ts = int(timestamp or time.time())
+    gw.sql.execute(
+        "UPDATE connections SET last_msg=? WHERE charger_id=?",
+        connection=conn,
+        args=(ts, charger_id),
+    )
+
 def get_connection(charger_id: str):
     conn = open_db()
     rows = gw.sql.execute(
-        "SELECT connected, last_heartbeat, status, error_code, info FROM connections WHERE charger_id=?",
+        "SELECT connected, last_heartbeat, status, error_code, info, last_msg FROM connections WHERE charger_id=?",
         connection=conn,
         args=(charger_id,),
     )
     if rows:
-        c, hb, st, ec, info = rows[0]
+        c, hb, st, ec, info, lm = rows[0]
         return {
             "connected": bool(c),
             "last_heartbeat": hb,
             "status": st,
             "error_code": ec,
             "info": info,
+            "last_msg": lm,
         }
     return None
 
@@ -350,6 +371,33 @@ def get_meter_values(charger_id: str, transaction_id: int):
             }
         )
     return list(grouped.values())
+
+def get_latest_meter_value(charger_id: str, transaction_id: int):
+    """Return the most recent Energy.Active.Import.Register value in kWh."""
+    conn = open_db()
+    rows = gw.sql.execute(
+        """
+        SELECT value, unit FROM meter_values
+        WHERE charger_id=? AND transaction_id=?
+          AND measurand='Energy.Active.Import.Register'
+        ORDER BY timestamp DESC LIMIT 1
+        """,
+        connection=conn,
+        args=(charger_id, transaction_id),
+    )
+    if rows:
+        val, unit = rows[0]
+        try:
+            fval = float(val)
+            if unit == 'Wh':
+                fval /= 1000.0
+            return fval
+        except Exception:
+            try:
+                return float(val)
+            except Exception:
+                return None
+    return None
 
 def get_meter_series(chargers: Sequence[str], *, start: int = None, end: int = None):
     """Return dict of charger_id -> list of (timestamp, kWh)."""
