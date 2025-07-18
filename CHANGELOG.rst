@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.49 [build 339f37]
+---------------------
+
+- d154615 Add flexible SQL model helper
+
 0.4.48 [build be6089]
 ---------------------
 
