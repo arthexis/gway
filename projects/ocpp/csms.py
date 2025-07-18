@@ -400,13 +400,21 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
     status_class = f"status-{state}"
     tx_id       = tx.get("transactionId") if tx else '-'
     meter_start = tx.get("meterStart") if tx else '-'
+    id_tag      = tx.get("idTag") if tx else '-'
     latest      = (
         tx.get("meterStop")
         if tx and tx.get("meterStop") is not None
         else (tx["MeterValues"][-1].get("meter") if tx and tx.get("MeterValues") else 'None')
     )
     power  = power_consumed(tx)
-    status = "Closed" if tx and tx.get("syncStop") else "Open" if tx else '-'
+    if state == "online":
+        status = "Charging"
+    elif state == "available":
+        status = "Idle"
+    elif state == "error":
+        status = "Error"
+    else:
+        status = "Offline"
     latest_hb = "-"
     if raw_hb:
         try:
@@ -435,6 +443,10 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
               <tr>
                 <td class="label">TXN</td>
                 <td class="value">{tx_id}</td>
+              </tr>
+              <tr>
+                <td class="label">RFID</td>
+                <td class="value" colspan="3">{id_tag}</td>
               </tr>
               <tr>
                 <td class="label">Start</td>
