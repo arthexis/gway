@@ -42,6 +42,7 @@ def setup_app(*,
     email=None,
     auth="disabled",
 ):
+    global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
     # no globals needed here; dictionaries are modified in-place
     email = email if isinstance(email, str) else (gw.resolve('[ADMIN_EMAIL]') if email else email)
 
@@ -78,7 +79,7 @@ def setup_app(*,
 
     @app.websocket("/{path:path}")
     async def websocket_ocpp(websocket: WebSocket, path: str):
-        global _csms_loop
+        global _transactions, _active_cons, _latest_heartbeat, _abnormal_status, _msg_log
         if auth_required:
             if not gw.web.auth.check_websocket_auth(websocket):
                 await websocket.close(code=4401, reason="Unauthorized")
@@ -341,6 +342,7 @@ def setup_app(*,
         finally:
             # Mark the connection as offline but retain the record
             if charger_id in _active_cons:
+                gw.warning(f"[OCPP] {charger_id}")
                 _active_cons[charger_id] = None
 
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
