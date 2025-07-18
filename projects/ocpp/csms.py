@@ -11,16 +11,28 @@ import asyncio
 import html
 from datetime import datetime, timedelta
 from fastapi import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from bottle import request, redirect, HTTPError
 from typing import Dict, Optional
 from gway import gw
 
 _csms_loop: Optional[asyncio.AbstractEventLoop] = None
 _transactions: Dict[str, dict] = {}
-_active_cons: Dict[str, WebSocket] = {}
+_active_cons: Dict[str, Optional[WebSocket]] = {}
 _latest_heartbeat: Dict[str, str] = {}
 _abnormal_status: Dict[str, dict] = {}
 _msg_log: Dict[str, list] = {}
+
+
+def _is_ws_live(cid: str) -> bool:
+    """Return True if the charger has an active websocket connection."""
+    ws = _active_cons.get(cid)
+    if not ws:
+        return False
+    try:
+        return ws.application_state == WebSocketState.CONNECTED
+    except Exception:
+        return True
 
     
 def setup_app(*,
@@ -324,8 +336,9 @@ def setup_app(*,
             gw.error(f"[OCPP:{charger_id}] WebSocket failure: {e}")
             gw.debug(traceback.format_exc())
         finally:
-            # TODO: Instead of popping the connection, update the status but keep it in memory
-            _active_cons.pop(charger_id, None)
+            # Mark the connection as offline but retain the record
+            if charger_id in _active_cons:
+                _active_cons[charger_id] = None
 
     return (app if not oapp else (oapp, app)) if _is_new_app else oapp
 
@@ -525,7 +538,7 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
     else:
         for cid in sorted(all_chargers):
-            ws_live = cid in _active_cons
+            ws_live = _is_ws_live(cid)
             tx = _transactions.get(cid)
             raw_hb = _latest_heartbeat.get(cid)
             state = get_charger_state(cid, tx, ws_live, raw_hb)
@@ -561,7 +574,7 @@ def render_charger_list(**kwargs):
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
     else:
         for cid in sorted(all_chargers):
-            ws_live = cid in _active_cons
+            ws_live = _is_ws_live(cid)
             tx = _transactions.get(cid)
             raw_hb = _latest_heartbeat.get(cid)
             state = get_charger_state(cid, tx, ws_live, raw_hb)
@@ -587,7 +600,7 @@ def view_charger_detail(*, charger_id=None, **_):
                 gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
                 msg = f"Error: {e}"
 
-    ws_live = charger_id in _active_cons
+    ws_live = _is_ws_live(charger_id)
     tx = _transactions.get(charger_id)
     raw_hb = _latest_heartbeat.get(charger_id)
     state = get_charger_state(charger_id, tx, ws_live, raw_hb)
@@ -641,7 +654,7 @@ def render_charger_info(*, charger_id=None, chargerId=None, **_):
         return ""
     tx = _transactions.get(cid)
     raw_hb = _latest_heartbeat.get(cid)
-    state = get_charger_state(cid, tx, cid in _active_cons, raw_hb)
+    state = get_charger_state(cid, tx, _is_ws_live(cid), raw_hb)
     return _render_charger_card(cid, tx, state, raw_hb)
 
 def render_charger_log(*, charger_id=None, chargerId=None, **_):
