@@ -201,7 +201,6 @@ def setup_app(*,
                             gw.mail.send(subject, body, to=email)
 
                     elif action == "MeterValues":
-                        gw.debug(f"[OCPP] {action} {_transactions} {_active_cons} {charger_id=}")
                         tx = _transactions.get(charger_id)
                         if not tx:
                             gw.warning(f"No transaction for {charger_id=}")
