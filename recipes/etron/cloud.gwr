@@ -11,15 +11,9 @@ web app setup:
     - ocpp.data --home charger-summary
 help-db build
 
-# Toggle this version to apply the allow list
+# Basic setup with all transactions allowed
 ocpp csms setup-app:
-    --allow data/etron/rfids.cdv \
-    --authorize ocpp.rfid.approve \
     --location etron_cloud
-
-# Without --allow, all transactions will be allowed by default
-# ocpp csms setup:
-#     --location porsche_centre --deny data/etron/rfids.cdv
 
 web:
  - static collect
