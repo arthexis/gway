@@ -118,6 +118,7 @@ def setup_app(*,
             while True:
                 raw = await websocket.receive_text()
                 gw.info(f"[OCPP:{charger_id}] → {raw}")
+                gw.ocpp.data.record_last_msg(charger_id)
                 globals().setdefault("_msg_log", {}).setdefault(charger_id, []).append(f"> {raw}")
                 try:
                     msg = json.loads(raw)
@@ -349,22 +350,32 @@ def is_abnormal_status(status: str, error_code: str) -> bool:
         return True
     return False
 
-def get_charger_state(cid, tx, ws_live, raw_hb):
+def get_charger_state(cid, tx, raw_hb):
     """
-    Determine charger state for stripe:
-    - "error": charger is abnormal/faulted
-    - "online": live socket, active transaction, not closed
-    - "available": live socket, no open transaction
-    - "unknown": not live, not abnormal, default
+    Determine charger state for status stripe and text.
+
+    - ``error``: abnormal status reported by charger
+    - ``online``: connection active with an open transaction
+    - ``available``: connection active but idle/no transaction
+    - ``offline``: charger known but currently disconnected
+    - ``unknown``: no record of this charger yet
     """
-    # Priority: error > online > available > unknown
     conn_info = gw.ocpp.data.get_connection(cid) or {}
     if conn_info.get("status"):
         return "error"
-    if ws_live and tx and not tx.get("syncStop"):
-        return "online"
-    if ws_live and (not tx or tx.get("syncStop")):
+
+    connected = bool(conn_info.get("connected"))
+    last_msg = conn_info.get("last_msg")
+    if tx and last_msg and time.time() - int(last_msg) > 60:
+        return "unknown"
+
+    if connected:
+        if tx and not tx.get("syncStop"):
+            return "online"
         return "available"
+
+    if conn_info:
+        return "offline"
     return "unknown"
 
 ...
@@ -394,19 +405,25 @@ def _render_card_link(cid):
     )
 
 def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
-    """
-    Render a charger card with the right status stripe (state: "online", "available", "error", "unknown").
-    """
+    """Render a charger card with the appropriate status stripe."""
     status_class = f"status-{state}"
     tx_id       = tx.get("transactionId") if tx else '-'
     meter_start = tx.get("meterStart") if tx else '-'
+    id_tag      = tx.get("idTag") if tx else '-'
     latest      = (
         tx.get("meterStop")
         if tx and tx.get("meterStop") is not None
         else (tx["MeterValues"][-1].get("meter") if tx and tx.get("MeterValues") else 'None')
     )
     power  = power_consumed(tx)
-    status = "Closed" if tx and tx.get("syncStop") else "Open" if tx else '-'
+    if state == "online":
+        status = "Charging"
+    elif state == "available":
+        status = "Idle"
+    elif state == "error":
+        status = "Error"
+    else:
+        status = "Offline"
     latest_hb = "-"
     if raw_hb:
         try:
@@ -416,7 +433,15 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
         except Exception:
             latest_hb = raw_hb
 
-    last_updated = tx.get("last_updated", raw_hb or "") if tx else (raw_hb or "")
+    conn = gw.ocpp.data.get_connection(cid) or {}
+    last_msg_ts = conn.get("last_msg")
+    if last_msg_ts:
+        try:
+            last_updated = datetime.utcfromtimestamp(int(last_msg_ts)).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            last_updated = str(last_msg_ts)
+    else:
+        last_updated = "-"
 
     controls_html = _render_card_controls(cid) if show_controls else _render_card_link(cid)
     details_html = ''
@@ -437,6 +462,10 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
                 <td class="value">{tx_id}</td>
               </tr>
               <tr>
+                <td class="label">RFID</td>
+                <td class="value" colspan="3">{id_tag}</td>
+              </tr>
+              <tr>
                 <td class="label">Start</td>
                 <td class="value">{meter_start}</td>
                 <td class="label">Latest</td>
@@ -447,6 +476,10 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
                 <td class="value">{power}</td>
                 <td class="label">Last HB</td>
                 <td class="value">{latest_hb}</td>
+              </tr>
+              <tr>
+                <td class="label">Updated</td>
+                <td class="value" colspan="3">{last_updated}</td>
               </tr>
               <tr>
                 <td class="label">Status</td>
@@ -534,11 +567,10 @@ def view_active_chargers(*, action=None, charger_id=None, **_):
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
     else:
         for cid in sorted(all_chargers):
-            ws_live = _is_ws_live(cid)
             tx = txs.get(cid)
             conn_info = gw.ocpp.data.get_connection(cid) or {}
             raw_hb = conn_info.get("last_heartbeat")
-            state = get_charger_state(cid, tx, ws_live, raw_hb)
+            state = get_charger_state(cid, tx, raw_hb)
             html.append(_render_charger_card(cid, tx, state, raw_hb, show_controls=False))
     html.append('</div>')
 
@@ -575,11 +607,10 @@ def render_charger_list(**kwargs):
         html.append('<p><em>No chargers connected or transactions seen yet.</em></p>')
     else:
         for cid in sorted(all_chargers):
-            ws_live = _is_ws_live(cid)
             tx = txs.get(cid)
             conn_info = gw.ocpp.data.get_connection(cid) or {}
             raw_hb = conn_info.get("last_heartbeat")
-            state = get_charger_state(cid, tx, ws_live, raw_hb)
+            state = get_charger_state(cid, tx, raw_hb)
             html.append(_render_charger_card(cid, tx, state, raw_hb, show_controls=False))
     return "\n".join(html)
 
@@ -602,11 +633,10 @@ def view_charger_detail(*, charger_id=None, **_):
                 gw.error(f"Failed to dispatch action {action} to {charger_id}: {e}")
                 msg = f"Error: {e}"
 
-    ws_live = _is_ws_live(charger_id)
     tx = gw.ocpp.data.get_active_transaction(charger_id)
     conn_info = gw.ocpp.data.get_connection(charger_id) or {}
     raw_hb = conn_info.get("last_heartbeat")
-    state = get_charger_state(charger_id, tx, ws_live, raw_hb)
+    state = get_charger_state(charger_id, tx, raw_hb)
     now = datetime.utcnow()
     since_default = (now - timedelta(days=1)).date().isoformat()
     until_default = now.date().isoformat()
@@ -658,7 +688,7 @@ def render_charger_info(*, charger_id=None, chargerId=None, **_):
     tx = gw.ocpp.data.get_active_transaction(cid)
     conn_info = gw.ocpp.data.get_connection(cid) or {}
     raw_hb = conn_info.get("last_heartbeat")
-    state = get_charger_state(cid, tx, _is_ws_live(cid), raw_hb)
+    state = get_charger_state(cid, tx, raw_hb)
     return _render_charger_card(cid, tx, state, raw_hb)
 
 def render_charger_log(*, charger_id=None, chargerId=None, **_):
@@ -790,6 +820,12 @@ def extract_meter(tx):
                     return val_f
                 except Exception:
                     return val
+    elif tx.get("transactionId") is not None and tx.get("charger_id"):
+        val = gw.ocpp.data.get_latest_meter_value(
+            tx["charger_id"], tx["transactionId"]
+        )
+        if val is not None:
+            return val
     return "-"
 
 
@@ -831,6 +867,12 @@ def power_consumed(tx):
             end_val = float(tx["meterStop"]) / 1000.0
         except Exception:
             end_val = None
+    elif tx.get("transactionId") is not None and tx.get("charger_id"):
+        latest = gw.ocpp.data.get_latest_meter_value(
+            tx["charger_id"], tx["transactionId"]
+        )
+        if latest is not None:
+            end_val = latest
 
     if start_val is not None and end_val is not None:
         return round(end_val - start_val, 3)
