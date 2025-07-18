@@ -55,7 +55,9 @@ footer {
     border-top: 2px solid #808080;
 }
 
-input.main, input.help, select {
+input.main,
+input.help,
+select {
     background-color: #ffffff;
     color: #000000;
     border: 2px inset #fff;
@@ -63,6 +65,16 @@ input.main, input.help, select {
     font-family: inherit;
     width: 100%;
     box-sizing: border-box;
+}
+
+/* Ensure drop-downs match the 95 look */
+select {
+    padding: 0.25em 0.4em;
+    outline: none;
+    box-shadow: none;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
 }
 
 button, input[type="submit"], input[type="button"] {
