@@ -254,6 +254,14 @@ class SqlTests(unittest.TestCase):
 
         os.remove(log_path)
 
+    def test_open_connection_persists_params(self):
+        """open_connection() without args reuses last params."""
+        gw.sql.close_connection(all=True)
+        c1 = gw.sql.open_connection("work/persist.sqlite")
+        c2 = gw.sql.open_connection()
+        self.assertIs(c1, c2)
+        gw.sql.close_connection("work/persist.sqlite")
+
     def test_parse_log_default_mask(self):
         """Default mask parses standard GWay log lines."""
         log_path = gw.resource("work/test_gw.log")
