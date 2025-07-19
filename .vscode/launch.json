@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run Gway Website",
+            "name": "gway -dr website",
             "type": "python",
             "request": "launch",
             "module": "gway",
@@ -10,7 +10,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Run Gway Website (Normal)",
+            "name": "gway -r website",
             "type": "python",
             "request": "launch",
             "module": "gway",
@@ -18,7 +18,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Debug Gway Website Verbose",
+            "name": "gway -dv -r website",
             "type": "python",
             "request": "launch",
             "module": "gway",
@@ -26,7 +26,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Build Release",
+            "name": "gway release build --all",
             "type": "python",
             "request": "launch",
             "module": "gway",
@@ -34,7 +34,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Install Requirements",
+            "name": "install -r requirements.txt",
             "type": "python",
             "request": "launch",
             "module": "pip",

@@ -126,3 +126,92 @@ def approve(*, payload=None, charger_id=None, validator=authorize_balance, table
             return False
     return True
 
+
+def view_manage_rfids(*, table: str = RFID_TABLE, **_):
+    """Single-page UI to manage RFID records."""
+    from bottle import request, response
+    import html as _html
+
+    if request.method == "POST":
+        action = request.forms.get("action") or ""
+        rid = request.forms.get("rfid") or ""
+        bal = request.forms.get("balance")
+        allowed = request.forms.get("allowed")
+        amount = request.forms.get("amount") or 0
+
+        if action == "create" and rid:
+            create_entry(rid, balance=bal or 0, allowed=allowed, table=table)
+        elif action == "update" and rid:
+            fields = {}
+            if bal is not None:
+                fields["balance"] = bal
+            if allowed is not None:
+                fields["allowed"] = allowed
+            if fields:
+                update_entry(rid, table=table, **fields)
+        elif action == "delete" and rid:
+            delete_entry(rid, table=table)
+        elif action == "credit" and rid:
+            try:
+                credit(rid, float(amount or 1), table=table)
+            except Exception:
+                pass
+        elif action == "debit" and rid:
+            try:
+                debit(rid, float(amount or 1), table=table)
+            except Exception:
+                pass
+        elif action == "enable" and rid:
+            enable(rid, table=table)
+        elif action == "disable" and rid:
+            disable(rid, table=table)
+
+        response.status = 303
+        response.set_header("Location", request.path_qs)
+        return ""
+
+    records = gw.cdv.load_all(table) or {}
+    rows = []
+    for rid, rec in sorted(records.items()):
+        bal = _html.escape(str(rec.get("balance", "")))
+        allowed = str(rec.get("allowed", "True")).lower() not in {"false", "0", "no", "off", ""}
+        rows.append(
+            "".join(
+                [
+                    "<tr><form method='post' class='rfid-row'>",
+                    f"<td><input name='rfid' value='{_html.escape(rid)}' readonly></td>",
+                    f"<td><input name='balance' value='{bal}' size='6'></td>",
+                    "<td><select name='allowed'>",
+                    f"<option value='True' {'selected' if allowed else ''}>True</option>",
+                    f"<option value='False' {'selected' if not allowed else ''}>False</option>",
+                    "</select></td>",
+                    "<td><input name='amount' value='1' size='4'></td>",
+                    "<td>",
+                    "<button name='action' value='update'>Save</button> ",
+                    "<button name='action' value='credit'>+1</button> ",
+                    "<button name='action' value='debit'>-1</button> ",
+                    "<button name='action' value='delete'>Del</button>",
+                    "</td></form></tr>",
+                ]
+            )
+        )
+
+    add_row = "".join(
+        [
+            "<tr><form method='post' class='rfid-row'>",
+            "<td><input name='rfid'></td>",
+            "<td><input name='balance' value='0'></td>",
+            "<td><select name='allowed'><option value='True'>True</option><option value='False'>False</option></select></td>",
+            "<td><input name='amount' value='1' size='4'></td>",
+            "<td><button name='action' value='create'>Add</button></td></form></tr>",
+        ]
+    )
+
+    html = ["<h1>Manage RFID Records</h1>"]
+    html.append("<table class='rfid-table'>")
+    html.append("<tr><th>RFID</th><th>Balance</th><th>Allowed</th><th>Amount</th><th>Actions</th></tr>")
+    html.extend(rows)
+    html.append(add_row)
+    html.append("</table>")
+    return "\n".join(html)
+

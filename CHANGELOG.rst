@@ -4,6 +4,21 @@ Changelog
 Unreleased
 ----------
 
+0.4.51 [build edbd5b]
+---------------------
+
+- ba12c56 fix: run upgrade script via bash
+
+0.4.50 [build a319ee]
+---------------------
+
+- 8fed401 Track last heartbeat and format update times
+
+0.4.49 [build 339f37]
+---------------------
+
+- d154615 Add flexible SQL model helper
+
 0.4.48 [build be6089]
 ---------------------
 

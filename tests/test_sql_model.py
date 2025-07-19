@@ -69,5 +69,6 @@ class SqlModelTests(unittest.TestCase):
         gw.sql.close_connection(DBFILE)
         del globals()["DBFILE"]
 
+        
 if __name__ == "__main__":
     unittest.main()
