@@ -31,6 +31,7 @@ from gway import gw
 _ver = None
 _homes = []   # (title, route)
 _links: dict[str, list[object]] = {}
+_footer_links: dict[str, list[object]] = {}
 _enabled = set()
 _registered_routes: set[tuple[str, str]] = set()
 _fresh_mtime = None
@@ -93,6 +94,7 @@ def setup_app(project,
     path=None,
     home: str = None,
     links=None,
+    footer=None,
     views: str = "view",
     apis: str = "api",
     renders: str = "render",
@@ -111,6 +113,8 @@ def setup_app(project,
     project found is loaded and used. ``mode`` controls how CSS/JS files are
     included: ``collect`` (default) uses bundled files, ``manual`` links each
     file individually, and ``embedded`` inlines the contents into the page.
+    ``footer`` accepts a list of links similar to ``links`` but rendered in the
+    page footer instead of the navigation sidebar.
     """
     global _ver, _homes, _enabled, _static_route, _shared_route
 
@@ -190,10 +194,12 @@ def setup_app(project,
         app = Bottle()
         _homes.clear()
         _links.clear()
+        _footer_links.clear()
         _registered_routes.clear()
         if home:
             add_home(home, path, project)
             add_links(f"{path}/{home}", links)
+            add_footer_links(f"{path}/{home}", footer)
 
         def index():
             response.status = 302
@@ -208,8 +214,11 @@ def setup_app(project,
     elif home:
         add_home(home, path, project)
         add_links(f"{path}/{home}", links)
+        add_footer_links(f"{path}/{home}", footer)
     elif links and _homes:
         add_links(_homes[-1][1], links)
+    elif footer and _homes:
+        add_footer_links(_homes[-1][1], footer)
 
     if getattr(gw, "timed_enabled", False):
         @app.hook('before_request')
@@ -632,6 +641,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None, 
         """
 
     message_html = gw.web.message.render() if is_setup('web.message') else ""
+    footer_links_html = render_footer_links()
 
     html = template("""<!DOCTYPE html>
         <html lang="en">
@@ -653,12 +663,12 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None, 
                     {{!nav}}<main>{{!message_html}}{{!content}}</main>
                     % end
                 </div>
-                <footer><p>This website was <strong>built</strong>, <strong>tested</strong>
+                <footer>{{!footer_links_html}}<p>This website was <strong>built</strong>, <strong>tested</strong>
                     and <strong>released</strong> with <a href="https://arthexis.com">GWAY</a>
                     <a href="https://pypi.org/project/gway/{{!version}}/">v{{!version}}</a>,
                     fresh since {{!fresh}}{{!build}}.</p>
             {{!credits}}
-            </footer>
+                </footer>
             </div>
             {{!debug_html}}
             {{!js_links}}
@@ -728,6 +738,14 @@ def add_links(route: str, links=None):
         _links[route] = existing + parsed
         gw.debug(f"Added links for {route}: {_links[route]}")
 
+def add_footer_links(route: str, links=None):
+    global _footer_links
+    parsed = parse_links(links)
+    if parsed:
+        existing = _footer_links.get(route, [])
+        _footer_links[route] = existing + parsed
+        gw.debug(f"Added footer links for {route}: {_footer_links[route]}")
+
 def parse_links(links) -> list[object]:
     if not links:
         return []
@@ -749,3 +767,23 @@ def parse_links(links) -> list[object]:
         else:
             result.append(token)
     return result
+
+def render_footer_links() -> str:
+    items = []
+    for _, route in _homes:
+        sub = _footer_links.get(route)
+        if not sub:
+            continue
+        proj_root = route.rsplit('/', 1)[0] if '/' in route else route
+        for name in sub:
+            if isinstance(name, tuple):
+                proj, view = name
+                href = f"{proj.replace('.', '/')}/{view}".strip('/')
+                label = view.replace('-', ' ').replace('_', ' ').title()
+            else:
+                href = f"{proj_root}/{name}".strip('/')
+                label = name.replace('-', ' ').replace('_', ' ').title()
+            items.append(f'<a href="/{href}">{label}</a>')
+    if not items:
+        return ""
+    return '<p class="footer-links">' + ' | '.join(items) + '</p>'
