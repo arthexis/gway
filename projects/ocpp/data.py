@@ -117,6 +117,11 @@ def _init_db(conn):
         """,
         connection=conn,
     )
+    # track when we last received any message from the charger
+    gw.sql.execute(
+        "ALTER TABLE connections ADD COLUMN IF NOT EXISTS last_msg INTEGER",
+        connection=conn,
+    )
 
 def record_transaction_start(
     charger_id: str,
@@ -158,6 +163,7 @@ def record_transaction_stop(
             transaction_id,
         ),
     )
+    record_last_msg(charger_id, stop_time)
 
 def record_meter_value(charger_id: str, transaction_id: int, timestamp: int, measurand: str, value: float, unit: str = "", context: str = ""):
     gw.sql.model(METER_VALUES).create(
@@ -191,6 +197,7 @@ def record_heartbeat(charger_id: str, timestamp: str):
     gw.sql.model(CONNECTIONS).update(
         charger_id, id_col="charger_id", last_heartbeat=timestamp
     )
+    record_last_msg(charger_id)
 
 def update_status(charger_id: str, status: str = None, error_code: str = None, info: str = None):
     gw.sql.model(CONNECTIONS).update(
@@ -213,18 +220,19 @@ def clear_status(charger_id: str):
 def get_connection(charger_id: str):
     conn = open_db()
     rows = gw.sql.execute(
-        "SELECT connected, last_heartbeat, status, error_code, info FROM connections WHERE charger_id=?",
+        "SELECT connected, last_heartbeat, status, error_code, info, last_msg FROM connections WHERE charger_id=?",
         connection=conn,
         args=(charger_id,),
     )
     if rows:
-        c, hb, st, ec, info = rows[0]
+        c, hb, st, ec, info, lm = rows[0]
         return {
             "connected": bool(c),
             "last_heartbeat": hb,
             "status": st,
             "error_code": ec,
             "info": info,
+            "last_msg": lm,
         }
     return None
 

@@ -3,14 +3,22 @@ import sys
 from gway import gw
 from paste.fixture import TestApp
 
-class SetupHomeLinksFuncTests(unittest.TestCase):
-    def test_defaults_from_project_functions(self):
+class LinksWithoutHomeTests(unittest.TestCase):
+    def setUp(self):
         gw.results.clear()
         gw.context.clear()
+
+    def tearDown(self):
+        gw.results.clear()
+        gw.context.clear()
+
+    def test_links_append_to_last_home(self):
         app = gw.web.app.setup_app("dummy", app=None)
+        # Add an extra link without specifying home
+        gw.web.app.setup_app("dummy", app=app, links="info")
         mod = sys.modules[gw.web.app.setup_app.__module__]
-        self.assertIn(("Dummy", "dummy/index"), mod._homes)
-        self.assertEqual(mod._links.get("dummy/index"), ["about", "more"])
+        self.assertEqual(mod._homes, [("Dummy", "dummy/index")])
+        self.assertEqual(mod._links.get("dummy/index"), ["about", "more", "info"]) 
         client = TestApp(app)
         resp = client.get("/dummy")
         self.assertEqual(resp.status, 200)
