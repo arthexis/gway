@@ -51,6 +51,16 @@ class SqlModelTests(unittest.TestCase):
         row = pets.read(pid)
         self.assertEqual(row[1], "bob")
 
+    def test_multiline_string_model(self):
+        spec = """things_multi(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT
+        )"""
+        things = gw.sql.model(spec, dbfile=self.DB)
+        tid = things.create(name="baz")
+        row = things.read(tid)
+        self.assertEqual(row[1], "baz")
+
     def test_duckdb_model(self):
         spec = {"__name__": "items", "id": "INTEGER", "name": "TEXT"}
         items = gw.sql.model(spec, dbfile=self.DB_DUCK, sql_engine="duckdb")
@@ -69,6 +79,5 @@ class SqlModelTests(unittest.TestCase):
         gw.sql.close_connection(DBFILE)
         del globals()["DBFILE"]
 
-        
 if __name__ == "__main__":
     unittest.main()

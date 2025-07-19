@@ -654,7 +654,7 @@ def _parse_model_definition(defn, name=None):
             m = re.match(r"\s*create\s+table\s+(?:if\s+not\s+exists\s+)?\[?(?P<name>\w+)\]?\s*\((?P<cols>.+)\)" , defn, re.I | re.S)
             if m:
                 return m.group("name"), m.group("cols")
-            m = re.match(r"\s*(?P<name>\w+)\s*\((?P<cols>.+)\)\s*", defn)
+            m = re.match(r"\s*(?P<name>\w+)\s*\((?P<cols>.+)\)\s*", defn, re.S)
             if m:
                 return m.group("name"), m.group("cols")
         return defn, None
@@ -690,7 +690,6 @@ def _parse_model_definition(defn, name=None):
 
     return str(defn), None
 
-  
 def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None):
     """Return a :class:`TableProxy` for ``defn``.
 
