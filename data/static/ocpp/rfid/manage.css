@@ -1,0 +1,24 @@
+/* file: data/static/ocpp/rfid/manage.css */
+
+.rfid-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.94em;
+}
+.rfid-table th,
+.rfid-table td {
+    border: 1px solid #bbb;
+    padding: 4px 6px;
+}
+.rfid-table td {
+    vertical-align: top;
+}
+.rfid-table input[type="text"],
+.rfid-table input[type="number"],
+.rfid-table select {
+    width: 100%;
+    box-sizing: border-box;
+}
+.rfid-row button {
+    margin-right: 4px;
+}
