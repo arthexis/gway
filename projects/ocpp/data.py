@@ -7,11 +7,54 @@ from datetime import datetime
 from typing import Iterable, Optional, Sequence
 from gway import gw
 
+DBFILE = "work/ocpp.db"
+ENGINE = "duckdb"
+
+TRANSACTIONS = """transactions(
+    charger_id TEXT,
+    transaction_id INTEGER,
+    start_time INTEGER,
+    stop_time INTEGER,
+    id_tag TEXT,
+    meter_start REAL,
+    meter_stop REAL,
+    reason TEXT,
+    charger_start_ts INTEGER,
+    charger_stop_ts INTEGER
+ )"""
+
+METER_VALUES = """meter_values(
+    charger_id TEXT,
+    transaction_id INTEGER,
+    timestamp INTEGER,
+    measurand TEXT,
+    value REAL,
+    unit TEXT,
+    context TEXT
+ )"""
+
+ERRORS = """errors(
+    charger_id TEXT,
+    status TEXT,
+    error_code TEXT,
+    info TEXT,
+    timestamp INTEGER
+ )"""
+
+CONNECTIONS = """connections(
+    charger_id TEXT PRIMARY KEY,
+    connected INTEGER,
+    last_heartbeat TEXT,
+    status TEXT,
+    error_code TEXT,
+    info TEXT
+ )"""
+
+
+
 def open_db():
     """Return connection to the OCPP database, initializing tables."""
-    conn = gw.sql.open_connection(
-        "work/ocpp.db", sql_engine="duckdb"
-    )
+    conn = gw.sql.open_connection(DBFILE, sql_engine=ENGINE)
     if not getattr(open_db, "_init", False):
         _init_db(conn)
         setattr(open_db, "_init", True)
@@ -75,6 +118,12 @@ def _init_db(conn):
         connection=conn,
     )
 
+    # track when we last received any message from the charger
+    gw.sql.execute(
+        "ALTER TABLE connections ADD COLUMN IF NOT EXISTS last_msg INTEGER",
+        connection=conn,
+    )
+
 def record_transaction_start(
     charger_id: str,
     transaction_id: int,
@@ -84,19 +133,15 @@ def record_transaction_start(
     meter_start: Optional[float] = None,
     charger_timestamp: Optional[int] = None,
 ):
-    conn = open_db()
-    gw.sql.execute(
-        "INSERT INTO transactions(charger_id, transaction_id, start_time, id_tag, meter_start, charger_start_ts) VALUES (?,?,?,?,?,?)",
-        connection=conn,
-        args=(
-            charger_id,
-            transaction_id,
-            int(start_time),
-            id_tag,
-            meter_start,
-            charger_timestamp,
-        ),
+    gw.sql.model(TRANSACTIONS).create(
+        charger_id=charger_id,
+        transaction_id=transaction_id,
+        start_time=int(start_time),
+        id_tag=id_tag,
+        meter_start=meter_start,
+        charger_start_ts=charger_timestamp,
     )
+    record_last_msg(charger_id, start_time)
 
 def record_transaction_stop(
     charger_id: str,
@@ -120,77 +165,88 @@ def record_transaction_stop(
             transaction_id,
         ),
     )
+    record_last_msg(charger_id, stop_time)
 
 def record_meter_value(charger_id: str, transaction_id: int, timestamp: int, measurand: str, value: float, unit: str = "", context: str = ""):
-    conn = open_db()
-    gw.sql.execute(
-        "INSERT INTO meter_values(charger_id, transaction_id, timestamp, measurand, value, unit, context) VALUES (?,?,?,?,?,?,?)",
-        connection=conn,
-        args=(charger_id, transaction_id, int(timestamp), measurand, float(value), unit, context),
+    gw.sql.model(METER_VALUES).create(
+        charger_id=charger_id,
+        transaction_id=transaction_id,
+        timestamp=int(timestamp),
+        measurand=measurand,
+        value=float(value),
+        unit=unit,
+        context=context,
     )
+    record_last_msg(charger_id, timestamp)
 
 def record_error(charger_id: str, status: str, error_code: str = "", info: str = ""):
-    conn = open_db()
     ts = int(time.time())
-    gw.sql.execute(
-        "INSERT INTO errors(charger_id, status, error_code, info, timestamp) VALUES (?,?,?,?,?)",
-        connection=conn,
-        args=(charger_id, status, error_code, info, ts),
+    gw.sql.model(ERRORS).create(
+        charger_id=charger_id,
+        status=status,
+        error_code=error_code,
+        info=info,
+        timestamp=ts,
     )
+    record_last_msg(charger_id, ts)
 
 def set_connection_status(charger_id: str, connected: bool):
     """Mark charger connection as active or inactive."""
-    conn = open_db()
-    gw.sql.execute(
-        "DELETE FROM connections WHERE charger_id=?",
-        connection=conn,
-        args=(charger_id,),
-    )
-    gw.sql.execute(
-        "INSERT INTO connections(charger_id, connected) VALUES (?, ?)",
-        connection=conn,
-        args=(charger_id, 1 if connected else 0),
+    gw.sql.model(CONNECTIONS).delete(charger_id, id_col="charger_id")
+    gw.sql.model(CONNECTIONS).create(
+        charger_id=charger_id, connected=1 if connected else 0
     )
 
 def record_heartbeat(charger_id: str, timestamp: str):
-    conn = open_db()
-    gw.sql.execute(
-        "UPDATE connections SET last_heartbeat=? WHERE charger_id=?",
-        connection=conn,
-        args=(timestamp, charger_id),
+    gw.sql.model(CONNECTIONS).update(
+        charger_id, id_col="charger_id", last_heartbeat=timestamp
     )
+    record_last_msg(charger_id)
 
 def update_status(charger_id: str, status: str = None, error_code: str = None, info: str = None):
-    conn = open_db()
-    gw.sql.execute(
-        "UPDATE connections SET status=?, error_code=?, info=? WHERE charger_id=?",
-        connection=conn,
-        args=(status, error_code, info, charger_id),
+    gw.sql.model(CONNECTIONS).update(
+        charger_id,
+        id_col="charger_id",
+        status=status,
+        error_code=error_code,
+        info=info,
     )
 
 def clear_status(charger_id: str):
+    gw.sql.model(CONNECTIONS).update(
+        charger_id,
+        id_col="charger_id",
+        status=None,
+        error_code=None,
+        info=None,
+    )
+
+def record_last_msg(charger_id: str, timestamp: int | None = None):
+    """Update the last_msg timestamp for a charger."""
     conn = open_db()
+    ts = int(timestamp or time.time())
     gw.sql.execute(
-        "UPDATE connections SET status=NULL, error_code=NULL, info=NULL WHERE charger_id=?",
+        "UPDATE connections SET last_msg=? WHERE charger_id=?",
         connection=conn,
-        args=(charger_id,),
+        args=(ts, charger_id),
     )
 
 def get_connection(charger_id: str):
     conn = open_db()
     rows = gw.sql.execute(
-        "SELECT connected, last_heartbeat, status, error_code, info FROM connections WHERE charger_id=?",
+        "SELECT connected, last_heartbeat, status, error_code, info, last_msg FROM connections WHERE charger_id=?",
         connection=conn,
         args=(charger_id,),
     )
     if rows:
-        c, hb, st, ec, info = rows[0]
+        c, hb, st, ec, info, lm = rows[0]
         return {
             "connected": bool(c),
             "last_heartbeat": hb,
             "status": st,
             "error_code": ec,
             "info": info,
+            "last_msg": lm,
         }
     return None
 

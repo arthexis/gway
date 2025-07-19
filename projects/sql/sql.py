@@ -7,6 +7,7 @@ import sqlite3
 import threading
 import re
 import time
+import inspect
 from gway import gw
 
 # Regex mask matching the default gway logging pattern. This captures the
@@ -129,19 +130,20 @@ def load_csv(*, connection=None, folder="data", force=False):
                     exists = cursor.fetchone()
 
                     if exists and force:
-                        cursor.execute(f"DROP TABLE IF EXISTS [{table_name}]")
+                        cursor.execute(f'DROP TABLE IF EXISTS "{table_name}"')
                         gw.info(f"Dropped existing table: {table_name}")
 
                     if not exists or force:
                         colspec = ", ".join(
-                            f"[{unique_headers[i]}] {types[i]}"
+                            f'"{unique_headers[i]}" {types[i]}'
                             for i in range(len(unique_headers))
                         )
-                        create = f"CREATE TABLE [{table_name}] ({colspec})"
+                        create = f'CREATE TABLE "{table_name}" ({colspec})'
+                        columns_join = ", ".join(f'"{h}"' for h in unique_headers)
+                        placeholders = ", ".join("?" for _ in unique_headers)
                         insert = (
-                            f"INSERT INTO [{table_name}] "
-                            f"({', '.join(f'[{h}]' for h in unique_headers)}) "
-                            f"VALUES ({', '.join('?' for _ in unique_headers)})"
+                            f'INSERT INTO "{table_name}" ({columns_join}) '
+                            f'VALUES ({placeholders})'
                         )
 
                         cursor.execute(create)
@@ -474,9 +476,9 @@ def parse_log(
     if not columns:
         raise ValueError("Mask must use named capturing groups for columns")
 
-    colspec = ", ".join(f"[{c}] TEXT" for c in columns)
+    colspec = ", ".join(f'"{c}" TEXT' for c in columns)
     gw.sql.execute(
-        f"CREATE TABLE IF NOT EXISTS [{table}] ({colspec})",
+        f'CREATE TABLE IF NOT EXISTS "{table}" ({colspec})',
         connection=connection,
     )
 
@@ -494,10 +496,10 @@ def parse_log(
             if not m:
                 continue
             values = m.groupdict()
-            columns_sql = ", ".join(f"[{c}]" for c in columns)
+            columns_sql = ", ".join(f'"{c}"' for c in columns)
             placeholders = ", ".join("?" for _ in columns)
             gw.sql.execute(
-                f"INSERT INTO [{table}] ({columns_sql}) VALUES ({placeholders})",
+                f'INSERT INTO "{table}" ({columns_sql}) VALUES ({placeholders})',
                 args=tuple(values[c] for c in columns),
                 connection=connection,
             )
@@ -554,10 +556,10 @@ def setup_table(table: str, column: str = None, ctype: str = "TEXT", *,
     """
 
     if drop:
-        stage(f"DROP TABLE IF EXISTS [{table}]", dbfile=dbfile)
+        stage(f'DROP TABLE IF EXISTS "{table}"', dbfile=dbfile)
 
     if column:
-        spec = f"[{column}] {ctype}"
+        spec = f'"{column}" {ctype}'
         if primary:
             spec += " PRIMARY KEY"
         if auto:
@@ -566,12 +568,155 @@ def setup_table(table: str, column: str = None, ctype: str = "TEXT", *,
         key = (dbfile or 'default', table)
         created = getattr(setup_table, "_created", set())
         if key not in created:
-            stage(f"CREATE TABLE IF NOT EXISTS [{table}] ({spec})", dbfile=dbfile)
+            stage(f'CREATE TABLE IF NOT EXISTS "{table}" ({spec})', dbfile=dbfile)
             created.add(key)
             setattr(setup_table, "_created", created)
         else:
-            stage(f"ALTER TABLE [{table}] ADD COLUMN {spec}", dbfile=dbfile)
+            stage(f'ALTER TABLE "{table}" ADD COLUMN {spec}', dbfile=dbfile)
 
     if immediate:
         migrate(dbfile=dbfile)
+
+
+class TableProxy:
+    """Lightweight helper exposing CRUD operations for a table."""
+
+    def __init__(self, name: str, *, dbfile=None, sql_engine="sqlite"):
+        self.name = name
+        self.dbfile = dbfile
+        self.sql_engine = sql_engine
+
+    def create(self, **fields):
+        """Insert a record and return the last row id."""
+        return gw.sql.crud.api_create(
+            table=self.name,
+            dbfile=self.dbfile,
+            sql_engine=self.sql_engine,
+            **fields,
+        )
+
+    def read(self, id, id_col: str = "id"):
+        """Read a record by ``id``."""
+        return gw.sql.crud.api_read(
+            table=self.name,
+            id=id,
+            id_col=id_col,
+            dbfile=self.dbfile,
+            sql_engine=self.sql_engine,
+        )
+
+    def update(self, id, id_col: str = "id", **fields):
+        """Update fields for ``id``."""
+        gw.sql.crud.api_update(
+            table=self.name,
+            id=id,
+            id_col=id_col,
+            dbfile=self.dbfile,
+            sql_engine=self.sql_engine,
+            **fields,
+        )
+
+    def delete(self, id, id_col: str = "id"):
+        """Delete record by ``id``."""
+        gw.sql.crud.api_delete(
+            table=self.name,
+            id=id,
+            id_col=id_col,
+            dbfile=self.dbfile,
+            sql_engine=self.sql_engine,
+        )
+
+    def all(self):
+        """Return all rows from the table."""
+        conn = gw.sql.open_connection(self.dbfile, sql_engine=self.sql_engine)
+        return gw.sql.execute(f'SELECT * FROM "{self.name}"', connection=conn)
+
+
+def _python_type_to_sql(tp):
+    """Best effort mapping of Python type to SQLite type."""
+    if tp in (int, bool):
+        return "INTEGER"
+    if tp is float:
+        return "REAL"
+    if tp is bytes:
+        return "BLOB"
+    return "TEXT"
+
+
+def _parse_model_definition(defn, name=None):
+    """Return (table_name, column_spec) from various definitions."""
+    import dataclasses
+    import inspect
+
+    if isinstance(defn, str):
+        if "(" in defn:
+            # Either full CREATE statement or "name(col type, ...)"
+            m = re.match(r"\s*create\s+table\s+(?:if\s+not\s+exists\s+)?\[?(?P<name>\w+)\]?\s*\((?P<cols>.+)\)" , defn, re.I | re.S)
+            if m:
+                return m.group("name"), m.group("cols")
+            m = re.match(r"\s*(?P<name>\w+)\s*\((?P<cols>.+)\)\s*", defn, re.S)
+            if m:
+                return m.group("name"), m.group("cols")
+        return defn, None
+
+    if isinstance(defn, dict):
+        tbl = name or defn.get("__name__") or defn.get("name") or defn.get("table")
+        if not tbl:
+            raise ValueError("Table name required for dict definition")
+        cols = [f'"{k}" {v}' for k, v in defn.items() if not k.startswith("__") and k not in ("__name__", "table")]
+        return tbl, ", ".join(cols) if cols else None
+
+    if dataclasses.is_dataclass(defn):
+        tbl = name or getattr(defn, "__name__", None)
+        cols = []
+        for f in dataclasses.fields(defn):
+            ctype = _python_type_to_sql(f.type)
+            spec = f'"{f.name}" {ctype}'
+            if f.name == "id" and ctype == "INTEGER":
+                spec += " PRIMARY KEY AUTOINCREMENT"
+            cols.append(spec)
+        return tbl, ", ".join(cols)
+
+    if inspect.isclass(defn) and hasattr(defn, "_fields"):
+        tbl = name or getattr(defn, "__name__", None)
+        cols = [f'"{f}" TEXT' for f in defn._fields]
+        return tbl, ", ".join(cols)
+
+    ann = getattr(defn, "__annotations__", None)
+    if ann:
+        tbl = name or getattr(defn, "__name__", None)
+        cols = [f'"{k}" {_python_type_to_sql(t)}' for k, t in ann.items()]
+        return tbl, ", ".join(cols)
+
+    return str(defn), None
+
+
+def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None):
+    """Return a :class:`TableProxy` for ``defn``.
+
+    ``defn`` may be a table name, mapping, dataclass, namedtuple or SQL spec.
+    If column definitions are available and ``create`` is True the table is
+    created automatically using ``CREATE TABLE IF NOT EXISTS``.
+    """
+
+    caller = inspect.currentframe().f_back
+    module = inspect.getmodule(caller)
+    if dbfile is None:
+        dbfile = getattr(module, "DBFILE", None)
+    if sql_engine is None:
+        sql_engine = getattr(module, "ENGINE", getattr(module, "SQL_ENGINE", "sqlite"))
+
+    table, colspec = _parse_model_definition(defn, name)
+    if not table:
+        raise ValueError("Could not determine table name from definition")
+
+    if colspec and create:
+        conn = gw.sql.open_connection(dbfile, sql_engine=sql_engine)
+        gw.sql.execute(
+            f'CREATE TABLE IF NOT EXISTS "{table}" ({colspec})',
+            connection=conn,
+        )
+
+    return TableProxy(table, dbfile=dbfile, sql_engine=sql_engine)
+
 
