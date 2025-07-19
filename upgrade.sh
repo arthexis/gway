@@ -6,15 +6,18 @@ set -e
 ACTION_LOG=".upgrade_action.log"
 
 usage() {
-    echo "Usage: $0 [--force]"
-    echo "  --force    Reinstall and test even if no update is detected."
+    echo "Usage: $0 [--force] [--no-test]"
+    echo "  --force     Reinstall and test even if no update is detected."
+    echo "  --no-test   Skip running tests after upgrade."
     exit 0
 }
 
 FORCE=0
+RUN_TESTS=1
 for arg in "$@"; do
     case "$arg" in
         --force) FORCE=1 ;;
+        --no-test) RUN_TESTS=0 ;;
         -h|--help) usage ;;
         *) echo "Unknown option: $arg"; usage ;;
     esac
@@ -66,13 +69,19 @@ if ! pip install -e .; then
     log_action "pip install failed"
 fi
 
-echo "[6] Running test command..."
-if ! gway test --on-failure abort; then
-    echo "Error: gway test failed after upgrade."
-    log_action "Upgrade failed at commit: $NEW_HASH"
-    exit 1
+if [ $RUN_TESTS -eq 1 ]; then
+    echo "[6] Running test command..."
+    if ! gway test --on-failure abort; then
+        echo "Error: gway test failed after upgrade."
+        log_action "Upgrade failed at commit: $NEW_HASH"
+        exit 1
+    fi
+    echo "Upgrade and test completed successfully."
+    log_action "Upgrade success: $NEW_HASH"
+else
+    echo "[6] Skipping tests (--no-test)"
+    echo "Upgrade completed successfully."
+    log_action "Upgrade success (no test): $NEW_HASH"
 fi
 
-echo "Upgrade and test completed successfully."
-log_action "Upgrade success: $NEW_HASH"
 exit 0
