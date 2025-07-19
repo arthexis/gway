@@ -14,7 +14,7 @@ def build(*, update: bool = False):
         gw.info("Help database already exists; skipping build.")
         return db_path
 
-    with gw.sql.open_connection(datafile="data/help.sqlite") as cursor:
+    with gw.sql.open_db(datafile="data/help.sqlite") as cursor:
         cursor.execute("DROP TABLE IF EXISTS help")
         cursor.execute(
             """

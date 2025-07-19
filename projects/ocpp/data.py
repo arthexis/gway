@@ -50,19 +50,6 @@ CONNECTIONS = """connections(
     info TEXT
  )"""
 
-
-
-def open_db():
-    """Return connection to the OCPP database, initializing tables."""
-    if getattr(gw.sql, "_last_datafile", None) is None:
-        conn = gw.sql.open_connection(DBFILE, sql_engine=ENGINE)
-    else:
-        conn = gw.sql.open_connection()
-    if not getattr(open_db, "_init", False):
-        _init_db(conn)
-        setattr(open_db, "_init", True)
-    return conn
-
 def _init_db(conn):
     gw.sql.execute(
         """
@@ -126,11 +113,9 @@ def _init_db(conn):
         connection=conn,
     )
 
-    # track when we last received any message from the charger
-    gw.sql.execute(
-        "ALTER TABLE connections ADD COLUMN IF NOT EXISTS last_msg INTEGER",
-        connection=conn,
-    )
+
+_ocpp_db = gw.sql.open_db(DBFILE, sql_engine=ENGINE, project="ocpp")
+_init_db(_ocpp_db)
 
 def record_transaction_start(
     charger_id: str,
@@ -160,7 +145,7 @@ def record_transaction_stop(
     reason: Optional[str] = None,
     charger_timestamp: Optional[int] = None,
 ):
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     gw.sql.execute(
         "UPDATE transactions SET stop_time=?, meter_stop=?, reason=?, charger_stop_ts=? WHERE charger_id=? AND transaction_id=?",
         connection=conn,
@@ -231,7 +216,7 @@ def clear_status(charger_id: str):
 
 def record_last_msg(charger_id: str, timestamp: int | None = None):
     """Update the last_msg timestamp for a charger."""
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     ts = int(timestamp or time.time())
     gw.sql.execute(
         "UPDATE connections SET last_msg=? WHERE charger_id=?",
@@ -240,7 +225,7 @@ def record_last_msg(charger_id: str, timestamp: int | None = None):
     )
 
 def get_connection(charger_id: str):
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT connected, last_heartbeat, status, error_code, info, last_msg FROM connections WHERE charger_id=?",
         connection=conn,
@@ -260,7 +245,7 @@ def get_connection(charger_id: str):
 
 def get_summary():
     """Return summary rows per charger."""
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         """
         SELECT t.charger_id AS cid,
@@ -320,7 +305,7 @@ def iter_transactions(
     offset: int = 0,
 ) -> Iterable[tuple]:
     """Iterate transaction rows with optional filtering and sorting."""
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     sql = (
         "SELECT charger_id, transaction_id, start_time, stop_time, meter_start, meter_stop, reason, id_tag "
         "FROM transactions WHERE 1=1"
@@ -345,7 +330,7 @@ def iter_transactions(
     return gw.sql.execute(sql, connection=conn, args=tuple(args))
 
 def get_active_transaction(charger_id: str):
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT charger_id, transaction_id, start_time, meter_start, id_tag FROM transactions WHERE charger_id=? AND stop_time IS NULL ORDER BY start_time DESC LIMIT 1",
         connection=conn,
@@ -363,7 +348,7 @@ def get_active_transaction(charger_id: str):
     return None
 
 def get_active_transactions():
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT charger_id, transaction_id, start_time, meter_start, id_tag FROM transactions WHERE stop_time IS NULL",
         connection=conn,
@@ -381,7 +366,7 @@ def get_active_transactions():
 
 def get_active_chargers() -> list[str]:
     """Return list of charger IDs currently marked as connected."""
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT charger_id FROM connections WHERE connected=1",
         connection=conn,
@@ -389,7 +374,7 @@ def get_active_chargers() -> list[str]:
     return [r[0] for r in rows]
 
 def get_meter_values(charger_id: str, transaction_id: int):
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT timestamp, measurand, value, unit, context FROM meter_values WHERE charger_id=? AND transaction_id=? ORDER BY timestamp",
         connection=conn,
@@ -417,7 +402,7 @@ def get_meter_values(charger_id: str, transaction_id: int):
 
 def get_latest_meter_value(charger_id: str, transaction_id: int):
     """Return the most recent Energy.Active.Import.Register value in kWh."""
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         """
         SELECT value, unit FROM meter_values
@@ -444,7 +429,7 @@ def get_latest_meter_value(charger_id: str, transaction_id: int):
 
 def get_meter_series(chargers: Sequence[str], *, start: int = None, end: int = None):
     """Return dict of charger_id -> list of (timestamp, kWh)."""
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     data = {}
     for cid in chargers:
         sql = (
@@ -465,7 +450,7 @@ def get_meter_series(chargers: Sequence[str], *, start: int = None, end: int = N
 
 def list_chargers() -> list[str]:
     """Return list of distinct charger_ids."""
-    conn = open_db()
+    conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT charger_id FROM connections UNION SELECT DISTINCT charger_id FROM transactions ORDER BY charger_id",
         connection=conn,
