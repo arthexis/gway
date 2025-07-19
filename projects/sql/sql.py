@@ -606,10 +606,11 @@ def setup_table(table: str, column: str = None, ctype: str = "TEXT", *,
 class TableProxy:
     """Lightweight helper exposing CRUD operations for a table."""
 
-    def __init__(self, name: str, *, dbfile=None, sql_engine="sqlite"):
+    def __init__(self, name: str, *, dbfile=None, sql_engine="sqlite", project=None):
         self.name = name
         self.dbfile = dbfile
         self.sql_engine = sql_engine
+        self.project = project
 
     def create(self, **fields):
         """Insert a record and return the last row id."""
@@ -617,6 +618,7 @@ class TableProxy:
             table=self.name,
             dbfile=self.dbfile,
             sql_engine=self.sql_engine,
+            project=self.project,
             **fields,
         )
 
@@ -628,6 +630,7 @@ class TableProxy:
             id_col=id_col,
             dbfile=self.dbfile,
             sql_engine=self.sql_engine,
+            project=self.project,
         )
 
     def update(self, id, id_col: str = "id", **fields):
@@ -638,6 +641,7 @@ class TableProxy:
             id_col=id_col,
             dbfile=self.dbfile,
             sql_engine=self.sql_engine,
+            project=self.project,
             **fields,
         )
 
@@ -649,11 +653,12 @@ class TableProxy:
             id_col=id_col,
             dbfile=self.dbfile,
             sql_engine=self.sql_engine,
+            project=self.project,
         )
 
     def all(self):
         """Return all rows from the table."""
-        conn = gw.sql.open_db(self.dbfile, sql_engine=self.sql_engine)
+        conn = gw.sql.open_db(self.dbfile, sql_engine=self.sql_engine, project=self.project)
         return gw.sql.execute(f'SELECT * FROM "{self.name}"', connection=conn)
 
 
@@ -716,7 +721,7 @@ def _parse_model_definition(defn, name=None):
     return str(defn), None
 
   
-def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None):
+def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None, project=None):
     """Return a :class:`TableProxy` for ``defn``.
 
     ``defn`` may be a table name, mapping, dataclass, namedtuple or SQL spec.
@@ -730,19 +735,21 @@ def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None):
         dbfile = getattr(module, "DBFILE", None)
     if sql_engine is None:
         sql_engine = getattr(module, "ENGINE", getattr(module, "SQL_ENGINE", "sqlite"))
+    if project is None:
+        project = getattr(module, "PROJECT", None)
 
     table, colspec = _parse_model_definition(defn, name)
     if not table:
         raise ValueError("Could not determine table name from definition")
 
     if colspec and create:
-        conn = gw.sql.open_db(dbfile, sql_engine=sql_engine)
+        conn = gw.sql.open_db(dbfile, sql_engine=sql_engine, project=project)
         gw.sql.execute(
             f'CREATE TABLE IF NOT EXISTS "{table}" ({colspec})',
             connection=conn,
         )
 
-    return TableProxy(table, dbfile=dbfile, sql_engine=sql_engine)
+    return TableProxy(table, dbfile=dbfile, sql_engine=sql_engine, project=project)
 
 # Backwards compatibility aliases
 open_connection = open_db

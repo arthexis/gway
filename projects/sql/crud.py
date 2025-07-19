@@ -5,10 +5,10 @@ from gway import gw
 import html
 
 
-def api_create(*, table: str, dbfile=None, sql_engine="sqlite", **fields):
+def api_create(*, table: str, dbfile=None, sql_engine="sqlite", project=None, **fields):
     """Insert a record into ``table`` and return the last row id."""
     assert table, "table required"
-    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine, project=project) as cur:
         columns = ", ".join(f'"{k}"' for k in fields)
         placeholders = ", ".join("?" for _ in fields)
         sql = f'INSERT INTO "{table}" ({columns}) VALUES ({placeholders})'
@@ -20,54 +20,54 @@ def api_create(*, table: str, dbfile=None, sql_engine="sqlite", **fields):
     return None
 
 
-def api_read(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sqlite"):
+def api_read(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sqlite", project=None):
     """Return a single record by ``id``."""
-    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine, project=project) as cur:
         cur.execute(f'SELECT * FROM "{table}" WHERE "{id_col}" = ?', (id,))
         row = cur.fetchone()
     return row
 
 
-def api_update(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sqlite", **fields):
+def api_update(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sqlite", project=None, **fields):
     """Update a record by ``id``."""
-    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine, project=project) as cur:
         assignments = ", ".join(f'"{k}"=?' for k in fields)
         sql = f'UPDATE "{table}" SET {assignments} WHERE "{id_col}" = ?'
         cur.execute(sql, tuple(fields.values()) + (id,))
 
 
-def api_delete(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sqlite"):
+def api_delete(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sqlite", project=None):
     """Delete a record by ``id``."""
-    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine, project=project) as cur:
         cur.execute(f'DELETE FROM "{table}" WHERE "{id_col}" = ?', (id,))
 
 
-def _table_columns(table: str, *, dbfile=None, sql_engine="sqlite"):
-    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
+def _table_columns(table: str, *, dbfile=None, sql_engine="sqlite", project=None):
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine, project=project) as cur:
         cur.execute(f'PRAGMA table_info("{table}")')
         rows = cur.fetchall()
     return [r[1] for r in rows]
 
 
-def view_table(*, table: str, id_col: str = "id", dbfile=None, sql_engine="sqlite"):
+def view_table(*, table: str, id_col: str = "id", dbfile=None, sql_engine="sqlite", project=None):
     """Simple HTML interface for listing and editing records."""
     from bottle import request, response
 
-    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine, project=project) as cur:
         if request.method == "POST":
             action = request.forms.get("action")
             if action == "create":
                 fields = {
                     k: request.forms.get(k)
-                    for k in _table_columns(table, dbfile=dbfile, sql_engine=sql_engine)
+                    for k in _table_columns(table, dbfile=dbfile, sql_engine=sql_engine, project=project)
                     if k != id_col
                 }
-                api_create(table=table, dbfile=dbfile, sql_engine=sql_engine, **fields)
+                api_create(table=table, dbfile=dbfile, sql_engine=sql_engine, project=project, **fields)
             elif action == "update":
                 rid = request.forms.get(id_col)
                 fields = {
                     k: request.forms.get(k)
-                    for k in _table_columns(table, dbfile=dbfile, sql_engine=sql_engine)
+                    for k in _table_columns(table, dbfile=dbfile, sql_engine=sql_engine, project=project)
                     if k != id_col
                 }
                 api_update(
@@ -76,6 +76,7 @@ def view_table(*, table: str, id_col: str = "id", dbfile=None, sql_engine="sqlit
                     id_col=id_col,
                     dbfile=dbfile,
                     sql_engine=sql_engine,
+                    project=project,
                     **fields,
                 )
             elif action == "delete":
@@ -86,12 +87,13 @@ def view_table(*, table: str, id_col: str = "id", dbfile=None, sql_engine="sqlit
                     id_col=id_col,
                     dbfile=dbfile,
                     sql_engine=sql_engine,
+                    project=project,
                 )
             response.status = 303
             response.set_header("Location", request.path_qs)
             return ""
 
-        cols = _table_columns(table, dbfile=dbfile, sql_engine=sql_engine)
+        cols = _table_columns(table, dbfile=dbfile, sql_engine=sql_engine, project=project)
         cur.execute(f'SELECT * FROM "{table}"')
         rows = cur.fetchall()
     head = "".join(f"<th>{html.escape(c)}</th>" for c in cols)
@@ -117,7 +119,7 @@ def view_table(*, table: str, id_col: str = "id", dbfile=None, sql_engine="sqlit
     body = "".join(body_rows)
     return f"<table><tr>{head}<th>Actions</th></tr>{body}</table>"
 
-def view_setup_table(*, table: str, dbfile=None, sql_engine="sqlite"):
+def view_setup_table(*, table: str, dbfile=None, sql_engine="sqlite", project=None):
     """HTML form for :func:`setup_table`. POST to add columns or drop."""
     from bottle import request, response
 
@@ -135,7 +137,7 @@ def view_setup_table(*, table: str, dbfile=None, sql_engine="sqlite"):
         return ""
 
     cols = []
-    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine, project=project) as cur:
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
         if cur.fetchone():
             cur.execute(f"PRAGMA table_info([{table}])")

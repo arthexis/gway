@@ -4,7 +4,10 @@ SQL CRUD Helpers
 The ``sql.crud`` project offers basic APIs for creating, reading,
 updating and deleting records in any SQLite table. All functions use
 ``gw.sql.open_db`` internally, so you can simply pass a
-``--dbfile`` parameter (defaulting to ``work/data.sqlite``).
+``--dbfile`` parameter (defaulting to ``work/data.sqlite``). If you
+pass a ``project`` name to :func:`gw.sql.open_db`, you can reuse that
+configuration by supplying the same ``project`` argument to the CRUD
+helpers.
 
 Schema changes are staged in memory until ``gw.sql.migrate`` is called.
 
@@ -41,7 +44,9 @@ more complete example with basic authentication see ``recipes/micro_blog.gwr``.
 
 ``gw.sql.model`` returns a proxy object with CRUD helpers for a specific
 table. Pass an existing table name or a definition such as a mapping or
-dataclass and the table will be created automatically::
+dataclass and the table will be created automatically. The helper also
+accepts a ``project`` name which is passed through to
+``gw.sql.open_db``::
 
     from dataclasses import dataclass
     from gway import gw
@@ -52,13 +57,13 @@ dataclass and the table will be created automatically::
         name: str
         qty: int
 
-    items = gw.sql.model(Item, dbfile='work/shop.sqlite')
+    items = gw.sql.model(Item, dbfile='work/shop.sqlite', project='shop')
     new_id = items.create(name='apple', qty=5)
     row = items.read(new_id)
 
 You can also target other engines such as DuckDB::
 
-    items = gw.sql.model(Item, dbfile='work/shop.duckdb', sql_engine='duckdb')
+    items = gw.sql.model(Item, dbfile='work/shop.duckdb', sql_engine='duckdb', project='shop')
 
 When using ``gw.sql.model`` in your own modules, define your table
 specifications as uppercase constants and call ``gw.sql.model`` inside the
