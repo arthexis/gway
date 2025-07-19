@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/gway
-ExecStartPre=/home/ubuntu/gway/upgrade.sh
+ExecStartPre=/usr/bin/env bash /home/ubuntu/gway/upgrade.sh
 ExecStart=/home/ubuntu/gway/gway.sh -dr website                               
 Restart=on-failure
 Environment=PYTHONUNBUFFERED=1
