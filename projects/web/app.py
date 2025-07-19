@@ -147,7 +147,7 @@ def setup_app(project,
     # Track project for later global static collection
     _enabled.add(project)
 
-    if home is None:
+    if home is None and not (_homes and links):
         setup_home_func = getattr(source, "setup_home", None)
         if callable(setup_home_func):
             try:
@@ -208,6 +208,8 @@ def setup_app(project,
     elif home:
         add_home(home, path, project)
         add_links(f"{path}/{home}", links)
+    elif links and _homes:
+        add_links(_homes[-1][1], links)
 
     if getattr(gw, "timed_enabled", False):
         @app.hook('before_request')
@@ -722,8 +724,9 @@ def add_links(route: str, links=None):
     global _links
     parsed = parse_links(links)
     if parsed:
-        _links[route] = parsed
-        gw.debug(f"Added links for {route}: {parsed}")
+        existing = _links.get(route, [])
+        _links[route] = existing + parsed
+        gw.debug(f"Added links for {route}: {_links[route]}")
 
 def parse_links(links) -> list[object]:
     if not links:
