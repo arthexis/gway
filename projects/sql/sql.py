@@ -690,6 +690,7 @@ def _parse_model_definition(defn, name=None):
 
     return str(defn), None
 
+  
 def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None):
     """Return a :class:`TableProxy` for ``defn``.
 

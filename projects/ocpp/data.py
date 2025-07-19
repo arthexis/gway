@@ -123,6 +123,12 @@ def _init_db(conn):
         connection=conn,
     )
 
+    # track when we last received any message from the charger
+    gw.sql.execute(
+        "ALTER TABLE connections ADD COLUMN IF NOT EXISTS last_msg INTEGER",
+        connection=conn,
+    )
+
 def record_transaction_start(
     charger_id: str,
     transaction_id: int,
@@ -140,6 +146,7 @@ def record_transaction_start(
         meter_start=meter_start,
         charger_start_ts=charger_timestamp,
     )
+    record_last_msg(charger_id, start_time)
 
 def record_transaction_stop(
     charger_id: str,
@@ -175,6 +182,7 @@ def record_meter_value(charger_id: str, transaction_id: int, timestamp: int, mea
         unit=unit,
         context=context,
     )
+    record_last_msg(charger_id, timestamp)
 
 def record_error(charger_id: str, status: str, error_code: str = "", info: str = ""):
     ts = int(time.time())
@@ -185,6 +193,7 @@ def record_error(charger_id: str, status: str, error_code: str = "", info: str =
         info=info,
         timestamp=ts,
     )
+    record_last_msg(charger_id, ts)
 
 def set_connection_status(charger_id: str, connected: bool):
     """Mark charger connection as active or inactive."""
@@ -215,6 +224,16 @@ def clear_status(charger_id: str):
         status=None,
         error_code=None,
         info=None,
+    )
+
+def record_last_msg(charger_id: str, timestamp: int | None = None):
+    """Update the last_msg timestamp for a charger."""
+    conn = open_db()
+    ts = int(timestamp or time.time())
+    gw.sql.execute(
+        "UPDATE connections SET last_msg=? WHERE charger_id=?",
+        connection=conn,
+        args=(ts, charger_id),
     )
 
 def get_connection(charger_id: str):
