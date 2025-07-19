@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.51 [build edbd5b]
+---------------------
+
+- ba12c56 fix: run upgrade script via bash
+
 0.4.50 [build a319ee]
 ---------------------
 
