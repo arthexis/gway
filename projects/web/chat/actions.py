@@ -12,7 +12,7 @@ _db_conn = None
 def _open_db():
     global _db_conn
     if _db_conn is None:
-        _db_conn = gw.sql.open_connection("work/chatlog.sqlite")
+        _db_conn = gw.sql.open_db("work/chatlog.sqlite")
         _init_db(_db_conn)
     return _db_conn
 

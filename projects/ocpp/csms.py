@@ -997,7 +997,7 @@ def purge(*, database: bool = False, logs: bool = False):
     gw.info("[OCPP] In-memory state purged.")
 
     if database:
-        conn = gw.ocpp.data.open_db()
+        conn = gw.sql.open_db(project="ocpp")
         gw.sql.execute("DELETE FROM transactions", connection=conn)
         gw.sql.execute("DELETE FROM meter_values", connection=conn)
         gw.sql.execute("DELETE FROM errors", connection=conn)

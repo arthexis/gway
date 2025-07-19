@@ -45,7 +45,7 @@ def help(*args, full: bool = False, list_flags: bool = False):
     joined_args = " ".join(args).strip().replace("-", "_")
     norm_args = [a.replace("-", "_").replace("/", ".") for a in args]
 
-    with gw.sql.open_connection(db_path, row_factory=True) as cur:
+    with gw.sql.open_db(db_path, row_factory=True) as cur:
         if not args:
             cur.execute("SELECT DISTINCT project FROM help")
             return {"Available Projects": sorted([row["project"] for row in cur.fetchall()])}

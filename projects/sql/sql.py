@@ -25,12 +25,12 @@ DEFAULT_LOG_MASK = (
 #
 # from gway import gw
 #
-# with gw.sql.open_connection() as cursor:
+# with gw.sql.open_db() as cursor:
 #      gq.sql.execute(query)
 #
 # # Or from a recipe:
 #
-# sql connect
+# sql open-db
 #   - execute "<SQL>"
 
 _write_queue = queue.Queue()
@@ -246,35 +246,36 @@ def load_cdv(*, connection=None, file=None, folder="data", force=False):
 # --- Connection Management (Drop-in Replacement) ---
 
 _connection_cache = {}
-_last_datafile = None
-_last_engine = "sqlite"
+_db_configs = {}
 
-def open_connection(
+def open_db(
         datafile=None, *,
+        project=None,
         sql_engine=None, autoload=False, force=False, row_factory=False, **dbopts):
+    """Initialize or reuse a database connection.
+
+    ``project`` allows configuring multiple databases which can later be
+    referenced by name.  Subsequent calls for the same ``project`` reuse the
+    stored configuration and cached connection.
     """
-    Initialize or reuse a database connection.
-    Caches connections by sql_engine, file path, and thread ID (if required).
-    Starts writer thread for SQLite.
-    """
-    # Build cache key (engine, datafile, thread)
-    global _last_datafile, _last_engine
+    project = project or "default"
+    cfg = _db_configs.setdefault(project, {})
+    if datafile is not None:
+        cfg["datafile"] = datafile
+    if sql_engine is not None:
+        cfg["sql_engine"] = sql_engine
+    if row_factory:
+        cfg["row_factory"] = row_factory
+    if dbopts:
+        cfg.setdefault("dbopts", {}).update(dbopts)
 
-    if datafile is None:
-        datafile = _last_datafile
-    else:
-        _last_datafile = datafile
-
-    if sql_engine is None:
-        sql_engine = _last_engine
-    else:
-        _last_engine = sql_engine
-
-    if sql_engine is None:
-        sql_engine = "sqlite"
+    datafile = datafile or cfg.get("datafile")
+    sql_engine = sql_engine or cfg.get("sql_engine", "sqlite")
+    row_factory = row_factory or cfg.get("row_factory", False)
+    dbopts = {**cfg.get("dbopts", {}), **dbopts}
 
     _start_writer_thread()
-    base_key = (sql_engine, datafile or "default")
+    base_key = (project, sql_engine, datafile or "default")
     thread_key = threading.get_ident() if sql_engine in ("sqlite", "duckdb") else "*"
     key = (base_key, thread_key)
 
@@ -325,11 +326,12 @@ def open_connection(
     return conn
 
 
-def close_connection(datafile=None, *, sql_engine="sqlite", all=False):
+def close_connection(datafile=None, *, project=None, sql_engine=None, all=False):
     """
     Explicitly close one or all cached database connections.
     Shuts down writer thread if all connections closed.
     """
+    project = project or "default"
     if all:
         for key, connection in list(_connection_cache.items()):
             try:
@@ -341,8 +343,14 @@ def close_connection(datafile=None, *, sql_engine="sqlite", all=False):
         gw.info("All connections closed.")
         return
 
-    base_key = (sql_engine, datafile or "default")
-    thread_key = threading.get_ident() if sql_engine == "sqlite" else "*"
+    cfg = _db_configs.get(project, {})
+    if datafile is None:
+        datafile = cfg.get("datafile")
+    if sql_engine is None:
+        sql_engine = cfg.get("sql_engine", "sqlite")
+
+    base_key = (project, sql_engine, datafile or "default")
+    thread_key = threading.get_ident() if sql_engine in ("sqlite", "duckdb") else "*"
     key = (base_key, thread_key)
     connection = _connection_cache.pop(key, None)
     if connection:
@@ -360,7 +368,7 @@ def execute(*sql, connection=None, script=None, sep='; ', args=None):
     - Multi-statement scripts are supported via executescript.
     - All write queue items are always 5-tuple: (sql, args, conn, result_q, is_script)
     """
-    assert connection, "Pass connection= from gw.sql.open_connection()"
+    assert connection, "Pass connection= from gw.sql.open_db()"
 
     if script:
         script_text = gw.resource(script, text=True)
@@ -479,14 +487,14 @@ def parse_log(
             Defaults to ``DEFAULT_LOG_MASK`` which parses standard GWay logs.
         log_location (str): Path to the log file to monitor.
         table (str): Table to insert parsed records into.
-        connection: Database connection from :func:`open_connection`.
+        connection: Database connection from :func:`open_db`.
         start_at_end (bool): If True, begin tailing from end of file.
         poll_interval (float): Seconds to wait for new lines.
         stop_event (threading.Event): Optional event to stop the tail loop.
         flags (int): Regex flags for ``re.compile``.
     """
 
-    assert connection, "Pass connection= from gw.sql.open_connection()"
+    assert connection, "Pass connection= from gw.sql.open_db()"
 
     regex = re.compile(mask, flags)
     columns = list(regex.groupindex.keys())
@@ -540,7 +548,7 @@ def migrate(*, dbfile=None):
     if not sql_list:
         gw.info("No staged SQL to migrate")
         return 0
-    with open_connection(dbfile) as cur:
+    with open_db(dbfile) as cur:
         for stmt in sql_list:
             cur.executescript(stmt)
     gw.info(f"Applied {len(sql_list)} statements to {key}")
@@ -645,7 +653,7 @@ class TableProxy:
 
     def all(self):
         """Return all rows from the table."""
-        conn = gw.sql.open_connection(self.dbfile, sql_engine=self.sql_engine)
+        conn = gw.sql.open_db(self.dbfile, sql_engine=self.sql_engine)
         return gw.sql.execute(f'SELECT * FROM "{self.name}"', connection=conn)
 
 
@@ -728,11 +736,15 @@ def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None):
         raise ValueError("Could not determine table name from definition")
 
     if colspec and create:
-        conn = gw.sql.open_connection(dbfile, sql_engine=sql_engine)
+        conn = gw.sql.open_db(dbfile, sql_engine=sql_engine)
         gw.sql.execute(
             f'CREATE TABLE IF NOT EXISTS "{table}" ({colspec})',
             connection=conn,
         )
 
     return TableProxy(table, dbfile=dbfile, sql_engine=sql_engine)
+
+# Backwards compatibility aliases
+open_connection = open_db
+close_db = close_connection
 

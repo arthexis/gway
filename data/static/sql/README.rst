@@ -3,7 +3,7 @@ SQL CRUD Helpers
 
 The ``sql.crud`` project offers basic APIs for creating, reading,
 updating and deleting records in any SQLite table. All functions use
-``gw.sql.open_connection`` internally, so you can simply pass a
+``gw.sql.open_db`` internally, so you can simply pass a
 ``--dbfile`` parameter (defaulting to ``work/data.sqlite``).
 
 Schema changes are staged in memory until ``gw.sql.migrate`` is called.

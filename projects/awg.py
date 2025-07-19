@@ -81,7 +81,7 @@ def find_awg(
 
     def _calc(*, force_awg=None, limit_awg=None):
         local_conduit = conduit
-        with gw.sql.open_connection(autoload=True) as cursor:
+        with gw.sql.open_db(autoload=True) as cursor:
             sql = (
                 "SELECT awg_size, line_num, k_ohm_km, amps_60c, amps_75c, amps_90c "
                 "FROM awg_cable_size "
@@ -215,7 +215,7 @@ def find_awg(
 
 def find_conduit(awg, cables, *, conduit="emt"):
     """Calculate the kind of conduit required for a set of cables."""
-    with gw.sql.open_connection(autoload=True) as cursor:
+    with gw.sql.open_db(autoload=True) as cursor:
 
         assert conduit in ("emt", "imc", "rmc", "fmc"), "Allowed: emt, imc, rmc, fmc."
         assert 1 <= cables <= 30, "Valid for 1-30 cables per conduit."
