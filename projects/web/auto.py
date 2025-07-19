@@ -15,7 +15,16 @@ DEFAULT_BROWSER = "chrome"
 
 
 def get_driver(*, browser: str = DEFAULT_BROWSER, headless: bool = True):
-    """Return a Selenium WebDriver instance for the selected browser."""
+    """Return a Selenium WebDriver instance.
+
+    :param browser: Browser backend to use (``"chrome"`` or ``"firefox"``).
+    :type browser: str
+    :param headless: Launch the browser without a visible window.
+    :type headless: bool
+    :returns: Configured Selenium WebDriver.
+    :rtype: selenium.webdriver.Remote
+    :provides: selenium.webdriver.Remote
+    """
     browser = browser.lower()
     if browser == "chrome":
         options = ChromeOptions()
@@ -48,7 +57,21 @@ def browse(
     driver=None,
     close: bool = False,
 ):
-    """Yield a cached WebDriver instance, creating a new one if needed."""
+    """Context manager that yields a cached WebDriver.
+
+    :param url: Optional URL to open before yielding the driver.
+    :type url: str | None
+    :param browser: Browser backend to use.
+    :type browser: str
+    :param headless: Whether to run in headless mode.
+    :type headless: bool
+    :param driver: Existing driver object or sequence containing one.
+    :type driver: selenium.webdriver.Remote | iterable | None
+    :param close: If ``True`` the provided driver is closed and ``None`` yielded.
+    :type close: bool
+    :returns: Active WebDriver instance.
+    :rtype: selenium.webdriver.Remote
+    """
     global _active_driver, _active_config
 
     # Try to unwrap an existing driver from the given object (tuple/list etc)
@@ -120,7 +143,21 @@ def capture_page_source(
     wait: float = 2.0,
     screenshot: str | None = None,
 ) -> str:
-    """Return page source for ``url``. Optionally save a screenshot."""
+    """Return page source for ``url``.
+
+    :param url: Page URL to fetch.
+    :type url: str
+    :param browser_name: Browser backend to use.
+    :type browser_name: str
+    :param headless: Whether to run in headless mode.
+    :type headless: bool
+    :param wait: Seconds to wait after navigation.
+    :type wait: float
+    :param screenshot: Optional path for a screenshot of the page.
+    :type screenshot: str | None
+    :returns: HTML source of the page.
+    :rtype: str
+    """
     import time
 
     with browse(url=url, browser=browser_name, headless=headless) as drv:

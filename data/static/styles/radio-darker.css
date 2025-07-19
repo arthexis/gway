@@ -237,6 +237,20 @@ footer::after {
     color: #fff81a;
     border-bottom: 1.8px solid #fff81a;
 }
+.help-entry table.param-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0.6em;
+}
+.help-entry table.param-table th,
+.help-entry table.param-table td {
+    border: 1px solid #2b3e29;
+    padding: 2px 4px;
+    text-align: left;
+}
+.help-entry table.param-table th {
+    background: #0a140e;
+}
 
 aside img[src*="qr"] {
     border-radius: 7px;

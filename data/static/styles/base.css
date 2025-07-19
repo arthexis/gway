@@ -382,6 +382,20 @@ p.compass { margin-bottom: 0.5em; }
     padding: 1.05em 1.25em 0.7em 1.25em;
     transition: box-shadow 0.15s;
 }
+.help-entry table.param-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0.8em;
+}
+.help-entry table.param-table th,
+.help-entry table.param-table td {
+    border: 1px solid #e2e6ee;
+    padding: 0.2em 0.4em;
+    text-align: left;
+}
+.help-entry table.param-table th {
+    background: var(--card-bg, #f0f0f0);
+}
 .help-entry:hover {
     box-shadow: 0 4px 14px 1px rgba(38,60,140,0.13);
 }
