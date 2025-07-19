@@ -191,6 +191,7 @@ def setup_app(project,
         _homes.clear()
         _links.clear()
         _registered_routes.clear()
+        _enabled.clear()
         if home:
             add_home(home, path, project)
             add_links(f"{path}/{home}", links)
