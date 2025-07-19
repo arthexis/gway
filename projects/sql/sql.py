@@ -274,7 +274,8 @@ def open_db(
     row_factory = row_factory or cfg.get("row_factory", False)
     dbopts = {**cfg.get("dbopts", {}), **dbopts}
 
-    _start_writer_thread()
+    if sql_engine != "duckdb":
+        _start_writer_thread()
     base_key = (project, sql_engine, datafile or "default")
     thread_key = threading.get_ident() if sql_engine in ("sqlite", "duckdb") else "*"
     key = (base_key, thread_key)
@@ -316,6 +317,7 @@ def open_db(
 
     # Wrap and cache connection
     conn = WrappedConnection(conn)
+    conn._engine = sql_engine
     _connection_cache[key] = conn
 
     if autoload and sql_engine == "sqlite":
@@ -394,14 +396,35 @@ def execute(*sql, connection=None, script=None, sep='; ', args=None):
         finally:
             cursor.close()
     else:
-        # All writes or scripts are serialized via the queue.
-        result_q = queue.Queue()
-        # Always enqueue a 5-item tuple: (sql, args, conn, result_q, is_script)
-        _write_queue.put((sql, args, connection._connection, result_q, is_script))
-        rows, error = result_q.get()
-        if error:
-            raise error
-        return rows
+        # DuckDB connections are not thread-safe, execute writes synchronously
+        if getattr(connection, "_engine", "sqlite") == "duckdb":
+            cursor = connection.cursor()
+            try:
+                if is_script:
+                    cursor.executescript(sql)
+                    rows = None
+                elif args:
+                    cursor.execute(sql, args)
+                    rows = cursor.fetchall() if cursor.description else None
+                else:
+                    cursor.execute(sql)
+                    rows = cursor.fetchall() if cursor.description else None
+                connection.commit()
+                return rows
+            except Exception:
+                connection.rollback()
+                raise
+            finally:
+                cursor.close()
+        else:
+            # All writes or scripts are serialized via the queue.
+            result_q = queue.Queue()
+            # Always enqueue a 5-item tuple: (sql, args, conn, result_q, is_script)
+            _write_queue.put((sql, args, connection._connection, result_q, is_script))
+            rows, error = result_q.get()
+            if error:
+                raise error
+            return rows
 
 
 def _process_writes():
