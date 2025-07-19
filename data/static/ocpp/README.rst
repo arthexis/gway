@@ -70,9 +70,10 @@ OCPP Data Storage
 -----------------
 
 ``ocpp.data`` provides helper functions to persist transactions, meter
-values and error reports in ``work/ocpp.sqlite`` using ``gw.sql``.  The
-``csms`` module calls these helpers so charging sessions are recorded
-automatically.
+values and error reports in ``work/ocpp.db`` using ``gw.sql``. By
+default these helpers rely on the DuckDB engine so the ``duckdb``
+package must be available. The ``csms`` module calls these helpers so
+charging sessions are recorded automatically.
 
 For comparison with real EVCS logs, every completed transaction is also
 written as a ``.dat`` file under ``work/ocpp/records/<charger_id>/``.
