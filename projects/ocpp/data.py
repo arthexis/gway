@@ -54,7 +54,10 @@ CONNECTIONS = """connections(
 
 def open_db():
     """Return connection to the OCPP database, initializing tables."""
-    conn = gw.sql.open_connection(DBFILE, sql_engine=ENGINE)
+    if getattr(gw.sql, "_last_datafile", None) is None:
+        conn = gw.sql.open_connection(DBFILE, sql_engine=ENGINE)
+    else:
+        conn = gw.sql.open_connection()
     if not getattr(open_db, "_init", False):
         _init_db(conn)
         setattr(open_db, "_init", True)

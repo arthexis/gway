@@ -246,16 +246,33 @@ def load_cdv(*, connection=None, file=None, folder="data", force=False):
 # --- Connection Management (Drop-in Replacement) ---
 
 _connection_cache = {}
+_last_datafile = None
+_last_engine = "sqlite"
 
 def open_connection(
-        datafile=None, *, 
-        sql_engine="sqlite", autoload=False, force=False, row_factory=False, **dbopts):
+        datafile=None, *,
+        sql_engine=None, autoload=False, force=False, row_factory=False, **dbopts):
     """
     Initialize or reuse a database connection.
     Caches connections by sql_engine, file path, and thread ID (if required).
     Starts writer thread for SQLite.
     """
     # Build cache key (engine, datafile, thread)
+    global _last_datafile, _last_engine
+
+    if datafile is None:
+        datafile = _last_datafile
+    else:
+        _last_datafile = datafile
+
+    if sql_engine is None:
+        sql_engine = _last_engine
+    else:
+        _last_engine = sql_engine
+
+    if sql_engine is None:
+        sql_engine = "sqlite"
+
     _start_writer_thread()
     base_key = (sql_engine, datafile or "default")
     thread_key = threading.get_ident() if sql_engine in ("sqlite", "duckdb") else "*"
