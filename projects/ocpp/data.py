@@ -117,6 +117,11 @@ def _init_db(conn):
         """,
         connection=conn,
     )
+    # track when we last received any message from the charger
+    gw.sql.execute(
+        "ALTER TABLE connections ADD COLUMN IF NOT EXISTS last_msg INTEGER",
+        connection=conn,
+    )
 
     # track when we last received any message from the charger
     gw.sql.execute(

@@ -227,6 +227,7 @@
     let leftClick = getAttr(el, 'click') || getAttr(el, 'left-click');
     if (leftClick && /^re/i.test(leftClick) && !el.dataset.gwLeftClickSetup) {
       el.addEventListener('click', evt => {
+        if (evt.target.closest('a,button,input,textarea,select,label')) return;
         evt.preventDefault();
         refreshFunc(el);
       });
@@ -235,6 +236,7 @@
     let rightClick = getAttr(el, 'right-click');
     if (rightClick && /^re/i.test(rightClick) && !el.dataset.gwRightClickSetup) {
       el.addEventListener('contextmenu', evt => {
+        if (evt.target.closest('a,button,input,textarea,select,label')) return;
         evt.preventDefault();
         refreshFunc(el);
       });
@@ -243,6 +245,7 @@
     let dblClick = getAttr(el, 'double-click');
     if (dblClick && /^re/i.test(dblClick) && !el.dataset.gwDoubleClickSetup) {
       el.addEventListener('dblclick', evt => {
+        if (evt.target.closest('a,button,input,textarea,select,label')) return;
         evt.preventDefault();
         refreshFunc(el);
       });

@@ -4,6 +4,7 @@ web app setup:
     - web.site --home reader
     - web.nav --style random
     - cdv --home data-editor
+    - etron --home extract-records
 help-db build
 web:
  - static collect

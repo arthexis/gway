@@ -450,6 +450,32 @@ class EtronWebSocketTests(unittest.TestCase):
         self.assertNotIn("cannot call recv", output)
         self.assertIn("Simulation ended", output)
 
+    def test_pre_charge_delay_respected(self):
+        """Simulator should wait the given pre-charge delay before charging."""
+        async def run_sim():
+            import io, contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                start = time.monotonic()
+                await gw.ocpp.evcs.simulate_cp.__wrapped__(
+                    0,
+                    "127.0.0.1",
+                    19000,
+                    KNOWN_GOOD_TAG,
+                    "SIMDELAY",
+                    1,
+                    1,
+                    1,
+                    1,
+                    pre_charge_delay=2,
+                )
+                elapsed = time.monotonic() - start
+            return elapsed, buf.getvalue()
+
+        duration, out = asyncio.run(run_sim())
+        self.assertIn("Simulation ended", out)
+        self.assertGreaterEqual(duration, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
