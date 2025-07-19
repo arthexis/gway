@@ -204,6 +204,18 @@ class SqlTests(unittest.TestCase):
         rows = gw.sql.execute("SELECT count(*) FROM errtest", connection=self.conn)
         self.assertEqual(rows[0][0], 0)
 
+    def test_open_db_invalid_path_message(self):
+        """open_db aborts with helpful message on invalid path."""
+        bad_dir = "work/bad_db"
+        full = gw.resource(bad_dir, dir=True)
+        from unittest.mock import patch
+        with patch.object(gw, "abort", side_effect=SystemExit(13)) as abort_fn:
+            with self.assertRaises(SystemExit):
+                gw.sql.open_db(bad_dir)
+        abort_msg = abort_fn.call_args[0][0]
+        self.assertIn(str(full), abort_msg)
+        self.assertIn("permission", abort_msg.lower())
+
     def test_close_all_connections(self):
         """close_connection(all=True) closes all and stops writer."""
         c1 = gw.sql.open_db(TEMP_DB)
