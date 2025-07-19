@@ -25,6 +25,14 @@
             "args": ["-dv", "-r", "website"],
             "console": "integratedTerminal"
         },
+                {
+            "name": "gway -dr skeleton",
+            "type": "python",
+            "request": "launch",
+            "module": "gway",
+            "args": ["-dr", "skeleton"],
+            "console": "integratedTerminal"
+        },
         {
             "name": "gway release build --all",
             "type": "python",
