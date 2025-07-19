@@ -96,3 +96,11 @@ Two additional views provide more insight into stored data:
 with simple filtering and pagination. ``view_time_series`` returns a
 chart of energy usage over time for selected chargers and dates.
 
+
+RFID Management
+---------------
+
+RFID access entries are stored in ``work/ocpp/rfids.cdv``. Open
+``/ocpp/manage-rfids`` in your browser to edit these records. The page lists
+all tags with their balance and ``allowed`` flag so you can quickly update,
+credit or delete entries and add new ones.
