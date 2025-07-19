@@ -8,7 +8,7 @@ import html
 def api_create(*, table: str, dbfile=None, sql_engine="sqlite", **fields):
     """Insert a record into ``table`` and return the last row id."""
     assert table, "table required"
-    with gw.sql.open_connection(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
         columns = ", ".join(f'"{k}"' for k in fields)
         placeholders = ", ".join("?" for _ in fields)
         sql = f'INSERT INTO "{table}" ({columns}) VALUES ({placeholders})'
@@ -22,7 +22,7 @@ def api_create(*, table: str, dbfile=None, sql_engine="sqlite", **fields):
 
 def api_read(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sqlite"):
     """Return a single record by ``id``."""
-    with gw.sql.open_connection(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
         cur.execute(f'SELECT * FROM "{table}" WHERE "{id_col}" = ?', (id,))
         row = cur.fetchone()
     return row
@@ -30,7 +30,7 @@ def api_read(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sql
 
 def api_update(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sqlite", **fields):
     """Update a record by ``id``."""
-    with gw.sql.open_connection(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
         assignments = ", ".join(f'"{k}"=?' for k in fields)
         sql = f'UPDATE "{table}" SET {assignments} WHERE "{id_col}" = ?'
         cur.execute(sql, tuple(fields.values()) + (id,))
@@ -38,12 +38,12 @@ def api_update(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="s
 
 def api_delete(*, table: str, id, id_col: str = "id", dbfile=None, sql_engine="sqlite"):
     """Delete a record by ``id``."""
-    with gw.sql.open_connection(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
         cur.execute(f'DELETE FROM "{table}" WHERE "{id_col}" = ?', (id,))
 
 
 def _table_columns(table: str, *, dbfile=None, sql_engine="sqlite"):
-    with gw.sql.open_connection(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
         cur.execute(f'PRAGMA table_info("{table}")')
         rows = cur.fetchall()
     return [r[1] for r in rows]
@@ -53,7 +53,7 @@ def view_table(*, table: str, id_col: str = "id", dbfile=None, sql_engine="sqlit
     """Simple HTML interface for listing and editing records."""
     from bottle import request, response
 
-    with gw.sql.open_connection(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
         if request.method == "POST":
             action = request.forms.get("action")
             if action == "create":
@@ -135,7 +135,7 @@ def view_setup_table(*, table: str, dbfile=None, sql_engine="sqlite"):
         return ""
 
     cols = []
-    with gw.sql.open_connection(dbfile, sql_engine=sql_engine) as cur:
+    with gw.sql.open_db(dbfile, sql_engine=sql_engine) as cur:
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
         if cur.fetchone():
             cur.execute(f"PRAGMA table_info([{table}])")

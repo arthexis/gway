@@ -27,7 +27,7 @@ class SqlTests(unittest.TestCase):
 
     def setUp(self):
         # Each test gets a fresh database connection
-        self.conn = gw.sql.open_connection(TEMP_DB)
+        self.conn = gw.sql.open_db(TEMP_DB)
 
     def tearDown(self):
         # Close thread's own connection
@@ -64,7 +64,7 @@ class SqlTests(unittest.TestCase):
         results = []
 
         def read_db():
-            c = gw.sql.open_connection(TEMP_DB)
+            c = gw.sql.open_db(TEMP_DB)
             out = gw.sql.execute("SELECT sum(x) FROM readers", connection=c)
             results.append(out[0][0])
             gw.sql.close_connection(TEMP_DB)
@@ -82,7 +82,7 @@ class SqlTests(unittest.TestCase):
         )
 
         def write_db(val):
-            c = gw.sql.open_connection(TEMP_DB)
+            c = gw.sql.open_db(TEMP_DB)
             gw.sql.execute(
                 "INSERT INTO writers (y) VALUES (?)",
                 connection=c, args=(val,)
@@ -179,7 +179,7 @@ class SqlTests(unittest.TestCase):
     def test_row_factory(self):
         """Can get dict-like rows using row_factory option."""
         gw.sql.close_connection(all=True)  # Ensure fresh conn
-        conn = gw.sql.open_connection(TEMP_DB, row_factory=True)
+        conn = gw.sql.open_db(TEMP_DB, row_factory=True)
         gw.sql.execute(
             "CREATE TABLE rf (k INT, v TEXT)",
             connection=conn
@@ -206,11 +206,11 @@ class SqlTests(unittest.TestCase):
 
     def test_close_all_connections(self):
         """close_connection(all=True) closes all and stops writer."""
-        c1 = gw.sql.open_connection(TEMP_DB)
-        c2 = gw.sql.open_connection(TEMP_DB)
+        c1 = gw.sql.open_db(TEMP_DB)
+        c2 = gw.sql.open_db(TEMP_DB)
         gw.sql.close_connection(all=True)
         # New connection after all closed should work
-        c3 = gw.sql.open_connection(TEMP_DB)
+        c3 = gw.sql.open_db(TEMP_DB)
         gw.sql.execute("CREATE TABLE foo (id INT)", connection=c3)
         gw.sql.close_connection(TEMP_DB)
 
@@ -254,11 +254,11 @@ class SqlTests(unittest.TestCase):
 
         os.remove(log_path)
 
-    def test_open_connection_persists_params(self):
-        """open_connection() without args reuses last params."""
+    def test_open_db_persists_params(self):
+        """open_db() without args reuses last params."""
         gw.sql.close_connection(all=True)
-        c1 = gw.sql.open_connection("work/persist.sqlite")
-        c2 = gw.sql.open_connection()
+        c1 = gw.sql.open_db("work/persist.sqlite")
+        c2 = gw.sql.open_db()
         self.assertIs(c1, c2)
         gw.sql.close_connection("work/persist.sqlite")
 

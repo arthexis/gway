@@ -12,7 +12,7 @@ class SqlCrudTests(unittest.TestCase):
         path = gw.resource(self.DB)
         if os.path.exists(path):
             os.remove(path)
-        with gw.sql.open_connection(self.DB) as cur:
+        with gw.sql.open_db(self.DB) as cur:
             cur.execute('CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, qty INT)')
 
     def tearDown(self):
@@ -39,7 +39,7 @@ class SqlCrudTests(unittest.TestCase):
         gw.sql.setup_table('extras', 'name', 'TEXT', dbfile=self.DB)
         gw.sql.setup_table('extras', 'qty', 'INT', dbfile=self.DB)
         gw.sql.migrate(dbfile=self.DB)
-        with gw.sql.open_connection(self.DB) as cur:
+        with gw.sql.open_db(self.DB) as cur:
             cur.execute('PRAGMA table_info(extras)')
             cols = {r[1] for r in cur.fetchall()}
         self.assertEqual({'id', 'name', 'qty'}, cols)

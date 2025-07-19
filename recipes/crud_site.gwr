@@ -2,8 +2,8 @@
 # Minimal website using sql.crud to manage a table
 
 # Ensure the posts table exists
-sql open-connection --datafile work/blog.sqlite
-sql execute "CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, body TEXT)" --connection [sql.open_connection]
+sql open-db --datafile work/blog.sqlite
+sql execute "CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, body TEXT)" --connection [sql.open_db]
 
 web app setup:
     --project web.nav --home style-switcher
