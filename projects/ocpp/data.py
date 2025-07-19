@@ -126,7 +126,7 @@ def record_transaction_start(
     meter_start: Optional[float] = None,
     charger_timestamp: Optional[int] = None,
 ):
-    gw.sql.model(TRANSACTIONS).create(
+    gw.sql.model(TRANSACTIONS, project="ocpp").create(
         charger_id=charger_id,
         transaction_id=transaction_id,
         start_time=int(start_time),
@@ -161,7 +161,7 @@ def record_transaction_stop(
     record_last_msg(charger_id, stop_time)
 
 def record_meter_value(charger_id: str, transaction_id: int, timestamp: int, measurand: str, value: float, unit: str = "", context: str = ""):
-    gw.sql.model(METER_VALUES).create(
+    gw.sql.model(METER_VALUES, project="ocpp").create(
         charger_id=charger_id,
         transaction_id=transaction_id,
         timestamp=int(timestamp),
@@ -174,7 +174,7 @@ def record_meter_value(charger_id: str, transaction_id: int, timestamp: int, mea
 
 def record_error(charger_id: str, status: str, error_code: str = "", info: str = ""):
     ts = int(time.time())
-    gw.sql.model(ERRORS).create(
+    gw.sql.model(ERRORS, project="ocpp").create(
         charger_id=charger_id,
         status=status,
         error_code=error_code,
@@ -185,19 +185,19 @@ def record_error(charger_id: str, status: str, error_code: str = "", info: str =
 
 def set_connection_status(charger_id: str, connected: bool):
     """Mark charger connection as active or inactive."""
-    gw.sql.model(CONNECTIONS).delete(charger_id, id_col="charger_id")
-    gw.sql.model(CONNECTIONS).create(
+    gw.sql.model(CONNECTIONS, project="ocpp").delete(charger_id, id_col="charger_id")
+    gw.sql.model(CONNECTIONS, project="ocpp").create(
         charger_id=charger_id, connected=1 if connected else 0
     )
 
 def record_heartbeat(charger_id: str, timestamp: str):
-    gw.sql.model(CONNECTIONS).update(
+    gw.sql.model(CONNECTIONS, project="ocpp").update(
         charger_id, id_col="charger_id", last_heartbeat=timestamp
     )
     record_last_msg(charger_id)
 
 def update_status(charger_id: str, status: str = None, error_code: str = None, info: str = None):
-    gw.sql.model(CONNECTIONS).update(
+    gw.sql.model(CONNECTIONS, project="ocpp").update(
         charger_id,
         id_col="charger_id",
         status=status,
@@ -206,7 +206,7 @@ def update_status(charger_id: str, status: str = None, error_code: str = None, i
     )
 
 def clear_status(charger_id: str):
-    gw.sql.model(CONNECTIONS).update(
+    gw.sql.model(CONNECTIONS, project="ocpp").update(
         charger_id,
         id_col="charger_id",
         status=None,
