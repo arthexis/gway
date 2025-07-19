@@ -232,6 +232,23 @@ def view_help(topic="", *args, **kwargs):
                         + res_html + "</div>"
                     )
                 return "<div class='cli-result'>" + "<hr>".join(html_parts) + "</div>"
+            except SystemExit as ex:
+                if gw.debug_enabled:
+                    tb = traceback.format_exc()
+                    log_tail = ""
+                    try:
+                        log_path = gw.resource("logs", "gway.log")
+                        with open(log_path) as lf:
+                            log_tail = "".join(lf.readlines()[-20:])
+                    except Exception:
+                        log_tail = "(unable to read log)"
+                    return (
+                        "<h2>Command Error</h2>"
+                        f"<pre>{html.escape(str(ex))}</pre>"
+                        f"<pre>{html.escape(tb)}</pre>"
+                        f"<pre>{html.escape(log_tail)}</pre>"
+                    )
+                return f"<pre>{html.escape(str(ex))}</pre>"
             except Exception as ex:
                 if gw.debug_enabled:
                     tb = traceback.format_exc()
