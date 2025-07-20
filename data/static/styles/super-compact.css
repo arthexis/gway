@@ -1,0 +1,47 @@
+/* super-compact.css — GWAY Extra Compact Theme
+   Minimizes padding and margins for maximum information density.
+   Layer atop base.css.
+*/
+
+:root {
+    --bg: #ffffff;
+    --bg-alt: #f8f8f8;
+    --card-bg: #ffffff;
+    --fg: #000000;
+    --accent: #0069d9;
+    --accent-alt: #0050a3;
+    --muted: #555555;
+    --border-radius: 1px;
+}
+
+body {
+    /* keep default font size but tighten line spacing for denser text */
+    line-height: 1.25;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+}
+
+main, aside, header, footer, nav {
+    padding: 0.1em;
+}
+
+table th, table td {
+    padding: 0.1em;
+}
+
+p, li {
+    margin-bottom: 0.25em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    margin: 0 0 0.25em 0;
+    line-height: 1.2;
+}
+
+main {
+    column-width: 22em;
+    column-gap: 1em;
+}
