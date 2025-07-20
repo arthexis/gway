@@ -16,7 +16,7 @@ class NotifyBuiltinTests(unittest.TestCase):
         os.environ.pop('ADMIN_EMAIL', None)
 
     def test_console_fallback(self):
-        with patch.object(gw.screen, 'notify', side_effect=Exception('fail')):
+        with patch.object(gw.studio.screen, 'notify', side_effect=Exception('fail')):
             with patch.object(gw.mail, 'send') as mock_send:
                 gw.notify('hello world', title='T')
                 mock_send.assert_not_called()
@@ -24,7 +24,7 @@ class NotifyBuiltinTests(unittest.TestCase):
 
     def test_email_fallback(self):
         os.environ['ADMIN_EMAIL'] = 'test@example.com'
-        with patch.object(gw.screen, 'notify', side_effect=Exception('fail')):
+        with patch.object(gw.studio.screen, 'notify', side_effect=Exception('fail')):
             with patch.object(gw.mail, 'send') as mock_send:
                 gw.notify('msg', title='Notice')
                 mock_send.assert_called_once()
