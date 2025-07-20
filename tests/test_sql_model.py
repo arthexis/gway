@@ -79,5 +79,15 @@ class SqlModelTests(unittest.TestCase):
         gw.sql.close_connection(DBFILE)
         del globals()["DBFILE"]
 
+    def test_add_missing_columns(self):
+        spec1 = {"__name__": "tbl", "id": "INTEGER PRIMARY KEY", "a": "TEXT"}
+        gw.sql.model(spec1, dbfile=self.DB)
+        spec2 = {"__name__": "tbl", "id": "INTEGER PRIMARY KEY", "a": "TEXT", "b": "INTEGER"}
+        gw.sql.model(spec2, dbfile=self.DB)
+        conn = gw.sql.open_db(self.DB)
+        cols = [r[1] for r in gw.sql.execute("PRAGMA table_info(tbl)", connection=conn)]
+        self.assertIn("b", cols)
+        gw.sql.close_connection(self.DB)
+
 if __name__ == "__main__":
     unittest.main()

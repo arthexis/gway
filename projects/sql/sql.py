@@ -368,6 +368,21 @@ def close_connection(datafile=None, *, project=None, sql_engine=None, all=False)
         except Exception as e:
             gw.warning(f"Failed to close {key}: {e}")
 
+def _run(cursor, sql, *, args=None, is_script=False):
+    """Execute SQL and rethrow errors with the failing statement."""
+    try:
+        if is_script:
+            cursor.executescript(sql)
+            return None
+        if args:
+            cursor.execute(sql, args)
+        else:
+            cursor.execute(sql)
+        return cursor.fetchall() if cursor.description else None
+    except Exception as e:  # pragma: no cover - interactive
+        raise type(e)(f"{e}. SQL: {sql}") from e
+
+
 def execute(*sql, connection=None, script=None, sep='; ', args=None):
     """
     Thread-safe SQL execution.
@@ -397,8 +412,7 @@ def execute(*sql, connection=None, script=None, sep='; ', args=None):
     if not _is_write_query(sql) and not is_script:
         cursor = connection.cursor()
         try:
-            cursor.execute(sql, args or ())
-            return cursor.fetchall() if cursor.description else None
+            return _run(cursor, sql, args=args)
         finally:
             cursor.close()
     else:
@@ -406,15 +420,7 @@ def execute(*sql, connection=None, script=None, sep='; ', args=None):
         if getattr(connection, "_engine", "sqlite") == "duckdb":
             cursor = connection.cursor()
             try:
-                if is_script:
-                    cursor.executescript(sql)
-                    rows = None
-                elif args:
-                    cursor.execute(sql, args)
-                    rows = cursor.fetchall() if cursor.description else None
-                else:
-                    cursor.execute(sql)
-                    rows = cursor.fetchall() if cursor.description else None
+                rows = _run(cursor, sql, args=args, is_script=is_script)
                 connection.commit()
                 return rows
             except Exception:
@@ -445,15 +451,7 @@ def _process_writes():
         sql, args, conn, result_q, is_script = item  # Always expect 5!
         try:
             cursor = conn.cursor()
-            if is_script:
-                cursor.executescript(sql)
-                rows = None
-            elif args:
-                cursor.execute(sql, args)
-                rows = cursor.fetchall() if cursor.description else None
-            else:
-                cursor.execute(sql)
-                rows = cursor.fetchall() if cursor.description else None
+            rows = _run(cursor, sql, args=args, is_script=is_script)
             conn.commit()
             result_q.put((rows, None))
         except Exception as e:
