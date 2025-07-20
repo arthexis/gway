@@ -755,7 +755,9 @@ def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None, project
 
     ``defn`` may be a table name, mapping, dataclass, namedtuple or SQL spec.
     If column definitions are available and ``create`` is True the table is
-    created automatically using ``CREATE TABLE IF NOT EXISTS``.
+    created automatically using ``CREATE TABLE IF NOT EXISTS``.  When the table
+    already exists any missing columns from ``defn`` are added via ``ALTER
+    TABLE`` so existing data is preserved.
     """
 
     caller = inspect.currentframe().f_back
@@ -777,6 +779,20 @@ def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None, project
             f'CREATE TABLE IF NOT EXISTS "{table}" ({colspec})',
             connection=conn,
         )
+        rows = gw.sql.execute(
+            f'PRAGMA table_info("{table}")', connection=conn
+        )
+        existing = {r[1] for r in rows}
+        for col_def in [c.strip() for c in colspec.split(',') if c.strip()]:
+            m = re.match(r'[\[\"`]?([^\s\"`\]]+)', col_def)
+            if not m:
+                continue
+            col_name = m.group(1)
+            if col_name not in existing:
+                gw.sql.execute(
+                    f'ALTER TABLE "{table}" ADD COLUMN {col_def}',
+                    connection=conn,
+                )
 
     return TableProxy(table, dbfile=dbfile, sql_engine=sql_engine, project=project)
 
