@@ -31,9 +31,9 @@ def copy(value=None, *, notify=True, when=None):
         distance = len(value) - len(original)
         if notify:
             if abs(distance) <= 40:
-                gw.screen.notify(f"Clipboard modified: {value}")
+                gw.notify(f"Clipboard modified: {value}")
             else:
-                gw.screen.notify("Clipboard modified (%+d bytes)" % distance)
+                gw.notify("Clipboard modified (%+d bytes)" % distance)
     else:
         gw.warning(f"Clipboard accessed in read-only mode (value witheld).")
         gw.debug("clip.copy called with no value.")
@@ -80,7 +80,7 @@ def track_history(interval: int = 5, *, stop_after=None, notify=True):
             last_value = clean_current
             if notify:
                 summary = clean_current if len(clean_current) <= 60 else clean_current[:57] + "..."
-                gw.screen.notify("Clipboard captured: " + summary)
+                gw.notify("Clipboard captured: " + summary)
             gw.debug("New clipboard entry recorded.")
 
             if stop_after and (time.time() - start_time) > stop_after:

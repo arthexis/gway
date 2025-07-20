@@ -48,9 +48,9 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('cdv', project_ls)
 
     def test_load_qr_code_project(self):
-        # Normally qr is autoloaded when accessed, but this test ensures we can 
+        # Normally qr is autoloaded when accessed, but this test ensures we can
         # also manually load projects and use the objects directly if we need to.
-        project = gw.load_project("qr")
+        project = gw.load_project("studio.qr")
         test_url = project.generate_url("test")
         self.assertTrue(test_url.endswith(".png"))
 

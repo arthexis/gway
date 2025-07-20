@@ -38,7 +38,7 @@ def notify(message: str, *, title: str = "GWAY Notice", timeout: int = 10):
     from gway import gw
     """Send a notification via GUI, email or console fallback."""
     try:
-        gw.screen.notify(message, title=title, timeout=timeout)
+        gw.studio.screen.notify(message, title=title, timeout=timeout)
         return "gui"
     except Exception as e:
         gw.debug(f"GUI notify failed: {e}")

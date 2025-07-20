@@ -13,7 +13,7 @@ from gway import gw
 class MicRecordTests(unittest.TestCase):
     @staticmethod
     def _load_mic():
-        mic_path = Path(__file__).resolve().parents[1] / "projects" / "mic.py"
+        mic_path = Path(__file__).resolve().parents[1] / "projects" / "studio" / "mic.py"
         spec = importlib.util.spec_from_file_location("mic", mic_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
