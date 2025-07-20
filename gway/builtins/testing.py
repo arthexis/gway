@@ -15,13 +15,43 @@ def is_test_flag(name: str) -> bool:
     return name in active
 
 
-def test(*, root: str = "tests", filter=None, on_success=None, on_failure=None, coverage: bool = False, flags=None):
-    """Execute all automatically detected test suites."""
+def _is_installed() -> bool:
+    """Return True if required dependencies are importable."""
+    try:
+        import requests  # noqa: F401
+        import websockets  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+def _install_requirements():
+    import subprocess
+    import sys
+
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", "."])
+
+
+def test(*, root: str = "tests", filter=None, on_success=None, on_failure=None,
+         coverage: bool = False, flags=None, install: bool = False):
+    """Execute all automatically detected test suites.
+
+    If ``install`` is true, or key dependencies are missing, install
+    ``requirements.txt`` and the package in editable mode before running.
+    """
     from gway import gw
     import os
     import time
     import unittest
     from gway.logging import use_logging
+
+    if install or not _is_installed():
+        print("Installing requirements...")
+        try:
+            _install_requirements()
+        except Exception as e:  # pragma: no cover - installation errors are fatal
+            gw.warning(f"Failed to install requirements: {e}")
 
     if flags:
         if isinstance(flags, str):
