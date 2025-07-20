@@ -50,6 +50,11 @@ CONNECTIONS = """connections(
     info TEXT
  )"""
 
+ # TODO: This init process is wrong. The sql.model function should create the tables if they don't exist
+ #       Then, just call gw.sql.model(TABLE, project="ocpp") on the functions that need it. 
+ #       If sql.model doesn't create the table it should be fixed to do it based on the given spec.
+ #       If the spec definition is different, add new columns but never delete old ones.  
+
 def _init_db(conn):
     gw.sql.execute(
         """
@@ -113,6 +118,8 @@ def _init_db(conn):
         connection=conn,
     )
 
+
+# TODO: Nothing should be initialized in a static manner
 
 _ocpp_db = gw.sql.open_db(DBFILE, sql_engine=ENGINE, project="ocpp")
 _init_db(_ocpp_db)
