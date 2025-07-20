@@ -104,7 +104,7 @@ next non-indented command.
    # Configure multiple projects
    web app setup-app:
        - web.site --home reader
-       - web.nav --style random
+       - web.nav --style random --default-style dark-material.css
        - games.qpig --home qpig-farm
 
    # Start the server

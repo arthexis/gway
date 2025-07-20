@@ -57,12 +57,18 @@ class ActiveStyleTests(unittest.TestCase):
 
         # Preserve original request object
         self.orig_request = nav.request
+        self.orig_forced = nav._forced_style
+        self.orig_default = getattr(nav, "_default_style", None)
+        nav._forced_style = None
+        nav._default_style = None
 
     def tearDown(self):
         self.list_patch.stop()
         nav.gw.web.app = self.orig_app
         nav.gw.web.cookies = self.orig_cookies
         nav.request = self.orig_request
+        nav._forced_style = self.orig_forced
+        nav._default_style = self.orig_default
 
     def test_query_param_overrides_cookie(self):
         nav.gw.web.cookies.store = {"css": "dark-material.css"}
@@ -106,6 +112,20 @@ class ActiveStyleTests(unittest.TestCase):
             result = nav.active_style()
             self.assertEqual(result, "/static/styles/dark-material.css")
             mock_choice.assert_called_once()
+
+    def test_default_style_fallback(self):
+        nav.setup_app(default_style="dark-material.css")
+        nav.gw.web.cookies.store = {}
+        nav.request = FakeRequest({})
+        result = nav.active_style()
+        self.assertEqual(result, "/static/styles/dark-material.css")
+
+    def test_default_css_alias(self):
+        nav.setup_app(default_css="dark-material.css")
+        nav.gw.web.cookies.store = {}
+        nav.request = FakeRequest({})
+        result = nav.active_style()
+        self.assertEqual(result, "/static/styles/dark-material.css")
 
 
 if __name__ == "__main__":
