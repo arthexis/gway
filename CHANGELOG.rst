@@ -5,6 +5,7 @@ Unreleased
 ----------
 
 - add --install option to test command
+- allow backslash line continuations in recipe files
 
 0.4.51 [build edbd5b]
 ---------------------

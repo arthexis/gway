@@ -525,16 +525,18 @@ def load_recipe(recipe_filename):
     colon_prefix = None
     colon_suffix = ""
     with open(recipe_path) as f:
-        for raw_line in f:
-            line = raw_line.rstrip("\n")
+        continuation = None
+
+        def process_line(line: str):
+            nonlocal colon_prefix, colon_suffix, last_prefix
             stripped_line = line.lstrip()
             if not stripped_line:
                 colon_prefix = None
-                continue  # skip blank lines
+                return  # skip blank lines
             if stripped_line.startswith("#"):
                 comments.append(stripped_line)
                 colon_prefix = None
-                continue
+                return
             if colon_prefix:
                 if stripped_line.startswith("- "):
                     addition = stripped_line[1:].lstrip()
@@ -542,20 +544,20 @@ def load_recipe(recipe_filename):
                     if colon_suffix:
                         line_to_add += " " + colon_suffix
                     deindented_lines.append(line_to_add)
-                    continue
+                    return
                 if stripped_line.startswith("--"):
                     line_to_add = colon_prefix + " " + stripped_line
                     if colon_suffix:
                         line_to_add += " " + colon_suffix
                     deindented_lines.append(line_to_add)
-                    continue
+                    return
                 colon_prefix = None
                 colon_suffix = ""
             if stripped_line.endswith(":"):
                 colon_prefix = stripped_line[:-1].rstrip()
                 colon_suffix = ""
                 last_prefix = colon_prefix
-                continue
+                return
             # Detect colon inside line after a flag
             no_comment = stripped_line.split("#", 1)[0].rstrip()
             tokens = no_comment.split()
@@ -566,7 +568,7 @@ def load_recipe(recipe_filename):
                     last_prefix = colon_prefix + (" " + colon_suffix if colon_suffix else "")
                     break
             if colon_prefix:
-                continue
+                return
             # Detect if line is indented and starts with '--'
             if line[:1].isspace() and stripped_line.startswith("--"):
                 # Prepend previous prefix if available
@@ -581,8 +583,21 @@ def load_recipe(recipe_filename):
                 if len(parts) == 2:
                     last_prefix = parts[0].rstrip()
                 else:
-                    last_prefix = line.rstrip()  # <-- fixed here!
+                    last_prefix = line.rstrip()
                 deindented_lines.append(line)
+
+        for raw_line in f:
+            line = raw_line.rstrip("\n")
+            if continuation is not None:
+                line = continuation + line.lstrip()
+                continuation = None
+            if line.endswith("\\"):
+                continuation = line[:-1].rstrip() + " "
+                continue
+            process_line(line)
+
+        if continuation is not None:
+            process_line(continuation.rstrip())
 
     # --- Split deindented lines into commands ---
     for line in deindented_lines:
