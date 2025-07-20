@@ -4,7 +4,7 @@
 web app setup-app --mode manual:
     - web.site --home reader --footer feedback
     - web.nav --home style-switcher
-    - web.cookies --footer cookie-jar
+    - web.cookies --footer web.cookies:cookie-jar
     - web.message
     - awg --home awg-calculator
     - vbox --home uploads
