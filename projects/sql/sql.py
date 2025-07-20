@@ -293,10 +293,10 @@ def open_db(
         path = gw.resource(datafile or "work/data.sqlite")
         # Note: check_same_thread=False for sharing connections in the writer thread
         try:
-            conn = sqlite3.connect(path, check_same_thread=False)
+            conn = sqlite3.connect(str(path), check_same_thread=False)
         except sqlite3.OperationalError as e:
             gw.abort(
-                f"Unable to open SQLite database at {path}. "
+                f"Unable to open SQLite database at {str(path)}. "
                 f"Check the path and file permissions. ({e})"
             )
         if row_factory:
