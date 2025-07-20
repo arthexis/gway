@@ -11,7 +11,7 @@ web app setup:
     - web.message
     - web.chat
     - vbox --home uploads
-    - ocpp --home dashboard \
+    - ocpp --home ocpp-dashboard \
         --links active-chargers,charger-summary,time-series,cp-simulator,manage-rfids
     - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
     - web.auth
