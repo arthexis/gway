@@ -10,7 +10,9 @@ class SetupHomeLinksFuncTests(unittest.TestCase):
         app = gw.web.app.setup_app("dummy", app=None)
         mod = sys.modules[gw.web.app.setup_app.__module__]
         self.assertIn(("Dummy", "dummy/index"), mod._homes)
-        self.assertEqual(mod._links.get("dummy/index"), ["about", "more"])
+        self.assertEqual(
+            mod._links.get("dummy/index"), [("dummy", "about"), ("dummy", "more")]
+        )
         client = TestApp(app)
         resp = client.get("/dummy")
         self.assertEqual(resp.status, 200)

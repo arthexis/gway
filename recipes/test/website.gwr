@@ -7,7 +7,7 @@ web app setup:
     - web.site --home reader --footer feedback
     - awg --home awg-calculator
     - web.nav --home style-switcher
-    - web.cookies --footer cookie-jar
+    - web.cookies --footer web.cookies:cookie-jar
     - web.message
     - web.chat
     - vbox --home uploads

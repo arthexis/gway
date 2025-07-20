@@ -15,7 +15,7 @@ class FooterLinksTests(unittest.TestCase):
     def test_footer_links_render(self):
         app = gw.web.app.setup_app("dummy", footer="info")
         mod = sys.modules[gw.web.app.setup_app.__module__]
-        self.assertEqual(mod._footer_links.get("dummy/index"), ["info"])
+        self.assertEqual(mod._footer_links.get("dummy/index"), [("dummy", "info")])
         client = TestApp(app)
         resp = client.get("/dummy")
         self.assertEqual(resp.status, 200)
