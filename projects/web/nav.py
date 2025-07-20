@@ -7,6 +7,7 @@ from gway import gw
 from bottle import request
 
 _forced_style = None
+_default_style = None
 _side = "left"
 
 
@@ -276,6 +277,25 @@ def active_style():
                     else f"/static/{src}/styles/{fname}"
                 )
                 break
+    # Otherwise, use configured default
+    if not style_path and _default_style:
+        if _default_style == "random" and styles:
+            src, fname = random.choice(styles)
+            return (
+                f"/static/styles/{fname}"
+                if src == "global"
+                else f"/static/{src}/styles/{fname}"
+            )
+        for src, fname in styles:
+            if fname == _default_style:
+                style_path = (
+                    f"/static/styles/{fname}"
+                    if src == "global"
+                    else f"/static/{src}/styles/{fname}"
+                )
+                break
+        if not style_path and _default_style.startswith("/"):
+            style_path = _default_style
     # Otherwise, first available style
     if not style_path and styles:
         src, fname = styles[0]
@@ -524,14 +544,20 @@ def list_styles(project=None):
     return styles
 
 
-def setup_app(*, app=None, style=None, side="left", **_):
-    """Optional hook to set a default style and nav side when the project is added.
+def setup_app(*, app=None, style=None, default_style=None, default_css=None, side="left", **_):
+    """Optional hook to set nav defaults when the project is added.
 
-    Pass ``style='random'`` to select a random theme on each request.
-    Use ``side='right'`` to place the navigation on the right side or ``side='top'``
-    for a horizontal bar with drop-down menus.
+    ``style`` forces a theme (including ``random`` for per-request variation).
+    ``default_style``/``default_css`` chooses the fallback theme when no cookie
+    or query parameter is set. ``side`` accepts ``left``, ``right`` or ``top`` to
+    position the navigation bar.
     """
-    global _forced_style, _side
+    global _forced_style, _default_style, _side
+    if default_style is None:
+        default_style = default_css
+    if default_style:
+        _default_style = default_style
+        gw.info(f"web.nav default style: {default_style}")
     if style:
         _forced_style = style
         gw.info(f"web.nav forced style: {style}")
