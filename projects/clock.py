@@ -4,6 +4,8 @@ import re
 import time
 import requests
 import datetime
+from zoneinfo import available_timezones, ZoneInfo
+from gway import gw
 
 #       If there is missing functionality we need for other projects, add it.
 
@@ -132,3 +134,40 @@ def to_download(filesize):
             raise
 
     download_time_report(filesize)
+
+
+# ---------------------------------------------------------------------------
+# Web Interface: World Clock
+# ---------------------------------------------------------------------------
+
+
+@gw.web.static.include()
+def view_world_clock(*, tz: str = "UTC", **_):
+    """Return a page with a live world clock."""
+    zones = sorted(available_timezones())
+    if tz not in zones:
+        tz = "UTC"
+    options = [
+        f"<option value='{z}'{' selected' if z == tz else ''}>{z}</option>"
+        for z in zones
+    ]
+    html = [
+        "<h1>World Clock</h1>",
+        "<div class='clock-wrap'><div id='clock' class='world-clock'></div></div>",
+        "<label class='tz-label'>Timezone: <select id='tz-select' class='tz-select'>",
+        *options,
+        "</select></label>",
+        "<script src='/static/clock/world-clock.js'></script>",
+        f"<script>initClock('{tz}');</script>",
+    ]
+    return "\n".join(html)
+
+
+def setup_home():
+    """World clock is the default view when serving this project."""
+    return "world-clock"
+
+
+def setup_links():
+    """Navigation links for this project."""
+    return ["world-clock"]
