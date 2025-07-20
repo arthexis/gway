@@ -5,29 +5,29 @@
 
 :root {
     --bg: #ffffff;
-    --bg-alt: #f2f2f2;
+    --bg-alt: #f8f8f8;
     --card-bg: #ffffff;
     --fg: #000000;
     --accent: #0069d9;
     --accent-alt: #0050a3;
     --muted: #555555;
-    --border-radius: 2px;
+    --border-radius: 1px;
 }
 
 body {
-    font-size: 14px;
-    line-height: 1.4;
+    font-size: 12px;
+    line-height: 1.3;
 }
 
 * {
     margin: 0;
-    padding: 0.1em 0.2em;
+    padding: 0.05em 0.1em;
 }
 
 main, aside, header, footer, nav {
-    padding: 0.3em;
+    padding: 0.2em;
 }
 
 table th, table td {
-    padding: 0.2em;
+    padding: 0.1em;
 }
