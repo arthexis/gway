@@ -647,21 +647,61 @@ def view_project_readmes():
 
 def view_comitted_todos():
     """Render an HTML table of TODOs grouped by project."""
-    gw.help_db.build()
-    db_path = gw.resource("data", "help.sqlite")
+    import ast
+    import inspect
+    import os
+    from pathlib import Path
+
+    def _extract_todos(source: str):
+        todos = []
+        lines = source.splitlines()
+        current = []
+        for line in lines:
+            stripped = line.strip()
+            if "# TODO" in stripped:
+                if current:
+                    todos.append("\n".join(current))
+                current = [stripped]
+            elif current and (stripped.startswith("#") or not stripped):
+                current.append(stripped)
+            elif current:
+                todos.append("\n".join(current))
+                current = []
+        if current:
+            todos.append("\n".join(current))
+        return todos
+
     todos: dict[str, list[tuple[str, str]]] = {}
-    extract = getattr(gw.help_db, "_extract_todos", None)
-    with gw.sql.open_db(db_path, row_factory=True) as cur:
-        cur.execute("SELECT project, function, source FROM help")
-        for row in cur.fetchall():
-            source = row["source"] or ""
-            items = extract(source) if extract else []
-            if not items:
+    extract = _extract_todos
+    base = Path("projects")
+    for path in base.rglob("*.py"):
+        if path.name.startswith("_"):
+            continue
+        dotted = path.relative_to(base).with_suffix("").as_posix().replace("/", ".")
+        with open(path, "r") as f:
+            lines = f.readlines()
+        try:
+            tree = ast.parse("".join(lines))
+        except Exception:
+            continue
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef):
                 continue
-            proj = row["project"]
-            func = row["function"]
-            for todo in items:
-                todos.setdefault(proj, []).append((func, todo.strip()))
+            start = node.lineno - 1
+            end = node.end_lineno or start
+            prepend = []
+            i = start - 1
+            while i >= 0 and not lines[i].strip():
+                i -= 1
+            while i >= 0 and lines[i].strip().startswith("#"):
+                prepend.insert(0, lines[i])
+                i -= 1
+            block = "".join(prepend + lines[start:end])
+            for todo in extract(block) or []:
+                t = todo.strip()
+                if not t.startswith("# TODO"):
+                    continue
+                todos.setdefault(dotted, []).append((node.name, t))
 
     if not todos:
         return "<h1>No TODOs found.</h1>"

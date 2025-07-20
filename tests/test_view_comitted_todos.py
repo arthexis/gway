@@ -7,7 +7,7 @@ class ViewComittedTodosTests(unittest.TestCase):
         html = gw.web.site.view_comitted_todos()
         self.assertIn('<table', html)
         self.assertIn('ocpp.rfid', html)
-        self.assertIn('?topic=ocpp.rfid/authorize_balance', html)
+        self.assertIn('?topic=ocpp.rfid%2Fauthorize_balance', html)
 
 if __name__ == '__main__':
     unittest.main()
