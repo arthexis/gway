@@ -645,6 +645,40 @@ def view_project_readmes():
     return "<h1>Project READMEs</h1>" + body
 
 
+def view_comitted_todos():
+    """Render an HTML table of TODOs grouped by project."""
+    gw.help_db.build()
+    db_path = gw.resource("data", "help.sqlite")
+    todos: dict[str, list[tuple[str, str]]] = {}
+    extract = getattr(gw.help_db, "_extract_todos", None)
+    with gw.sql.open_db(db_path, row_factory=True) as cur:
+        cur.execute("SELECT project, function, source FROM help")
+        for row in cur.fetchall():
+            source = row["source"] or ""
+            items = extract(source) if extract else []
+            if not items:
+                continue
+            proj = row["project"]
+            func = row["function"]
+            for todo in items:
+                todos.setdefault(proj, []).append((func, todo.strip()))
+
+    if not todos:
+        return "<h1>No TODOs found.</h1>"
+
+    html_parts = ["<h1>Committed TODOs</h1>"]
+    for proj in sorted(todos):
+        html_parts.append(f"<h2>{html.escape(proj)}</h2>")
+        html_parts.append("<table class='todo-table'><tr><th>Function</th><th>TODO</th></tr>")
+        for func, todo in todos[proj]:
+            link = gw.web.app.build_url("web", "site", "help", topic=f"{proj}/{func}")
+            html_parts.append(
+                f"<tr><td><a href='{link}'>{html.escape(func)}</a></td><td><pre>{html.escape(todo)}</pre></td></tr>"
+            )
+        html_parts.append("</table>")
+    return "".join(html_parts)
+
+
 def build_help_db(*, update: bool = False):
     """Compatibility wrapper for :func:`gw.help_db.build`."""
     gw.warning(
