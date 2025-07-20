@@ -198,8 +198,9 @@ class SqlTests(unittest.TestCase):
         gw.sql.execute(
             "CREATE TABLE errtest (z INT)", connection=self.conn
         )
-        with self.assertRaises(Exception):
+        with self.assertRaises(Exception) as cm:
             gw.sql.execute("INSRT INTO errtest VALUES (9)", connection=self.conn)
+        self.assertIn("INSRT INTO errtest", str(cm.exception))
         # Table should be empty
         rows = gw.sql.execute("SELECT count(*) FROM errtest", connection=self.conn)
         self.assertEqual(rows[0][0], 0)

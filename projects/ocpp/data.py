@@ -163,6 +163,7 @@ def record_last_msg(charger_id: str, timestamp: int | None = None):
     )
 
 def get_connection(charger_id: str):
+    gw.sql.model(CONNECTIONS, project="ocpp")  # ensure table exists
     conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT connected, last_heartbeat, status, error_code, info, last_msg FROM connections WHERE charger_id=?",
@@ -304,6 +305,7 @@ def get_active_transactions():
 
 def get_active_chargers() -> list[str]:
     """Return list of charger IDs currently marked as connected."""
+    gw.sql.model(CONNECTIONS, project="ocpp")  # ensure table exists
     conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT charger_id FROM connections WHERE connected=1",
@@ -388,6 +390,7 @@ def get_meter_series(chargers: Sequence[str], *, start: int = None, end: int = N
 
 def list_chargers() -> list[str]:
     """Return list of distinct charger_ids."""
+    gw.sql.model(CONNECTIONS, project="ocpp")  # ensure table exists
     conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT charger_id FROM connections UNION SELECT DISTINCT charger_id FROM transactions ORDER BY charger_id",
