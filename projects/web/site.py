@@ -645,6 +645,80 @@ def view_project_readmes():
     return "<h1>Project READMEs</h1>" + body
 
 
+def view_comitted_todos():
+    """Render an HTML table of TODOs grouped by project."""
+    import ast
+    import inspect
+    import os
+    from pathlib import Path
+
+    def _extract_todos(source: str):
+        todos = []
+        lines = source.splitlines()
+        current = []
+        for line in lines:
+            stripped = line.strip()
+            if "# TODO" in stripped:
+                if current:
+                    todos.append("\n".join(current))
+                current = [stripped]
+            elif current and (stripped.startswith("#") or not stripped):
+                current.append(stripped)
+            elif current:
+                todos.append("\n".join(current))
+                current = []
+        if current:
+            todos.append("\n".join(current))
+        return todos
+
+    todos: dict[str, list[tuple[str, str]]] = {}
+    extract = _extract_todos
+    base = Path("projects")
+    for path in base.rglob("*.py"):
+        if path.name.startswith("_"):
+            continue
+        dotted = path.relative_to(base).with_suffix("").as_posix().replace("/", ".")
+        with open(path, "r") as f:
+            lines = f.readlines()
+        try:
+            tree = ast.parse("".join(lines))
+        except Exception:
+            continue
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            start = node.lineno - 1
+            end = node.end_lineno or start
+            prepend = []
+            i = start - 1
+            while i >= 0 and not lines[i].strip():
+                i -= 1
+            while i >= 0 and lines[i].strip().startswith("#"):
+                prepend.insert(0, lines[i])
+                i -= 1
+            block = "".join(prepend + lines[start:end])
+            for todo in extract(block) or []:
+                t = todo.strip()
+                if not t.startswith("# TODO"):
+                    continue
+                todos.setdefault(dotted, []).append((node.name, t))
+
+    if not todos:
+        return "<h1>No TODOs found.</h1>"
+
+    html_parts = ["<h1>Committed TODOs</h1>"]
+    for proj in sorted(todos):
+        html_parts.append(f"<h2>{html.escape(proj)}</h2>")
+        html_parts.append("<table class='todo-table'><tr><th>Function</th><th>TODO</th></tr>")
+        for func, todo in todos[proj]:
+            link = gw.web.app.build_url("web", "site", "help", topic=f"{proj}/{func}")
+            html_parts.append(
+                f"<tr><td><a href='{link}'>{html.escape(func)}</a></td><td><pre>{html.escape(todo)}</pre></td></tr>"
+            )
+        html_parts.append("</table>")
+    return "".join(html_parts)
+
+
 def build_help_db(*, update: bool = False):
     """Compatibility wrapper for :func:`gw.help_db.build`."""
     gw.warning(

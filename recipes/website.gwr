@@ -4,7 +4,7 @@
 # Lines without a starting command repeat the previous with new params
 
 web app setup:
-    - web.site --home reader --footer feedback
+    - web.site --home reader --footer feedback,comitted-todos
     - web.nav --home style-switcher
     - web.cookies --footer web.cookies:cookie-jar
     - web.message
