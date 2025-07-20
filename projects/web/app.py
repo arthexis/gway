@@ -201,7 +201,7 @@ def setup_app(project,
         if home:
             add_home(home, path, project)
             add_links(f"{path}/{home}", links)
-            add_footer_links(f"{path}/{home}", footer)
+            add_footer_links(f"{path}/{home}", footer, project)
 
         def index():
             response.status = 302
@@ -216,11 +216,11 @@ def setup_app(project,
     elif home:
         add_home(home, path, project)
         add_links(f"{path}/{home}", links)
-        add_footer_links(f"{path}/{home}", footer)
+        add_footer_links(f"{path}/{home}", footer, project)
     elif links and _homes:
         add_links(_homes[-1][1], links)
     elif footer and _homes:
-        add_footer_links(_homes[-1][1], footer)
+        add_footer_links(_homes[-1][1], footer, project)
 
     if getattr(gw, "timed_enabled", False):
         @app.hook('before_request')
@@ -740,10 +740,15 @@ def add_links(route: str, links=None):
         _links[route] = existing + parsed
         gw.debug(f"Added links for {route}: {_links[route]}")
 
-def add_footer_links(route: str, links=None):
+def add_footer_links(route: str, links=None, project: str | None = None):
     global _footer_links
     parsed = parse_links(links)
     if parsed:
+        if project:
+            parsed = [
+                (project, item) if not isinstance(item, tuple) else item
+                for item in parsed
+            ]
         existing = _footer_links.get(route, [])
         _footer_links[route] = existing + parsed
         gw.debug(f"Added footer links for {route}: {_footer_links[route]}")
