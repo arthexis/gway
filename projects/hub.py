@@ -93,7 +93,7 @@ def changes(*, files=None, staged=False, context=3, max_bytes=200_000, clip=Fals
         result = result[:max_bytes] + f"\n[...Diff truncated at {max_bytes} bytes...]"
 
     if clip:
-        gw.clip.copy(result)
+        gw.studio.clip.copy(result)
     if not gw.silent:
         return result or "[No changes detected]"
 

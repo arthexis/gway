@@ -48,9 +48,9 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('cdv', project_ls)
 
     def test_load_qr_code_project(self):
-        # Normally qr is autoloaded when accessed, but this test ensures we can 
+        # Normally qr is autoloaded when accessed, but this test ensures we can
         # also manually load projects and use the objects directly if we need to.
-        project = gw.load_project("qr")
+        project = gw.load_project("studio.qr")
         test_url = project.generate_url("test")
         self.assertTrue(test_url.endswith(".png"))
 
@@ -78,6 +78,15 @@ class GatewayBuiltinsTests(unittest.TestCase):
         """Test that the abort function raises a SystemExit exception."""
         with self.assertRaises(SystemExit):
             gw.abort("Abort test")
+
+    def test_test_install_option(self):
+        """Ensure the test builtin accepts the install flag."""
+        import tempfile
+        import pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            pathlib.Path(tmp, "__init__.py").touch()
+            result = builtins.test(root=tmp, install=False)
+            self.assertTrue(result)
 
 if __name__ == "__main__":
     unittest.main()

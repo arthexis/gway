@@ -178,7 +178,7 @@ def render(*, homes=None, links=None):
     if mode == "qr":
         try:
             url = current_url()
-            qr_url = gw.qr.generate_url(url)
+            qr_url = gw.studio.qr.generate_url(url)
             compass = f'<img src="{qr_url}" alt="QR Code" class="compass" />'
         except Exception as e:
             gw.debug(f"Could not generate QR compass: {e}")

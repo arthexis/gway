@@ -47,75 +47,12 @@ CONNECTIONS = """connections(
     last_heartbeat TEXT,
     status TEXT,
     error_code TEXT,
-    info TEXT
+    info TEXT,
+    last_msg INTEGER
  )"""
 
-def _init_db(conn):
-    gw.sql.execute(
-        """
-        CREATE TABLE IF NOT EXISTS transactions(
-            charger_id TEXT,
-            transaction_id INTEGER,
-            start_time INTEGER,
-            stop_time INTEGER,
-            id_tag TEXT,
-            meter_start REAL,
-            meter_stop REAL,
-            reason TEXT,
-            charger_start_ts INTEGER,
-            charger_stop_ts INTEGER
-        )
-        """,
-        connection=conn,
-    )
-    gw.sql.execute(
-        """
-        CREATE TABLE IF NOT EXISTS meter_values(
-            charger_id TEXT,
-            transaction_id INTEGER,
-            timestamp INTEGER,
-            measurand TEXT,
-            value REAL,
-            unit TEXT,
-            context TEXT
-        )
-        """,
-        connection=conn,
-    )
-    gw.sql.execute(
-        """
-        CREATE TABLE IF NOT EXISTS errors(
-            charger_id TEXT,
-            status TEXT,
-            error_code TEXT,
-            info TEXT,
-            timestamp INTEGER
-        )
-        """,
-        connection=conn,
-    )
-    gw.sql.execute(
-        """
-        CREATE TABLE IF NOT EXISTS connections(
-            charger_id TEXT PRIMARY KEY,
-            connected INTEGER,
-            last_heartbeat TEXT,
-            status TEXT,
-            error_code TEXT,
-            info TEXT
-        )
-        """,
-        connection=conn,
-    )
-    # track when we last received any message from the charger
-    gw.sql.execute(
-        "ALTER TABLE connections ADD COLUMN IF NOT EXISTS last_msg INTEGER",
-        connection=conn,
-    )
-
-
-_ocpp_db = gw.sql.open_db(DBFILE, sql_engine=ENGINE, project="ocpp")
-_init_db(_ocpp_db)
+# Database connections are opened lazily via ``gw.sql.model`` when needed.  The
+# helper ensures tables exist and are migrated to include any new columns.
 
 def record_transaction_start(
     charger_id: str,
@@ -216,6 +153,7 @@ def clear_status(charger_id: str):
 
 def record_last_msg(charger_id: str, timestamp: int | None = None):
     """Update the last_msg timestamp for a charger."""
+    gw.sql.model(CONNECTIONS, project="ocpp")  # ensure table exists
     conn = gw.sql.open_db(project="ocpp")
     ts = int(timestamp or time.time())
     gw.sql.execute(
@@ -225,6 +163,7 @@ def record_last_msg(charger_id: str, timestamp: int | None = None):
     )
 
 def get_connection(charger_id: str):
+    gw.sql.model(CONNECTIONS, project="ocpp")  # ensure table exists
     conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT connected, last_heartbeat, status, error_code, info, last_msg FROM connections WHERE charger_id=?",
@@ -366,6 +305,7 @@ def get_active_transactions():
 
 def get_active_chargers() -> list[str]:
     """Return list of charger IDs currently marked as connected."""
+    gw.sql.model(CONNECTIONS, project="ocpp")  # ensure table exists
     conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT charger_id FROM connections WHERE connected=1",
@@ -450,6 +390,7 @@ def get_meter_series(chargers: Sequence[str], *, start: int = None, end: int = N
 
 def list_chargers() -> list[str]:
     """Return list of distinct charger_ids."""
+    gw.sql.model(CONNECTIONS, project="ocpp")  # ensure table exists
     conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         "SELECT charger_id FROM connections UNION SELECT DISTINCT charger_id FROM transactions ORDER BY charger_id",

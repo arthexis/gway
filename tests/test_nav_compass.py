@@ -40,8 +40,8 @@ class NavCompassTests(unittest.TestCase):
         nav.gw.web.app = type("A", (), {"is_setup": lambda self2, n: False})()
         self.orig_cookies = nav.gw.web.cookies
         nav.gw.web.cookies = type("C", (), {"accepted": lambda self2: False})()
-        self.orig_qr = nav.gw.qr.generate_url
-        nav.gw.qr.generate_url = lambda url: "/qr/generated"
+        self.orig_qr = nav.gw.studio.qr.generate_url
+        nav.gw.studio.qr.generate_url = lambda url: "/qr/generated"
         self.orig_project = getattr(nav.gw, "myproj", None)
         nav.gw.myproj = type(
             "P", (), {"view_compass": lambda self2=None: "<div>LOCAL</div>"}
@@ -51,7 +51,7 @@ class NavCompassTests(unittest.TestCase):
         nav.request = self.orig_request
         nav.gw.web.app = self.orig_app
         nav.gw.web.cookies = self.orig_cookies
-        nav.gw.qr.generate_url = self.orig_qr
+        nav.gw.studio.qr.generate_url = self.orig_qr
         if self.orig_project is not None:
             nav.gw.myproj = self.orig_project
         else:

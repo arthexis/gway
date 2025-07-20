@@ -15,7 +15,7 @@ class AnimateGifTests(unittest.TestCase):
             img2.save(tmp_path / "frame-2.png")
 
             spec = importlib.util.spec_from_file_location(
-                "screen", Path(__file__).resolve().parents[1] / "projects" / "screen.py"
+                "screen", Path(__file__).resolve().parents[1] / "projects" / "studio" / "screen.py"
             )
             screen = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(screen)

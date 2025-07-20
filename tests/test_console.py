@@ -199,6 +199,25 @@ web:
         ]
         self.assertEqual(commands, expected)
 
+    def test_load_recipe_backslash_continuation(self):
+        content = (
+            """cmd --one 1 \\
+    --two 2
+"""
+        )
+        with tempfile.NamedTemporaryFile('w', delete=False) as f:
+            f.write(content)
+            temp_name = f.name
+        try:
+            commands, _ = console.load_recipe(temp_name)
+        finally:
+            os.remove(temp_name)
+
+        expected = [[
+            'cmd', '--one', '1', '--two', '2'
+        ]]
+        self.assertEqual(commands, expected)
+
 
 class TestPrepareKwargParsing(unittest.TestCase):
     def test_multi_word_kwargs(self):

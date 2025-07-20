@@ -1,0 +1,20 @@
+.world-clock {
+    font-family: monospace;
+    font-size: 8vw;
+    text-align: center;
+    margin: 2rem 0;
+}
+
+.clock-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40vh;
+}
+
+.tz-select {
+    display: block;
+    margin: 1em auto;
+    font-size: 1.2em;
+    padding: 0.3em 0.6em;
+}

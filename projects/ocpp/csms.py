@@ -16,17 +16,6 @@ from bottle import request, redirect, HTTPError
 
 from gway import gw
 
-
-def _is_ws_live(cid: str) -> bool:
-    """Return True if the charger has an active websocket connection."""
-    ws = globals().get("_active_cons", {}).get(cid)
-    if not ws:
-        return False
-    try:
-        return ws.application_state == WebSocketState.CONNECTED
-    except Exception:
-        return True
-
     
 def setup_app(*,
     app=None,

@@ -44,9 +44,10 @@ more complete example with basic authentication see ``recipes/micro_blog.gwr``.
 
 ``gw.sql.model`` returns a proxy object with CRUD helpers for a specific
 table. Pass an existing table name or a definition such as a mapping or
-dataclass and the table will be created automatically. The helper also
-accepts a ``project`` name which is passed through to
-``gw.sql.open_db``::
+dataclass and the table will be created automatically. If the table
+already exists and your definition includes new columns they will be
+added automatically. The helper also accepts a ``project`` name which is
+passed through to ``gw.sql.open_db``::
 
     from dataclasses import dataclass
     from gway import gw

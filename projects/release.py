@@ -36,6 +36,7 @@ def build(
     help_db: bool = False,
     projects: bool = False,
     git: bool = False,
+    notify: bool = False,
     all: bool = False,
     force: bool = False
 ) -> None:
@@ -48,6 +49,7 @@ def build(
         twine (bool): Upload to PyPI if True.
         force (bool): Skip version-exists check on PyPI if True.
         git (bool): Require a clean git repo and commit/push after release if True.
+        notify (bool): Show a desktop notification when done.
         vscode (bool): Build the vscode extension.
     """
     from pathlib import Path
@@ -65,6 +67,7 @@ def build(
         twine = True
         git = True
         projects = True
+        notify = True
 
     gw.info(f"Running tests before project build.")
     test_result = gw.test()
@@ -270,6 +273,9 @@ def build(
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
         subprocess.run(["git", "push"], check=True)
         gw.info(f"Committed and pushed: {commit_msg}")
+
+    if notify:
+        gw.notify(f"Release v{version} build complete")
 
 
 def build_help_db():

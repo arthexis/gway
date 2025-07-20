@@ -293,10 +293,10 @@ def open_db(
         path = gw.resource(datafile or "work/data.sqlite")
         # Note: check_same_thread=False for sharing connections in the writer thread
         try:
-            conn = sqlite3.connect(path, check_same_thread=False)
+            conn = sqlite3.connect(str(path), check_same_thread=False)
         except sqlite3.OperationalError as e:
             gw.abort(
-                f"Unable to open SQLite database at {path}. "
+                f"Unable to open SQLite database at {str(path)}. "
                 f"Check the path and file permissions. ({e})"
             )
         if row_factory:
@@ -368,6 +368,21 @@ def close_connection(datafile=None, *, project=None, sql_engine=None, all=False)
         except Exception as e:
             gw.warning(f"Failed to close {key}: {e}")
 
+def _run(cursor, sql, *, args=None, is_script=False):
+    """Execute SQL and rethrow errors with the failing statement."""
+    try:
+        if is_script:
+            cursor.executescript(sql)
+            return None
+        if args:
+            cursor.execute(sql, args)
+        else:
+            cursor.execute(sql)
+        return cursor.fetchall() if cursor.description else None
+    except Exception as e:  # pragma: no cover - interactive
+        raise type(e)(f"{e}. SQL: {sql}") from e
+
+
 def execute(*sql, connection=None, script=None, sep='; ', args=None):
     """
     Thread-safe SQL execution.
@@ -397,8 +412,7 @@ def execute(*sql, connection=None, script=None, sep='; ', args=None):
     if not _is_write_query(sql) and not is_script:
         cursor = connection.cursor()
         try:
-            cursor.execute(sql, args or ())
-            return cursor.fetchall() if cursor.description else None
+            return _run(cursor, sql, args=args)
         finally:
             cursor.close()
     else:
@@ -406,15 +420,7 @@ def execute(*sql, connection=None, script=None, sep='; ', args=None):
         if getattr(connection, "_engine", "sqlite") == "duckdb":
             cursor = connection.cursor()
             try:
-                if is_script:
-                    cursor.executescript(sql)
-                    rows = None
-                elif args:
-                    cursor.execute(sql, args)
-                    rows = cursor.fetchall() if cursor.description else None
-                else:
-                    cursor.execute(sql)
-                    rows = cursor.fetchall() if cursor.description else None
+                rows = _run(cursor, sql, args=args, is_script=is_script)
                 connection.commit()
                 return rows
             except Exception:
@@ -445,15 +451,7 @@ def _process_writes():
         sql, args, conn, result_q, is_script = item  # Always expect 5!
         try:
             cursor = conn.cursor()
-            if is_script:
-                cursor.executescript(sql)
-                rows = None
-            elif args:
-                cursor.execute(sql, args)
-                rows = cursor.fetchall() if cursor.description else None
-            else:
-                cursor.execute(sql)
-                rows = cursor.fetchall() if cursor.description else None
+            rows = _run(cursor, sql, args=args, is_script=is_script)
             conn.commit()
             result_q.put((rows, None))
         except Exception as e:
@@ -755,7 +753,9 @@ def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None, project
 
     ``defn`` may be a table name, mapping, dataclass, namedtuple or SQL spec.
     If column definitions are available and ``create`` is True the table is
-    created automatically using ``CREATE TABLE IF NOT EXISTS``.
+    created automatically using ``CREATE TABLE IF NOT EXISTS``.  When the table
+    already exists any missing columns from ``defn`` are added via ``ALTER
+    TABLE`` so existing data is preserved.
     """
 
     caller = inspect.currentframe().f_back
@@ -777,6 +777,20 @@ def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None, project
             f'CREATE TABLE IF NOT EXISTS "{table}" ({colspec})',
             connection=conn,
         )
+        rows = gw.sql.execute(
+            f'PRAGMA table_info("{table}")', connection=conn
+        )
+        existing = {r[1] for r in rows}
+        for col_def in [c.strip() for c in colspec.split(',') if c.strip()]:
+            m = re.match(r'[\[\"`]?([^\s\"`\]]+)', col_def)
+            if not m:
+                continue
+            col_name = m.group(1)
+            if col_name not in existing:
+                gw.sql.execute(
+                    f'ALTER TABLE "{table}" ADD COLUMN {col_def}',
+                    connection=conn,
+                )
 
     return TableProxy(table, dbfile=dbfile, sql_engine=sql_engine, project=project)
 

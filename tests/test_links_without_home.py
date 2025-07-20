@@ -18,7 +18,10 @@ class LinksWithoutHomeTests(unittest.TestCase):
         gw.web.app.setup_app("dummy", app=app, links="info")
         mod = sys.modules[gw.web.app.setup_app.__module__]
         self.assertEqual(mod._homes, [("Dummy", "dummy/index")])
-        self.assertEqual(mod._links.get("dummy/index"), ["about", "more", "info"]) 
+        self.assertEqual(
+            mod._links.get("dummy/index"),
+            [("dummy", "about"), ("dummy", "more"), ("dummy", "info")],
+        )
         client = TestApp(app)
         resp = client.get("/dummy")
         self.assertEqual(resp.status, 200)
