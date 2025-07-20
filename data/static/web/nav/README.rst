@@ -10,3 +10,7 @@ navigation bar at the top of the page with drop-down menus.
 The style switcher drop-down also includes a **Random** option to toggle
 this behavior per user. ``--default-style`` (or ``--default_css``) changes
 the fallback theme used when no preference is stored.
+
+The style switcher page previews the selected theme and now showcases
+several common inputs such as text fields, checkboxes, radio buttons and
+a select drop-down to demonstrate how each style affects form elements.
