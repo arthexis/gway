@@ -12,7 +12,7 @@ web app setup:
     - vbox --home uploads
     - ocpp --auth required --home ocpp-dashboard \
         --links active-chargers,charger-summary,time-series,cp-simulator,manage-rfids
-    - web.chat.actions --home audit-chatlog --auth required
+    - web.chat.action --home audit-chatlog --auth required
     - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
     - web.auth
 
