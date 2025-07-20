@@ -59,5 +59,10 @@ class OcppDataTests(unittest.TestCase):
         cols = [r[1] for r in gw.sql.execute("PRAGMA table_info(connections)", connection=conn)]
         self.assertIn("last_msg", cols)
 
+    def test_get_summary_without_tables(self):
+        """get_summary should work when no data has been recorded yet."""
+        rows = ocpp_data.get_summary()
+        self.assertEqual(rows, [])
+
 if __name__ == "__main__":
     unittest.main()

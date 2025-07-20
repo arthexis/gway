@@ -9,6 +9,9 @@ The submodules are:
 - ``sink`` – a message logger for debugging.
 - ``rfid`` – helpers for RFID allow/deny checks.
 
+The landing page ``/ocpp/ocpp-dashboard`` shows a quick summary of these
+sub‑projects.
+
 Launch a simulator session pointing at your CSMS with:
 
 .. code-block:: bash
