@@ -4,6 +4,8 @@ Changelog
 Unreleased
 ----------
 
+- add --install option to test command
+
 0.4.51 [build edbd5b]
 ---------------------
 

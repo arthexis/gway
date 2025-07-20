@@ -9,6 +9,10 @@ Install the runtime dependencies first. The simplest approach is:
    pip install -e .
    gway test --coverage
 
+The ``gway test`` command accepts ``--install`` to perform these
+installation steps automatically. When dependencies like ``requests``
+are missing, ``--install`` is run implicitly.
+
 This ensures that modules such as ``requests`` and ``websockets`` are
 available to the test suite.
 

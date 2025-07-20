@@ -79,5 +79,14 @@ class GatewayBuiltinsTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             gw.abort("Abort test")
 
+    def test_test_install_option(self):
+        """Ensure the test builtin accepts the install flag."""
+        import tempfile
+        import pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            pathlib.Path(tmp, "__init__.py").touch()
+            result = builtins.test(root=tmp, install=False)
+            self.assertTrue(result)
+
 if __name__ == "__main__":
     unittest.main()
