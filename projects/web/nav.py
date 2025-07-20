@@ -448,6 +448,13 @@ def view_style_switcher(*, css=None, project=None):
             <h2>Theme Preview: {selected_style[:-4].replace('_', ' ').title()}</h2>
             <p>This is a preview of the <b>{selected_style}</b> theme.</p>
             <button>Sample button</button>
+            <input type="text" placeholder="Text input" style="display:block;margin:0.5em 0;">
+            <label style="display:block;margin:0.25em 0;"><input type="checkbox"> Checkbox</label>
+            <label style="display:block;margin:0.25em 0;"><input type="radio" name="r"> Radio</label>
+            <select style="display:block;margin:0.5em 0;">
+                <option>Option A</option>
+                <option>Option B</option>
+            </select>
             <pre>code block</pre>
         </div>
         """
