@@ -425,6 +425,25 @@ def _render_help_section(info, use_query_links=False, highlight=False, *args, **
         elif key in ("Signature", "Example CLI", "Example Code", "Sample CLI"):
             value = f"<pre><code class='python'>{html.escape(str(value))}</code></pre>"
 
+        elif key == "Parameters" and isinstance(value, list):
+            rows_html = []
+            for p in value:
+                builder = p.get("builder")
+                if builder and use_query_links:
+                    builder = f'<a href="?topic={builder}">{html.escape(builder)}</a>'
+                elif builder:
+                    builder = html.escape(builder)
+                else:
+                    builder = ""
+                rows_html.append(
+                    f"<tr><td>{html.escape(p['name'])}</td><td>{html.escape(p.get('type',''))}</td><td>{builder}</td></tr>"
+                )
+            value = (
+                "<table class='param-table'><tr><th>Name</th><th>Type</th><th>Builder</th></tr>"
+                + "".join(rows_html)
+                + "</table>"
+            )
+
         elif key in ("Docstring", "TODOs"):
             value = f"<div class='doc'>{html.escape(str(value))}</div>"
 

@@ -109,6 +109,34 @@ def help(*args, full: bool = False, list_flags: bool = False):
                 "Sample CLI": prefix,
                 "References": sorted(extract_gw_refs(row["source"])),
             }
+            cur.execute(
+                "SELECT name, type FROM param_types WHERE project=? AND function=?",
+                (project, function),
+            )
+            params = [dict(name=r["name"], type=r["type"]) for r in cur.fetchall()]
+            if params:
+                for p in params:
+                    cur.execute(
+                        "SELECT project, function FROM providers WHERE type=? LIMIT 1",
+                        (p["type"],),
+                    )
+                    prov = cur.fetchone()
+                    if prov:
+                        p["builder"] = f"{prov['project']}.{prov['function']}"
+                entry["Parameters"] = params
+            cur.execute(
+                "SELECT type FROM return_types WHERE project=? AND function=?",
+                (project, function),
+            )
+            r_row = cur.fetchone()
+            if r_row:
+                entry["Returns"] = r_row["type"]
+                cur.execute(
+                    "SELECT project, function FROM providers WHERE type=? LIMIT 1",
+                    (r_row["type"],),
+                )
+                if cur.fetchone():
+                    entry["Provides"] = r_row["type"]
             if full:
                 entry["Full Code"] = row["source"]
             else:
