@@ -88,6 +88,9 @@ def current_endpoint():
     """
     return gw.context.get('current_endpoint')
 
+# TODO: Ensure we can just setup "ocpp" and it will properly know to include all sub-projects.
+#       Ie, a package implicitly includes its sub-projects as delegates.
+
 def setup_app(project,
     *,
     app=None,
