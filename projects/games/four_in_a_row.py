@@ -75,7 +75,16 @@ def view_four_in_a_row(*, board=None, col=None, reset=None):
                 # computer move
                 choices = [c for c in range(COLS) if board_state[0][c] == 0]
                 if choices:
-                    _drop(board_state, random.choice(choices), 2)
+                    block_col = None
+                    for c in choices:
+                        temp = [row[:] for row in board_state]
+                        _drop(temp, c, 1)
+                        if _check_win(temp, 1):
+                            block_col = c
+                            break
+
+                    computer_col = block_col if block_col is not None else random.choice(choices)
+                    _drop(board_state, computer_col, 2)
                     if _check_win(board_state, 2):
                         message = "Computer wins!"
                         game_over = True
