@@ -309,8 +309,12 @@ def setup_app(project,
         add_route(app, f"/{static}/<filepath:path>", "GET", send_static)
         
     def _maybe_auth(message: str):
-        if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
-            return gw.web.error.unauthorized(message)
+        # Inspect current request path for potential auth rules or logging
+        _req_path = getattr(request, "fullpath", request.path)
+        if auth_required:
+            if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=True):
+                gw.debug(f"Unauthorized request for {_req_path}")
+                return gw.web.error.unauthorized(message)
         return None
 
     if views:
@@ -862,6 +866,4 @@ def render_footer_links() -> str:
                 href = f"{proj_root}/{name}".strip('/')
                 label = name.replace('-', ' ').replace('_', ' ').title()
             items.append(f'<a href="/{href}">{label}</a>')
-    cookbook = gw.web.app.build_url("web", "site", "gateway-cookbook")
-    items.append(f'<a href="{cookbook}">Gateway Cookbook</a>')
     return '<p class="footer-links">' + ' | '.join(items) + '</p>' if items else ""
