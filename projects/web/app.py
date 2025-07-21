@@ -309,8 +309,12 @@ def setup_app(project,
         add_route(app, f"/{static}/<filepath:path>", "GET", send_static)
         
     def _maybe_auth(message: str):
-        if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=auth_required):
-            return gw.web.error.unauthorized(message)
+        # Inspect current request path for potential auth rules or logging
+        _req_path = getattr(request, "fullpath", request.path)
+        if auth_required:
+            if is_setup('web.auth') and not gw.web.auth.is_authorized(strict=True):
+                gw.debug(f"Unauthorized request for {_req_path}")
+                return gw.web.error.unauthorized(message)
         return None
 
     if views:
@@ -591,12 +595,19 @@ def setup_app(project,
 
 # Use current_endpoint to get the current project route
 def build_url(*args, **kwargs):
-    path = "/".join(str(a).strip("/") for a in args if a)
-    endpoint = current_endpoint()
-    if endpoint:
-        url = f"/{endpoint}/{path}" if path else f"/{endpoint}"
+    path_parts = [str(a).strip("/") for a in args if a]
+    if path_parts and (
+        len(path_parts) > 1 or "." in path_parts[0] or "/" in path_parts[0]
+    ):
+        first = path_parts.pop(0).replace(".", "/")
+        path = "/".join([first] + path_parts)
+        url = f"/{path}" if path else "/"
     else:
-        url = f"/{path}"
+        path = "/".join(path_parts)
+        endpoint = current_endpoint()
+        url = f"/{endpoint}/{path}" if endpoint and path else (
+            f"/{endpoint}" if endpoint else f"/{path}"
+        )
     if kwargs:
         url += "?" + urlencode(kwargs)
     return url
@@ -855,6 +866,4 @@ def render_footer_links() -> str:
                 href = f"{proj_root}/{name}".strip('/')
                 label = name.replace('-', ' ').replace('_', ' ').title()
             items.append(f'<a href="/{href}">{label}</a>')
-    cookbook = gw.web.app.build_url("gateway-cookbook")
-    items.append(f'<a href="{cookbook}">Gateway Cookbook</a>')
     return '<p class="footer-links">' + ' | '.join(items) + '</p>' if items else ""

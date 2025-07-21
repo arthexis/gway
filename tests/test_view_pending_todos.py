@@ -7,9 +7,10 @@ class ViewPendingTodosTests(unittest.TestCase):
         html = gw.web.site.view_pending_todos()
         self.assertIn('<table', html)
         self.assertIn('ocpp.rfid', html)
-        self.assertIn('Request TODO', html)
-        self.assertIn('?topic=TODO+request', html)
-        self.assertEqual(html.count('Request TODO'), 1)
+        self.assertNotIn('Function</th>', html)
+        self.assertIn('Create TODO Request', html)
+        self.assertIn('topic=TODO+Request+%40+ocpp.rfid', html)
+        self.assertGreaterEqual(html.count('Create TODO Request'), 1)
 
 if __name__ == '__main__':
     unittest.main()
