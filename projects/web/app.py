@@ -105,6 +105,7 @@ def setup_app(project,
     mode="collect",        # collect | manual | embedded
     auth="disabled",       # Accept "optional"/"disabled" words to disable
     engine="bottle",
+    delegates=None,
     **setup_kwargs,
 ):
     """
@@ -114,7 +115,9 @@ def setup_app(project,
     included: ``collect`` (default) uses bundled files, ``manual`` links each
     file individually, and ``embedded`` inlines the contents into the page.
     ``footer`` accepts a list of links similar to ``links`` but rendered in the
-    page footer instead of the navigation sidebar.
+    page footer instead of the navigation sidebar. Sub-projects of the loaded
+    project are always scanned for missing handlers. Use ``delegates`` to
+    specify additional fallback projects.
     """
     global _ver, _homes, _enabled, _static_route, _shared_route
 
@@ -144,6 +147,39 @@ def setup_app(project,
                 ", ".join(project_names)
             )
         )
+
+    delegate_modules = []
+
+    # Always include sub-projects as delegate modules
+    try:
+        from gway.structs import Project
+    except Exception:
+        Project = type(source)
+    for attr in getattr(source, "__dict__", {}).values():
+        if isinstance(attr, Project) and attr not in delegate_modules:
+            delegate_modules.append(attr)
+
+    # Extra delegates can be specified explicitly
+    for name in gw.cast.to_list(delegates):
+        mod = None
+        if isinstance(name, str):
+            try:
+                mod = gw.find_project(name)
+            except Exception:
+                mod = None
+        elif name:
+            mod = name
+        if mod and mod not in delegate_modules:
+            delegate_modules.append(mod)
+
+    modules = [source] + delegate_modules
+
+    def _find_func(name):
+        for mod in modules:
+            func = getattr(mod, name, None)
+            if callable(func):
+                return func
+        return None
 
     # Normalize project name to the one actually loaded
     project = getattr(source, "_name", project_names[0])
@@ -297,9 +333,9 @@ def setup_app(project,
                 generic_func_name = f"{views}_{view_name}"
 
                 # Prefer view_get_x/view_post_x before view_x
-                view_func = getattr(source, method_func_name, None)
+                view_func = _find_func(method_func_name)
                 if not callable(view_func):
-                    view_func = getattr(source, generic_func_name, None)
+                    view_func = _find_func(generic_func_name)
                 if not callable(view_func):
                     return gw.web.error.redirect(
                         f"View not found: {method_func_name} or {generic_func_name} in {project}"
@@ -378,9 +414,9 @@ def setup_app(project,
             specific_af = f"{apis}_{method}_{view_name}"
             generic_af = f"{apis}_{view_name}"
 
-            api_func = getattr(source, specific_af, None)
+            api_func = _find_func(specific_af)
             if not callable(api_func):
-                api_func = getattr(source, generic_af, None)
+                api_func = _find_func(generic_af)
             if not callable(api_func):
                 return gw.web.error.redirect(f"API not found: {specific_af} or {generic_af} in {project}")
 
@@ -412,11 +448,11 @@ def setup_app(project,
             # Optionally: Allow render_<view>_<hash> if you want to dispatch more granularly
             #func_name = f"{renders}_{func_view}_{func_hash}"
 
-            render_func = getattr(source, func_name, None)
+            render_func = _find_func(func_name)
             if not callable(render_func):
                 # Fallback: allow view as prefix, e.g. render_charger_status_charger_list
                 alt_func_name = f"{renders}_{func_view}_{func_hash}"
-                render_func = getattr(source, alt_func_name, None)
+                render_func = _find_func(alt_func_name)
                 if not callable(render_func):
                     return gw.web.error.redirect(
                         f"Render function not found: {func_name} or {alt_func_name} in {project}")
@@ -473,9 +509,9 @@ def setup_app(project,
                 method_func_name = f"{views}_{method}_{view_name}"
                 generic_func_name = f"{views}_{view_name}"
 
-                view_func = getattr(source, method_func_name, None)
+                view_func = _find_func(method_func_name)
                 if not callable(view_func):
-                    view_func = getattr(source, generic_func_name, None)
+                    view_func = _find_func(generic_func_name)
                 if not callable(view_func):
                     return gw.web.error.redirect(
                         f"View not found: {method_func_name} or {generic_func_name} in {project}")
