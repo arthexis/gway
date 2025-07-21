@@ -79,7 +79,7 @@ def view_ocpp_dashboard(**_):
          f"Active chargers: {active}"),
         ("Charger Summary", "/ocpp/data/summary",
          f"Chargers: {chargers}<br>Sessions: {sessions}"),
-        ("Energy Time Series", "/ocpp/data/time-series",
+        ("Energy Time Series", "/ocpp/time-series",
          f"Total Energy: {energy} kWh"),
         ("CP Simulator", "/ocpp/evcs/cp-simulator",
          f"Simulator: {sim_running}"),
@@ -143,6 +143,17 @@ def view_time_series(*args, **kwargs):
 
 def view_cp_simulator(*args, **kwargs):
     return gw.ocpp.evcs.view_cp_simulator(*args, **kwargs)
+
+
+def view_evcs(view: str | None = None, *args, **kwargs):
+    """Delegate ``/ocpp/evcs/<view>`` routes to :mod:`ocpp.evcs` views."""
+    target = (view or "cp-simulator").replace("-", "_")
+    func = getattr(gw.ocpp.evcs, f"view_{target}", None)
+    if not callable(func):
+        return gw.web.error.redirect(
+            f"View not found: {target} in ocpp.evcs"
+        )
+    return func(*args, **kwargs)
 
 
 def view_manage_rfids(*args, **kwargs):

@@ -18,6 +18,14 @@ class FeedbackViewTests(unittest.TestCase):
             self.assertIn("publicly displayed", html)
             self.assertIn("Create an Issue Report", html)
 
+    def test_feedback_form_prefills_fields(self):
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "x"}):
+            html = site.view_feedback(name="Ann", email="a@b", topic="T", message="Msg")
+            self.assertIn('value="Ann"', html)
+            self.assertIn('value="a@b"', html)
+            self.assertIn('value="T"', html)
+            self.assertIn('>Msg</textarea>', html)
+
     def test_feedback_form_missing_token_with_mail(self):
         env = {
             "MAIL_SENDER": "a",

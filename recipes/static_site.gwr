@@ -2,7 +2,7 @@
 # Demo website using per-view static assets instead of bundled CSS/JS
 
 web app setup-app --mode manual:
-    - web.site --home reader --footer feedback,comitted-todos
+    - web.site --home reader --footer feedback,pending-todos
     - web.nav --home style-switcher
     - web.cookies --footer web.cookies:cookie-jar
     - web.message
