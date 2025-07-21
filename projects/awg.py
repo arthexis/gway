@@ -254,7 +254,7 @@ def find_conduit(awg, cables, *, conduit="emt"):
 
 def view_awg_calculator(
     *, meters=None, amps="40", volts="220", material="cu",
-    max_lines="1", max_awg=None, phases="1", temperature=None,
+    max_lines="1", max_awg=None, phases="1", temperature="60",
     conduit=None, ground="1", neutral="0", **kwargs
 ):
     """Page builder for AWG calculator with HTML form and result."""
@@ -301,8 +301,7 @@ def view_awg_calculator(
                         <td>
                             <label for="temperature">Temperature:</label>
                             <select id="temperature" name="temperature">
-                                <option value="auto">Auto</option>
-                                <option value="60">60C (140F)</option>
+                                <option value="60" selected>60C (140F)</option>
                                 <option value="75">75C (167F)</option>
                                 <option value="90">90C (194F)</option>
                             </select>

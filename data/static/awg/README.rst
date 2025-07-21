@@ -44,8 +44,7 @@ Parameters
 ``phases``
   ``1`` or ``3`` phase AC systems (``2`` is treated as two phases).
 ``temperature``
-  Conductor temperature rating: ``60``/``75``/``90`` or ``None`` for automatic
-  selection.
+  Conductor temperature rating: ``60``/``75``/``90``. Default is ``60``.
 ``conduit``
   If provided the result includes the minimum trade size for ``emt``, ``imc``,
   ``rmc`` or ``fmc`` conduit.

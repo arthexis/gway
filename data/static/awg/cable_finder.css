@@ -28,8 +28,8 @@
 }
 .cable-form button.submit {
     width: 100%;
-    padding: 4px 6px;
-    font-size: 1em;
+    padding: 6px 6px;
+    font-size: 1.1em;
     box-sizing: border-box;
 }
 .warning {
