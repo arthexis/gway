@@ -184,6 +184,9 @@ def get_connection(charger_id: str):
 
 def get_summary():
     """Return summary rows per charger."""
+    # Ensure required tables exist even if no data has been recorded yet.
+    gw.sql.model(TRANSACTIONS, project="ocpp")
+    gw.sql.model(ERRORS, project="ocpp")
     conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
         """
@@ -419,6 +422,10 @@ def view_charger_summary(**_):
         )
     html.append("</table>")
     return "\n".join(html)
+
+def view_summary(**kwargs):
+    """Alias for :func:`view_charger_summary` to keep URLs stable."""
+    return view_charger_summary(**kwargs)
 
 def view_charger_details(
     *,

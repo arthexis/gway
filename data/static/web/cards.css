@@ -1,0 +1,25 @@
+/* file: data/static/web/cards.css */
+.gw-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1em;
+    margin: 1em 0;
+}
+.gw-card {
+    display: block;
+    padding: 1em;
+    border: 1px solid var(--muted, #ccc);
+    border-radius: 8px;
+    background: var(--card-bg, #f9f9f9);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    width: 16em;
+    text-decoration: none;
+    color: inherit;
+}
+.gw-card h2 {
+    margin-top: 0;
+    font-size: 1.2em;
+}
+.gw-card p {
+    margin: .4em 0;
+}

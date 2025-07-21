@@ -71,7 +71,7 @@ def view_ocpp_dashboard(**_):
     chargers = len(summary)
     sessions = sum(r.get("sessions", 0) for r in summary)
     energy = round(sum(r.get("energy", 0.0) for r in summary), 3)
-    sim_state = getattr(gw.ocpp.evcs, "_simulator_state", {})
+    sim_state = gw.ocpp.evcs.get_simulator_state(refresh_file=True)
     sim_running = "Running" if sim_state.get("running") else "Stopped"
 
     links = [
@@ -79,7 +79,7 @@ def view_ocpp_dashboard(**_):
          f"Active chargers: {active}"),
         ("Charger Summary", "/ocpp/data/summary",
          f"Chargers: {chargers}<br>Sessions: {sessions}"),
-        ("Energy Time Series", "/ocpp/data/time-series",
+        ("Energy Time Series", "/ocpp/time-series",
          f"Total Energy: {energy} kWh"),
         ("CP Simulator", "/ocpp/evcs/cp-simulator",
          f"Simulator: {sim_running}"),
@@ -89,8 +89,8 @@ def view_ocpp_dashboard(**_):
     html.append(
         "<style>"
         ".ocpp-cards{display:flex;flex-wrap:wrap;gap:1em;margin:1em 0;}"
-        ".ocpp-card{display:block;padding:1em;border:1px solid #ccc;border-radius:8px;"
-        "background:#f9f9f9;box-shadow:0 2px 4px rgba(0,0,0,0.1);width:16em;"
+        ".ocpp-card{display:block;padding:1em;border:1px solid var(--muted,#ccc);border-radius:8px;"
+        "background:var(--card-bg,#f9f9f9);box-shadow:0 2px 4px rgba(0,0,0,0.1);width:16em;"
         "text-decoration:none;color:inherit;}"
         ".ocpp-card h2{margin-top:0;font-size:1.2em;}"
         ".ocpp-card p{margin:.4em 0;}"
@@ -143,3 +143,19 @@ def view_time_series(*args, **kwargs):
 
 def view_cp_simulator(*args, **kwargs):
     return gw.ocpp.evcs.view_cp_simulator(*args, **kwargs)
+
+
+def view_evcs(view: str | None = None, *args, **kwargs):
+    """Delegate ``/ocpp/evcs/<view>`` routes to :mod:`ocpp.evcs` views."""
+    target = (view or "cp-simulator").replace("-", "_")
+    func = getattr(gw.ocpp.evcs, f"view_{target}", None)
+    if not callable(func):
+        return gw.web.error.redirect(
+            f"View not found: {target} in ocpp.evcs"
+        )
+    return func(*args, **kwargs)
+
+
+def view_manage_rfids(*args, **kwargs):
+    """Delegate to :func:`gw.ocpp.rfid.view_manage_rfids`."""
+    return gw.ocpp.rfid.view_manage_rfids(*args, **kwargs)

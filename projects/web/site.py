@@ -558,17 +558,17 @@ def view_feedback(*, name=None, email=None, topic=None, message=None, create_iss
     issue_option = (
         "<label class=\"checkbox-right\">"
         "Optional: Create an Issue Report for GWAY or this website."
-        "<input type=\"checkbox\" name=\"create_issue\" value=\"1\" />"
+        "<input type=\"checkbox\" name=\"create_issue\" value=\"1\" {('checked' if create_issue else '')}/>"
         "</label>"
     ) if token else "<p>(GitHub issue creation unavailable)</p>"
     return f"""
         <h1>Send Feedback</h1>
         <p>Your name and message may be publicly displayed and processed. Your email will be kept private.</p>
         <form method="post">
-            <input type="text" name="name" placeholder="Your Name" required class="main" />
-            <input type="email" name="email" placeholder="Email" required class="main" />
-            <input type="text" name="topic" placeholder="Topic" required class="main" />
-            <textarea name="message" placeholder="Message" required rows="6" class="main"></textarea>
+            <input type="text" name="name" placeholder="Your Name" required class="main" value="{html.escape(name or '')}" />
+            <input type="email" name="email" placeholder="Email" required class="main" value="{html.escape(email or '')}" />
+            <input type="text" name="topic" placeholder="Topic" required class="main" value="{html.escape(topic or '')}" />
+            <textarea name="message" placeholder="Message" required rows="6" class="main">{html.escape(message or '')}</textarea>
             {issue_option}
             <button type="submit" class="submit btn-block">Submit</button>
         </form>
@@ -603,6 +603,58 @@ def view_debug_info():
     return (
         "<div class='debug-info'>" + "<br>".join(info) +
         f"<pre>{_html.escape(log_tail)}</pre></div>"
+    )
+
+
+def view_future_updates():
+    """Show pending version and changelog information."""
+    import html as _html
+    import requests
+
+    current = gw.version()
+    latest = None
+    try:
+        resp = requests.get("https://pypi.org/pypi/gway/json", timeout=5)
+        resp.raise_for_status()
+        latest = resp.json()["info"]["version"]
+    except Exception as e:
+        gw.verbose(f"Failed to fetch PyPI version: {e}")
+
+    if latest and latest != current:
+        notice = (
+            f"There is a newer version of GWAY pending: { _html.escape(latest) }"
+            f" (installed { _html.escape(current) })."
+        )
+    else:
+        latest = latest or current
+        notice = f"We are at the latest version ({ _html.escape(latest) })."
+
+    changes = ""
+    try:
+        from pathlib import Path
+
+        path = Path(gw.resource("CHANGELOG.rst"))
+        text = path.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        if "Unreleased" in lines:
+            idx = lines.index("Unreleased") + 2
+            body = []
+            while idx < len(lines) and lines[idx].startswith("- "):
+                body.append(lines[idx])
+                idx += 1
+            changes = "\n".join(body).strip()
+    except Exception:
+        pass
+
+    if changes:
+        changelog = "<pre>" + _html.escape(changes) + "</pre>"
+    else:
+        changelog = "<p>No pending changes.</p>"
+
+    return (
+        "<h1>Future Updates</h1>"
+        f"<p>{notice}</p>"
+        "<h2>Unreleased Changes</h2>" + changelog
     )
 
 
@@ -645,7 +697,7 @@ def view_project_readmes():
     return "<h1>Project READMEs</h1>" + body
 
 
-def view_comitted_todos():
+def view_pending_todos():
     """Render an HTML table of TODOs grouped by project."""
     import ast
     import inspect
@@ -678,7 +730,7 @@ def view_comitted_todos():
         if path.name.startswith("_"):
             continue
         dotted = path.relative_to(base).with_suffix("").as_posix().replace("/", ".")
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
         try:
             tree = ast.parse("".join(lines))
@@ -706,14 +758,23 @@ def view_comitted_todos():
     if not todos:
         return "<h1>No TODOs found.</h1>"
 
-    html_parts = ["<h1>Committed TODOs</h1>"]
+    html_parts = ["<h1>Pending TODOs</h1>"]
     for proj in sorted(todos):
         html_parts.append(f"<h2>{html.escape(proj)}</h2>")
-        html_parts.append("<table class='todo-table'><tr><th>Function</th><th>TODO</th></tr>")
+        html_parts.append(
+            "<table class='todo-table'><tr><th>Function</th><th>TODO</th><th></th></tr>"
+        )
         for func, todo in todos[proj]:
             link = gw.web.app.build_url("web", "site", "help", topic=f"{proj}/{func}")
+            fb_url = gw.web.app.build_url(
+                "feedback",
+                topic=f"TODO request for {proj}.{func}",
+                message=f"Please add a TODO for {proj}.{func}"
+            )
             html_parts.append(
-                f"<tr><td><a href='{link}'>{html.escape(func)}</a></td><td><pre>{html.escape(todo)}</pre></td></tr>"
+                f"<tr><td><a href='{link}'>{html.escape(func)}</a></td>"
+                f"<td><pre>{html.escape(todo)}</pre></td>"
+                f"<td><a class='btn-small' href='{fb_url}'>Request TODO</a></td></tr>"
             )
         html_parts.append("</table>")
     return "".join(html_parts)

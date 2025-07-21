@@ -4,7 +4,7 @@
 # Lines without a starting command repeat the previous with new params
 
 web app setup:
-    - web.site --home reader --footer feedback,comitted-todos
+    - web.site --home reader --footer feedback,pending-todos
     - awg --home awg-calculator
     - web.nav --home style-switcher
     - web.cookies --footer web.cookies:cookie-jar
@@ -13,14 +13,14 @@ web app setup:
     - vbox --home uploads
     - ocpp --home ocpp-dashboard \
         --links active-chargers,charger-summary,time-series,cp-simulator,manage-rfids
-    - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
+    - games --home game-box --links game-of-life,divination-wars,qpig-farm,massive-snake,four-in-a-row,fantastic-client
     - web.auth
 
 help-db build
 
 web:
  - static collect
- - auth config-basic --optional --temp-link
+ - auth config-basic --temp-link
 
 ocpp csms setup:
     --location simulator
