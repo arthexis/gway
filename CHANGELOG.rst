@@ -6,6 +6,7 @@ Unreleased
 
 - add --install option to test command
 - allow backslash line continuations in recipe files
+- fix missing ``/ocpp/csms`` route for charger details
 
 0.4.51 [build edbd5b]
 ---------------------
