@@ -90,7 +90,7 @@ def view_table(*, table: str, id_col: str = "id", dbfile=None, sql_engine="sqlit
                     project=project,
                 )
             response.status = 303
-            response.set_header("Location", request.path_qs)
+            response.set_header("Location", request.fullpath)
             return ""
 
         cols = _table_columns(table, dbfile=dbfile, sql_engine=sql_engine, project=project)
@@ -133,7 +133,7 @@ def view_setup_table(*, table: str, dbfile=None, sql_engine="sqlite", project=No
             if name:
                 gw.sql.setup_table(table, name, ctype, dbfile=dbfile, immediate=True)
         response.status = 303
-        response.set_header("Location", request.path_qs)
+        response.set_header("Location", request.fullpath)
         return ""
 
     cols = []
