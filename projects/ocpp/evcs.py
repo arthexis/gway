@@ -673,7 +673,12 @@ def view_cp_simulator(*args, **kwargs):
         html.append(f"<div class='sim-msg'>{msg}</div>")
 
     html.append("<div class='gw-tabs'>")
-    html.append("<div class='gw-tabs-bar'><div class='gw-tab'>CP1</div><div class='gw-tab'>CP2</div></div>")
+    html.append(
+        "<div class='gw-tabs-bar'>"
+        "<div class='gw-tab'>Primary CP</div>"
+        "<div class='gw-tab'>Secondary CP</div>"
+        "</div>"
+    )
     html.append(f"<div class='gw-tab-block'>{render_block(1)}</div>")
     html.append(f"<div class='gw-tab-block'>{render_block(2)}</div>")
     html.append("</div>")

@@ -16,18 +16,22 @@
     color: #555;
     transition: background 0.18s;
 }
-.gw-tab.active,
+.gw-tab.active {
+    background: var(--accent, #007bff);
+    color: #fff;
+    border-bottom: 1.5px solid var(--accent, #007bff);
+}
 .gw-tab:hover {
-    background: #fff;
-    color: #000;
-    border-bottom: 1.5px solid #fff;
+    background: var(--accent-alt, #2483c8);
+    color: #fff;
+    border-bottom: 1.5px solid var(--accent-alt, #2483c8);
 }
 .gw-tab-block {
     display: none;
     border: 1.5px solid #ccc;
     border-radius: 0 0 12px 12px;
     padding: 16px 18px 14px 18px;
-    background: #fff;
+    background: #000;
     margin-bottom: 20px;
 }
 .gw-tab-block.active {
