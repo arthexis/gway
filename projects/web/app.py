@@ -104,10 +104,6 @@ def current_endpoint():
     """
     return gw.context.get('current_endpoint')
 
-# With the ``all`` flag a package can initialize all its sub-projects as
-# delegates automatically so paths like ``/ocpp/csms`` work without extra
-# glue code.
-
 def setup_app(project,
     *,
     app=None,
