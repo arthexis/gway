@@ -71,8 +71,10 @@ def view_ocpp_dashboard(**_):
     chargers = len(summary)
     sessions = sum(r.get("sessions", 0) for r in summary)
     energy = round(sum(r.get("energy", 0.0) for r in summary), 3)
-    sim_state = getattr(gw.ocpp.evcs, "_simulator_state", {})
-    sim_running = "Running" if sim_state.get("running") else "Stopped"
+    sim_state = gw.ocpp.evcs.get_simulator_state(refresh_file=True)
+    s1 = "Running" if sim_state.get(1, {}).get("running") else "Stopped"
+    s2 = "Running" if sim_state.get(2, {}).get("running") else "Stopped"
+    sim_running = f"CP1: {s1}<br>CP2: {s2}"
 
     links = [
         ("CSMS Status", "/ocpp/csms/active-chargers",
