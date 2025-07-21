@@ -5,6 +5,11 @@ from paste.fixture import TestApp
 
 class SetupAppRepeatTests(unittest.TestCase):
     def test_repeated_project_setup_creates_clean_app(self):
+        mod = sys.modules[gw.web.app.setup_app.__module__]
+        mod._homes.clear()
+        mod._links.clear()
+        mod._registered_routes.clear()
+        mod._enabled.clear()
         app1 = gw.web.app.setup_app("dummy")
         TestApp(app1).get("/dummy")
         mod = sys.modules[gw.web.app.setup_app.__module__]

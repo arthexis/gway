@@ -13,6 +13,11 @@ class LinksWithoutHomeTests(unittest.TestCase):
         gw.context.clear()
 
     def test_links_append_to_last_home(self):
+        mod = sys.modules[gw.web.app.setup_app.__module__]
+        mod._homes.clear()
+        mod._links.clear()
+        mod._registered_routes.clear()
+        mod._enabled.clear()
         app = gw.web.app.setup_app("dummy", app=None)
         # Add an extra link without specifying home
         gw.web.app.setup_app("dummy", app=app, links="info")
