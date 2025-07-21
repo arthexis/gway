@@ -20,7 +20,7 @@ help-db build
 
 web:
  - static collect
- - auth config-basic --optional --temp-link
+ - auth config-basic --temp-link
 
 ocpp csms setup:
     --location simulator
