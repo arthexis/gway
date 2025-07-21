@@ -52,6 +52,11 @@ def setup_app(*,
             _is_new_app = app is None or not isinstance(app, _FastAPI)
     if _is_new_app:
         app = _FastAPI()
+        # Reset lingering connection states
+        try:
+            gw.ocpp.data.reset_connections()
+        except Exception as exc:
+            gw.warn(f"[OCPP] Failed to reset connections: {exc}")
 
     validator = None
     if isinstance(authorize, str):

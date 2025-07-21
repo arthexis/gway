@@ -118,6 +118,5 @@ def view_ocpp_dashboard(*, _title="OCPP Dashboard", **_):
 
     return "\n".join(html)
 
-# Sub-project views are auto-discovered by web.app.setup_app;
-# explicit wrappers were removed.
+
 
