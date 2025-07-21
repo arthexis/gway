@@ -147,8 +147,6 @@ def view_cp_simulator(*args, _title="CP Simulator", **kwargs):
     return gw.ocpp.evcs.view_cp_simulator(*args, **kwargs)
 
 
-
-
 def view_manage_rfids(*args, _title="Manage RFIDs", **kwargs):
     """Delegate to :func:`gw.ocpp.rfid.view_manage_rfids`."""
     return gw.ocpp.rfid.view_manage_rfids(*args, **kwargs)
