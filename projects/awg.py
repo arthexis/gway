@@ -260,7 +260,10 @@ def view_awg_calculator(
     """Page builder for AWG calculator with HTML form and result."""
     if not meters:
         return '''<link rel="stylesheet" href="/static/awg/cable_finder.css">
+            <script src="/static/awg/calc_info.js"></script>
             <h1>Cable & Conduit Calculator</h1>
+            <div class="calc-layout">
+            <div class="form-wrapper">
             <form method="post" class="cable-form">
                 <table class="form-table two-col">
                     <tr>
@@ -347,6 +350,13 @@ def view_awg_calculator(
                     </tr>
                 </table>
             </form>
+            </div>
+            <div id="calc-info" class="calc-info">
+                <button type="button" id="info-close" class="info-close hidden">[X]</button>
+                <p>This tool helps you select cable sizes and conduit using standard AWG tables. Fill in your system details and press Calculate.</p>
+            </div>
+            <button type="button" id="info-toggle" class="info-toggle">&#128278;</button>
+            </div>
         '''
     if max_awg in (None, ""):
         max_awg = None
