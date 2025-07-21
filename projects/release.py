@@ -249,20 +249,24 @@ def build(
                 gw.error("Build aborted. README syntax errors detected.")
                 return
 
-            gw.info("Twine check passed. Uploading to PyPI...")
-            upload_command = [
-                sys.executable, "-m", "twine", "upload", "dist/*"
-            ]
+            gw.info("Twine check passed.")
 
-            if token:
-                upload_command += ["--username", "__token__", "--password", token]
-            elif user and password:
-                upload_command += ["--username", user, "--password", password]
+            if token or (user and password):
+                gw.info("Uploading to PyPI...")
+                upload_command = [
+                    sys.executable, "-m", "twine", "upload", "dist/*"
+                ]
+                if token:
+                    upload_command += ["--username", "__token__", "--password", token]
+                else:
+                    upload_command += ["--username", user, "--password", password]
+
+                subprocess.run(upload_command, check=True)
+                gw.info("Package uploaded to PyPI successfully.")
             else:
-                gw.abort("Must provide either a PyPI API token or both username and password for Twine upload.")
-
-            subprocess.run(upload_command, check=True)
-            gw.info("Package uploaded to PyPI successfully.")
+                gw.warning(
+                    "Twine upload skipped: missing PyPI token or username/password."
+                )
 
     if git:
         files_to_add = ["VERSION", "BUILD", "pyproject.toml", "CHANGELOG.rst"]
