@@ -100,5 +100,44 @@ class RefreshFreshDateTests(unittest.TestCase):
             self.assertIsNone(self.webapp._refresh_fresh_date())
 
 
+class RefreshBuildDateTests(unittest.TestCase):
+    @staticmethod
+    def _load_webapp():
+        import importlib.util
+        from pathlib import Path
+
+        app_path = Path(__file__).resolve().parents[1] / "projects" / "web" / "app.py"
+        spec = importlib.util.spec_from_file_location("webapp", app_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+
+    @classmethod
+    def setUpClass(cls):
+        cls.webapp = cls._load_webapp()
+
+    def setUp(self):
+        self.webapp._build_mtime = None
+        self.webapp._build_dt = None
+
+    def test_refresh_build_date_caching_and_updates(self):
+        with patch('webapp.gw.resource', return_value='/fake/BUILD') as res, \
+             patch('webapp.os.path.getmtime', side_effect=[100, 100, 200]):
+            dt1 = self.webapp._refresh_build_date()
+            dt2 = self.webapp._refresh_build_date()
+            dt3 = self.webapp._refresh_build_date()
+
+            self.assertEqual(dt1, datetime.datetime.fromtimestamp(100))
+            self.assertIs(dt1, dt2)
+            self.assertEqual(dt3, datetime.datetime.fromtimestamp(200))
+            self.assertNotEqual(dt2, dt3)
+            self.assertEqual(res.call_count, 3)
+
+    def test_refresh_build_date_errors_return_none(self):
+        with patch('webapp.gw.resource', side_effect=Exception('boom')):
+            self.assertIsNone(self.webapp._refresh_build_date())
+
+
 if __name__ == '__main__':
     unittest.main()

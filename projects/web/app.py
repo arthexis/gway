@@ -36,6 +36,8 @@ _enabled = set()
 _registered_routes: set[tuple[str, str]] = set()
 _fresh_mtime = None
 _fresh_dt = None
+_build_mtime = None
+_build_dt = None
 _static_route = "static"
 _shared_route = "shared"
 _default_include_mode = "collect"
@@ -53,6 +55,20 @@ def _refresh_fresh_date():
         _fresh_mtime = mtime
         _fresh_dt = datetime.datetime.fromtimestamp(mtime)
     return _fresh_dt
+
+
+def _refresh_build_date():
+    """Return cached datetime of BUILD modification, updating cache if needed."""
+    global _build_mtime, _build_dt
+    try:
+        path = gw.resource("BUILD")
+        mtime = os.path.getmtime(path)
+    except Exception:
+        return None
+    if _build_mtime != mtime:
+        _build_mtime = mtime
+        _build_dt = datetime.datetime.fromtimestamp(mtime)
+    return _build_dt
 
 
 def _format_fresh(dt: datetime.datetime | None) -> str:
@@ -588,7 +604,11 @@ def build_url(*args, **kwargs):
 def render_template(*, title="GWAY", content="", css_files=None, js_files=None, mode=None):
     global _ver
     version = _ver = _ver or gw.version()
-    fresh = _format_fresh(_refresh_fresh_date())
+    if getattr(gw, "debug_enabled", False):
+        dt = _refresh_build_date()
+    else:
+        dt = _refresh_fresh_date()
+    fresh = _format_fresh(dt)
     build = ""
     if getattr(gw, "debug_enabled", False):
         try:
