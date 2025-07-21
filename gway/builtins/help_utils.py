@@ -2,6 +2,7 @@ import inspect
 import textwrap
 import ast
 import os
+import sqlite3
 __all__ = [
     "help",
     "sample_cli",
@@ -45,7 +46,15 @@ def help(*args, full: bool = False, list_flags: bool = False):
     joined_args = " ".join(args).strip().replace("-", "_")
     norm_args = [a.replace("-", "_").replace("/", ".") for a in args]
 
-    with gw.sql.open_db(db_path, row_factory=True) as cur:
+    conn = gw.sql.open_db(db_path, row_factory=True)
+    try:
+        conn.cursor().execute("SELECT 1 FROM param_types LIMIT 1")
+    except sqlite3.OperationalError:
+        gw.help_db.build(update=True)
+        gw.sql.close_connection(datafile=db_path)
+        conn = gw.sql.open_db(db_path, row_factory=True)
+
+    with conn as cur:
         if not args:
             cur.execute("SELECT DISTINCT project FROM help")
             return {"Available Projects": sorted([row["project"] for row in cur.fetchall()])}
