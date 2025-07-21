@@ -591,12 +591,19 @@ def setup_app(project,
 
 # Use current_endpoint to get the current project route
 def build_url(*args, **kwargs):
-    path = "/".join(str(a).strip("/") for a in args if a)
-    endpoint = current_endpoint()
-    if endpoint:
-        url = f"/{endpoint}/{path}" if path else f"/{endpoint}"
+    path_parts = [str(a).strip("/") for a in args if a]
+    if path_parts and (
+        len(path_parts) > 1 or "." in path_parts[0] or "/" in path_parts[0]
+    ):
+        first = path_parts.pop(0).replace(".", "/")
+        path = "/".join([first] + path_parts)
+        url = f"/{path}" if path else "/"
     else:
-        url = f"/{path}"
+        path = "/".join(path_parts)
+        endpoint = current_endpoint()
+        url = f"/{endpoint}/{path}" if endpoint and path else (
+            f"/{endpoint}" if endpoint else f"/{path}"
+        )
     if kwargs:
         url += "?" + urlencode(kwargs)
     return url
@@ -855,6 +862,6 @@ def render_footer_links() -> str:
                 href = f"{proj_root}/{name}".strip('/')
                 label = name.replace('-', ' ').replace('_', ' ').title()
             items.append(f'<a href="/{href}">{label}</a>')
-    cookbook = gw.web.app.build_url("gateway-cookbook")
+    cookbook = gw.web.app.build_url("web", "site", "gateway-cookbook")
     items.append(f'<a href="{cookbook}">Gateway Cookbook</a>')
     return '<p class="footer-links">' + ' | '.join(items) + '</p>' if items else ""
