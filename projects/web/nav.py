@@ -11,6 +11,26 @@ _default_style = None
 _side = "left"
 
 
+def _func_title(project: str, view: str) -> str | None:
+    try:
+        mod = gw.find_project(project)
+    except Exception:
+        mod = None
+    if not mod:
+        return None
+    func = None
+    for prefix in gw.prefixes:
+        cand = getattr(mod, f"{prefix}{view.replace('-', '_')}", None)
+        if callable(cand):
+            func = cand
+            break
+    if not func:
+        func = getattr(mod, view.replace('-', '_'), None)
+    if callable(func):
+        return getattr(func, "_title", None)
+    return None
+
+
 def render(*, homes=None, links=None):
     """
     Renders the sidebar navigation including search, home links, visited links, and a QR compass.
@@ -67,14 +87,15 @@ def render(*, homes=None, links=None):
                         target_proj, view_name = name
                         target_root = target_proj.replace(".", "/")
                         sub_route = f"{target_root}/{view_name}".strip("/")
-                        label = (
+                        label = _func_title(target_proj, view_name) or (
                             view_name.replace("-", " ")
                             .replace("_", " ")
                             .title()
                         )
                     else:
                         sub_route = f"{proj_root}/{name}".strip("/")
-                        label = (
+                        proj = proj_root.replace("/", ".")
+                        label = _func_title(proj, name) or (
                             name.replace("-", " ").replace("_", " ").title()
                         )
                     active = (

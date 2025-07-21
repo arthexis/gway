@@ -63,7 +63,7 @@ def purge(*, database: bool = False, logs: bool = False):
 
 
 
-def view_ocpp_dashboard(**_):
+def view_ocpp_dashboard(*, _title="OCPP Dashboard", **_):
     """Landing page with a summary card for each sub-project."""
 
     active = len(gw.ocpp.data.get_active_chargers())
@@ -143,7 +143,7 @@ def view_time_series(*args, **kwargs):
     return gw.ocpp.data.view_time_series(*args, **kwargs)
 
 
-def view_cp_simulator(*args, **kwargs):
+def view_cp_simulator(*args, _title="CP Simulator", **kwargs):
     return gw.ocpp.evcs.view_cp_simulator(*args, **kwargs)
 
 
@@ -158,7 +158,7 @@ def view_evcs(view: str | None = None, *args, **kwargs):
     return func(*args, **kwargs)
 
 
-def view_manage_rfids(*args, **kwargs):
+def view_manage_rfids(*args, _title="Manage RFIDs", **kwargs):
     """Delegate to :func:`gw.ocpp.rfid.view_manage_rfids`."""
     return gw.ocpp.rfid.view_manage_rfids(*args, **kwargs)
 

@@ -127,7 +127,7 @@ def approve(*, payload=None, charger_id=None, validator=authorize_balance, table
     return True
 
 
-def view_manage_rfids(*, table: str = RFID_TABLE, **_):
+def view_manage_rfids(*, table: str = RFID_TABLE, _title="Manage RFIDs", **_):
     """Single-page UI to manage RFID records."""
     from bottle import request, response
     import html as _html

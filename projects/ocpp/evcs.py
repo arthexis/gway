@@ -583,7 +583,7 @@ def get_simulator_state(cp: int | None = None, refresh_file: bool = False) -> di
     return {idx: dict(st) for idx, st in _simulators.items()}
 
 @gw.web.static.include(css=["ocpp/evcs/cp_simulator.css", "/static/tabs.css"], js=["/static/tabs.js"])
-def view_cp_simulator(*args, **kwargs):
+def view_cp_simulator(*args, _title="CP Simulator", **kwargs):
     """Web UI for up to two simultaneous simulator sessions."""
 
     ws_url = gw.web.build_ws_url("ocpp", "csms")

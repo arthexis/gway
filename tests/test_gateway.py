@@ -90,5 +90,10 @@ class GatewayTests(unittest.TestCase):
         none_proj = gw.find_project("nope1", "nope2")
         self.assertIsNone(none_proj)
 
+    def test_prefixes_constant_available(self):
+        self.assertIsInstance(gw.prefixes, tuple)
+        for pre in ("view_", "api_", "render_"):
+            self.assertIn(pre, gw.prefixes)
+
 if __name__ == "__main__":
     unittest.main()
