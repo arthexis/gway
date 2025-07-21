@@ -6,7 +6,7 @@
 web app setup:
     - web.site --home reader --footer feedback,gateway-cookbook,pending-todos
     - web.nav --home style-switcher
-    - web.cookies --footer web.cookies:cookie-jar
+    - web.cookies --footer cookie-jar
     - web.message
     - awg --home awg-calculator
     - vbox --home uploads
