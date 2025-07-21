@@ -797,13 +797,32 @@ def is_setup(project_name):
     global _enabled
     return project_name in _enabled
 
+def _func_title(project: str | None, view: str) -> str | None:
+    """Return function _title for project.view if available."""
+    if not project:
+        return None
+    try:
+        mod = gw.find_project(project)
+    except Exception:
+        mod = None
+    if not mod:
+        return None
+    func = getattr(mod, f"view_{view.replace('-', '_')}", None)
+    if not callable(func):
+        func = getattr(mod, view.replace('-', '_'), None)
+    if callable(func):
+        return getattr(func, "_title", None)
+    return None
+
 def add_home(home, path, project=None):
     global _homes
     if home.lower() == "index" and project:
         title_src = project
     else:
         title_src = home
-    title = title_src.replace('.', ' ').replace('-', ' ').replace('_', ' ').title()
+    title = _func_title(project, home) or (
+        title_src.replace('.', ' ').replace('-', ' ').replace('_', ' ').title()
+    )
     route = f"{path}/{home}"
     if (title, route) not in _homes:
         _homes.append((title, route))
@@ -868,9 +887,14 @@ def render_footer_links() -> str:
             if isinstance(name, tuple):
                 proj, view = name
                 href = f"{proj.replace('.', '/')}/{view}".strip('/')
-                label = view.replace('-', ' ').replace('_', ' ').title()
+                label = _func_title(proj, view) or (
+                    view.replace('-', ' ').replace('_', ' ').title()
+                )
             else:
                 href = f"{proj_root}/{name}".strip('/')
-                label = name.replace('-', ' ').replace('_', ' ').title()
+                proj = proj_root.replace('/', '.')
+                label = _func_title(proj, name) or (
+                    name.replace('-', ' ').replace('_', ' ').title()
+                )
             items.append(f'<a href="/{href}">{label}</a>')
     return '<p class="footer-links">' + ' | '.join(items) + '</p>' if items else ""

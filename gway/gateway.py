@@ -169,6 +169,15 @@ class Gateway(Resolver, Runner):
         self.info(message)
 
     def wrap_callable(self, func_name, func_obj, *, is_builtin=False):
+        title = getattr(func_obj, "_title", None)
+        if not title:
+            base = func_obj.__name__
+            for prefix in ("view_", "api_", "render_"):
+                if base.startswith(prefix):
+                    base = base[len(prefix):]
+                    break
+            title = base.replace("_", " ").replace("-", " ").title()
+
         @functools.wraps(func_obj)
         def wrap(*args, **kwargs):
             try:
@@ -201,7 +210,9 @@ class Gateway(Resolver, Runner):
 
                     can_auto_inject = (subject is not None) and (name == subject) and not is_builtin
 
-                    if has_explicit:
+                    if name == "_title" and not has_explicit:
+                        value = title
+                    elif has_explicit:
                         value = bound_args.arguments[name]
                     elif can_auto_inject:
                         value = self.find_value(name)
@@ -302,6 +313,7 @@ class Gateway(Resolver, Runner):
                     self.exception(e)
                 raise
 
+        wrap._title = title
         return wrap
 
     def __getattr__(self, name):
