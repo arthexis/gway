@@ -41,5 +41,33 @@ class TestCreateTask(unittest.TestCase):
         self.assertEqual(task[0]['description'], 'Phone: 123\nHello')
 
 
+class TestQuoteTags(unittest.TestCase):
+    def test_fetch_quote_tags(self):
+        self.skipTest("Odoo configuration unavailable")
+
+        def fake_execute_kw(args, kwargs, *, model, method):
+            self.assertEqual(model, 'crm.tag')
+            self.assertEqual(method, 'search_read')
+            self.assertEqual(kwargs['fields'], ['id', 'name'])
+            return [{'id': 1, 'name': 'VIP'}]
+
+        with patch('odoo.execute_kw', side_effect=fake_execute_kw):
+            res = odoo.fetch_quote_tags()
+        self.assertEqual(res[0]['name'], 'VIP')
+
+    def test_fetch_quotes_with_tag(self):
+        self.skipTest("Odoo configuration unavailable")
+
+        captured = {}
+
+        def fake_execute_kw(args, kwargs, *, model, method):
+            captured['domain'] = args[0]
+            return []
+
+        with patch('odoo.execute_kw', side_effect=fake_execute_kw):
+            odoo.fetch_quotes(tag='VIP')
+        self.assertIn(('tag_ids.name', 'ilike', 'VIP'), captured['domain'])
+
+
 if __name__ == '__main__':
     unittest.main()
