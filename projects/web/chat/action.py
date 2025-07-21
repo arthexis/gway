@@ -35,3 +35,7 @@ def view_trust_status(*args, **kwargs):
 
 def view_audit_chatlog(*args, **kwargs):
     return _actions().view_audit_chatlog(*args, **kwargs)
+
+
+def view_gpt_actions(*args, **kwargs):
+    return _actions().view_gpt_actions(*args, **kwargs)
