@@ -718,20 +718,20 @@ def view_gateway_cookbook(*, recipe: str | None = None) -> str:
 
     tree: dict = {}
 
-    def insert(node: dict, parts: tuple[str, ...]):
+    def insert(node: dict, parts: tuple[str, ...], rel_path: str) -> None:
         head, *tail = parts
         if tail:
             node = node.setdefault(head, {})
-            insert(node, tuple(tail))
+            insert(node, tuple(tail), rel_path)
         else:
-            node.setdefault("_files", []).append("/".join(parts))
+            node.setdefault("_files", []).append(rel_path)
 
     for path in sorted(base_dir.rglob("*.gwr")):
         rel = path.relative_to(base_dir)
         parts = rel.parts
         if any(_is_hidden_or_private(p) for p in parts):
             continue
-        insert(tree, parts)
+        insert(tree, parts, rel.as_posix())
 
     def render(node: dict, root: bool = False) -> str:
         items = []
