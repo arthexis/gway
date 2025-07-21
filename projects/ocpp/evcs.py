@@ -435,6 +435,7 @@ _DEFAULT_STATE = {
     "thread": None,
     "start_time": None,
     "stop_time": None,
+    "pid": None,
     "params": {},
 }
 
@@ -467,6 +468,16 @@ def _save_state_file(states: dict):
     except Exception:
         pass
 
+def _pid_alive(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    else:
+        return True
+
 # Initialize from saved state if available
 try:
     saved = _load_state_file()
@@ -478,6 +489,8 @@ try:
                     continue
                 if k in saved[cp_key]:
                     _simulators[cp][k] = saved[cp_key][k]
+            if not _pid_alive(_simulators[cp].get("pid")):
+                _simulators[cp]["running"] = False
 except Exception:
     pass
 
@@ -487,6 +500,7 @@ def _run_simulator_thread(cp_idx, params):
     state = _simulators[cp_idx]
     try:
         state["last_status"] = "Starting..."
+        state["pid"] = os.getpid()
         _save_state_file(_simulators)
         coro = simulate(**params, cp=cp_idx)
         if hasattr(coro, "__await__"):  # coroutine (daemon=True)
@@ -517,6 +531,7 @@ def _start_simulator(params=None, cp=1):
     state["running"] = True
     state["start_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
     state["stop_time"] = None
+    state["pid"] = os.getpid()
     _save_state_file(_simulators)
     t = threading.Thread(target=_run_simulator_thread, args=(cp, state["params"]), daemon=True)
     state["thread"] = t
@@ -559,6 +574,10 @@ def get_simulator_state(cp: int | None = None, refresh_file: bool = False) -> di
                         continue
                     if k in val:
                         _simulators[idx][k] = val[k]
+    # update running flag if the owning process no longer exists
+    for st in _simulators.values():
+        if st.get("running") and not _pid_alive(st.get("pid")):
+            st["running"] = False
     if cp is not None:
         return dict(_simulators[cp])
     return {idx: dict(st) for idx, st in _simulators.items()}
