@@ -53,6 +53,7 @@ def simulate(
     interval: float = 5,
     username: str = None,
     password: str = None,
+    cp: int = 1,
 ):
     """
     Flexible OCPP 1.6 charger simulator.
@@ -63,6 +64,7 @@ def simulate(
     - kwh_min/kwh_max: approximate energy range per session in kWh.
     - pre_charge_delay: wait this many seconds before starting a session while
       still sending Heartbeats.
+    - cp: which simulator slot to update when persisting state.
     """
     host    = gw.resolve(host)
     ws_port = int(gw.resolve(ws_port))
@@ -86,7 +88,8 @@ def simulate(
         password=password,
         daemon=daemon,
     )
-    _simulator_state.update(
+    state = _simulators.get(cp, _simulators[1])
+    state.update(
         {
             "last_command": "start",
             "last_status": "Simulator launching...",
@@ -96,7 +99,7 @@ def simulate(
             "stop_time": None,
         }
     )
-    _save_state_file(_simulator_state)
+    _save_state_file(_simulators)
 
     async def orchestrate_all():
         tasks = []
@@ -165,10 +168,10 @@ def simulate(
                 gw.halt("[Simulator] Orchestration cancelled.")
             for t in threads_list:
                 t.join()
-        _simulator_state["last_status"] = "Simulator finished."
-        _simulator_state["running"] = False
-        _simulator_state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        _save_state_file(_simulator_state)
+        state["last_status"] = "Simulator finished."
+        state["running"] = False
+        state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        _save_state_file(_simulators)
 
     if daemon:
         return orchestrate_all()
@@ -186,10 +189,10 @@ def simulate(
                 threads_list.append(t)
             for t in threads_list:
                 t.join()
-        _simulator_state["last_status"] = "Simulator finished."
-        _simulator_state["running"] = False
-        _simulator_state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        _save_state_file(_simulator_state)
+        state["last_status"] = "Simulator finished."
+        state["running"] = False
+        state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        _save_state_file(_simulators)
 
 async def simulate_cp(
         cp_idx,
@@ -215,6 +218,7 @@ async def simulate_cp(
     Energy increments are derived from ``kwh_min``/``kwh_max``.
     """
     cp_name = cp_path
+    state = _simulators.get(cp_idx + 1, _simulators[1])
     uri     = f"ws://{host}:{ws_port}/{cp_name}"
     headers = {}
     if username and password:
@@ -266,7 +270,7 @@ async def simulate_cp(
                                 print(f"[Simulator:{cp_name}] Warning: Expected list message", msg)
                     except websockets.ConnectionClosed:
                         print(f"[Simulator:{cp_name}] Connection closed by server")
-                        _simulator_state["last_status"] = "Connection closed"
+                        _simulators[cp_idx + 1]["last_status"] = "Connection closed"
                         stop_event.set()
 
                 stop_event = asyncio.Event()
@@ -287,7 +291,7 @@ async def simulate_cp(
                 step_max = max(1, int((kwh_max * 1000) / steps))
 
                 if pre_charge_delay > 0:
-                    _simulator_state["last_status"] = "Waiting"
+                    state["last_status"] = "Waiting"
                     next_meter = meter_start
                     last_mv = time.monotonic()
                     start_delay = time.monotonic()
@@ -323,7 +327,7 @@ async def simulate_cp(
                 resp = await ws.recv()
                 tx_id = json.loads(resp)[2].get("transactionId")
                 print(f"[Simulator:{cp_name}] Transaction {tx_id} started at meter {meter_start}")
-                _simulator_state["last_status"] = "Running"
+                state["last_status"] = "Running"
 
                 # Start listener only after transaction is active so recv calls don't overlap
                 listener = asyncio.create_task(listen_to_csms(stop_event, reset_event))
@@ -408,7 +412,7 @@ async def simulate_cp(
 
         except websockets.ConnectionClosedError as e:
             print(f"[Simulator:{cp_name}] Warning: {e} -- reconnecting")
-            _simulator_state["last_status"] = "Reconnecting"
+            state["last_status"] = "Reconnecting"
             await asyncio.sleep(1)
             continue
         except Exception as e:
@@ -416,14 +420,14 @@ async def simulate_cp(
             break
 
     print(f"[Simulator:{cp_name}] Simulation ended.")
-    _simulator_state["last_status"] = "Stopped"
-    _simulator_state["running"] = False
-    _simulator_state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    _save_state_file(_simulator_state)
+    state["last_status"] = "Stopped"
+    state["running"] = False
+    state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _save_state_file(_simulators)
 
 
 # --- Simulator control state ---
-_simulator_state = {
+_DEFAULT_STATE = {
     "running": False,
     "last_status": "",
     "last_command": None,
@@ -431,11 +435,18 @@ _simulator_state = {
     "thread": None,
     "start_time": None,
     "stop_time": None,
+    "pid": None,
     "params": {},
 }
 
+# states for CP1 and CP2
+_simulators = {
+    1: dict(_DEFAULT_STATE),
+    2: dict(_DEFAULT_STATE),
+}
+
 # Persist simulator state across processes
-STATE_FILE = gw.resource("work", "ocpp", "simulator_state.json")
+STATE_FILE = gw.resource("work", "ocpp", "simulator.json")
 
 def _load_state_file():
     if os.path.exists(STATE_FILE):
@@ -446,260 +457,226 @@ def _load_state_file():
             return {}
     return {}
 
-def _save_state_file(state: dict):
+def _save_state_file(states: dict):
     try:
+        safe = {}
+        for cp, st in states.items():
+            clean = {k: st.get(k) for k in _DEFAULT_STATE if k != "thread"}
+            safe[str(cp)] = clean
         with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(state, f)
+            json.dump(safe, f)
     except Exception:
         pass
+
+def _pid_alive(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    else:
+        return True
 
 # Initialize from saved state if available
 try:
     saved = _load_state_file()
-    for k in [
-        "running",
-        "last_status",
-        "last_command",
-        "last_error",
-        "start_time",
-        "stop_time",
-        "params",
-    ]:
-        if k in saved:
-            _simulator_state[k] = saved[k]
+    for cp in (1, 2):
+        cp_key = str(cp)
+        if cp_key in saved and isinstance(saved[cp_key], dict):
+            for k in _DEFAULT_STATE:
+                if k == "thread":
+                    continue
+                if k in saved[cp_key]:
+                    _simulators[cp][k] = saved[cp_key][k]
+            if not _pid_alive(_simulators[cp].get("pid")):
+                _simulators[cp]["running"] = False
 except Exception:
     pass
 
 
-def _run_simulator_thread(params):
+def _run_simulator_thread(cp_idx, params):
     """Background runner for the simulator, updating state as it runs."""
+    state = _simulators[cp_idx]
     try:
-        _simulator_state["last_status"] = "Starting..."
-        _save_state_file(_simulator_state)
-        coro = simulate(**params)
+        state["last_status"] = "Starting..."
+        state["pid"] = os.getpid()
+        _save_state_file(_simulators)
+        coro = simulate(**params, cp=cp_idx)
         if hasattr(coro, "__await__"):  # coroutine (daemon=True)
             import asyncio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(coro)
-        _simulator_state["last_status"] = "Simulator finished."
+        state["last_status"] = "Simulator finished."
     except Exception as e:
-        _simulator_state["last_status"] = "Error"
-        _simulator_state["last_error"] = f"{e}\n{traceback.format_exc()}"
+        state["last_status"] = "Error"
+        state["last_error"] = f"{e}\n{traceback.format_exc()}"
     finally:
-        _simulator_state["running"] = False
-        _simulator_state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        _simulator_state["thread"] = None
-        _save_state_file(_simulator_state)
+        state["running"] = False
+        state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        state["thread"] = None
+        _save_state_file(_simulators)
 
 
-def _start_simulator(params=None):
+def _start_simulator(params=None, cp=1):
     """Start the simulator in a background thread."""
-    if _simulator_state["running"]:
+    state = _simulators[cp]
+    if state["running"]:
         return False  # Already running
-    _simulator_state["last_error"] = ""
-    _simulator_state["last_command"] = "start"
-    _simulator_state["last_status"] = "Simulator launching..."
-    _simulator_state["params"] = params or {}
-    _simulator_state["running"] = True
-    _simulator_state["start_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    _simulator_state["stop_time"] = None
-    _save_state_file(_simulator_state)
-    t = threading.Thread(target=_run_simulator_thread, args=(_simulator_state["params"],), daemon=True)
-    _simulator_state["thread"] = t
+    state["last_error"] = ""
+    state["last_command"] = "start"
+    state["last_status"] = "Simulator launching..."
+    state["params"] = params or {}
+    state["running"] = True
+    state["start_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    state["stop_time"] = None
+    state["pid"] = os.getpid()
+    _save_state_file(_simulators)
+    t = threading.Thread(target=_run_simulator_thread, args=(cp, state["params"]), daemon=True)
+    state["thread"] = t
     t.start()
     return True
 
-def _stop_simulator():
+def _stop_simulator(cp=1):
     """Stop the simulator. (Note: true coroutine interruption is not implemented.)"""
-    _simulator_state["last_command"] = "stop"
-    _simulator_state["last_status"] = "Requested stop (will finish current run)..."
-    _simulator_state["running"] = False
+    state = _simulators[cp]
+    state["last_command"] = "stop"
+    state["last_status"] = "Requested stop (will finish current run)..."
+    state["running"] = False
     # Simulator must check this flag between sessions (not during a blocking one).
     # For a true hard kill, one would need to implement cancellation or kill the thread (not recommended).
-    _save_state_file(_simulator_state)
+    _save_state_file(_simulators)
     return True
 
-def _simulator_status_json():
-    """JSON summary for possible API endpoint / AJAX polling."""
-    return json.dumps({
-        "running": _simulator_state["running"],
-        "last_status": _simulator_state["last_status"],
-        "last_command": _simulator_state["last_command"],
-        "last_error": _simulator_state["last_error"],
-        "params": _simulator_state["params"],
-        "start_time": _simulator_state["start_time"],
-        "stop_time": _simulator_state["stop_time"],
-    }, indent=2)
+def _export_state(state: dict) -> dict:
+    return {k: state.get(k) for k in _DEFAULT_STATE if k != "thread"}
 
-def get_simulator_state(refresh_file: bool = False) -> dict:
+
+def _simulator_status_json(cp: int | None = None):
+    """JSON summary for possible API endpoint / AJAX polling."""
+    if cp is not None:
+        return json.dumps(_export_state(_simulators[cp]), indent=2)
+    return json.dumps({str(idx): _export_state(st) for idx, st in _simulators.items()}, indent=2)
+
+def get_simulator_state(cp: int | None = None, refresh_file: bool = False) -> dict:
     """Return current simulator state, optionally reloading from disk."""
     if refresh_file:
         file_state = _load_state_file()
-        for k in [
-            "running",
-            "last_status",
-            "last_command",
-            "last_error",
-            "start_time",
-            "stop_time",
-            "params",
-        ]:
-            if k in file_state:
-                _simulator_state[k] = file_state[k]
-    return dict(_simulator_state)
+        for key, val in file_state.items():
+            try:
+                idx = int(key)
+            except ValueError:
+                continue
+            if idx in _simulators and isinstance(val, dict):
+                for k in _DEFAULT_STATE:
+                    if k == "thread":
+                        continue
+                    if k in val:
+                        _simulators[idx][k] = val[k]
+    # update running flag if the owning process no longer exists
+    for st in _simulators.values():
+        if st.get("running") and not _pid_alive(st.get("pid")):
+            st["running"] = False
+    if cp is not None:
+        return dict(_simulators[cp])
+    return {idx: dict(st) for idx, st in _simulators.items()}
 
+@gw.web.static.include(css=["ocpp/evcs/cp_simulator.css", "/static/tabs.css"], js=["/static/tabs.js"])
 def view_cp_simulator(*args, **kwargs):
-    """
-    Web UI for the OCPP simulator (single session only).
-    Start/stop, view state, error messages, and current config.
-    NO card, content in main dashboard layout.
-    """
+    """Web UI for up to two simultaneous simulator sessions."""
 
     ws_url = gw.web.build_ws_url("ocpp", "csms")
     default_host = ws_url.split("://")[-1].split(":")[0]
     default_ws_port = ws_url.split(":")[-1].split("/")[0] if ":" in ws_url else "9000"
-    default_cp_path = "CPX"
+    default_cp_path = {1: "CP1", 2: "CP2"}
     default_rfid = "FFFFFFFF"
 
     msg = ""
     if request.method == "POST":
+        cp_idx = int(request.forms.get("cp") or 1)
         action = request.forms.get("action")
         if action == "start":
             sim_params = dict(
-                host = request.forms.get("host") or default_host,
-                ws_port = int(request.forms.get("ws_port") or default_ws_port),
-                cp_path = request.forms.get("cp_path") or default_cp_path,
-                rfid = request.forms.get("rfid") or default_rfid,
-                duration = int(request.forms.get("duration") or 600),
-                interval = float(request.forms.get("interval") or 5),
-                kwh_min = float(request.forms.get("kwh_min") or 30),
-                kwh_max = float(request.forms.get("kwh_max") or 60),
-                pre_charge_delay = float(request.forms.get("pre_charge_delay") or 0),
-                repeat = request.forms.get("repeat") or False,
-                daemon = True,
-                username = request.forms.get("username") or None,
-                password = request.forms.get("password") or None,
+                host=request.forms.get("host") or default_host,
+                ws_port=int(request.forms.get("ws_port") or default_ws_port),
+                cp_path=request.forms.get("cp_path") or default_cp_path.get(cp_idx, f"CP{cp_idx}"),
+                rfid=request.forms.get("rfid") or default_rfid,
+                duration=int(request.forms.get("duration") or 600),
+                interval=float(request.forms.get("interval") or 5),
+                kwh_min=float(request.forms.get("kwh_min") or 30),
+                kwh_max=float(request.forms.get("kwh_max") or 60),
+                pre_charge_delay=float(request.forms.get("pre_charge_delay") or 0),
+                repeat=request.forms.get("repeat") or False,
+                daemon=True,
+                username=request.forms.get("username") or None,
+                password=request.forms.get("password") or None,
             )
-            started = _start_simulator(sim_params)
-            msg = "Simulator started." if started else "Simulator is already running."
+            started = _start_simulator(sim_params, cp=cp_idx)
+            msg = f"CP{cp_idx} started." if started else f"CP{cp_idx} already running."
         elif action == "stop":
-            _stop_simulator()
-            msg = "Stop requested. Simulator will finish current session before stopping."
+            cp_idx = int(request.forms.get("cp") or 1)
+            _stop_simulator(cp=cp_idx)
+            msg = f"CP{cp_idx} stop requested."
         else:
             msg = "Unknown action."
 
-    state = dict(_simulator_state)
-    running = state["running"]
-    error = state["last_error"]
-    params = state["params"]
+    states = {idx: dict(st) for idx, st in _simulators.items()}
 
-    html = ['<h1>OCPP Charge Point Simulator</h1>']
+    def render_block(cp_idx: int) -> str:
+        state = states[cp_idx]
+        running = state["running"]
+        error = state["last_error"]
+        params = state["params"]
+        dot_class = "state-dot online" if running else "state-dot stopped"
+        dot_label = "Running" if running else "Stopped"
+
+        block = ["<form method='post' class='simulator-form'>"]
+        block.append(f"<input type='hidden' name='cp' value='{cp_idx}'>")
+        block.append(f"<div><label>Host:</label><input name='host' value='{params.get('host', default_host)}'></div>")
+        block.append(f"<div><label>Port:</label><input name='ws_port' value='{params.get('ws_port', default_ws_port)}'></div>")
+        block.append(f"<div><label>ChargePoint Path:</label><input name='cp_path' value='{params.get('cp_path', default_cp_path.get(cp_idx, f'CP{cp_idx}'))}'></div>")
+        block.append(f"<div><label>RFID:</label><input name='rfid' value='{params.get('rfid', default_rfid)}'></div>")
+        block.append(f"<div><label>Duration (s):</label><input name='duration' value='{params.get('duration', 600)}'></div>")
+        block.append(f"<div><label>Interval (s):</label><input name='interval' value='{params.get('interval', 5)}'></div>")
+        block.append(f"<div><label>Pre-charge Delay (s):</label><input name='pre_charge_delay' value='{params.get('pre_charge_delay', 0)}'></div>")
+        block.append(f"<div><label>Energy Min (kWh):</label><input name='kwh_min' value='{params.get('kwh_min', 30)}'></div>")
+        block.append(f"<div><label>Energy Max (kWh):</label><input name='kwh_max' value='{params.get('kwh_max', 60)}'></div>")
+        block.append("<div><label>Repeat:</label><select name='repeat'>" +
+                     f"<option value='False' {'selected' if not params.get('repeat') else ''}>No</option>" +
+                     f"<option value='True' {'selected' if str(params.get('repeat')).lower() in ('true','1') else ''}>Yes</option>" +
+                     "</select></div>")
+        block.append("<div><label>User:</label><input name='username' value=''></div>")
+        block.append("<div><label>Pass:</label><input name='password' type='password' value=''></div>")
+        block.append("<div class='form-btns'>" +
+                     f"<button type='submit' name='action' value='start' {'disabled' if running else ''}>Start</button>" +
+                     f"<button type='submit' name='action' value='stop' {'disabled' if not running else ''}>Stop</button>" +
+                     "</div>")
+        block.append("</form>")
+        block.append(f"<div class='simulator-status'><span class='{dot_class}'></span><span>{dot_label}</span></div>")
+        block.append("<div class='simulator-details'>" +
+                     f"<label>Last Status:</label> <span class='stat'>{state['last_status'] or '-'}</span>" +
+                     f"<label>Last Command:</label> <span class='stat'>{state['last_command'] or '-'}</span>" +
+                     f"<label>Started:</label> <span class='stat'>{state['start_time'] or '-'}</span>" +
+                     f"<label>Stopped:</label> <span class='stat'>{state['stop_time'] or '-'}</span>" +
+                     "</div>")
+        if error:
+            block.append(f"<div class='error'><b>Error:</b><pre>{error}</pre></div>")
+        block.append("<details class='simulator-panel'><summary>Show Simulator Params</summary><pre>" +
+                     json.dumps(params, indent=2) + "</pre></details>")
+        block.append("<details class='simulator-panel'><summary>Show Simulator State JSON</summary><pre>" +
+                     _simulator_status_json(cp_idx) + "</pre></details>")
+        return "".join(block)
+
+    html = ["<h1>OCPP Charge Point Simulator</h1>"]
     if msg:
-        html.append(f'<div class="sim-msg">{msg}</div>')
+        html.append(f"<div class='sim-msg'>{msg}</div>")
 
-    # Form directly in main (no card)
-    html.append('''
-    <form method="post" class="simulator-form">
-        <div>
-            <label>Host:</label>
-            <input name="host" value="{host}">
-        </div>
-        <div>
-            <label>Port:</label>
-            <input name="ws_port" value="{ws_port}">
-        </div>
-        <div>
-            <label>ChargePoint Path:</label>
-            <input name="cp_path" value="{cp_path}">
-        </div>
-        <div>
-            <label>RFID:</label>
-            <input name="rfid" value="{rfid}">
-        </div>
-        <div>
-            <label>Duration (s):</label>
-            <input name="duration" value="{duration}">
-        </div>
-        <div>
-            <label>Interval (s):</label>
-            <input name="interval" value="{interval}">
-        </div>
-        <div>
-            <label>Pre-charge Delay (s):</label>
-            <input name="pre_charge_delay" value="{pre_charge_delay}">
-        </div>
-        <div>
-            <label>Energy Min (kWh):</label>
-            <input name="kwh_min" value="{kwh_min}">
-        </div>
-        <div>
-            <label>Energy Max (kWh):</label>
-            <input name="kwh_max" value="{kwh_max}">
-        </div>
-        <div>
-            <label>Repeat:</label>
-            <select name="repeat">
-                <option value="False" {repeat_no}>No</option>
-                <option value="True" {repeat_yes}>Yes</option>
-            </select>
-        </div>
-        <div>
-            <label>User:</label>
-            <input name="username" value="">
-        </div>
-        <div>
-            <label>Pass:</label>
-            <input name="password" value="" type="password">
-        </div>
-        <div class="form-btns">
-            <button type="submit" name="action" value="start" {start_dis}>Start</button>
-            <button type="submit" name="action" value="stop" {stop_dis}>Stop</button>
-        </div>
-    </form>
-    '''.format(
-        host=params.get('host', default_host),
-        ws_port=params.get('ws_port', default_ws_port),
-        cp_path=params.get('cp_path', default_cp_path),
-        rfid=params.get('rfid', default_rfid),
-        duration=params.get('duration', 600),
-        interval=params.get('interval', 5),
-        pre_charge_delay=params.get('pre_charge_delay', 0),
-        kwh_min=params.get('kwh_min', 30),
-        kwh_max=params.get('kwh_max', 60),
-        repeat_no='selected' if not params.get('repeat') else '',
-        repeat_yes='selected' if str(params.get('repeat')).lower() in ('true', '1') else '',
-        start_dis='disabled' if running else '',
-        stop_dis='disabled' if not running else '',
-    ))
-
-    # Status area (no card)
-    dot_class = "state-dot online" if running else "state-dot stopped"
-    dot_label = "Running" if running else "Stopped"
-    html.append(f'''
-    <div class="simulator-status">
-        <span class="{dot_class}"></span>
-        <span>{dot_label}</span>
-    </div>
-    <div class="simulator-details">
-        <label>Last Status:</label> <span class="stat">{state["last_status"] or "-"}</span>
-        <label>Last Command:</label> <span class="stat">{state["last_command"] or "-"}</span>
-        <label>Started:</label> <span class="stat">{state["start_time"] or "-"}</span>
-        <label>Stopped:</label> <span class="stat">{state["stop_time"] or "-"}</span>
-    </div>
-    ''')
-
-    if error:
-        html.append(f'<div class="error"><b>Error:</b><pre>{error}</pre></div>')
-
-    # Panels (params and state)
-    html.append('<details class="simulator-panel"><summary>Show Simulator Params</summary>')
-    html.append('<pre>')
-    html.append(json.dumps(params, indent=2))
-    html.append('</pre></details>')
-
-    html.append('<details class="simulator-panel"><summary>Show Simulator State JSON</summary>')
-    html.append(f'<pre>{_simulator_status_json()}</pre></details>')
+    html.append("<div class='gw-tabs'>")
+    html.append("<div class='gw-tabs-bar'><div class='gw-tab'>CP1</div><div class='gw-tab'>CP2</div></div>")
+    html.append(f"<div class='gw-tab-block'>{render_block(1)}</div>")
+    html.append(f"<div class='gw-tab-block'>{render_block(2)}</div>")
+    html.append("</div>")
 
     return "".join(html)
 
