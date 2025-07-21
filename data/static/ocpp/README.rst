@@ -10,7 +10,9 @@ The submodules are:
 - ``rfid`` – helpers for RFID allow/deny checks.
 
 The landing page ``/ocpp/ocpp-dashboard`` shows a quick summary of these
-sub‑projects.
+sub‑projects. When mounting the dashboard with ``web.app.setup_app``, pass
+``--delegates ocpp.csms`` so the CSMS views and renders are available under
+the ``/ocpp`` path.
 
 Launch a simulator session pointing at your CSMS with:
 
