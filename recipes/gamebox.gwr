@@ -2,7 +2,7 @@
 # Games-only demo with cookies, navbar and style switcher
 
 web app setup:
-    - web.site --home reader --footer pending-todos
+    - web.site --home reader --footer gateway-cookbook,pending-todos
     - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
     - web.nav --home style-switcher
     - web.cookies --footer web.cookies:cookie-jar
