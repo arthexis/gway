@@ -685,7 +685,7 @@ def view_project_readmes():
         for name, child in sorted(node.items()):
             if name == "_url":
                 continue
-            label = html.escape(name.replace("_", " "))
+            label = html.escape(name.replace("_", " ").title())
             url = child.get("_url")
             link = f"<a href='{url}'>{label}</a>" if url else label
             sub = render(child, False)
@@ -695,6 +695,58 @@ def view_project_readmes():
 
     body = render(tree, True) if tree else "<p>No READMEs found.</p>"
     return "<h1>Project READMEs</h1>" + body
+
+
+def view_gateway_cookbook(*, recipe: str | None = None) -> str:
+    """Display recipe files under ``recipes`` with optional file preview."""
+    base_dir = Path(gw.resource("recipes"))
+
+    if recipe:
+        safe = _sanitize_relpath(recipe)
+        if not safe:
+            return "<b>Invalid recipe path.</b>"
+        file_path = base_dir / safe
+        if file_path.is_dir():
+            recipe = None
+        elif file_path.suffix != ".gwr" or not file_path.is_file():
+            return "<b>Recipe not found.</b>"
+        if recipe:
+            content = file_path.read_text(encoding="utf-8")
+            title = html.escape(file_path.name)
+            body = html.escape(content)
+            return f"<h1>{title}</h1><pre><code class='gwr'>{body}</code></pre>"
+
+    tree: dict = {}
+
+    def insert(node: dict, parts: tuple[str, ...]):
+        head, *tail = parts
+        if tail:
+            node = node.setdefault(head, {})
+            insert(node, tuple(tail))
+        else:
+            node.setdefault("_files", []).append("/".join(parts))
+
+    for path in sorted(base_dir.rglob("*.gwr")):
+        rel = path.relative_to(base_dir)
+        parts = rel.parts
+        if any(_is_hidden_or_private(p) for p in parts):
+            continue
+        insert(tree, parts)
+
+    def render(node: dict, root: bool = False) -> str:
+        items = []
+        for name in sorted(k for k in node.keys() if k != "_files"):
+            sub = render(node[name], False)
+            items.append(f"<li>{html.escape(name)}{sub}</li>")
+        for rel_path in node.get("_files", []):
+            href = gw.web.app.build_url("web", "site", "gateway-cookbook", recipe=rel_path)
+            label = html.escape(Path(rel_path).stem.replace("_", " ").title())
+            items.append(f"<li><a href='{href}'>{label}</a></li>")
+        cls = " class='cookbook-list'" if root else ""
+        return f"<ul{cls}>" + "".join(items) + "</ul>" if items else ""
+
+    body = render(tree, True) if tree else "<p>No recipes found.</p>"
+    return "<h1>Gateway Cookbook</h1>" + body
 
 
 def view_pending_todos():

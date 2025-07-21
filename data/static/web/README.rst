@@ -5,6 +5,8 @@ Web Project Notes
 * Routes are registered with `add_route`, which skips duplicates so repeated setups won't register the same handler twice.
 * If the added project defines its own ``setup_app`` function, it is invoked with the app object.
 * Extra keyword arguments are passed to that project's ``setup_app``. If no such function exists, the unused argument names are logged as an error.
+* Sub‑projects are automatically searched for view, API and render functions.
+  Additional ``delegates`` can be specified to include other projects as fallback modules.
 * ``web.nav`` supports ``--style`` to force a theme; pass ``random`` to pick a different theme each request.
 * When reusing `setup_app`, provide unique paths or homes to avoid collisions.
 * CLI flags resolve to a single value. Lists like ``--home a,b,c`` are not supported. Call the command once per value instead.

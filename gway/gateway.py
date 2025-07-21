@@ -450,7 +450,7 @@ class Gateway(Resolver, Runner):
             self.error(f"Failed to import {dotted_name} from {path}", exc_info=True)
             raise
         return mod
-
+    
     def recurse_ns(self, current_path: str, dotted_prefix: str):
         """
         Recursively loads a project namespace. If a file matching the directory name
@@ -458,6 +458,7 @@ class Gateway(Resolver, Runner):
         Subprojects (e.g. 'web/app.py') are loaded as gw.web.app.func, possibly
         shadowing root names (warn on conflicts).
         """
+        # TODO: Consider if this function should be private.
         funcs = {}
         subprojects = {}
         dir_basename = os.path.basename(current_path)

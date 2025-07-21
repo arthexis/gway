@@ -81,7 +81,7 @@ def view_ocpp_dashboard(**_):
          f"Active chargers: {active}"),
         ("Charger Summary", "/ocpp/data/summary",
          f"Chargers: {chargers}<br>Sessions: {sessions}"),
-        ("Energy Time Series", "/ocpp/data/time-series",
+        ("Energy Time Series", "/ocpp/time-series",
          f"Total Energy: {energy} kWh"),
         ("CP Simulator", "/ocpp/evcs/cp-simulator",
          f"Simulator: {sim_running}"),
@@ -161,3 +161,5 @@ def view_evcs(view: str | None = None, *args, **kwargs):
 def view_manage_rfids(*args, **kwargs):
     """Delegate to :func:`gw.ocpp.rfid.view_manage_rfids`."""
     return gw.ocpp.rfid.view_manage_rfids(*args, **kwargs)
+
+

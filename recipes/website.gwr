@@ -4,7 +4,7 @@
 # Lines without a starting command repeat the previous with new params
 
 web app setup:
-    - web.site --home reader --footer feedback,pending-todos
+    - web.site --home reader --footer feedback,gateway-cookbook,pending-todos
     - web.nav --home style-switcher
     - web.cookies --footer web.cookies:cookie-jar
     - web.message
@@ -12,9 +12,8 @@ web app setup:
     - vbox --home uploads
     - ocpp --auth required --home ocpp-dashboard \
         --links active-chargers,charger-summary,time-series,cp-simulator,manage-rfids
-    - ocpp.data --home charger-summary
-    - web.chat.action --home audit-chatlog --auth required
-    - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
+    - web.chat.action --home gpt-actions --links audit-chatlog --auth required
+    - games --home game-box --links game-of-life,divination-wars,qpig-farm,massive-snake,four-in-a-row,fantastic-client
     - web.auth
 
 help-db build

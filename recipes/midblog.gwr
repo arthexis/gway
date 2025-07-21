@@ -10,7 +10,7 @@ sql migrate --dbfile work/blog.sqlite
 
 web app setup-app:
     - web.nav --home style-switcher
-    - web.site --home reader --footer pending-todos
+    - web.site --home reader --footer gateway-cookbook,pending-todos
     - sql.crud --home posts?table=posts&dbfile=work/blog.sqlite
 help-db build
 web:
