@@ -167,7 +167,7 @@ def view_manage_rfids(*, table: str = RFID_TABLE, **_):
             disable(rid, table=table)
 
         response.status = 303
-        response.set_header("Location", request.path_qs)
+        response.set_header("Location", request.fullpath)
         return ""
 
     records = gw.cdv.load_all(table) or {}
