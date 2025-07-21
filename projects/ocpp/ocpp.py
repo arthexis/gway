@@ -147,6 +147,17 @@ def view_cp_simulator(*args, _title="CP Simulator", **kwargs):
     return gw.ocpp.evcs.view_cp_simulator(*args, **kwargs)
 
 
+def view_csms(view: str | None = None, *args, **kwargs):
+    """Delegate ``/ocpp/csms/<view>`` routes to :mod:`ocpp.csms` views."""
+    target = (view or "active-chargers").replace("-", "_")
+    func = getattr(gw.ocpp.csms, f"view_{target}", None)
+    if not callable(func):
+        return gw.web.error.redirect(
+            f"View not found: {target} in ocpp.csms"
+        )
+    return func(*args, **kwargs)
+
+
 def view_evcs(view: str | None = None, *args, **kwargs):
     """Delegate ``/ocpp/evcs/<view>`` routes to :mod:`ocpp.evcs` views."""
     target = (view or "cp-simulator").replace("-", "_")
