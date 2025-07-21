@@ -12,7 +12,7 @@ web app setup-app --mode manual:
     - ocpp.evcs --auth required --home cp-simulator
     - ocpp.data --auth required --home charger-summary
     - web.chat.action --home audit-chatlog --auth required
-    - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
+    - games --home game-box --links game-of-life,divination-wars,qpig-farm,massive-snake,four-in-a-row,fantastic-client
     - web.auth
 
 help-db build
