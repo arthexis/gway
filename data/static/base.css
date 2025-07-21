@@ -110,6 +110,9 @@ pre {
     font-size: 0.9em;
     line-height: 1.6;
 }
+.todo-text {
+    font-size: 0.8em;
+}
 pre code {
     background: none;
     color: inherit;

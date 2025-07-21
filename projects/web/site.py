@@ -814,21 +814,23 @@ def view_pending_todos():
     for proj in sorted(todos):
         html_parts.append(f"<h2>{html.escape(proj)}</h2>")
         html_parts.append(
-            "<table class='todo-table'><tr><th>Function</th><th>TODO</th><th></th></tr>"
+            "<table class='todo-table'><tr><th>Function</th><th>TODO</th></tr>"
         )
         for func, todo in todos[proj]:
             link = gw.web.app.build_url("web", "site", "help", topic=f"{proj}/{func}")
-            fb_url = gw.web.app.build_url(
-                "feedback",
-                topic=f"TODO request for {proj}.{func}",
-                message=f"Please add a TODO for {proj}.{func}"
-            )
             html_parts.append(
                 f"<tr><td><a href='{link}'>{html.escape(func)}</a></td>"
-                f"<td><pre>{html.escape(todo)}</pre></td>"
-                f"<td><a class='btn-small' href='{fb_url}'>Request TODO</a></td></tr>"
+                f"<td><pre class='todo-text'>{html.escape(todo)}</pre></td></tr>"
             )
         html_parts.append("</table>")
+
+    fb_url = gw.web.app.build_url(
+        "feedback",
+        topic="TODO request",
+        message="Please add TODOs for the listed functions"
+    )
+    html_parts.append(f"<p><a class='btn-small' href='{fb_url}'>Request TODO</a></p>")
+
     return "".join(html_parts)
 
 

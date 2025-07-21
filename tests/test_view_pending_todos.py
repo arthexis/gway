@@ -7,9 +7,9 @@ class ViewPendingTodosTests(unittest.TestCase):
         html = gw.web.site.view_pending_todos()
         self.assertIn('<table', html)
         self.assertIn('ocpp.rfid', html)
-        self.assertIn('?topic=ocpp.rfid%2Fauthorize_balance', html)
         self.assertIn('Request TODO', html)
-        self.assertIn('TODO+request+for+ocpp.rfid.authorize_balance', html)
+        self.assertIn('?topic=TODO+request', html)
+        self.assertEqual(html.count('Request TODO'), 1)
 
 if __name__ == '__main__':
     unittest.main()
