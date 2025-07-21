@@ -36,7 +36,7 @@ class NavLinksTests(unittest.TestCase):
         nav.gw.web.cookies = self.orig_cookies
 
     def test_render_includes_project_links(self):
-        homes = [('Game Box', 'games/game-of-life')]
+        homes = [('Toy Games', 'games/game-of-life')]
         html = nav.render(homes=homes, links={'games/game-of-life': ['score', 'about']})
         soup = BeautifulSoup(html, 'html.parser')
         sub = soup.find('ul', class_='sub-links')
