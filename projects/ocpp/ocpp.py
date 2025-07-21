@@ -119,36 +119,3 @@ def view_ocpp_dashboard(*, _title="OCPP Dashboard", **_):
     return "\n".join(html)
 
 
-def view_active_chargers(*args, **kwargs):
-    return gw.ocpp.csms.view_active_chargers(*args, **kwargs)
-
-
-def view_charger_detail(*args, **kwargs):
-    return gw.ocpp.csms.view_charger_detail(*args, **kwargs)
-
-
-def view_energy_graph(*args, **kwargs):
-    return gw.ocpp.csms.view_energy_graph(*args, **kwargs)
-
-
-def view_charger_summary(*args, **kwargs):
-    return gw.ocpp.data.view_charger_summary(*args, **kwargs)
-
-
-def view_charger_details(*args, **kwargs):
-    return gw.ocpp.data.view_charger_details(*args, **kwargs)
-
-
-def view_time_series(*args, **kwargs):
-    return gw.ocpp.data.view_time_series(*args, **kwargs)
-
-
-def view_cp_simulator(*args, _title="CP Simulator", **kwargs):
-    return gw.ocpp.evcs.view_cp_simulator(*args, **kwargs)
-
-
-def view_manage_rfids(*args, _title="Manage RFIDs", **kwargs):
-    """Delegate to :func:`gw.ocpp.rfid.view_manage_rfids`."""
-    return gw.ocpp.rfid.view_manage_rfids(*args, **kwargs)
-
-

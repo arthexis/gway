@@ -104,7 +104,6 @@ def current_endpoint():
     """
     return gw.context.get('current_endpoint')
 
-
 def setup_app(project,
     *,
     app=None,
