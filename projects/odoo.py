@@ -63,6 +63,7 @@ def fetch_quotes(
     older_than=None,
     salesperson=None,
     customer=None,
+    tag=None,
     **kwargs
 ):
     """
@@ -73,6 +74,7 @@ def fetch_quotes(
         older_than (int, optional): Filter quotations older than a specific number of days.
         salesperson (str, optional): Filter quotations by the salesperson's name or part of it.
         customer (str, optional): Filter quotations by the customer's name or part of it.
+        tag (str | int, optional): Filter quotations by tag name or id.
         kwargs (list, optional): Additional domain filters for the query.
 
     Returns:
@@ -89,6 +91,12 @@ def fetch_quotes(
         domain_filter.append(('user_id.name', 'ilike', salesperson))
     if customer:
         domain_filter.append(('partner_id.name', 'ilike', customer))
+    if tag:
+        try:
+            tag_id = int(tag)
+            domain_filter.append(('tag_ids', 'in', [tag_id]))
+        except (TypeError, ValueError):
+            domain_filter.append(('tag_ids.name', 'ilike', tag))
     if kwargs:
         domain_filter.extend(kwargs)
     fields_to_fetch = ['name', 'amount_total', 'create_date', 'user_id', 'partner_id']
@@ -120,6 +128,27 @@ def fetch_products(*, name=None, latest_quotes=None):
         model=model, method=method
     )
     return result
+
+
+def fetch_quote_tags(*, name=None):
+    """Fetch available quotation tags."""
+    model = 'crm.tag'
+    method = 'search_read'
+
+    domain_filter = []
+    if name:
+        domain_filter.append(('name', 'ilike', name))
+
+    fields_to_fetch = ['id', 'name']
+    try:
+        result = execute_kw(
+            [domain_filter], {'fields': fields_to_fetch},
+            model=model, method=method
+        )
+        return result
+    except Exception as e:
+        gw.error(f"Error fetching quote tags: {e}")
+        raise
 
 
 def fetch_customers(
