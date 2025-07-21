@@ -354,6 +354,16 @@ def view_awg_calculator(
             <div id="calc-info" class="calc-info">
                 <button type="button" id="info-close" class="info-close hidden">[X]</button>
                 <p>This tool helps you select cable sizes and conduit using standard AWG tables. Fill in your system details and press Calculate.</p>
+                <h3>Glossary</h3>
+                <ul class="glossary">
+                    <li><strong>AWG</strong>: American Wire Gauge</li>
+                    <li><strong>A</strong>: ampere (current)</li>
+                    <li><strong>V</strong>: volt (voltage)</li>
+                    <li><strong>m</strong>: meter (length)</li>
+                    <li><strong>°C</strong>: degrees Celsius</li>
+                    <li><strong>cu</strong>: copper conductor</li>
+                    <li><strong>al</strong>: aluminum conductor</li>
+                </ul>
             </div>
             <button type="button" id="info-toggle" class="info-toggle">&#128278;</button>
             </div>
