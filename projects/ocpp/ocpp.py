@@ -77,7 +77,7 @@ def view_ocpp_dashboard(**_):
     sim_running = f"CP1: {s1}<br>CP2: {s2}"
 
     links = [
-        ("CSMS Status", "/ocpp/csms/active-chargers",
+        ("CSMS Status", "/ocpp/active-chargers",
          f"Active chargers: {active}"),
         ("Charger Summary", "/ocpp/charger-summary",
          f"Chargers: {chargers}<br>Sessions: {sessions}"),
