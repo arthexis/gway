@@ -5,6 +5,8 @@ __all__ = [
     "list_flags",
 ]
 
+import os
+
 
 def is_test_flag(name: str) -> bool:
     """Return True if name is present in GW_TEST_FLAGS."""
@@ -33,9 +35,24 @@ def _install_requirements():
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", "."])
 
 
-def test(*, root: str = "tests", filter=None, on_success=None, on_failure=None,
-         coverage: bool = False, flags=None, install: bool = False):
+def test(
+    *,
+    root: str = "tests",
+    filter=None,
+    on_success=None,
+    on_failure=None,
+    coverage: bool = False,
+    flags=None,
+    install: bool = False,
+):
     """Execute all automatically detected test suites.
+
+    Parameters
+    ----------
+    root : str | os.PathLike
+        Directory containing the test files. May point anywhere,
+        allowing discovery from temporary locations or external
+        repositories.
 
     If ``install`` is true, or key dependencies are missing, install
     ``requirements.txt`` and the package in editable mode before running.
@@ -45,6 +62,8 @@ def test(*, root: str = "tests", filter=None, on_success=None, on_failure=None,
     import time
     import unittest
     from gway.logging import use_logging
+
+    root = os.fspath(root)
 
     if install or not _is_installed():
         print("Installing requirements...")
@@ -85,7 +104,7 @@ def test(*, root: str = "tests", filter=None, on_success=None, on_failure=None,
     ):
         print("Running the test suite...")
 
-        test_loader = unittest.defaultTestLoader
+        test_loader = unittest.TestLoader()
         if filter:
             pattern = f"test*{filter}*.py"
         else:
@@ -150,9 +169,17 @@ def test(*, root: str = "tests", filter=None, on_success=None, on_failure=None,
 
 
 def list_flags(root: str = "tests") -> dict[str, list[str]]:
-    """Return mapping of flags to tests referencing them."""
+    """Return mapping of flags to tests referencing them.
+
+    Parameters
+    ----------
+    root : str | os.PathLike
+        Base directory to scan for tests.
+    """
     import os
     import re
+
+    root = os.fspath(root)
 
     flag_pat = re.compile(r"is_test_flag\([\"']([^\"']+)[\"']\)")
     def_pat = re.compile(r"\s*(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
