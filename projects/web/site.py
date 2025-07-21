@@ -678,7 +678,7 @@ def view_comitted_todos():
         if path.name.startswith("_"):
             continue
         dotted = path.relative_to(base).with_suffix("").as_posix().replace("/", ".")
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
         try:
             tree = ast.parse("".join(lines))
