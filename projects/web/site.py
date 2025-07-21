@@ -677,7 +677,7 @@ def view_project_readmes():
         if parts and parts[-1].lower() == "readme":
             parts = parts[:-1]
         tome = "/".join(parts)
-        url = gw.web.app.build_url("web", "site", "reader", tome=tome)
+        url = gw.web.app.build_url("reader", tome=tome)
         insert(tree, parts, url)
 
     def render(node: dict, root: bool = False) -> str:
@@ -739,7 +739,7 @@ def view_gateway_cookbook(*, recipe: str | None = None) -> str:
             sub = render(node[name], False)
             items.append(f"<li>{html.escape(name)}{sub}</li>")
         for rel_path in node.get("_files", []):
-            href = gw.web.app.build_url("web", "site", "gateway-cookbook", recipe=rel_path)
+            href = gw.web.app.build_url("gateway-cookbook", recipe=rel_path)
             label = html.escape(Path(rel_path).stem.replace("_", " ").title())
             items.append(f"<li><a href='{href}'>{label}</a></li>")
         cls = " class='cookbook-list'" if root else ""
@@ -817,7 +817,7 @@ def view_pending_todos():
             "<table class='todo-table'><tr><th>Function</th><th>TODO</th></tr>"
         )
         for func, todo in todos[proj]:
-            link = gw.web.app.build_url("web", "site", "help", topic=f"{proj}/{func}")
+            link = gw.web.app.build_url("help", topic=f"{proj}/{func}")
             html_parts.append(
                 f"<tr><td><a href='{link}'>{html.escape(func)}</a></td>"
                 f"<td><pre class='todo-text'>{html.escape(todo)}</pre></td></tr>"
