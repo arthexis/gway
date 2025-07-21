@@ -855,6 +855,6 @@ def render_footer_links() -> str:
                 href = f"{proj_root}/{name}".strip('/')
                 label = name.replace('-', ' ').replace('_', ' ').title()
             items.append(f'<a href="/{href}">{label}</a>')
-    cookbook = gw.web.app.build_url("web", "site", "gateway-cookbook")
+    cookbook = gw.web.app.build_url("gateway-cookbook")
     items.append(f'<a href="{cookbook}">Gateway Cookbook</a>')
     return '<p class="footer-links">' + ' | '.join(items) + '</p>' if items else ""
