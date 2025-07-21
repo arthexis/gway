@@ -119,3 +119,4 @@ def view_ocpp_dashboard(*, _title="OCPP Dashboard", **_):
     return "\n".join(html)
 
 
+
