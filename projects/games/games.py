@@ -19,6 +19,7 @@ mtg = _load("mtg.py", "games.mtg")
 qpig = _load("qpig.py", "games.qpig")
 massive_snake = _load("snl.py", "games.massive_snake")
 evennia = _load("evennia.py", "games.evennia")
+four_in_a_row = _load("four_in_a_row.py", "games.four_in_a_row")
 
 WIKI_ICON = (
     '<svg viewBox="0 0 20 20" width="12" height="12" style="vertical-align:baseline">'
@@ -53,6 +54,12 @@ _DEF = [
         "https://en.wikipedia.org/wiki/Snakes_and_Ladders",
     ),
     (
+        "Tetrad (Four In A Row)",
+        "four-in-a-row",
+        "Drop discs to connect four against a simple computer opponent.",
+        "https://en.wikipedia.org/wiki/Connect_Four",
+    ),
+    (
         "Fantastic Client",
         "fantastic-client",
         "Login to the embedded Evennia server using the web client.",
@@ -61,15 +68,19 @@ _DEF = [
 ]
 
 
-def view_games():
+def view_game_box():
     """Home view listing all available games."""
-    html = ["<h1>Games</h1>", "<ul class='games-list'>"]
+    html = [
+        '<link rel="stylesheet" href="/static/web/cards.css">',
+        "<h1>Game Box</h1>",
+        "<div class='gw-cards'>",
+    ]
     for title, route, desc, link in _DEF:
         wiki = f'<a href="{link}" target="_blank" class="wiki">{WIKI_ICON}</a>'
         html.append(
-            f"<li><a href='/games/{route}'><b>{title}</b></a><br><span>{desc} {wiki}</span></li>"
+            f"<a class='gw-card' href='/games/{route}'><h2>{title}</h2><p>{desc} {wiki}</p></a>"
         )
-    html.append("</ul>")
+    html.append("</div>")
     return "\n".join(html)
 
 
@@ -87,6 +98,10 @@ def view_qpig_farm(*args, **kwargs):
 
 def view_massive_snake(*args, **kwargs):
     return massive_snake.view_massive_snake(*args, **kwargs)
+
+
+def view_four_in_a_row(*args, **kwargs):
+    return four_in_a_row.view_four_in_a_row(*args, **kwargs)
 
 
 def view_evennia(*args, **kwargs):
