@@ -145,6 +145,17 @@ def view_cp_simulator(*args, **kwargs):
     return gw.ocpp.evcs.view_cp_simulator(*args, **kwargs)
 
 
+def view_evcs(view: str | None = None, *args, **kwargs):
+    """Delegate ``/ocpp/evcs/<view>`` routes to :mod:`ocpp.evcs` views."""
+    target = (view or "cp-simulator").replace("-", "_")
+    func = getattr(gw.ocpp.evcs, f"view_{target}", None)
+    if not callable(func):
+        return gw.web.error.redirect(
+            f"View not found: {target} in ocpp.evcs"
+        )
+    return func(*args, **kwargs)
+
+
 def view_manage_rfids(*args, **kwargs):
     """Delegate to :func:`gw.ocpp.rfid.view_manage_rfids`."""
     return gw.ocpp.rfid.view_manage_rfids(*args, **kwargs)
