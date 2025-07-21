@@ -11,6 +11,7 @@ Web Project Notes
 * When reusing `setup_app`, provide unique paths or homes to avoid collisions.
 * CLI flags resolve to a single value. Lists like ``--home a,b,c`` are not supported. Call the command once per value instead.
 * `web.site.view_reader` serves ``.md`` or ``.rst`` files from the resource root and can be used for a lightweight blog. Subfolders and hidden files are not allowed.
+* Footer links should be configured via the ``--footer`` option or template designs. Avoid editing ``render_footer_links`` directly to inject items, as that may cause duplicates like the ``Gateway Cookbook`` link.
 
 View and Render
 ---------------
