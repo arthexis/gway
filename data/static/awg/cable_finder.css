@@ -60,3 +60,71 @@
     }
 }
 
+/* Layout for calculator and info box */
+.calc-layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    position: relative;
+}
+
+.form-wrapper {
+    flex: 1 1 320px;
+    min-width: 240px;
+}
+
+.calc-info {
+    border: 1px solid #ccc;
+    padding: 0.6em 0.8em;
+    background: var(--card-bg, #fafafa);
+    flex: 1 1 220px;
+    min-width: 220px;
+    position: relative;
+}
+
+.info-toggle,
+.info-close {
+    position: absolute;
+    top: 0.4em;
+    right: 0.4em;
+    border: none;
+    background: none;
+    font-size: 1.1em;
+    cursor: pointer;
+}
+
+.info-toggle.hidden,
+.info-close.hidden {
+    display: none;
+}
+
+@media (max-width: 767px) {
+    .calc-info {
+        display: none;
+        width: 100%;
+    }
+    .calc-info.open {
+        display: block;
+        margin-top: 0.5em;
+    }
+    .info-toggle {
+        display: block;
+    }
+    .info-close {
+        display: none;
+    }
+}
+
+@media (min-width: 768px) {
+    .info-toggle,
+    .info-close {
+        display: none !important;
+    }
+    .calc-layout {
+        align-items: flex-start;
+    }
+    .calc-info {
+        display: block !important;
+    }
+}
+
