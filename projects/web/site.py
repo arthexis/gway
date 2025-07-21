@@ -606,6 +606,58 @@ def view_debug_info():
     )
 
 
+def view_future_updates():
+    """Show pending version and changelog information."""
+    import html as _html
+    import requests
+
+    current = gw.version()
+    latest = None
+    try:
+        resp = requests.get("https://pypi.org/pypi/gway/json", timeout=5)
+        resp.raise_for_status()
+        latest = resp.json()["info"]["version"]
+    except Exception as e:
+        gw.verbose(f"Failed to fetch PyPI version: {e}")
+
+    if latest and latest != current:
+        notice = (
+            f"There is a newer version of GWAY pending: { _html.escape(latest) }"
+            f" (installed { _html.escape(current) })."
+        )
+    else:
+        latest = latest or current
+        notice = f"We are at the latest version ({ _html.escape(latest) })."
+
+    changes = ""
+    try:
+        from pathlib import Path
+
+        path = Path(gw.resource("CHANGELOG.rst"))
+        text = path.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        if "Unreleased" in lines:
+            idx = lines.index("Unreleased") + 2
+            body = []
+            while idx < len(lines) and lines[idx].startswith("- "):
+                body.append(lines[idx])
+                idx += 1
+            changes = "\n".join(body).strip()
+    except Exception:
+        pass
+
+    if changes:
+        changelog = "<pre>" + _html.escape(changes) + "</pre>"
+    else:
+        changelog = "<p>No pending changes.</p>"
+
+    return (
+        "<h1>Future Updates</h1>"
+        f"<p>{notice}</p>"
+        "<h2>Unreleased Changes</h2>" + changelog
+    )
+
+
 def view_project_readmes():
     """Render an HTML tree of README links discovered under ``data/static``."""
     base_dir = Path(gw.resource("data", "static"))
