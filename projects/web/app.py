@@ -807,8 +807,13 @@ def _func_title(project: str | None, view: str) -> str | None:
         mod = None
     if not mod:
         return None
-    func = getattr(mod, f"view_{view.replace('-', '_')}", None)
-    if not callable(func):
+    func = None
+    for prefix in gw.prefixes:
+        cand = getattr(mod, f"{prefix}{view.replace('-', '_')}", None)
+        if callable(cand):
+            func = cand
+            break
+    if not func:
         func = getattr(mod, view.replace('-', '_'), None)
     if callable(func):
         return getattr(func, "_title", None)

@@ -16,11 +16,15 @@ from .sigils import Resolver, Sigil, Spool
 from .structs import Results, Project, Null
 from .runner import Runner
 
+# Prefixes used for functions mapped to web views or APIs.
+PREFIXES: tuple[str, ...] = ("view_", "api_", "render_")
+
 
 class Gateway(Resolver, Runner):
     _builtins = None  # Class-level: stores all discovered builtins only once
     _thread_local = threading.local()
     defaults = {}
+    prefixes = PREFIXES
 
     Null = Null  # Null is a black-hole, assign with care.
 
@@ -172,7 +176,7 @@ class Gateway(Resolver, Runner):
         title = getattr(func_obj, "_title", None)
         if not title:
             base = func_obj.__name__
-            for prefix in ("view_", "api_", "render_"):
+            for prefix in self.prefixes:
                 if base.startswith(prefix):
                     base = base[len(prefix):]
                     break
