@@ -6,6 +6,8 @@ class GatewayCookbookLinkTests(unittest.TestCase):
     def setUp(self):
         gw.results.clear()
         gw.context.clear()
+        self.app = gw.web.app.setup_app("web.site")
+        self.client = TestApp(self.app)
 
     def test_footer_link_not_included_by_default(self):
         app = gw.web.app.setup_app("web.site")
