@@ -50,13 +50,6 @@ def render(*, homes=None, links=None):
     if homes:
         for home_title, home_route in homes:
             home_routes.add(home_route.strip("/"))
-    if (
-        cookies_ok
-        and current_route not in home_routes
-        and current_route not in visited_set
-    ):
-        entries.append((current_title, current_route))
-        visited_set.add(current_route)
 
     # --- Build HTML links ---
     links_html = ""
@@ -85,7 +78,7 @@ def render(*, homes=None, links=None):
                             name.replace("-", " ").replace("_", " ").title()
                         )
                     active = (
-                        ' class="active"' if sub_route == current_route else ""
+                        ' class="current"' if sub_route == current_route else ""
                     )
                     links_html += (
                         f'<li><a href="/{sub_route}"{active}>{label}</a></li>'
