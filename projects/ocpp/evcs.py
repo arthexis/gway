@@ -509,6 +509,9 @@ def _run_simulator_thread(cp_idx, params):
             asyncio.set_event_loop(loop)
             loop.run_until_complete(coro)
         state["last_status"] = "Simulator finished."
+    except KeyboardInterrupt as e:
+        state["last_status"] = "Error"
+        state["last_error"] = f"{e}\n{traceback.format_exc()}"
     except Exception as e:
         state["last_status"] = "Error"
         state["last_error"] = f"{e}\n{traceback.format_exc()}"
