@@ -93,6 +93,9 @@ To review stored information you can render a simple summary table with:
 
    gway ocpp.data.view_charger_summary
 
+The same information is available from the web route
+``/ocpp/charger-summary``.
+
 This shows the number of sessions and total energy per charger along
 with the timestamp of the last stop and any last recorded error.
 

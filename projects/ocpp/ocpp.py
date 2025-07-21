@@ -79,7 +79,7 @@ def view_ocpp_dashboard(**_):
     links = [
         ("CSMS Status", "/ocpp/csms/active-chargers",
          f"Active chargers: {active}"),
-        ("Charger Summary", "/ocpp/data/summary",
+        ("Charger Summary", "/ocpp/charger-summary",
          f"Chargers: {chargers}<br>Sessions: {sessions}"),
         ("Energy Time Series", "/ocpp/time-series",
          f"Total Energy: {energy} kWh"),

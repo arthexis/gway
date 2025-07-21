@@ -266,7 +266,14 @@ def setup_app(project,
 
         @app.error(404)
         def handle_404(error):
-            return gw.web.error.redirect(f"404 Not Found: {request.url}", err=error)
+            """Redirect 404 responses and log the missing URL."""
+            try:
+                gw.web.site.record_broken_link(request.url)
+            except Exception:
+                pass
+            return gw.web.error.redirect(
+                f"404 Not Found: {request.url}", err=error
+            )
     
     elif home:
         add_home(home, path, project)

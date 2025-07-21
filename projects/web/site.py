@@ -843,3 +843,51 @@ def build_help_db(*, update: bool = False):
     return gw.help_db.build(update=update)
 
 
+def _broken_links_path() -> Path:
+    """Return path to the broken links log file under work/web."""
+    return Path(gw.resource("work", "web", "broken_links.txt"))
+
+
+def record_broken_link(url: str) -> None:
+    """Append a broken link URL to the log, avoiding duplicates."""
+    path = _broken_links_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        lines = {l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()}
+    except FileNotFoundError:
+        lines = set()
+    if url not in lines:
+        lines.add(url)
+        path.write_text("\n".join(sorted(lines)))
+
+
+def view_broken_links():
+    """Render the list of recorded broken links with a copy-friendly textarea."""
+    path = _broken_links_path()
+    try:
+        links = [l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    except FileNotFoundError:
+        links = []
+    links = sorted(set(links))
+    if not links:
+        return "<h1>Broken Links</h1><p>No broken links recorded.</p>"
+    text = "\n".join(links)
+    items = "".join(f"<li>{html.escape(l)}</li>" for l in links)
+    textarea = (
+        f"<textarea readonly class='main' style='width:100%' rows='{len(links) + 1}'>"
+        f"{html.escape(text)}</textarea>"
+    )
+    return f"<h1>Broken Links</h1>{textarea}<ol>{items}</ol>"
+
+
+def setup_app(*, app=None, footer=None, **_):
+    """Register default home and footer links for the site project."""
+    path = "web/site"
+    gw.web.app.add_home("reader", path, project="web.site")
+    home_route = f"{path}/reader"
+    gw.web.app.add_footer_links(home_route, "broken-links", project="web.site")
+    if footer:
+        gw.web.app.add_footer_links(home_route, footer, project="web.site")
+    return app
+
+
