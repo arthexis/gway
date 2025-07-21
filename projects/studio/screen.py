@@ -5,7 +5,6 @@ import platform
 import subprocess
 import re, glob, time, os
 from datetime import datetime
-import pygame
 from PIL import Image, ImageGrab
 from gway import gw
 
@@ -349,6 +348,7 @@ def _make_outpath(pattern, output_gif, base_dir):
 
 
 def _display_and_save(pil_images, frame_files, output_gif):
+    import pygame
     # Helper: flatten transparent frames onto black
     def flatten_rgba(img):
         if img.mode != "RGBA":
