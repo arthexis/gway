@@ -1,7 +1,6 @@
 # file: projects/web/server.py
 
 import socket
-from numpy import iterable
 from gway import gw, __
 
 # Registry for active apps and their hosts/ports
