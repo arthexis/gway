@@ -316,6 +316,15 @@ def get_active_chargers() -> list[str]:
     )
     return [r[0] for r in rows]
 
+def reset_connections():
+    """Mark all chargers as disconnected on startup."""
+    gw.sql.model(CONNECTIONS, project="ocpp")
+    conn = gw.sql.open_db(project="ocpp")
+    gw.sql.execute(
+        "UPDATE connections SET connected=0",
+        connection=conn,
+    )
+
 def get_meter_values(charger_id: str, transaction_id: int):
     conn = gw.sql.open_db(project="ocpp")
     rows = gw.sql.execute(
