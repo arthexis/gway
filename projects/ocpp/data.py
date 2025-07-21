@@ -423,6 +423,10 @@ def view_charger_summary(**_):
     html.append("</table>")
     return "\n".join(html)
 
+def view_summary(**kwargs):
+    """Alias for :func:`view_charger_summary` to keep URLs stable."""
+    return view_charger_summary(**kwargs)
+
 def view_charger_details(
     *,
     charger_id: str = None,
