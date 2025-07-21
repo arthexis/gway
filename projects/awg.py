@@ -302,9 +302,9 @@ def view_awg_calculator(
                             <label for="temperature">Temperature:</label>
                             <select id="temperature" name="temperature">
                                 <option value="auto">Auto</option>
-                                <option value="60">60C</option>
-                                <option value="75">75C</option>
-                                <option value="90">90C</option>
+                                <option value="60">60C (140F)</option>
+                                <option value="75">75C (167F)</option>
+                                <option value="90">90C (194F)</option>
                             </select>
                         </td>
                     </tr>
@@ -361,6 +361,7 @@ def view_awg_calculator(
                     <li><strong>V</strong>: volt (voltage)</li>
                     <li><strong>m</strong>: meter (length)</li>
                     <li><strong>°C</strong>: degrees Celsius</li>
+                    <li><strong>°F</strong>: degrees Fahrenheit</li>
                     <li><strong>cu</strong>: copper conductor</li>
                     <li><strong>al</strong>: aluminum conductor</li>
                 </ul>
