@@ -72,13 +72,15 @@ def view_game_box():
     """Home view listing all available games."""
     html = [
         '<link rel="stylesheet" href="/static/web/cards.css">',
-        "<h1>Game Box</h1>",
+        "<h1>Toy Games</h1>",
         "<div class='gw-cards'>",
     ]
     for title, route, desc, link in _DEF:
-        wiki = f'<a href="{link}" target="_blank" class="wiki">{WIKI_ICON}</a>'
         html.append(
-            f"<a class='gw-card' href='/games/{route}'><h2>{title}</h2><p>{desc} {wiki}</p></a>"
+            "<div class='gw-card'>"
+            f"<a href='/games/{route}' class='main-link'><h2>{title}</h2><p>{desc}</p></a>"
+            f"<a href='{link}' target='_blank' class='wiki'>{WIKI_ICON}</a>"
+            "</div>"
         )
     html.append("</div>")
     return "\n".join(html)
