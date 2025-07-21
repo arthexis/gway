@@ -140,6 +140,9 @@ def setup_app(project,
     """
     global _ver, _homes, _enabled, _static_route, _shared_route
 
+    if "all" in setup_kwargs and not everything:
+        everything = bool(setup_kwargs.pop("all"))
+
     auth_required = str(auth).strip().lower() not in {
         "none", "false", "disabled", "optional"
     }

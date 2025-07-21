@@ -38,6 +38,7 @@ Pseudo code::
 Use the cookie key ``fiar_board`` (expiry e.g. two weeks). When loading the
 page, decode the cookie value to restore the board. Player moves are triggered
 by clicking a column with an open slot. After the player's drop, the computer
-first checks if that move created a threat of an immediate win on the next
-turn. If so it blocks that column, otherwise it selects a random legal column
-and stores the updated board back in the cookie.
+checks for a winning move of its own first. If such a column exists it will
+take it, otherwise it checks if the player threatens an immediate win next turn
+and blocks that column. If neither case applies, it selects a random legal
+column and stores the updated board back in the cookie.
