@@ -79,7 +79,7 @@ def view_ocpp_dashboard(**_):
          f"Active chargers: {active}"),
         ("Charger Summary", "/ocpp/data/summary",
          f"Chargers: {chargers}<br>Sessions: {sessions}"),
-        ("Energy Time Series", "/ocpp/data/time-series",
+        ("Energy Time Series", "/ocpp/time-series",
          f"Total Energy: {energy} kWh"),
         ("CP Simulator", "/ocpp/evcs/cp-simulator",
          f"Simulator: {sim_running}"),
