@@ -286,3 +286,20 @@ def view_audit_chatlog(*, page: int = 1):
         parts.append("</p>")
 
     return "".join(parts)
+
+
+def view_gpt_actions():
+    """Landing page for the ChatGPT Actions module."""
+    parts = [
+        "<link rel='stylesheet' href='/static/web/cards.css'>",
+        "<h1>GPT Actions</h1>",
+        "<div class='gw-cards'>",
+    ]
+    audit_url = gw.web.app.build_url("audit-chatlog")
+    parts.append(
+        f"<a class='gw-card' href='{audit_url}'><h2>Audit Chatlog</h2>"
+        "<p>Review API message history</p></a>"
+    )
+    parts.append("</div>")
+    parts.append(gw.web.site.view_reader(tome="web/chat/README"))
+    return "\n".join(parts)
