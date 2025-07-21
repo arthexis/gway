@@ -104,8 +104,9 @@ def current_endpoint():
     """
     return gw.context.get('current_endpoint')
 
-# TODO: Ensure we can just setup "ocpp" and it will properly know to include all sub-projects.
-#       Ie, a package implicitly includes its sub-projects as delegates.
+# With the ``everything`` flag a package can initialize all its sub-projects as
+# delegates automatically so paths like ``/ocpp/csms`` work without extra
+# glue code.
 
 def setup_app(project,
     *,
@@ -125,6 +126,7 @@ def setup_app(project,
     auth="disabled",       # Accept "optional"/"disabled" words to disable
     engine="bottle",
     delegates=None,
+    everything: bool = False,
     **setup_kwargs,
 ):
     """
@@ -136,7 +138,8 @@ def setup_app(project,
     ``footer`` accepts a list of links similar to ``links`` but rendered in the
     page footer instead of the navigation sidebar. Sub-projects of the loaded
     project are always scanned for missing handlers. Use ``delegates`` to
-    specify additional fallback projects.
+    specify additional fallback projects. Set ``everything`` to ``True`` to
+    automatically initialize all sub-projects as delegates.
     """
     global _ver, _homes, _enabled, _static_route, _shared_route
 
@@ -283,6 +286,29 @@ def setup_app(project,
         add_links(_homes[-1][1], links, project)
     elif footer and _homes:
         add_footer_links(_homes[-1][1], footer, project)
+
+    # Recursively setup sub-projects when requested (before main routes)
+    if everything and delegate_modules:
+        base_path = path if path is not None else project.replace('.', '/')
+        for mod in delegate_modules:
+            sub_name = getattr(mod, '_name', None)
+            if not sub_name:
+                continue
+            if sub_name.startswith(project + '.'):
+                rel = sub_name[len(project) + 1:]
+            else:
+                rel = sub_name
+            sub_path = f"{base_path}/{rel.replace('.', '/')}"
+            try:
+                setup_app(
+                    sub_name,
+                    app=app,
+                    path=sub_path,
+                    everything=False,
+                    **setup_kwargs,
+                )
+            except Exception as exc:
+                gw.warn(f"Failed to setup sub-project {sub_name}: {exc}")
 
     if getattr(gw, "timed_enabled", False):
         @app.hook('before_request')
