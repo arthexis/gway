@@ -7,6 +7,8 @@
   --accent: #5eead4;
   --accent-alt: #60a5fa;
   --muted: #9ca3af;
+  /* ensure cards and other content use a dark background */
+  --card-bg: #232435;
   --error: #f87171;
   --border-radius: 0.5rem;
   --font-main: 'Inter', sans-serif;
