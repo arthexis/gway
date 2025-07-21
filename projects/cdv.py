@@ -59,7 +59,7 @@ def load_all(pathlike: str) -> dict[str, dict[str, str]]:
         path = _resolve_path(pathlike)
         return _read_table(path)
     except Exception as e:
-        gw.halt(f"Failed to read table '{pathlike}': {e}")
+        gw.abort(f"Failed to read table '{pathlike}': {e}")
 
 
 def update(table_path: str, entry_id: str, **fields):
