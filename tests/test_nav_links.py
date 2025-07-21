@@ -45,5 +45,26 @@ class NavLinksTests(unittest.TestCase):
         self.assertIn('/games/score', hrefs)
         self.assertIn('/games/about', hrefs)
 
+    def test_sub_link_highlight_and_no_current_page(self):
+        nav.gw.web.cookies = type('C', (), {'accepted': lambda self2: True,
+                                             'get': lambda self2, n, d=None: None})()
+        nav.gw.web.app = type('A', (), {'is_setup': lambda self2, n: True})()
+        nav.request = FakeRequest('/games/score')
+        homes = [('Game Box', 'games/game-of-life')]
+        html = nav.render(homes=homes, links={'games/game-of-life': ['score', 'about']})
+        soup = BeautifulSoup(html, 'html.parser')
+        score_links = soup.find_all('a', href='/games/score')
+        self.assertEqual(len(score_links), 1)
+        self.assertIn('current', score_links[0].get('class', []))
+
+    def test_current_page_not_added_when_missing(self):
+        nav.gw.web.cookies = type('C', (), {'accepted': lambda self2: True,
+                                             'get': lambda self2, n, d=None: None})()
+        nav.gw.web.app = type('A', (), {'is_setup': lambda self2, n: True})()
+        nav.request = FakeRequest('/unlisted/page')
+        homes = [('Game Box', 'games/game-of-life')]
+        html = nav.render(homes=homes)
+        self.assertNotIn('/unlisted/page', html)
+
 if __name__ == '__main__':
     unittest.main()
