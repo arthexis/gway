@@ -7,6 +7,7 @@ import secrets
 import base64
 from bottle import request
 import asyncio, json, random, time, websockets
+import os
 
 # [Simulator:CPX] Exception: cannot call recv while another coroutine is already running recv or recv_streaming
 # It seems to ocurr intermitently. 
@@ -67,6 +68,35 @@ def simulate(
     ws_port = int(gw.resolve(ws_port))
     session_count = parse_repeat(repeat)
     n_threads = int(threads) if threads else 1
+
+    # record starting state for CLI usage
+    sim_params = dict(
+        host=host,
+        ws_port=ws_port,
+        rfid=rfid,
+        cp_path=cp_path,
+        duration=duration,
+        interval=interval,
+        kwh_min=kwh_min,
+        kwh_max=kwh_max,
+        pre_charge_delay=pre_charge_delay,
+        repeat=repeat,
+        threads=threads,
+        username=username,
+        password=password,
+        daemon=daemon,
+    )
+    _simulator_state.update(
+        {
+            "last_command": "start",
+            "last_status": "Simulator launching...",
+            "running": True,
+            "params": sim_params,
+            "start_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "stop_time": None,
+        }
+    )
+    _save_state_file(_simulator_state)
 
     async def orchestrate_all():
         tasks = []
@@ -135,6 +165,10 @@ def simulate(
                 gw.halt("[Simulator] Orchestration cancelled.")
             for t in threads_list:
                 t.join()
+        _simulator_state["last_status"] = "Simulator finished."
+        _simulator_state["running"] = False
+        _simulator_state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        _save_state_file(_simulator_state)
 
     if daemon:
         return orchestrate_all()
@@ -152,6 +186,10 @@ def simulate(
                 threads_list.append(t)
             for t in threads_list:
                 t.join()
+        _simulator_state["last_status"] = "Simulator finished."
+        _simulator_state["running"] = False
+        _simulator_state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        _save_state_file(_simulator_state)
 
 async def simulate_cp(
         cp_idx,
@@ -379,6 +417,9 @@ async def simulate_cp(
 
     print(f"[Simulator:{cp_name}] Simulation ended.")
     _simulator_state["last_status"] = "Stopped"
+    _simulator_state["running"] = False
+    _simulator_state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _save_state_file(_simulator_state)
 
 
 # --- Simulator control state ---
@@ -393,11 +434,48 @@ _simulator_state = {
     "params": {},
 }
 
+# Persist simulator state across processes
+STATE_FILE = gw.resource("work", "ocpp", "simulator_state.json")
+
+def _load_state_file():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def _save_state_file(state: dict):
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+    except Exception:
+        pass
+
+# Initialize from saved state if available
+try:
+    saved = _load_state_file()
+    for k in [
+        "running",
+        "last_status",
+        "last_command",
+        "last_error",
+        "start_time",
+        "stop_time",
+        "params",
+    ]:
+        if k in saved:
+            _simulator_state[k] = saved[k]
+except Exception:
+    pass
+
 
 def _run_simulator_thread(params):
     """Background runner for the simulator, updating state as it runs."""
     try:
         _simulator_state["last_status"] = "Starting..."
+        _save_state_file(_simulator_state)
         coro = simulate(**params)
         if hasattr(coro, "__await__"):  # coroutine (daemon=True)
             import asyncio
@@ -412,6 +490,7 @@ def _run_simulator_thread(params):
         _simulator_state["running"] = False
         _simulator_state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
         _simulator_state["thread"] = None
+        _save_state_file(_simulator_state)
 
 
 def _start_simulator(params=None):
@@ -425,6 +504,7 @@ def _start_simulator(params=None):
     _simulator_state["running"] = True
     _simulator_state["start_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
     _simulator_state["stop_time"] = None
+    _save_state_file(_simulator_state)
     t = threading.Thread(target=_run_simulator_thread, args=(_simulator_state["params"],), daemon=True)
     _simulator_state["thread"] = t
     t.start()
@@ -437,6 +517,7 @@ def _stop_simulator():
     _simulator_state["running"] = False
     # Simulator must check this flag between sessions (not during a blocking one).
     # For a true hard kill, one would need to implement cancellation or kill the thread (not recommended).
+    _save_state_file(_simulator_state)
     return True
 
 def _simulator_status_json():
@@ -450,6 +531,23 @@ def _simulator_status_json():
         "start_time": _simulator_state["start_time"],
         "stop_time": _simulator_state["stop_time"],
     }, indent=2)
+
+def get_simulator_state(refresh_file: bool = False) -> dict:
+    """Return current simulator state, optionally reloading from disk."""
+    if refresh_file:
+        file_state = _load_state_file()
+        for k in [
+            "running",
+            "last_status",
+            "last_command",
+            "last_error",
+            "start_time",
+            "stop_time",
+            "params",
+        ]:
+            if k in file_state:
+                _simulator_state[k] = file_state[k]
+    return dict(_simulator_state)
 
 def view_cp_simulator(*args, **kwargs):
     """
