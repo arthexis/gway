@@ -407,7 +407,7 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
     if state == "online":
         status = "Charging"
     elif state == "available":
-        status = "Idle"
+        status = "Available"
     elif state == "error":
         status = "Error"
     else:
