@@ -50,7 +50,7 @@ class NavLinksTests(unittest.TestCase):
                                              'get': lambda self2, n, d=None: None})()
         nav.gw.web.app = type('A', (), {'is_setup': lambda self2, n: True})()
         nav.request = FakeRequest('/games/score')
-        homes = [('Game Box', 'games/game-of-life')]
+        homes = [('Toy Games', 'games/game-of-life')]
         html = nav.render(homes=homes, links={'games/game-of-life': ['score', 'about']})
         soup = BeautifulSoup(html, 'html.parser')
         score_links = soup.find_all('a', href='/games/score')
@@ -62,7 +62,7 @@ class NavLinksTests(unittest.TestCase):
                                              'get': lambda self2, n, d=None: None})()
         nav.gw.web.app = type('A', (), {'is_setup': lambda self2, n: True})()
         nav.request = FakeRequest('/unlisted/page')
-        homes = [('Game Box', 'games/game-of-life')]
+        homes = [('Toy Games', 'games/game-of-life')]
         html = nav.render(homes=homes)
         self.assertNotIn('/unlisted/page', html)
 

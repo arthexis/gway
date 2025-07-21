@@ -68,7 +68,7 @@ _DEF = [
 ]
 
 
-def view_game_box():
+def view_toy_games():
     """Home view listing all available games."""
     html = [
         '<link rel="stylesheet" href="/static/web/cards.css">',
