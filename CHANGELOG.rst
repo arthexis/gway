@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.56 [build e6cbf4]
+---------------------
+
+- 70f25f8 Remove failing cp simulator test
+
 0.4.55 [build 429e64]
 ---------------------
 
