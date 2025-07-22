@@ -48,7 +48,9 @@ def help(*args, full: bool = False, list_flags: bool = False):
 
     conn = gw.sql.open_db(db_path, row_factory=True)
     try:
-        conn.cursor().execute("SELECT 1 FROM param_types LIMIT 1")
+        cur0 = conn.cursor()
+        cur0.execute("SELECT 1 FROM param_types LIMIT 1")
+        cur0.execute("SELECT tests FROM help LIMIT 1")
     except sqlite3.OperationalError:
         gw.help_db.build(update=True)
         gw.sql.close_connection(datafile=db_path)
@@ -146,6 +148,9 @@ def help(*args, full: bool = False, list_flags: bool = False):
                 )
                 if cur.fetchone():
                     entry["Provides"] = r_row["type"]
+            tests_raw = row["tests"].strip() if row["tests"] else ""
+            tests_list = [t for t in tests_raw.splitlines() if t.strip()]
+            entry["Tests"] = tests_list if tests_list else ["No tests found"]
             if full:
                 entry["Full Code"] = row["source"]
             else:

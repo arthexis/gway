@@ -447,6 +447,10 @@ def _render_help_section(info, use_query_links=False, highlight=False, *args, **
         elif key in ("Docstring", "TODOs"):
             value = f"<div class='doc'>{html.escape(str(value))}</div>"
 
+        elif key == "Tests" and isinstance(value, list):
+            items = ''.join(f"<li>{html.escape(str(v))}</li>" for v in value)
+            value = f"<ul class='test-list'>{items}</ul>"
+
         # Only for regular text fields, run _autolink_refs
         elif use_query_links and isinstance(value, str):
             value = _autolink_refs(value)

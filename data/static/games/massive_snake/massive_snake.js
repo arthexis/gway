@@ -13,20 +13,5 @@ document.addEventListener('DOMContentLoaded', function () {
                 msg.appendChild(span);
             }
         }
-        const roll = document.querySelector('.roll-button');
-        const asc = document.querySelector('.snake-ascend button');
-        if (asc) asc.disabled = true;
-        if (roll) roll.disabled = true;
-        setTimeout(() => {
-            if (msg) msg.remove();
-            if (asc) asc.disabled = false;
-            if (roll) roll.disabled = false;
-        }, 2000);
-    } else if (window.msnakeDisableRoll) {
-        const roll = document.querySelector('.roll-button');
-        if (roll) {
-            roll.disabled = true;
-            setTimeout(() => { roll.disabled = false; }, 2000);
-        }
     }
 });

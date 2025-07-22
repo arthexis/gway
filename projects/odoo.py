@@ -482,6 +482,7 @@ def find_quotes(
     product,
     quantity: int = 1,
     state: str = 'draft',
+    tag=None,
     **kwargs
 ):
     """
@@ -491,6 +492,7 @@ def find_quotes(
         product (str or int): Product ID or partial name.
         quantity (int): Minimum quantity of the product in the quote. Default is 1.
         state (str): Odoo sale order state (default: 'draft' for quotations).
+        tag (str | int, optional): Filter quotations by tag name or id.
         **kwargs: Additional domain filters for sale.order.
 
     Returns:
@@ -546,6 +548,12 @@ def find_quotes(
     domain_orders = [('id', 'in', order_ids)]
     if state:
         domain_orders.append(('state', '=', state))
+    if tag:
+        try:
+            tag_id = int(tag)
+            domain_orders.append(('tag_ids', 'in', [tag_id]))
+        except (TypeError, ValueError):
+            domain_orders.append(('tag_ids.name', 'ilike', tag))
     # Add any extra filters from kwargs
     for key, value in kwargs.items():
         domain_orders.append((key, '=', value))

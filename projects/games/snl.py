@@ -197,8 +197,6 @@ def view_massive_snake(*, action=None, name=None, color=None):
     script_parts = []
     if ready_to_ascend and pid:
         script_parts.append("<script>window.msnakeReadyToAscend=true;</script>")
-    if disable_roll:
-        script_parts.append("<script>window.msnakeDisableRoll=true;</script>")
     script = ''.join(script_parts)
 
     html = [
