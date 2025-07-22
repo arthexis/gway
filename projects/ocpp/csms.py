@@ -452,6 +452,12 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
         <tr>
           <td class="charger-info-td">
             <table class="charger-info-table">
+              <colgroup>
+                <col class="label-col">
+                <col class="value-col">
+                <col class="label-col">
+                <col class="value-col">
+              </colgroup>
               <tr>
                 <td class="label">ID</td>
                 <td class="value">{cid}</td>
