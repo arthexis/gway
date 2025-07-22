@@ -116,7 +116,7 @@
 .charger-card {
     width: 100%;
     max-width: 1200px;
-    margin: 0 auto 28px auto;
+    margin: 0 auto 20px auto;
     background: #242b32;
     color: #fff;
     border-radius: 1rem;
@@ -125,7 +125,7 @@
     /* Right border color comes from status class */
     border-right-width: 25px;
     border-right-style: solid;
-    padding: 1.3em 2.1em 2.3em 2.1em;
+    padding: 1.2em 2.1em 1.6em 2.1em;
     display: block;
     box-sizing: border-box;
     transition: border-right-color 0.3s;
