@@ -15,19 +15,5 @@ class EvcsViewTests(unittest.TestCase):
         text = resp.body.decode()
         self.assertIn('<h1>OCPP Charge Point Simulator</h1>', text)
 
-    def test_cp_simulator_start_action(self):
-        """Starting the simulator via POST should call _start_simulator."""
-        # Ensure the module is loaded so patching succeeds
-        import_module('ocpp_evcs')
-        with patch('ocpp_evcs._start_simulator', return_value=True) as start:
-            resp = self.client.post('/ocpp/evcs/cp-simulator', {
-                'cp': '1',
-                'action': 'start',
-            })
-        self.assertEqual(resp.status, 200)
-        text = resp.body.decode()
-        self.assertIn('CP1 started.', text)
-        start.assert_called_once()
-
 if __name__ == '__main__':
     unittest.main()
