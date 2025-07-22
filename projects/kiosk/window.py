@@ -1,4 +1,4 @@
-"""Launch a minimal browser window on Windows using ``pywebview``."""
+"""Launch a minimal browser window using ``pywebview``."""
 
 from __future__ import annotations
 
@@ -44,4 +44,10 @@ def show(
         resizable=False,
         fullscreen=fullscreen,
     )
-    webview.start(gui="edgechromium" if sys.platform == "win32" else None)
+    gui = None
+    if sys.platform == "win32":
+        gui = "edgechromium"
+    elif sys.platform.startswith("linux"):
+        gui = "gtk"
+
+    webview.start(gui=gui)

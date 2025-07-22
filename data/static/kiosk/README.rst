@@ -1,7 +1,8 @@
 Kiosk Project
 -------------
 
-The ``kiosk`` project launches a minimal browser window on Windows.
+The ``kiosk`` project launches a minimal browser window using ``pywebview``.
+It works on Windows and on Linux (tested on Raspberry Pi OS).
 Use it to present a local web application without any browser chrome.
 
 Usage
@@ -10,6 +11,10 @@ Usage
 From a recipe::
 
     kiosk show --url http://127.0.0.1:8888
+
+Or launch the built-in Recipe Launcher::
+
+    gway -r recipe_launcher
 
 Parameters
 ==========

@@ -1,0 +1,10 @@
+# file: recipes/recipe_launcher.gwr
+
+web app setup:
+    - web.site --home gateway-cookbook
+help-db build
+web:
+ - static collect
+ - server start-app --port 8888
+kiosk show --url http://127.0.0.1:8888/web/site/gateway-cookbook --width 1024 --height 768
+until --done

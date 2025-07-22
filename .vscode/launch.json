@@ -48,6 +48,14 @@
             "module": "pip",
             "args": ["install", "-U", "-r", "requirements.txt"],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "gway -r recipe_launcher",
+            "type": "python",
+            "request": "launch",
+            "module": "gway",
+            "args": ["-r", "recipe_launcher"],
+            "console": "integratedTerminal"
         }
     ]
 }

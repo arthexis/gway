@@ -714,7 +714,19 @@ def view_gateway_cookbook(*, recipe: str | None = None) -> str:
             content = file_path.read_text(encoding="utf-8")
             title = html.escape(file_path.name)
             body = html.escape(content)
-            return f"<h1>{title}</h1><pre><code class='gwr'>{body}</code></pre>"
+            run_btn = ""
+            if gw.web.server.is_local():
+                action = gw.web.app.build_url("gateway-cookbook")
+                run_btn = (
+                    "<form method='post' action='{0}' style='margin-top:1em'>"
+                    "<input type='hidden' name='recipe' value='{1}'>"
+                    "<button type='submit'>Run Recipe</button>"
+                    "</form>"
+                ).format(action, html.escape(safe, quote=True))
+            return (
+                f"<h1>{title}</h1><pre><code class='gwr'>{body}</code></pre>"
+                f"{run_btn}"
+            )
 
     tree: dict = {}
 
@@ -747,6 +759,29 @@ def view_gateway_cookbook(*, recipe: str | None = None) -> str:
 
     body = render(tree, True) if tree else "<p>No recipes found.</p>"
     return "<h1>Gateway Cookbook</h1>" + body
+
+
+def view_post_gateway_cookbook(*, recipe: str | None = None, request=None) -> str:
+    """POST handler to execute a recipe when running locally."""
+    message = ""
+    base_dir = Path(gw.resource("recipes"))
+    if recipe and gw.web.server.is_local(request=request):
+        safe = _sanitize_relpath(recipe)
+        if safe:
+            file_path = base_dir / safe
+            if file_path.is_file():
+                try:
+                    gw.run_recipe(str(file_path))
+                    message = "<p>Recipe launched. Check console for output.</p>"
+                except Exception as e:  # pragma: no cover - unexpected errors
+                    message = f"<pre>{html.escape(str(e))}</pre>"
+            else:
+                message = "<b>Recipe not found.</b>"
+        else:
+            message = "<b>Invalid recipe path.</b>"
+    elif recipe:
+        message = "<b>Recipe execution only allowed in local mode.</b>"
+    return view_gateway_cookbook(recipe=recipe) + message
 
 
 def view_pending_todos():

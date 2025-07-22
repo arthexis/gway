@@ -35,4 +35,4 @@ argcomplete
 PyJWT
 sounddevice
 PyYAML
-pywebview; platform_system == "Windows"
+pywebview
