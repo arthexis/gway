@@ -23,6 +23,13 @@
     width: 100%;
     font-size: 1.08em;
     border-collapse: collapse;
+    table-layout: fixed;
+}
+.charger-info-table col.label-col {
+    width: 6.2em;
+}
+.charger-info-table col.value-col {
+    width: 8.4em;
 }
 .charger-info-table td.label {
     color: #bcd;
