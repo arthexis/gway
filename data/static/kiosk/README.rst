@@ -12,6 +12,10 @@ From a recipe::
 
     kiosk show --url http://127.0.0.1:8888
 
+Or launch the built-in Recipe Launcher::
+
+    gway -r recipe_launcher
+
 Parameters
 ==========
 
