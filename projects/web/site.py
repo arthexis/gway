@@ -914,9 +914,9 @@ def setup_app(*, app=None, footer=None, **_):
     path = "web/site"
     gw.web.app.add_home("reader", path, project="web.site")
     home_route = f"{path}/reader"
-    gw.web.app.add_footer_links(home_route, "broken-links", project="web.site")
+    gw.web.footer.add_footer_links(home_route, "broken-links", project="web.site")
     if footer:
-        gw.web.app.add_footer_links(home_route, footer, project="web.site")
+        gw.web.footer.add_footer_links(home_route, footer, project="web.site")
     return app
 
 

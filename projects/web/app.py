@@ -21,6 +21,7 @@ import os
 from urllib.parse import urlencode
 import bottle
 import json
+import requests
 import datetime
 import time
 import html
@@ -31,10 +32,10 @@ from gway import gw
 _ver = None
 _homes = []   # (title, route)
 _links: dict[str, list[object]] = {}
-_footer_links: dict[str, list[object]] = {}
 _enabled = set()
 _registered_routes: set[tuple[str, str]] = set()
 _fresh_mtime = None
+_fresh_version = None
 _fresh_dt = None
 _build_mtime = None
 _build_dt = None
@@ -45,14 +46,27 @@ UPLOAD_MB = 100
 
 def _refresh_fresh_date():
     """Return cached datetime of VERSION modification, updating cache if needed."""
-    global _fresh_mtime, _fresh_dt
+    global _fresh_mtime, _fresh_dt, _fresh_version
+    current_version = gw.version()
+    if _fresh_version == current_version and _fresh_dt is not None:
+        return _fresh_dt
+    if _fresh_version != current_version:
+        try:
+            data = requests.get("https://pypi.org/pypi/gway/json", timeout=5).json()
+            iso = data["releases"][current_version][0]["upload_time_iso_8601"]
+            _fresh_dt = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00"))
+            _fresh_version = current_version
+            return _fresh_dt
+        except Exception:
+            pass
     try:
         path = gw.resource("VERSION")
         mtime = os.path.getmtime(path)
     except Exception:
         return None
-    if _fresh_mtime != mtime:
+    if _fresh_mtime != mtime or _fresh_version != current_version:
         _fresh_mtime = mtime
+        _fresh_version = current_version
         _fresh_dt = datetime.datetime.fromtimestamp(mtime)
     return _fresh_dt
 
@@ -252,14 +266,14 @@ def setup_app(project,
         app = Bottle()
         _homes.clear()
         _links.clear()
-        _footer_links.clear()
+        gw.web.footer.clear()
         _registered_routes.clear()
         _enabled.clear()
         _enabled.add(project)
         if home:
             add_home(home, path, project)
             add_links(f"{path}/{home}", links, project)
-            add_footer_links(f"{path}/{home}", footer, project)
+            gw.web.footer.add_footer_links(f"{path}/{home}", footer, project)
 
         def index():
             response.status = 302
@@ -281,11 +295,11 @@ def setup_app(project,
     elif home:
         add_home(home, path, project)
         add_links(f"{path}/{home}", links, project)
-        add_footer_links(f"{path}/{home}", footer, project)
+        gw.web.footer.add_footer_links(f"{path}/{home}", footer, project)
     elif links and _homes:
         add_links(_homes[-1][1], links, project)
     elif footer and _homes:
-        add_footer_links(_homes[-1][1], footer, project)
+        gw.web.footer.add_footer_links(_homes[-1][1], footer, project)
 
     # Recursively setup sub-projects when requested (before main routes)
     if everything and delegate_modules:
@@ -746,7 +760,7 @@ def render_template(*, title="GWAY", content="", css_files=None, js_files=None, 
         """
 
     message_html = gw.web.message.render() if is_setup('web.message') else ""
-    footer_links_html = render_footer_links()
+    footer_links_html = gw.web.footer.render_footer_links()
 
     html = template("""<!DOCTYPE html>
         <html lang="en">
@@ -861,7 +875,7 @@ def add_home(home, path, project=None):
 
 def add_links(route: str, links=None, project: str | None = None):
     global _links
-    parsed = parse_links(links)
+    parsed = gw.web.footer.parse_links(links)
     if parsed:
         if project:
             parsed = [
@@ -872,60 +886,4 @@ def add_links(route: str, links=None, project: str | None = None):
         _links[route] = existing + parsed
         gw.debug(f"Added links for {route}: {_links[route]}")
 
-def add_footer_links(route: str, links=None, project: str | None = None):
-    global _footer_links
-    parsed = parse_links(links)
-    if parsed:
-        if project:
-            parsed = [
-                (project, item) if not isinstance(item, tuple) else item
-                for item in parsed
-            ]
-        existing = _footer_links.get(route, [])
-        _footer_links[route] = existing + parsed
-        gw.debug(f"Added footer links for {route}: {_footer_links[route]}")
 
-def parse_links(links) -> list[object]:
-    if not links:
-        return []
-    if isinstance(links, str):
-        tokens = links.replace(',', ' ').split()
-    else:
-        try:
-            tokens = list(links)
-        except Exception:
-            tokens = []
-    result: list[object] = []
-    for t in tokens:
-        token = str(t).strip()
-        if not token:
-            continue
-        if ':' in token:
-            proj, view = token.split(':', 1)
-            result.append((proj.strip(), view.strip()))
-        else:
-            result.append(token)
-    return result
-
-def render_footer_links() -> str:
-    items = []
-    for _, route in _homes:
-        sub = _footer_links.get(route)
-        if not sub:
-            continue
-        proj_root = route.rsplit('/', 1)[0] if '/' in route else route
-        for name in sub:
-            if isinstance(name, tuple):
-                proj, view = name
-                href = f"{proj.replace('.', '/')}/{view}".strip('/')
-                label = _func_title(proj, view) or (
-                    view.replace('-', ' ').replace('_', ' ').title()
-                )
-            else:
-                href = f"{proj_root}/{name}".strip('/')
-                proj = proj_root.replace('/', '.')
-                label = _func_title(proj, name) or (
-                    name.replace('-', ' ').replace('_', ' ').title()
-                )
-            items.append(f'<a href="/{href}">{label}</a>')
-    return '<p class="footer-links">' + ' | '.join(items) + '</p>' if items else ""

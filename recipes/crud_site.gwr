@@ -8,6 +8,7 @@ sql execute "CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREM
 web app setup:
     --project web.nav --home style-switcher
     --project web.site --home reader --footer gateway-cookbook,pending-todos
+    --project web.footer
     --project sql.crud --home posts?table=posts&dbfile=work/blog.sqlite
 help-db build
 web:
