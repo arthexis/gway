@@ -236,6 +236,8 @@ async def simulate_cp(
                 additional_headers=headers,
             ) as ws:
                 print(f"[Simulator:{cp_name}] Connected to {uri} (auth={'yes' if headers else 'no'})")
+                state["phase"] = "Connected"
+                state["last_message"] = ""
 
                 async def listen_to_csms(stop_event, reset_event):
                     """Handle incoming CSMS messages until cancelled."""
@@ -254,12 +256,14 @@ async def simulate_cp(
                                     await ws.send(json.dumps([3, msg_id, {}]))
                                     if action == "RemoteStopTransaction":
                                         print(f"[Simulator:{cp_name}] Received RemoteStopTransaction → stopping transaction")
+                                        state["last_message"] = "RemoteStopTransaction"
                                         stop_event.set()
                                     elif action == "Reset":
                                         reset_type = ""
                                         if len(msg) > 3 and isinstance(msg[3], dict):
                                             reset_type = msg[3].get("type", "")
                                         print(f"[Simulator:{cp_name}] Received Reset ({reset_type}) → restarting session")
+                                        state["last_message"] = "Reset"
                                         reset_event.set()
                                         stop_event.set()
                                 elif msg[0] in (3, 4):
@@ -272,6 +276,8 @@ async def simulate_cp(
                     except websockets.ConnectionClosed:
                         print(f"[Simulator:{cp_name}] Connection closed by server")
                         _simulators[cp_idx + 1]["last_status"] = "Connection closed"
+                        _simulators[cp_idx + 1]["phase"] = "Disconnected"
+                        _simulators[cp_idx + 1]["last_message"] = "ConnectionClosed"
                         stop_event.set()
 
                 stop_event = asyncio.Event()
@@ -281,9 +287,14 @@ async def simulate_cp(
                     "chargePointModel": "Simulator",
                     "chargePointVendor": "SimVendor"
                 }]))
+                state["last_message"] = "BootNotification"
+                _save_state_file(_simulators)
                 await ws.recv()
                 await ws.send(json.dumps([2, "auth", "Authorize", {"idTag": rfid}]))
+                state["last_message"] = "Authorize"
+                _save_state_file(_simulators)
                 await ws.recv()
+                state["phase"] = "Available"
 
                 meter_start = random.randint(1000, 2000)
                 actual_duration = random.uniform(duration * 0.75, duration * 1.25)
@@ -293,11 +304,14 @@ async def simulate_cp(
 
                 if pre_charge_delay > 0:
                     state["last_status"] = "Waiting"
+                    state["phase"] = "Available"
                     next_meter = meter_start
                     last_mv = time.monotonic()
                     start_delay = time.monotonic()
                     while (time.monotonic() - start_delay) < pre_charge_delay:
                         await ws.send(json.dumps([2, "hb", "Heartbeat", {}]))
+                        state["last_message"] = "Heartbeat"
+                        _save_state_file(_simulators)
                         await ws.recv()
                         await asyncio.sleep(5)
                         if time.monotonic() - last_mv >= 30:
@@ -316,6 +330,8 @@ async def simulate_cp(
                                     }]
                                 }]
                             }]))
+                            state["last_message"] = "MeterValues"
+                            _save_state_file(_simulators)
                             await ws.recv()
                             last_mv = time.monotonic()
 
@@ -325,10 +341,13 @@ async def simulate_cp(
                     "idTag": rfid,
                     "meterStart": meter_start
                 }]))
+                state["last_message"] = "StartTransaction"
+                _save_state_file(_simulators)
                 resp = await ws.recv()
                 tx_id = json.loads(resp)[2].get("transactionId")
                 print(f"[Simulator:{cp_name}] Transaction {tx_id} started at meter {meter_start}")
                 state["last_status"] = "Running"
+                state["phase"] = "Charging"
 
                 # Start listener only after transaction is active so recv calls don't overlap
                 listener = asyncio.create_task(listen_to_csms(stop_event, reset_event))
@@ -354,6 +373,8 @@ async def simulate_cp(
                             }]
                         }]
                     }]))
+                    state["last_message"] = "MeterValues"
+                    _save_state_file(_simulators)
                     await asyncio.sleep(interval)
 
                 # Stop listener before sending StopTransaction to avoid recv conflicts
@@ -371,6 +392,9 @@ async def simulate_cp(
                     "idTag": rfid,
                     "meterStop": meter
                 }]))
+                state["last_message"] = "StopTransaction"
+                state["phase"] = "Available"
+                _save_state_file(_simulators)
                 await ws.recv()
                 print(f"[Simulator:{cp_name}] Transaction {tx_id} stopped at meter {meter}")
 
@@ -382,6 +406,8 @@ async def simulate_cp(
 
                 while (time.monotonic() - start_idle) < idle_time and not stop_event.is_set():
                     await ws.send(json.dumps([2, "hb", "Heartbeat", {}]))
+                    state["last_message"] = "Heartbeat"
+                    _save_state_file(_simulators)
                     await asyncio.sleep(5)
                     if time.monotonic() - last_meter_value >= 30:
                         idle_step_max = max(2, int(step_max / 100))
@@ -399,6 +425,8 @@ async def simulate_cp(
                                 }]
                             }]
                         }]))
+                        state["last_message"] = "MeterValues"
+                        _save_state_file(_simulators)
                         last_meter_value = time.monotonic()
                         print(f"[Simulator:{cp_name}] Idle MeterValues sent.")
 
@@ -414,6 +442,7 @@ async def simulate_cp(
         except websockets.ConnectionClosedError as e:
             print(f"[Simulator:{cp_name}] Warning: {e} -- reconnecting")
             state["last_status"] = "Reconnecting"
+            state["phase"] = "Reconnecting"
             await asyncio.sleep(1)
             continue
         except Exception as e:
@@ -423,6 +452,7 @@ async def simulate_cp(
     print(f"[Simulator:{cp_name}] Simulation ended.")
     state["last_status"] = "Stopped"
     state["running"] = False
+    state["phase"] = "Stopped"
     state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
     _save_state_file(_simulators)
 
@@ -433,6 +463,8 @@ _DEFAULT_STATE = {
     "last_status": "",
     "last_command": None,
     "last_error": "",
+    "last_message": "",
+    "phase": "",
     "thread": None,
     "start_time": None,
     "stop_time": None,
@@ -504,6 +536,8 @@ def _start_simulator(params=None, cp=1):
     state["last_error"] = ""
     state["last_command"] = "start"
     state["last_status"] = "Simulator launching..."
+    state["last_message"] = ""
+    state["phase"] = "Starting"
     state["params"] = params or {}
     state["running"] = True
     state["start_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -519,6 +553,7 @@ def _stop_simulator(cp=1):
     state = _simulators[cp]
     state["last_command"] = "stop"
     state["last_status"] = "Requested stop (will finish current run)..."
+    state["phase"] = "Stopping"
     state["running"] = False
     # Simulator must check this flag between sessions (not during a blocking one).
     # For a true hard kill, one would need to implement cancellation or kill the thread (not recommended).
@@ -632,6 +667,8 @@ def view_cp_simulator(*args, _title="CP Simulator", **kwargs):
         block.append(f"<div class='simulator-status'><span class='{dot_class}'></span><span>{dot_label}</span></div>")
         block.append("<div class='simulator-details'>" +
                      f"<label>Last Status:</label> <span class='stat'>{state['last_status'] or '-'}</span>" +
+                     f"<label>Phase:</label> <span class='stat'>{state['phase'] or '-'}</span>" +
+                     f"<label>Last Message:</label> <span class='stat'>{state['last_message'] or '-'}</span>" +
                      f"<label>Last Command:</label> <span class='stat'>{state['last_command'] or '-'}</span>" +
                      f"<label>Started:</label> <span class='stat'>{state['start_time'] or '-'}</span>" +
                      f"<label>Stopped:</label> <span class='stat'>{state['stop_time'] or '-'}</span>" +
