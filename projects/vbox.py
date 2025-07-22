@@ -154,6 +154,18 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
 
     if not vbid:
         gw.info(f"No vbid present, always creating/checking box.")
+        if request.method == 'POST' and request.forms.get('remote_url'):
+            remote_url = request.forms.get('remote_url')
+            remote_email = request.forms.get('email') or email or admin_email
+            gw.info(f"Remote open requested for {remote_url} email={remote_email}")
+            result = open_remote(remote_url, email=remote_email)
+            if result and result.get('url'):
+                url = result['url']
+                return (
+                    "<h1>Remote VBox Created</h1>"
+                    f"<p><a href='{url}'>Access the remote upload box</a></p>"
+                )
+            return render_error("Remote VBox Error", "Could not create a remote box.")
         remote_addr = request.remote_addr or ''
         user_agent = request.headers.get('User-Agent') or ''
         identity = remote_addr + user_agent
@@ -207,6 +219,17 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
             "<p>If you are a site member, you may request a URL to be sent to your email by entering it here.</p>"
         )
 
+        remote_form_html = (
+            "<form method='POST'>"
+            "<input type='url' name='remote_url' required placeholder='https://remote-server'>"
+            "<input type='email' name='email' placeholder='Email for remote box'>"
+            "<button type='submit'>Open Remote VBox</button>"
+            "</form>"
+        )
+        remote_message = (
+            "<p>Register a remote vbox by submitting its server URL.</p>"
+        )
+
         local_console_info = ""
         if gw.web.server.is_local():
             local_console_info = (
@@ -219,6 +242,7 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
             f"{local_console_info}"
             f"{admin_notif}"
             f"{form_message if not email else ''}{email_form_html if not email else ''}"
+            f"{remote_message}{remote_form_html}"
         )
 
     # Validate and show upload UI for an existing vbid
