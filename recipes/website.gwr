@@ -5,6 +5,7 @@
 
 web app setup:
     - web.site --home reader --footer feedback,gateway-cookbook,pending-todos
+    - web.footer
     - web.nav --home style-switcher --default-style dark-material.css
     - web.cookies --footer cookie-jar
     - web.message

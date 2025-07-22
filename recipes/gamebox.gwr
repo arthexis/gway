@@ -3,6 +3,7 @@
 
 web app setup:
     - web.site --home reader --footer gateway-cookbook,pending-todos
+    - web.footer
     - games --home games --links game-of-life,divination-wars,qpig-farm,massive-snake,fantastic-client
     - web.nav --home style-switcher
     - web.cookies --footer web.cookies:cookie-jar

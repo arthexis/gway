@@ -11,6 +11,7 @@ sql migrate --dbfile work/blog.sqlite
 web app setup-app:
     - web.nav --home style-switcher
     - web.site --home reader --footer gateway-cookbook,pending-todos
+    - web.footer
     - sql.crud --home posts?table=posts&dbfile=work/blog.sqlite
 help-db build
 web:

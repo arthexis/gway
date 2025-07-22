@@ -81,22 +81,36 @@ class RefreshFreshDateTests(unittest.TestCase):
     def setUp(self):
         self.webapp._fresh_mtime = None
         self.webapp._fresh_dt = None
+        self.webapp._fresh_version = None
 
     def test_refresh_fresh_date_caching_and_updates(self):
-        with patch('webapp.gw.resource', return_value='/fake/VERSION') as res, \
-             patch('webapp.os.path.getmtime', side_effect=[100, 100, 200]):
+        class Resp:
+            def __init__(self, ver):
+                self.ver = ver
+            def json(self):
+                return {"releases": {self.ver: [{"upload_time_iso_8601": iso_map[self.ver]}]}}
+
+        iso_map = {
+            '1.0': '2024-01-01T12:00:00Z',
+            '1.1': '2024-01-02T12:00:00Z'
+        }
+        with patch('webapp.gw.version', side_effect=['1.0', '1.0', '1.1']), \
+             patch('webapp.requests.get', side_effect=[Resp('1.0'), Resp('1.1')]) as req, \
+             patch('webapp.gw.resource', return_value='/fake/VERSION'), \
+             patch('webapp.os.path.getmtime', return_value=100):
             dt1 = self.webapp._refresh_fresh_date()
             dt2 = self.webapp._refresh_fresh_date()
             dt3 = self.webapp._refresh_fresh_date()
 
-            self.assertEqual(dt1, datetime.datetime.fromtimestamp(100))
+            self.assertEqual(dt1, datetime.datetime.fromisoformat('2024-01-01T12:00:00+00:00'))
             self.assertIs(dt1, dt2)
-            self.assertEqual(dt3, datetime.datetime.fromtimestamp(200))
+            self.assertEqual(dt3, datetime.datetime.fromisoformat('2024-01-02T12:00:00+00:00'))
             self.assertNotEqual(dt2, dt3)
-            self.assertEqual(res.call_count, 3)
+            self.assertEqual(req.call_count, 2)
 
     def test_refresh_fresh_date_errors_return_none(self):
-        with patch('webapp.gw.resource', side_effect=Exception('boom')):
+        with patch('webapp.gw.version', return_value='1.0'), \
+             patch('webapp.gw.resource', side_effect=Exception('boom')):
             self.assertIsNone(self.webapp._refresh_fresh_date())
 
 

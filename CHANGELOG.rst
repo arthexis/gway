@@ -3,6 +3,8 @@ Changelog
 
 Unreleased
 ----------
+- web app now fetches release dates from PyPI per version
+- footer handling moved to new ``web.footer`` project and recipes updated
 
 0.4.56 [build e6cbf4]
 ---------------------
