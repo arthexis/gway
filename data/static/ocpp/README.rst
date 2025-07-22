@@ -12,7 +12,9 @@ The submodules are:
 The landing page ``/ocpp/ocpp-dashboard`` shows a quick summary of these
 sub‑projects. When mounting the dashboard with ``web.app.setup_app`` the CSMS
 views and renders are discovered automatically because sub‑projects are treated
-as delegate modules under the ``/ocpp`` path.
+as delegate modules under the ``/ocpp`` path. To expose each sub‑project under
+its own route (for example ``/ocpp/evcs/cp-simulator``) pass ``--everything`` to
+``web.app.setup_app`` or register the sub‑projects explicitly.
 
 Launch a simulator session pointing at your CSMS with:
 
