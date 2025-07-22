@@ -252,8 +252,8 @@ def _retry_loop(fn, *, interval, stop_event, label):
         time.sleep(interval)
 
 
-def watch_url(url, on_change, *, 
-              interval=60.0, event="change", resend=False, value=None):
+def watch_url(url, on_change, *,
+              interval=300.0, event="change", resend=False, value=None):
     stop_event = threading.Event()
 
     def _check():
@@ -298,7 +298,7 @@ def watch_url(url, on_change, *,
     return stop_event
 
 
-def watch_pypi_package(package_name, on_change, *, interval=3000.0):
+def watch_pypi_package(package_name, on_change, *, interval=1800.0):
     stop_event = threading.Event()
     url = f"https://pypi.org/pypi/{package_name}/json"
 
