@@ -364,7 +364,7 @@ class Gateway(Resolver, Runner):
                 return ns
 
             if os.path.isdir(base):
-                return self.recurse_ns(base, project_name)
+                return self._recurse_ns(base, project_name)
 
             base_path = Path(base)
             py_file = base_path if base_path.suffix == ".py" else base_path.with_suffix(".py")
@@ -467,14 +467,13 @@ class Gateway(Resolver, Runner):
             raise
         return mod
     
-    def recurse_ns(self, current_path: str, dotted_prefix: str):
+    def _recurse_ns(self, current_path: str, dotted_prefix: str):
         """
         Recursively loads a project namespace. If a file matching the directory name
         exists (e.g. 'web/web.py'), its functions become root-level (e.g. gw.web.func).
         Subprojects (e.g. 'web/app.py') are loaded as gw.web.app.func, possibly
         shadowing root names (warn on conflicts).
         """
-        # TODO: Consider if this function should be private.
         funcs = {}
         subprojects = {}
         dir_basename = os.path.basename(current_path)
@@ -496,7 +495,7 @@ class Gateway(Resolver, Runner):
                 subprojects[subname] = Project(dotted, sub_funcs, self)
             elif os.path.isdir(full) and not entry.startswith("__"):
                 dotted = f"{dotted_prefix}.{entry}"
-                subprojects[entry] = self.recurse_ns(full, dotted)
+                subprojects[entry] = self._recurse_ns(full, dotted)
 
         # 2. Load the root file (e.g., web/web.py) if present
         root_funcs = {}
