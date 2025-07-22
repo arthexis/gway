@@ -1,5 +1,14 @@
 # file: projects/ocpp/rfid.py
-"""Authorization helpers for OCPP RFID transactions."""
+"""RFID authorization and management helpers.
+
+This module validates ``Authorize`` requests from charge points and
+stores RFID information in ``work/ocpp/rfids.cdv`` using the colon
+delimited value (CDV) helpers.  In addition to the validators it also
+provides convenience functions to manage RFID records:
+
+``create_entry``\ , ``update_entry``\ , ``delete_entry``\ , ``enable``\ ,
+``disable``\ , ``credit`` and ``debit``.
+"""
 
 import traceback
 from gway import gw
@@ -56,8 +65,6 @@ def authorize_allowed(*, record=None, payload=None, charger_id=None, action=None
     record = _resolve_record(record, payload, table)
     return _is_allowed(record)
     
-# TODO: Create functions to manually create RFID entries, delete them, update them, enable, disable, credit and debit
-
 def create_entry(rfid, *, balance=0.0, allowed=True, table=RFID_TABLE, **fields):
     """Create or replace an RFID record."""
     fields.setdefault("balance", str(balance))
