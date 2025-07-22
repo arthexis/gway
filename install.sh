@@ -2,6 +2,9 @@
 # file: install.sh
 set -euo pipefail
 
+# Determine sudo usage lazily
+SUDO="sudo"
+
 # Resolve real directory of this script (even if symlinked)
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
@@ -56,6 +59,29 @@ for arg in "$@"; do
   esac
 done
 
+# Determine if this action requires root privileges
+ROOT_REQUIRED=false
+if [[ "$ACTION" == "remove" || "$ACTION" == "repair" ]]; then
+  ROOT_REQUIRED=true
+elif [[ "$ACTION" == "install" && -n "$RECIPE" ]]; then
+  ROOT_REQUIRED=true
+fi
+
+if $ROOT_REQUIRED; then
+  if [[ $EUID -eq 0 ]]; then
+    SUDO=""
+  else
+    if command -v sudo >/dev/null 2>&1; then
+      SUDO="sudo"
+    else
+      echo "ERROR: This operation requires root privileges via sudo." >&2
+      echo "Please install sudo or re-run this script as root." >&2
+      deactivate
+      exit 1
+    fi
+  fi
+fi
+
 # Repair previously installed services
 if [[ "$ACTION" == "repair" ]]; then
   if [[ -n "$RECIPE" ]]; then
@@ -89,12 +115,12 @@ if [[ "$ACTION" == "remove" ]]; then
   SERVICE_NAME="gway-${SERVICE_SAFE_RECIPE}.service"
   SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
   echo "Removing systemd service '$SERVICE_NAME' for recipe '$RECIPE'..."
-  sudo systemctl stop "$SERVICE_NAME" 2>/dev/null || true
-  sudo systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+  $SUDO systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+  $SUDO systemctl disable "$SERVICE_NAME" 2>/dev/null || true
   if [[ -f "$SERVICE_PATH" ]]; then
-    sudo rm -f "$SERVICE_PATH"
+    $SUDO rm -f "$SERVICE_PATH"
   fi
-  sudo systemctl daemon-reload
+  $SUDO systemctl daemon-reload
   deactivate
   exit 0
 fi
@@ -190,12 +216,12 @@ GWAY_EXEC+=" -r $RECIPE"
 
 # Backup existing unit
 if [[ -f "$SERVICE_PATH" ]]; then
-  sudo cp "$SERVICE_PATH" "$SERVICE_PATH.bak.$(date +%s)"
+  $SUDO cp "$SERVICE_PATH" "$SERVICE_PATH.bak.$(date +%s)"
   echo "  → Backed up old unit to $SERVICE_PATH.bak.*"
 fi
 
 # Write new unit file
-sudo tee "$SERVICE_PATH" > /dev/null <<EOF
+$SUDO tee "$SERVICE_PATH" > /dev/null <<EOF
 [Unit]
 Description=GWAY Service ($RECIPE)
 After=network.target
@@ -216,14 +242,14 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-sudo chmod 644 "$SERVICE_PATH"
+$SUDO chmod 644 "$SERVICE_PATH"
 
 # Reload, enable & start
-sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
+$SUDO systemctl daemon-reload
+$SUDO systemctl enable "$SERVICE_NAME"
+$SUDO systemctl restart "$SERVICE_NAME"
 
 echo
-sudo systemctl status "$SERVICE_NAME" --no-pager || true
+$SUDO systemctl status "$SERVICE_NAME" --no-pager || true
 
 deactivate
