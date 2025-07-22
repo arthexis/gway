@@ -101,7 +101,6 @@ def debit(rfid, amount=1, *, table=RFID_TABLE):
     """Subtract ``amount`` from the RFID balance."""
     return gw.cdv.debit(table, rfid, amount=amount, field="balance")
 
-# TODO: Remove the allowlist and denylist parameters from approve and everywhere else.
 
 def approve(*, payload=None, charger_id=None, validator=authorize_balance, table=RFID_TABLE, **_):
     """Return True if the given RFID payload is approved.
