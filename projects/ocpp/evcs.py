@@ -623,12 +623,20 @@ def view_cp_simulator(*args, _title="CP Simulator", **kwargs):
                 username=request.forms.get("username") or None,
                 password=request.forms.get("password") or None,
             )
-            started = _start_simulator(sim_params, cp=cp_idx)
-            msg = f"CP{cp_idx} started." if started else f"CP{cp_idx} already running."
+            try:
+                started = _start_simulator(sim_params, cp=cp_idx)
+                msg = (
+                    f"CP{cp_idx} started." if started else f"CP{cp_idx} already running."
+                )
+            except Exception as exc:  # pragma: no cover - unexpected
+                msg = f"Failed to start CP{cp_idx}: {exc}"
         elif action == "stop":
             cp_idx = int(request.forms.get("cp") or 1)
-            _stop_simulator(cp=cp_idx)
-            msg = f"CP{cp_idx} stop requested."
+            try:
+                _stop_simulator(cp=cp_idx)
+                msg = f"CP{cp_idx} stop requested."
+            except Exception as exc:  # pragma: no cover - unexpected
+                msg = f"Failed to stop CP{cp_idx}: {exc}"
         else:
             msg = "Unknown action."
 
