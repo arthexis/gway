@@ -19,6 +19,18 @@ def _record_from_payload(payload, table_path=RFID_TABLE):
     return table.get(rfid)
 
 
+def _resolve_record(record, payload, table_path=RFID_TABLE):
+    """Return provided record or look up from payload."""
+    if record is not None:
+        return record
+    return _record_from_payload(payload or {}, table_path)
+
+
+def _is_allowed(record) -> bool:
+    """Return True if the record's ``allowed`` field is truthy."""
+    return gw.cast.to_bool(record.get("allowed", True)) if record else False
+
+
 # TODO: This validatior should continue to exist, but now it should manually find the
 #       customer's ID by finding the RFID in the provided payload and looking it up
 #       (reloading the file each time) from a CDV (see projects/cdb.py) stored in
@@ -27,26 +39,22 @@ def _record_from_payload(payload, table_path=RFID_TABLE):
 
 def authorize_balance(*, record=None, payload=None, charger_id=None, action=None, table=RFID_TABLE, **_):
     """Default validator: allow if record balance >= 1 and allowed."""
-    if record is None:
-        record = _record_from_payload(payload or {}, table)
+    record = _resolve_record(record, payload, table)
     if not record:
         return False
     try:
-        allowed = str(record.get("allowed", "true")).lower() not in {"false", "0", "no", "off", ""}
         bal_ok = float(record.get("balance", "0")) >= 1
-        return allowed and bal_ok
+        return _is_allowed(record) and bal_ok
     except Exception:
         return False
     
 # TODO: Create another authorizer that just checks that allowed is True and not the balance (authorize_allowed)
 #       If possible create some common functions so we can add more authorizers on the same file later
 
-def authorize_allowed(*, payload=None, charger_id=None, action=None, table=RFID_TABLE, **_):
+def authorize_allowed(*, record=None, payload=None, charger_id=None, action=None, table=RFID_TABLE, **_):
     """Authorize only if ``allowed`` flag is truthy for the RFID."""
-    record = _record_from_payload(payload or {}, table)
-    if not record:
-        return False
-    return str(record.get("allowed", "true")).lower() not in {"false", "0", "no", "off", ""}
+    record = _resolve_record(record, payload, table)
+    return _is_allowed(record)
     
 # TODO: Create functions to manually create RFID entries, delete them, update them, enable, disable, credit and debit
 
