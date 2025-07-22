@@ -261,66 +261,88 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
 
 
 def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: str = '[ADMIN_EMAIL]'):
+    """Create a vbox on a remote system and store the access details locally.
+
+    If ``server_url`` already includes a ``vbid`` query parameter, the function
+    assumes the upload box already exists and skips the email retrieval step,
+    storing the credentials contained in the URL.  Otherwise it will request a
+    new box via ``/<path>/upload`` and poll the configured mailbox for the
+    upload link.
+
+    Args:
+        server_url: Base server URL or direct upload link.
+        path:       Path on remote server where vbox upload is handled.
+        email:      Email address used when requesting a new box.
+
+    Returns
+        dict: Stored record fields or ``None`` on failure.
     """
-    Create a vbox on a remote system, retrieve the upload link from email, and store it locally.
-    - server_url: Base URL of the remote server (e.g., 'https://example.com')
-    - path:       Path on remote server where vbox upload is handled (default 'vbox')
-    - email:      Email address to receive the upload link (should be accessible by local mail.read)
-    
-    Returns: dict of stored record fields, or None if unsuccessful.
-    """
+    from urllib.parse import urlparse, parse_qs
     from gway import gw
 
-    # Step 1: Compose the remote CDV record key (base64 of server_url)
-    b64key = base64.urlsafe_b64encode(server_url.encode()).decode().rstrip("=")
+    parsed = urlparse(server_url)
+    qs = parse_qs(parsed.query)
+
+    found_vbid = qs.get("vbid", [None])[0]
+
+    base_path = parsed.path.split("/vbox")[0]
+    server_base = f"{parsed.scheme}://{parsed.netloc}{base_path}" if parsed.scheme else server_url
+
+    # Step 1: Compose the remote CDV record key (base64 of server_base)
+    b64key = base64.urlsafe_b64encode(server_base.encode()).decode().rstrip("=")
     cdv_path = gw.resource(*VBOX_PATH, 'remotes.cdv')
 
     # Step 2: Check if already present in CDV
     records = gw.cdv.load_all(cdv_path)
     if b64key in records and records[b64key].get("vbox"):
-        gw.info(f"[open_remote] Found existing vbox for {server_url}: {records[b64key]}")
+        gw.info(f"[open_remote] Found existing vbox for {server_base}: {records[b64key]}")
         return records[b64key]
 
-    # Step 3: Trigger remote vbox creation (POST to /<path>/upload)
-    remote_upload_url = server_url.rstrip("/") + f"/{path}/upload"
-    gw.info(f"[open_remote] Posting to remote: {remote_upload_url} with email={email!r}")
-
-    try:
-        resp = requests.post(remote_upload_url, data={"email": email}, timeout=10)
-        gw.info(f"[open_remote] Remote POST status: {resp.status_code}")
-    except Exception as e:
-        gw.error(f"[open_remote] Remote request failed: {e}")
-        return None
-
-    # Step 4: Wait for email and search for the upload link
-    subject_fragment = "Upload Box Link"
-    access_url_pattern = r"Access URL: (https?://\S+)"
     found_url = None
-    found_vbid = None
-    max_wait = 20
-    poll_interval = 2
 
-    for attempt in range(max_wait // poll_interval):
+    if not found_vbid:
+        # Step 3: Trigger remote vbox creation (POST to /<path>/upload)
+        remote_upload_url = server_base.rstrip("/") + f"/{path}/upload"
+        gw.info(f"[open_remote] Posting to remote: {remote_upload_url} with email={email!r}")
+
         try:
-            result = gw.mail.read(subject_fragment)
-            if result:
-                body, _ = result
-                match = re.search(access_url_pattern, body)
-                if match:
-                    found_url = match.group(1)
-                    gw.info(f"[open_remote] Found access URL in email: {found_url}")
-                    # Extract vbid parameter from URL
-                    vbid_match = re.search(r"vbid=([a-zA-Z0-9._-]+)", found_url)
-                    if vbid_match:
-                        found_vbid = vbid_match.group(1)
-                        gw.info(f"[open_remote] Parsed vbid: {found_vbid}")
-                        break
+            resp = requests.post(remote_upload_url, data={"email": email}, timeout=10)
+            gw.info(f"[open_remote] Remote POST status: {resp.status_code}")
         except Exception as e:
-            gw.error(f"[open_remote] Error during mail.read: {e}")
-        time.sleep(poll_interval)
+            gw.error(f"[open_remote] Remote request failed: {e}")
+            return None
+
+        # Step 4: Wait for email and search for the upload link
+        subject_fragment = "Upload Box Link"
+        access_url_pattern = r"Access URL: (https?://\S+)"
+        max_wait = 20
+        poll_interval = 2
+
+        for attempt in range(max_wait // poll_interval):
+            try:
+                result = gw.mail.read(subject_fragment)
+                if result:
+                    body, _ = result
+                    match = re.search(access_url_pattern, body)
+                    if match:
+                        found_url = match.group(1)
+                        gw.info(f"[open_remote] Found access URL in email: {found_url}")
+                        # Extract vbid parameter from URL
+                        vbid_match = re.search(r"vbid=([a-zA-Z0-9._-]+)", found_url)
+                        if vbid_match:
+                            found_vbid = vbid_match.group(1)
+                            gw.info(f"[open_remote] Parsed vbid: {found_vbid}")
+                            break
+            except Exception as e:
+                gw.error(f"[open_remote] Error during mail.read: {e}")
+            time.sleep(poll_interval)
+    else:
+        # URL already contained credentials
+        found_url = server_url
+        gw.info(f"[open_remote] Using provided upload URL: {found_url}")
 
     if not (found_url and found_vbid):
-        gw.error(f"[open_remote] Could not retrieve upload link from email for {server_url}")
+        gw.error(f"[open_remote] Could not retrieve upload link from email for {server_base}")
         return None
 
     # Step 5: Store in CDV for future reference
@@ -329,11 +351,11 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
         b64key,
         vbox=found_vbid,
         url=found_url,
-        server=server_url,
+        server=server_base,
         email=email,
         last_updated=str(int(time.time()))
     )
-    gw.info(f"[open_remote] Stored remote vbox: server={server_url} vbid={found_vbid}")
+    gw.info(f"[open_remote] Stored remote vbox: server={server_base} vbid={found_vbid}")
 
     # Step 6: Return stored record (for chaining)
     return gw.cdv.load_all(cdv_path).get(b64key)
@@ -364,7 +386,7 @@ def view_register_remote(*, email: str = None, **_):
 
     remote_form_html = (
         "<form method='POST'>"
-        "<input type='url' name='remote_url' required placeholder='https://remote-server'>"
+        "<input type='url' name='remote_url' required placeholder='https://remote-server or full upload URL'>"
         "<input type='email' name='email' placeholder='Email for remote box'>"
         "<button type='submit'>Open Remote VBox</button>"
         "</form>"
