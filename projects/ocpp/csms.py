@@ -461,8 +461,6 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
               <tr>
                 <td class="label">ID</td>
                 <td class="value">{cid}</td>
-              </tr>
-              <tr>
                 <td class="label">TXN</td>
                 <td class="value">{tx_id}</td>
               </tr>
@@ -484,11 +482,9 @@ def _render_charger_card(cid, tx, state, raw_hb, *, show_controls=True):
               </tr>
               <tr>
                 <td class="label">Updated</td>
-                <td class="value" colspan="3">{last_updated}</td>
-              </tr>
-              <tr>
+                <td class="value">{last_updated}</td>
                 <td class="label">Status</td>
-                <td class="value" colspan="3">{status}</td>
+                <td class="value">{status}</td>
               </tr>
             </table>
           </td>
