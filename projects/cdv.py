@@ -286,6 +286,8 @@ def view_data_editor(*, cdv: str = None, text: str = None):
     cdv_safe = _sanitize_cdv_path(cdv)
     try:
         path = gw.resource(*cdv_safe.split("/"))
+        if os.path.isdir(path):
+            raise IsADirectoryError(path)
     except Exception as e:
         return f"<p>Invalid CDV path: {html.escape(str(e))}</p>"
 
