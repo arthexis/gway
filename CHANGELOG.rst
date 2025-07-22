@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.52 [build d4b3c2]
+---------------------
+
+- f4b70e2 Add CP simulator start test
+
 - add --install option to test command
 - allow backslash line continuations in recipe files
 - fix missing ``/ocpp/csms`` route for charger details
