@@ -133,5 +133,40 @@ class UntilAbortTests(unittest.TestCase):
         trig.join(1)
         os.unlink(path)
 
+    def test_until_waits_for_future_threads(self):
+        """until should keep running even if threads start later."""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            path = tmp.name
+
+        orig_watch = runner.watch_file
+
+        def fast_watch(*a, **k):
+            k['interval'] = 0.05
+            return orig_watch(*a, **k)
+
+        started = threading.Event()
+
+        def run_until():
+            started.set()
+            gw.until(file=path)
+
+        with patch('gway.runner.watch_file', side_effect=fast_watch):
+            t = threading.Thread(target=run_until, daemon=True)
+            t.start()
+            started.wait()
+            time.sleep(0.2)
+            self.assertTrue(t.is_alive(), 'until exited prematurely')
+
+            stop = threading.Event()
+            dummy = self._start_dummy_async(stop)
+            with open(path, 'w') as f:
+                f.write('changed')
+            time.sleep(0.1)
+            stop.set()
+            t.join(1)
+            dummy.join(1)
+
+        os.unlink(path)
+
 if __name__ == '__main__':
     unittest.main()
