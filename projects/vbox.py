@@ -154,18 +154,8 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
 
     if not vbid:
         gw.info(f"No vbid present, always creating/checking box.")
-        if request.method == 'POST' and request.forms.get('remote_url'):
-            remote_url = request.forms.get('remote_url')
-            remote_email = request.forms.get('email') or email or admin_email
-            gw.info(f"Remote open requested for {remote_url} email={remote_email}")
-            result = open_remote(remote_url, email=remote_email)
-            if result and result.get('url'):
-                url = result['url']
-                return (
-                    "<h1>Remote VBox Created</h1>"
-                    f"<p><a href='{url}'>Access the remote upload box</a></p>"
-                )
-            return render_error("Remote VBox Error", "Could not create a remote box.")
+        # Link to register remote vbox instead of handling it here
+        register_url = gw.web.app.build_url("register_remote")
         remote_addr = request.remote_addr or ''
         user_agent = request.headers.get('User-Agent') or ''
         identity = remote_addr + user_agent
@@ -219,15 +209,8 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
             "<p>If you are a site member, you may request a URL to be sent to your email by entering it here.</p>"
         )
 
-        remote_form_html = (
-            "<form method='POST'>"
-            "<input type='url' name='remote_url' required placeholder='https://remote-server'>"
-            "<input type='email' name='email' placeholder='Email for remote box'>"
-            "<button type='submit'>Open Remote VBox</button>"
-            "</form>"
-        )
         remote_message = (
-            "<p>Register a remote vbox by submitting its server URL.</p>"
+            f"<p>Register a remote vbox <a href='{register_url}'>here</a>.</p>"
         )
 
         local_console_info = ""
@@ -242,7 +225,7 @@ def view_uploads(*, vbid: str = None, timeout: int = 60, files: int = 4, email: 
             f"{local_console_info}"
             f"{admin_notif}"
             f"{form_message if not email else ''}{email_form_html if not email else ''}"
-            f"{remote_message}{remote_form_html}"
+            f"{remote_message}"
         )
 
     # Validate and show upload UI for an existing vbid
@@ -354,6 +337,40 @@ def open_remote(server_url: str = '[SERVER_URL]', *, path: str = 'vbox', email: 
 
     # Step 6: Return stored record (for chaining)
     return gw.cdv.load_all(cdv_path).get(b64key)
+
+
+def view_register_remote(*, email: str = None, **_):
+    """Display and process the remote vbox registration form."""
+    if not gw.web.auth.is_setup():
+        gw.web.auth.config_basic(engine="bottle")
+
+    if not gw.web.auth.is_authorized(strict=True):
+        return gw.web.error.unauthorized("Unauthorized: Remote registration requires login.")
+
+    admin_email = os.environ.get("ADMIN_EMAIL")
+
+    if request.method == 'POST':
+        remote_url = request.forms.get('remote_url')
+        remote_email = request.forms.get('email') or email or admin_email
+        gw.info(f"Remote open requested for {remote_url} email={remote_email}")
+        result = open_remote(remote_url, email=remote_email)
+        if result and result.get('url'):
+            url = result['url']
+            return (
+                "<h1>Remote VBox Created</h1>"
+                f"<p><a href='{url}'>Access the remote upload box</a></p>"
+            )
+        return render_error("Remote VBox Error", "Could not create a remote box.", target='register_remote')
+
+    remote_form_html = (
+        "<form method='POST'>"
+        "<input type='url' name='remote_url' required placeholder='https://remote-server'>"
+        "<input type='email' name='email' placeholder='Email for remote box'>"
+        "<button type='submit'>Open Remote VBox</button>"
+        "</form>"
+    )
+
+    return "<h1>Register Remote VBox</h1>" + remote_form_html
 
 
 def poll_remote(server_url: str = '[SERVER_URL]', *, target='work/vbox/remote', interval=3600):
