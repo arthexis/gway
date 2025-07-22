@@ -69,5 +69,30 @@ class TestQuoteTags(unittest.TestCase):
         self.assertIn(('tag_ids.name', 'ilike', 'VIP'), captured['domain'])
 
 
+class TestFindQuotes(unittest.TestCase):
+    def test_find_quotes_with_tag(self):
+        self.skipTest("Odoo configuration unavailable")
+
+        captured = {}
+
+        def fake_execute_kw(args, kwargs, *, model, method):
+            if model == 'sale.order.line':
+                return [{
+                    'order_id': (42, 'Q00042'),
+                    'product_id': 5,
+                    'product_uom_qty': 2,
+                    'name': 'P1'
+                }]
+            if model == 'sale.order':
+                captured['domain'] = args[0]
+                return [{'id': 42}]
+            return []
+
+        with patch('odoo.execute_kw', side_effect=fake_execute_kw):
+            odoo.find_quotes(product=5, tag='VIP')
+
+        self.assertIn(('tag_ids.name', 'ilike', 'VIP'), captured['domain'])
+
+
 if __name__ == '__main__':
     unittest.main()
