@@ -68,11 +68,11 @@ _DEF = [
 ]
 
 
-def view_toy_games():
+def view_toy_games(*, _title="Toys & Games"):
     """Home view listing all available games."""
     html = [
         '<link rel="stylesheet" href="/static/web/cards.css">',
-        "<h1>Toy Games</h1>",
+        "<h1>Toys & Games</h1>",
         "<div class='gw-cards'>",
     ]
     for title, route, desc, link in _DEF:
@@ -84,6 +84,9 @@ def view_toy_games():
         )
     html.append("</div>")
     return "\n".join(html)
+
+
+view_toy_games._title = "Toys & Games"
 
 
 def view_game_of_life(*args, **kwargs):
