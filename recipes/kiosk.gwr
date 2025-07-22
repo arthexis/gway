@@ -1,0 +1,3 @@
+# file: recipes/kiosk.gwr
+
+kiosk show --url http://127.0.0.1:8888 --width 1024 --height 768
