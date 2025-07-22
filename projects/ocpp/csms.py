@@ -663,10 +663,14 @@ def view_charger_detail(*, charger_id=None, **_):
     )
 
     html.append(
-        f'''<form id="tx-range" method="get" style="margin:1em 0;">
+        f'''<form id="tx-range" method="get">
             <input type="hidden" name="charger_id" value="{charger_id}">
-            <label>From: <input type="date" name="since" value="{since}"></label>
-            <label>To: <input type="date" name="until" value="{until}"></label>
+            <label>From:
+                <input type="date" name="since" value="{since}">
+            </label>
+            <label>To:
+                <input type="date" name="until" value="{until}">
+            </label>
             <button type="submit">Apply</button>
         </form>'''
     )
