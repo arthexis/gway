@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.55 [build 429e64]
+---------------------
+
+- 73aa45b Improve CP simulator status tracking
+
 0.4.54 [build a79b2b]
 ---------------------
 
