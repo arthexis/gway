@@ -115,3 +115,9 @@ RFID access entries are stored in ``work/ocpp/rfids.cdv``. Open
 ``/ocpp/manage-rfids`` in your browser to edit these records. The page lists
 all tags with their balance and ``allowed`` flag so you can quickly update,
 credit or delete entries and add new ones.
+
+The ``ocpp.rfid`` module also exposes helper functions to manage the table
+programmatically.  Use ``create_entry`` to add a tag, ``update_entry`` to
+modify fields, ``delete_entry`` to remove a tag and ``enable`` or ``disable``
+to toggle the ``allowed`` flag.  Balances can be adjusted via ``credit`` and
+``debit`` which operate on the ``balance`` field.
