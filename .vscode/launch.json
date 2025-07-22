@@ -50,11 +50,11 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "gway -r recipe_launcher",
+            "name": "gway -r cookbook",
             "type": "python",
             "request": "launch",
             "module": "gway",
-            "args": ["-r", "recipe_launcher"],
+            "args": ["-r", "cookbook"],
             "console": "integratedTerminal"
         }
     ]
