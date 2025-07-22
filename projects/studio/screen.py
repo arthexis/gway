@@ -401,3 +401,36 @@ def _display_and_save(pil_images, frame_files, output_gif):
     )
     print(f"Saved GIF → {output_gif}")
 
+
+def view_animate_gif(*, pattern: str = None, output_gif: str = None):
+    """Simple web form to run :func:`animate_gif`."""
+    from bottle import request
+    import html
+
+    msg = ""
+    if request.method == "POST":
+        pattern = request.forms.get("pattern") or pattern
+        output_gif = request.forms.get("output_gif") or output_gif
+        if not pattern:
+            msg = "<p class='error'>Pattern is required.</p>"
+        else:
+            try:
+                result = animate_gif(pattern, output_gif=output_gif)
+                msg = f"<p>Saved GIF to {html.escape(result)}</p>"
+            except Exception as exc:
+                gw.exception(exc)
+                msg = f"<p class='error'>Error: {html.escape(str(exc))}</p>"
+
+    pattern_val = html.escape(pattern or "")
+    output_val = html.escape(output_gif or "")
+
+    return (
+        "<h1>Animate GIF</h1>"
+        f"{msg}"
+        "<form method='post'>"
+        f"<input name='pattern' placeholder='Pattern' required value='{pattern_val}'> "
+        f"<input name='output_gif' placeholder='Output GIF' value='{output_val}'> "
+        "<button type='submit'>Animate</button>"
+        "</form>"
+    )
+
