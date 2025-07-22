@@ -84,11 +84,18 @@ class GatewayTests(unittest.TestCase):
             wrapped()
 
     def test_find_project_returns_first(self):
-        project = gw.find_project("does.not.exist", "studio.qr")
-        self.assertIsNotNone(project)
-        self.assertTrue(hasattr(project, "generate_url"))
-        none_proj = gw.find_project("nope1", "nope2")
-        self.assertIsNone(none_proj)
+        from pathlib import Path
+        from unittest.mock import patch
+
+        def fake_resource(*parts, **kw):
+            return Path().joinpath(*parts)
+
+        with patch.object(gw, "resource", fake_resource):
+            project = gw.find_project("does.not.exist", "studio.qr")
+            self.assertIsNotNone(project)
+            self.assertTrue(hasattr(project, "generate_url"))
+            none_proj = gw.find_project("nope1", "nope2")
+            self.assertIsNone(none_proj)
 
     def test_prefixes_constant_available(self):
         self.assertIsInstance(gw.prefixes, tuple)
