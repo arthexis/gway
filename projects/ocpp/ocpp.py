@@ -84,7 +84,7 @@ def view_ocpp_dashboard(*, _title="OCPP Dashboard", **_):
         ("Energy Time Series", "/ocpp/time-series",
          f"Total Energy: {energy} kWh"),
         ("CP Simulator", "/ocpp/evcs/cp-simulator",
-         f"Simulator: {sim_running}"),
+         sim_running),
     ]
 
     html = ["<h1>OCPP Dashboard</h1>"]
