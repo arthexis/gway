@@ -496,35 +496,8 @@ except Exception:
     pass
 
 
-def _run_simulator_thread(cp_idx, params):
-    """Background runner for the simulator, updating state as it runs."""
-    state = _simulators[cp_idx]
-    try:
-        state["last_status"] = "Starting..."
-        state["pid"] = os.getpid()
-        _save_state_file(_simulators)
-        coro = simulate(**params, cp=cp_idx)
-        if hasattr(coro, "__await__"):  # coroutine (daemon=True)
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(coro)
-        state["last_status"] = "Simulator finished."
-    except KeyboardInterrupt as e:
-        state["last_status"] = "Error"
-        state["last_error"] = f"{e}\n{traceback.format_exc()}"
-    except Exception as e:
-        state["last_status"] = "Error"
-        state["last_error"] = f"{e}\n{traceback.format_exc()}"
-    finally:
-        state["running"] = False
-        state["stop_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        state["thread"] = None
-        _save_state_file(_simulators)
-
-
 def _start_simulator(params=None, cp=1):
-    """Start the simulator in a background thread."""
+    """Start the simulator via Gateway so the coroutine is tracked automatically."""
     state = _simulators[cp]
     if state["running"]:
         return False  # Already running
@@ -537,9 +510,8 @@ def _start_simulator(params=None, cp=1):
     state["stop_time"] = None
     state["pid"] = os.getpid()
     _save_state_file(_simulators)
-    t = threading.Thread(target=_run_simulator_thread, args=(cp, state["params"]), daemon=True)
-    state["thread"] = t
-    t.start()
+
+    gw.ocpp.evcs.simulate(cp=cp, **state["params"])
     return True
 
 def _stop_simulator(cp=1):
