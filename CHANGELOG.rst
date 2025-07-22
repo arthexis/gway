@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.54 [build a79b2b]
+---------------------
+
+- 4b19dce feat: watch until for future async tasks
+
 0.4.53 [build def537]
 ---------------------
 
