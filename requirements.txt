@@ -35,3 +35,4 @@ argcomplete
 PyJWT
 sounddevice
 PyYAML
+pywebview
