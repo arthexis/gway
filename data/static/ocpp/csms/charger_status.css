@@ -188,3 +188,44 @@
 .ocpp-summary td {
     vertical-align: top;
 }
+
+/* Transaction details table */
+.ocpp-details {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 0.5em;
+}
+.ocpp-details th,
+.ocpp-details td {
+    border: 1px solid #bbb;
+    padding: 4px 8px;
+}
+
+/* Date range selector */
+#tx-range {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin: 1em 0;
+}
+#tx-range label {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
+}
+#tx-range input[type="date"] {
+    width: auto;
+    margin-bottom: 0;
+    padding: 0.35em 0.5em;
+}
+[data-theme="dark"] #tx-range input[type="date"],
+body.dark #tx-range input[type="date"],
+.dark #tx-range input[type="date"] {
+    color-scheme: dark;
+}
+[data-theme="dark"] #tx-range input[type="date"]::-webkit-calendar-picker-indicator,
+body.dark #tx-range input[type="date"]::-webkit-calendar-picker-indicator,
+.dark #tx-range input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+}
