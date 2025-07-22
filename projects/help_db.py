@@ -4,6 +4,7 @@
 import os
 from gway import gw
 import re
+import ast
 
 
 def build(*, update: bool = False):
@@ -11,6 +12,7 @@ def build(*, update: bool = False):
     import inspect
 
     db_path = gw.resource("data", "help.sqlite")
+    test_map = _scan_tests("tests")
     if not update and os.path.isfile(db_path):
         gw.info("Help database already exists; skipping build.")
         return db_path
@@ -23,7 +25,7 @@ def build(*, update: bool = False):
         cursor.execute(
             """
             CREATE VIRTUAL TABLE help USING fts5(
-                project, function, signature, docstring, source, todos, tokenize='porter')
+                project, function, signature, docstring, source, todos, tests, tokenize='porter')
             """
         )
         cursor.execute(
@@ -54,9 +56,18 @@ def build(*, update: bool = False):
                     except OSError:
                         source = ""
                     todos = _extract_todos(source)
+                    tests = "\n".join(test_map.get(f"{dotted_path}.{fname}", []))
                     cursor.execute(
-                        "INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)",
-                        (dotted_path, fname, sig, doc, source, "\n".join(todos)),
+                        "INSERT INTO help VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            dotted_path,
+                            fname,
+                            sig,
+                            doc,
+                            source,
+                            "\n".join(todos),
+                            tests,
+                        ),
                     )
                     for p, t in param_types.items():
                         cursor.execute(
@@ -89,9 +100,10 @@ def build(*, update: bool = False):
             except OSError:
                 source = ""
             todos = _extract_todos(source)
+            tests = "\n".join(test_map.get(f"builtin.{name}", []))
             cursor.execute(
-                "INSERT INTO help VALUES (?, ?, ?, ?, ?, ?)",
-                ("builtin", name, sig, doc, source, "\n".join(todos)),
+                "INSERT INTO help VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("builtin", name, sig, doc, source, "\n".join(todos), tests),
             )
             for p, t in param_types.items():
                 cursor.execute(
@@ -146,6 +158,88 @@ def _extract_todos(source: str):
     if current:
         todos.append("\n".join(current))
     return todos
+
+
+def _scan_tests(root: str = "tests"):
+    """Return mapping of dotted function paths to referencing tests."""
+    result: dict[str, set[str]] = {}
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.var_map: dict[str, str] = {}
+            self.stack: list[str] = []
+            self.calls: dict[str, set[str]] = {}
+
+        def _attr_chain(self, node):
+            parts = []
+            while isinstance(node, ast.Attribute):
+                parts.append(node.attr)
+                node = node.value
+            if isinstance(node, ast.Name):
+                parts.append(node.id)
+                return list(reversed(parts))
+            return None
+
+        def _context(self):
+            return ".".join(self.stack) if self.stack else "<module>"
+
+        def visit_Assign(self, node):
+            if isinstance(node.value, ast.Call):
+                chain = self._attr_chain(node.value.func)
+                if (
+                    chain == ["gw", "load_project"]
+                    and node.value.args
+                    and isinstance(node.value.args[0], ast.Constant)
+                ):
+                    proj = str(node.value.args[0].value)
+                    for tgt in node.targets:
+                        if isinstance(tgt, ast.Name):
+                            self.var_map[tgt.id] = proj
+            self.generic_visit(node)
+
+        def visit_Call(self, node):
+            chain = self._attr_chain(node.func)
+            if chain:
+                root = chain[0]
+                if root == "gw":
+                    dotted = ".".join(chain[1:])
+                    self.calls.setdefault(dotted, set()).add(self._context())
+                elif root in self.var_map:
+                    dotted = ".".join([self.var_map[root]] + chain[1:])
+                    self.calls.setdefault(dotted, set()).add(self._context())
+            self.generic_visit(node)
+
+        def visit_FunctionDef(self, node):
+            self.stack.append(node.name)
+            self.generic_visit(node)
+            self.stack.pop()
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_ClassDef(self, node):
+            self.stack.append(node.name)
+            self.generic_visit(node)
+            self.stack.pop()
+
+    for dirpath, _, files in os.walk(root):
+        for fname in files:
+            if not fname.endswith(".py"):
+                continue
+            path = os.path.join(dirpath, fname)
+            try:
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    source = f.read()
+                tree = ast.parse(source)
+            except Exception:
+                continue
+            visitor = Visitor()
+            visitor.visit(tree)
+            for call, refs in visitor.calls.items():
+                key = call
+                refs_full = {f"{fname}::{r}" for r in refs}
+                result.setdefault(key, set()).update(refs_full)
+
+    return {k: sorted(v) for k, v in result.items()}
 
 
 _BUILTIN_TYPES = {
