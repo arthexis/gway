@@ -1,10 +1,11 @@
 # file: projects/ocpp/rfid.py
 """RFID authorization and management helpers.
 
-This module validates ``Authorize`` requests from charge points and
-stores RFID information in ``work/ocpp/rfids.cdv`` using the colon
-delimited value (CDV) helpers.  In addition to the validators it also
-provides convenience functions to manage RFID records:
+This module validates ``Authorize`` requests from charge points.  RFID
+information can be stored in ``work/ocpp/rfids.cdv`` or in the new
+``auth_db`` project which keeps everything in a DuckDB database.  In
+addition to the validators it also provides convenience functions to
+manage RFID records stored in a CDV table:
 
 ``create_entry``\ , ``update_entry``\ , ``delete_entry``\ , ``enable``\ ,
 ``disable``\ , ``credit`` and ``debit``.
@@ -46,8 +47,30 @@ def _is_allowed(record) -> bool:
 #       work/ocpp/rfids.cdv and storing two extra keys: balance (float) and allowed (default True)
 #       See the params ocpp.csms.setup_app sends to this function to fix the signature.
 
-def authorize_balance(*, record=None, payload=None, charger_id=None, action=None, table=RFID_TABLE, **_):
-    """Default validator: allow if record balance >= 1 and allowed."""
+def authorize_balance(
+    *,
+    record=None,
+    payload=None,
+    charger_id=None,
+    action=None,
+    table=RFID_TABLE,
+    dbfile=None,
+    **_,
+):
+    """Default validator: allow if tag is allowed and balance >= 1."""
+    if dbfile:
+        rfid = payload.get("idTag") if isinstance(payload, dict) else None
+        if not rfid:
+            return False
+        ok, _ident = gw.auth_db.verify_rfid(rfid, dbfile=dbfile)
+        if not ok:
+            return False
+        try:
+            bal = gw.auth_db.get_balance(rfid, dbfile=dbfile)
+            return float(bal) >= 1
+        except Exception:
+            return False
+
     record = _resolve_record(record, payload, table)
     if not record:
         return False
@@ -60,8 +83,24 @@ def authorize_balance(*, record=None, payload=None, charger_id=None, action=None
 # TODO: Create another authorizer that just checks that allowed is True and not the balance (authorize_allowed)
 #       If possible create some common functions so we can add more authorizers on the same file later
 
-def authorize_allowed(*, record=None, payload=None, charger_id=None, action=None, table=RFID_TABLE, **_):
-    """Authorize only if ``allowed`` flag is truthy for the RFID."""
+def authorize_allowed(
+    *,
+    record=None,
+    payload=None,
+    charger_id=None,
+    action=None,
+    table=RFID_TABLE,
+    dbfile=None,
+    **_,
+):
+    """Authorize only if the RFID is marked as allowed."""
+    if dbfile:
+        rfid = payload.get("idTag") if isinstance(payload, dict) else None
+        if not rfid:
+            return False
+        ok, _ident = gw.auth_db.verify_rfid(rfid, dbfile=dbfile)
+        return bool(ok)
+
     record = _resolve_record(record, payload, table)
     return _is_allowed(record)
     
@@ -102,7 +141,15 @@ def debit(rfid, amount=1, *, table=RFID_TABLE):
     return gw.cdv.debit(table, rfid, amount=amount, field="balance")
 
 
-def approve(*, payload=None, charger_id=None, validator=authorize_balance, table=RFID_TABLE, **_):
+def approve(
+    *,
+    payload=None,
+    charger_id=None,
+    validator=authorize_balance,
+    table=RFID_TABLE,
+    dbfile=None,
+    **_,
+):
     """Return True if the given RFID payload is approved.
 
     Parameters
@@ -119,9 +166,11 @@ def approve(*, payload=None, charger_id=None, validator=authorize_balance, table
     if not rfid:
         return False
 
-    record = _record_from_payload(payload, table)
-    if not record:
-        return False
+    record = None
+    if not dbfile:
+        record = _record_from_payload(payload, table)
+        if not record:
+            return False
 
     if validator:
         try:
@@ -132,6 +181,7 @@ def approve(*, payload=None, charger_id=None, validator=authorize_balance, table
                     action=None,
                     table=table,
                     record=record,
+                    dbfile=dbfile,
                 )
             )
         except Exception as e:
