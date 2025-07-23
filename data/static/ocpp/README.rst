@@ -126,3 +126,12 @@ to toggle the ``allowed`` flag.  Balances can be adjusted via ``credit`` and
 ``debit`` which operate on the ``balance`` field.  When using ``auth_db`` the
 authorizer helpers accept a ``dbfile`` parameter to look up tags in the
 database instead of the CDV table.
+
+To keep multiple instances in sync a helper ``gw.auth_db.sync_from_url``
+can download the database from a remote HTTP endpoint and replace the
+local file. Run it periodically with ``every``:
+
+.. code-block:: bash
+
+   every --interval 300 gw.auth_db.sync_from_url \
+       http://example.com/work/auth.duckdb
