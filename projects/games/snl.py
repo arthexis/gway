@@ -6,7 +6,11 @@ import random
 from gway import gw
 
 BOARD_FILE = gw.resource("work", "shared", "games", "massive_snake.json", touch=True)
+ASC_TABLE = gw.resource("work", "games", "ascensions.cdv", touch=True)
 BOARD_SIZE = 100
+HEGEMONY_ID = "hegemony"
+HEGEMONY_NAME = "Hegemony"
+HEGEMONY_COLOR = "gray"
 
 # Basic snakes and ladders layout
 SNAKES = {16: 6, 48: 26, 49: 11, 56: 53, 62: 19, 64: 60, 93: 73, 95: 75, 98: 78}
@@ -18,10 +22,18 @@ def load_board():
     if BOARD_FILE.exists() and BOARD_FILE.stat().st_size > 0:
         try:
             with open(BOARD_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                board = json.load(f)
         except Exception as e:
             gw.warn(f"Failed loading board: {e}")
-    board = {"players": {}, "last_roll": 0}
+            board = {"players": {}, "last_roll": 0}
+    else:
+        board = {"players": {}, "last_roll": 0}
+    if HEGEMONY_ID not in board.get("players", {}):
+        board.setdefault("players", {})[HEGEMONY_ID] = {
+            "name": HEGEMONY_NAME,
+            "color": HEGEMONY_COLOR,
+            "pos": 0,
+        }
     save_board(board)
     return board
 
@@ -61,6 +73,16 @@ def _get_ascensions() -> int:
 def _set_ascensions(val: int):
     if _use_cookies():
         gw.web.cookies.set("msnake_asc", str(val), path="/", max_age=365 * 24 * 3600)
+
+
+def _record_ascension(name: str):
+    """Update leaderboard for the given player name."""
+    if not name:
+        return
+    records = gw.cdv.load_all(ASC_TABLE) or {}
+    if name not in records:
+        gw.cdv.update(ASC_TABLE, name, count="0")
+    gw.cdv.credit(ASC_TABLE, name, field="count")
 
 
 def _add_player(board, name: str, color: str) -> str:
@@ -130,6 +152,7 @@ def view_massive_snake(*, action=None, name=None, color=None):
     if action == "ascend" and pid and board["players"].get(pid, {}).get("pos") >= BOARD_SIZE:
         asc += 1
         _set_ascensions(asc)
+        _record_ascension(board["players"][pid].get("name"))
         board["players"][pid]["pos"] = 0
         save_board(board)
         message = "Ascended!"
@@ -143,6 +166,9 @@ def view_massive_snake(*, action=None, name=None, color=None):
             pdata["pos"] = new_pos
             if pid_ == pid:
                 event = ev
+        if board["players"].get(HEGEMONY_ID, {}).get("pos", 0) >= BOARD_SIZE:
+            _record_ascension(HEGEMONY_NAME)
+            board["players"][HEGEMONY_ID]["pos"] = 0
         save_board(board)
         message = f"Rolled {roll}!"
         if event == "ladder":
@@ -205,6 +231,7 @@ def view_massive_snake(*, action=None, name=None, color=None):
         "<h1 id='msnake-title' class='snake-title'>Massive Snake</h1>",
         script,
         "<p><em>A Massively Multiplayer Game of Snakes and Ladders.</em></p>",
+        "<p><a href='/games/snake-leaderboard'>View Ascension Leaderboard</a></p>",
         join_form,
         f"<p>{message}</p>" if message else "",
         f"<p>Ascensions: {asc}</p>" if pid else "",
@@ -214,5 +241,22 @@ def view_massive_snake(*, action=None, name=None, color=None):
         "".join(rows),
         "</table>",
         _board_html(board),
+    ]
+    return "\n".join(html)
+
+
+def view_snake_leaderboard():
+    """Display leaderboard of ascensions."""
+    records = gw.cdv.load_all(ASC_TABLE) or {}
+    rows = []
+    for name, fields in sorted(records.items(), key=lambda x: float(x[1].get("count", "0")), reverse=True):
+        name_html = gw.web.nav.html_escape(name)
+        rows.append(f"<tr><td>{name_html}</td><td>{fields.get('count', '0')}</td></tr>")
+    html = [
+        "<h1>Ascension Leaderboard</h1>",
+        "<table><tr><th>Player</th><th>Ascensions</th></tr>",
+        "".join(rows),
+        "</table>",
+        "<p><a href='/games/massive-snake'>Back to Massive Snake</a></p>",
     ]
     return "\n".join(html)
