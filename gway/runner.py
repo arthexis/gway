@@ -18,6 +18,14 @@ class Runner:
         self._async_threads = []
         super().__init__(*args, **kwargs)
 
+    def _resolve_callable(self, name):
+        if callable(name):
+            return name
+        obj = self
+        for part in str(name).split('.'):
+            obj = getattr(obj, part)
+        return obj
+
     def run_coroutine(self, func_name, coro_or_func, args=None, kwargs=None):
         try:
             start_time = time.perf_counter() if getattr(self, 'timed_enabled', False) else None
@@ -44,6 +52,24 @@ class Runner:
             if start_time is not None:
                 if hasattr(self, 'log'):
                     self.log(f"[timed] {func_name} (async) took {time.perf_counter() - start_time:.3f}s")
+
+    def every(self, target, *args, interval=60, daemon=True, **kwargs):
+        """Run ``target`` periodically every ``interval`` seconds."""
+        func = self._resolve_callable(target)
+
+        def loop():
+            while True:
+                try:
+                    func(*args, **kwargs)
+                except Exception as e:
+                    if hasattr(self, "warn"):
+                        self.warn(f"[every] {target} failed: {e}")
+                time.sleep(interval)
+
+        t = threading.Thread(target=loop, daemon=daemon)
+        t.start()
+        self._async_threads.append(t)
+        return t
 
     def until(self, *, file=None, url=None, pypi=False, version=False, build=False,
               done=False, notify=False, notify_only=False, abort=False,
