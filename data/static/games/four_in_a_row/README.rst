@@ -42,3 +42,7 @@ checks for a winning move of its own first. If such a column exists it will
 take it, otherwise it checks if the player threatens an immediate win next turn
 and blocks that column. If neither case applies, it selects a random legal
 column and stores the updated board back in the cookie.
+
+A separate ``fiar_streak`` cookie tracks consecutive player wins. Each
+victory increases the value by one while a loss or manual reset returns it
+to zero.
