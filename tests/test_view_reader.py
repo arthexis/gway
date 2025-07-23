@@ -25,6 +25,7 @@ class ViewReaderTests(unittest.TestCase):
     def test_view_reader_renders(self):
         html = gw.web.site.view_reader(tome="README", origin="root")
         self.assertIn("Test RST resource", html)
+        self.assertIn("reader-select", html)
 
     def test_hidden_or_private_denied(self):
         self.assertIn("Access denied", gw.web.site.view_reader(tome=".secret", origin="root"))
