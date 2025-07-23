@@ -93,3 +93,23 @@ def adjust_balance(rfid, amount, *, dbfile=None):
 
 def get_identity(identity_id, *, dbfile=None):
     return _model(IDENTITIES, dbfile=dbfile).read(identity_id)
+
+
+def sync_from_url(url, *, dbfile=None, timeout=10):
+    """Download a remote database and replace the local file."""
+    import requests
+    import os
+
+    import pathlib
+
+    target = pathlib.Path(gw.resource(dbfile or DBFILE))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = target.with_name(target.name + ".tmp")
+    gw.debug(f"[auth_db] fetching {url} -> {target}")
+    resp = requests.get(url, timeout=timeout)
+    resp.raise_for_status()
+    with open(tmp_path, "wb") as f:
+        f.write(resp.content)
+    os.replace(tmp_path, target)
+    gw.info(f"[auth_db] synced {url}")
+    return target
