@@ -10,21 +10,19 @@ def view_studio_bench(*, _title="Studio Bench", **_):
             "Convert image frames into a GIF",
         ),
     ]
-    html = ["<h1>Studio Bench</h1>"]
-    html.append(
-        "<style>"
-        ".studio-cards{display:flex;flex-wrap:wrap;gap:1em;margin:1em 0;}"
-        ".studio-card{display:block;padding:1em;border:1px solid var(--muted,#ccc);"
-        "border-radius:8px;background:var(--card-bg,#f9f9f9);width:16em;"
-        "text-decoration:none;color:inherit;}"
-        ".studio-card h2{margin-top:0;font-size:1.2em;}"
-        ".studio-card p{margin:.4em 0;}"
-        "</style>"
-    )
-    html.append("<div class='studio-cards'>")
+    html = [
+        '<link rel="stylesheet" href="/static/web/cards.css">',
+        "<h1>Studio Bench</h1>",
+        "<div class='gw-cards'>",
+    ]
     for label, url, info in links:
         html.append(
-            f"<a class='studio-card' href='{url}'><h2>{label}</h2><p>{info}</p></a>"
+            "<div class='gw-card'>"
+            f"<a href='{url}' class='main-link'><h2>{label}</h2><p>{info}</p></a>"
+            "</div>"
         )
     html.append("</div>")
     return "\n".join(html)
+
+
+view_studio_bench._title = "Studio Bench"
