@@ -1,7 +1,7 @@
 Unified Authentication Database
 -------------------------------
 
-``projects/authdb`` provides a small helper that stores authentication
+``projects/auth_db`` provides a small helper that stores authentication
 information in a DuckDB database.  Multiple login methods can be linked
 via a shared ``identity_id`` so that a user authenticated by username
 and password can also be recognised via an RFID tag.
