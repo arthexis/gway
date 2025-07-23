@@ -149,6 +149,7 @@ def view_massive_snake(*, action=None, name=None, color=None):
     message = ""
     roll_msg = ""
     disable_roll = False
+    hege_html = ""
     if action == "ascend" and pid and board["players"].get(pid, {}).get("pos") >= BOARD_SIZE:
         asc += 1
         _set_ascensions(asc)
@@ -161,16 +162,26 @@ def view_massive_snake(*, action=None, name=None, color=None):
         roll = random.randint(1, 6)
         board["last_roll"] = roll
         event = None
+        hegemony_ascended = False
         for pid_, pdata in board["players"].items():
+            if pid_ == HEGEMONY_ID:
+                h_roll = random.randint(1, 6)
+                new_pos, _ = _apply_move(pdata.get("pos", 0), h_roll)
+                pdata["pos"] = new_pos
+                if new_pos >= BOARD_SIZE:
+                    _record_ascension(HEGEMONY_NAME)
+                    pdata["pos"] = 0
+                    hegemony_ascended = True
+                continue
+
             new_pos, ev = _apply_move(pdata.get("pos", 0), roll)
             pdata["pos"] = new_pos
             if pid_ == pid:
                 event = ev
-        if board["players"].get(HEGEMONY_ID, {}).get("pos", 0) >= BOARD_SIZE:
-            _record_ascension(HEGEMONY_NAME)
-            board["players"][HEGEMONY_ID]["pos"] = 0
         save_board(board)
         message = f"Rolled {roll}!"
+        if hegemony_ascended:
+            hege_html = view_snake_leaderboard()
         if event == "ladder":
             message += " You went up a ladder!"
             disable_roll = True
@@ -241,6 +252,7 @@ def view_massive_snake(*, action=None, name=None, color=None):
         "".join(rows),
         "</table>",
         _board_html(board),
+        hege_html,
     ]
     return "\n".join(html)
 
