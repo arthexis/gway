@@ -12,6 +12,7 @@ def start_app(*,
     ws_port : int   = __('[WS_PORT]', '[WEBSOCKET_PORT]', '9999'),
     debug=False,
     proxy=None,
+    proxy_mode: str = "extend",
     app=None,
     daemon=True,
     threaded=True,
@@ -19,6 +20,7 @@ def start_app(*,
     workers=None,
     label=None,  # for multi-app registry
 ):
+    """Launch the given WSGI/ASGI app with optional proxy support."""
     import inspect
     import asyncio
 
@@ -110,7 +112,7 @@ def start_app(*,
         # Proxy setup (unchanged)
         if proxy:
             setup_proxy = gw.web.proxy.fallback_app
-            app = setup_proxy(endpoint=proxy, app=app)
+            app = setup_proxy(endpoint=proxy, app=app, mode=proxy_mode)
 
         # Factory support (unchanged)
         if callable(app):

@@ -23,6 +23,8 @@ def fallback_app(*,
     - ``trigger``: call ``callback(request)``. Proxy if the callback returns
       ``True`` (supports async callbacks on FastAPI). ``callback`` must be
       provided for this mode.
+    - ``remote``: try the remote endpoint first and fall back to the local
+      handler on connection failure or ``404``/server errors.
     """
     # selectors for app types
     from bottle import Bottle
@@ -72,18 +74,24 @@ def fallback_app(*,
                 _wire_error_fallback(default, endpoint, path)
             elif mode == "trigger":
                 _wire_trigger_fallback(default, endpoint, callback)
+            elif mode == "remote":
+                _wire_remote_first(default, endpoint, path)
         elif bottle_app:
             prepared.append(_wire_proxy(bottle_app, endpoint, websockets, path))
             if mode == "errors":
                 _wire_error_fallback(bottle_app, endpoint, path)
             elif mode == "trigger":
                 _wire_trigger_fallback(bottle_app, endpoint, callback)
+            elif mode == "remote":
+                _wire_remote_first(bottle_app, endpoint, path)
         elif fastapi_app:
             prepared.append(_wire_proxy(fastapi_app, endpoint, websockets, path))
             if mode == "errors":
                 _wire_error_fallback(fastapi_app, endpoint, path)
             elif mode == "trigger":
                 _wire_trigger_fallback(fastapi_app, endpoint, callback)
+            elif mode == "remote":
+                _wire_remote_first(fastapi_app, endpoint, path)
 
     return prepared[0] if len(prepared) == 1 else tuple(prepared)
 
@@ -320,6 +328,106 @@ def _wire_trigger_fallback(app, endpoint: str, callback):
         def _before_req():
             if callback(request):
                 raise _do_proxy()
+
+        return app
+
+    raise RuntimeError("Unsupported app type for fallback_app: must be Bottle or FastAPI-compatible")
+
+
+def _wire_remote_first(app, endpoint: str, path: str):
+    """Attach middleware/hooks that try the remote first and fall back locally."""
+    is_fastapi = hasattr(app, "websocket")
+
+    if is_fastapi:
+        from fastapi import Request, Response, WebSocket
+        import httpx, websockets, asyncio
+
+        class _RemoteFirstMiddleware:
+            def __init__(self, inner):
+                self.inner = inner
+
+            async def __call__(self, scope, receive, send):
+                if scope["type"] == "http":
+                    request = Request(scope, receive=receive)
+                    body = await request.body()
+                    url = endpoint.rstrip("/") + request.url.path
+                    if request.url.query:
+                        url += "?" + request.url.query
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            proxied = await client.request(
+                                request.method,
+                                url,
+                                headers=dict(request.headers),
+                                content=body,
+                            )
+                        if proxied.status_code < 500 and proxied.status_code != 404:
+                            response = Response(
+                                content=proxied.content,
+                                status_code=proxied.status_code,
+                                headers=proxied.headers,
+                            )
+                            await response(scope, receive, send)
+                            return
+                    except Exception:
+                        pass
+                    await self.inner(scope, receive, send)
+                elif scope["type"] == "websocket":
+                    ws = WebSocket(scope, receive=receive, send=send)
+                    upstream = endpoint.rstrip("/") + scope["path"]
+                    try:
+                        async with websockets.connect(upstream) as up:
+                            await send({"type": "websocket.accept"})
+
+                            async def c2u():
+                                while True:
+                                    msg = await receive()
+                                    if msg["type"] == "websocket.receive":
+                                        data = msg.get("text") or msg.get("bytes")
+                                        await up.send(data)
+                                    elif msg["type"] == "websocket.disconnect":
+                                        await up.close()
+                                        break
+
+                            async def u2c():
+                                try:
+                                    while True:
+                                        data = await up.recv()
+                                        await send({"type": "websocket.send", "text": data})
+                                except websockets.exceptions.ConnectionClosed:
+                                    pass
+
+                            await asyncio.gather(c2u(), u2c())
+                            return
+                    except Exception:
+                        pass
+                    await self.inner(scope, receive, send)
+                else:
+                    await self.inner(scope, receive, send)
+
+        app.add_middleware(_RemoteFirstMiddleware)
+        return app
+
+    if hasattr(app, "route"):
+        from bottle import request, HTTPResponse
+
+        def _remote_first():
+            target = endpoint.rstrip("/") + request.fullpath
+            headers = {k: v for k, v in request.headers.items()}
+            body = request.body.read()
+            try:
+                resp = requests.request(request.method, target, headers=headers, data=body, stream=True)
+                if resp.status_code < 500 and resp.status_code != 404:
+                    return HTTPResponse(resp.content, status=resp.status_code, headers=resp.headers)
+            except Exception:
+                pass
+            return None
+
+        @app.hook("before_request")
+        def _before_req():
+            result = _remote_first()
+            if result is not None:
+                raise result
 
         return app
 

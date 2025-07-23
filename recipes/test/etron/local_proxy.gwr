@@ -1,5 +1,5 @@
 # file: recipes/test/etron/local_proxy.gwr
-# Local OCPP CSMS with proxy fallback for tests
+# Local OCPP CSMS that prefers the remote cloud if available
 
 web app setup:
     - ocpp.data --home charger-summary
@@ -14,7 +14,6 @@ ocpp csms setup:
 
 web:
  - static collect
- - every --interval 300 gw.auth_db.sync_from_url http://127.0.0.1:18000/work/auth.duckdb
- - server start-app --host 0.0.0.0 --port 18888 --ws-port 19900 --proxy http://127.0.0.1:18000
+ - server start-app --host 0.0.0.0 --port 18888 --ws-port 19900 --proxy http://127.0.0.1:18000 --proxy-mode remote
 
 until --version
