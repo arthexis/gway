@@ -111,13 +111,18 @@ chart of energy usage over time for selected chargers and dates.
 RFID Management
 ---------------
 
-RFID access entries are stored in ``work/ocpp/rfids.cdv``. Open
-``/ocpp/manage-rfids`` in your browser to edit these records. The page lists
-all tags with their balance and ``allowed`` flag so you can quickly update,
-credit or delete entries and add new ones.
+RFID access entries can be managed in two ways.  For quick local setups the
+records are stored in ``work/ocpp/rfids.cdv`` and edited via
+``/ocpp/manage-rfids``.  A more robust ``auth_db`` project stores the same
+information in a DuckDB database for use by the CSMS authorizers.
+
+The management page lists all tags with their balance and ``allowed`` flag so
+you can quickly update, credit or delete entries and add new ones.
 
 The ``ocpp.rfid`` module also exposes helper functions to manage the table
 programmatically.  Use ``create_entry`` to add a tag, ``update_entry`` to
 modify fields, ``delete_entry`` to remove a tag and ``enable`` or ``disable``
 to toggle the ``allowed`` flag.  Balances can be adjusted via ``credit`` and
-``debit`` which operate on the ``balance`` field.
+``debit`` which operate on the ``balance`` field.  When using ``auth_db`` the
+authorizer helpers accept a ``dbfile`` parameter to look up tags in the
+database instead of the CDV table.
