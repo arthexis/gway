@@ -1,4 +1,4 @@
-# file: projects/authdb.py
+# file: projects/auth_db.py
 """Authentication database using gw.sql.model and DuckDB."""
 
 from gway import gw
@@ -6,7 +6,7 @@ import base64
 
 DBFILE = "work/auth.duckdb"
 ENGINE = "duckdb"
-PROJECT = "authdb"
+PROJECT = "auth_db"
 
 IDENTITIES = """identities(
     id INTEGER PRIMARY KEY,
