@@ -93,7 +93,7 @@ def view_reader(
                     gw.verbose(f"[reader] Unsupported file type for {candidate}")
                     html = "<b>Unsupported file type.</b>"
                 gw.verbose(f"[reader] Successfully rendered {candidate}")
-                return html
+                return html + _render_reader_nav(fname, 'root')
             except Exception as e:
                 gw.verbose(f"[reader] Exception reading or rendering {resource_path}: {e}")
                 continue
@@ -132,16 +132,16 @@ def view_reader(
                     html = mdlib.markdown(content)
                 else:
                     html = '<b>Unsupported file type.</b>'
-                return html
+                return html + _render_reader_nav(safe_path, 'static')
             except Exception as e:
                 gw.verbose(f"[reader] Exception reading {resolved}: {e}")
                 continue
         exts = ' or '.join(['.rst', '.md']) if not ext else f".{ext}"
-        return f"<b>File not found or not allowed: {safe_path}{exts}</b>"
+        return f"<b>File not found or not allowed: {safe_path}{exts}</b>" + _render_reader_nav(safe_path, 'static')
 
     # Fallback for other origins (not fully implemented here)
     gw.verbose(f"[view_reader] Non-root origin {origin} not implemented in this snippet.")
-    return "<b>Invalid or unsupported origin.</b>"
+    return "<b>Invalid or unsupported origin.</b>" + _render_reader_nav(fname, origin)
 
 def _sanitize_filename(fname):
     """
@@ -192,6 +192,59 @@ def _looks_like_html(text: str) -> bool:
     if not stripped:
         return False
     return bool(re.search(r'<[a-zA-Z][^>]*>', stripped))
+
+def _list_reader_docs():
+    """Return (root_docs, static_docs) lists of readable documentation files."""
+    root_dir = Path(os.path.dirname(gw.resource('README.rst')))
+    root_docs = []
+    for f in root_dir.iterdir():
+        if f.is_file() and f.suffix in {'.rst', '.md'} and not _is_hidden_or_private(f.name):
+            root_docs.append(f.name)
+    static_dir = Path(gw.resource('data', 'static'))
+    static_docs = []
+    for f in static_dir.rglob('*'):
+        if f.is_file() and f.suffix in {'.rst', '.md'}:
+            rel = f.relative_to(static_dir)
+            if any(_is_hidden_or_private(p) for p in rel.parts):
+                continue
+            static_docs.append(str(rel).replace(os.sep, '/'))
+    return sorted(root_docs), sorted(static_docs)
+
+def _render_reader_nav(current: str | None, origin: str) -> str:
+    """Return HTML select box for navigating between docs."""
+    root_docs, static_docs = _list_reader_docs()
+    options = []
+    for doc in root_docs:
+        sel = ''
+        if origin == 'root' and (doc == current or os.path.splitext(doc)[0] == current):
+            sel = ' selected'
+        safe = html.escape(doc)
+        options.append(f"<option data-origin='root' value='{safe}'{sel}>{safe}</option>")
+    for doc in static_docs:
+        sel = ''
+        if origin != 'root' and (doc == current or os.path.splitext(doc)[0] == current):
+            sel = ' selected'
+        safe = html.escape(doc)
+        options.append(f"<option data-origin='static' value='{safe}'{sel}>{safe}</option>")
+    options_html = '\n'.join(options)
+    script = (
+        "<script>"
+        "function readerFilter(v){v=v.toLowerCase();"
+        "var o=document.querySelectorAll('#reader-select option');"
+        "for(var i=0;i<o.length;i++){var opt=o[i];opt.style.display=opt.textContent.toLowerCase().indexOf(v)>=0?'':'none';}}"
+        "function readerGoto(sel){var opt=sel.options[sel.selectedIndex];if(!opt)return;"
+        "var org=opt.getAttribute('data-origin');var t=opt.value;var q='?tome='+encodeURIComponent(t);"
+        "if(org!=='root'){q+='&origin='+org;}window.location=q;}"
+        "</script>"
+    )
+    return (
+        "<hr>"
+        "<div class='reader-nav'>"
+        "<label for='reader-search'>Continue reading:</label>"
+        "<input id='reader-search' type='text' placeholder='Filter...' oninput=\"readerFilter(this.value)\">"
+        "<select id='reader-select' size='10' onchange='readerGoto(this)'>" +
+        options_html + "</select></div>" + script
+    )
 
 def view_help(topic="", *args, **kwargs):
     """
