@@ -3,6 +3,7 @@
 
 import random
 import html
+from gway import gw
 
 ROWS = 6
 COLS = 7
@@ -21,6 +22,30 @@ def _parse_board(data: str | None):
 
 def _serialize_board(board) -> str:
     return "".join(str(cell) for row in board for cell in row)
+
+
+def _use_cookies():
+    return (
+        hasattr(gw, "web")
+        and hasattr(gw.web, "app")
+        and hasattr(gw.web, "cookies")
+        and getattr(gw.web.app, "is_setup", lambda x: False)("web.cookies")
+        and gw.web.cookies.accepted()
+    )
+
+
+def _get_streak() -> int:
+    if not _use_cookies():
+        return 0
+    try:
+        return int(gw.web.cookies.get("fiar_streak") or "0")
+    except Exception:
+        return 0
+
+
+def _set_streak(val: int):
+    if _use_cookies():
+        gw.web.cookies.set("fiar_streak", str(val), path="/", max_age=30 * 24 * 3600)
 
 
 def _drop(board, col, player):
@@ -59,18 +84,27 @@ def view_four_in_a_row(*, board=None, col=None, reset=None):
     board_state = _parse_board(board)
     message = ""
     game_over = False
+    streak = _get_streak()
 
     if reset:
         board_state = _empty_board()
+        if streak:
+            streak = 0
+            _set_streak(streak)
     elif col is not None:
         col = int(col)
         if _drop(board_state, col, 1):
             if _check_win(board_state, 1):
                 message = "You win!"
                 game_over = True
+                streak += 1
+                _set_streak(streak)
             elif all(board_state[0][c] != 0 for c in range(COLS)):
                 message = "Draw!"
                 game_over = True
+                if streak:
+                    streak = 0
+                    _set_streak(streak)
             else:
                 # computer move
                 choices = [c for c in range(COLS) if board_state[0][c] == 0]
@@ -103,6 +137,9 @@ def view_four_in_a_row(*, board=None, col=None, reset=None):
                     if _check_win(board_state, 2):
                         message = "Computer wins!"
                         game_over = True
+                        if streak:
+                            streak = 0
+                            _set_streak(streak)
 
     board_str = _serialize_board(board_state)
     html_rows = []
@@ -138,8 +175,14 @@ def view_four_in_a_row(*, board=None, col=None, reset=None):
     ]
     if message:
         html_output.append(f"<p>{html.escape(message)}</p>")
-    html_output.append(
-        "<p><button type='submit' name='reset' value='1'>New Game</button></p>"
-    )
+    button_attrs = ["type='submit'", "name='reset'", "value='1'"]
+    if streak > 1:
+        button_attrs.append(
+            "onclick=\"return confirm('Start a new game and lose your streak?');\""
+        )
+    button_html = "<button " + " ".join(button_attrs) + ">New Game</button>"
+    if streak >= 1:
+        button_html += f" <span class='fiar-streak'>Streak: {streak}</span>"
+    html_output.append(f"<p>{button_html}</p>")
     html_output.append("</form>")
     return "\n".join(html_output)
