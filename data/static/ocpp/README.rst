@@ -58,8 +58,8 @@ demos:
 - ``cloud.gwr`` – run a CSMS instance for cloud deployments. Use
   ``ocpp.rfid.approve`` with a CDV table to control RFID access.
 - ``local_proxy.gwr`` – run a local CSMS that forwards unknown requests
-  to a remote instance. This keeps sessions operational when offline and
-  syncs with the cloud once connectivity returns.
+  to a remote instance. Use ``--proxy-mode remote`` to prefer the cloud
+  service when reachable, falling back locally otherwise.
 
 Run them via ``gway run <recipe>``. For example:
 
@@ -70,8 +70,9 @@ Run them via ``gway run <recipe>``. For example:
 The integration suite includes ``tests/test_proxy_fallback.py`` which
 starts both the local and cloud recipes to verify that requests are
 proxied once the cloud is available. Enable it with the ``proxy`` test
-flag. This harness can serve as a template for offline-first
-deployments.
+flag. ``tests/test_proxy_remote.py`` exercises the ``remote`` mode where
+the cloud is preferred if reachable. This harness can serve as a
+template for offline-first deployments.
 
 OCPP Data Storage
 -----------------
