@@ -105,6 +105,10 @@ def view_massive_snake(*args, **kwargs):
     return massive_snake.view_massive_snake(*args, **kwargs)
 
 
+def view_snake_leaderboard(*args, **kwargs):
+    return massive_snake.view_snake_leaderboard(*args, **kwargs)
+
+
 def view_four_in_a_row(*args, **kwargs):
     return four_in_a_row.view_four_in_a_row(*args, **kwargs)
 
