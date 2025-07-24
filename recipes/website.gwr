@@ -14,8 +14,8 @@ web app setup:
     - ocpp --auth required --home ocpp-dashboard --full \
         --links active-chargers,charger-summary,time-series,cp-simulator,manage-rfids
     - web.chat.action --home gpt-actions --links audit-chatlog --auth required
-    - games --home toy-games --links game-of-life,divination-wars,qpig-farm,massive-snake,four-in-a-row,fantastic-client
-    - studio --home studio-bench --links animate-gif --full
+    - games --home toy-games \
+        --links game-of-life,divination-wars,qpig-farm,massive-snake,four-in-a-row,fantastic-client
     - web.auth
 
 help-db build
