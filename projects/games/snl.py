@@ -80,9 +80,8 @@ def _record_ascension(name: str):
     if not name:
         return
     records = gw.cdv.load_all(ASC_TABLE) or {}
-    if name not in records:
-        gw.cdv.update(ASC_TABLE, name, count="0")
-    gw.cdv.credit(ASC_TABLE, name, field="count")
+    current = int(records.get(name, {}).get("count", "0"))
+    gw.cdv.update(ASC_TABLE, name, count=str(current + 1))
 
 
 def _add_player(board, name: str, color: str) -> str:
@@ -242,7 +241,6 @@ def view_massive_snake(*, action=None, name=None, color=None):
         "<h1 id='msnake-title' class='snake-title'>Massive Snake</h1>",
         script,
         "<p><em>A Massively Multiplayer Game of Snakes and Ladders.</em></p>",
-        "<p><a href='/games/snake-leaderboard'>View Ascension Leaderboard</a></p>",
         join_form,
         f"<p>{message}</p>" if message else "",
         f"<p>Ascensions: {asc}</p>" if pid else "",
@@ -253,6 +251,7 @@ def view_massive_snake(*, action=None, name=None, color=None):
         "</table>",
         _board_html(board),
         hege_html,
+        "<p><a href='/games/snake-leaderboard'>View Ascension Leaderboard</a></p>",
     ]
     return "\n".join(html)
 
@@ -261,14 +260,17 @@ def view_snake_leaderboard():
     """Display leaderboard of ascensions."""
     records = gw.cdv.load_all(ASC_TABLE) or {}
     rows = []
-    for name, fields in sorted(records.items(), key=lambda x: float(x[1].get("count", "0")), reverse=True):
+    for name, fields in sorted(records.items(), key=lambda x: int(float(x[1].get("count", "0"))), reverse=True):
+        count = str(int(float(fields.get("count", "0"))))
         name_html = gw.web.nav.html_escape(name)
-        rows.append(f"<tr><td>{name_html}</td><td>{fields.get('count', '0')}</td></tr>")
+        rows.append(f"<tr><td>{name_html}</td><td>{count}</td></tr>")
     html = [
         "<h1>Ascension Leaderboard</h1>",
-        "<table><tr><th>Player</th><th>Ascensions</th></tr>",
+        "<table class='snake-leaderboard'>",
+        "<thead><tr><th>Player</th><th>Ascensions</th></tr></thead>",
+        "<tbody>",
         "".join(rows),
-        "</table>",
+        "</tbody></table>",
         "<p><a href='/games/massive-snake'>Back to Massive Snake</a></p>",
     ]
     return "\n".join(html)
