@@ -137,7 +137,7 @@ def setup_app(project,
     auth="disabled",       # Accept "optional"/"disabled" words to disable
     engine="bottle",
     delegates=None,
-    everything: bool = False,
+    full: bool = False,
     **setup_kwargs,
 ):
     """
@@ -149,13 +149,13 @@ def setup_app(project,
     ``footer`` accepts a list of links similar to ``links`` but rendered in the
     page footer instead of the navigation sidebar. Sub-projects of the loaded
     project are always scanned for missing handlers. Use ``delegates`` to
-    specify additional fallback projects. Set ``everything`` to ``True`` to
+    specify additional fallback projects. Set ``full`` to ``True`` to
     automatically initialize all sub-projects as delegates.
     """
     global _ver, _homes, _enabled, _static_route, _shared_route
 
-    if "all" in setup_kwargs and not everything:
-        everything = bool(setup_kwargs.pop("all"))
+    if "all" in setup_kwargs and not full:
+        full = bool(setup_kwargs.pop("all"))
 
     auth_required = str(auth).strip().lower() not in {
         "none", "false", "disabled", "optional"
@@ -302,7 +302,7 @@ def setup_app(project,
         gw.web.footer.add_footer_links(_homes[-1][1], footer, project)
 
     # Recursively setup sub-projects when requested (before main routes)
-    if everything and delegate_modules:
+    if full and delegate_modules:
         base_path = path if path is not None else project.replace('.', '/')
         for mod in delegate_modules:
             sub_name = getattr(mod, '_name', None)
@@ -318,7 +318,7 @@ def setup_app(project,
                     sub_name,
                     app=app,
                     path=sub_path,
-                    everything=False,
+                    full=False,
                     **setup_kwargs,
                 )
             except Exception as exc:

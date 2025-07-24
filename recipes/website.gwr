@@ -11,11 +11,11 @@ web app setup:
     - web.message
     - awg --home awg-calculator
     - vbox --home uploads
-    - ocpp --auth required --home ocpp-dashboard --everything \
+    - ocpp --auth required --home ocpp-dashboard --full \
         --links active-chargers,charger-summary,time-series,cp-simulator,manage-rfids
     - web.chat.action --home gpt-actions --links audit-chatlog --auth required
     - games --home toy-games --links game-of-life,divination-wars,qpig-farm,massive-snake,four-in-a-row,fantastic-client
-    - studio --home studio-bench --links animate-gif
+    - studio --home studio-bench --links animate-gif --full
     - web.auth
 
 help-db build

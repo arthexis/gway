@@ -6,7 +6,7 @@ from importlib import import_module
 
 class EvcsViewTests(unittest.TestCase):
     def setUp(self):
-        app = gw.web.app.setup('ocpp', everything=True)
+        app = gw.web.app.setup('ocpp', full=True)
         self.client = TestApp(app)
 
     def test_cp_simulator_view_renders(self):
