@@ -9,7 +9,7 @@ class RFIDAuthorizerTests(unittest.TestCase):
         self.db = os.path.join(self.tmp.name, "auth.duckdb")
 
     def tearDown(self):
-        gw.sql.close_connection(self.db, sql_engine="duckdb", project="auth_db")
+        gw.sql.close_db(self.db, sql_engine="duckdb", project="auth_db")
         self.tmp.cleanup()
 
     def _add(self, tag, balance="0", allowed=True):

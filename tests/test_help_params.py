@@ -5,7 +5,7 @@ from gway import gw
 class HelpParamTests(unittest.TestCase):
     def test_help_parameters_and_providers(self):
         gw.help_db.build(update=True)
-        gw.sql.close_connection(all=True)
+        gw.sql.close_db(all=True)
         mod = __import__(gw.web.app.setup_app.__module__)
         saved_enabled = getattr(mod, "_enabled", set()).copy()
         saved_homes = getattr(mod, "_homes", []).copy()

@@ -284,7 +284,7 @@ def open_db(
     if key in _connection_cache:
         conn = _connection_cache[key]
         if row_factory:
-            gw.warning("Row factory change requires close_connection(). Reconnect manually.")
+            gw.warning("Row factory change requires close_db(). Reconnect manually.")
         gw.verbose(f"Reusing connection: {key}")
         return conn
 
@@ -334,7 +334,7 @@ def open_db(
     return conn
 
 
-def close_connection(datafile=None, *, project=None, sql_engine=None, all=False):
+def close_db(datafile=None, *, project=None, sql_engine=None, all=False):
     """
     Explicitly close one or all cached database connections.
     Shuts down writer thread if all connections closed.
@@ -796,5 +796,5 @@ def model(defn, *, dbfile=None, create=True, name=None, sql_engine=None, project
 
 # Backwards compatibility aliases
 open_connection = open_db
-close_db = close_connection
+close_connection = close_db
 
