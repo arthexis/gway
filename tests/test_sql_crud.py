@@ -16,7 +16,7 @@ class SqlCrudTests(unittest.TestCase):
             cur.execute('CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, qty INT)')
 
     def tearDown(self):
-        gw.sql.close_connection(self.DB)
+        gw.sql.close_db(self.DB)
         path = gw.resource(self.DB)
         if os.path.exists(path):
             os.remove(path)

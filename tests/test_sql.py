@@ -23,7 +23,7 @@ class SqlTests(unittest.TestCase):
         if os.path.exists(gw.resource(TEMP_DB)):
             os.remove(gw.resource(TEMP_DB))
         # Close all GWAY SQL connections and shutdown writer
-        gw.sql.close_connection(all=True)
+        gw.sql.close_db(all=True)
 
     def setUp(self):
         # Each test gets a fresh database connection
@@ -31,7 +31,7 @@ class SqlTests(unittest.TestCase):
 
     def tearDown(self):
         # Close thread's own connection
-        gw.sql.close_connection(TEMP_DB)
+        gw.sql.close_db(TEMP_DB)
 
     def test_create_and_select(self):
         """Can create table, insert, and select (basic I/O)"""
@@ -67,7 +67,7 @@ class SqlTests(unittest.TestCase):
             c = gw.sql.open_db(TEMP_DB)
             out = gw.sql.execute("SELECT sum(x) FROM readers", connection=c)
             results.append(out[0][0])
-            gw.sql.close_connection(TEMP_DB)
+            gw.sql.close_db(TEMP_DB)
 
         threads = [threading.Thread(target=read_db) for _ in range(5)]
         for t in threads: t.start()
@@ -87,7 +87,7 @@ class SqlTests(unittest.TestCase):
                 "INSERT INTO writers (y) VALUES (?)",
                 connection=c, args=(val,)
             )
-            gw.sql.close_connection(TEMP_DB)
+            gw.sql.close_db(TEMP_DB)
 
         threads = [threading.Thread(target=write_db, args=(i,)) for i in range(10)]
         for t in threads: t.start()
@@ -178,7 +178,7 @@ class SqlTests(unittest.TestCase):
 
     def test_row_factory(self):
         """Can get dict-like rows using row_factory option."""
-        gw.sql.close_connection(all=True)  # Ensure fresh conn
+        gw.sql.close_db(all=True)  # Ensure fresh conn
         conn = gw.sql.open_db(TEMP_DB, row_factory=True)
         gw.sql.execute(
             "CREATE TABLE rf (k INT, v TEXT)",
@@ -191,7 +191,7 @@ class SqlTests(unittest.TestCase):
         rows = gw.sql.execute("SELECT * FROM rf", connection=conn)
         self.assertTrue(hasattr(rows[0], "keys"))
         self.assertEqual(rows[0]["v"], "x")
-        gw.sql.close_connection(TEMP_DB)
+        gw.sql.close_db(TEMP_DB)
 
     def test_invalid_sql_raises(self):
         """Invalid SQL raises an error (and rolls back write)."""
@@ -218,14 +218,14 @@ class SqlTests(unittest.TestCase):
         self.assertIn("permission", abort_msg.lower())
 
     def test_close_all_connections(self):
-        """close_connection(all=True) closes all and stops writer."""
+        """close_db(all=True) closes all and stops writer."""
         c1 = gw.sql.open_db(TEMP_DB)
         c2 = gw.sql.open_db(TEMP_DB)
-        gw.sql.close_connection(all=True)
+        gw.sql.close_db(all=True)
         # New connection after all closed should work
         c3 = gw.sql.open_db(TEMP_DB)
         gw.sql.execute("CREATE TABLE foo (id INT)", connection=c3)
-        gw.sql.close_connection(TEMP_DB)
+        gw.sql.close_db(TEMP_DB)
 
     def test_parse_log(self):
         """parse_log tail-inserts matching log lines into a table."""
@@ -269,11 +269,11 @@ class SqlTests(unittest.TestCase):
 
     def test_open_db_persists_params(self):
         """open_db() without args reuses last params."""
-        gw.sql.close_connection(all=True)
+        gw.sql.close_db(all=True)
         c1 = gw.sql.open_db("work/persist.sqlite")
         c2 = gw.sql.open_db()
         self.assertIs(c1, c2)
-        gw.sql.close_connection("work/persist.sqlite")
+        gw.sql.close_db("work/persist.sqlite")
 
     def test_parse_log_default_mask(self):
         """Default mask parses standard GWay log lines."""

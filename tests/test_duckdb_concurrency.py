@@ -17,13 +17,13 @@ class DuckDBConcurrencyTests(unittest.TestCase):
         path = gw.resource(TEMP_DB)
         if os.path.exists(path):
             os.remove(path)
-        gw.sql.close_connection(all=True)
+        gw.sql.close_db(all=True)
 
     def setUp(self):
         self.conn = gw.sql.open_db(TEMP_DB, sql_engine="duckdb", project="ducktest")
 
     def tearDown(self):
-        gw.sql.close_connection(TEMP_DB, sql_engine="duckdb", project="ducktest")
+        gw.sql.close_db(TEMP_DB, sql_engine="duckdb", project="ducktest")
 
     def test_concurrent_writes(self):
         gw.sql.execute(
@@ -38,7 +38,7 @@ class DuckDBConcurrencyTests(unittest.TestCase):
                 connection=c,
                 args=(val, val),
             )
-            gw.sql.close_connection(TEMP_DB, sql_engine="duckdb", project="ducktest")
+            gw.sql.close_db(TEMP_DB, sql_engine="duckdb", project="ducktest")
 
         threads = [threading.Thread(target=write_db, args=(i,)) for i in range(10)]
         for t in threads:
