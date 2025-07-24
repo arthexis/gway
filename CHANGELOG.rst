@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.58 [build f9604d]
+---------------------
+
+- c5a8a3c Add release tagging and workflow
+
 0.4.57 [build 61b433]
 ---------------------
 
