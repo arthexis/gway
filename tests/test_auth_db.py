@@ -66,6 +66,7 @@ class AuthDBTests(unittest.TestCase):
             ok, ident = gw.auth_db.verify_basic("bob", "pw", dbfile=local_db)
             self.assertTrue(ok)
             self.assertEqual(ident, uid)
+            gw.sql.close_connection(local_db, sql_engine="duckdb", project="auth_db")
 
 if __name__ == "__main__":
     unittest.main()
