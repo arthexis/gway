@@ -125,7 +125,7 @@ def build(*, update: bool = False):
                 )
 
         cursor.execute("COMMIT")
-    gw.sql.close_connection(all=True)
+    gw.sql.close_db(all=True)
     gw.info(f"Help database built at {db_path}")
     return db_path
 
