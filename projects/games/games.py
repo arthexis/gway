@@ -20,6 +20,7 @@ qpig = _load("qpig.py", "games.qpig")
 massive_snake = _load("snl.py", "games.massive_snake")
 evennia = _load("evennia.py", "games.evennia")
 four_in_a_row = _load("four_in_a_row.py", "games.four_in_a_row")
+hypernomic = _load("hypernomic.py", "games.hypernomic")
 
 WIKI_ICON = (
     '<svg viewBox="0 0 20 20" width="12" height="12" style="vertical-align:baseline">'
@@ -58,6 +59,12 @@ _DEF = [
         "four-in-a-row",
         "Drop discs to connect four against a simple computer opponent.",
         "https://en.wikipedia.org/wiki/Connect_Four",
+    ),
+    (
+        "Hypernomic",
+        "hypernomic",
+        "A minimal system for proposals, voting and a shared Nomic ruleset.",
+        "https://en.wikipedia.org/wiki/Nomic",
     ),
     (
         "Fantastic Client",
@@ -111,6 +118,10 @@ def view_snake_leaderboard(*args, **kwargs):
 
 def view_four_in_a_row(*args, **kwargs):
     return four_in_a_row.view_four_in_a_row(*args, **kwargs)
+
+
+def view_hypernomic(*args, **kwargs):
+    return hypernomic.view_hypernomic(*args, **kwargs)
 
 
 def view_evennia(*args, **kwargs):
