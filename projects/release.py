@@ -57,6 +57,17 @@ def build(
     import subprocess
     import toml
 
+    gw.info("Installing requirements before release build...")
+    subprocess.run([
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-U",
+        "-r",
+        "requirements.txt",
+    ], check=True)
+
     if not (token := gw.resolve("[PYPI_API_TOKEN]", "")):
         user = gw.resolve("[PYPI_USERNAME]")
         password = gw.resolve("[PYPI_PASSWORD]")
