@@ -170,6 +170,8 @@ def setup_app(*,
                                 transaction_id,
                                 now,
                                 id_tag=payload.get("idTag"),
+                                vin=payload.get("vin"),
+                                validator=getattr(validator, "__name__", None) if validator else None,
                                 meter_start=payload.get("meterStart"),
                                 charger_timestamp=cp_ts,
                             )

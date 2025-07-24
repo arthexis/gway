@@ -16,6 +16,8 @@ TRANSACTIONS = """transactions(
     start_time INTEGER,
     stop_time INTEGER,
     id_tag TEXT,
+    vin TEXT,
+    validator TEXT,
     meter_start REAL,
     meter_stop REAL,
     reason TEXT,
@@ -60,6 +62,8 @@ def record_transaction_start(
     start_time: int,
     *,
     id_tag: Optional[str] = None,
+    vin: Optional[str] = None,
+    validator: Optional[str] = None,
     meter_start: Optional[float] = None,
     charger_timestamp: Optional[int] = None,
 ):
@@ -68,6 +72,8 @@ def record_transaction_start(
         transaction_id=transaction_id,
         start_time=int(start_time),
         id_tag=id_tag,
+        vin=vin,
+        validator=validator,
         meter_start=meter_start,
         charger_start_ts=charger_timestamp,
     )
@@ -249,7 +255,7 @@ def iter_transactions(
     """Iterate transaction rows with optional filtering and sorting."""
     conn = gw.sql.open_db(project="ocpp")
     sql = (
-        "SELECT charger_id, transaction_id, start_time, stop_time, meter_start, meter_stop, reason, id_tag "
+        "SELECT charger_id, transaction_id, start_time, stop_time, meter_start, meter_stop, reason, id_tag, vin, validator "
         "FROM transactions WHERE 1=1"
     )
     args: list = []
@@ -546,5 +552,69 @@ def view_time_series(*, chargers: list = None, start: str = None, end: str = Non
         "new Chart(document.getElementById('tschart'), {type:'line', data:{datasets}, options:{parsing:false, scales:{x:{type:'time',time:{unit:'day'}}, y:{title:{display:true,text:'kWh'}}}}});"
     )
     html.append('</script>')
+    return "\n".join(html)
+
+
+def view_rfid_weekly_report(*, week: str = None, **_):
+    """Show energy usage per RFID for the selected week, grouped by charger."""
+    from datetime import timedelta, date as _date
+
+    if week:
+        try:
+            week_dt = datetime.fromisoformat(week)
+        except Exception:
+            week_dt = datetime.utcnow()
+    else:
+        week_dt = datetime.utcnow()
+
+    start_dt = week_dt - timedelta(days=week_dt.weekday())
+    start_ts = int(datetime(start_dt.year, start_dt.month, start_dt.day).timestamp())
+    end_ts = start_ts + 7 * 24 * 3600
+
+    conn = gw.sql.open_db(project="ocpp")
+    rows = gw.sql.execute(
+        """
+        SELECT charger_id, id_tag, vin,
+               SUM(COALESCE(meter_stop,0) - COALESCE(meter_start,0)) AS energy
+        FROM transactions
+        WHERE start_time>=? AND start_time<?
+        GROUP BY charger_id, id_tag, vin
+        ORDER BY charger_id, id_tag
+        """,
+        connection=conn,
+        args=(start_ts, end_ts),
+    )
+
+    grouped: dict[str, list] = {}
+    for cid, tag, vin, energy in rows:
+        grouped.setdefault(cid, []).append(
+            {
+                "id_tag": tag,
+                "vin": vin,
+                "energy": round((energy or 0.0) / 1000.0, 3),
+            }
+        )
+
+    html = [f"<h1>RFID Consumption for week of {start_dt.isoformat()}</h1>"]
+    html.append(
+        "<form method='get' style='margin-bottom:1em;'>"
+        f"<label>Week of: <input type='date' name='week' value='{start_dt.isoformat()}'></label> "
+        "<button type='submit'>Show</button></form>"
+    )
+
+    if not grouped:
+        html.append("<p>No data.</p>")
+        return "\n".join(html)
+
+    for cid, entries in grouped.items():
+        html.append(f"<h2>Charger {cid}</h2>")
+        html.append("<table class='ocpp-details'>")
+        html.append("<tr><th>RFID</th><th>VIN</th><th>Energy(kWh)</th></tr>")
+        for e in entries:
+            html.append(
+                f"<tr><td>{e['id_tag'] or '-'}</td><td>{e['vin'] or '-'}</td><td>{e['energy']}</td></tr>"
+            )
+        html.append("</table>")
+
     return "\n".join(html)
 
