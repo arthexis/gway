@@ -11,7 +11,7 @@ class AuthDBTests(unittest.TestCase):
             os.remove(path)
 
     def tearDown(self):
-        gw.sql.close_connection(DB, sql_engine="duckdb", project="auth_db")
+        gw.sql.close_db(DB, sql_engine="duckdb", project="auth_db")
         path = gw.resource(DB)
         if os.path.exists(path):
             os.remove(path)
@@ -46,7 +46,7 @@ class AuthDBTests(unittest.TestCase):
             uid = gw.auth_db.create_identity("Bob", dbfile=remote_db)
             gw.auth_db.set_basic_auth("bob", "pw", identity_id=uid, dbfile=remote_db)
 
-            gw.sql.close_connection(remote_db, sql_engine="duckdb", project="auth_db")
+            gw.sql.close_db(remote_db, sql_engine="duckdb", project="auth_db")
 
             handler = http.server.SimpleHTTPRequestHandler
             cwd = os.getcwd()
@@ -66,7 +66,7 @@ class AuthDBTests(unittest.TestCase):
             ok, ident = gw.auth_db.verify_basic("bob", "pw", dbfile=local_db)
             self.assertTrue(ok)
             self.assertEqual(ident, uid)
-            gw.sql.close_connection(local_db, sql_engine="duckdb", project="auth_db")
+            gw.sql.close_db(local_db, sql_engine="duckdb", project="auth_db")
 
 if __name__ == "__main__":
     unittest.main()

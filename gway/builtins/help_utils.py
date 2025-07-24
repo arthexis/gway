@@ -53,7 +53,7 @@ def help(*args, full: bool = False, list_flags: bool = False):
         cur0.execute("SELECT tests FROM help LIMIT 1")
     except sqlite3.OperationalError:
         gw.help_db.build(update=True)
-        gw.sql.close_connection(datafile=db_path)
+        gw.sql.close_db(datafile=db_path)
         conn = gw.sql.open_db(db_path, row_factory=True)
 
     with conn as cur:

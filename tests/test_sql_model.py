@@ -17,8 +17,8 @@ class SqlModelTests(unittest.TestCase):
             os.remove(dpath)
 
     def tearDown(self):
-        gw.sql.close_connection(self.DB)
-        gw.sql.close_connection(self.DB_DUCK, sql_engine="duckdb")
+        gw.sql.close_db(self.DB)
+        gw.sql.close_db(self.DB_DUCK, sql_engine="duckdb")
         path = gw.resource(self.DB)
         if os.path.exists(path):
             os.remove(path)
@@ -76,7 +76,7 @@ class SqlModelTests(unittest.TestCase):
         nid = notes.create(text="auto")
         row = notes.read(nid)
         self.assertEqual(row[1], "auto")
-        gw.sql.close_connection(DBFILE)
+        gw.sql.close_db(DBFILE)
         del globals()["DBFILE"]
 
     def test_add_missing_columns(self):
@@ -87,7 +87,7 @@ class SqlModelTests(unittest.TestCase):
         conn = gw.sql.open_db(self.DB)
         cols = [r[1] for r in gw.sql.execute("PRAGMA table_info(tbl)", connection=conn)]
         self.assertIn("b", cols)
-        gw.sql.close_connection(self.DB)
+        gw.sql.close_db(self.DB)
 
 if __name__ == "__main__":
     unittest.main()

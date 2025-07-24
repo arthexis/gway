@@ -24,7 +24,7 @@ class OcppDataTests(unittest.TestCase):
             os.remove(path)
 
     def tearDown(self):
-        gw.sql.close_connection(all=True)
+        gw.sql.close_db(all=True)
         if self.old_cfg is not None:
             self.sql_mod._db_configs["ocpp"] = self.old_cfg
         else:
@@ -52,7 +52,7 @@ class OcppDataTests(unittest.TestCase):
             " status TEXT, error_code TEXT, info TEXT\n)",
             connection=conn,
         )
-        gw.sql.close_connection(self.DB, project="ocpp", sql_engine=ocpp_data.ENGINE)
+        gw.sql.close_db(self.DB, project="ocpp", sql_engine=ocpp_data.ENGINE)
         ocpp_data.set_connection_status("B", True)
         ocpp_data.record_last_msg("B", 123)
         conn = gw.sql.open_db(project="ocpp")
