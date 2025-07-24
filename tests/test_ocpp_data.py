@@ -35,7 +35,7 @@ class OcppDataTests(unittest.TestCase):
         ocpp_data.DBFILE = self.old_db
 
     def test_basic_record_cycle(self):
-        ocpp_data.record_transaction_start("A", 1, 100)
+        ocpp_data.record_transaction_start("A", 1, 100, vin="VIN123", validator="test")
         ocpp_data.record_meter_value("A", 1, 105, "Energy.Active.Import.Register", 500, "Wh")
         ocpp_data.record_transaction_stop("A", 1, 110, meter_stop=550)
         rows = list(ocpp_data.iter_transactions("A"))
