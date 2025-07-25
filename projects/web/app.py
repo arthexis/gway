@@ -619,6 +619,13 @@ def setup_app(project,
         return HTTPResponse(status=404, body="favicon.ico not found")
     add_route(app, "/favicon.ico", "GET", favicon)
 
+    if is_setup("web.sitemap"):
+        def sitemap_xml():
+            mod = gw.find_project("web.sitemap")
+            return mod.view_sitemap_xml()
+
+        add_route(app, "/sitemap.xml", "GET", sitemap_xml)
+
     if gw.verbose:
         gw.info(f"Registered homes: {_homes}")
         debug_routes(app)
