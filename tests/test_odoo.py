@@ -1,16 +1,19 @@
 import os
 import unittest
 from unittest.mock import patch
+import pytest
 from gway import gw
+from gway.builtins import is_test_flag
+
+pytestmark = pytest.mark.odoo
 
 odoo = gw.load_project("odoo")
 
 
+@unittest.skipUnless(is_test_flag("odoo"), "Odoo tests disabled")
 class TestCreateTask(unittest.TestCase):
     def test_title_defaults_to_customer(self):
         calls = {}
-        self.skipTest("Odoo configuration unavailable")
-
         def fake_execute_kw(args, kwargs, *, model, method):
             if model == 'res.partner' and method == 'create':
                 calls['partner'] = args[0]
@@ -41,10 +44,9 @@ class TestCreateTask(unittest.TestCase):
         self.assertEqual(task[0]['description'], 'Phone: 123\nHello')
 
 
+@unittest.skipUnless(is_test_flag("odoo"), "Odoo tests disabled")
 class TestQuoteTags(unittest.TestCase):
     def test_fetch_quote_tags(self):
-        self.skipTest("Odoo configuration unavailable")
-
         def fake_execute_kw(args, kwargs, *, model, method):
             self.assertEqual(model, 'crm.tag')
             self.assertEqual(method, 'search_read')
@@ -56,8 +58,6 @@ class TestQuoteTags(unittest.TestCase):
         self.assertEqual(res[0]['name'], 'VIP')
 
     def test_fetch_quotes_with_tag(self):
-        self.skipTest("Odoo configuration unavailable")
-
         captured = {}
 
         def fake_execute_kw(args, kwargs, *, model, method):
@@ -68,11 +68,21 @@ class TestQuoteTags(unittest.TestCase):
             odoo.fetch_quotes(tag='VIP')
         self.assertIn(('tag_ids.name', 'ilike', 'VIP'), captured['domain'])
 
+    def test_fetch_quotes_with_ws_tag(self):
+        captured = {}
 
+        def fake_execute_kw(args, kwargs, *, model, method):
+            captured['domain'] = args[0]
+            return []
+
+        with patch('odoo.execute_kw', side_effect=fake_execute_kw):
+            odoo.fetch_quotes(ws_tag='VIP Customer')
+        self.assertIn(('tag_ids.name', 'ilike', 'VIP Customer'), captured['domain'])
+
+
+@unittest.skipUnless(is_test_flag("odoo"), "Odoo tests disabled")
 class TestFindQuotes(unittest.TestCase):
     def test_find_quotes_with_tag(self):
-        self.skipTest("Odoo configuration unavailable")
-
         captured = {}
 
         def fake_execute_kw(args, kwargs, *, model, method):
