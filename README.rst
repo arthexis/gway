@@ -61,8 +61,9 @@ Core Concepts
   ``envs/servers/<host>.env`` are read automatically.  A file can specify a
   ``BASE_ENV`` to inherit defaults from another file.
 - **Async & Watchers**: coroutines are executed in background threads.  Use
-  ``gw.until`` with file or URL watchers (and even PyPI version checks) to keep
-  services running until a condition changes.
+   ``gw.until`` with file or URL watchers (and even PyPI version checks) to keep
+   services running until a condition changes. PyPI version checks poll every
+   30 minutes by default.
 - **Web Helpers**: ``gw.web.app.setup`` registers views named ``view_*``
   (HTML), ``api_*`` (JSON) and ``render_*`` (fragments).  ``gw.web.server.start_app``
   launches a Bottle server.  Static assets live under ``data/static``.
