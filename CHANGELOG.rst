@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ----------
 
+0.4.59 [build 27aace]
+---------------------
+
+- 4fb1f00 Store VIN and validator; add weekly RFID report
+
 0.4.58 [build f9604d]
 ---------------------
 
