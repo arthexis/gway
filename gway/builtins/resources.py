@@ -35,14 +35,28 @@ def resource(*parts, touch: bool = False, check: bool = False, text: bool = Fals
                     path = candidate
                 else:
                     tried.append(str(candidate))
-                    path = pathlib.Path.cwd() / rel_path
+                    # Fallback: look relative to the installed package
+                    pkg_root = pathlib.Path(__file__).resolve().parents[1]
+                    candidate = pkg_root / rel_path
+                    if candidate.exists() or touch or dir:
+                        path = candidate
+                    else:
+                        tried.append(str(candidate))
+                        path = pathlib.Path.cwd() / rel_path
         else:
             candidate = pathlib.Path.home() / rel_path
             if candidate.exists() or touch or dir:
                 path = candidate
             else:
                 tried.append(str(candidate))
-                path = pathlib.Path.cwd() / rel_path
+                # Fallback: look relative to the installed package
+                pkg_root = pathlib.Path(__file__).resolve().parents[1]
+                candidate = pkg_root / rel_path
+                if candidate.exists() or touch or dir:
+                    path = candidate
+                else:
+                    tried.append(str(candidate))
+                    path = pathlib.Path.cwd() / rel_path
 
     if not (touch or dir) and check and not path.exists():
         gw.abort(f"Required resource {path} missing. Tried: {tried}")
