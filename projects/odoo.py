@@ -64,6 +64,7 @@ def fetch_quotes(
     salesperson=None,
     customer=None,
     tag=None,
+    ws_tag=None,
     **kwargs
 ):
     """
@@ -75,6 +76,7 @@ def fetch_quotes(
         salesperson (str, optional): Filter quotations by the salesperson's name or part of it.
         customer (str, optional): Filter quotations by the customer's name or part of it.
         tag (str | int, optional): Filter quotations by tag name or id.
+        ws_tag (str | int, optional): Filter quotations by tag containing whitespace.
         kwargs (list, optional): Additional domain filters for the query.
 
     Returns:
@@ -91,6 +93,8 @@ def fetch_quotes(
         domain_filter.append(('user_id.name', 'ilike', salesperson))
     if customer:
         domain_filter.append(('partner_id.name', 'ilike', customer))
+    if ws_tag and not tag:
+        tag = ws_tag
     if tag:
         try:
             tag_id = int(tag)
