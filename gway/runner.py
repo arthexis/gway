@@ -324,7 +324,11 @@ def watch_url(url, on_change, *,
     return stop_event
 
 
-def watch_pypi_package(package_name, on_change, *, interval=1800.0):
+# Default interval (in seconds) for PyPI version polling.
+DEFAULT_PYPI_INTERVAL = 30 * 60
+
+
+def watch_pypi_package(package_name, on_change, *, interval=DEFAULT_PYPI_INTERVAL):
     stop_event = threading.Event()
     url = f"https://pypi.org/pypi/{package_name}/json"
 
