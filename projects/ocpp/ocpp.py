@@ -83,6 +83,8 @@ def view_ocpp_dashboard(*, _title="OCPP Dashboard", **_):
          f"Chargers: {chargers}<br>Sessions: {sessions}"),
         ("Energy Time Series", "/ocpp/time-series",
          f"Total Energy: {energy} kWh"),
+        ("Weekly RFID Report", "/ocpp/weekly-report",
+         "Consumption by tag"),
         ("CP Simulator", "/ocpp/evcs/cp-simulator",
          sim_running),
     ]
