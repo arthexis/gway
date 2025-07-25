@@ -107,6 +107,8 @@ Two additional views provide more insight into stored data:
 ``view_charger_details`` displays transaction records for one charger
 with simple filtering and pagination. ``view_time_series`` returns a
 chart of energy usage over time for selected chargers and dates.
+``view_weekly_report`` shows kWh per RFID for a selected week,
+grouped by charger.
 
 
 RFID Management

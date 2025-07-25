@@ -555,7 +555,7 @@ def view_time_series(*, chargers: list = None, start: str = None, end: str = Non
     return "\n".join(html)
 
 
-def view_rfid_weekly_report(*, week: str = None, **_):
+def view_weekly_report(*, week: str = None, **_):
     """Show energy usage per RFID for the selected week, grouped by charger."""
     from datetime import timedelta, date as _date
 
