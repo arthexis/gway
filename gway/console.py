@@ -469,6 +469,8 @@ def get_arg_opts(arg_name, param, gw=None):
             inferred_type = str
     elif annotation != inspect.Parameter.empty:
         inferred_type = annotation
+    elif isinstance(default, (int, float)):
+        inferred_type = type(default)
 
     opts["type"] = inferred_type
 

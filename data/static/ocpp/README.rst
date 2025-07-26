@@ -30,7 +30,9 @@ The simulator can also be controlled via the web UI at
 The simulator accepts ``--kwh-min`` and ``--kwh-max`` to control the
 approximate energy delivered per session. For example, ``--kwh-min 40
 --kwh-max 70`` will produce sessions around 40–70 kWh. Use ``--interval``
-to specify how often MeterValues are sent (default 5s). The
+or ``--seconds`` to specify how often MeterValues are sent (default 5s).
+``--minutes``, ``--hours`` and ``--days`` are also accepted and converted
+to seconds automatically. The
 ``--pre-charge-delay`` option keeps the charger idle for the given
 number of seconds after connecting while it sends Heartbeats and idle
 MeterValues.
@@ -136,5 +138,5 @@ local file. Run it periodically with ``every``:
 
 .. code-block:: bash
 
-   every --interval 300 gw.auth_db.sync_from_url \
+   every --minutes 5 gw.auth_db.sync_from_url \
        http://example.com/work/auth.duckdb
