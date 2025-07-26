@@ -10,6 +10,8 @@ import argcomplete
 import csv
 from typing import get_origin, get_args, Literal, Union
 
+from . import units
+
 from .logging import setup_logging
 from .builtins import abort
 from .gateway import Gateway, gw
@@ -421,6 +423,29 @@ def add_func_args(subparser, func_obj):
                     opts = get_arg_opts(arg_name, param, gw)
                     subparser.add_argument(cli_name, **opts)
 
+                    # Add unit conversion flags if available
+                    for alt_name, conv in _unit_converters(arg_name):
+                        alt_cli = f"--{alt_name.replace('_', '-')}"
+                        base_type = opts.get("type", str)
+
+                        def _wrapper(val, _conv=conv, _cast=base_type):
+                            converted = _conv(val)
+                            if _cast is str and int in get_args(param.annotation):
+                                try:
+                                    return str(int(converted))
+                                except Exception:
+                                    return str(converted)
+                            return _cast(converted)
+
+                        alt_opts = {k: v for k, v in opts.items()
+                                    if k not in {"required", "default"}}
+                        alt_opts["dest"] = arg_name
+                        alt_opts["type"] = _wrapper
+                        alt_opts.setdefault(
+                            "help",
+                            f"Alias for --{arg_name} in {alt_name} units")
+                        subparser.add_argument(alt_cli, **alt_opts)
+
 
 def get_arg_opts(arg_name, param, gw=None):
     """Infer argparse options from parameter signature."""
@@ -458,6 +483,17 @@ def get_arg_opts(arg_name, param, gw=None):
         opts["required"] = True
 
     return opts
+
+
+def _unit_converters(param_name: str):
+    """Return (alt_name, function) pairs for conversions to *param_name*."""
+    suffix = f"_to_{param_name}"
+    converters = []
+    for name, func in inspect.getmembers(units, inspect.isfunction):
+        if name.endswith(suffix) and name != suffix:
+            alt = name[: -len(suffix)]
+            converters.append((alt, func))
+    return converters
 
 
 ...
