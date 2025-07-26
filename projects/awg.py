@@ -395,7 +395,7 @@ def view_awg_calculator(
 
     return f"""
         <div class='calc-result'>
-        <h1>Calculator Results <img src='/static/awg/sponsor_logo.svg' alt='Sponsor Logo' class='sponsor-logo'></h1>
+        <h1>Calculator Results <img src='/static/awg/sponsor_logo.png' alt='Sponsor Logo' class='sponsor-logo'></h1>
         <ul class='result-list'>
             <li><strong>AWG Size:</strong> {result['awg']}</li>
             <li><strong>Lines:</strong> {result['lines']}</li>
