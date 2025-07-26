@@ -18,31 +18,24 @@ def resource(*parts, touch: bool = False, check: bool = False, text: bool = Fals
     rel_path = pathlib.Path(*parts)
     tried = []
 
-    candidate = pathlib.Path.cwd() / rel_path
-    if candidate.exists() or touch or dir:
-        path = candidate
-    else:
+    pkg_root = pathlib.Path(__file__).resolve().parents[1]
+    candidates = [
+        pathlib.Path.cwd(),
+        pathlib.Path(os.environ.get("GWAY_ROOT")) if os.environ.get("GWAY_ROOT") else None,
+        pathlib.Path.home(),
+        pkg_root,
+    ]
+
+    path = None
+    for base in filter(None, candidates):
+        candidate = base / rel_path
+        if candidate.exists() or touch or dir:
+            path = candidate
+            break
         tried.append(str(candidate))
-        env_root = os.environ.get("GWAY_ROOT")
-        if env_root:
-            candidate = pathlib.Path(env_root) / rel_path
-            if candidate.exists() or touch or dir:
-                path = candidate
-            else:
-                tried.append(str(candidate))
-                candidate = pathlib.Path.home() / rel_path
-                if candidate.exists() or touch or dir:
-                    path = candidate
-                else:
-                    tried.append(str(candidate))
-                    path = pathlib.Path.cwd() / rel_path
-        else:
-            candidate = pathlib.Path.home() / rel_path
-            if candidate.exists() or touch or dir:
-                path = candidate
-            else:
-                tried.append(str(candidate))
-                path = pathlib.Path.cwd() / rel_path
+
+    if path is None:
+        path = pathlib.Path.cwd() / rel_path
 
     if not (touch or dir) and check and not path.exists():
         gw.abort(f"Required resource {path} missing. Tried: {tried}")
