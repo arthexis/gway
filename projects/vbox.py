@@ -5,12 +5,13 @@ import re
 import shutil
 import hashlib
 import base64
-import time 
+import time
 import threading
 import requests
 from datetime import datetime
 from bottle import request, HTTPResponse
 from gway import gw
+from urllib.parse import urlparse, urlunparse
 
 
 """
@@ -372,8 +373,22 @@ def view_register_remote(*, email: str = None, **_):
     admin_email = os.environ.get("ADMIN_EMAIL")
 
     if request.method == 'POST':
-        remote_url = request.forms.get('remote_url')
+        method = request.forms.get('method') or 'url'
         remote_email = request.forms.get('email') or email or admin_email
+        if method == 'basic':
+            base_url = request.forms.get('server_url')
+            username = request.forms.get('username') or ''
+            password = request.forms.get('password') or ''
+            if base_url and not base_url.startswith(('http://', 'https://')):
+                base_url = 'https://' + base_url
+            parts = urlparse(base_url)
+            netloc = parts.netloc or parts.path
+            if username or password:
+                netloc = f"{username}:{password}@{netloc}"
+            remote_url = urlunparse((parts.scheme or 'https', netloc, parts.path, '', parts.query, ''))
+        else:
+            remote_url = request.forms.get('remote_url')
+
         gw.info(f"Remote open requested for {remote_url} email={remote_email}")
         result = open_remote(remote_url, email=remote_email)
         if result and result.get('url'):
@@ -385,11 +400,28 @@ def view_register_remote(*, email: str = None, **_):
         return render_error("Remote VBox Error", "Could not create a remote box.", target='register_remote')
 
     remote_form_html = (
-        "<form method='POST'>"
-        "<input type='url' name='remote_url' required placeholder='https://remote-server or full upload URL'>"
+        "<form method='POST' id='remote-form'>"
+        "<select name='method' id='login-method'>"
+        "<option value='url' selected>URL with credentials</option>"
+        "<option value='basic'>Separate login</option>"
+        "</select>"
+        "<div id='url-block'>"
+        "<input type='url' name='remote_url' placeholder='https://user:pass@server/vbox/upload'>"
+        "</div>"
+        "<div id='basic-block' style='display:none'>"
+        "<input type='url' name='server_url' placeholder='https://server'>"
+        "<input type='text' name='username' placeholder='User'>"
+        "<input type='password' name='password' placeholder='Password'>"
+        "</div>"
         "<input type='email' name='email' placeholder='Email for remote box'>"
         "<button type='submit'>Open Remote VBox</button>"
         "</form>"
+        "<script>"
+        "const method=document.getElementById('login-method');"
+        "const urlB=document.getElementById('url-block');"
+        "const basicB=document.getElementById('basic-block');"
+        "method.addEventListener('change',()=>{if(method.value==='basic'){urlB.style.display='none';basicB.style.display='';}else{urlB.style.display='';basicB.style.display='none';}});"
+        "</script>"
     )
 
     return "<h1>Register Remote VBox</h1>" + remote_form_html
