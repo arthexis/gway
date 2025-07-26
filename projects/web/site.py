@@ -227,12 +227,10 @@ def _render_reader_nav(current: str | None, origin: str) -> str:
         safe = html.escape(doc)
         options.append(f"<option data-origin='static' value='{safe}'{sel}>{safe}</option>")
     options_html = '\n'.join(options)
-    reader_path = gw.web.app.build_url("reader")
+    # Always point to the site reader (avoid relying on current endpoint)
+    reader_path = gw.web.build_url("web/site/reader")
     script = (
         "<script>"
-        "function readerFilter(v){v=v.toLowerCase();"
-        "var o=document.querySelectorAll('#reader-select option');"
-        "for(var i=0;i<o.length;i++){var opt=o[i];opt.style.display=opt.textContent.toLowerCase().indexOf(v)>=0?'':'none';}}"
         f"var _readerBase='{html.escape(reader_path)}';"
         "function readerGoto(sel){var opt=sel.options[sel.selectedIndex];if(!opt)return;"
         "var org=opt.getAttribute('data-origin');var t=opt.value;var q='?tome='+encodeURIComponent(t);"
@@ -242,8 +240,7 @@ def _render_reader_nav(current: str | None, origin: str) -> str:
     return (
         "<hr class='read-next'>"
         "<div class='reader-nav'>"
-        "<label for='reader-search'>Read Next:</label>"
-        "<input id='reader-search' type='text' placeholder='Filter...' oninput=\"readerFilter(this.value)\">"
+        "<label for='reader-select'>Read Next:</label>"
         "<select id='reader-select' onchange='readerGoto(this)'>" +
         options_html + "</select></div>" + script
     )
