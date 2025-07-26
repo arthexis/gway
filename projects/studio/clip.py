@@ -45,7 +45,9 @@ def track_history(interval: int = 5, *, stop_after=None, notify=True):
     """Tracks clipboard history by polling at regular intervals.
 
     Args:
-        interval (int): Seconds to wait between checks. Default is 5 seconds.
+        interval (int): Seconds to wait between checks. CLI callers may also
+            provide ``--seconds``/``--minutes``/``--hours``/``--days`` which are
+            converted automatically. Default is 5 seconds.
         stop_after (int | None): Optional maximum duration (in seconds) before stopping.
         notify (bool): Whether to show GUI notifications for new entries.
 

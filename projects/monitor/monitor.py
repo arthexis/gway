@@ -54,7 +54,9 @@ def start_watch(
     Start a watcher loop for a project.
       - project: Name of the GWAY project or subproject.
       - monitor: Name or list of monitor functions (string or list, without prefix).
-      - interval: Minimum seconds between checks.
+      - interval: Minimum seconds between checks. CLI users may also specify
+        ``--seconds``, ``--minutes``, ``--hours`` or ``--days`` which are
+        converted automatically.
       - delay: Startup delay (seconds).
       - block: Block main thread? (default False)
       - daemon: Async coroutine? (default True)

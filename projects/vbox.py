@@ -432,7 +432,9 @@ def poll_remote(server_url: str = '[SERVER_URL]', *, target='work/vbox/remote', 
     Poll the remote vbox for files and download new/updated ones to the local target directory.
     - server_url: Remote GWAY instance base URL
     - target: Local directory to save downloaded files
-    - interval: Seconds between polls (runs forever unless interval=None)
+    - interval: Seconds between polls (runs forever unless interval=None). CLI
+      callers may also pass ``--seconds``, ``--minutes``, ``--hours`` or
+      ``--days`` instead of ``--interval``.
     
     Skips files already downloaded by using the modified_since parameter.
     """

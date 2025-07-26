@@ -164,7 +164,9 @@ def reminder(message, *, interval: float = 20.0, daemon=False, lines: int = 2):
     """
     Starts a thread that periodically takes screenshots.
     If the screen hasn't changed between intervals, overlays a reminder
-    message and waits for user interaction before resuming.
+    message and waits for user interaction before resuming. When called from
+    the CLI ``interval`` can also be specified via ``--seconds``, ``--minutes``,
+    ``--hours`` or ``--days``.
     """
     import threading
     from PIL import ImageChops

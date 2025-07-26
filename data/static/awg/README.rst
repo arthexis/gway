@@ -31,6 +31,8 @@ Parameters
 
 ``meters``
   Cable length in meters (required).
+``yards``
+  Alternative to ``meters``. Values are converted to meters automatically.
 ``amps``
   Load in amperes, default ``40``.
 ``volts``
