@@ -15,6 +15,7 @@ import requests
 from gway import gw
 
 KNOWN_TAG = "FFFFFFFF"
+UNKNOWN_TAG = "00000000"
 
 @unittest.skipUnless(is_test_flag("proxy"), "Proxy tests disabled")
 class ProxyFallbackTests(unittest.TestCase):
@@ -92,5 +93,23 @@ class ProxyFallbackTests(unittest.TestCase):
 
         resp2 = requests.get("http://127.0.0.1:18888/web/cookies/cookie-jar")
         self.assertEqual(resp2.status_code, 200)
+
+    def test_offline_invalid_rfid_rejected(self):
+        async def run_session():
+            await gw.ocpp.evcs.simulate_cp.__wrapped__(
+                0,
+                "127.0.0.1",
+                19900,
+                UNKNOWN_TAG,
+                "SIM_BAD",
+                1,
+                1,
+                1,
+                1,
+            )
+        asyncio.run(run_session())
+
+        records = os.path.join("work", "ocpp", "records", "SIM_BAD")
+        self.assertFalse(os.path.isdir(records) and os.listdir(records))
 
 
