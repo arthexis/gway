@@ -34,7 +34,7 @@ insertion via ``render.js`` or inclusion in an ``iframe``.
   is or contains a form, fields are posted along with data attributes.
 - ``gw-view`` – call the named ``view_*`` function without the page layout. Form
   values are sent just like ``gw-render``.
-- ``gw-api`` – call the named ``api_*`` function and replace any ``[sigils]``
+- ``gw-api`` – call the named ``api_*`` function and replace any ``%[sigils]``
   in the element with values from the JSON response. If the element is a form,
   or contains one, form fields are posted as parameters. A different form can
   be specified with ``gw-form``.
