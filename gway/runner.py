@@ -19,10 +19,25 @@ class Runner:
         super().__init__(*args, **kwargs)
 
     def _resolve_callable(self, name):
+        """Return a callable from a dotted/space path or via gw lookup."""
+        import re
+
         if callable(name):
             return name
+
+        key = str(name).strip()
+        key = re.sub(r"^(gw|gway)[. ]+", "", key)
+
+        if hasattr(self, "__getitem__"):
+            try:
+                func = self[key]
+                if callable(func):
+                    return func
+            except Exception:
+                pass
+
         obj = self
-        for part in str(name).split('.'):
+        for part in re.split(r"[. ]+", key):
             obj = getattr(obj, part)
         return obj
 
