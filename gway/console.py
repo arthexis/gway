@@ -15,6 +15,7 @@ from . import units
 from .logging import setup_logging
 from .builtins import abort
 from .gateway import Gateway, gw
+from .sigils import Sigil, Spool
 
 
 def cli_main():
@@ -475,11 +476,17 @@ def get_arg_opts(arg_name, param, gw=None):
     opts["type"] = inferred_type
 
     if default != inspect.Parameter.empty:
-        if isinstance(default, str) and default.startswith("[") and default.endswith("]") and gw:
-            try:
-                default = gw.resolve(default)
-            except Exception as e:
-                print(f"Failed to resolve default for {arg_name}: {e}")
+        if gw:
+            if isinstance(default, str) and default.startswith("%[") and default.endswith("]"):
+                try:
+                    default = gw.resolve(default[1:])
+                except Exception as e:
+                    print(f"Failed to resolve default for {arg_name}: {e}")
+            elif isinstance(default, (Sigil, Spool)) and getattr(default, 'is_eager', False):
+                try:
+                    default = default.resolve(gw)
+                except Exception as e:
+                    print(f"Failed to resolve default for {arg_name}: {e}")
         opts["default"] = default
     else:
         opts["required"] = True

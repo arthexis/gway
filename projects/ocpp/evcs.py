@@ -39,8 +39,8 @@ def _unique_cp_path(cp_path, idx, total_threads):
 
 def simulate(
     *,
-    host: str = __("[SITE_HOST]", "127.0.0.1") ,
-    ws_port: int = __("[WEBSOCKET_PORT]", "9000"),
+    host: str = __("%[SITE_HOST]", "127.0.0.1") ,
+    ws_port: int = __("%[WEBSOCKET_PORT]", "9000"),
     rfid: str = "FFFFFFFF",
     cp_path: str = "CPX",
     duration: int = 600,

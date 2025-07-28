@@ -51,7 +51,9 @@ Core Concepts
   referenced by name.  Use sigils like ``[result.key]`` to pull values into
   later calls.
 - **Sigils**: ``[VAR]`` or ``[object.attr]`` placeholders resolve from previous
-  results, ``gw.context`` and environment variables.
+  results, ``gw.context`` and environment variables. Automatic resolution only
+  happens for sigils prefixed with ``%`` (e.g. ``%[VAR]``); other sigils remain
+  lazy until passed to ``gw.resolve`` or ``gw["VAR"]``.
 - **Recipes** ``.gwr``: text files listing commands.  Indented lines reuse the
   previous command allowing very compact scripts.  Run them via
   ``gway -r file`` or ``gw.run_recipe('file.gwr')``.

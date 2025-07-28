@@ -11,7 +11,7 @@ from gway import gw, __
 from gway.console import process, chunk
 import markdown as mdlib
 
-_DEFAULT_TOME = __('[README]', 'README')
+_DEFAULT_TOME = __('%[README]', 'README')
 
 def view_reader(
     *parts,

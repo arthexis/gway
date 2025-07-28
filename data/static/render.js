@@ -82,7 +82,7 @@
   }
 
   function replaceSigilsInString(str, data) {
-    return str.replace(/\[([^\[\]]+)\]/g, (m, key) => {
+    return str.replace(/%\[([^\[\]]+)\]/g, (m, key) => {
       key = key.split('|')[0].trim();
       return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : m;
     });

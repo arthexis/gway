@@ -222,14 +222,14 @@ class Gateway(Resolver, Runner):
                         value = self.find_value(name)
                         if value is None:
                             default_val = bound_args.arguments.get(name, param.default)
-                            if isinstance(default_val, (Sigil, Spool)):
+                            if isinstance(default_val, (Sigil, Spool)) and getattr(default_val, 'is_eager', False):
                                 value = default_val.resolve(self)
                             else:
                                 value = default_val
                     else:
                         # Check for context/env first
                         default_val = bound_args.arguments.get(name, param.default)
-                        if isinstance(default_val, (Sigil, Spool)):
+                        if isinstance(default_val, (Sigil, Spool)) and getattr(default_val, 'is_eager', False):
                             value = default_val.resolve(self)
                         else:
                             value = default_val

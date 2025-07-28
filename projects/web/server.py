@@ -7,9 +7,9 @@ from gway import gw, __
 _active_servers = {}  # key: label or index, value: dict with host/port/ws_port
 
 def start_app(*,
-    host            = __('[SITE_HOST]', '[BASE_HOST]', '0.0.0.0'),
-    port : int      = __('[SITE_PORT]', '[BASE_PORT]', '8888'),
-    ws_port : int   = __('[WS_PORT]', '[WEBSOCKET_PORT]', '9999'),
+    host            = __('%[SITE_HOST]', '%[BASE_HOST]', '0.0.0.0'),
+    port : int      = __('%[SITE_PORT]', '%[BASE_PORT]', '8888'),
+    ws_port : int   = __('%[WS_PORT]', '%[WEBSOCKET_PORT]', '9999'),
     debug=False,
     proxy=None,
     proxy_mode: str = "extend",

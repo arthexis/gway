@@ -5,13 +5,22 @@ import os
 import json
 
 class Sigil:
-    """
-    Represents a resolvable [sigil] or text, such as this docstring, containing one.
-    """
+    """Represent a ``[sigil]`` placeholder or plain text."""
+
     _pattern = re.compile(r"\[([^\[\]]+)\]")
 
     def __init__(self, text):
         self.original = text or ''
+
+    @property
+    def is_eager(self) -> bool:
+        """Return ``True`` when the sigil text begins with ``%``."""
+        return isinstance(self.original, str) and self.original.startswith('%')
+
+    @property
+    def text(self) -> str:
+        """The sigil string without the ``%`` prefix."""
+        return self.original[1:] if self.is_eager else self.original
 
     def _make_lookup(self, finder):
         def lookup(key):
@@ -32,10 +41,10 @@ class Sigil:
         return lookup
 
     def resolve(self, finder):
-        return _replace_sigils(self.original, self._make_lookup(finder))
+        return _replace_sigils(self.text, self._make_lookup(finder))
 
     def list_sigils(self):
-        return [match.group(0) for match in self._pattern.finditer(self.original)]
+        return [match.group(0) for match in self._pattern.finditer(self.text)]
 
     def __mod__(self, finder):
         return self.resolve(finder)
@@ -208,6 +217,11 @@ class Resolver:
         return current
 
     def __getitem__(self, key):
+        if isinstance(key, str):
+            if key.startswith('%[') and key.endswith(']'):
+                key = key[2:-1]
+            elif key.startswith('[') and key.endswith(']'):
+                key = key[1:-1]
         value = self._resolve_key(key)
         if value is None:
             raise KeyError(f"Cannot resolve key '{key}'")
@@ -247,6 +261,10 @@ class Spool:
         for item in values:
             if not item: continue
             self._add_flat(item)
+
+    @property
+    def is_eager(self) -> bool:
+        return any(getattr(s, 'is_eager', False) for s in self.sigils)
 
     def _add_flat(self, item):
         # Recursively flatten

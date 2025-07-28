@@ -78,10 +78,18 @@ class GatewayTests(unittest.TestCase):
     def test_wrap_callable_raises_on_unresolved_sigils(self):
         from gway.sigils import Sigil
         gw.context.clear()
-        def func(x=Sigil("[NOT_PRESENT]")): return x
+        def func(x=Sigil("%[NOT_PRESENT]")): return x
         wrapped = gw.wrap_callable("failtest", func)
         with self.assertRaises(KeyError):
             wrapped()
+
+    def test_lazy_sigils_are_not_auto_resolved(self):
+        from gway.sigils import Sigil
+        def func(x=Sigil("[LATE]")):
+            return x
+        wrapped = gw.wrap_callable("lazytest", func)
+        result = wrapped()
+        self.assertIsInstance(result, Sigil)
 
     def test_find_project_returns_first(self):
         from pathlib import Path
