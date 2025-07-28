@@ -68,6 +68,7 @@ def _resolve_single(raw, lookup_fn):
     raw = raw.strip()
     quoted = (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'"))
     key = _unquote(raw) if quoted else raw
+    key = re.sub(r"^(gw|gway)[. ]+", "", key)
 
     val = lookup_fn(key)
     if val is None:
@@ -190,6 +191,9 @@ class Resolver:
         return fallback
 
     def _resolve_key(self, key: str, fallback: str = None) -> str:
+        key = key.strip()
+        key = re.sub(r"^(gw|gway)[. ]+", "", key)
+
         val = self.find_value(key, None)
         if val is not None:
             return val
@@ -203,7 +207,7 @@ class Resolver:
                 except KeyError:
                     return fallback
 
-        parts = key.replace('-', '_').split('.')
+        parts = re.split(r"[. ]+", key.replace('-', '_'))
         current = self
         for part in parts:
             if part.startswith('_'):

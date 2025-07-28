@@ -268,6 +268,8 @@ def _wire_error_fallback(app, endpoint: str, path: str):
 
 def _wire_trigger_fallback(app, endpoint: str, callback):
     """Attach middleware/hooks to proxy when callback(request) returns True."""
+    if isinstance(callback, str):
+        callback = gw[callback]
     if not callable(callback):
         raise ValueError("callback must be callable for trigger mode")
 
