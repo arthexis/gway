@@ -104,5 +104,40 @@ class TestFindQuotes(unittest.TestCase):
         self.assertIn(('tag_ids.name', 'ilike', 'VIP'), captured['domain'])
 
 
+@unittest.skipUnless(is_test_flag("odoo"), "Odoo tests disabled")
+class TestSplitWsTags(unittest.TestCase):
+    def test_split_ws_tags(self):
+        def fake_fetch_quote_tags(name=None):
+            self.assertEqual(name, ' ')
+            return [{'id': 1, 'name': 'VIP Customer'}]
+
+        def fake_fetch_quotes(tag=None):
+            self.assertEqual(tag, 1)
+            return [{'id': 10}]
+
+        ops = {}
+
+        def fake_execute_kw(args, kwargs=None, *, model, method):
+            if model == 'crm.tag' and method == 'search_read':
+                token = args[0][0][2]
+                if token == 'VIP':
+                    return [{'id': 2}]
+                return []
+            if model == 'crm.tag' and method == 'create':
+                return 3
+            if model == 'sale.order' and method == 'write':
+                ops['tag_ids'] = args[0][1]['tag_ids']
+                return True
+            return []
+
+        with patch('odoo.fetch_quote_tags', side_effect=fake_fetch_quote_tags):
+            with patch('odoo.fetch_quotes', side_effect=fake_fetch_quotes):
+                with patch('odoo.execute_kw', side_effect=fake_execute_kw):
+                    res = odoo.split_ws_quote_tags()
+
+        self.assertEqual(ops['tag_ids'], [(3, 1), (4, 2), (4, 3)])
+        self.assertEqual(res, [{'quote': 10, 'removed': 1, 'added': [2, 3]}])
+
+
 if __name__ == '__main__':
     unittest.main()

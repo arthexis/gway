@@ -155,6 +155,39 @@ def fetch_quote_tags(*, name=None):
         raise
 
 
+def split_ws_quote_tags():
+    """Split tags containing spaces into separate tags on all matching quotes."""
+    updated = []
+    tags = fetch_quote_tags(name=' ')
+    for tag in tags:
+        name = tag.get('name', '')
+        if ' ' not in name:
+            continue
+        left, right = name.split(' ', 1)
+        new_ids = []
+        for part in (left, right):
+            existing = execute_kw(
+                [[('name', '=', part)]], {'fields': ['id']},
+                model='crm.tag', method='search_read',
+            )
+            if existing:
+                new_ids.append(existing[0]['id'])
+            else:
+                new_id = execute_kw([
+                    {'name': part}
+                ], model='crm.tag', method='create')
+                new_ids.append(new_id)
+        quotes = fetch_quotes(tag=tag['id'])
+        for quote in quotes:
+            ops = [(3, tag['id'])] + [(4, nid) for nid in new_ids]
+            execute_kw(
+                [[quote['id']], {'tag_ids': ops}],
+                model='sale.order', method='write',
+            )
+            updated.append({'quote': quote['id'], 'removed': tag['id'], 'added': new_ids})
+    return updated
+
+
 def fetch_customers(
     *,
     name=None,

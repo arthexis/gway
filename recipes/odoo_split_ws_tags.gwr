@@ -1,0 +1,4 @@
+# file: recipes/odoo_split_ws_tags.gwr
+
+# Split tags with whitespace into separate tags on all quotes
+odoo split-ws-quote-tags
