@@ -4,6 +4,7 @@ import re
 import time
 import requests
 import datetime
+import math
 from zoneinfo import available_timezones, ZoneInfo
 from gway import gw
 
@@ -29,6 +30,26 @@ def minus(*, seconds=0, utc=False) -> "datetime":
 def timestamp(*, utc=False) -> str:
     """Return the current timestamp in ISO-8601 format."""
     return now(utc=utc).isoformat().replace("+00:00", "Z" if utc else "")
+
+
+TIMELINE_SCALING_FACTORS = {
+    "P": 1,
+    "O": math.pi ** 2,
+    "B": (math.pi ** 2) ** 2,
+    "H": (math.pi ** 2) ** 3,
+}
+
+
+def convert_date(date_str, from_timeline, to_timeline):
+    """Convert a date from one timeline to another in ISO format."""
+    input_date = datetime.datetime.fromisoformat(date_str)
+    from_factor = TIMELINE_SCALING_FACTORS[from_timeline]
+    to_factor = TIMELINE_SCALING_FACTORS[to_timeline]
+    protoline_days = (input_date - datetime.datetime(1, 1, 1)).days / from_factor
+    target_date = datetime.datetime(1, 1, 1) + datetime.timedelta(
+        days=protoline_days * to_factor
+    )
+    return target_date.date().isoformat()
 
 
 ...
