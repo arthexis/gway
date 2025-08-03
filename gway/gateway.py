@@ -10,6 +10,7 @@ import importlib
 import functools
 import time
 from pathlib import Path
+from types import MethodType
 
 from .envs import load_env, get_base_client, get_base_server
 from .sigils import Resolver, Sigil, Spool
@@ -354,12 +355,18 @@ class Gateway(Resolver, Runner):
             self.verbose(f"{project_name} <- Project('{base}')")
 
             def load_module_ns(py_path: str, dotted: str):
-                mod = self._load_py_file(py_path, dotted)
+                mod = self._load_py_file(
+                    py_path,
+                    dotted,
+                    module_name=f"gway_proj_{dotted}" if dotted == "django" else None,
+                )
                 funcs = {}
                 for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                     if not fname.startswith("_"):
                         funcs[fname] = self.wrap_callable(f"{dotted}.{fname}", obj)
                 ns = Project(dotted, funcs, self)
+                if hasattr(mod, "__getattr__"):
+                    ns.__getattr__ = MethodType(mod.__getattr__, ns)
                 self._cache[dotted] = ns
                 return ns
 
@@ -449,12 +456,12 @@ class Gateway(Resolver, Runner):
             "Tried base_path, GWAY_PROJECT_PATH, and package resources."
         )
     
-    def _load_py_file(self, path: str, dotted_name: str):
+    def _load_py_file(self, path: str, dotted_name: str, *, module_name: str | None = None):
         """
         Don't manually use _load_py_file, instead simply access the proyect through Gateway:
         gw.project.subproject.function(), where gw is any Gateway instance such as from gway import gw.
         """
-        module_name = dotted_name.replace(".", "_")
+        module_name = module_name or dotted_name.replace(".", "_")
         spec = importlib.util.spec_from_file_location(module_name, path)
         if spec is None or spec.loader is None:
             raise ImportError(f"Cannot load spec for {path}")
@@ -492,16 +499,20 @@ class Gateway(Resolver, Runner):
                 for fname, obj in inspect.getmembers(mod, inspect.isfunction):
                     if not fname.startswith("_"):
                         sub_funcs[fname] = self.wrap_callable(f"{dotted}.{fname}", obj)
-                subprojects[subname] = Project(dotted, sub_funcs, self)
+                sub_proj = Project(dotted, sub_funcs, self)
+                if hasattr(mod, "__getattr__"):
+                    sub_proj.__getattr__ = MethodType(mod.__getattr__, sub_proj)
+                subprojects[subname] = sub_proj
             elif os.path.isdir(full) and not entry.startswith("__"):
                 dotted = f"{dotted_prefix}.{entry}"
                 subprojects[entry] = self._recurse_ns(full, dotted)
 
         # 2. Load the root file (e.g., web/web.py) if present
         root_funcs = {}
+        root_mod = None
         if os.path.isfile(root_file):
-            mod = self._load_py_file(root_file, dotted_prefix)
-            for fname, obj in inspect.getmembers(mod, inspect.isfunction):
+            root_mod = self._load_py_file(root_file, dotted_prefix)
+            for fname, obj in inspect.getmembers(root_mod, inspect.isfunction):
                 if not fname.startswith("_"):
                     root_funcs[fname] = self.wrap_callable(f"{dotted_prefix}.{fname}", obj)
 
@@ -523,6 +534,8 @@ class Gateway(Resolver, Runner):
             funcs[k] = v
 
         ns = Project(dotted_prefix, funcs, self)
+        if root_mod and hasattr(root_mod, "__getattr__"):
+            ns.__getattr__ = MethodType(root_mod.__getattr__, ns)
         self._cache[dotted_prefix] = ns
         return ns
 
