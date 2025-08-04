@@ -20,3 +20,10 @@ def test_access_user_model():
     model = gw.django.User
     assert model is User
 
+
+def test_list_models():
+    from gway import gw
+
+    models = gw.django.list_models()
+    assert "User" in models
+

@@ -18,6 +18,12 @@ def _ensure_setup():
         django.setup()
 
 
+def list_models() -> list[str]:
+    """Return a sorted list of model names from the current Django project."""
+    _ensure_setup()
+    return sorted(model.__name__ for model in apps.get_models())
+
+
 def __getattr__(self, name: str):
     """Return a model class from the current Django project.
 
