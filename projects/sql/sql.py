@@ -283,6 +283,11 @@ def open_db(
     # Reuse cached connection if available
     if key in _connection_cache:
         conn = _connection_cache[key]
+        if autoload and conn._engine == "sqlite" and (force or not getattr(conn, "_autoloaded", False)):
+            load_csv(connection=conn, force=force)
+            load_excel(connection=conn, force=force)
+            load_cdv(connection=conn, force=force)
+            conn._autoloaded = True
         if row_factory:
             gw.warning("Row factory change requires close_db(). Reconnect manually.")
         gw.verbose(f"Reusing connection: {key}")
@@ -330,6 +335,7 @@ def open_db(
         load_csv(connection=conn, force=force)
         load_excel(connection=conn, force=force)
         load_cdv(connection=conn, force=force)
+        conn._autoloaded = True
 
     return conn
 
