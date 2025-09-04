@@ -123,17 +123,3 @@ def monitor_rpi():
     return _CLONE_STATE.copy()
 
 
-def view_pi_remote(*, target: str = None):
-    """Web view to clone the running Pi to another card.
-
-    Providing ``target`` will start the cloning process. Otherwise a form
-    with available devices is shown. The progress bar refreshes automatically
-    using ``render_clone_progress``.
-    """
-    html = "<h1>Pi Remote Clone</h1>" + render_rpi(target)
-    return gw.web.app.render_template(
-        title="Pi Remote Clone",
-        content=html,
-        css_files=["/static/tabs.css"],
-        js_files=["/static/render.js"],
-    )
