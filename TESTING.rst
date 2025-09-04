@@ -13,8 +13,8 @@ The ``gway test`` command accepts ``--install`` to perform these
 installation steps automatically. When dependencies like ``requests``
 are missing, ``--install`` is run implicitly.
 
-This ensures that modules such as ``requests`` and ``websockets`` are
-available to the test suite.
+This ensures that modules such as ``requests`` are available to the test
+suite.
 
 Enabling Optional Tests
 -----------------------
@@ -25,18 +25,6 @@ can enable them by passing feature flags to ``gway test``:
 .. code-block:: bash
 
    gway test --flags screen
-
-Integration suites that launch helper servers require specific flags.
-Use ``ocpp`` for the charger and Etron tests or ``proxy`` for the
-fallback proxy suite:
-
-.. code-block:: bash
-
-   gway test --flags ocpp
-
-.. code-block:: bash
-
-   gway test --flags proxy
 
 The flags are stored in the ``GW_TEST_FLAGS`` environment variable, which test
 cases can check via ``is_test_flag('flag')``.
@@ -55,7 +43,7 @@ Tests should access project code via the ``gw`` dispatcher whenever possible:
 .. code-block:: python
 
    from gway import gw
-   html = gw.web.nav.render()
+   result = gw.help('hello-world')
 
 This mirrors real-world usage and avoids fragile import paths.  When a test
 needs to call private helpers that are not exposed through ``gw``, load the

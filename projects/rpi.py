@@ -93,38 +93,3 @@ def render_clone_progress():
     return bar
 
 
-def view_pi_remote(*, target: str = None):
-    """Web view to clone the running Pi to another card.
-
-    Providing ``target`` will start the cloning process. Otherwise a form
-    with available devices is shown. The progress bar refreshes automatically
-    using ``render_clone_progress``.
-    """
-    if target and not _CLONE_STATE["running"]:
-        _CLONE_STATE.update(running=True, progress=0.0, status="", target=target)
-        threading.Thread(target=_run_clone, args=(target,), daemon=True).start()
-
-    devices = _list_devices()
-    options = ""
-    for d in devices:
-        sel = " selected" if d == target else ""
-        options += f'<option value="{d}"{sel}>{d}</option>'
-    form = (
-        "<form method='post'>"
-        f"<select name='target'>{options}</select>"
-        "<button type='submit'>Clone</button>"
-        "</form>"
-    )
-
-    progress = (
-        "<div id='clone-progress' gw-render='clone_progress' "
-        "gw-refresh='1' gw-on-load></div>"
-    )
-
-    html = "".join(["<h1>Pi Remote Clone</h1>", form, progress])
-    return gw.web.app.render_template(
-        title="Pi Remote Clone",
-        content=html,
-        css_files=["/static/tabs.css"],
-        js_files=["/static/render.js"],
-    )

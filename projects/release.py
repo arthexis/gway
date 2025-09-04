@@ -22,9 +22,8 @@ from gway import gw
 
 # List of project docs relative to data/static
 PROJECT_READMES = [
-    'awg', 'cdv', 'games', 'games/conway', 'games/mtg', 'games/qpig',
-    'monitor', 'ocpp', 'ocpp/csms', 'ocpp/evcs', 'ocpp/data', 'release',
-    'vbox', 'web', 'web/nav', 'web/cookies', 'web/auth', 'web/chat'
+    'awg', 'cdv', 'games', 'games/conway', 'games/qpig',
+    'monitor', 'release',
 ]
 
 
@@ -622,20 +621,19 @@ def update_changelog(version: str, build_hash: str, prev_build: str | None = Non
 
 
 def update_readme_links(readme_path: str | Path = "README.rst") -> None:
-    """Rewrite project README links with the resolved DOMAIN."""
+    """Rewrite project README links with the resolved DOMAIN.
+
+    Web features have been removed, so this now simply validates the DOMAIN
+    setting without altering the README content.
+    """
     domain = gw.resolve("[DOMAIN]", "")
     if not domain:
         gw.warning("DOMAIN not configured, skipping README link update.")
         return
-    base = domain if domain.startswith(("http://", "https://")) else f"https://{domain}"
     path = Path(readme_path)
     text = path.read_text(encoding="utf-8")
-    pattern_link = re.compile(r'<(?:https?://[\w.-]+)?(/web/site/reader\?tome=[\w/_-]+)>')
-    text = pattern_link.sub(lambda m: f'<{base}{m.group(1)}>', text)
-    pattern_ref = re.compile(r'(:\s*)(?:https?://[\w.-]+)?(/web/site/reader\?tome=[\w/_-]+)')
-    new_text = pattern_ref.sub(lambda m: m.group(1) + base + m.group(2), text)
-    path.write_text(new_text, encoding="utf-8")
-    gw.info(f"Updated README links using domain {domain}")
+    path.write_text(text, encoding="utf-8")
+    gw.info(f"Checked README links using domain {domain}")
 
 
 def view_changelog():
@@ -766,60 +764,6 @@ def setup_app(*, app=None, **_):
         thread = threading.Thread(target=_run_tests, daemon=True)
         thread.start()
     return app
-
-
-def view_test_cache():
-    html_parts = ["<h1>Test Cache</h1>"]
-    prog = _TEST_CACHE.get("progress", 0.0)
-    html_parts.append(
-        f"<div class='gw-progress'><div class='gw-progress-bar' style='width:{prog:.1f}%'>{prog:.1f}%</div></div>"
-    )
-
-    tests_rows = []
-    for t in _TEST_CACHE.get("tests", []):
-        tests_rows.append(
-            f"<tr><td>{html.escape(t['name'])}</td><td>{t['status']}</td><td>{t['time']:.2f}s</td></tr>"
-        )
-    tests_table = (
-        "<table><tr><th>Test</th><th>Status</th><th>Time</th></tr>" + "".join(tests_rows) + "</table>"
-    )
-
-    cov = _TEST_CACHE.get("coverage", {})
-    cov_rows = []
-    for name, pct in sorted(cov.get("projects", {}).items()):
-        cov_rows.append(f"<tr><td>{html.escape(name)}</td><td>{pct:.1f}%</td></tr>")
-    cov_table = "<table><tr><th>Project</th><th>Coverage</th></tr>" + "".join(cov_rows)
-    if "projects_total" in cov:
-        cov_table += f"<tr><td><b>Projects Total</b></td><td>{cov['projects_total']:.1f}%</td></tr>"
-    if "builtins_total" in cov:
-        cov_table += f"<tr><td><b>Builtins Total</b></td><td>{cov['builtins_total']:.1f}%</td></tr>"
-    cov_table += "</table>"
-
-    log_block = (
-        "<div id='test-log' gw-render='test_log' gw-refresh='2'>"
-        + render_test_log()
-        + "</div>"
-    )
-
-    html_parts.append(
-        "<div class='gw-tabs'>"
-        "<div class='gw-tabs-bar'>"
-        "<div class='gw-tab'>Tests</div>"
-        "<div class='gw-tab'>Coverage</div>"
-        "<div class='gw-tab'>Log</div>"
-        "</div>"
-        "<div class='gw-tab-block'>" + tests_table + "</div>"
-        "<div class='gw-tab-block'>" + cov_table + "</div>"
-        "<div class='gw-tab-block'>" + log_block + "</div>"
-        "</div>"
-    )
-
-    return gw.web.app.render_template(
-        title="Test Cache",
-        content="".join(html_parts),
-        css_files=["/static/tabs.css"],
-        js_files=["/static/render.js", "/static/tabs.js"],
-    )
 
 
 def render_test_log(lines: int = 50):

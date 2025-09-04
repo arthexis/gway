@@ -227,9 +227,14 @@ def delete(table_path: str, entry_id: str):
     return False
 
 
+def _sanitize_filename(name: str) -> str:
+    """Return a safe filename by stripping path separators and unsafe chars."""
+    name = str(name).replace("/", "").replace("\\", "")
+    return "".join(c for c in name if c.isalnum() or c in "._-")
+
+
 def _sanitize_cdv_path(pathlike: str) -> str:
     """Return a sanitized path string safe for gw.resource."""
-    from projects.web.site import _sanitize_filename
 
     parts = [
         _sanitize_filename(p)
@@ -269,43 +274,3 @@ def _records_to_text(records: dict[str, dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
-def view_data_editor(*, cdv: str = None, text: str = None):
-    """Interactive editor for CDV files."""
-    from bottle import request, response
-    import html
-
-    if not cdv:
-        return (
-            "<h1>CDV Data Editor</h1>"
-            "<form method='get'>"
-            "<input name='cdv' placeholder='path/to/file.cdv' required> "
-            "<button type='submit'>Open</button>"
-            "</form>"
-        )
-
-    cdv_safe = _sanitize_cdv_path(cdv)
-    try:
-        path = gw.resource(*cdv_safe.split("/"))
-        if os.path.isdir(path):
-            raise IsADirectoryError(path)
-    except Exception as e:
-        return f"<p>Invalid CDV path: {html.escape(str(e))}</p>"
-
-    if request.method == "POST":
-        records = _parse_cdv_text(text or "")
-        save_all(path, records)
-        response.status = 303
-        url = gw.web.app.build_url("data-editor", cdv=cdv_safe)
-        response.set_header("Location", url)
-        return ""
-
-    records = load_all(path)
-    cdv_text = html.escape(_records_to_text(records))
-    return (
-        f"<h1>Editing {html.escape(cdv_safe)}</h1>"
-        "<form method='post'>"
-        f"<textarea name='text' rows='15' style='width:100%;'>{cdv_text}</textarea>"
-        f"<input type='hidden' name='cdv' value='{html.escape(cdv_safe)}'>"
-        "<button type='submit'>Save</button>"
-        "</form>"
-    )
