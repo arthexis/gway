@@ -37,7 +37,6 @@ class GatewayBuiltinsTests(unittest.TestCase):
 
     def test_list_projects(self):
         project_ls = gw.projects()
-        self.assertIn('web', project_ls)
         self.assertIn('clock', project_ls)
         self.assertIn('sql', project_ls)
         self.assertIn('mail', project_ls)
@@ -69,7 +68,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
 
     def test_help_list_flags(self):
         flags = gw.help(list_flags=True)["Test Flags"]
-        expected = {"failure", "ocpp", "proxy", "screen", "odoo"}
+        expected = {"failure", "odoo"}
         self.assertEqual(set(flags.keys()), expected)
         for tests in flags.values():
             self.assertIsInstance(tests, list)

@@ -21,7 +21,6 @@ def _is_installed() -> bool:
     """Return True if required dependencies are importable."""
     try:
         import requests  # noqa: F401
-        import websockets  # noqa: F401
     except Exception:
         return False
     return True

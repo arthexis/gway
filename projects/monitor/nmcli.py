@@ -516,7 +516,7 @@ def render_nmcli():
 
 
 def _render_run_form(cmd: str = "", output: str = "") -> str:
-    url = gw.web.app.build_url("run") if hasattr(gw, "web") else "run"
+    url = "run"
     form = [
         f"<form method='post' action='{url}' style='margin-top:8px;'>",
         f"<input type='text' name='cmd' value='{html.escape(cmd, quote=True)}' placeholder='nmcli arguments' style='width:70%;'>",

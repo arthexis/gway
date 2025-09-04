@@ -3,12 +3,7 @@
 ## Project Summary
 **GWAY** is a CLI and function-dispatch framework. Any Python function inside
 `projects/` can be invoked from the command line or via ``from gway import gw``.
-Dispatcher helpers expose special functions as web routes:
-- ``view_*`` → ``/project/view`` (HTML output, optionally method specific ``view_get_*``/``view_post_*``).
-- ``api_*`` → ``/api/project/view`` (JSON output).
-- ``render_*`` → ``/render/project/view/hash`` (HTML/JSON fragments).
-Call ``gw.web.app.setup()`` to register views and ``gw.web.server.start_app()`` to launch the server.
-Existing utilities (``gw.awg``, ``gw.ocpp``, ``gw.vbox`` etc.) are loaded lazily and should be reused via
+Existing utilities (``gw.awg`` etc.) are loaded lazily and should be reused via
 ``gw.<project>.<sub>.<function>``.
 
 ### Glossary

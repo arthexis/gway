@@ -78,7 +78,6 @@ _DEF = [
 def view_toy_games(*, _title="Toys & Games"):
     """Home view listing all available games."""
     html = [
-        '<link rel="stylesheet" href="/static/web/cards.css">',
         "<h1>Toys & Games</h1>",
         "<div class='gw-cards'>",
     ]

@@ -128,10 +128,10 @@ app start --port 8000
 class TestLoadRecipeColonSyntax(unittest.TestCase):
     def test_load_recipe_with_colon_repetition(self):
         content = (
-            """web app setup-app:
+            """dummy app setup-app:
     - one --home first
     - two
-web:
+dummy:
  - static collect
  - server start-app --host 1 --port 2
 """
@@ -145,19 +145,19 @@ web:
             os.remove(temp_name)
 
         expected = [
-            ['web', 'app', 'setup-app', 'one', '--home', 'first'],
-            ['web', 'app', 'setup-app', 'two'],
-            ['web', 'static', 'collect'],
-            ['web', 'server', 'start-app', '--host', '1', '--port', '2'],
+            ['dummy', 'app', 'setup-app', 'one', '--home', 'first'],
+            ['dummy', 'app', 'setup-app', 'two'],
+            ['dummy', 'static', 'collect'],
+            ['dummy', 'server', 'start-app', '--host', '1', '--port', '2'],
         ]
         self.assertEqual(commands, expected)
 
     def test_load_recipe_colon_without_indentation(self):
         content = (
-            """web app setup-app:
+            """dummy app setup-app:
     - one
     - two
-web:
+dummy:
 - static collect
 - server start-app --host 1 --port 2
 """
@@ -171,16 +171,16 @@ web:
             os.remove(temp_name)
 
         expected = [
-            ['web', 'app', 'setup-app', 'one'],
-            ['web', 'app', 'setup-app', 'two'],
-            ['web', 'static', 'collect'],
-            ['web', 'server', 'start-app', '--host', '1', '--port', '2'],
+            ['dummy', 'app', 'setup-app', 'one'],
+            ['dummy', 'app', 'setup-app', 'two'],
+            ['dummy', 'static', 'collect'],
+            ['dummy', 'server', 'start-app', '--host', '1', '--port', '2'],
         ]
         self.assertEqual(commands, expected)
 
     def test_load_recipe_colon_after_flag_mid_line(self):
         content = (
-            """web server start-app --port: --ws-port 9999
+            """dummy server start-app --port: --ws-port 9999
     - 8888
     - 7777
 """
@@ -194,8 +194,8 @@ web:
             os.remove(temp_name)
 
         expected = [
-            ['web', 'server', 'start-app', '--port', '8888', '--ws-port', '9999'],
-            ['web', 'server', 'start-app', '--port', '7777', '--ws-port', '9999'],
+            ['dummy', 'server', 'start-app', '--port', '8888', '--ws-port', '9999'],
+            ['dummy', 'server', 'start-app', '--port', '7777', '--ws-port', '9999'],
         ]
         self.assertEqual(commands, expected)
 

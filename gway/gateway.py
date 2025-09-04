@@ -17,7 +17,7 @@ from .sigils import Resolver, Sigil, Spool
 from .structs import Results, Project, Null
 from .runner import Runner
 
-# Prefixes used for functions mapped to web views or APIs.
+# Prefixes used for functions mapped to views or APIs.
 PREFIXES: tuple[str, ...] = ("view_", "api_", "render_")
 
 
@@ -477,8 +477,8 @@ class Gateway(Resolver, Runner):
     def _recurse_ns(self, current_path: str, dotted_prefix: str):
         """
         Recursively loads a project namespace. If a file matching the directory name
-        exists (e.g. 'web/web.py'), its functions become root-level (e.g. gw.web.func).
-        Subprojects (e.g. 'web/app.py') are loaded as gw.web.app.func, possibly
+        exists (e.g. 'dummy/dummy.py'), its functions become root-level (e.g. gw.dummy.func).
+        Subprojects (e.g. 'dummy/app.py') are loaded as gw.dummy.app.func, possibly
         shadowing root names (warn on conflicts).
         """
         funcs = {}

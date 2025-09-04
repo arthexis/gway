@@ -19,14 +19,6 @@ Example usage::
     gw.sql.crud.api_update(table='items', id=item_id, qty=10)
     gw.sql.crud.api_delete(table='items', id=item_id)
 
-``view_table`` provides a simple HTML interface for editing a table.
-Mount it with ``gw.web.app.setup_app``::
-
-    gw.web.app.setup_app(project='sql.crud', home='table')
-
-Then visit ``/sql/crud/table?table=items`` (add ``&dbfile=PATH`` if you
-use a custom database file).
-
 ``setup_table`` stages schema changes for later migration::
 
     gw.sql.setup_table('posts', 'id', 'INTEGER', primary=True, auto=True,
@@ -35,8 +27,6 @@ use a custom database file).
     gw.sql.setup_table('posts', 'body', 'TEXT', dbfile='work/blog.sqlite')
     gw.sql.migrate(dbfile='work/blog.sqlite')
 
-``view_setup_table`` exposes this functionality via the web interface so you
-can add columns or drop a table through your browser.
 
 The ``recipes/midblog.gwr`` file shows how to combine this view with
 ``web.nav`` and ``web.site`` to create a minimal website.  For a slightly
