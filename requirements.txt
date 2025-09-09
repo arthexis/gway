@@ -18,7 +18,7 @@ colorama
 pygetwindow; platform_system == "Windows"
 duckdb
 pywin32; platform_system == "Windows"
-selenium 
+selenium
 webdriver-manager
 bs4
 markdown
@@ -30,3 +30,4 @@ PyJWT
 sounddevice
 PyYAML
 pywebview
+opencv-python
