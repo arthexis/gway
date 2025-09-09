@@ -1,12 +1,16 @@
 # file: projects/django.py
 """Virtual project providing access to Django models via attribute lookup.
 
-The project assumes ``DJANGO_SETTINGS_MODULE`` points to a valid Django
-settings module. Models from the configured Django project can then be
-accessed as attributes from ``gw.django``.
+If ``DJANGO_SETTINGS_MODULE`` isn't set the project tries to import
+``arthexis.settings`` or ``config.settings`` before initialising Django.
+Models from the configured project can then be accessed as attributes from
+``gw.django``.
 """
 
 from __future__ import annotations
+
+import importlib
+import os
 
 import django
 from django.apps import apps
@@ -14,6 +18,14 @@ from django.apps import apps
 
 def _ensure_setup():
     """Initialize Django if it hasn't been configured yet."""
+    if "DJANGO_SETTINGS_MODULE" not in os.environ:
+        for candidate in ("arthexis.settings", "config.settings"):
+            try:
+                importlib.import_module(candidate)
+            except Exception:
+                continue
+            os.environ["DJANGO_SETTINGS_MODULE"] = candidate
+            break
     if not apps.ready:
         django.setup()
 
