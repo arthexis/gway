@@ -650,7 +650,10 @@ def load_recipe(recipe_filename):
 
 
 def normalize_token(token):
-    return token.replace("-", "_").replace(" ", "_").replace(".", "_")
+    token = token.replace("-", "_").replace(" ", "_").replace(".", "_")
+    if token == "%":
+        return "mod"
+    return token
 
 
 def _rows_to_csv(rows):
