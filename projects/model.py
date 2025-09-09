@@ -4,9 +4,10 @@
 This project lazily loads Django and makes all registered models available
 as attributes. Model names may be referenced using their original CamelCase
 form or via CLI friendly variants like ``energy-account``. Any model method
-can then be called directly from the CLI. The project defaults the
-``DJANGO_SETTINGS_MODULE`` to ``config.settings`` (Arthexis) but respects
-an existing environment variable.
+can then be called directly from the CLI. If ``DJANGO_SETTINGS_MODULE`` is
+unset the project attempts to import ``arthexis.settings`` or
+``config.settings`` before falling back to an existing environment
+variable.
 
 Example
 =======
@@ -18,6 +19,7 @@ Aliases ``mod`` and ``%`` are available for convenience.
 
 from __future__ import annotations
 
+import importlib
 import os
 import warnings
 from typing import Dict, List
@@ -40,7 +42,14 @@ def _ensure_setup() -> None:
     if django is None:  # pragma: no cover - handled at runtime
         raise RuntimeError("Django is required for the 'model' project")
 
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+    if "DJANGO_SETTINGS_MODULE" not in os.environ:
+        for candidate in ("arthexis.settings", "config.settings"):
+            try:
+                importlib.import_module(candidate)
+            except Exception:
+                continue
+            os.environ["DJANGO_SETTINGS_MODULE"] = candidate
+            break
     if not apps.ready:
         django.setup()
 

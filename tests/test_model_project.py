@@ -1,3 +1,4 @@
+import os
 import pytest
 
 from gway.console import normalize_token
@@ -5,6 +6,29 @@ from gway.console import normalize_token
 
 def test_percent_alias_normalization():
     assert normalize_token("%") == "mod"
+
+
+def test_model_project_default_settings(monkeypatch, tmp_path):
+    django = pytest.importorskip("django")
+    pkg = tmp_path / "config"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "settings.py").write_text(
+        "SECRET_KEY='test'\n"
+        "INSTALLED_APPS=['django.contrib.contenttypes']\n"
+        "DATABASES={'default':{'ENGINE':'django.db.backends.sqlite3','NAME':':memory:'}}\n"
+    )
+    monkeypatch.syspath_prepend(tmp_path)
+    monkeypatch.delenv("DJANGO_SETTINGS_MODULE", raising=False)
+    import importlib
+    import gway.projects.model as model_proj
+    importlib.reload(model_proj)
+    from gway import gw
+    gw._cache.pop("model", None)
+    gw._cache.pop("mod", None)
+    names = gw.model.list_models()
+    assert os.environ["DJANGO_SETTINGS_MODULE"] == "config.settings"
+    assert "ContentType" in names
 
 
 def test_model_project_django_lookup(monkeypatch):
