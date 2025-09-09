@@ -26,5 +26,4 @@ Environment
 If ``DJANGO_SETTINGS_MODULE`` isn't defined the project will try to import
 ``arthexis.settings`` or ``config.settings`` and use whichever is available.
 Set the variable explicitly to use a different settings module.
-
 .. _Arthexis: https://github.com/arthexis/arthexis
