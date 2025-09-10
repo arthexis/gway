@@ -9,7 +9,7 @@ Functions
 
 ``record``
   Capture audio from the default input device. The recording is saved to a
-  ``.wav`` file in the working directory. You may customise the duration,
+  ``.wav`` file in the ``work/`` directory by default. You may customise the duration,
   format (currently ``wav`` only) and target filename.
 
 ``playback``
