@@ -129,6 +129,9 @@ def test(
                     if getattr(gw, "timed_enabled", False) and hasattr(self, "_start_time"):
                         elapsed = time.perf_counter() - self._start_time
                         gw.log(f"[test] {test} took {elapsed:.3f}s")
+                    # Restore gw helpers possibly patched by tests
+                    gw.abort = orig_abort
+                    gw.resource = orig_resource
                     super().stopTest(test)
 
             runner = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult)
