@@ -115,13 +115,17 @@ def test(
 
             test_suite = test_loader.discover(root, pattern=pattern)
 
+            orig_resource = gw.resource
+
             class TimedResult(unittest.TextTestResult):
                 def startTest(self, test):
+                    gw.resource = orig_resource
                     super().startTest(test)
                     if getattr(gw, "timed_enabled", False):
                         self._start_time = time.perf_counter()
 
                 def stopTest(self, test):
+                    gw.resource = orig_resource
                     if getattr(gw, "timed_enabled", False) and hasattr(self, "_start_time"):
                         elapsed = time.perf_counter() - self._start_time
                         gw.log(f"[test] {test} took {elapsed:.3f}s")

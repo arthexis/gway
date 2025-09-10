@@ -3,18 +3,18 @@ setuptools
 twine
 build
 colorama
- requests
- dateparser
- docutils
- croniter
- qrcode[pil]
- cryptography
- jinja2
- pygame
- httpx
- pyperclip; platform_system == "Windows"
- plyer
- numpy
+requests
+dateparser
+docutils
+croniter
+qrcode[pil]
+cryptography
+jinja2
+pygame
+httpx
+pyperclip; platform_system == "Windows"
+plyer
+numpy
 pygetwindow; platform_system == "Windows"
 duckdb
 pywin32; platform_system == "Windows"
