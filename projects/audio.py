@@ -62,7 +62,7 @@ def record(
     return str(path)
 
 
-def playback(audio: str, *, loop: bool = False):
+def playback(*, audio: str, loop: bool = False):
     """Play an audio file.
 
     Args:
