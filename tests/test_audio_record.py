@@ -41,5 +41,29 @@ class AudioRecordTests(unittest.TestCase):
         self.assertTrue(result.startswith(tmpdir))
 
 
+    def test_record_stores_result_and_playback_injects(self):
+        audio = self._load_audio()
+        fake_data = np.zeros((1, 1), dtype="int16")
+        with TemporaryDirectory() as tmpdir:
+            def fake_resource(*parts, **kwargs):
+                return Path(tmpdir).joinpath(*parts)
+
+            fake_wave = MagicMock()
+            fake_wave.__enter__.return_value = MagicMock()
+
+            fake_sd = types.SimpleNamespace(rec=MagicMock(return_value=fake_data), wait=MagicMock())
+            with patch.object(gw, 'resource', fake_resource), \
+                 patch.object(audio, 'sd', fake_sd), \
+                 patch.object(audio, 'wave') as wave_mod:
+                wave_mod.open.return_value = fake_wave
+                record_wrapped = gw.wrap_callable("audio.record", audio.record)
+                playback_wrapped = gw.wrap_callable("audio.playback", lambda *, audio: audio)
+                gw.results.clear()
+                path = record_wrapped(duration=1)
+                self.assertEqual(gw.results.get('audio'), path)
+                result = playback_wrapped()
+                self.assertEqual(result, path)
+
+
 if __name__ == "__main__":
     unittest.main()

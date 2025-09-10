@@ -548,10 +548,13 @@ class Gateway(Resolver, Runner):
             return "info"
 
     def subject(self, func_name: str):
-        # Returns subject if "verb_subject", else None
+        # Returns subject if "verb_subject" or namespaced project.
         words = func_name.replace("-", "_").split("_")
         if len(words) > 1:
             return "_".join(words[1:])
+        parts = func_name.split(".")
+        if len(parts) > 1:
+            return parts[-2]
         return None
 
 # This line allows using "from gway import gw" everywhere else
