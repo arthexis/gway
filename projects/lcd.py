@@ -94,21 +94,20 @@ def show(
         Delay in milliseconds between each scroll step.  Defaults to
         ``2000`` (2 seconds).
 
-    Raises
-    ------
-    RuntimeError
-        If the ``smbus`` module is not available.  Ensure the
-        prerequisites above are completed.
+    If the ``smbus`` module is missing, a helpful error message is logged and
+    the function returns without attempting any I²C communication.
     """
     message = gw.resolve(message)
 
     try:  # defer import so tests can mock the module
         import smbus  # type: ignore
-    except ModuleNotFoundError as exc:  # pragma: no cover - import error path
-        raise RuntimeError(
-            "smbus module not found. Enable I2C and install "
-            "'i2c-tools' and 'python3-smbus'."
-        ) from exc
+    except ModuleNotFoundError:  # pragma: no cover - import error path
+        msg = (
+            "smbus module not found. Enable I2C and install 'i2c-tools' and 'python3-smbus'."
+        )
+        gw.error(msg)
+        print(msg)
+        return
 
     bus = smbus.SMBus(1)
     _lcd_init(bus, addr)
