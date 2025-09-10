@@ -115,6 +115,11 @@ def test(
 
             test_suite = test_loader.discover(root, pattern=pattern)
 
+            # Preserve critical gw helpers so tests that monkeypatch them
+            # (and forget to restore) do not leak state into subsequent tests.
+            orig_abort = gw.abort
+            orig_resource = gw.resource
+
             class TimedResult(unittest.TextTestResult):
                 def startTest(self, test):
                     super().startTest(test)
@@ -125,6 +130,9 @@ def test(
                     if getattr(gw, "timed_enabled", False) and hasattr(self, "_start_time"):
                         elapsed = time.perf_counter() - self._start_time
                         gw.log(f"[test] {test} took {elapsed:.3f}s")
+                    # Restore gw helpers possibly patched by tests
+                    gw.abort = orig_abort
+                    gw.resource = orig_resource
                     super().stopTest(test)
 
             runner = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult)

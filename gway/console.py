@@ -472,6 +472,7 @@ def add_func_args(subparser, func_obj, *, wizard=False):
     When ``wizard`` is True, required arguments are marked optional so they can
     be filled interactively later."""
     sig = inspect.signature(func_obj, eval_str=True)
+    hints = get_type_hints(func_obj)
     seen_kw_only = False
 
     for arg_name, param in sig.parameters.items():
