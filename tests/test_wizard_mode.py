@@ -53,3 +53,22 @@ def test_wizard_collects_before_run():
     delattr(console.gw, "first")
     delattr(console.gw, "second")
     console.gw.wizard_enabled = False
+
+
+def test_wizard_guesses_names():
+    def dummy(a: int):
+        return a
+
+    setattr(console.gw, "dummy", dummy)
+    console.gw.wizard_enabled = True
+
+    inputs = iter(["", "5"])  # accept guess, provide param
+
+    with patch.object(builtins, "input", side_effect=lambda _: next(inputs)):
+        results, last = console.process([["dum"]])
+
+    assert results == [5]
+    assert last == 5
+
+    delattr(console.gw, "dummy")
+    console.gw.wizard_enabled = False

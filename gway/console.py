@@ -8,6 +8,7 @@ import inspect
 import argparse
 import argcomplete
 import csv
+import difflib
 from typing import get_origin, get_args, Literal, Union
 
 from . import units
@@ -164,13 +165,30 @@ def process(command_sources, callback=None, **context):
         last_error = None
 
         while tokens:
-            normalized = normalize_token(tokens[0])
+            original = tokens[0]
+            normalized = normalize_token(original)
             try:
                 obj = getattr(obj, normalized)
                 path.append(tokens.pop(0))
                 continue
             except AttributeError as e:
                 last_error = e
+
+                if wizard_enabled:
+                    candidates = [a for a in dir(obj) if not a.startswith("_")]
+                    guess = difflib.get_close_matches(normalized, candidates, n=1)
+                    if guess:
+                        resp = input(
+                            f"Unrecognized name '{original}'. Did you mean '{guess[0]}'? [Y/n] "
+                        ).strip().lower()
+                        if resp in ("", "y", "yes"):
+                            obj = getattr(obj, guess[0])
+                            path.append(guess[0])
+                            tokens.pop(0)
+                            continue
+                        abort(
+                            f"Aborted on uncertain name '{original}'. Please be more specific."
+                        )
 
             # Try to resolve composite function names from remaining tokens
             for i in range(len(tokens), 0, -1):
