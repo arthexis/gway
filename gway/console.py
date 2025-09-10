@@ -170,6 +170,8 @@ def process(command_sources, callback=None, **context):
     gw = Gateway(**context) if context else _global_gw
     wizard_enabled = getattr(gw, "wizard_enabled", False)
     call_specs = []
+    last_project = None
+    last_project_name = None
 
     def resolve_nested_object(root, tokens):
         """Resolve a sequence of command tokens to a nested object (e.g. gw.project.module.func).
@@ -253,6 +255,18 @@ def process(command_sources, callback=None, **context):
         resolved_obj, func_args, path, attr_error = resolve_nested_object(
             gw, list(chunk)
         )
+        # Retry resolution relative to the last project when the initial
+        # lookup fails without consuming any path components. This allows
+        # successive chained calls to omit the project name.
+        if attr_error is not None and not path and last_project is not None:
+            resolved_obj, func_args, path2, attr_error = resolve_nested_object(
+                last_project, list(chunk)
+            )
+            if not path2 and attr_error is not None:
+                # retain original failure if nothing could be resolved
+                pass
+            else:
+                path = [last_project_name] + path2
 
         if not callable(resolved_obj):
             if attr_error is not None:
@@ -278,7 +292,7 @@ def process(command_sources, callback=None, **context):
         if wizard_enabled:
             parsed_args = prompt_for_missing(parsed_args, resolved_obj)
             final_args, final_kwargs = prepare(parsed_args, resolved_obj)
-            call_specs.append((resolved_obj, final_args, final_kwargs))
+            call_specs.append((resolved_obj, final_args, final_kwargs, path))
         else:
             # Prepare and invoke
             final_args, final_kwargs = prepare(parsed_args, resolved_obj)
@@ -286,17 +300,29 @@ def process(command_sources, callback=None, **context):
                 result = resolved_obj(*final_args, **final_kwargs)
                 last_result = result
                 all_results.append(result)
+                if path:
+                    last_project_name = path[0]
+                    try:
+                        last_project = getattr(gw, normalize_token(last_project_name))
+                    except AttributeError:
+                        last_project = None
             except Exception as e:
                 gw.exception(e)
                 name = getattr(resolved_obj, "__name__", str(resolved_obj))
                 abort(f"Unhandled {type(e).__name__} in {name} -> {str(e)} @ {str(resolved_obj.__module__)}.py")
 
     if wizard_enabled:
-        for func, f_args, f_kwargs in call_specs:
+        for func, f_args, f_kwargs, call_path in call_specs:
             try:
                 result = func(*f_args, **f_kwargs)
                 last_result = result
                 all_results.append(result)
+                if call_path:
+                    last_project_name = call_path[0]
+                    try:
+                        last_project = getattr(gw, normalize_token(last_project_name))
+                    except AttributeError:
+                        last_project = None
             except Exception as e:
                 gw.exception(e)
                 name = getattr(func, "__name__", str(func))

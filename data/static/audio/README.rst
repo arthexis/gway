@@ -24,6 +24,10 @@ Record five seconds of audio and play it back::
     gway audio record --duration 5
     gway audio playback --audio "$(gw results audio.record)"
 
+Or chain the commands, omitting the project name on the second call::
+
+    gway audio record --duration 5 - playback --audio "$(gw results audio.record)"
+
 To keep a file playing in the background::
 
     gway audio playback --audio song.wav --loop

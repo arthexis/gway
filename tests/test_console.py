@@ -284,5 +284,14 @@ class TestRecipeCliContext(unittest.TestCase):
             sys.argv = original_argv
 
 
+class TestProcessChaining(unittest.TestCase):
+    def test_reuses_project_for_chained_calls(self):
+        commands = [["dummy", "setup-home"], ["setup-links"]]
+        results, last = console.process(commands)
+        self.assertEqual(results[0], "index")
+        self.assertEqual(results[1], ["about", "more"])
+        self.assertEqual(last, ["about", "more"])
+
+
 if __name__ == '__main__':
     unittest.main()
