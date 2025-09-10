@@ -8,6 +8,7 @@ import inspect
 import argparse
 import argcomplete
 import csv
+import difflib
 from typing import get_origin, get_args, Literal, Union
 
 from . import units
@@ -167,6 +168,8 @@ def process(command_sources, callback=None, **context):
     last_result = None
 
     gw = Gateway(**context) if context else _global_gw
+    wizard_enabled = getattr(gw, "wizard_enabled", False)
+    call_specs = []
 
     def resolve_nested_object(root, tokens):
         """Resolve a sequence of command tokens to a nested object (e.g. gw.project.module.func).
@@ -181,13 +184,30 @@ def process(command_sources, callback=None, **context):
         last_error = None
 
         while tokens:
-            normalized = normalize_token(tokens[0])
+            original = tokens[0]
+            normalized = normalize_token(original)
             try:
                 obj = getattr(obj, normalized)
                 path.append(tokens.pop(0))
                 continue
             except AttributeError as e:
                 last_error = e
+
+                if wizard_enabled:
+                    candidates = [a for a in dir(obj) if not a.startswith("_")]
+                    guess = difflib.get_close_matches(normalized, candidates, n=1)
+                    if guess:
+                        resp = input(
+                            f"Unrecognized name '{original}'. Did you mean '{guess[0]}'? [Y/n] "
+                        ).strip().lower()
+                        if resp in ("", "y", "yes"):
+                            obj = getattr(obj, guess[0])
+                            path.append(guess[0])
+                            tokens.pop(0)
+                            continue
+                        abort(
+                            f"Aborted on uncertain name '{original}'. Please be more specific."
+                        )
 
             # Try to resolve composite function names from remaining tokens
             for i in range(len(tokens), 0, -1):
@@ -245,7 +265,7 @@ def process(command_sources, callback=None, **context):
 
         # Parse function arguments, using parse_known_args if **kwargs present
         func_parser = argparse.ArgumentParser(prog=".".join(path))
-        add_func_args(func_parser, resolved_obj)
+        add_func_args(func_parser, resolved_obj, wizard=wizard_enabled)
 
         var_kw_name = getattr(resolved_obj, "__var_keyword_name__", None)
         if var_kw_name:
@@ -255,16 +275,32 @@ def process(command_sources, callback=None, **context):
         else:
             parsed_args = func_parser.parse_args(func_args)
 
-        # Prepare and invoke
-        final_args, final_kwargs = prepare(parsed_args, resolved_obj)
-        try:
-            result = resolved_obj(*final_args, **final_kwargs)
-            last_result = result
-            all_results.append(result)
-        except Exception as e:
-            gw.exception(e)
-            name = getattr(resolved_obj, "__name__", str(resolved_obj))
-            abort(f"Unhandled {type(e).__name__} in {name} -> {str(e)} @ {str(resolved_obj.__module__)}.py")
+        if wizard_enabled:
+            parsed_args = prompt_for_missing(parsed_args, resolved_obj)
+            final_args, final_kwargs = prepare(parsed_args, resolved_obj)
+            call_specs.append((resolved_obj, final_args, final_kwargs))
+        else:
+            # Prepare and invoke
+            final_args, final_kwargs = prepare(parsed_args, resolved_obj)
+            try:
+                result = resolved_obj(*final_args, **final_kwargs)
+                last_result = result
+                all_results.append(result)
+            except Exception as e:
+                gw.exception(e)
+                name = getattr(resolved_obj, "__name__", str(resolved_obj))
+                abort(f"Unhandled {type(e).__name__} in {name} -> {str(e)} @ {str(resolved_obj.__module__)}.py")
+
+    if wizard_enabled:
+        for func, f_args, f_kwargs in call_specs:
+            try:
+                result = func(*f_args, **f_kwargs)
+                last_result = result
+                all_results.append(result)
+            except Exception as e:
+                gw.exception(e)
+                name = getattr(func, "__name__", str(func))
+                abort(f"Unhandled {type(e).__name__} in {name} -> {str(e)} @ {str(func.__module__)}.py")
 
     return all_results, last_result
 
@@ -316,6 +352,61 @@ def prepare(parsed_args, func_obj):
             extra_kwargs[key.replace("-", "_")] = val
 
     return func_args, {**func_kwargs, **extra_kwargs}
+
+
+def prompt_for_missing(parsed_args, func_obj):
+    """Prompt user for any parameters missing from *parsed_args*.
+
+    Displays default values for optional parameters and returns the updated
+    namespace."""
+    sig = inspect.signature(func_obj)
+
+    for name, param in sig.parameters.items():
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL,
+                          inspect.Parameter.VAR_KEYWORD):
+            continue
+
+        current = getattr(parsed_args, name, inspect._empty)
+        if current is not inspect._empty and current is not None:
+            continue
+
+        default = None if param.default is inspect.Parameter.empty else param.default
+        opts = get_arg_opts(name, param, gw)
+        caster = opts.get("type", str)
+
+        if param.annotation is bool or isinstance(default, bool):
+            yn = "Y/n" if default else "y/N"
+            while True:
+                resp = input(f"{name}? [{yn}] ").strip().lower()
+                if not resp:
+                    value = default
+                    break
+                if resp in ("y", "yes"):
+                    value = True
+                    break
+                if resp in ("n", "no"):
+                    value = False
+                    break
+                print("Please enter 'y' or 'n'.")
+        else:
+            prompt = name
+            if default is not None:
+                prompt += f" [{default}]"
+            prompt += ": "
+            while True:
+                resp = input(prompt)
+                if resp:
+                    try:
+                        value = caster(resp)
+                        break
+                    except Exception:
+                        print(f"Invalid value for {name}, expected {caster.__name__}.")
+                elif default is not None:
+                    value = default
+                    break
+        setattr(parsed_args, name, value)
+
+    return parsed_args
 
 def join_unquoted_kwargs(tokens: list[str]) -> list[str]:
     """Combine values after ``--key`` up to the next dash token.
@@ -375,8 +466,11 @@ def show_functions(functions: dict):
         if doc:
             print(f"      {doc}")
 
-def add_func_args(subparser, func_obj):
-    """Add the function's arguments to the CLI subparser."""
+def add_func_args(subparser, func_obj, *, wizard=False):
+    """Add the function's arguments to the CLI subparser.
+
+    When ``wizard`` is True, required arguments are marked optional so they can
+    be filled interactively later."""
     sig = inspect.signature(func_obj)
     seen_kw_only = False
 
@@ -406,19 +500,14 @@ def add_func_args(subparser, func_obj):
                 # argparse forbids 'required' on positionals:
                 opts.pop('required', None)
 
-                if param.default is not inspect.Parameter.empty:
-                    # optional positional
-                    subparser.add_argument(
-                        arg_name,
-                        nargs='?',
-                        **opts
-                    )
+                if wizard:
+                    opts['nargs'] = '?'
+                    opts['default'] = inspect._empty
+                    subparser.add_argument(arg_name, **opts)
+                elif param.default is not inspect.Parameter.empty:
+                    subparser.add_argument(arg_name, nargs='?', **opts)
                 else:
-                    # required positional
-                    subparser.add_argument(
-                        arg_name,
-                        **opts
-                    )
+                    subparser.add_argument(arg_name, **opts)
 
             # after * or keyword-only → flags
             else:
@@ -438,9 +527,15 @@ def add_func_args(subparser, func_obj):
                         action="store_false",
                         help=f"Disable {arg_name}"
                     )
-                    subparser.set_defaults(**{arg_name: param.default})
+                    if wizard:
+                        subparser.set_defaults(**{arg_name: inspect._empty})
+                    else:
+                        subparser.set_defaults(**{arg_name: param.default})
                 else:
                     opts = get_arg_opts(arg_name, param, gw)
+                    if wizard:
+                        opts['required'] = False
+                        opts['default'] = inspect._empty
                     subparser.add_argument(cli_name, **opts)
 
                     # Add unit conversion flags if available
@@ -461,6 +556,8 @@ def add_func_args(subparser, func_obj):
                                     if k not in {"required", "default"}}
                         alt_opts["dest"] = arg_name
                         alt_opts["type"] = _wrapper
+                        if wizard:
+                            alt_opts["default"] = inspect._empty
                         alt_opts.setdefault(
                             "help",
                             f"Alias for --{arg_name} in {alt_name} units")
