@@ -1,9 +1,11 @@
 # tests/test_console.py
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import gway.console as console
 
@@ -252,6 +254,34 @@ class TestPrepareKwargParsing(unittest.TestCase):
 
         self.assertEqual(args, [])
         self.assertEqual(kw["title"], "My Great App")
+
+
+class TestRecipeCliContext(unittest.TestCase):
+    def test_extra_cli_args_as_context(self):
+        fake_commands = [['noop']]
+        original_argv = sys.argv
+
+        class DummyGateway:
+            def __init__(self, **kwargs):
+                pass
+
+            def verbose(self, *args, **kwargs):
+                pass
+
+        try:
+            with patch('gway.console.argcomplete.autocomplete', lambda *a, **k: None), \
+                 patch('gway.console.load_recipe', return_value=(fake_commands, [])), \
+                 patch('gway.console.process') as mock_process, \
+                 patch('gway.console.setup_logging', lambda *a, **k: None), \
+                 patch('gway.console.Gateway', DummyGateway):
+                mock_process.return_value = ([], None)
+                sys.argv = ['gway', '-r', 'dummy.gwr', '--foo', 'bar', '--flag']
+                console.cli_main()
+                kwargs = mock_process.call_args.kwargs
+                self.assertEqual(kwargs['foo'], 'bar')
+                self.assertTrue(kwargs['flag'])
+        finally:
+            sys.argv = original_argv
 
 
 if __name__ == '__main__':

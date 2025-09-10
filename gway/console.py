@@ -38,10 +38,28 @@ def cli_main():
     add("-v", dest="verbose", action="store_true", help="Verbose mode (where supported)")
     add("-w", dest="wizard", action="store_true", help="Wizard mode.")
     add("-z", dest="silent", action="store_true", help="Suppress all non-critical output")
-    add("commands", nargs=argparse.REMAINDER, help="Project/Function command(s)")
-
     argcomplete.autocomplete(parser)
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
+
+    extra_context = {}
+    if args.recipe and unknown:
+        def _parse_context(tokens):
+            ctx = {}
+            i = 0
+            while i < len(tokens):
+                token = tokens[i]
+                if not token.startswith("--"):
+                    abort(f"Unexpected argument: {token}")
+                key = token[2:]
+                if i + 1 < len(tokens) and not tokens[i + 1].startswith("--"):
+                    ctx[key] = tokens[i + 1]
+                    i += 2
+                else:
+                    ctx[key] = True
+                    i += 1
+            return ctx
+
+        extra_context = _parse_context(unknown)
 
     # Setup logging
     logfile = f"{args.username}.log" if args.username else "gway.log"
@@ -73,8 +91,8 @@ def cli_main():
     # Load command sources
     if args.recipe:
         command_sources, comments = load_recipe(args.recipe)
-    elif args.commands:
-        command_sources = chunk(args.commands)
+    elif unknown:
+        command_sources = chunk(unknown)
     else:
         parser.print_help()
         sys.exit(1)
@@ -89,6 +107,7 @@ def cli_main():
         run_kwargs['server'] = args.server
     if args.timed:
         run_kwargs['timed'] = True
+    run_kwargs.update(extra_context)
     all_results, last_result = process(command_sources, **run_kwargs)
 
     # Resolve expression if requested
