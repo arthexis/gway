@@ -2,11 +2,6 @@
 
 from xmlrpc import client
 from datetime import datetime, timedelta
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
-from datetime import datetime
-from contextlib import asynccontextmanager
-import asyncio
 from gway import gw
 
 
@@ -425,94 +420,6 @@ def get_user_info(*, username: str) -> dict:
     return user_data[0]  # Return the first (and likely only) match.
 
 
-chatbot_log: list[dict] = []
-
-def setup_chatbot_app(*, 
-            path="/chatbot", username="[ODOO_USERNAME]", alias="Operator", apps=None
-        ):
-    """
-    Create a FastAPI app (or append to existing ones) serving a chatbot UI and logic.
-    """
-
-    last_seen = {}
-    username = gw.resolve(username) if isinstance(username, str) else username
-
-    def log_msg(direction, msg):
-        chatbot_log.append({
-            "timestamp": datetime.utcnow().isoformat(),
-            "direction": direction,
-            "message": msg,
-        })
-
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        async def poll_messages():
-            while True:
-                try:
-                    messages = read_chat(username=username)
-                    for msg in messages:
-                        msg_id = msg["id"]
-                        if msg_id not in last_seen:
-                            log_msg("in", msg["body"])
-                            last_seen[msg_id] = True
-                    await asyncio.sleep(5)
-                except Exception as e:
-                    gw.error(f"Chatbot polling error: {e}")
-                    await asyncio.sleep(10)
-        asyncio.create_task(poll_messages())
-        yield
-
-    app = FastAPI(lifespan=lifespan)
-
-    @app.get(path, response_class=HTMLResponse)
-    async def ui(request: Request):
-        messages = read_chat(username=username, unread=False)
-        html = f"""
-        <html>
-        <head>
-            <title>Chatbot Interface</title>
-            <style>
-                body {{ font-family: sans-serif; padding: 1rem; }}
-                .log {{ background: #f9f9f9; padding: 1em; margin-bottom: 1em; border: 1px solid #ccc; }}
-                .incoming {{ color: darkblue; }}
-                .outgoing {{ color: darkgreen; }}
-                form {{ margin-top: 1em; }}
-            </style>
-        </head>
-        <body>
-            <h1>Chatbot: {username}</h1>
-            <div class="log">
-        """
-        for msg in reversed(messages[-20:]):
-            cls = "incoming" if msg["author_id"][1] != alias else "outgoing"
-            html += f"<div class='{cls}'><b>{msg['author_id'][1]}</b>: {msg['body']}</div>"
-        html += f"""
-            </div>
-            <form method="post">
-                <label>Alias: <input name="alias" value="{alias}" /></label><br />
-                <textarea name="body" rows="3" cols="60" placeholder="Type response..."></textarea><br/>
-                <button type="submit">Send</button>
-            </form>
-        </body>
-        </html>
-        """
-        return HTMLResponse(content=html, status_code=200)
-
-    @app.post(path)
-    async def post_message(alias: str = Form(...), body: str = Form(...)):
-        if body.strip():
-            send_chat(body, username=username)
-            log_msg("out", body)
-        return RedirectResponse(url=path, status_code=303)
-
-    if apps is None:
-        return [app]
-    elif isinstance(apps, list):
-        return apps + [app]
-    else:
-        return [apps, app]
-
-# projects/odoo.py
 
 def find_quotes(
     *,

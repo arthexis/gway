@@ -9,7 +9,7 @@ import argparse
 import argcomplete
 import csv
 import difflib
-from typing import get_origin, get_args, Literal, Union
+from typing import get_origin, get_args, Literal, Union, get_type_hints
 
 from . import units
 
@@ -475,6 +475,8 @@ def add_func_args(subparser, func_obj, *, wizard=False):
     seen_kw_only = False
 
     for arg_name, param in sig.parameters.items():
+        if arg_name in hints:
+            param = param.replace(annotation=hints[arg_name])
         # VAR_POSITIONAL: e.g. *args
         if param.kind == inspect.Parameter.VAR_POSITIONAL:
             subparser.add_argument(
@@ -633,7 +635,6 @@ def load_recipe(recipe_filename):
     non-whitespace characters are `--`, prepend the last full non-indented command prefix.
     
     Example:
-        games.conway --home board --path conway
         awg awg-probe --target localhost
 
     This parses the indented lines as continuations of the previous non-indented command.

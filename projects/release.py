@@ -22,8 +22,7 @@ from gway import gw
 
 # List of project docs relative to data/static
 PROJECT_READMES = [
-    'awg', 'cdv', 'games', 'games/conway', 'games/qpig',
-    'monitor', 'release',
+    'awg', 'cdv', 'monitor', 'release',
 ]
 
 

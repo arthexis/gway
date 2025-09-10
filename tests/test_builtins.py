@@ -42,7 +42,6 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('mail', project_ls)
         self.assertIn('awg', project_ls)
         self.assertIn('cast', project_ls)
-        self.assertIn('games', project_ls)
         self.assertIn('recipe', project_ls)
         self.assertIn('cdv', project_ls)
 
@@ -68,7 +67,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
 
     def test_help_list_flags(self):
         flags = gw.help(list_flags=True)["Test Flags"]
-        expected = {"failure", "odoo"}
+        expected = {"failure"}
         self.assertEqual(set(flags.keys()), expected)
         for tests in flags.values():
             self.assertIsInstance(tests, list)
