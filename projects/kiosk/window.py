@@ -11,8 +11,8 @@ from gway import __, gw
 def show(
     *,
     url: Optional[str] = None,
-    host: str = __("%[SITE_HOST]", "0.0.0.0"),
-    port: int = __('%[SITE_PORT]', '8888'),
+    host: str = __("[SITE_HOST]", "0.0.0.0"),
+    port: int = __('[SITE_PORT]', '8888'),
     width: int = 1024,
     height: int = 768,
     fullscreen: bool = False,
