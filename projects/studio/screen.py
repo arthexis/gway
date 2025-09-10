@@ -5,6 +5,7 @@ import platform
 import subprocess
 import re, glob, time, os
 from datetime import datetime
+from pathlib import Path
 from PIL import Image, ImageGrab
 from gway import gw
 
@@ -158,6 +159,67 @@ def shot(*, name: str = None, mode: str = "full") -> str:
     img.save(filepath)
 
     return filepath
+
+
+def display(image: str = None, *, before: str | None = None) -> str:
+    """Display an image file using the default viewer.
+
+    Parameters
+    ----------
+    image:
+        Path to the image file. If omitted, the most recently modified image
+        inside ``gw.resource('work')`` is used.
+    before:
+        ISO-like date/time string. When provided (and ``image`` is omitted), the
+        latest image created or modified **before** this timestamp is chosen.
+
+    Returns
+    -------
+    str
+        The absolute path to the displayed image.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified image does not exist or no matching image is found.
+    ValueError
+        If ``before`` cannot be parsed as an ISO date/time string.
+    """
+
+    # Resolve explicit path if provided
+    if image:
+        path = Path(image)
+        if not path.is_absolute():
+            path = Path(gw.resource(image))
+        if not path.is_file():
+            raise FileNotFoundError(f"Image file not found: {image}")
+    else:
+        work_dir = Path(gw.resource("work"))
+        cutoff = None
+        if before:
+            try:
+                cutoff = datetime.fromisoformat(before)
+            except ValueError as exc:  # pragma: no cover - parse errors
+                raise ValueError(f"Invalid ISO date/time: {before}") from exc
+        exts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+        latest = None
+        latest_mtime = None
+        for file in work_dir.rglob("*"):
+            if not file.is_file() or file.suffix.lower() not in exts:
+                continue
+            mtime = file.stat().st_mtime
+            if cutoff and mtime >= cutoff.timestamp():
+                continue
+            if latest is None or mtime > latest_mtime:
+                latest = file
+                latest_mtime = mtime
+        if not latest:
+            raise FileNotFoundError("No image files found in work directory")
+        path = latest
+
+    img = Image.open(path)
+    img.show()
+    return str(path.resolve())
 
 
 def reminder(message, *, interval: float = 20.0, daemon=False, lines: int = 2):
