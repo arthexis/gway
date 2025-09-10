@@ -1,0 +1,12 @@
+# file: recipes/auto_upgrade.gwr
+#
+# Auto-upgrade service recipe
+#
+# This recipe ensures the local gway installation is always kept up to
+# date. When run under a service manager like systemd, the `until` runner
+# monitors the gway package on PyPI and exits with a non-zero status when
+# a new release is published. The service manager can then restart the
+# recipe, triggering another upgrade cycle.
+
+shell pip install --quiet --upgrade gway
+until --abort --pypi
