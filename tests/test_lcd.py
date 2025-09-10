@@ -62,3 +62,22 @@ class LCDTests(unittest.TestCase):
 
         msg = lcd_str.call_args_list[0].args[2]
         self.assertEqual(msg.strip(), "Hello World")
+
+    def test_show_handles_missing_smbus_gracefully(self):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "smbus":
+                raise ModuleNotFoundError
+            return real_import(name, *args, **kwargs)
+
+        with unittest.mock.patch.object(builtins, "__import__", side_effect=fake_import):
+            with unittest.mock.patch.object(gw, "error") as err, \
+                 unittest.mock.patch("builtins.print") as mock_print:
+                gw.lcd.show("Test")
+
+        err.assert_called_once()
+        mock_print.assert_called_once()
+        self.assertIn("i2c-tools", err.call_args[0][0])

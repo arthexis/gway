@@ -310,7 +310,7 @@ def prepare(parsed_args, func_obj):
     func_kwargs = {}
     extra_kwargs = {}
 
-    sig = inspect.signature(func_obj)
+    sig = inspect.signature(func_obj, eval_str=True)
     params = sig.parameters
     expected_names = set(params.keys())
 
@@ -359,7 +359,7 @@ def prompt_for_missing(parsed_args, func_obj):
 
     Displays default values for optional parameters and returns the updated
     namespace."""
-    sig = inspect.signature(func_obj)
+    sig = inspect.signature(func_obj, eval_str=True)
 
     for name, param in sig.parameters.items():
         if param.kind in (inspect.Parameter.VAR_POSITIONAL,
@@ -471,7 +471,7 @@ def add_func_args(subparser, func_obj, *, wizard=False):
 
     When ``wizard`` is True, required arguments are marked optional so they can
     be filled interactively later."""
-    sig = inspect.signature(func_obj)
+    sig = inspect.signature(func_obj, eval_str=True)
     seen_kw_only = False
 
     for arg_name, param in sig.parameters.items():
