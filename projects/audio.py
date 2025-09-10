@@ -6,6 +6,7 @@ import os
 import threading
 import time
 import wave
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -29,8 +30,8 @@ def record(
         channels: Number of channels. Defaults to 1 (mono).
         format: Audio format. Currently only ``"wav"`` is supported.
         file: Target filename. If ``None``, a name like
-            ``"recording_<timestamp>.wav"`` is used in the current
-            working directory.
+            ``"recording_<timestamp>.wav"`` is saved to the ``work``
+            directory.
 
     Returns:
         Absolute path to the recorded audio file.
@@ -39,21 +40,26 @@ def record(
         raise ValueError("Only 'wav' format is supported")
 
     if file is None:
-        file = f"recording_{int(time.time())}.{format}"
-    path = os.path.abspath(file)
+        work_dir = gw.resource("work", dir=True)
+        path = work_dir / f"recording_{int(time.time())}.{format}"
+    else:
+        path = Path(file)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+    path = path.resolve()
     gw.info(f"Recording audio to {path}")
 
     frames = int(duration * samplerate)
     data = sd.rec(frames, samplerate=samplerate, channels=channels)
     sd.wait()
     scaled = np.int16(data * 32767)
-    with wave.open(path, "w") as wf:
+    with wave.open(str(path), "w") as wf:
         wf.setnchannels(channels)
         wf.setsampwidth(2)
         wf.setframerate(samplerate)
         wf.writeframes(scaled.tobytes())
     gw.info(f"Saved recording to {path}")
-    return path
+    return str(path)
 
 
 def playback(audio: str, *, loop: bool = False):

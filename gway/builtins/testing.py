@@ -116,14 +116,16 @@ def test(
             test_suite = test_loader.discover(root, pattern=pattern)
 
             orig_resource = gw.resource
+            orig_abort = gw.abort
 
             class TimedResult(unittest.TextTestResult):
                 def startTest(self, test):
                     gw.resource = orig_resource
+                    gw.abort = orig_abort
                     super().startTest(test)
                     if getattr(gw, "timed_enabled", False):
                         self._start_time = time.perf_counter()
-
+                
                 def stopTest(self, test):
                     gw.resource = orig_resource
                     if getattr(gw, "timed_enabled", False) and hasattr(self, "_start_time"):
