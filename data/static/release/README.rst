@@ -14,3 +14,12 @@ to PyPI::
 
 GitHub will run the ``test-release`` workflow on every pushed tag and mark a
 successful run as ready for release to PyPI.
+
+Marking PRs for Release
+=======================
+
+Instead of running the release command locally, a pull request labeled
+``release`` can generate a new version. When such a PR is merged the
+``auto-release`` workflow runs ``gw.release.build --bump --git --tag`` on the
+main branch. The workflow commits the version bump, tags it (``vX.Y.Z``) and
+pushes the result, which in turn triggers the ``test-release`` workflow above.
