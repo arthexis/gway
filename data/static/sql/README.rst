@@ -25,12 +25,7 @@ Example usage::
                        dbfile='work/blog.sqlite')
     gw.sql.setup_table('posts', 'title', 'TEXT', dbfile='work/blog.sqlite')
     gw.sql.setup_table('posts', 'body', 'TEXT', dbfile='work/blog.sqlite')
-    gw.sql.migrate(dbfile='work/blog.sqlite')
-
-
-The ``recipes/midblog.gwr`` file shows how to combine this view with
-``web.nav`` and ``web.site`` to create a minimal website.  For a slightly
-more complete example with basic authentication see ``recipes/midblog.gwr``.
+gw.sql.migrate(dbfile='work/blog.sqlite')
 
 ``gw.sql.model`` returns a proxy object with CRUD helpers for a specific
 table. Pass an existing table name or a definition such as a mapping or
