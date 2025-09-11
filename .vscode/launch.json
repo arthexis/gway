@@ -2,38 +2,6 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "gway -dr website",
-            "type": "python",
-            "request": "launch",
-            "module": "gway",
-            "args": ["-dr", "website"],
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "gway -r website",
-            "type": "python",
-            "request": "launch",
-            "module": "gway",
-            "args": ["-r", "website"],
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "gway -dv -r website",
-            "type": "python",
-            "request": "launch",
-            "module": "gway",
-            "args": ["-dv", "-r", "website"],
-            "console": "integratedTerminal"
-        },
-                {
-            "name": "gway -dr skeleton",
-            "type": "python",
-            "request": "launch",
-            "module": "gway",
-            "args": ["-dr", "skeleton"],
-            "console": "integratedTerminal"
-        },
-        {
             "name": "gway release build --all",
             "type": "python",
             "request": "launch",
@@ -47,14 +15,6 @@
             "request": "launch",
             "module": "pip",
             "args": ["install", "-U", "-r", "requirements.txt"],
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "gway -r cookbook",
-            "type": "python",
-            "request": "launch",
-            "module": "gway",
-            "args": ["-r", "cookbook"],
             "console": "integratedTerminal"
         }
     ]
