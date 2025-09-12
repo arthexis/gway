@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+import types
 from pathlib import Path
 from unittest.mock import patch
 
@@ -291,6 +292,34 @@ class TestProcessChaining(unittest.TestCase):
         self.assertEqual(results[0], "index")
         self.assertEqual(results[1], ["about", "more"])
         self.assertEqual(last, ["about", "more"])
+
+    def test_chained_auto_injection(self):
+        from gway.gateway import Gateway
+
+        dummy = Gateway()
+
+        def record():
+            return "foo.wav"
+
+        record.__module__ = "projects.audio"
+
+        def playback(*, audio):
+            return audio
+
+        playback.__module__ = "projects.audio"
+
+        dummy.audio = types.SimpleNamespace(
+            record=dummy.wrap_callable("audio.record", record),
+            playback=dummy.wrap_callable("audio.playback", playback),
+        )
+
+        commands = [["audio", "record"], ["playback"]]
+        with patch("gway.gw", dummy), patch("gway.console.gw", dummy):
+            results, last = console.process(commands)
+
+        self.assertEqual(results[0], "foo.wav")
+        self.assertEqual(results[1], "foo.wav")
+        self.assertEqual(last, "foo.wav")
 
 
 if __name__ == '__main__':

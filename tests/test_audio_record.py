@@ -36,7 +36,7 @@ class AudioRecordTests(unittest.TestCase):
                  patch.object(audio, 'sd', fake_sd), \
                  patch.object(audio, 'wave') as wave_mod:
                 wave_mod.open.return_value = fake_wave
-                result = audio.record(duration=1)
+                result = audio.record(duration=1, immediate=True)
 
         self.assertTrue(result.startswith(tmpdir))
 
@@ -59,7 +59,7 @@ class AudioRecordTests(unittest.TestCase):
                 record_wrapped = gw.wrap_callable("audio.record", audio.record)
                 playback_wrapped = gw.wrap_callable("audio.playback", lambda *, audio: audio)
                 gw.results.clear()
-                path = record_wrapped(duration=1)
+                path = record_wrapped(duration=1, immediate=True)
                 self.assertEqual(gw.results.get('audio'), path)
                 result = playback_wrapped()
                 self.assertEqual(result, path)
