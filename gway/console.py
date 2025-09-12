@@ -347,6 +347,8 @@ def prepare(parsed_args, func_obj):
             if param.kind == inspect.Parameter.VAR_POSITIONAL:
                 func_args.extend(value or [])
             elif param.kind != inspect.Parameter.VAR_KEYWORD:
+                if value is None and param.default is inspect.Parameter.empty:
+                    continue
                 func_kwargs[name] = value
 
     # 2) Now handle the **kwargs slot (if any) from parse_known_args:
@@ -503,6 +505,7 @@ def add_func_args(subparser, func_obj, *, wizard=False):
     except Exception:
         hints = {}
     seen_kw_only = False
+    subject = gw.subject(f"{func_obj.__module__}.{func_obj.__name__}")
 
     for arg_name, param in sig.parameters.items():
         if arg_name in hints:
@@ -526,9 +529,13 @@ def add_func_args(subparser, func_obj, *, wizard=False):
                 inspect.Parameter.POSITIONAL_OR_KEYWORD
             )
 
+            auto_inject = arg_name == subject
+            opts = get_arg_opts(arg_name, param, gw)
+            if auto_inject:
+                opts.pop('required', None)
+
             # before the first kw-only marker (*) → positional
             if is_positional:
-                opts = get_arg_opts(arg_name, param, gw)
                 # argparse forbids 'required' on positionals:
                 opts.pop('required', None)
 
@@ -536,7 +543,7 @@ def add_func_args(subparser, func_obj, *, wizard=False):
                     opts['nargs'] = '?'
                     opts['default'] = inspect._empty
                     subparser.add_argument(arg_name, **opts)
-                elif param.default is not inspect.Parameter.empty:
+                elif param.default is not inspect.Parameter.empty or auto_inject:
                     subparser.add_argument(arg_name, nargs='?', **opts)
                 else:
                     subparser.add_argument(arg_name, **opts)
@@ -564,7 +571,6 @@ def add_func_args(subparser, func_obj, *, wizard=False):
                     else:
                         subparser.set_defaults(**{arg_name: param.default})
                 else:
-                    opts = get_arg_opts(arg_name, param, gw)
                     if wizard:
                         opts['required'] = False
                         opts['default'] = inspect._empty

@@ -21,6 +21,7 @@ def record(
     channels: int = 1,
     format: str = "wav",
     file: Optional[str] = None,
+    immediate: bool = False,
 ):
     """Record audio from the default input device.
 
@@ -32,6 +33,8 @@ def record(
         file: Target filename. If ``None``, a name like
             ``"recording_<timestamp>.wav"`` is saved to the ``work``
             directory.
+        immediate: Start recording immediately without waiting for
+            user input.
 
     Returns:
         Absolute path to the recorded audio file.
@@ -48,6 +51,9 @@ def record(
             path = Path.cwd() / path
     path = path.resolve()
     gw.info(f"Recording audio to {path}")
+    if not immediate:
+        gw.info("Press Enter to start recording")
+        input()
 
     frames = int(duration * samplerate)
     data = sd.rec(frames, samplerate=samplerate, channels=channels)
