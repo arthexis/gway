@@ -58,8 +58,10 @@ def _ensure_setup() -> None:
             importlib.import_module(settings_mod)
         except ModuleNotFoundError:
             root = Path(__file__).resolve().parents[1]
-            if str(root) not in sys.path:
-                sys.path.insert(0, str(root))
+            cwd = Path.cwd()
+            for path in (root, cwd):
+                if str(path) not in sys.path:
+                    sys.path.insert(0, str(path))
             importlib.import_module(settings_mod)
     if not apps.ready:
         if not hasattr(apps.get_models, "cache_clear"):
