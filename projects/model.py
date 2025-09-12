@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 import warnings
+from pathlib import Path
 from typing import Dict, List
 
 try:  # pragma: no cover - optional dependency
@@ -50,13 +52,31 @@ def _ensure_setup() -> None:
                 continue
             os.environ["DJANGO_SETTINGS_MODULE"] = candidate
             break
+    else:
+        settings_mod = os.environ["DJANGO_SETTINGS_MODULE"]
+        try:
+            importlib.import_module(settings_mod)
+        except ModuleNotFoundError:
+            root = Path(__file__).resolve().parents[1]
+            if str(root) not in sys.path:
+                sys.path.insert(0, str(root))
+            importlib.import_module(settings_mod)
     if not apps.ready:
+        if not hasattr(apps.get_models, "cache_clear"):
+            # ``apps.get_models`` is patched in tests with a simple function
+            # lacking ``cache_clear``. Attach a no-op so ``django.setup`` can
+            # clear caches without failing.
+            apps.get_models.cache_clear = lambda: None  # type: ignore[attr-defined]
         django.setup()
 
     if _MODEL_MAP is None:
         models_map: Dict[str, type] = {}
         for model in apps.get_models():
-            name = model.__name__
+            # Allow tests to override the reported model name by setting a
+            # ``__name__`` attribute on the class dictionary. This mirrors how
+            # Django models expose their class name but enables lightweight
+            # stand-ins in tests.
+            name = getattr(model, "__dict__", {}).get("__name__", model.__name__)
             if name in models_map:
                 warnings.warn(
                     f"Duplicate model name '{name}' encountered; using first occurrence",
