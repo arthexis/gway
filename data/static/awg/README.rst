@@ -2,9 +2,9 @@ AWG Cable Calculator
 --------------------
 
 The ``awg`` project provides helpers for selecting electrical cable sizes using
-American Wire Gauge tables.  It exposes a ``find_awg`` function and a small web
-form so you can determine the required cable, voltage drop and conduit size
-straight from the command line or a browser.
+American Wire Gauge tables.  It exposes a ``find_awg`` function so you can
+determine the required cable, voltage drop and conduit size straight from the
+command line or your own scripts.
 
 Usage
 =====
@@ -58,9 +58,6 @@ Additional Tools
 
 ``find_conduit``
   Utility to calculate conduit diameter for a given AWG and number of cables.
-``view_awg_calculator``
-  Renders ``/awg/awg-calculator`` – an HTML form backed by ``find_awg`` for quick
-  calculations in the browser.
 
 Data Files
 ==========
