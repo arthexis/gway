@@ -20,10 +20,3 @@ Programmatically::
 Ensure the destination device refers to the USB microSD writer
 connected to the Pi.  The entire device will be overwritten and
 requires ``sudo`` permissions.  Cloning may take several minutes.
-
-Web Interface
-=============
-
-Launch the web application and open ``/monitor/rpi/pi-remote`` to use a simple
-interface for selecting the target device and starting the copy.  The
-progress bar updates automatically while the clone runs.
