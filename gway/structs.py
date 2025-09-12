@@ -82,7 +82,20 @@ class Project(SimpleNamespace):
         show_functions(functions)
 
     def __getattr__(self, name):
-        """Fallback to ``<verb>_<project>`` for single-word verbs."""
+        """Fallback to ``<verb>_<project>`` or delegate to custom handler.
+
+        If the instance defines its own ``__getattr__`` (as project modules may
+        to expose dynamic attributes), invoke that first. Should it raise
+        ``AttributeError`` we fall back to the standard verb-based lookup.
+        """
+
+        custom = self.__dict__.get("__getattr__")
+        if custom is not None and custom is not Project.__getattr__:
+            try:
+                return custom(name)
+            except AttributeError:
+                pass
+
         if "_" not in name and "-" not in name:
             suffix = self._name.rsplit(".", 1)[-1]
             alt_name = f"{name}_{suffix}"
