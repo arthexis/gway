@@ -38,6 +38,9 @@ for arg in "$@"; do
     --remove)
       ACTION="remove"
       ;;
+    --bin)
+      ACTION="bin"
+      ;;
     --force)
       FORCE_FLAG="--force"
       ;;
@@ -61,7 +64,7 @@ done
 
 # Determine if this action requires root privileges
 ROOT_REQUIRED=false
-if [[ "$ACTION" == "remove" || "$ACTION" == "repair" ]]; then
+if [[ "$ACTION" == "remove" || "$ACTION" == "repair" || "$ACTION" == "bin" ]]; then
   ROOT_REQUIRED=true
 elif [[ "$ACTION" == "install" && -n "$RECIPE" ]]; then
   ROOT_REQUIRED=true
@@ -125,6 +128,20 @@ if [[ "$ACTION" == "remove" ]]; then
   exit 0
 fi
 
+# Install global /usr/bin/gway symlink
+if [[ "$ACTION" == "bin" ]]; then
+  if [[ -n "$RECIPE" ]]; then
+    echo "ERROR: --bin does not take a recipe argument" >&2
+    deactivate
+    exit 1
+  fi
+  echo "Installing gway to /usr/bin/gway..."
+  $SUDO ln -sf "$SCRIPT_DIR/gway.sh" /usr/bin/gway
+  $SUDO chmod +x "$SCRIPT_DIR/gway.sh"
+  deactivate
+  exit 0
+fi
+
 # 2) No-arg case: notify installation and usage
 if [[ -z "$RECIPE" && "$ACTION" == "install" ]]; then
   echo "GWAY has been set up in .venv."
@@ -134,6 +151,8 @@ if [[ -z "$RECIPE" && "$ACTION" == "install" ]]; then
   echo "  sudo ./install.sh <recipe-name> --remove"
   echo "To repair all existing services, run:"
   echo "  sudo ./install.sh --repair"
+  echo "To install gway as a global command, run:"
+  echo "  sudo ./install.sh --bin"
   deactivate
   exit 0
 fi
