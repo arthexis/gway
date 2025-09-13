@@ -81,3 +81,30 @@ class LCDTests(unittest.TestCase):
         err.assert_called_once()
         mock_print.assert_called_once()
         self.assertIn("i2c-tools", err.call_args[0][0])
+
+    def test_show_falls_back_to_smbus2(self):
+        import builtins
+
+        writes = []
+
+        class FakeSMBus2:
+            def __init__(self, bus_no):
+                writes.append(bus_no)
+
+            def write_byte(self, addr, value):
+                pass
+
+        fake_mod = types.SimpleNamespace(SMBus=FakeSMBus2)
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "smbus":
+                raise ModuleNotFoundError
+            return real_import(name, *args, **kwargs)
+
+        with unittest.mock.patch.dict(sys.modules, {"smbus2": fake_mod}):
+            with unittest.mock.patch.object(builtins, "__import__", side_effect=fake_import):
+                gw.lcd.show("Hi")
+
+        self.assertEqual(writes, [1])

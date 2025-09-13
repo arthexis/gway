@@ -15,6 +15,12 @@ Setup
 
       sudo apt-get update
       sudo apt-get install -y i2c-tools python3-smbus
+
+   Alternatively install the pure Python ``smbus2`` package:
+
+   .. code-block:: bash
+
+      pip install gway[lcd]
 3. (Optional) allow running without ``sudo``:
 
    .. code-block:: bash

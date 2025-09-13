@@ -23,6 +23,7 @@ Wiring (typical backpack):
 from __future__ import annotations
 
 import time
+import types
 from gway import gw
 
 # LCD constants
@@ -101,13 +102,19 @@ def show(
 
     try:  # defer import so tests can mock the module
         import smbus  # type: ignore
-    except ModuleNotFoundError:  # pragma: no cover - import error path
-        msg = (
-            "smbus module not found. Enable I2C and install 'i2c-tools' and 'python3-smbus'."
-        )
-        gw.error(msg)
-        print(msg)
-        return
+    except ModuleNotFoundError:
+        try:
+            from smbus2 import SMBus  # type: ignore
+
+            smbus = types.SimpleNamespace(SMBus=SMBus)
+        except ModuleNotFoundError:  # pragma: no cover - import error path
+            msg = (
+                "smbus module not found. Enable I2C and install 'i2c-tools' and "
+                "'python3-smbus' or 'smbus2'."
+            )
+            gw.error(msg)
+            print(msg)
+            return
 
     bus = smbus.SMBus(1)
     _lcd_init(bus, addr)
