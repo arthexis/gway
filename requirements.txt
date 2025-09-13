@@ -31,3 +31,4 @@ sounddevice
 PyYAML
 pywebview
 opencv-python
+smbus
