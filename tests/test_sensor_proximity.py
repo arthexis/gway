@@ -31,3 +31,30 @@ def test_watch_proximity_reports_events():
     out = buf.getvalue()
     assert "Proximity detected" in out
     assert gpio.cleaned == [17]
+
+
+def test_proximity_polls_and_prints_symbols():
+    class FakeGPIO:
+        BCM = "BCM"
+        IN = "IN"
+        def __init__(self, readings):
+            self.readings = readings
+            self.cleaned = []
+        def setmode(self, mode):
+            self.mode = mode
+        def setup(self, pin, mode):
+            self.pin = pin
+            self.mode_set = mode
+        def input(self, pin):
+            return self.readings.pop(0)
+        def cleanup(self, pin):
+            self.cleaned.append(pin)
+
+    gpio = FakeGPIO([0, 1, 0])
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        gw.sensor.proximity(gpio_module=gpio, interval=0.0, max_checks=3)
+
+    out = buf.getvalue()
+    assert out == ".!.\n"
+    assert gpio.cleaned == [17]

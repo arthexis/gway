@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import time
+
 from gway import gw
 
 
@@ -43,5 +45,58 @@ def watch_proximity(pin: int = 17, *, gpio_module=None, max_events: int | None =
             print("Proximity detected!")
     except KeyboardInterrupt:  # pragma: no cover - user interrupt
         print("Stopping proximity watch")
+    finally:
+        GPIO.cleanup(pin)
+
+
+def proximity(
+    pin: int = 17,
+    *,
+    gpio_module=None,
+    interval: float = 2.0,
+    max_checks: int | None = None,
+) -> None:
+    """Poll a proximity sensor and print simple indicators.
+
+    A ``!`` is printed when the sensor reports activity, otherwise ``.`` is
+    printed every ``interval`` seconds.  The function blocks until interrupted
+    or ``max_checks`` has been reached.
+
+    Parameters
+    ----------
+    pin:
+        BCM pin number wired to the sensor's digital output. Defaults to ``17``
+        (``IO17``).
+    gpio_module:
+        Optional GPIO-like module providing ``setmode``, ``setup``, ``input``
+        and ``cleanup``.  Defaults to :mod:`RPi.GPIO` when available.
+    interval:
+        Seconds to wait between sensor polls.  Defaults to ``2`` seconds.
+    max_checks:
+        Maximum number of polls to perform before returning. ``None`` means run
+        indefinitely. This is primarily intended for testing.
+    """
+    if gpio_module is None:
+        try:  # pragma: no cover - hardware import
+            import RPi.GPIO as GPIO  # type: ignore
+            gpio_module = GPIO
+        except Exception:  # pragma: no cover - hardware missing
+            gw.error("RPi.GPIO not available; install it on a Raspberry Pi")
+            print("Proximity sensor requires RPi.GPIO")
+            return
+
+    GPIO = gpio_module
+    GPIO.setmode(getattr(GPIO, "BCM", GPIO.BOARD))
+    GPIO.setup(pin, getattr(GPIO, "IN"))
+    checks = 0
+    try:
+        while max_checks is None or checks < max_checks:
+            symbol = "!" if GPIO.input(pin) else "."
+            print(symbol, end="", flush=True)
+            time.sleep(interval)
+            checks += 1
+        print()
+    except KeyboardInterrupt:  # pragma: no cover - user interrupt
+        print("\nStopping proximity polling")
     finally:
         GPIO.cleanup(pin)
