@@ -257,6 +257,23 @@ class TestPrepareKwargParsing(unittest.TestCase):
         self.assertEqual(kw["title"], "My Great App")
 
 
+class TestUnionAnnotations(unittest.TestCase):
+    def test_add_func_args_handles_pep604_optional(self):
+        import argparse
+
+        def dummy(*, count: int | None = None):
+            return count
+
+        parser = argparse.ArgumentParser()
+        console.add_func_args(parser, dummy)
+
+        parsed = parser.parse_args([])
+        self.assertIsNone(parsed.count)
+
+        parsed = parser.parse_args(["--count", "5"])
+        self.assertEqual(parsed.count, 5)
+
+
 class TestRecipeCliContext(unittest.TestCase):
     def test_extra_cli_args_as_context(self):
         fake_commands = [['noop']]
