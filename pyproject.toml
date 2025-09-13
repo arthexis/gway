@@ -20,6 +20,7 @@ content-type = "text/x-rst"
 
 [project.optional-dependencies]
 dev = [ "pytest", "pytest-cov",]
+lcd = ["smbus2"]
 
 [project.scripts]
 gway = "gway:cli_main"
