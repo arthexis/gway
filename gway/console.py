@@ -341,10 +341,22 @@ def prepare(parsed_args, func_obj):
     params = sig.parameters
     expected_names = set(params.keys())
 
+    def _resolve_cli(value):
+        if isinstance(value, list):
+            return [_resolve_cli(v) for v in value]
+        if isinstance(value, str) and Sigil._pattern.search(value):
+            text = value[1:] if value.startswith('%') else value
+            try:
+                return gw.resolve(text)
+            except KeyError as e:
+                abort(str(e))
+        return value
+
     # 1) Pull out any positional / named args that argparse already parsed:
     for name, value in vars(parsed_args).items():
         if name in expected_names:
             param = params[name]
+            value = _resolve_cli(value)
             if param.kind == inspect.Parameter.VAR_POSITIONAL:
                 func_args.extend(value or [])
             elif param.kind != inspect.Parameter.VAR_KEYWORD:
@@ -378,7 +390,7 @@ def prepare(parsed_args, func_obj):
                 abort(
                     f"Invalid kwarg format `{token}`; expected `--key[=value]` or `--key value`."
                 )
-            extra_kwargs[key.replace("-", "_")] = val
+            extra_kwargs[key.replace("-", "_")] = _resolve_cli(val)
 
     return func_args, {**func_kwargs, **extra_kwargs}
 

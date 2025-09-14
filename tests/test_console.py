@@ -339,5 +339,17 @@ class TestProcessChaining(unittest.TestCase):
         self.assertEqual(last, "foo.wav")
 
 
+class TestProcessSigilResolution(unittest.TestCase):
+    def setUp(self):
+        console.gw.context.clear()
+        console.gw.results.clear()
+
+    def test_process_resolves_sigils(self):
+        console.gw.context['P'] = 'val'
+        cmds = [['hello-world', '[P]']]
+        _, last = console.process(cmds)
+        self.assertEqual(last['name'], 'val')
+
+
 if __name__ == '__main__':
     unittest.main()
