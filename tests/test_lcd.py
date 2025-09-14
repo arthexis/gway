@@ -1,6 +1,8 @@
 import sys
-import unittest
+import tempfile
 import types
+import unittest
+from pathlib import Path
 from gway import gw
 
 
@@ -108,3 +110,41 @@ class LCDTests(unittest.TestCase):
                 gw.lcd.show("Hi")
 
         self.assertEqual(writes, [1])
+
+    def test_boot_writes_service_and_disables_previous(self):
+        runs = []
+
+        def fake_run(cmd, check=False):
+            runs.append(cmd)
+            return types.SimpleNamespace(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "gway-lcd-boot.service"
+            path.write_text("old")
+            with unittest.mock.patch("projects.lcd.subprocess.run", side_effect=fake_run):
+                gw.lcd.boot("Hi there", path=path)
+            content = path.read_text()
+
+        self.assertIn("ExecStart=/usr/bin/env gway lcd show 'Hi there'", content)
+        self.assertIn(["systemctl", "disable", "--now", path.name], runs)
+        self.assertIn(["systemctl", "daemon-reload"], runs)
+        self.assertIn(["systemctl", "enable", path.name], runs)
+        self.assertIn(["systemctl", "restart", path.name], runs)
+
+    def test_boot_remove_uninstalls_service(self):
+        runs = []
+
+        def fake_run(cmd, check=False):
+            runs.append(cmd)
+            return types.SimpleNamespace(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "gway-lcd-boot.service"
+            path.write_text("old")
+            with unittest.mock.patch("projects.lcd.subprocess.run", side_effect=fake_run):
+                gw.lcd.boot(remove=True, path=path)
+            exists = path.exists()
+
+        self.assertFalse(exists)
+        self.assertIn(["systemctl", "disable", "--now", path.name], runs)
+        self.assertIn(["systemctl", "daemon-reload"], runs)

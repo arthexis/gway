@@ -22,8 +22,12 @@ Wiring (typical backpack):
 
 from __future__ import annotations
 
+import shlex
+import subprocess
 import time
 import types
+from pathlib import Path
+from textwrap import dedent
 from gway import gw
 
 # LCD constants
@@ -132,3 +136,65 @@ def show(
         _lcd_string(bus, addr, lines[0], LCD_LINE_1)
         if len(lines) > 1:
             _lcd_string(bus, addr, lines[1], LCD_LINE_2)
+
+
+def boot(
+    message: str | None = None,
+    *,
+    remove: bool = False,
+    path: str | Path = "/etc/systemd/system/gway-lcd-boot.service",
+) -> None:
+    """Install or remove a boot-time service displaying ``message``.
+
+    When installed, a systemd ``oneshot`` service is created that calls
+    :func:`show` at startup.  Re-installing replaces any existing service so
+    only one boot message is active at a time.
+
+    Parameters
+    ----------
+    message:
+        Text to display at boot.  ``[sigils]`` are resolved at runtime.  If
+        ``None`` and ``remove`` is ``False`` the service is removed.
+    remove:
+        Uninstall the service instead of installing.
+    path:
+        Optional override for the service file path.  Defaults to the system
+        location.
+    """
+
+    svc_path = Path(path)
+    name = svc_path.name
+
+    if remove or not message:
+        if svc_path.exists():
+            subprocess.run(["systemctl", "disable", "--now", name], check=False)
+            try:
+                svc_path.unlink()
+            except FileNotFoundError:
+                pass
+            subprocess.run(["systemctl", "daemon-reload"], check=False)
+        return
+
+    if svc_path.exists():
+        subprocess.run(["systemctl", "disable", "--now", name], check=False)
+
+    cmd = f"/usr/bin/env gway lcd show {shlex.quote(message)}"
+    unit = dedent(
+        f"""
+        [Unit]
+        Description=GWAY LCD boot message
+        After=multi-user.target
+
+        [Service]
+        Type=oneshot
+        ExecStart={cmd}
+
+        [Install]
+        WantedBy=multi-user.target
+        """
+    ).strip() + "\n"
+
+    svc_path.write_text(unit)
+    subprocess.run(["systemctl", "daemon-reload"], check=False)
+    subprocess.run(["systemctl", "enable", name], check=False)
+    subprocess.run(["systemctl", "restart", name], check=False)
