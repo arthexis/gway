@@ -8,6 +8,28 @@ import time
 from gway import gw
 
 
+def _resolve_gpio(gpio_module=None):
+    """Return an available GPIO-like module.
+
+    Tries :mod:`RPi.GPIO` first and falls back to :mod:`RPIO`. ``None`` is
+    returned when neither library is available, in which case the caller should
+    abort and warn the user.
+    """
+    if gpio_module is not None:
+        return gpio_module
+    try:  # pragma: no cover - hardware import
+        import RPi.GPIO as GPIO  # type: ignore
+        return GPIO
+    except Exception:  # pragma: no cover - hardware missing
+        try:  # pragma: no cover - hardware import
+            import RPIO as GPIO  # type: ignore
+            return GPIO
+        except Exception:  # pragma: no cover - hardware missing
+            gw.error("RPi.GPIO or RPIO not available; install one on a Raspberry Pi")
+            print("Proximity sensor requires RPi.GPIO or RPIO")
+            return None
+
+
 def watch_proximity(pin: int = 17, *, gpio_module=None, max_events: int | None = None) -> None:
     """Block and report when a proximity sensor on ``pin`` is triggered.
 
@@ -18,21 +40,16 @@ def watch_proximity(pin: int = 17, *, gpio_module=None, max_events: int | None =
         (``IO17``).
     gpio_module:
         Optional GPIO-like module providing ``setmode``, ``setup``, ``wait_for_edge``
-        and ``cleanup``.  Defaults to :mod:`RPi.GPIO` when available.
+        and ``cleanup``.  Defaults to :mod:`RPi.GPIO` (or :mod:`RPIO`) when
+        available.
     max_events:
         Maximum number of events to report before returning.  ``None`` means run
         indefinitely.  This is primarily intended for testing.
     """
-    if gpio_module is None:
-        try:  # pragma: no cover - hardware import
-            import RPi.GPIO as GPIO  # type: ignore
-            gpio_module = GPIO
-        except Exception:  # pragma: no cover - hardware missing
-            gw.error("RPi.GPIO not available; install it on a Raspberry Pi")
-            print("Proximity sensor watch requires RPi.GPIO")
-            return
-
-    GPIO = gpio_module
+    GPIO = _resolve_gpio(gpio_module)
+    if GPIO is None:
+        return
+    gpio_module = GPIO
     GPIO.setmode(getattr(GPIO, "BCM", GPIO.BOARD))
     GPIO.setup(pin, getattr(GPIO, "IN"))
     print(f"Watching proximity sensor on pin {pin}...")
@@ -69,23 +86,18 @@ def proximity(
         (``IO17``).
     gpio_module:
         Optional GPIO-like module providing ``setmode``, ``setup``, ``input``
-        and ``cleanup``.  Defaults to :mod:`RPi.GPIO` when available.
+        and ``cleanup``.  Defaults to :mod:`RPi.GPIO` (or :mod:`RPIO`) when
+        available.
     interval:
         Seconds to wait between sensor polls.  Defaults to ``2`` seconds.
     max_checks:
         Maximum number of polls to perform before returning. ``None`` means run
         indefinitely. This is primarily intended for testing.
     """
-    if gpio_module is None:
-        try:  # pragma: no cover - hardware import
-            import RPi.GPIO as GPIO  # type: ignore
-            gpio_module = GPIO
-        except Exception:  # pragma: no cover - hardware missing
-            gw.error("RPi.GPIO not available; install it on a Raspberry Pi")
-            print("Proximity sensor requires RPi.GPIO")
-            return
-
-    GPIO = gpio_module
+    GPIO = _resolve_gpio(gpio_module)
+    if GPIO is None:
+        return
+    gpio_module = GPIO
     GPIO.setmode(getattr(GPIO, "BCM", GPIO.BOARD))
     GPIO.setup(pin, getattr(GPIO, "IN"))
     checks = 0
