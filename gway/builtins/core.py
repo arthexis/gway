@@ -95,22 +95,38 @@ def upgrade(*args):
 
     This mirrors executing the ``upgrade.sh`` script located in the
     installation directory, passing through all provided arguments and
-    printing the script's output.
+    streaming the script's output as it runs.
     """
     from gway import gw
     import os
     import subprocess
     import sys
+    from threading import Thread
 
     script = gw.resource("upgrade.sh", check=True)
     cmd = ["bash", os.fspath(script), *args]
-    result = subprocess.run(
-        cmd, cwd=script.parent, capture_output=True, text=True
+
+    def _stream(src, dst):
+        for line in src:
+            print(line, end="", file=dst, flush=True)
+
+    process = subprocess.Popen(
+        cmd,
+        cwd=script.parent,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=1,
     )
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
-    return result.returncode
+    threads = [
+        Thread(target=_stream, args=(process.stdout, sys.stdout)),
+        Thread(target=_stream, args=(process.stderr, sys.stderr)),
+    ]
+    for t in threads:
+        t.start()
+    process.wait()
+    for t in threads:
+        t.join()
+    return process.returncode
 
 
