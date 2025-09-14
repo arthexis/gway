@@ -6,6 +6,7 @@ __all__ = [
     "envs",
     "version",
     "shell",
+    "upgrade",
 ]
 
 def hello_world(name: str = "World", *, greeting: str = "Hello", **kwargs):
@@ -87,5 +88,29 @@ def shell():
     local_vars = {"gw": gw, "__": __}
     banner = "GWAY interactive shell.\nfrom gway import gw  # Python 3.13 compatible"
     code.interact(banner=banner, local=local_vars)
+
+
+def upgrade(*args):
+    """Run ``upgrade.sh`` with the given parameters.
+
+    This mirrors executing the ``upgrade.sh`` script located in the
+    installation directory, passing through all provided arguments and
+    printing the script's output.
+    """
+    from gway import gw
+    import os
+    import subprocess
+    import sys
+
+    script = gw.resource("upgrade.sh", check=True)
+    cmd = ["bash", os.fspath(script), *args]
+    result = subprocess.run(
+        cmd, cwd=script.parent, capture_output=True, text=True
+    )
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    return result.returncode
 
 
