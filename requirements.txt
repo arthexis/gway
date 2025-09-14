@@ -5,6 +5,7 @@ build
 colorama
 requests
 dateparser
+django
 docutils
 croniter
 qrcode[pil]
