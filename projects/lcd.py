@@ -79,8 +79,8 @@ def show(
     message: str,
     *,
     addr: int = 0x27,
-    scroll: bool = False,
-    ms: int = 2000,
+    scroll: float = 0.0,
+    hold: float = 0.0,
 ) -> None:
     """Display *message* on the LCD.
 
@@ -89,20 +89,28 @@ def show(
     message:
         Text to show.  ``[sigils]`` are resolved prior to display.  A
         newline character splits the message across the two lines of the
-        display.  When ``scroll`` is true the message is scrolled across
-        the first line.
+        display.  ``scroll`` determines the delay in seconds between each
+        scroll step.  When ``scroll`` is ``0`` the message is static and only
+        the first 16 characters of each line are shown.
     addr:
         I²C address of the backpack.  ``0x27`` and ``0x3F`` are common.
     scroll:
-        Scroll the message instead of showing static text.
-    ms:
-        Delay in milliseconds between each scroll step.  Defaults to
-        ``2000`` (2 seconds).
+        Number of seconds to wait before scrolling one character. ``0`` (the
+        default) disables scrolling.
+    hold:
+        Number of seconds to show the message before reverting to the
+        previous one stored in ``work/lcd-last.txt``. ``0`` (the default)
+        keeps the new message displayed.
 
     If the ``smbus`` module is missing, a helpful error message is logged and
     the function returns without attempting any I²C communication.
     """
     message = gw.resolve(message)
+    last_path = gw.resource("work/lcd-last.txt", touch=True)
+    try:
+        prev = last_path.read_text(encoding="utf-8")
+    except Exception:
+        prev = ""
 
     try:  # defer import so tests can mock the module
         import smbus  # type: ignore
@@ -123,19 +131,27 @@ def show(
     bus = smbus.SMBus(1)
     _lcd_init(bus, addr)
 
-    if scroll:
-        delay = ms / 1000.0
-        padding = " " * LCD_WIDTH
-        text = f"{padding}{message}{padding}"
-        for idx in range(len(text) - LCD_WIDTH + 1):
-            segment = text[idx : idx + LCD_WIDTH]
-            _lcd_string(bus, addr, segment, LCD_LINE_1)
-            time.sleep(delay)
+    def _display(text: str, delay: float) -> None:
+        if delay > 0:
+            padding = " " * LCD_WIDTH
+            text = f"{padding}{text}{padding}"
+            for idx in range(len(text) - LCD_WIDTH + 1):
+                segment = text[idx : idx + LCD_WIDTH]
+                _lcd_string(bus, addr, segment, LCD_LINE_1)
+                time.sleep(delay)
+        else:
+            lines = text.split("\n", 1)
+            _lcd_string(bus, addr, lines[0], LCD_LINE_1)
+            if len(lines) > 1:
+                _lcd_string(bus, addr, lines[1], LCD_LINE_2)
+
+    _display(message, scroll)
+
+    if hold > 0:
+        time.sleep(hold)
+        _display(prev, 0)
     else:
-        lines = message.split("\n", 1)
-        _lcd_string(bus, addr, lines[0], LCD_LINE_1)
-        if len(lines) > 1:
-            _lcd_string(bus, addr, lines[1], LCD_LINE_2)
+        last_path.write_text(message, encoding="utf-8")
 
 
 def boot(
