@@ -41,6 +41,14 @@ From the command line::
     gway lcd show "Scrolling text" --scroll
     gway lcd show "Fast" --scroll --ms 500
 
+Install a boot message shown once at startup::
+
+    gway lcd boot "Welcome"
+
+Remove the boot message::
+
+    gway lcd boot --remove
+
 ``--scroll`` moves the message across the first line of the display.
 The ``--ms`` option changes the speed (milliseconds per character, default
 2000).  Message text may include ``[sigils]`` that are resolved before
@@ -52,3 +60,5 @@ Programmatically::
     gw.context["USER"] = "world"
     gw.lcd.show("Hello [USER]\nWorld")
     gw.lcd.show("Scrolling", scroll=True, ms=500)
+    gw.lcd.boot("Hello")
+    gw.lcd.boot(remove=True)

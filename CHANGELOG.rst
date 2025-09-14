@@ -5,6 +5,7 @@ Unreleased
 ----------
 
 - ensure ``gway.builtins`` package is included in distribution
+- add boot service to show LCD message at startup
 
 0.4.59 [build 27aace]
 ---------------------
