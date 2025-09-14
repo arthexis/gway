@@ -46,6 +46,26 @@ class SigilTests(unittest.TestCase):
         self.assertIn("[val]", str(s))
         self.assertIn("[val]", repr(s))
 
+    def test_exec_builtin_without_params(self):
+        envs = gw.resolve("[ENVS]")
+        self.assertIsInstance(envs, dict)
+
+    def test_exec_builtin_with_args_kwargs(self):
+        res = gw.resolve("[HELLO_WORLD=Alice]")
+        self.assertEqual(res["name"], "Alice")
+        self.assertEqual(res["greeting"], "Hello")
+
+        res = gw.resolve("[HELLO_WORLD:greeting=Hi]")
+        self.assertEqual(res["name"], "World")
+        self.assertEqual(res["greeting"], "Hi")
+
+        res = gw.resolve("[HELLO_WORLD:Bob:greeting=Yo]")
+        self.assertEqual(res["name"], "Bob")
+        self.assertEqual(res["greeting"], "Yo")
+
+    def test_exec_project_function(self):
+        self.assertTrue(gw.resolve("[cast.to_bool=true]"))
+
     def test_make_lookup_with_callable_variants(self):
         def finder(key, _):
             if key == "FOO_BAR":
