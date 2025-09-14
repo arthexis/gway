@@ -13,7 +13,11 @@ def hello_world(name: str = "World", *, greeting: str = "Hello", **kwargs):
     """Smoke test function."""
     from gway import gw
     version = gw.version()
-    message = f"{greeting.title()}, {name.title()}!"
+    # Preserve the caller's capitalization.  Using ``str.title`` on the
+    # arguments caused paths or other case-sensitive values to be modified
+    # unexpectedly (e.g. `/home/user/file.py` becoming `/Home/User/File.Py`).
+    # Generate the greeting without altering the original casing.
+    message = f"{greeting}, {name}!"
     if hasattr(gw, "hello_world"):
         if not gw.silent:
             print(message)
