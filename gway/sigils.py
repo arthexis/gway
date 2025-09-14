@@ -34,7 +34,10 @@ class Sigil:
                 if isinstance(finder, dict):
                     val = finder.get(variant)
                 elif callable(finder):
-                    val = finder(variant, None)
+                    try:
+                        val = finder(variant, None, True)
+                    except TypeError:
+                        val = finder(variant, None)
                 if val is not None:
                     return val
             return None
@@ -159,7 +162,8 @@ class Resolver:
             arg = '' if not arg else arg
             try:
                 sigil = arg if isinstance(arg, Sigil) else Sigil(str(arg))
-                result = _replace_sigils(sigil.original, self.find_value)
+                lookup = lambda key: self.find_value(key, None, exec=True)
+                result = _replace_sigils(sigil.original, lookup)
                 return result
             except KeyError as e:
                 gw.verbose(f"Could not resolve sigil(s) in '{arg}': {e}")
@@ -173,7 +177,7 @@ class Resolver:
         gw.error("No arguments provided to resolve() or all were None/False")
         raise KeyError("No arguments provided to resolve() or all were None/False")
 
-    def find_value(self, key: str, fallback: str = None) -> str:
+    def find_value(self, key: str, fallback: str = None, exec: bool = False) -> str:
         for name, source in self._search_order:
             if name == "env":
                 val = os.getenv(key.upper())
@@ -188,6 +192,42 @@ class Resolver:
                         return val
                 except Exception:
                     pass
+
+        if exec:
+            args = []
+            kwargs = {}
+            func_name = key
+            tokens = []
+            if ":" in key:
+                parts = key.split(":")
+                func_name, tokens = parts[0], parts[1:]
+            elif "=" in key:
+                func_name, param = key.split("=", 1)
+                tokens = [param]
+            for tok in tokens:
+                if "=" in tok:
+                    k, v = tok.split("=", 1)
+                    kwargs[k] = v
+                else:
+                    args.append(tok)
+
+            variants = {
+                func_name,
+                func_name.replace('-', '_'),
+                func_name.replace('_', '-'),
+                func_name.lower(),
+                func_name.upper(),
+            }
+            for variant in variants:
+                obj = self
+                try:
+                    for part in variant.split('.'):
+                        obj = getattr(obj, part)
+                    if callable(obj):
+                        return obj(*args, **kwargs)
+                except Exception:
+                    continue
+
         return fallback
 
     def _resolve_key(self, key: str, fallback: str = None) -> str:
