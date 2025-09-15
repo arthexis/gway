@@ -2,6 +2,7 @@ import sys
 import tempfile
 import types
 import unittest
+import unittest.mock
 from pathlib import Path
 from gway import gw
 
@@ -98,7 +99,7 @@ class LCDTests(unittest.TestCase):
         real_import = builtins.__import__
 
         def fake_import(name, *args, **kwargs):
-            if name == "smbus":
+            if name in {"smbus", "smbus2"}:
                 raise ModuleNotFoundError
             return real_import(name, *args, **kwargs)
 
