@@ -92,6 +92,31 @@ class LCDTests(unittest.TestCase):
         self.assertEqual(line1.strip(), "X" * 16)
         self.assertEqual(line2.strip(), "X" * 4)
 
+    def test_scroll_and_wrap_snakes_text(self):
+        class FakeSMBus:
+            def __init__(self, bus_no):
+                pass
+
+            def write_byte(self, addr, value):
+                pass
+
+        fake_mod = types.SimpleNamespace(SMBus=FakeSMBus)
+        lcd_mod = sys.modules[gw.lcd.show.__module__]
+        message = "ABCDEFG"
+        with unittest.mock.patch.dict("sys.modules", {"smbus": fake_mod}), \
+             unittest.mock.patch.object(lcd_mod, "_lcd_string") as lcd_str, \
+             unittest.mock.patch.object(lcd_mod.time, "sleep"):
+            gw.lcd.show(message, scroll=0.1, wrap=True)
+
+        calls = lcd_str.call_args_list
+        pairs = [
+            (calls[i].args[2], calls[i + 1].args[2])
+            for i in range(0, len(calls), 2)
+        ]
+        first_top, first_bottom = next((p for p in pairs if p[0].strip()), ("", ""))
+        self.assertEqual(first_top, " " * 15 + "A")
+        self.assertTrue(first_bottom.startswith("B"))
+
     def test_show_resolves_sigils(self):
         class FakeSMBus:
             def __init__(self, bus_no):
