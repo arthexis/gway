@@ -8,6 +8,7 @@ Unreleased
 - add boot service to show LCD message at startup
 - drop RFID helpers from ``auth_db`` and add ``rfid.scan`` utility
 - allow ``lcd show --scroll`` and ``--wrap`` to snake text together
+- log every CLI invocation to ``work/history.txt``
 
 0.4.59 [build 27aace]
 ---------------------

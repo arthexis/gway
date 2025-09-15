@@ -31,7 +31,8 @@ temp/
 tmp/
 .temp/
 .tmp/
-work/
+work/*
+!work/.gitignore
 .work/
 products/
 .products/
