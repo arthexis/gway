@@ -40,6 +40,7 @@ From the command line::
     gway lcd show "Hello [USER]"
     gway lcd show "Scrolling text" --scroll 2
     gway lcd show "Temporary" --hold 5
+    gway lcd show "Long message that needs wrapping" --wrap
 
 Install a boot message shown once at startup::
 
@@ -52,7 +53,8 @@ Remove the boot message::
 ``--scroll`` accepts the delay in seconds between each scroll step (``0``
 disables scrolling). ``--hold`` shows the message for the given number of
 seconds and then restores the previous message stored in ``work/lcd-last.txt``.
-Message text may include ``[sigils]`` that are resolved before display.
+``--wrap`` word-wraps long messages over the two 16-character lines of the
+display. Message text may include ``[sigils]`` that are resolved before display.
 
 Programmatically::
 
@@ -61,5 +63,6 @@ Programmatically::
     gw.lcd.show("Hello [USER]\nWorld")
     gw.lcd.show("Scrolling", scroll=0.5)
     gw.lcd.show("Temp", hold=3)
+    gw.lcd.show("A long message that should wrap", wrap=True)
     gw.lcd.boot("Hello")
     gw.lcd.boot(remove=True)

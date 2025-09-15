@@ -81,6 +81,7 @@ def show(
     addr: int = 0x27,
     scroll: float = 0.0,
     hold: float = 0.0,
+    wrap: bool = False,
 ) -> None:
     """Display *message* on the LCD.
 
@@ -101,6 +102,9 @@ def show(
         Number of seconds to show the message before reverting to the
         previous one stored in ``work/lcd-last.txt``. ``0`` (the default)
         keeps the new message displayed.
+    wrap:
+        If ``True`` and ``scroll`` is ``0`` the message is word-wrapped
+        across both lines of the display (16 characters per line).
 
     If the ``smbus`` module is missing, a helpful error message is logged and
     the function returns without attempting any I²C communication.
@@ -131,7 +135,7 @@ def show(
     bus = smbus.SMBus(1)
     _lcd_init(bus, addr)
 
-    def _display(text: str, delay: float) -> None:
+    def _display(text: str, delay: float, do_wrap: bool) -> None:
         if delay > 0:
             padding = " " * LCD_WIDTH
             text = f"{padding}{text}{padding}"
@@ -140,16 +144,25 @@ def show(
                 _lcd_string(bus, addr, segment, LCD_LINE_1)
                 time.sleep(delay)
         else:
-            lines = text.split("\n", 1)
-            _lcd_string(bus, addr, lines[0], LCD_LINE_1)
-            if len(lines) > 1:
-                _lcd_string(bus, addr, lines[1], LCD_LINE_2)
+            if do_wrap:
+                import textwrap
 
-    _display(message, scroll)
+                lines = textwrap.wrap(text, LCD_WIDTH)
+                _lcd_string(bus, addr, lines[0] if lines else "", LCD_LINE_1)
+                _lcd_string(
+                    bus, addr, lines[1] if len(lines) > 1 else "", LCD_LINE_2
+                )
+            else:
+                lines = text.split("\n", 1)
+                _lcd_string(bus, addr, lines[0], LCD_LINE_1)
+                if len(lines) > 1:
+                    _lcd_string(bus, addr, lines[1], LCD_LINE_2)
+
+    _display(message, scroll, wrap)
 
     if hold > 0:
         time.sleep(hold)
-        _display(prev, 0)
+        _display(prev, 0, False)
     else:
         last_path.write_text(message, encoding="utf-8")
 
