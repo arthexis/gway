@@ -25,7 +25,7 @@ class LCDTests(unittest.TestCase):
         self.assertGreater(len(writes), 0)
         self.assertTrue(all(addr == 0x27 for addr, _ in writes))
 
-    def test_scroll_flag_scrolls_message(self):
+    def test_scroll_option_scrolls_message(self):
         class FakeSMBus:
             def __init__(self, bus_no):
                 pass
@@ -38,11 +38,38 @@ class LCDTests(unittest.TestCase):
         with unittest.mock.patch.dict("sys.modules", {"smbus": fake_mod}), \
              unittest.mock.patch.object(lcd_mod, "_lcd_string") as lcd_str, \
              unittest.mock.patch.object(lcd_mod.time, "sleep") as sleep:
-            gw.lcd.show("Scrolling", scroll=True, ms=100)
+            gw.lcd.show("Scrolling", scroll=0.1)
 
         self.assertGreater(lcd_str.call_count, 1)
         delays = [call.args[0] for call in sleep.call_args_list]
         self.assertTrue(any(abs(d - 0.1) < 1e-6 for d in delays))
+
+    def test_hold_reverts_to_previous_message(self):
+        class FakeSMBus:
+            def __init__(self, bus_no):
+                pass
+
+            def write_byte(self, addr, value):
+                pass
+
+        fake_mod = types.SimpleNamespace(SMBus=FakeSMBus)
+        lcd_mod = sys.modules[gw.lcd.show.__module__]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            last_path = Path(tmpdir) / "last.txt"
+            last_path.write_text("Prev")
+            with unittest.mock.patch.dict("sys.modules", {"smbus": fake_mod}), \
+                 unittest.mock.patch.object(gw, "resource", return_value=last_path), \
+                 unittest.mock.patch.object(lcd_mod, "_lcd_string") as lcd_str, \
+                 unittest.mock.patch.object(lcd_mod.time, "sleep") as sleep:
+                gw.lcd.show("New", hold=1)
+
+            self.assertEqual(last_path.read_text(), "Prev")
+            messages = [call.args[2].strip() for call in lcd_str.call_args_list]
+            delays = [call.args[0] for call in sleep.call_args_list]
+
+        self.assertIn("New", messages)
+        self.assertIn("Prev", messages)
+        self.assertTrue(any(abs(d - 1) < 1e-6 for d in delays))
 
     def test_show_resolves_sigils(self):
         class FakeSMBus:

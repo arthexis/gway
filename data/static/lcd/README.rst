@@ -38,8 +38,8 @@ From the command line::
 
     gway lcd show "Hello world"
     gway lcd show "Hello [USER]"
-    gway lcd show "Scrolling text" --scroll
-    gway lcd show "Fast" --scroll --ms 500
+    gway lcd show "Scrolling text" --scroll 2
+    gway lcd show "Temporary" --hold 5
 
 Install a boot message shown once at startup::
 
@@ -49,16 +49,17 @@ Remove the boot message::
 
     gway lcd boot --remove
 
-``--scroll`` moves the message across the first line of the display.
-The ``--ms`` option changes the speed (milliseconds per character, default
-2000).  Message text may include ``[sigils]`` that are resolved before
-display.
+``--scroll`` accepts the delay in seconds between each scroll step (``0``
+disables scrolling). ``--hold`` shows the message for the given number of
+seconds and then restores the previous message stored in ``work/lcd-last.txt``.
+Message text may include ``[sigils]`` that are resolved before display.
 
 Programmatically::
 
     from gway import gw
     gw.context["USER"] = "world"
     gw.lcd.show("Hello [USER]\nWorld")
-    gw.lcd.show("Scrolling", scroll=True, ms=500)
+    gw.lcd.show("Scrolling", scroll=0.5)
+    gw.lcd.show("Temp", hold=3)
     gw.lcd.boot("Hello")
     gw.lcd.boot(remove=True)
