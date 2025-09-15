@@ -137,12 +137,21 @@ def show(
 
     def _display(text: str, delay: float, do_wrap: bool) -> None:
         if delay > 0:
-            padding = " " * LCD_WIDTH
-            text = f"{padding}{text}{padding}"
-            for idx in range(len(text) - LCD_WIDTH + 1):
-                segment = text[idx : idx + LCD_WIDTH]
-                _lcd_string(bus, addr, segment, LCD_LINE_1)
-                time.sleep(delay)
+            if do_wrap:
+                padding = " " * (LCD_WIDTH * 2)
+                text = f"{padding}{text}{padding}"
+                for idx in range(len(text) - (LCD_WIDTH * 2) + 1):
+                    segment = text[idx : idx + LCD_WIDTH * 2]
+                    _lcd_string(bus, addr, segment[:LCD_WIDTH], LCD_LINE_1)
+                    _lcd_string(bus, addr, segment[LCD_WIDTH:], LCD_LINE_2)
+                    time.sleep(delay)
+            else:
+                padding = " " * LCD_WIDTH
+                text = f"{padding}{text}{padding}"
+                for idx in range(len(text) - LCD_WIDTH + 1):
+                    segment = text[idx : idx + LCD_WIDTH]
+                    _lcd_string(bus, addr, segment, LCD_LINE_1)
+                    time.sleep(delay)
         else:
             if do_wrap:
                 import textwrap
