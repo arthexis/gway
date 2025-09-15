@@ -6,11 +6,12 @@ Unreleased
 
 - ensure ``gway.builtins`` package is included in distribution
 - add boot service to show LCD message at startup
+- drop RFID helpers from ``auth_db`` and add ``rfid.scan`` utility
 
 0.4.59 [build 27aace]
 ---------------------
 
-- 4fb1f00 Store VIN and validator; add weekly RFID report
+- 4fb1f00 Store VIN and validator
 
 0.4.58 [build f9604d]
 ---------------------

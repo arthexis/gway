@@ -19,13 +19,6 @@ BASIC_AUTH = """basic_auth(
     identity_id INTEGER
 )"""
 
-RFIDS = """rfids(
-    rfid TEXT PRIMARY KEY,
-    identity_id INTEGER,
-    balance REAL,
-    allowed INTEGER
-)"""
-
 def _model(spec, *, dbfile=None):
     return gw.sql.model(spec, dbfile=dbfile or DBFILE, sql_engine=ENGINE, project=PROJECT)
 
@@ -51,14 +44,6 @@ def set_basic_auth(username, password, *, identity_id, dbfile=None):
         pass
     m.create(username=username, b64=pw_b64, identity_id=identity_id)
 
-def set_rfid(rfid, *, identity_id, balance=0.0, allowed=True, dbfile=None):
-    m = _model(RFIDS, dbfile=dbfile)
-    try:
-        m.delete(rfid, id_col="rfid")
-    except Exception:
-        pass
-    m.create(rfid=rfid, identity_id=identity_id, balance=balance, allowed=1 if allowed else 0)
-
 def verify_basic(username, password, *, dbfile=None):
     row = _model(BASIC_AUTH, dbfile=dbfile).read(username, id_col="username")
     if not row:
@@ -70,26 +55,6 @@ def verify_basic(username, password, *, dbfile=None):
     if stored != password:
         return False, None
     return True, row[2]
-
-def verify_rfid(rfid, *, dbfile=None):
-    row = _model(RFIDS, dbfile=dbfile).read(rfid, id_col="rfid")
-    if not row:
-        return False, None
-    if not bool(row[3]):
-        return False, row[1]
-    return True, row[1]
-
-def get_balance(rfid, *, dbfile=None):
-    row = _model(RFIDS, dbfile=dbfile).read(rfid, id_col="rfid")
-    return float(row[2]) if row else 0.0
-
-def adjust_balance(rfid, amount, *, dbfile=None):
-    row = _model(RFIDS, dbfile=dbfile).read(rfid, id_col="rfid")
-    if not row:
-        return False
-    new_bal = float(row[2]) + amount
-    _model(RFIDS, dbfile=dbfile).update(rfid, id_col="rfid", balance=new_bal)
-    return True
 
 def get_identity(identity_id, *, dbfile=None):
     return _model(IDENTITIES, dbfile=dbfile).read(identity_id)
