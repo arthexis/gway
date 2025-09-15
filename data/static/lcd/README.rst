@@ -42,6 +42,7 @@ From the command line::
     gway lcd show "Temporary" --hold 5
     gway lcd show "Long message that needs wrapping" --wrap
     gway lcd show "Long scrolling message" --scroll 0.5 --wrap
+    gway lcd show "Proportional" --scroll 0.1 --ratio 2
 
 Install a boot message shown once at startup::
 
@@ -56,6 +57,8 @@ disables scrolling). ``--hold`` shows the message for the given number of
 seconds and then restores the previous message stored in ``work/lcd-last.txt``.
 ``--wrap`` word-wraps long messages over the two 16-character lines of the
 display and can be combined with ``--scroll`` to snake text across both lines.
+``--ratio`` divides the scrolling speed of the top row and multiplies that of
+the bottom row so both rows show the same message at proportional speeds.
 Message text may include ``[sigils]`` that are resolved before display.
 
 Programmatically::
@@ -67,5 +70,6 @@ Programmatically::
     gw.lcd.show("Temp", hold=3)
     gw.lcd.show("A long message that should wrap", wrap=True)
     gw.lcd.show("Snaking message", scroll=0.5, wrap=True)
+    gw.lcd.show("Proportional", scroll=0.1, ratio=2)
     gw.lcd.boot("Hello")
     gw.lcd.boot(remove=True)
