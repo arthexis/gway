@@ -86,6 +86,7 @@ def shell(*bash_args):
     """Launch a Bash shell that treats unknown commands as GWAY invocations."""
     import os
     import shlex
+    import shutil
     import subprocess
     import sys
     import tempfile
@@ -93,6 +94,14 @@ def shell(*bash_args):
     from gway import gw
 
     env = os.environ.copy()
+
+    exec_candidates = [
+        getattr(sys, "executable", None),
+        getattr(sys, "_base_executable", None),
+        shutil.which("python3"),
+        shutil.which("python"),
+    ]
+    exec_path = next((candidate for candidate in exec_candidates if candidate), "python3")
 
     default_args = []
     project_path = getattr(gw, "project_path", None)
@@ -148,6 +157,13 @@ def shell(*bash_args):
         "    local exec_path=\"${GWAY_SHELL_EXEC:-}\"",
         "    local module=\"${GWAY_SHELL_MODULE:-gway}\"",
         "",
+        "    if [[ -z \"$exec_path\" ]]; then",
+        "        exec_path=\"$(command -v python3 || command -v python || true)\"",
+        "    fi",
+        "    if [[ -z \"$module\" ]]; then",
+        "        module=\"gway\"",
+        "    fi",
+        "",
         "    if [[ -z \"$GWAY_SHELL_ACTIVE\" && -n \"$exec_path\" ]]; then",
         "        GWAY_SHELL_ACTIVE=1 \"$exec_path\" -m \"$module\" \"${__gway_shell_default_args[@]}\" \"$@\"",
         "        local status=$?",
@@ -156,7 +172,11 @@ def shell(*bash_args):
         "        fi",
         "    fi",
         "",
-        "    printf '%s: %s: command not found\\n' \"${0##*/}\" \"$cmd\" >&2",
+        "    if [[ -z \"$exec_path\" ]]; then",
+        "        printf 'gway-shell: unable to locate Python interpreter for %s\\n' \"$cmd\" >&2",
+        "    else",
+        "        printf '%s: %s: command not found\\n' \"${0##*/}\" \"$cmd\" >&2",
+        "    fi",
         "    return 127",
         "}",
     ]
@@ -169,7 +189,7 @@ def shell(*bash_args):
     original_bash_env = env.get("BASH_ENV")
 
     env.update({
-        "GWAY_SHELL_EXEC": sys.executable,
+        "GWAY_SHELL_EXEC": exec_path,
         "GWAY_SHELL_MODULE": "gway",
         "BASH_ENV": rc_path,
     })
