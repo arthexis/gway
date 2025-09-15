@@ -11,12 +11,16 @@ class GatewayTests(unittest.TestCase):
         # Remove env variables
         if "TEST_SIGIL" in os.environ:
             del os.environ["TEST_SIGIL"]
+        if "MyVar" in os.environ:
+            del os.environ["MyVar"]
 
     def tearDown(self):
         gw.context.clear()
         gw.results.clear()
         if "TEST_SIGIL" in os.environ:
             del os.environ["TEST_SIGIL"]
+        if "MyVar" in os.environ:
+            del os.environ["MyVar"]
 
     def test_builtin_function_loads_and_works(self):
         self.assertTrue(hasattr(gw, 'hello_world'))
@@ -41,6 +45,14 @@ class GatewayTests(unittest.TestCase):
         os.environ["TEST_SIGIL"] = "abc"
         self.assertEqual(gw.resolve("Value: [TEST_SIGIL]"), "Value: abc")
         self.assertEqual(gw.resolve("Value: [test_sigil]"), "Value: abc")
+
+    def test_env_variable_resolution_mixed_case(self):
+        os.environ["MyVar"] = "value"
+        self.assertEqual(gw.resolve("Value: [myvar]"), "Value: value")
+
+    def test_context_resolution_mixed_case(self):
+        gw.context["MyVar"] = "value"
+        self.assertEqual(gw.resolve("Context [myvar]"), "Context value")
 
     def test_explicit_arguments_are_not_resolved(self):
         from gway.sigils import Sigil, Spool

@@ -1,7 +1,13 @@
 # file: tests/test_sigils.py
 
+import os
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import gway.sigils as sigils_module
 from gway import Sigil, Spool, gw, __
+from gway.sigils import _replace_sigils
 
 
 class SigilTests(unittest.TestCase):
@@ -22,6 +28,11 @@ class SigilTests(unittest.TestCase):
         s = Sigil("Logged in as [user]")
         # Your code tries lower/upper/case variants
         self.assertEqual(s % data, "Logged in as admin")
+
+    def test_case_insensitive_lookup_mixed_case(self):
+        data = {"MyVar": "value"}
+        s = Sigil("Value [myvar]")
+        self.assertEqual(s % data, "Value value")
 
     def test_multiple_sigils_in_text(self):
         data = {"x": 10, "y": 20}
@@ -107,6 +118,30 @@ class SigilTests(unittest.TestCase):
         self.assertEqual(_unquote('"hello"'), "hello")
         self.assertEqual(_unquote("'world'"), "world")
         self.assertEqual(_unquote("plain"), "plain")
+
+    def test_cli_fallback_used_when_available(self):
+        sigils_module._CLI_PATH_CACHE = None
+        self.addCleanup(lambda: setattr(sigils_module, "_CLI_PATH_CACHE", None))
+
+        with patch("gway.sigils.shutil.which", return_value="/usr/local/bin/gway"), \
+             patch("gway.sigils.subprocess.run") as mock_run, \
+             patch.dict(os.environ, {}, clear=False):
+            mock_run.return_value = SimpleNamespace(returncode=0, stdout="fallback\n", stderr="")
+            result = _replace_sigils("[MISSING]", lambda key: None)
+            self.assertEqual(result, "fallback")
+
+            called_args, called_kwargs = mock_run.call_args
+            self.assertEqual(called_args[0][:2], ["/usr/local/bin/gway", "-e"])
+            self.assertIn(sigils_module._CLI_FALLBACK_ENV, called_kwargs["env"])
+            self.assertEqual(called_kwargs["env"][sigils_module._CLI_FALLBACK_ENV], "1")
+
+    def test_cli_fallback_skipped_when_command_missing(self):
+        sigils_module._CLI_PATH_CACHE = None
+        self.addCleanup(lambda: setattr(sigils_module, "_CLI_PATH_CACHE", None))
+
+        with patch("gway.sigils.shutil.which", return_value=None):
+            with self.assertRaises(KeyError):
+                _replace_sigils("[MISSING]", lambda key: None)
 
 class SpoolTests(unittest.TestCase):
     def setUp(self):

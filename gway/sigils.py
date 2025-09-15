@@ -3,6 +3,128 @@
 import re
 import os
 import json
+import shutil
+import subprocess
+from collections.abc import Mapping
+
+_GW_PREFIX_PATTERN = re.compile(r"^(gw|gway)[. ]+", re.IGNORECASE)
+_CLI_FALLBACK_ENV = "GWAY_SIGIL_FALLBACK"
+_CLI_FALLBACK_SENTINEL = object()
+_CLI_PATH_CACHE = None
+
+
+def _key_variants(key: str):
+    if not isinstance(key, str):
+        return [key]
+
+    variants = [
+        key,
+        key.replace('-', '_'),
+        key.replace('_', '-'),
+        key.lower(),
+        key.upper(),
+        key.casefold(),
+    ]
+    # Preserve order but remove duplicates
+    seen = set()
+    result = []
+    for variant in variants:
+        if variant not in seen:
+            seen.add(variant)
+            result.append(variant)
+    return result
+
+
+def _lookup_in_mapping(source, key):
+    if source is None:
+        return None
+
+    variants = _key_variants(key)
+
+    if isinstance(source, Mapping):
+        for variant in variants:
+            if isinstance(variant, str) and variant in source:
+                value = source[variant]
+                if value is not None:
+                    return value
+        if isinstance(key, str):
+            target = key.casefold()
+            for existing_key, value in source.items():
+                if isinstance(existing_key, str) and existing_key.casefold() == target:
+                    if value is not None:
+                        return value
+    elif hasattr(source, "__getitem__") and not isinstance(source, (str, bytes)):
+        for variant in variants:
+            try:
+                value = source[variant]
+            except Exception:
+                continue
+            if value is not None:
+                return value
+        if isinstance(key, str) and hasattr(source, "keys"):
+            try:
+                keys = list(source.keys())
+            except Exception:
+                keys = None
+            if keys is not None:
+                target = key.casefold()
+                for existing_key in keys:
+                    if isinstance(existing_key, str) and existing_key.casefold() == target:
+                        try:
+                            value = source[existing_key]
+                        except Exception:
+                            continue
+                        if value is not None:
+                            return value
+    return None
+
+
+def _lookup_env_value(key: str):
+    variants = _key_variants(key)
+    for variant in variants:
+        if isinstance(variant, str):
+            value = os.environ.get(variant)
+            if value is not None:
+                return value
+    if isinstance(key, str):
+        target = key.casefold()
+        for existing_key, value in os.environ.items():
+            if isinstance(existing_key, str) and existing_key.casefold() == target:
+                return value
+    return None
+
+
+def _resolve_via_cli(raw: str):
+    global _CLI_PATH_CACHE
+
+    if os.environ.get(_CLI_FALLBACK_ENV) == "1":
+        return _CLI_FALLBACK_SENTINEL
+
+    if _CLI_PATH_CACHE is None:
+        _CLI_PATH_CACHE = shutil.which("gway") or False
+
+    if not _CLI_PATH_CACHE:
+        return _CLI_FALLBACK_SENTINEL
+
+    env = os.environ.copy()
+    env[_CLI_FALLBACK_ENV] = "1"
+
+    try:
+        proc = subprocess.run(
+            [_CLI_PATH_CACHE, "-e", f"[{raw}]"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    except Exception:
+        return _CLI_FALLBACK_SENTINEL
+
+    if proc.returncode != 0:
+        return _CLI_FALLBACK_SENTINEL
+
+    stdout = proc.stdout or ""
+    return stdout.rstrip("\r\n")
 
 class Sigil:
     """Represent a ``[sigil]`` placeholder or plain text."""
@@ -24,22 +146,19 @@ class Sigil:
 
     def _make_lookup(self, finder):
         def lookup(key):
-            # Try all dash/underscore/case variants
-            variants = {
-                key, key.replace('-', '_'), key.replace('_', '-'),
-                key.lower(), key.upper()
-            }
-            for variant in variants:
-                val = None
-                if isinstance(finder, dict):
-                    val = finder.get(variant)
-                elif callable(finder):
+            if isinstance(finder, Mapping) or (hasattr(finder, "__getitem__") and not isinstance(finder, (str, bytes))):
+                value = _lookup_in_mapping(finder, key)
+                if value is not None:
+                    return value
+
+            if callable(finder):
+                for variant in _key_variants(key):
                     try:
-                        val = finder(variant, None, True)
+                        value = finder(variant, None, True)
                     except TypeError:
-                        val = finder(variant, None)
-                if val is not None:
-                    return val
+                        value = finder(variant, None)
+                    if value is not None:
+                        return value
             return None
         return lookup
 
@@ -71,7 +190,7 @@ def _resolve_single(raw, lookup_fn):
     raw = raw.strip()
     quoted = (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'"))
     key = _unquote(raw) if quoted else raw
-    key = re.sub(r"^(gw|gway)[. ]+", "", key)
+    key = _GW_PREFIX_PATTERN.sub("", key)
 
     val = lookup_fn(key)
     if val is None:
@@ -91,6 +210,11 @@ def _resolve_single(raw, lookup_fn):
     if quoted:
         gw.verbose(f"Sigil [{raw}] not resolved, using quoted literal '{key}'")
         return key
+
+    fallback = _resolve_via_cli(raw)
+    if fallback is not _CLI_FALLBACK_SENTINEL:
+        gw.verbose(f"Resolved sigil [{raw}] via CLI fallback → {fallback}")
+        return fallback
 
     raise KeyError(f"Unresolved sigil: [{raw}]")
 
@@ -180,18 +304,13 @@ class Resolver:
     def find_value(self, key: str, fallback: str = None, exec: bool = False) -> str:
         for name, source in self._search_order:
             if name == "env":
-                val = os.getenv(key.upper())
+                val = _lookup_env_value(key)
                 if val is not None:
                     return val
-            elif isinstance(source, dict) and key in source:
-                return source[key]
-            elif hasattr(source, "__getitem__"):
-                try:
-                    val = source[key]
-                    if val is not None:
-                        return val
-                except Exception:
-                    pass
+            elif isinstance(source, Mapping) or (hasattr(source, "__getitem__") and not isinstance(source, (str, bytes))):
+                val = _lookup_in_mapping(source, key)
+                if val is not None:
+                    return val
 
         if exec:
             args = []
@@ -232,7 +351,7 @@ class Resolver:
 
     def _resolve_key(self, key: str, fallback: str = None) -> str:
         key = key.strip()
-        key = re.sub(r"^(gw|gway)[. ]+", "", key)
+        key = _GW_PREFIX_PATTERN.sub("", key)
 
         val = self.find_value(key, None)
         if val is not None:
