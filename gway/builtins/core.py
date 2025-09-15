@@ -1,5 +1,3 @@
-import code
-
 __all__ = [
     "hello_world",
     "abort",
@@ -84,14 +82,121 @@ def version(check: str | None = None) -> str:
     return "unknown"
 
 
-def shell():
-    """Launch an interactive Python shell with gw preloaded."""
-    from gway import gw
-    from gway import __
+def shell(*bash_args):
+    """Launch a Bash shell that treats unknown commands as GWAY invocations."""
+    import os
+    import shlex
+    import subprocess
+    import sys
+    import tempfile
 
-    local_vars = {"gw": gw, "__": __}
-    banner = "GWAY interactive shell.\nfrom gway import gw  # Python 3.13 compatible"
-    code.interact(banner=banner, local=local_vars)
+    from gway import gw
+
+    env = os.environ.copy()
+
+    default_args = []
+    project_path = getattr(gw, "project_path", None)
+    if project_path:
+        default_args.extend(["-p", project_path])
+
+    client_name = env.get("CLIENT")
+    if client_name:
+        default_args.extend(["-c", client_name])
+
+    server_name = env.get("SERVER")
+    if server_name:
+        default_args.extend(["-s", server_name])
+
+    if getattr(gw, "debug_enabled", False):
+        default_args.append("-d")
+    if getattr(gw, "verbose_enabled", False):
+        default_args.append("-v")
+    if getattr(gw, "silent_enabled", False):
+        default_args.append("-z")
+    if getattr(gw, "wizard_enabled", False):
+        default_args.append("-w")
+    if getattr(gw, "timed_enabled", False):
+        default_args.append("-t")
+
+    username = getattr(gw, "name", None)
+    if username and username != "gw":
+        default_args.extend(["-u", username])
+
+    default_args_literal = " ".join(shlex.quote(arg) for arg in default_args)
+
+    rc_lines = [
+        "# GWAY shell bootstrap",
+        f"__gway_shell_default_args=({default_args_literal})",
+        "",
+        "if [[ -n \"$GWAY_ORIGINAL_BASH_ENV\" && -f \"$GWAY_ORIGINAL_BASH_ENV\" ]]; then",
+        "    source \"$GWAY_ORIGINAL_BASH_ENV\"",
+        "fi",
+        "",
+        "if [[ $- == *i* ]]; then",
+        "    if [[ -n \"$HOME\" && -f \"$HOME/.bashrc\" ]]; then",
+        "        source \"$HOME/.bashrc\"",
+        "    fi",
+        "fi",
+        "",
+        "command_not_found_handle() {",
+        "    local cmd=\"$1\"",
+        "",
+        "    if [[ -z \"$cmd\" ]]; then",
+        "        return 127",
+        "    fi",
+        "",
+        "    local exec_path=\"${GWAY_SHELL_EXEC:-}\"",
+        "    local module=\"${GWAY_SHELL_MODULE:-gway}\"",
+        "",
+        "    if [[ -z \"$GWAY_SHELL_ACTIVE\" && -n \"$exec_path\" ]]; then",
+        "        GWAY_SHELL_ACTIVE=1 \"$exec_path\" -m \"$module\" \"${__gway_shell_default_args[@]}\" \"$@\"",
+        "        local status=$?",
+        "        if [[ $status -ne 127 ]]; then",
+        "            return $status",
+        "        fi",
+        "    fi",
+        "",
+        "    printf '%s: %s: command not found\\n' \"${0##*/}\" \"$cmd\" >&2",
+        "    return 127",
+        "}",
+    ]
+    rc_contents = "\n".join(rc_lines)
+
+    with tempfile.NamedTemporaryFile("w", delete=False, prefix="gway-shell-", suffix=".sh") as rc_file:
+        rc_file.write(rc_contents + "\n")
+        rc_path = rc_file.name
+
+    original_bash_env = env.get("BASH_ENV")
+
+    env.update({
+        "GWAY_SHELL_EXEC": sys.executable,
+        "GWAY_SHELL_MODULE": "gway",
+        "BASH_ENV": rc_path,
+    })
+
+    if original_bash_env:
+        env["GWAY_ORIGINAL_BASH_ENV"] = original_bash_env
+
+    cmd = ["bash", "--rcfile", rc_path]
+    bash_args = list(bash_args)
+    if bash_args and bash_args[0] == "--":
+        bash_args = bash_args[1:]
+    if bash_args:
+        cmd.extend(bash_args)
+    else:
+        cmd.append("-i")
+
+    try:
+        status = subprocess.call(cmd, env=env)
+    finally:
+        try:
+            os.unlink(rc_path)
+        except FileNotFoundError:
+            pass
+
+    if status:
+        raise SystemExit(status)
+    return None
 
 
 def upgrade(*args):
