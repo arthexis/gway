@@ -71,6 +71,26 @@ class LCDTests(unittest.TestCase):
         self.assertIn("Prev", messages)
         self.assertTrue(any(abs(d - 1) < 1e-6 for d in delays))
 
+    def test_wrap_option_wraps_text(self):
+        class FakeSMBus:
+            def __init__(self, bus_no):
+                pass
+
+            def write_byte(self, addr, value):
+                pass
+
+        fake_mod = types.SimpleNamespace(SMBus=FakeSMBus)
+        lcd_mod = sys.modules[gw.lcd.show.__module__]
+        message = "X" * 20
+        with unittest.mock.patch.dict("sys.modules", {"smbus": fake_mod}), \
+             unittest.mock.patch.object(lcd_mod, "_lcd_string") as lcd_str:
+            gw.lcd.show(message, wrap=True)
+
+        line1 = lcd_str.call_args_list[0].args[2]
+        line2 = lcd_str.call_args_list[1].args[2]
+        self.assertEqual(line1.strip(), "X" * 16)
+        self.assertEqual(line2.strip(), "X" * 4)
+
     def test_show_resolves_sigils(self):
         class FakeSMBus:
             def __init__(self, bus_no):
