@@ -42,6 +42,9 @@ E_PULSE = 0.0005
 E_DELAY = 0.0005
 
 
+_backlight_mask = LCD_BACKLIGHT
+
+
 def _lcd_toggle_enable(bus, addr: int, data: int) -> None:
     """Toggle enable bit to latch data."""
     time.sleep(E_DELAY)
@@ -53,8 +56,8 @@ def _lcd_toggle_enable(bus, addr: int, data: int) -> None:
 
 def _lcd_byte(bus, addr: int, value: int, mode: int) -> None:
     """Send a single command or character byte."""
-    high = mode | (value & 0xF0) | LCD_BACKLIGHT
-    low = mode | ((value << 4) & 0xF0) | LCD_BACKLIGHT
+    high = mode | (value & 0xF0) | _backlight_mask
+    low = mode | ((value << 4) & 0xF0) | _backlight_mask
     for nibble in (high, low):
         bus.write_byte(addr, nibble)
         _lcd_toggle_enable(bus, addr, nibble)
@@ -73,6 +76,27 @@ def _lcd_string(bus, addr: int, message: str, line: int) -> None:
     _lcd_byte(bus, addr, line, LCD_CMD)
     for ch in message:
         _lcd_byte(bus, addr, ord(ch), LCD_CHR)
+
+
+def _import_smbus() -> types.ModuleType | types.SimpleNamespace | None:
+    """Return an smbus-compatible module or ``None`` if unavailable."""
+
+    try:  # defer import so tests can mock the module
+        import smbus  # type: ignore
+    except ModuleNotFoundError:
+        try:
+            from smbus2 import SMBus  # type: ignore
+
+            smbus = types.SimpleNamespace(SMBus=SMBus)
+        except ModuleNotFoundError:  # pragma: no cover - import error path
+            msg = (
+                "smbus module not found. Enable I2C and install 'i2c-tools' and "
+                "'python3-smbus' or 'smbus2'."
+            )
+            gw.error(msg)
+            print(msg)
+            return None
+    return smbus
 
 
 def show(
@@ -123,23 +147,11 @@ def show(
     except Exception:
         prev = ""
 
-    try:  # defer import so tests can mock the module
-        import smbus  # type: ignore
-    except ModuleNotFoundError:
-        try:
-            from smbus2 import SMBus  # type: ignore
+    smbus_mod = _import_smbus()
+    if smbus_mod is None:
+        return
 
-            smbus = types.SimpleNamespace(SMBus=SMBus)
-        except ModuleNotFoundError:  # pragma: no cover - import error path
-            msg = (
-                "smbus module not found. Enable I2C and install 'i2c-tools' and "
-                "'python3-smbus' or 'smbus2'."
-            )
-            gw.error(msg)
-            print(msg)
-            return
-
-    bus = smbus.SMBus(1)
+    bus = smbus_mod.SMBus(1)
     _lcd_init(bus, addr)
 
     def _display(text: str, delay: float, do_wrap: bool, ratio: float | None) -> None:
@@ -219,6 +231,43 @@ def show(
         _display(prev, 0, False, None)
     else:
         last_path.write_text(message, encoding="utf-8")
+
+
+def brightness(level: int | float | bool | str, *, addr: int = 0x27) -> None:
+    """Turn the LCD backlight on or off.
+
+    The commonly used PCF8574 backpack only exposes a digital backlight pin,
+    so brightness is effectively a binary choice.  Any value greater than
+    zero (or truthy strings such as ``"on"``) enables the backlight while
+    zero (or ``"off"``) disables it.
+    """
+
+    if isinstance(level, str):
+        value = level.strip().lower()
+        if value in {"on", "true", "yes"}:
+            level = 1
+        elif value in {"off", "false", "no"}:
+            level = 0
+        else:
+            try:
+                level = float(value)
+            except ValueError as exc:
+                raise ValueError(f"invalid brightness level: {level!r}") from exc
+
+    try:
+        is_on = float(level) > 0
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid brightness level: {level!r}") from exc
+
+    global _backlight_mask
+    _backlight_mask = LCD_BACKLIGHT if is_on else 0
+
+    smbus_mod = _import_smbus()
+    if smbus_mod is None:
+        return
+
+    bus = smbus_mod.SMBus(1)
+    bus.write_byte(addr, _backlight_mask)
 
 
 def boot(

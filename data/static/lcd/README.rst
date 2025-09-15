@@ -43,6 +43,7 @@ From the command line::
     gway lcd show "Long message that needs wrapping" --wrap
     gway lcd show "Long scrolling message" --scroll 0.5 --wrap
     gway lcd show "Proportional" --scroll 0.1 --ratio 2
+    gway lcd brightness off
 
 Install a boot message shown once at startup::
 
@@ -61,6 +62,10 @@ display and can be combined with ``--scroll`` to snake text across both lines.
 the bottom row so both rows show the same message at proportional speeds.
 Message text may include ``[sigils]`` that are resolved before display.
 
+``brightness`` toggles the backlight of the standard PCF8574 backpack on or
+off.  The hardware only exposes a digital control line so intermediate
+brightness levels are not available.
+
 Programmatically::
 
     from gway import gw
@@ -71,5 +76,6 @@ Programmatically::
     gw.lcd.show("A long message that should wrap", wrap=True)
     gw.lcd.show("Snaking message", scroll=0.5, wrap=True)
     gw.lcd.show("Proportional", scroll=0.1, ratio=2)
+    gw.lcd.brightness("on")
     gw.lcd.boot("Hello")
     gw.lcd.boot(remove=True)
