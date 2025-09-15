@@ -41,6 +41,9 @@ for arg in "$@"; do
     --bin)
       ACTION="bin"
       ;;
+    --shell)
+      ACTION="shell"
+      ;;
     --force)
       FORCE_FLAG="--force"
       ;;
@@ -64,7 +67,7 @@ done
 
 # Determine if this action requires root privileges
 ROOT_REQUIRED=false
-if [[ "$ACTION" == "remove" || "$ACTION" == "repair" || "$ACTION" == "bin" ]]; then
+if [[ "$ACTION" == "remove" || "$ACTION" == "repair" || "$ACTION" == "bin" || "$ACTION" == "shell" ]]; then
   ROOT_REQUIRED=true
 elif [[ "$ACTION" == "install" && -n "$RECIPE" ]]; then
   ROOT_REQUIRED=true
@@ -153,6 +156,79 @@ if [[ -z "$RECIPE" && "$ACTION" == "install" ]]; then
   echo "  sudo ./install.sh --repair"
   echo "To install gway as a global command, run:"
   echo "  sudo ./install.sh --bin"
+  echo "To use 'gway shell' as your login shell, run:"
+  echo "  sudo ./install.sh --shell"
+  deactivate
+  exit 0
+fi
+
+# Configure the GWAY login shell wrapper and set it as default
+if [[ "$ACTION" == "shell" ]]; then
+  if [[ -n "$RECIPE" ]]; then
+    echo "ERROR: --shell does not take a recipe argument" >&2
+    deactivate
+    exit 1
+  fi
+
+  if ! command -v chsh >/dev/null 2>&1; then
+    echo "ERROR: 'chsh' command not found. Unable to change default shell." >&2
+    deactivate
+    exit 1
+  fi
+
+  SHELL_WRAPPER="$SCRIPT_DIR/.venv/bin/gway-shell"
+  cat > "$SHELL_WRAPPER" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+
+exec "$SCRIPT_DIR/gway" shell "$@"
+EOF
+
+  chmod +x "$SHELL_WRAPPER"
+
+  if [[ -f /etc/shells ]]; then
+    if ! grep -Fxq "$SHELL_WRAPPER" /etc/shells; then
+      echo "Registering $SHELL_WRAPPER in /etc/shells..."
+      if [[ -n "$SUDO" ]]; then
+        if ! echo "$SHELL_WRAPPER" | $SUDO tee -a /etc/shells > /dev/null; then
+          echo "ERROR: Failed to update /etc/shells. Please add '$SHELL_WRAPPER' manually." >&2
+          deactivate
+          exit 1
+        fi
+      else
+        if ! echo "$SHELL_WRAPPER" | tee -a /etc/shells > /dev/null; then
+          echo "ERROR: Failed to update /etc/shells. Please add '$SHELL_WRAPPER' manually." >&2
+          deactivate
+          exit 1
+        fi
+      fi
+    fi
+  else
+    echo "WARNING: /etc/shells not found; skipping registration." >&2
+  fi
+
+  TARGET_USER="${SUDO_USER-$(whoami)}"
+  CURRENT_USER="$(whoami)"
+  CHSH_CMD=("chsh" "-s" "$SHELL_WRAPPER")
+  if [[ "$TARGET_USER" != "$CURRENT_USER" ]]; then
+    CHSH_CMD+=("$TARGET_USER")
+  fi
+  if [[ -n "$SUDO" ]]; then
+    CHSH_CMD=("$SUDO" "${CHSH_CMD[@]}")
+  fi
+
+  if ! "${CHSH_CMD[@]}"; then
+    echo "ERROR: Failed to set default shell for $TARGET_USER." >&2
+    deactivate
+    exit 1
+  fi
+
+  echo "Default shell for $TARGET_USER set to '$SHELL_WRAPPER'."
+  echo "The system will launch 'gway shell' on the next login."
+
   deactivate
   exit 0
 fi
