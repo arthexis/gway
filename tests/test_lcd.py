@@ -26,6 +26,38 @@ class LCDTests(unittest.TestCase):
         self.assertGreater(len(writes), 0)
         self.assertTrue(all(addr == 0x27 for addr, _ in writes))
 
+    def test_brightness_toggles_backlight(self):
+        writes = []
+
+        class FakeSMBus:
+            def __init__(self, bus_no):
+                self.bus_no = bus_no
+
+            def write_byte(self, addr, value):
+                writes.append((addr, value))
+
+        fake_mod = types.SimpleNamespace(SMBus=FakeSMBus)
+        lcd_mod = sys.modules[gw.lcd.show.__module__]
+        original_mask = lcd_mod._backlight_mask
+        try:
+            with unittest.mock.patch.dict("sys.modules", {"smbus": fake_mod}):
+                gw.lcd.brightness(0)
+                gw.lcd.brightness("on")
+        finally:
+            lcd_mod._backlight_mask = original_mask
+
+        self.assertEqual(writes, [(0x27, 0), (0x27, lcd_mod.LCD_BACKLIGHT)])
+        self.assertEqual(lcd_mod._backlight_mask, lcd_mod.LCD_BACKLIGHT)
+
+    def test_brightness_invalid_value_raises(self):
+        lcd_mod = sys.modules[gw.lcd.show.__module__]
+        original_mask = lcd_mod._backlight_mask
+        try:
+            with self.assertRaises(ValueError):
+                gw.lcd.brightness("full")
+        finally:
+            lcd_mod._backlight_mask = original_mask
+
     def test_scroll_option_scrolls_message(self):
         class FakeSMBus:
             def __init__(self, bus_no):
