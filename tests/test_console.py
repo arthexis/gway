@@ -339,6 +339,32 @@ class TestProcessChaining(unittest.TestCase):
         self.assertEqual(last, "foo.wav")
 
 
+class TestProcessRecipeFallback(unittest.TestCase):
+    def test_process_invokes_recipe_when_command_missing(self):
+        commands = [["missing-recipe"]]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipes_dir = Path(temp_dir) / "recipes"
+            recipes_dir.mkdir()
+            (recipes_dir / "missing-recipe.gwr").write_text("dummy setup-home")
+
+            original_resource = console.gw.resource
+
+            def fake_resource(*parts):
+                if parts and parts[0] == "recipes":
+                    return str(Path(recipes_dir, *parts[1:]))
+                return original_resource(*parts)
+
+            console.gw.resource = fake_resource
+            try:
+                results, last = console.process(commands)
+            finally:
+                console.gw.resource = original_resource
+
+        self.assertEqual(results, ["index"])
+        self.assertEqual(last, "index")
+
+
 class TestProcessSigilResolution(unittest.TestCase):
     def setUp(self):
         console.gw.context.clear()

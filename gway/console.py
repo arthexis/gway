@@ -20,6 +20,33 @@ from .gateway import Gateway, gw
 from .sigils import Sigil, Spool
 
 
+def parse_recipe_context(tokens):
+    """Parse ``--key value`` style tokens into a context dictionary."""
+
+    ctx = {}
+    i = 0
+    tokens = list(tokens)
+
+    while i < len(tokens):
+        token = tokens[i]
+        if not token.startswith("--"):
+            abort(f"Unexpected argument: {token}")
+
+        key = token[2:]
+        if not key:
+            abort("Expected a key after `--`")
+
+        next_is_value = i + 1 < len(tokens) and not tokens[i + 1].startswith("--")
+        if next_is_value:
+            ctx[key] = tokens[i + 1]
+            i += 2
+        else:
+            ctx[key] = True
+            i += 1
+
+    return ctx
+
+
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
@@ -43,25 +70,7 @@ def cli_main():
     argcomplete.autocomplete(parser)
     args, unknown = parser.parse_known_args()
 
-    extra_context = {}
-    if args.recipe and unknown:
-        def _parse_context(tokens):
-            ctx = {}
-            i = 0
-            while i < len(tokens):
-                token = tokens[i]
-                if not token.startswith("--"):
-                    abort(f"Unexpected argument: {token}")
-                key = token[2:]
-                if i + 1 < len(tokens) and not tokens[i + 1].startswith("--"):
-                    ctx[key] = tokens[i + 1]
-                    i += 2
-                else:
-                    ctx[key] = True
-                    i += 1
-            return ctx
-
-        extra_context = _parse_context(unknown)
+    extra_context = parse_recipe_context(unknown) if args.recipe and unknown else {}
 
     # Setup logging
     logfile = f"{args.username}.log" if args.username else "gway.log"
@@ -270,6 +279,28 @@ def process(command_sources, callback=None, **context):
                 path = [last_project_name] + path2
 
         if not callable(resolved_obj):
+            if attr_error is not None and not path and chunk:
+                recipe_name = chunk[0]
+                try:
+                    recipe_commands, _ = load_recipe(recipe_name, strict=False)
+                except FileNotFoundError:
+                    recipe_commands = None
+                else:
+                    recipe_context = (
+                        parse_recipe_context(chunk[1:]) if len(chunk) > 1 else {}
+                    )
+                    combined_context = {**context, **recipe_context}
+                    gw.debug(
+                        f"Fallback executing recipe '{recipe_name}' with context {recipe_context}"
+                    )
+                    recipe_results, recipe_last = process(
+                        recipe_commands,
+                        callback=callback,
+                        **combined_context,
+                    )
+                    all_results.extend(recipe_results)
+                    last_result = recipe_last
+                    continue
             if attr_error is not None:
                 abort(str(attr_error))
             if hasattr(resolved_obj, '__functions__'):
@@ -677,7 +708,7 @@ def _unit_converters(param_name: str):
 # We keep recipe functions in console.py because anything that changes cli_main
 # typically has an impact in the recipe parsing process and must be reviewed together.
 
-def load_recipe(recipe_filename):
+def load_recipe(recipe_filename, *, strict=True):
     """Load commands and comments from a .gwr file.
     
     Supports indented 'chained' lines: If a line begins with whitespace and its first
@@ -720,7 +751,10 @@ def load_recipe(recipe_filename):
             if os.path.isfile(recipe_path):
                 break
         else:
-            abort(f"Recipe not found in recipes/: tried {candidate_names}")
+            message = f"Recipe not found in recipes/: tried {candidate_names}"
+            if strict:
+                abort(message)
+            raise FileNotFoundError(message)
     else:
         recipe_path = recipe_filename
         if not os.path.isfile(recipe_path):
