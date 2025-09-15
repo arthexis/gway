@@ -45,6 +45,25 @@ class LCDTests(unittest.TestCase):
         delays = [call.args[0] for call in sleep.call_args_list]
         self.assertTrue(any(abs(d - 0.1) < 1e-6 for d in delays))
 
+    def test_ratio_option_adjusts_row_speeds(self):
+        class FakeSMBus:
+            def __init__(self, bus_no):
+                pass
+
+            def write_byte(self, addr, value):
+                pass
+
+        fake_mod = types.SimpleNamespace(SMBus=FakeSMBus)
+        lcd_mod = sys.modules[gw.lcd.show.__module__]
+        with unittest.mock.patch.dict("sys.modules", {"smbus": fake_mod}), \
+             unittest.mock.patch.object(lcd_mod, "_lcd_string") as lcd_str, \
+             unittest.mock.patch.object(lcd_mod.time, "sleep"):
+            gw.lcd.show("Scroll", scroll=0.1, ratio=2)
+
+        top_calls = [c for c in lcd_str.call_args_list if c.args[3] == lcd_mod.LCD_LINE_1]
+        bottom_calls = [c for c in lcd_str.call_args_list if c.args[3] == lcd_mod.LCD_LINE_2]
+        self.assertAlmostEqual(len(bottom_calls) / len(top_calls), 4, delta=0.1)
+
     def test_hold_reverts_to_previous_message(self):
         class FakeSMBus:
             def __init__(self, bus_no):

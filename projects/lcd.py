@@ -82,6 +82,7 @@ def show(
     scroll: float = 0.0,
     hold: float = 0.0,
     wrap: bool = False,
+    ratio: float | None = None,
 ) -> None:
     """Display *message* on the LCD.
 
@@ -105,6 +106,12 @@ def show(
     wrap:
         If ``True`` and ``scroll`` is ``0`` the message is word-wrapped
         across both lines of the display (16 characters per line).
+    ratio:
+        When ``scroll`` is non-zero and ``wrap`` is ``False``, show the same
+        message on both rows scrolling at different speeds.  The top row's
+        speed is divided by this value while the bottom row's speed is
+        multiplied by it.  For example, ``ratio=2`` causes the bottom row to
+        scroll the message four times while the top row scrolls it once.
 
     If the ``smbus`` module is missing, a helpful error message is logged and
     the function returns without attempting any I²C communication.
@@ -135,7 +142,7 @@ def show(
     bus = smbus.SMBus(1)
     _lcd_init(bus, addr)
 
-    def _display(text: str, delay: float, do_wrap: bool) -> None:
+    def _display(text: str, delay: float, do_wrap: bool, ratio: float | None) -> None:
         if delay > 0:
             if do_wrap:
                 padding = " " * (LCD_WIDTH * 2)
@@ -145,6 +152,41 @@ def show(
                     _lcd_string(bus, addr, segment[:LCD_WIDTH], LCD_LINE_1)
                     _lcd_string(bus, addr, segment[LCD_WIDTH:], LCD_LINE_2)
                     time.sleep(delay)
+            elif ratio is not None and ratio > 0:
+                padding = " " * LCD_WIDTH
+                text = f"{padding}{text}{padding}"
+                segments = [
+                    text[idx : idx + LCD_WIDTH]
+                    for idx in range(len(text) - LCD_WIDTH + 1)
+                ]
+                top_delay = delay * ratio
+                bottom_delay = delay / ratio
+                total_time = 0.0
+                top_next = 0.0
+                bottom_next = 0.0
+                top_idx = 0
+                bottom_idx = 0
+                top_total = len(segments) * top_delay
+                while total_time < top_total:
+                    if total_time >= top_next and top_idx < len(segments):
+                        _lcd_string(
+                            bus, addr, segments[top_idx], LCD_LINE_1
+                        )
+                        top_idx += 1
+                        top_next += top_delay
+                    if total_time >= bottom_next:
+                        _lcd_string(
+                            bus,
+                            addr,
+                            segments[bottom_idx % len(segments)],
+                            LCD_LINE_2,
+                        )
+                        bottom_idx += 1
+                        bottom_next += bottom_delay
+                    next_event = min(top_next, bottom_next, top_total)
+                    sleep_for = next_event - total_time
+                    time.sleep(sleep_for)
+                    total_time = next_event
             else:
                 padding = " " * LCD_WIDTH
                 text = f"{padding}{text}{padding}"
@@ -167,11 +209,14 @@ def show(
                 if len(lines) > 1:
                     _lcd_string(bus, addr, lines[1], LCD_LINE_2)
 
-    _display(message, scroll, wrap)
+    if ratio is not None and ratio <= 0:
+        raise ValueError("ratio must be greater than 0")
+
+    _display(message, scroll, wrap, ratio)
 
     if hold > 0:
         time.sleep(hold)
-        _display(prev, 0, False)
+        _display(prev, 0, False, None)
     else:
         last_path.write_text(message, encoding="utf-8")
 
