@@ -565,26 +565,42 @@ def upgrade(*args):
 
     safe_mode = False
     forwarded_args = []
+    request_full_tests = False
+    skip_tests = False
     for arg in args:
         if arg == "--safe":
             safe_mode = True
         else:
             forwarded_args.append(arg)
+            if arg == "--test":
+                request_full_tests = True
+            elif arg == "--no-test":
+                skip_tests = True
 
     if safe_mode:
-        gw.info("Running safe upgrade check in temporary environment...")
-        try:
-            temp_env("gway", "test", "--on-failure", "abort", pip_args="--quiet")
-        except subprocess.CalledProcessError as exc:
-            gw.error("Safe upgrade check failed; aborting upgrade.")
-            return exc.returncode or 1
-        except Exception as exc:  # pragma: no cover - defensive: log unexpected failures
-            gw.error(f"Safe upgrade check encountered an unexpected error: {exc}")
+        if skip_tests:
+            gw.info("Skipping safe upgrade check because --no-test was provided.")
+        else:
+            mode_label = "full test suite" if request_full_tests else "smoke tests"
+            gw.info(
+                f"Running safe upgrade check in temporary environment ({mode_label})..."
+            )
+            test_args = ["gway", "test"]
+            if not request_full_tests:
+                test_args.extend(["--filter", "smoke"])
+            test_args.extend(["--on-failure", "abort"])
             try:
-                gw.exception(exc)
-            except Exception:
-                pass
-            return 1
+                temp_env(*test_args, pip_args="--quiet")
+            except subprocess.CalledProcessError as exc:
+                gw.error("Safe upgrade check failed; aborting upgrade.")
+                return exc.returncode or 1
+            except Exception as exc:  # pragma: no cover - defensive: log unexpected failures
+                gw.error(f"Safe upgrade check encountered an unexpected error: {exc}")
+                try:
+                    gw.exception(exc)
+                except Exception:
+                    pass
+                return 1
 
     script = gw.resource("upgrade.sh", check=True)
     cmd = ["bash", os.fspath(script), *forwarded_args]

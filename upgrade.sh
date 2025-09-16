@@ -6,22 +6,40 @@ set -e
 ACTION_LOG=".upgrade_action.log"
 
 usage() {
-    echo "Usage: $0 [--force] [--no-test]"
-    echo "  --force     Reinstall and test even if no update is detected."
-    echo "  --no-test   Skip running tests after upgrade."
+    echo "Usage: $0 [--force] [--latest] [--test] [--no-test]"
+    echo "  --force     Reinstall even if no update is detected."
+    echo "  --latest    Always reinstall, skipping the PyPI version check."
+    echo "  --test      Run the full test suite after upgrading."
+    echo "  --no-test   Skip all tests (including the smoke test)."
     exit 0
 }
 
 FORCE=0
-RUN_TESTS=1
+ALWAYS_LATEST=0
+REQUEST_FULL_TEST=0
+REQUEST_SKIP_TEST=0
 for arg in "$@"; do
     case "$arg" in
         --force) FORCE=1 ;;
-        --no-test) RUN_TESTS=0 ;;
+        --latest) ALWAYS_LATEST=1 ;;
+        --test) REQUEST_FULL_TEST=1 ;;
+        --no-test) REQUEST_SKIP_TEST=1 ;;
         -h|--help) usage ;;
         *) echo "Unknown option: $arg"; usage ;;
     esac
 done
+
+if [[ $REQUEST_FULL_TEST -eq 1 && $REQUEST_SKIP_TEST -eq 1 ]]; then
+    echo "Error: --test and --no-test cannot be used together."
+    exit 1
+fi
+
+TEST_MODE="smoke"
+if [[ $REQUEST_FULL_TEST -eq 1 ]]; then
+    TEST_MODE="full"
+elif [[ $REQUEST_SKIP_TEST -eq 1 ]]; then
+    TEST_MODE="skip"
+fi
 
 log_action() {
     echo "$(date -Iseconds) | $1" >> "$ACTION_LOG"
@@ -45,14 +63,14 @@ NEW_HASH=$(git rev-parse HEAD)
 echo "[4] Ensuring scripts are executable..."
 chmod +x *.sh
 
-if [[ "$OLD_HASH" == "$NEW_HASH" && $FORCE -eq 0 ]]; then
-    echo "No updates detected. Skipping reinstall (use --force to override)."
+if [[ "$OLD_HASH" == "$NEW_HASH" && $FORCE -eq 0 && $ALWAYS_LATEST -eq 0 ]]; then
+    echo "No updates detected. Skipping reinstall (use --force or --latest to override)."
     echo "Upgrade script completed."
     log_action "No updates: $NEW_HASH"
     exit 0
 fi
 
-echo "[5] Activating venv and reinstalling package in editable mode..."
+echo "[5] Activating virtual environment..."
 if [ -d ".venv" ]; then
     source .venv/bin/activate
 else
@@ -61,7 +79,74 @@ else
     exit 1
 fi
 
-echo "[5.1] Upgrading pip to latest version in venv..."
+if [[ $ALWAYS_LATEST -eq 0 && $FORCE -eq 0 ]]; then
+    echo "[5.1] Checking installed gway version..."
+    set +e
+    CURRENT_VERSION=$(python - <<'PY'
+import sys
+try:
+    from importlib import metadata
+except ImportError:  # pragma: no cover - fallback for older Python
+    import importlib_metadata as metadata  # type: ignore
+
+try:
+    print(metadata.version("gway"))
+except metadata.PackageNotFoundError:  # type: ignore[attr-defined]
+    pass
+except Exception as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    sys.exit(1)
+PY
+    )
+    VERSION_STATUS=$?
+    set -e
+    CURRENT_VERSION=$(echo "$CURRENT_VERSION" | tr -d '\r\n')
+    if [[ $VERSION_STATUS -ne 0 ]]; then
+        echo "Warning: failed to determine installed gway version. Continuing."
+        log_action "Version check failed: installed"
+        CURRENT_VERSION=""
+    elif [[ -n "$CURRENT_VERSION" ]]; then
+        echo "Current version: $CURRENT_VERSION"
+    else
+        echo "Installed version not found; proceeding with upgrade."
+    fi
+
+    echo "[5.2] Checking latest gway version on PyPI..."
+    set +e
+    PYPI_VERSION=$(python - <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+URL = "https://pypi.org/pypi/gway/json"
+
+try:
+    with urllib.request.urlopen(URL, timeout=10) as resp:
+        data = json.load(resp)
+    print(data["info"]["version"])
+except Exception as exc:  # pragma: no cover - network errors
+    print(f"ERROR: {exc}", file=sys.stderr)
+    sys.exit(1)
+PY
+    )
+    PYPI_STATUS=$?
+    set -e
+    PYPI_VERSION=$(echo "$PYPI_VERSION" | tr -d '\r\n')
+    if [[ $PYPI_STATUS -ne 0 || -z "$PYPI_VERSION" ]]; then
+        echo "Warning: failed to fetch PyPI version. Continuing with upgrade."
+        log_action "Version check failed: PyPI"
+    else
+        echo "PyPI version: $PYPI_VERSION"
+        if [[ -n "$CURRENT_VERSION" && "$CURRENT_VERSION" == "$PYPI_VERSION" ]]; then
+            echo "Installed version matches PyPI. Skipping upgrade (use --latest to override)."
+            log_action "No new PyPI version: $CURRENT_VERSION"
+            exit 0
+        fi
+    fi
+fi
+
+echo "[5.3] Upgrading pip to latest version in venv..."
 python -m pip install --upgrade pip || log_action "pip upgrade failed"
 
 if ! pip install -e .; then
@@ -69,19 +154,36 @@ if ! pip install -e .; then
     log_action "pip install failed"
 fi
 
-if [ $RUN_TESTS -eq 1 ]; then
-    echo "[6] Running test command..."
-    if ! gway test --on-failure abort; then
-        echo "Error: gway test failed after upgrade."
-        log_action "Upgrade failed at commit: $NEW_HASH"
+case "$TEST_MODE" in
+    full)
+        echo "[6] Running full test suite..."
+        if ! gway test --on-failure abort; then
+            echo "Error: gway test failed after upgrade."
+            log_action "Upgrade failed at commit: $NEW_HASH"
+            exit 1
+        fi
+        echo "Upgrade and full test suite completed successfully."
+        log_action "Upgrade success (full test): $NEW_HASH"
+        ;;
+    smoke)
+        echo "[6] Running smoke tests..."
+        if ! gway test --filter smoke --on-failure abort; then
+            echo "Error: gway smoke tests failed after upgrade."
+            log_action "Upgrade failed at commit: $NEW_HASH"
+            exit 1
+        fi
+        echo "Upgrade and smoke test completed successfully."
+        log_action "Upgrade success (smoke): $NEW_HASH"
+        ;;
+    skip)
+        echo "[6] Skipping tests (--no-test)"
+        echo "Upgrade completed successfully."
+        log_action "Upgrade success (no test): $NEW_HASH"
+        ;;
+    *)
+        echo "Unknown test mode: $TEST_MODE"
         exit 1
-    fi
-    echo "Upgrade and test completed successfully."
-    log_action "Upgrade success: $NEW_HASH"
-else
-    echo "[6] Skipping tests (--no-test)"
-    echo "Upgrade completed successfully."
-    log_action "Upgrade success (no test): $NEW_HASH"
-fi
+        ;;
+esac
 
 exit 0
