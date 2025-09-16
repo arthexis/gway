@@ -275,11 +275,11 @@ if $SHELL_FLAG; then
       if grep -Fxq "$SHELL_WRAPPER" /etc/shells; then
         echo "Removing $SHELL_WRAPPER from /etc/shells..."
         if [[ -n "$SUDO" ]]; then
-          if ! $SUDO sed -i '#^'"$SHELL_WRAPPER"'$#d' /etc/shells; then
+          if ! $SUDO sed -i '\#^'"$SHELL_WRAPPER"'$#d' /etc/shells; then
             echo "WARNING: Failed to update /etc/shells. Please remove '$SHELL_WRAPPER' manually." >&2
           fi
         else
-          if ! sed -i '#^'"$SHELL_WRAPPER"'$#d' /etc/shells; then
+          if ! sed -i '\#^'"$SHELL_WRAPPER"'$#d' /etc/shells; then
             echo "WARNING: Failed to update /etc/shells. Please remove '$SHELL_WRAPPER' manually." >&2
           fi
         fi
@@ -287,12 +287,20 @@ if $SHELL_FLAG; then
     fi
 
     if [[ -e "$SHELL_WRAPPER" ]]; then
-      rm -f "$SHELL_WRAPPER"
+      if [[ -n "$SUDO" ]]; then
+        $SUDO rm -f "$SHELL_WRAPPER"
+      else
+        rm -f "$SHELL_WRAPPER"
+      fi
       echo "Removed shell wrapper at $SHELL_WRAPPER."
     fi
 
     if [[ -f "$SHELL_STATE_FILE" ]]; then
-      rm -f "$SHELL_STATE_FILE"
+      if [[ -n "$SUDO" ]]; then
+        $SUDO rm -f "$SHELL_STATE_FILE"
+      else
+        rm -f "$SHELL_STATE_FILE"
+      fi
     fi
 
     deactivate
