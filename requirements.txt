@@ -26,6 +26,7 @@ markdown
 pandas
 openpyxl
 coverage
+bandit
 argcomplete
 PyJWT
 sounddevice

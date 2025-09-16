@@ -272,33 +272,6 @@ def maybe_notify_ap_switch(ap_ssid, email=None):
         except Exception as e:
             gw.error(f"[nmcli] Email notification failed: {e}")
 
-def clean_and_reconnect_wifi(iface, ssid, password=None):
-    gw.debug(f"[nmcli] clean_and_reconnect_wifi({iface}, ssid={ssid})")
-    for name, uuid, conn_type, device in nmcli_list_connections():
-        if conn_type == "wifi" and (device == iface or name == ssid):
-            gw.info(f"[nmcli] Removing stale connection {name} ({uuid}) on {iface}")
-            nmcli("connection", "down", name)
-            nmcli("connection", "delete", name)
-            gw.monitor.set_states('nmcli', {
-                "last_config_change": now_iso(),
-                "last_config_action": f"Removed stale WiFi {name} on {iface}"
-            })
-            break
-    gw.info(f"[nmcli] Resetting interface {iface}")
-    nmcli("device", "disconnect", iface)
-    nmcli("device", "set", iface, "managed", "yes")
-    subprocess.run(["ip", "addr", "flush", "dev", iface])
-    subprocess.run(["dhclient", "-r", iface])
-    gw.info(f"[nmcli] Re-adding {iface} to SSID '{ssid}'")
-    if password:
-        nmcli("device", "wifi", "connect", ssid, "ifname", iface, "password", password)
-    else:
-        nmcli("device", "wifi", "connect", ssid, "ifname", iface)
-    gw.monitor.set_states('nmcli', {
-        "last_config_change": now_iso(),
-        "last_config_action": f"Re-added {iface} to {ssid}"
-    })
-
 def try_connect_wlan0_known_networks():
     """Try connecting wlan0 using known WiFi profiles.
 
@@ -319,18 +292,7 @@ def try_connect_wlan0_known_networks():
                 "last_config_action": f"wlan0 connected to {conn}"
             })
             return conn
-        clean_and_reconnect_wifi("wlan0", conn)
-        gw.debug(f"[nmcli] retrying connection to {conn} after reset")
-        if ping("wlan0"):
-            gw.info(f"[nmcli] wlan0 internet works via {conn} after reset")
-            gw.monitor.set_states('nmcli', {
-                "wlan0_mode": "station",
-                "wlan0_ssid": conn,
-                "wlan0_inet": True,
-                "last_config_change": now_iso(),
-                "last_config_action": f"wlan0 reconnected to {conn}"
-            })
-            return conn
+        gw.info("[nmcli] Interface reset skipped: operation requires additional validation.")
     gw.monitor.set_states('nmcli', {"wlan0_inet": False})
     return None
 

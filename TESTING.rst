@@ -9,6 +9,13 @@ Install the runtime dependencies first. The simplest approach is:
    pip install -e .
    gway test --coverage
 
+Security scanning is part of the continuous integration pipeline. To replicate
+the checks locally run:
+
+.. code-block:: bash
+
+   bandit -q -r gway projects
+
 The ``gway test`` command accepts ``--install`` to perform these
 installation steps automatically. When dependencies like ``requests``
 are missing, ``--install`` is run implicitly.

@@ -1,22 +1,8 @@
-Raspberry Pi Utilities
-----------------------
+Raspberry Pi Utilities (Removed)
+--------------------------------
 
-The ``rpi`` project contains helpers for Raspberry Pi management.
-The primary command ``ru`` clones the currently running system to
-another microSD card using ``dd``.
-
-Usage
-=====
-
-From the command line::
-
-    gway rpi ru /dev/sda
-
-Programmatically::
-
-    from gway import gw
-    gw.rpi.ru('/dev/sda')
-
-Ensure the destination device refers to the USB microSD writer
-connected to the Pi.  The entire device will be overwritten and
-requires ``sudo`` permissions.  Cloning may take several minutes.
+The original ``rpi`` project exposed a helper named ``ru`` that cloned the
+running system image to another block device using ``dd``. Because the
+command performed privileged disk operations without confirmation it has been
+removed for safety. New development should provide external safeguards before
+reintroducing similar functionality.

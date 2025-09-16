@@ -19,6 +19,8 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install -e .
+      - name: Run bandit
+        run: bandit -q -r gway projects -b bandit-baseline.json
       - name: Run tests
         run: gway test --coverage
       - name: Mark ready for release
