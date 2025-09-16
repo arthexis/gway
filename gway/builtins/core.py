@@ -461,10 +461,11 @@ def install(
     repository root.  Pass a ``recipe`` name (or path) to install or upgrade
     its systemd service.  Use ``--remove`` to disable a previously installed
     service (combine it with ``--bin`` to uninstall the global ``gway``
-    command), ``--repair`` to reinstall all known services, ``--bin`` to
-    register the ``gway`` CLI globally, and ``--shell`` to configure the
-    ``gway shell`` wrapper as the login shell.  Additional flags are forwarded
-    directly to the script.
+    command or with ``--shell`` to restore the previous login shell),
+    ``--repair`` to reinstall all known services, ``--bin`` to register the
+    ``gway`` CLI globally, and ``--shell`` to configure the ``gway shell``
+    wrapper as the login shell.  Additional flags are forwarded directly to
+    the script.
 
     Returns the exit code from the script execution.
     """
@@ -476,27 +477,28 @@ def install(
     import sys
     from threading import Thread
 
-    action_flags = {
-        "repair": repair,
-        "bin": bin,
-        "shell": shell,
-        "remove": remove,
-    }
-    enabled_actions = [name for name, enabled in action_flags.items() if enabled]
-    if len(enabled_actions) > 1:
-        if set(enabled_actions) != {"remove", "bin"}:
-            raise ValueError(
-                "Options --repair, --remove, --bin and --shell are mutually exclusive. "
-                "Combine --bin with --remove to uninstall the global command."
-            )
+    if repair and (remove or bin or shell):
+        raise ValueError(
+            "Options --repair, --remove, --bin and --shell are mutually exclusive. "
+            "Combine --remove with --bin or --shell to uninstall those integrations."
+        )
+    if bin and shell and not remove:
+        raise ValueError(
+            "Options --bin and --shell cannot be combined unless used with --remove."
+        )
+    if not remove and sum(bool(flag) for flag in (repair, bin, shell)) > 1:
+        raise ValueError(
+            "Options --repair, --remove, --bin and --shell are mutually exclusive. "
+            "Combine --remove with --bin or --shell to uninstall those integrations."
+        )
 
     if repair and recipe:
         raise ValueError("--repair cannot be combined with a recipe argument")
     if bin and recipe and not remove:
         raise ValueError("--bin cannot be combined with a recipe argument")
-    if shell and recipe:
+    if shell and recipe and not remove:
         raise ValueError("--shell cannot be combined with a recipe argument")
-    if remove and not recipe and not bin:
+    if remove and not recipe and not (bin or shell):
         raise ValueError("--remove requires a recipe name or path")
     if root and (remove or repair or bin or shell or not recipe):
         raise ValueError("--root can only be used when installing a recipe service")

@@ -54,6 +54,10 @@ class InstallBuiltinTests(unittest.TestCase):
             gw.install("auto", shell=True)
         with self.assertRaises(ValueError):
             gw.install(repair=True, bin=True)
+        with self.assertRaises(ValueError):
+            gw.install(repair=True, shell=True)
+        with self.assertRaises(ValueError):
+            gw.install(bin=True, shell=True)
 
     def test_install_root_requires_recipe(self):
         with self.assertRaises(ValueError):
@@ -85,6 +89,18 @@ class InstallBuiltinTests(unittest.TestCase):
         output = self.stdout.getvalue()
         self.assertIn("args: --bin --remove auto_upgrade", output)
 
+    def test_install_allows_shell_with_remove(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "install.sh")
+            self._write_script(script, "echo \"args: $@\"")
+
+            with patch.object(gw, "resource", return_value=pathlib.Path(script)):
+                rc = gw.install("auto_upgrade", remove=True, shell=True)
+
+        self.assertEqual(rc, 0)
+        output = self.stdout.getvalue()
+        self.assertIn("args: --shell --remove auto_upgrade", output)
+
     def test_install_remove_bin_without_recipe(self):
         with tempfile.TemporaryDirectory() as tmp:
             script = os.path.join(tmp, "install.sh")
@@ -97,6 +113,31 @@ class InstallBuiltinTests(unittest.TestCase):
         output = self.stdout.getvalue()
         self.assertIn("args: --bin --remove", output)
         self.assertNotIn("auto_upgrade", output)
+
+    def test_install_remove_shell_without_recipe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "install.sh")
+            self._write_script(script, "echo \"args: $@\"")
+
+            with patch.object(gw, "resource", return_value=pathlib.Path(script)):
+                rc = gw.install(remove=True, shell=True)
+
+        self.assertEqual(rc, 0)
+        output = self.stdout.getvalue()
+        self.assertIn("args: --shell --remove", output)
+        self.assertNotIn("auto_upgrade", output)
+
+    def test_install_remove_bin_and_shell(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "install.sh")
+            self._write_script(script, "echo \"args: $@\"")
+
+            with patch.object(gw, "resource", return_value=pathlib.Path(script)):
+                rc = gw.install("auto_upgrade", remove=True, bin=True, shell=True)
+
+        self.assertEqual(rc, 0)
+        output = self.stdout.getvalue()
+        self.assertIn("args: --bin --shell --remove auto_upgrade", output)
 
 
 if __name__ == "__main__":

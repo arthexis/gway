@@ -70,7 +70,7 @@ done
 
 # Determine if this action requires root privileges
 ROOT_REQUIRED=false
-if $REMOVE_FLAG || $REPAIR_FLAG || $BIN_FLAG || $SHELL_FLAG; then
+if $REPAIR_FLAG || $REMOVE_FLAG || $BIN_FLAG || $SHELL_FLAG; then
   ROOT_REQUIRED=true
 elif [[ -n "$RECIPE" ]]; then
   ROOT_REQUIRED=true
@@ -91,28 +91,16 @@ if $ROOT_REQUIRED; then
   fi
 fi
 
-exclusive_count=0
-if $REPAIR_FLAG; then
-  exclusive_count=$((exclusive_count + 1))
-fi
-if $REMOVE_FLAG; then
-  exclusive_count=$((exclusive_count + 1))
-fi
-if $BIN_FLAG; then
-  exclusive_count=$((exclusive_count + 1))
-fi
-if $SHELL_FLAG; then
-  exclusive_count=$((exclusive_count + 1))
+if $REPAIR_FLAG && ($REMOVE_FLAG || $BIN_FLAG || $SHELL_FLAG); then
+  echo "ERROR: Options --repair, --remove, --bin and --shell are mutually exclusive. Combine --remove with --bin or --shell to uninstall those integrations." >&2
+  deactivate
+  exit 1
 fi
 
-if ((exclusive_count > 1)); then
-  if $REMOVE_FLAG && $BIN_FLAG && ((exclusive_count == 2)); then
-    :
-  else
-    echo "ERROR: Options --repair, --remove, --bin and --shell are mutually exclusive. Use --bin together with --remove to uninstall the global command." >&2
-    deactivate
-    exit 1
-  fi
+if $BIN_FLAG && $SHELL_FLAG && ! $REMOVE_FLAG; then
+  echo "ERROR: Options --bin and --shell cannot be combined unless used with --remove." >&2
+  deactivate
+  exit 1
 fi
 
 if $REPAIR_FLAG && [[ -n "$RECIPE" ]]; then
@@ -121,7 +109,7 @@ if $REPAIR_FLAG && [[ -n "$RECIPE" ]]; then
   exit 1
 fi
 
-if $SHELL_FLAG && [[ -n "$RECIPE" ]]; then
+if $SHELL_FLAG && [[ -n "$RECIPE" ]] && ! $REMOVE_FLAG; then
   echo "ERROR: --shell does not take a recipe argument" >&2
   deactivate
   exit 1
@@ -133,7 +121,7 @@ if $BIN_FLAG && ! $REMOVE_FLAG && [[ -n "$RECIPE" ]]; then
   exit 1
 fi
 
-if $REMOVE_FLAG && [[ -z "$RECIPE" ]] && ! $BIN_FLAG; then
+if $REMOVE_FLAG && [[ -z "$RECIPE" ]] && ! $BIN_FLAG && ! $SHELL_FLAG; then
   echo "ERROR: --remove requires a recipe argument" >&2
   deactivate
   exit 1
@@ -197,7 +185,7 @@ if $BIN_FLAG; then
   fi
 fi
 
-if $REMOVE_FLAG || $BIN_FLAG; then
+if ($REMOVE_FLAG || $BIN_FLAG) && ! $SHELL_FLAG; then
   deactivate
   exit 0
 fi
@@ -217,13 +205,17 @@ if [[ -z "$RECIPE" ]] && ! $REPAIR_FLAG && ! $BIN_FLAG && ! $REMOVE_FLAG && ! $S
   echo "  sudo ./install.sh --bin --remove"
   echo "To use 'gway shell' as your login shell, run:"
   echo "  sudo ./install.sh --shell"
+  echo "To restore your previous login shell, run:"
+  echo "  sudo ./install.sh --shell --remove"
   deactivate
   exit 0
 fi
 
+SHELL_STATE_FILE="$SCRIPT_DIR/.venv/.gway-shell-default"
+
 # Configure the GWAY login shell wrapper and set it as default
 if $SHELL_FLAG; then
-  
+
   if ! command -v chsh >/dev/null 2>&1; then
     echo "ERROR: 'chsh' command not found. Unable to change default shell." >&2
     deactivate
@@ -231,6 +223,86 @@ if $SHELL_FLAG; then
   fi
 
   SHELL_WRAPPER="$SCRIPT_DIR/.venv/bin/gway-shell"
+  TARGET_USER="${SUDO_USER-$(whoami)}"
+  CURRENT_USER="$(whoami)"
+  CURRENT_ENTRY="$(getent passwd "$TARGET_USER" || true)"
+  CURRENT_SHELL=""
+  if [[ -n "$CURRENT_ENTRY" ]]; then
+    IFS=':' read -r _ _ _ _ _ _ CURRENT_SHELL <<< "$CURRENT_ENTRY"
+  fi
+
+  if $REMOVE_FLAG; then
+    echo "Restoring login shell for $TARGET_USER..."
+    FALLBACK_SHELL=""
+    if [[ -f "$SHELL_STATE_FILE" ]]; then
+      FALLBACK_SHELL="$(cat "$SHELL_STATE_FILE")"
+    fi
+    if [[ -z "$FALLBACK_SHELL" ]]; then
+      if command -v bash >/dev/null 2>&1; then
+        FALLBACK_SHELL="$(command -v bash)"
+      elif [[ -x /bin/sh ]]; then
+        FALLBACK_SHELL="/bin/sh"
+      else
+        echo "ERROR: Unable to determine a fallback shell." >&2
+        deactivate
+        exit 1
+      fi
+    fi
+
+    if [[ -n "$CURRENT_SHELL" && "$CURRENT_SHELL" == "$SHELL_WRAPPER" ]]; then
+      CHSH_CMD=("chsh" "-s" "$FALLBACK_SHELL")
+      if [[ "$TARGET_USER" != "$CURRENT_USER" ]]; then
+        CHSH_CMD+=("$TARGET_USER")
+      fi
+      if [[ -n "$SUDO" ]]; then
+        CHSH_CMD=("$SUDO" "${CHSH_CMD[@]}")
+      fi
+      if ! "${CHSH_CMD[@]}"; then
+        echo "ERROR: Failed to restore default shell for $TARGET_USER." >&2
+        deactivate
+        exit 1
+      fi
+      echo "Default shell for $TARGET_USER restored to '$FALLBACK_SHELL'."
+    else
+      if [[ -n "$CURRENT_SHELL" ]]; then
+        echo "Current shell for $TARGET_USER is '$CURRENT_SHELL'; leaving unchanged."
+      else
+        echo "WARNING: Unable to determine current shell for $TARGET_USER." >&2
+      fi
+    fi
+
+    if [[ -f /etc/shells ]]; then
+      if grep -Fxq "$SHELL_WRAPPER" /etc/shells; then
+        echo "Removing $SHELL_WRAPPER from /etc/shells..."
+        if [[ -n "$SUDO" ]]; then
+          if ! $SUDO sed -i '#^'"$SHELL_WRAPPER"'$#d' /etc/shells; then
+            echo "WARNING: Failed to update /etc/shells. Please remove '$SHELL_WRAPPER' manually." >&2
+          fi
+        else
+          if ! sed -i '#^'"$SHELL_WRAPPER"'$#d' /etc/shells; then
+            echo "WARNING: Failed to update /etc/shells. Please remove '$SHELL_WRAPPER' manually." >&2
+          fi
+        fi
+      fi
+    fi
+
+    if [[ -e "$SHELL_WRAPPER" ]]; then
+      rm -f "$SHELL_WRAPPER"
+      echo "Removed shell wrapper at $SHELL_WRAPPER."
+    fi
+
+    if [[ -f "$SHELL_STATE_FILE" ]]; then
+      rm -f "$SHELL_STATE_FILE"
+    fi
+
+    deactivate
+    exit 0
+  fi
+
+  if [[ -n "$CURRENT_SHELL" && "$CURRENT_SHELL" != "$SHELL_WRAPPER" ]]; then
+    printf '%s\n' "$CURRENT_SHELL" > "$SHELL_STATE_FILE"
+  fi
+
   cat > "$SHELL_WRAPPER" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -264,8 +336,6 @@ EOF
     echo "WARNING: /etc/shells not found; skipping registration." >&2
   fi
 
-  TARGET_USER="${SUDO_USER-$(whoami)}"
-  CURRENT_USER="$(whoami)"
   CHSH_CMD=("chsh" "-s" "$SHELL_WRAPPER")
   if [[ "$TARGET_USER" != "$CURRENT_USER" ]]; then
     CHSH_CMD+=("$TARGET_USER")
