@@ -35,6 +35,7 @@ work/
 .work/
 products/
 .products/
+requirements.md5
 
 # Node dependencies
 node_modules/
