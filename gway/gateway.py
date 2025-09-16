@@ -12,10 +12,15 @@ import time
 from pathlib import Path
 from types import MethodType
 
-from .envs import load_env, get_base_client, get_base_server
+from ._env_bindings import resolve_env_bindings
 from .sigils import Resolver, Sigil, Spool
 from .structs import Results, Project, Null
 from .runner import Runner
+
+_ENV_BINDINGS = resolve_env_bindings()
+load_env = _ENV_BINDINGS.load_env
+get_base_client = _ENV_BINDINGS.get_base_client
+get_base_server = _ENV_BINDINGS.get_base_server
 
 # Prefixes used for functions mapped to views or APIs.
 PREFIXES: tuple[str, ...] = ("view_", "api_", "render_")

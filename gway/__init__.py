@@ -7,7 +7,10 @@ from .console import cli_main, process, load_recipe
 from .sigils import Sigil, Resolver, Spool, __
 from .structs import Results
 from .logging import setup_logging
-from .envs import load_env
+from ._env_bindings import resolve_env_bindings
+
+_ENV_BINDINGS = resolve_env_bindings()
+load_env = _ENV_BINDINGS.load_env
 
 # Expose the standalone ``projects`` package under ``gway.projects`` so
 # callers can import project modules via ``gway.projects.<name>``.
