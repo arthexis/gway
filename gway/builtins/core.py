@@ -5,6 +5,7 @@ __all__ = [
     "version",
     "shell",
     "temp_env",
+    "install",
     "upgrade",
 ]
 
@@ -338,6 +339,105 @@ def temp_env(
             gw.info(f"Temporary environment preserved at {temp_root}")
         else:
             shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def install(
+    recipe: str | None = None,
+    *,
+    repair: bool = False,
+    remove: bool = False,
+    bin: bool = False,
+    shell: bool = False,
+    force: bool = False,
+    debug: bool = False,
+    root: bool = False,
+) -> int:
+    """Run ``install.sh`` with validated parameters.
+
+    The helper mirrors the behavior of invoking ``install.sh`` from the
+    repository root.  Pass a ``recipe`` name (or path) to install or upgrade
+    its systemd service.  Use ``--remove`` to disable a previously installed
+    service, ``--repair`` to reinstall all known services, ``--bin`` to
+    register the ``gway`` CLI globally, and ``--shell`` to configure the
+    ``gway shell`` wrapper as the login shell.  Additional flags are forwarded
+    directly to the script.
+
+    Returns the exit code from the script execution.
+    """
+
+    from gway import gw
+
+    import os
+    import subprocess
+    import sys
+    from threading import Thread
+
+    action_flags = {
+        "repair": repair,
+        "bin": bin,
+        "shell": shell,
+        "remove": remove,
+    }
+    enabled_actions = [name for name, enabled in action_flags.items() if enabled]
+    if len(enabled_actions) > 1:
+        raise ValueError(
+            "Options --repair, --remove, --bin and --shell are mutually exclusive."
+        )
+
+    if repair and recipe:
+        raise ValueError("--repair cannot be combined with a recipe argument")
+    if bin and recipe:
+        raise ValueError("--bin cannot be combined with a recipe argument")
+    if shell and recipe:
+        raise ValueError("--shell cannot be combined with a recipe argument")
+    if remove and not recipe:
+        raise ValueError("--remove requires a recipe name or path")
+    if root and (remove or repair or bin or shell or not recipe):
+        raise ValueError("--root can only be used when installing a recipe service")
+
+    script = gw.resource("install.sh", check=True)
+
+    cmd = ["bash", os.fspath(script)]
+    if repair:
+        cmd.append("--repair")
+    elif bin:
+        cmd.append("--bin")
+    elif shell:
+        cmd.append("--shell")
+    if remove:
+        cmd.append("--remove")
+    if force:
+        cmd.append("--force")
+    if debug:
+        cmd.append("--debug")
+    if root:
+        cmd.append("--root")
+    if recipe:
+        cmd.append(recipe)
+
+    def _stream(src, dst):
+        for line in src:
+            print(line, end="", file=dst, flush=True)
+
+    process = subprocess.Popen(
+        cmd,
+        cwd=script.parent,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=1,
+    )
+
+    threads = [
+        Thread(target=_stream, args=(process.stdout, sys.stdout)),
+        Thread(target=_stream, args=(process.stderr, sys.stderr)),
+    ]
+    for thread in threads:
+        thread.start()
+    process.wait()
+    for thread in threads:
+        thread.join()
+    return process.returncode
 
 
 def upgrade(*args):
