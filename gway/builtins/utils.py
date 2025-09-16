@@ -7,6 +7,7 @@ __all__ = [
     "try_cast",
     "random_id",
     "notify",
+    "redacted",
 ]
 
 _EZ_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXY3456789"
@@ -51,3 +52,19 @@ def notify(message: str, *, title: str = "GWAY Notice", timeout: int = 10):
     print(message)
     gw.info(f"Console notify: {message}")
     return "console"
+
+
+def redacted(text: str | None = None) -> str:
+    """Replace sigils in ``text`` with ``"[REDACTED]"``.
+
+    If ``text`` is empty or contains no sigils, return a single ``"[REDACTED]"``.
+    """
+
+    if text is None:
+        return "[REDACTED]"
+
+    value = str(text)
+    redacted_value, count = Sigil._pattern.subn("[REDACTED]", value)
+    if count == 0:
+        return "[REDACTED]"
+    return redacted_value
