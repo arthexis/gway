@@ -48,7 +48,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
     def test_load_qr_code_project(self):
         # Normally qr is autoloaded when accessed, but this test ensures we can
         # also manually load projects and use the objects directly if we need to.
-        project = gw.load_project("studio.qr")
+        project = gw.load_project("qr")
         test_url = project.generate_url("test")
         self.assertTrue(test_url.endswith(".png"))
 

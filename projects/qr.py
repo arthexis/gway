@@ -1,11 +1,12 @@
-
-# file: projects/qr.py
+"""QR code generation and scanning helpers."""
 
 import os
 import uuid
 import base64
 from io import BytesIO
+
 import qrcode
+
 from gway import gw
 
 
@@ -46,9 +47,9 @@ def generate_b64data(value):
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def scan_img(source):
+def scan(source):
     """
-    Scan the given image (file‑path or PIL.Image) for QR codes and return
+    Scan the given image (file-path or PIL.Image) for QR codes and return
     a list of decoded string values. Returns [] if nothing’s found.
     """
     import cv2

@@ -99,7 +99,7 @@ class GatewayTests(unittest.TestCase):
             return Path().joinpath(*parts)
 
         with patch.object(gw, "resource", fake_resource):
-            project = gw.find_project("does.not.exist", "studio.qr")
+            project = gw.find_project("does.not.exist", "qr")
             self.assertIsNotNone(project)
             self.assertTrue(hasattr(project, "generate_url"))
             none_proj = gw.find_project("nope1", "nope2")
