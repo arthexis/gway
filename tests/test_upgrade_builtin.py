@@ -63,10 +63,52 @@ class UpgradeBuiltinTests(unittest.TestCase):
                     rc = gw.upgrade("--safe", "--force")
         self.assertEqual(rc, 0)
         mock_temp_env.assert_called_once_with(
-            "gway", "test", "--on-failure", "abort", pip_args="--quiet"
+            "gway",
+            "test",
+            "--filter",
+            "smoke",
+            "--on-failure",
+            "abort",
+            pip_args="--quiet",
         )
         output = self.stdout.getvalue()
         self.assertIn("called with: --force", output)
+        self.assertNotIn("--safe", output)
+
+    def test_upgrade_safe_runs_full_suite_when_test_flag_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "upgrade.sh")
+            with open(script, "w", encoding="utf-8") as f:
+                f.write("#!/usr/bin/env bash\n")
+                f.write("echo \"called with: $@\"\n")
+            os.chmod(script, 0o755)
+            import pathlib
+            with patch.object(gw, "resource", return_value=pathlib.Path(script)):
+                with patch("gway.builtins.core.temp_env") as mock_temp_env:
+                    rc = gw.upgrade("--safe", "--test")
+        self.assertEqual(rc, 0)
+        mock_temp_env.assert_called_once_with(
+            "gway", "test", "--on-failure", "abort", pip_args="--quiet"
+        )
+        output = self.stdout.getvalue()
+        self.assertIn("called with: --test", output)
+        self.assertNotIn("--safe", output)
+
+    def test_upgrade_safe_skips_temp_env_when_no_test_flag_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "upgrade.sh")
+            with open(script, "w", encoding="utf-8") as f:
+                f.write("#!/usr/bin/env bash\n")
+                f.write("echo \"called with: $@\"\n")
+            os.chmod(script, 0o755)
+            import pathlib
+            with patch.object(gw, "resource", return_value=pathlib.Path(script)):
+                with patch("gway.builtins.core.temp_env") as mock_temp_env:
+                    rc = gw.upgrade("--safe", "--no-test")
+        self.assertEqual(rc, 0)
+        mock_temp_env.assert_not_called()
+        output = self.stdout.getvalue()
+        self.assertIn("called with: --no-test", output)
         self.assertNotIn("--safe", output)
 
     def test_upgrade_safe_aborts_when_temp_env_fails(self):
