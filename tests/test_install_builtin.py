@@ -73,6 +73,31 @@ class InstallBuiltinTests(unittest.TestCase):
         output = self.stdout.getvalue()
         self.assertIn("args: --remove auto_upgrade", output)
 
+    def test_install_allows_bin_with_remove(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "install.sh")
+            self._write_script(script, "echo \"args: $@\"")
+
+            with patch.object(gw, "resource", return_value=pathlib.Path(script)):
+                rc = gw.install("auto_upgrade", remove=True, bin=True)
+
+        self.assertEqual(rc, 0)
+        output = self.stdout.getvalue()
+        self.assertIn("args: --bin --remove auto_upgrade", output)
+
+    def test_install_remove_bin_without_recipe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "install.sh")
+            self._write_script(script, "echo \"args: $@\"")
+
+            with patch.object(gw, "resource", return_value=pathlib.Path(script)):
+                rc = gw.install(remove=True, bin=True)
+
+        self.assertEqual(rc, 0)
+        output = self.stdout.getvalue()
+        self.assertIn("args: --bin --remove", output)
+        self.assertNotIn("auto_upgrade", output)
+
 
 if __name__ == "__main__":
     unittest.main()
