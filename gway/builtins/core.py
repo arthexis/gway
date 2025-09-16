@@ -4,6 +4,7 @@ __all__ = [
     "envs",
     "version",
     "shell",
+    "temp_env",
     "upgrade",
 ]
 
@@ -217,6 +218,126 @@ def shell(*bash_args):
     if status:
         raise SystemExit(status)
     return None
+
+
+def temp_env(
+    *command,
+    packages: str | list[str] | None = None,
+    recipe: str | None = None,
+    python: str | None = None,
+    pip_args: str | list[str] | None = None,
+    keep: bool = False,
+    check: bool = True,
+    capture_output: bool = False,
+    cwd: str | None = None,
+):
+    """Run commands in an isolated throw-away GWAY installation.
+
+    The helper creates a temporary virtual environment, installs the requested
+    ``packages`` (defaulting to the latest ``gway`` release) and then executes
+    either the provided positional command or the recipe referenced via
+    ``--recipe``.  Pass an empty string for ``packages`` to skip the installation
+    step entirely.  ``pip_args`` allows forwarding custom flags such as
+    ``--no-cache-dir`` to the installation command.  The environment is removed
+    automatically unless ``keep`` is ``True``.  A mapping describing the
+    executed command, return code and any captured output is returned so
+    callers can inspect the run.
+    """
+
+    from gway import gw
+
+    import os
+    import shlex
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+    import venv
+
+    def _split(value: str | list[str] | None) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return []
+            return shlex.split(value)
+        return list(value)
+
+    if len(command) == 1 and isinstance(command[0], (list, tuple)):
+        command_args = tuple(command[0])
+    else:
+        command_args = command
+
+    if command_args and recipe:
+        raise ValueError("Provide either positional command arguments or --recipe, not both")
+    if not command_args and not recipe:
+        raise ValueError("A command or --recipe must be provided")
+
+    packages_list = _split(packages) if packages is not None else ["gway"]
+    pip_args_list = _split(pip_args)
+
+    python_exec = python or sys.executable
+    temp_root = tempfile.mkdtemp(prefix="gway-temp-env-")
+    venv_dir = os.path.join(temp_root, "venv")
+    gw.debug(f"temp_env: creating virtualenv at {venv_dir} using {python_exec!r}")
+
+    if python and os.path.abspath(python) != os.path.abspath(sys.executable):
+        subprocess.run([python_exec, "-m", "venv", venv_dir], check=True)
+    else:
+        builder = venv.EnvBuilder(with_pip=True, clear=True)
+        builder.create(venv_dir)
+
+    bin_dir = "Scripts" if os.name == "nt" else "bin"
+    python_bin = os.path.join(venv_dir, bin_dir, "python")
+
+    try:
+        if packages_list:
+            pip_cmd = [python_bin, "-m", "pip", "install", "--upgrade", *pip_args_list, *packages_list]
+            gw.debug(f"temp_env: installing packages via {pip_cmd!r}")
+            subprocess.run(pip_cmd, check=True)
+        else:
+            gw.debug("temp_env: skipping pip install because no packages were specified")
+
+        run_env = os.environ.copy()
+        bin_path = os.path.join(venv_dir, bin_dir)
+        run_env["VIRTUAL_ENV"] = venv_dir
+        run_env["PATH"] = os.pathsep.join([bin_path, run_env.get("PATH", "")])
+
+        if recipe is not None:
+            run_cmd = [python_bin, "-m", "gway", "-r", recipe]
+        else:
+            run_cmd = list(command_args)
+            if run_cmd and run_cmd[0] == "gway":
+                run_cmd = [python_bin, "-m", "gway", *run_cmd[1:]]
+
+        run_cwd = cwd or temp_root
+        gw.debug(f"temp_env: running command {run_cmd!r} in {run_cwd}")
+        run_kwargs: dict[str, object] = {
+            "env": run_env,
+            "cwd": run_cwd,
+            "check": check,
+        }
+        if capture_output:
+            run_kwargs["capture_output"] = True
+            run_kwargs["text"] = True
+
+        result = subprocess.run(run_cmd, **run_kwargs)
+
+        response: dict[str, object] = {
+            "returncode": result.returncode,
+            "env": temp_root,
+            "command": run_cmd,
+        }
+        if capture_output:
+            response["stdout"] = result.stdout
+            response["stderr"] = result.stderr
+        return response
+    finally:
+        if keep:
+            gw.info(f"Temporary environment preserved at {temp_root}")
+        else:
+            shutil.rmtree(temp_root, ignore_errors=True)
 
 
 def upgrade(*args):
