@@ -9,7 +9,7 @@ from gway import gw
 
 
 def _load_video():
-    video_path = Path(__file__).resolve().parents[1] / "projects" / "studio" / "video.py"
+    video_path = Path(__file__).resolve().parents[1] / "projects" / "video.py"
     spec = importlib.util.spec_from_file_location("video", video_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -17,7 +17,7 @@ def _load_video():
 
 
 class CaptureCameraTests(unittest.TestCase):
-    def test_capture_camera_yields_frames_and_releases(self):
+    def test_capture_yields_frames_and_releases(self):
         video = _load_video()
         frame = np.zeros((10, 10, 3), dtype="uint8")
 
@@ -27,7 +27,7 @@ class CaptureCameraTests(unittest.TestCase):
         fake_cv2 = types.SimpleNamespace(VideoCapture=MagicMock(return_value=fake_cap))
 
         with unittest.mock.patch.dict('sys.modules', {'cv2': fake_cv2}):
-            gen = video.capture_camera(source=0)
+            gen = video.capture(source=0)
             frames = list(gen)
 
         self.assertEqual(len(frames), 1)
@@ -35,12 +35,12 @@ class CaptureCameraTests(unittest.TestCase):
 
 
 class DisplayVideoTests(unittest.TestCase):
-    def test_display_video_rejects_non_iterable(self):
+    def test_display_rejects_non_iterable(self):
         video = _load_video()
         with self.assertRaises(ValueError):
-            video.display_video(123)
+            video.display(123)
 
-    def test_display_video_consumes_stream(self):
+    def test_display_consumes_stream(self):
         video = _load_video()
         frames = [np.zeros((5, 5, 3), dtype="uint8") for _ in range(2)]
         stream = (f for f in frames)
@@ -58,7 +58,7 @@ class DisplayVideoTests(unittest.TestCase):
         fake_cv2 = types.SimpleNamespace(colorConverter=MagicMock(), COLOR_BGR2RGB=0, cvtColor=lambda f, code: f)
 
         with unittest.mock.patch.dict('sys.modules', {'pygame': fake_pygame, 'cv2': fake_cv2}):
-            result = video.display_video(stream)
+            result = video.display(stream)
 
         self.assertTrue(result)
         fake_display.set_mode.assert_called_once()
