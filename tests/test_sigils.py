@@ -6,6 +6,10 @@ from gway import Sigil, Spool, gw, __
 
 class SigilTests(unittest.TestCase):
 
+    def _set_context(self, key, value):
+        gw.context[key] = value
+        self.addCleanup(lambda: gw.context.pop(key, None))
+
     def test_basic_resolution_with_dict(self):
         data = {"name": "Alice"}
         s = Sigil("Hello [name]")
@@ -63,6 +67,16 @@ class SigilTests(unittest.TestCase):
         self.assertEqual(res["name"], "Bob")
         self.assertEqual(res["greeting"], "Yo")
 
+    def test_nested_sigils_in_function_parameters(self):
+        self._set_context("USER", "NestedName")
+        self._set_context("GREETING", "Howdy")
+
+        res = gw.resolve("[HELLO_WORLD:[USER]]")
+        self.assertEqual(res["name"], "NestedName")
+
+        res = gw.resolve("[HELLO_WORLD:greeting=[GREETING]]")
+        self.assertEqual(res["greeting"], "Howdy")
+
     def test_exec_project_function(self):
         self.assertTrue(gw.resolve("[cast.to_bool=true]"))
 
@@ -101,6 +115,22 @@ class SigilTests(unittest.TestCase):
             Sigil("[obj _secret]") % data
         # Accessing leading underscore as first segment is allowed
         self.assertEqual(Sigil("[_root.val]") % data, 1)
+
+    def test_nested_sigils_in_indexes_and_fields(self):
+        from types import SimpleNamespace
+
+        self._set_context("DATA", ["zero", "one", "two"])
+        self._set_context("INDEX", 1)
+        self.assertEqual(gw.resolve("[DATA.[INDEX]]"), "one")
+
+        self._set_context("ITEM", {"name": "Widget"})
+        self._set_context("FIELD", "name")
+        self.assertEqual(gw.resolve("[ITEM.[FIELD]]"), "Widget")
+
+        obj = SimpleNamespace(value=42)
+        self._set_context("OBJ", obj)
+        self._set_context("ATTR", "value")
+        self.assertEqual(gw.resolve("[OBJ.[ATTR]]"), 42)
 
     def test_unquote_helper(self):
         from gway.sigils import _unquote
