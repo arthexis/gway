@@ -19,6 +19,14 @@ Existing utilities (``gw.awg`` etc.) are loaded lazily and should be reused via
 * Don't add to the main ``README.rst`` unless instructed otherwise. Enrich the
   static ``README`` files of individual projects instead.
 
+### Agent Advice
+1. When designing new prototypes, stick with the short, verb-led names used across existing projects (``clock.now``, ``clock.plus``, ``clock.timestamp``) so Gateway can recover a ``subject`` from ``verb_subject`` names when chaining results (see ``projects/clock.py`` and ``gway/gateway.py``).
+2. Prefer plain functions over classes and return CLI-friendly payloads such as status strings or dictionaries that can be unpacked into result keys, following patterns like ``env.save`` returning the updated environment mapping and ``mail.send`` reporting delivery status text (see ``projects/env.py`` and ``projects/mail.py``).
+3. Keep CLI parameters optional by placing them after ``*``; anything before ``*`` becomes required even if it has a default. Functions like ``clock.now`` and ``help_db.build`` show the keyword-only style to emulate (see ``projects/clock.py`` and ``projects/help_db.py``).
+4. Treat every public function (those not starting with ``_``) as CLI-ready: accept primitive arguments directly while still supporting richer objects when passed, as the mail helpers do with simple subject/body strings plus optional async behavior (see ``projects/mail.py``).
+5. Design outputs so multiple commands can chain together. Gateway stores each result under its detected ``subject`` and merges dictionaries into the shared context, so returning named fields makes recipe injection effortless (see ``gway/gateway.py``).
+6. Always reach helpers through the shared ``gw`` instance (``from gway import gw``) instead of importing project modules manually; the ``gw`` singleton exposes utilities like ``gw.resource`` and ``gw.mail`` for reuse (see ``projects/help_db.py`` and ``gway/gateway.py``).
+
 ## Testing
 - Install requirements and the package in editable mode before running tests:
   ```bash

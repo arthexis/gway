@@ -112,5 +112,3 @@ def proximity(
         print("\nStopping proximity polling")
     finally:
         GPIO.cleanup(pin)
-
-
