@@ -345,7 +345,9 @@ def upgrade(*args):
 
     This mirrors executing the ``upgrade.sh`` script located in the
     installation directory, passing through all provided arguments and
-    streaming the script's output as it runs.
+    streaming the script's output as it runs.  The helper also understands a
+    ``--safe`` flag which performs the same temporary-environment test used by
+    the ``auto_upgrade`` recipe before invoking the shell script.
     """
     from gway import gw
     import os
@@ -353,8 +355,31 @@ def upgrade(*args):
     import sys
     from threading import Thread
 
+    safe_mode = False
+    forwarded_args = []
+    for arg in args:
+        if arg == "--safe":
+            safe_mode = True
+        else:
+            forwarded_args.append(arg)
+
+    if safe_mode:
+        gw.info("Running safe upgrade check in temporary environment...")
+        try:
+            temp_env("gway", "test", "--on-failure", "abort", pip_args="--quiet")
+        except subprocess.CalledProcessError as exc:
+            gw.error("Safe upgrade check failed; aborting upgrade.")
+            return exc.returncode or 1
+        except Exception as exc:  # pragma: no cover - defensive: log unexpected failures
+            gw.error(f"Safe upgrade check encountered an unexpected error: {exc}")
+            try:
+                gw.exception(exc)
+            except Exception:
+                pass
+            return 1
+
     script = gw.resource("upgrade.sh", check=True)
-    cmd = ["bash", os.fspath(script), *args]
+    cmd = ["bash", os.fspath(script), *forwarded_args]
 
     def _stream(src, dst):
         for line in src:
