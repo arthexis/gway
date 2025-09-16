@@ -25,24 +25,27 @@ fi
 source .venv/bin/activate
 
 # Parse arguments
-ACTION="install"
 DEBUG_FLAG=""
 RECIPE=""
 FORCE_FLAG=""
 ROOT_FLAG=""
+REPAIR_FLAG=false
+REMOVE_FLAG=false
+BIN_FLAG=false
+SHELL_FLAG=false
 for arg in "$@"; do
   case "$arg" in
     --repair)
-      ACTION="repair"
+      REPAIR_FLAG=true
       ;;
     --remove)
-      ACTION="remove"
+      REMOVE_FLAG=true
       ;;
     --bin)
-      ACTION="bin"
+      BIN_FLAG=true
       ;;
     --shell)
-      ACTION="shell"
+      SHELL_FLAG=true
       ;;
     --force)
       FORCE_FLAG="--force"
@@ -67,9 +70,9 @@ done
 
 # Determine if this action requires root privileges
 ROOT_REQUIRED=false
-if [[ "$ACTION" == "remove" || "$ACTION" == "repair" || "$ACTION" == "bin" || "$ACTION" == "shell" ]]; then
+if $REMOVE_FLAG || $REPAIR_FLAG || $BIN_FLAG || $SHELL_FLAG; then
   ROOT_REQUIRED=true
-elif [[ "$ACTION" == "install" && -n "$RECIPE" ]]; then
+elif [[ -n "$RECIPE" ]]; then
   ROOT_REQUIRED=true
 fi
 
@@ -88,13 +91,56 @@ if $ROOT_REQUIRED; then
   fi
 fi
 
-# Repair previously installed services
-if [[ "$ACTION" == "repair" ]]; then
-  if [[ -n "$RECIPE" ]]; then
-    echo "ERROR: --repair does not take a recipe argument" >&2
+exclusive_count=0
+if $REPAIR_FLAG; then
+  exclusive_count=$((exclusive_count + 1))
+fi
+if $REMOVE_FLAG; then
+  exclusive_count=$((exclusive_count + 1))
+fi
+if $BIN_FLAG; then
+  exclusive_count=$((exclusive_count + 1))
+fi
+if $SHELL_FLAG; then
+  exclusive_count=$((exclusive_count + 1))
+fi
+
+if ((exclusive_count > 1)); then
+  if $REMOVE_FLAG && $BIN_FLAG && ((exclusive_count == 2)); then
+    :
+  else
+    echo "ERROR: Options --repair, --remove, --bin and --shell are mutually exclusive. Use --bin together with --remove to uninstall the global command." >&2
     deactivate
     exit 1
   fi
+fi
+
+if $REPAIR_FLAG && [[ -n "$RECIPE" ]]; then
+  echo "ERROR: --repair does not take a recipe argument" >&2
+  deactivate
+  exit 1
+fi
+
+if $SHELL_FLAG && [[ -n "$RECIPE" ]]; then
+  echo "ERROR: --shell does not take a recipe argument" >&2
+  deactivate
+  exit 1
+fi
+
+if $BIN_FLAG && ! $REMOVE_FLAG && [[ -n "$RECIPE" ]]; then
+  echo "ERROR: --bin does not take a recipe argument" >&2
+  deactivate
+  exit 1
+fi
+
+if $REMOVE_FLAG && [[ -z "$RECIPE" ]] && ! $BIN_FLAG; then
+  echo "ERROR: --remove requires a recipe argument" >&2
+  deactivate
+  exit 1
+fi
+
+# Repair previously installed services
+if $REPAIR_FLAG; then
   echo "Repairing installed gway services..."
   for unit in /etc/systemd/system/gway-*.service; do
     [[ -f "$unit" ]] || continue
@@ -110,43 +156,54 @@ if [[ "$ACTION" == "repair" ]]; then
 fi
 
 # Remove specified service
-if [[ "$ACTION" == "remove" ]]; then
-  if [[ -z "$RECIPE" ]]; then
-    echo "ERROR: --remove requires a recipe argument" >&2
-    deactivate
-    exit 1
+if $REMOVE_FLAG; then
+  if [[ -n "$RECIPE" ]]; then
+    SERVICE_SAFE_RECIPE="${RECIPE//\//-}"
+    SERVICE_SAFE_RECIPE="${SERVICE_SAFE_RECIPE//[^a-zA-Z0-9_-]/-}"
+    SERVICE_NAME="gway-${SERVICE_SAFE_RECIPE}.service"
+    SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
+    echo "Removing systemd service '$SERVICE_NAME' for recipe '$RECIPE'..."
+    $SUDO systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+    $SUDO systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+    if [[ -f "$SERVICE_PATH" ]]; then
+      $SUDO rm -f "$SERVICE_PATH"
+    fi
+    $SUDO systemctl daemon-reload
   fi
-  SERVICE_SAFE_RECIPE="${RECIPE//\//-}"
-  SERVICE_SAFE_RECIPE="${SERVICE_SAFE_RECIPE//[^a-zA-Z0-9_-]/-}"
-  SERVICE_NAME="gway-${SERVICE_SAFE_RECIPE}.service"
-  SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
-  echo "Removing systemd service '$SERVICE_NAME' for recipe '$RECIPE'..."
-  $SUDO systemctl stop "$SERVICE_NAME" 2>/dev/null || true
-  $SUDO systemctl disable "$SERVICE_NAME" 2>/dev/null || true
-  if [[ -f "$SERVICE_PATH" ]]; then
-    $SUDO rm -f "$SERVICE_PATH"
-  fi
-  $SUDO systemctl daemon-reload
-  deactivate
-  exit 0
 fi
 
-# Install global /usr/bin/gway symlink
-if [[ "$ACTION" == "bin" ]]; then
-  if [[ -n "$RECIPE" ]]; then
-    echo "ERROR: --bin does not take a recipe argument" >&2
-    deactivate
-    exit 1
+# Install or remove global /usr/bin/gway symlink
+if $BIN_FLAG; then
+  BIN_TARGET="/usr/bin/gway"
+  if $REMOVE_FLAG; then
+    echo "Removing gway from $BIN_TARGET..."
+    if [[ -L "$BIN_TARGET" ]]; then
+      TARGET_PATH="$(readlink -f "$BIN_TARGET")"
+      if [[ "$TARGET_PATH" == "$SCRIPT_DIR/gway.sh" ]]; then
+        $SUDO rm -f "$BIN_TARGET"
+        echo "  → Removed symlink to $TARGET_PATH."
+      else
+        echo "WARNING: $BIN_TARGET is not managed by this installer; skipping removal." >&2
+      fi
+    elif [[ -e "$BIN_TARGET" ]]; then
+      echo "WARNING: $BIN_TARGET exists but is not a symlink; skipping removal." >&2
+    else
+      echo "  → No $BIN_TARGET symlink found."
+    fi
+  else
+    echo "Installing gway to $BIN_TARGET..."
+    $SUDO ln -sf "$SCRIPT_DIR/gway.sh" "$BIN_TARGET"
+    $SUDO chmod +x "$SCRIPT_DIR/gway.sh"
   fi
-  echo "Installing gway to /usr/bin/gway..."
-  $SUDO ln -sf "$SCRIPT_DIR/gway.sh" /usr/bin/gway
-  $SUDO chmod +x "$SCRIPT_DIR/gway.sh"
+fi
+
+if $REMOVE_FLAG || $BIN_FLAG; then
   deactivate
   exit 0
 fi
 
 # 2) No-arg case: notify installation and usage
-if [[ -z "$RECIPE" && "$ACTION" == "install" ]]; then
+if [[ -z "$RECIPE" ]] && ! $REPAIR_FLAG && ! $BIN_FLAG && ! $REMOVE_FLAG && ! $SHELL_FLAG; then
   echo "GWAY has been set up in .venv."
   echo "To install a systemd service for a recipe, run:"
   echo "  sudo ./install.sh <recipe-name> [--debug]"
@@ -156,6 +213,8 @@ if [[ -z "$RECIPE" && "$ACTION" == "install" ]]; then
   echo "  sudo ./install.sh --repair"
   echo "To install gway as a global command, run:"
   echo "  sudo ./install.sh --bin"
+  echo "To uninstall the global command, run:"
+  echo "  sudo ./install.sh --bin --remove"
   echo "To use 'gway shell' as your login shell, run:"
   echo "  sudo ./install.sh --shell"
   deactivate
@@ -163,13 +222,8 @@ if [[ -z "$RECIPE" && "$ACTION" == "install" ]]; then
 fi
 
 # Configure the GWAY login shell wrapper and set it as default
-if [[ "$ACTION" == "shell" ]]; then
-  if [[ -n "$RECIPE" ]]; then
-    echo "ERROR: --shell does not take a recipe argument" >&2
-    deactivate
-    exit 1
-  fi
-
+if $SHELL_FLAG; then
+  
   if ! command -v chsh >/dev/null 2>&1; then
     echo "ERROR: 'chsh' command not found. Unable to change default shell." >&2
     deactivate
