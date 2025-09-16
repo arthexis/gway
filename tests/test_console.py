@@ -301,6 +301,42 @@ class TestRecipeCliContext(unittest.TestCase):
         finally:
             sys.argv = original_argv
 
+    def test_multiple_recipes_execute_in_parallel(self):
+        original_argv = sys.argv
+
+        class DummyGateway:
+            def __init__(self, **kwargs):
+                pass
+
+            def verbose(self, *args, **kwargs):
+                pass
+
+        calls = []
+
+        def fake_load(recipe_name, *, strict=True):
+            return [[recipe_name]], []
+
+        def fake_process(commands, **kwargs):
+            recipe_name = commands[0][0]
+            calls.append(recipe_name)
+            return ([f"{recipe_name}-result"], f"{recipe_name}-last")
+
+        try:
+            with patch('gway.console.argcomplete.autocomplete', lambda *a, **k: None), \
+                 patch('gway.console.load_recipe', side_effect=fake_load), \
+                 patch('gway.console.process') as mock_process, \
+                 patch('gway.console.setup_logging', lambda *a, **k: None), \
+                 patch('gway.console.Gateway', DummyGateway), \
+                 patch('builtins.print') as mock_print:
+                mock_process.side_effect = fake_process
+                sys.argv = ['gway', '-r', 'first', 'second']
+                console.cli_main()
+                self.assertEqual(mock_process.call_count, 2)
+                self.assertEqual(set(calls), {'first', 'second'})
+                self.assertEqual(mock_print.call_args_list[-1].args[0], 'second-last')
+        finally:
+            sys.argv = original_argv
+
 
 class TestProcessChaining(unittest.TestCase):
     def test_reuses_project_for_chained_calls(self):

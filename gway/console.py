@@ -9,6 +9,7 @@ import argparse
 import argcomplete
 import csv
 import difflib
+from concurrent.futures import ThreadPoolExecutor
 from typing import get_origin, get_args, Literal, Union, get_type_hints
 from types import UnionType
 
@@ -60,7 +61,13 @@ def cli_main():
     add("-j", dest="json", nargs="?", const=True, default=False, help="Output result(s) as JSON")
     add("-o", dest="outfile", type=str, help="Write text output(s) to this file")
     add("-p", dest="projects", type=str, help="Root project path for custom functions.")
-    add("-r", dest="recipe", type=str, help="Execute a GWAY recipe (.gwr) file.")
+    add(
+        "-r",
+        dest="recipes",
+        nargs="+",
+        action="append",
+        help="Execute one or more GWAY recipe (.gwr) files.",
+    )
     add("-s", dest="server", type=str, help="Override server environment configuration")
     add("-t", dest="timed", action="store_true", help="Enable timing of operations")
     add("-u", dest="username", type=str, help="Operate as the given end-user account.")
@@ -70,7 +77,15 @@ def cli_main():
     argcomplete.autocomplete(parser)
     args, unknown = parser.parse_known_args()
 
-    extra_context = parse_recipe_context(unknown) if args.recipe and unknown else {}
+    recipe_args: list[str] = []
+    if args.recipes:
+        for value in args.recipes:
+            if isinstance(value, (list, tuple)):
+                recipe_args.extend(value)
+            else:
+                recipe_args.append(value)
+
+    extra_context = parse_recipe_context(unknown) if recipe_args and unknown else {}
 
     # Setup logging
     logfile = f"{args.username}.log" if args.username else "gway.log"
@@ -100,15 +115,9 @@ def cli_main():
     )
 
     # Load command sources
-    if args.recipe:
-        command_sources, comments = load_recipe(args.recipe)
-    elif unknown:
-        command_sources = chunk(unknown)
-    else:
-        parser.print_help()
-        sys.exit(1)
+    all_results = []
+    last_result = None
 
-    # Run commands
     run_kwargs = {}
     if args.projects:
         run_kwargs['project_path'] = args.projects
@@ -119,7 +128,31 @@ def cli_main():
     if args.timed:
         run_kwargs['timed'] = True
     run_kwargs.update(extra_context)
-    all_results, last_result = process(command_sources, **run_kwargs)
+
+    if recipe_args:
+        if len(recipe_args) == 1:
+            command_sources, _ = load_recipe(recipe_args[0])
+            all_results, last_result = process(command_sources, **run_kwargs)
+        else:
+            def execute_recipe(recipe_name: str):
+                commands, _ = load_recipe(recipe_name)
+                return process(commands, **run_kwargs)
+
+            with ThreadPoolExecutor(max_workers=len(recipe_args)) as executor:
+                futures = [
+                    (recipe_name, executor.submit(execute_recipe, recipe_name))
+                    for recipe_name in recipe_args
+                ]
+                for recipe_name, future in futures:
+                    recipe_results, recipe_last = future.result()
+                    all_results.extend(recipe_results)
+                    last_result = recipe_last
+    elif unknown:
+        command_sources = chunk(unknown)
+        all_results, last_result = process(command_sources, **run_kwargs)
+    else:
+        parser.print_help()
+        sys.exit(1)
 
     # Resolve expression if requested
     if args.expression:
