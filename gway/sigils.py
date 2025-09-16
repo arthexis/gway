@@ -69,18 +69,45 @@ def _resolve_single(raw, lookup_fn):
     from gway import gw
 
     raw = raw.strip()
+    wrap_with_brackets = raw.startswith('[') and raw.endswith(']')
     quoted = (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'"))
     key = _unquote(raw) if quoted else raw
     key = re.sub(r"^(gw|gway)[. ]+", "", key)
+
+    if not quoted and '[' in key and ']' in key:
+        try:
+            nested = _replace_sigils(key, lookup_fn)
+        except KeyError:
+            nested = key
+        else:
+            if wrap_with_brackets:
+                if isinstance(nested, str):
+                    return f"[{nested}]"
+                return f"[{json.dumps(nested, default=str)}]"
+            if not isinstance(nested, str):
+                gw.verbose(f"Resolved nested sigil [{raw}] → {nested}")
+                return nested
+            key = nested
 
     val = lookup_fn(key)
     if val is None:
         parts = re.split(r"[. ]+", key)
         if len(parts) > 1:
-            base = lookup_fn(parts[0])
+            base_key = parts[0]
+            base = lookup_fn(base_key)
+            if base is None and not quoted and '[' in base_key and ']' in base_key:
+                try:
+                    resolved_base = _replace_sigils(base_key, lookup_fn)
+                except KeyError:
+                    resolved_base = None
+                else:
+                    if isinstance(resolved_base, str):
+                        base = lookup_fn(resolved_base)
+                    else:
+                        base = resolved_base
             if base is not None:
                 try:
-                    val = _follow_path(base, parts[1:])
+                    val = _follow_path(base, parts[1:], lookup_fn)
                 except KeyError:
                     val = None
 
@@ -94,21 +121,33 @@ def _resolve_single(raw, lookup_fn):
 
     raise KeyError(f"Unresolved sigil: [{raw}]")
 
-def _follow_path(value, parts):
+def _follow_path(value, parts, lookup_fn=None):
     for part in parts:
-        if part.startswith('_'):
-            raise KeyError(f"Path segment '{part}' not found")
+        original_part = part
+        if lookup_fn and isinstance(part, str) and '[' in part and ']' in part:
+            try:
+                part = _replace_sigils(part, lookup_fn)
+            except KeyError:
+                pass
+        if isinstance(part, str):
+            part = part.strip()
+            if part.startswith('_'):
+                raise KeyError(f"Path segment '{part}' not found")
         if isinstance(value, dict) and part in value:
             value = value[part]
             continue
-        try:
-            idx = int(part)
-            if isinstance(value, (list, tuple)):
-                value = value[idx]
-                continue
-        except (ValueError, TypeError):
-            pass
-        if hasattr(value, part):
+        idx = None
+        if isinstance(part, int):
+            idx = part
+        elif isinstance(part, str):
+            try:
+                idx = int(part)
+            except (ValueError, TypeError):
+                idx = None
+        if idx is not None and isinstance(value, (list, tuple)):
+            value = value[idx]
+            continue
+        if isinstance(part, str) and hasattr(value, part):
             value = getattr(value, part)
             continue
         if hasattr(value, '__getitem__'):
@@ -117,13 +156,32 @@ def _follow_path(value, parts):
                 continue
             except Exception:
                 pass
-        raise KeyError(f"Path segment '{part}' not found")
+        raise KeyError(f"Path segment '{original_part}' not found")
     return value
+
+def _is_single_sigil(text: str) -> bool:
+    if not text or text[0] != '[' or text[-1] != ']':
+        return False
+    depth = 0
+    for idx, char in enumerate(text):
+        if char == '[':
+            depth += 1
+        elif char == ']':
+            depth -= 1
+            if depth < 0:
+                return False
+            if depth == 0 and idx != len(text) - 1:
+                return False
+    return depth == 0
+
 
 def _replace_sigils(text, lookup_fn):
     """
     Replace all sigils in the text, raising if any sigil is unresolved.
     """
+
+    if _is_single_sigil(text):
+        return _resolve_single(text[1:-1], lookup_fn)
 
     matches = list(Sigil._pattern.finditer(text))
     if len(matches) == 1 and matches[0].span() == (0, len(text)):
@@ -136,6 +194,39 @@ def _replace_sigils(text, lookup_fn):
         return json.dumps(val, default=str)
 
     return re.sub(Sigil._pattern, replacer, text)
+
+
+def _split_outside_brackets(text: str, delimiter: str) -> list[str]:
+    parts = []
+    current = []
+    depth = 0
+    for char in text:
+        if char == '[':
+            depth += 1
+        elif char == ']':
+            if depth > 0:
+                depth -= 1
+        if char == delimiter and depth == 0:
+            parts.append(''.join(current))
+            current = []
+        else:
+            current.append(char)
+    parts.append(''.join(current))
+    return parts
+
+
+def _split_outside_brackets_once(text: str, delimiter: str) -> tuple[str, str] | None:
+    depth = 0
+    for idx, char in enumerate(text):
+        if char == '[':
+            depth += 1
+        elif char == ']':
+            if depth > 0:
+                depth -= 1
+        elif char == delimiter and depth == 0:
+            return text[:idx], text[idx + 1:]
+    return None
+
 
 class Resolver:
     def __init__(self, search_order):
@@ -198,19 +289,35 @@ class Resolver:
             kwargs = {}
             func_name = key
             tokens = []
-            if ":" in key:
-                parts = key.split(":")
-                func_name, tokens = parts[0], parts[1:]
-            elif "=" in key:
-                func_name, param = key.split("=", 1)
-                tokens = [param]
-            for tok in tokens:
-                if "=" in tok:
-                    k, v = tok.split("=", 1)
-                    kwargs[k] = v
-                else:
-                    args.append(tok)
+            colon_parts = _split_outside_brackets(key, ':')
+            if len(colon_parts) > 1:
+                func_name, tokens = colon_parts[0], colon_parts[1:]
+            else:
+                eq_split = _split_outside_brackets_once(key, '=')
+                if eq_split:
+                    func_name, param = eq_split
+                    tokens = [param]
 
+            lookup_nested = lambda inner_key: self.find_value(inner_key, None, exec=True)
+
+            def resolve_token(value: str):
+                value = value.strip()
+                if value and '[' in value and ']' in value:
+                    return _replace_sigils(value, lookup_nested)
+                return value
+
+            for tok in tokens:
+                tok = tok.strip()
+                if not tok:
+                    continue
+                split = _split_outside_brackets_once(tok, '=')
+                if split:
+                    k, v = split
+                    kwargs[k.strip()] = resolve_token(v)
+                else:
+                    args.append(resolve_token(tok))
+
+            func_name = func_name.strip()
             variants = {
                 func_name,
                 func_name.replace('-', '_'),
@@ -240,10 +347,22 @@ class Resolver:
 
         parts = re.split(r"[. ]+", key.replace('-', '_'))
         if len(parts) > 1:
-            base = self.find_value(parts[0], None)
+            base_key = parts[0]
+            base = self.find_value(base_key, None)
+            lookup = lambda inner_key: self.find_value(inner_key, None, exec=True)
+            if base is None and '[' in base_key and ']' in base_key:
+                try:
+                    resolved_base = _replace_sigils(base_key, lookup)
+                except KeyError:
+                    resolved_base = None
+                else:
+                    if isinstance(resolved_base, str):
+                        base = self.find_value(resolved_base, None)
+                    else:
+                        base = resolved_base
             if base is not None:
                 try:
-                    return _follow_path(base, parts[1:])
+                    return _follow_path(base, parts[1:], lookup)
                 except KeyError:
                     return fallback
 
