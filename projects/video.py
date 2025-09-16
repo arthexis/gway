@@ -1,4 +1,4 @@
-"""Video stream helpers for studio project."""
+"""Video stream helpers for the standalone video project."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Iterator, Iterable
 from gway import gw
 
 
-def capture_camera(*, source: int = 0) -> Iterator:
+def capture(*, source: int = 0) -> Iterator:
     """Capture frames from a camera device.
 
     Parameters
@@ -41,7 +41,7 @@ def capture_camera(*, source: int = 0) -> Iterator:
     return _generator()
 
 
-def display_video(stream: Iterable, *, screen: int = 0) -> bool:
+def display(stream: Iterable, *, screen: int = 0) -> bool:
     """Display frames from ``stream`` using pygame.
 
     Parameters

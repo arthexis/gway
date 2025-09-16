@@ -1,9 +1,11 @@
 """Integration tests for the ``gway shell`` builtin."""
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -15,7 +17,7 @@ class ShellBuiltinTests(unittest.TestCase):
         if shutil.which("bash") is None:
             raise unittest.SkipTest("bash is required for shell builtin tests")
 
-    def run_shell(self, *args, env=None):
+    def run_shell(self, *args, env=None, cwd=None):
         command = [sys.executable, "-m", "gway", "shell", "--", *args]
         environment = os.environ.copy() if env is None else env
         environment.pop("BASH_ENV", None)
@@ -24,6 +26,7 @@ class ShellBuiltinTests(unittest.TestCase):
             capture_output=True,
             text=True,
             env=environment,
+            cwd=cwd,
         )
 
     def test_executes_regular_bash_command(self):
@@ -43,6 +46,20 @@ class ShellBuiltinTests(unittest.TestCase):
         self.assertEqual(result.returncode, 13)
         self.assertIn("Halting: Unable to find GWAY attribute", result.stdout)
         self.assertEqual(result.stderr.strip(), "")
+
+    def test_fallback_ignores_local_stub_package(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stub_path = os.path.join(temp_dir, "gway")
+            os.makedirs(stub_path, exist_ok=True)
+            init_path = os.path.join(stub_path, "__init__.py")
+            with open(init_path, "w", encoding="utf-8") as handle:
+                handle.write("# stub package without gw attribute\n")
+
+            script = f"cd {shlex.quote(temp_dir)} && hello_world"
+            result = self.run_shell("-c", script)
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertIn("Hello, World!", result.stdout)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -92,10 +92,82 @@ def shell(*bash_args):
     import subprocess
     import sys
     import tempfile
+    from pathlib import Path
 
+    import gway as gway_package
     from gway import gw
 
     env = os.environ.copy()
+
+    bootstrap_path: str | None = None
+    pythonpath_entries: list[str] = []
+    package_init = getattr(gway_package, "__file__", None)
+    if package_init:
+        package_init_path = Path(package_init).resolve()
+        package_dir = package_init_path.parent
+        package_root = package_dir.parent
+        package_root_str = os.fspath(package_root)
+        if package_root_str:
+            pythonpath_entries.append(package_root_str)
+
+        bootstrap_source = """#!/usr/bin/env python3
+import importlib.util
+import os
+import sys
+from pathlib import Path
+
+
+def _load_module_from_init(init_path: Path):
+    package_dir = init_path.parent
+    package_root = package_dir.parent
+    root_str = os.fspath(package_root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
+
+    spec = importlib.util.spec_from_file_location(
+        "gway",
+        os.fspath(init_path),
+        submodule_search_locations=[os.fspath(package_dir)],
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["gway"] = module
+    loader = spec.loader
+    if loader is None:
+        raise SystemExit(127)
+    loader.exec_module(module)
+    return module
+
+
+def main() -> None:
+    package_init_env = os.environ.get("GWAY_SHELL_PACKAGE_INIT")
+    if not package_init_env:
+        raise SystemExit(127)
+
+    init_path = Path(package_init_env).resolve()
+    module = _load_module_from_init(init_path)
+
+    sys.argv = sys.argv[1:]
+    result = module.cli_main()
+    if result is not None:
+        raise SystemExit(result)
+
+
+if __name__ == "__main__":
+    main()
+"""
+
+        with tempfile.NamedTemporaryFile(
+            "w", delete=False, prefix="gway-shell-bootstrap-", suffix=".py"
+        ) as bootstrap_file:
+            bootstrap_file.write(bootstrap_source)
+            bootstrap_path = bootstrap_file.name
+
+        env["GWAY_SHELL_PACKAGE_INIT"] = os.fspath(package_init_path)
+        env["GWAY_SHELL_BOOTSTRAP"] = bootstrap_path
+
+    if pythonpath_entries:
+        env["GWAY_SHELL_PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
+        env["GWAY_SHELL_PATHSEP"] = os.pathsep
 
     exec_candidates = [
         getattr(sys, "executable", None),
@@ -158,6 +230,10 @@ def shell(*bash_args):
         "",
         "    local exec_path=\"${GWAY_SHELL_EXEC:-}\"",
         "    local module=\"${GWAY_SHELL_MODULE:-gway}\"",
+        "    local bootstrap=\"${GWAY_SHELL_BOOTSTRAP:-}\"",
+        "    local extra_pythonpath=\"${GWAY_SHELL_PYTHONPATH:-}\"",
+        "    local pathsep=\"${GWAY_SHELL_PATHSEP:-:}\"",
+        "    local combined_pythonpath=\"$extra_pythonpath\"",
         "",
         "    if [[ -z \"$exec_path\" ]]; then",
         "        exec_path=\"$(command -v python3 || command -v python || true)\"",
@@ -166,9 +242,31 @@ def shell(*bash_args):
         "        module=\"gway\"",
         "    fi",
         "",
+        "    if [[ -n \"$PYTHONPATH\" ]]; then",
+        "        if [[ -n \"$combined_pythonpath\" ]]; then",
+        "            combined_pythonpath+=\"$pathsep$PYTHONPATH\"",
+        "        else",
+        "            combined_pythonpath=\"$PYTHONPATH\"",
+        "        fi",
+        "    fi",
+        "",
         "    if [[ -z \"$GWAY_SHELL_ACTIVE\" && -n \"$exec_path\" ]]; then",
-        "        GWAY_SHELL_ACTIVE=1 \"$exec_path\" -m \"$module\" \"${__gway_shell_default_args[@]}\" \"$@\"",
-        "        local status=$?",
+        "        local status",
+        "        if [[ -n \"$bootstrap\" && -f \"$bootstrap\" ]]; then",
+        "            if [[ -n \"$combined_pythonpath\" ]]; then",
+        "                PYTHONPATH=\"$combined_pythonpath\" GWAY_SHELL_ACTIVE=1 \"$exec_path\" \"$bootstrap\" gway \"${__gway_shell_default_args[@]}\" \"$@\"",
+        "            else",
+        "                GWAY_SHELL_ACTIVE=1 \"$exec_path\" \"$bootstrap\" gway \"${__gway_shell_default_args[@]}\" \"$@\"",
+        "            fi",
+        "            status=$?",
+        "        else",
+        "            if [[ -n \"$combined_pythonpath\" ]]; then",
+        "                PYTHONPATH=\"$combined_pythonpath\" GWAY_SHELL_ACTIVE=1 \"$exec_path\" -m \"$module\" \"${__gway_shell_default_args[@]}\" \"$@\"",
+        "            else",
+        "                GWAY_SHELL_ACTIVE=1 \"$exec_path\" -m \"$module\" \"${__gway_shell_default_args[@]}\" \"$@\"",
+        "            fi",
+        "            status=$?",
+        "        fi",
         "        if [[ $status -ne 127 ]]; then",
         "            return $status",
         "        fi",
@@ -215,6 +313,11 @@ def shell(*bash_args):
             os.unlink(rc_path)
         except FileNotFoundError:
             pass
+        if bootstrap_path:
+            try:
+                os.unlink(bootstrap_path)
+            except FileNotFoundError:
+                pass
 
     if status:
         raise SystemExit(status)
