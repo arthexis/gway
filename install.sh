@@ -251,7 +251,7 @@ if $SHELL_FLAG; then
 
     if [[ -n "$CURRENT_SHELL" && "$CURRENT_SHELL" == "$SHELL_WRAPPER" ]]; then
       CHSH_CMD=("chsh" "-s" "$FALLBACK_SHELL")
-      if [[ "$TARGET_USER" != "$CURRENT_USER" ]]; then
+      if [[ -n "$TARGET_USER" ]]; then
         CHSH_CMD+=("$TARGET_USER")
       fi
       if [[ -n "$SUDO" ]]; then
@@ -345,7 +345,7 @@ EOF
   fi
 
   CHSH_CMD=("chsh" "-s" "$SHELL_WRAPPER")
-  if [[ "$TARGET_USER" != "$CURRENT_USER" ]]; then
+  if [[ -n "$TARGET_USER" ]]; then
     CHSH_CMD+=("$TARGET_USER")
   fi
   if [[ -n "$SUDO" ]]; then
