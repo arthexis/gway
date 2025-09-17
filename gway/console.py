@@ -167,7 +167,11 @@ def cli_main():
 
     # Resolve expression if requested
     if args.expression:
-        output = Gateway(**last_result).resolve(args.expression)
+        if isinstance(last_result, dict):
+            expr_gateway = Gateway(expression_mode=True, **last_result)
+        else:
+            expr_gateway = Gateway(expression_mode=True)
+        output = expr_gateway.resolve(args.expression)
     else:
         output = last_result
 

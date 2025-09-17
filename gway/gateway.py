@@ -1,6 +1,7 @@
 # file: gway/gateway.py
 
 import os
+import re
 import sys
 import uuid
 import inspect
@@ -13,7 +14,14 @@ from pathlib import Path
 from types import MethodType
 
 from ._env_bindings import resolve_env_bindings
-from .sigils import Resolver, Sigil, Spool
+from .sigils import (
+    Resolver,
+    Sigil,
+    Spool,
+    _replace_sigils,
+    _split_outside_brackets,
+    _split_outside_brackets_once,
+)
 from .structs import Results, Project, Null
 from .runner import Runner
 
@@ -34,6 +42,8 @@ class Gateway(Resolver, Runner):
 
     Null = Null  # Null is a black-hole, assign with care.
 
+    _MODEL_NOT_FOUND = object()
+
     # Global state (typically set from CLI)
     debug = False
     silent = False
@@ -45,7 +55,7 @@ class Gateway(Resolver, Runner):
     def __init__(self, *,
                 client=None, server=None, name="gw", base_path=None, project_path=None,
                 verbose=None, silent=None, debug=None, wizard=None, interactive=None,
-                timed=None, quantity=1, **kwargs
+                timed=None, quantity=1, expression_mode=False, **kwargs
             ):
         self._cache = {}
         self._async_threads = []
@@ -56,6 +66,7 @@ class Gateway(Resolver, Runner):
         self.project_path = project_path
         self.name = name
         self.logger = logging.getLogger(name)
+        self.expression_mode_enabled = expression_mode
 
         # --- Mode propagation logic: Set global flags via classmethod ---
         explicit_modes = {}
@@ -110,6 +121,147 @@ class Gateway(Resolver, Runner):
                 mod = inspect.getmodule(obj)
                 if mod and mod.__name__.startswith("gway.builtins"):
                     Gateway._builtins[name] = obj
+
+    def find_value(self, key: str, fallback: str = None, exec: bool = False) -> str:
+        sentinel = object()
+        result = super().find_value(key, fallback=sentinel, exec=exec)
+        if result is not sentinel:
+            return result
+
+        model_value = self._find_model_value(key, exec=exec)
+        if model_value is not self._MODEL_NOT_FOUND:
+            return model_value
+
+        return fallback
+
+    # --- Model fallback helpers -------------------------------------------------
+    def _model_namespace(self):
+        for candidate in ("model", "mod"):
+            if candidate in self.__dict__:
+                namespace = self.__dict__[candidate]
+                if namespace is not None:
+                    return namespace
+        return None
+
+    def _find_model_value(self, key: str, *, exec: bool = False):
+        if self.expression_mode_enabled:
+            return self._MODEL_NOT_FOUND
+
+        namespace = self._model_namespace()
+        if namespace is None:
+            return self._MODEL_NOT_FOUND
+
+        normalized = (key or "").strip()
+        if not normalized:
+            return self._MODEL_NOT_FOUND
+
+        parts = _split_outside_brackets(normalized, ':') if exec else [normalized]
+        target_expr = parts[0]
+        tokens = parts[1:] if len(parts) > 1 else []
+
+        try:
+            target = self._resolve_model_path(namespace, target_expr)
+        except Exception:
+            return self._MODEL_NOT_FOUND
+
+        if tokens:
+            callable_obj = self._determine_model_callable(target)
+            if callable_obj is None:
+                return self._MODEL_NOT_FOUND
+            try:
+                args, kwargs = self._parse_model_tokens(tokens)
+                return callable_obj(*args, **kwargs)
+            except Exception:
+                return self._MODEL_NOT_FOUND
+
+        return target
+
+    def _resolve_model_path(self, namespace, expr: str):
+        expr = (expr or "").strip()
+        if not expr:
+            return namespace
+
+        current = namespace
+        segments = [segment for segment in re.split(r"[. ]+", expr) if segment]
+        for segment in segments:
+            current = self._resolve_model_segment(current, segment)
+        return current
+
+    def _resolve_model_segment(self, obj, segment: str):
+        candidates = [segment]
+        if '-' in segment:
+            candidates.append(segment.replace('-', '_'))
+        if '_' in segment:
+            candidates.append(segment.replace('_', '-'))
+        lower = segment.lower()
+        upper = segment.upper()
+        if lower not in candidates:
+            candidates.append(lower)
+        if upper not in candidates:
+            candidates.append(upper)
+
+        for candidate in candidates:
+            try:
+                return getattr(obj, candidate)
+            except AttributeError:
+                continue
+
+        try:
+            index = int(segment)
+        except (ValueError, TypeError):
+            pass
+        else:
+            if isinstance(obj, (list, tuple)) and 0 <= index < len(obj):
+                return obj[index]
+
+        if hasattr(obj, '__getitem__'):
+            try:
+                return obj[segment]
+            except Exception:
+                pass
+
+        raise AttributeError(segment)
+
+    def _determine_model_callable(self, target):
+        manager = getattr(target, 'objects', None)
+        if manager is not None and hasattr(manager, 'filter'):
+            func = getattr(manager, 'filter')
+            if callable(func):
+                return func
+
+        if hasattr(target, 'filter') and callable(getattr(target, 'filter')):
+            return getattr(target, 'filter')
+
+        if callable(target):
+            return target
+
+        return None
+
+    def _parse_model_tokens(self, tokens):
+        args = []
+        kwargs = {}
+
+        lookup_nested = lambda inner_key: self.find_value(inner_key, None, exec=True)
+
+        for token in tokens:
+            token = token.strip()
+            if not token:
+                continue
+            split = _split_outside_brackets_once(token, '=')
+            if split:
+                key, value = split
+                kwargs[key.strip()] = self._resolve_model_token(value, lookup_nested)
+            else:
+                args.append(self._resolve_model_token(token, lookup_nested))
+
+        return args, kwargs
+
+    @staticmethod
+    def _resolve_model_token(value, lookup_nested):
+        value = value.strip()
+        if value and '[' in value and ']' in value:
+            return _replace_sigils(value, lookup_nested)
+        return value
 
     @classmethod
     def update_modes(cls, *, debug=None, silent=None, verbose=None, wizard=None, interactive=None, timed=None):

@@ -1,7 +1,7 @@
 # file: tests/test_sigils.py
 
 import unittest
-from gway import Sigil, Spool, gw, __
+from gway import Gateway, Sigil, Spool, gw, __
 
 
 class SigilTests(unittest.TestCase):
@@ -137,6 +137,85 @@ class SigilTests(unittest.TestCase):
         self.assertEqual(_unquote('"hello"'), "hello")
         self.assertEqual(_unquote("'world'"), "world")
         self.assertEqual(_unquote("plain"), "plain")
+
+class SigilModelFallbackTests(unittest.TestCase):
+    class _Manager:
+        def __init__(self):
+            self.calls = []
+
+        def filter(self, *args, **kwargs):
+            self.calls.append((args, kwargs))
+            return {"args": args, "kwargs": kwargs}
+
+    class _Namespace:
+        def __init__(self, manager):
+            class DummyUser:
+                objects = manager
+
+            self.User = DummyUser
+
+        def __getattr__(self, name):
+            if name.lower() == "user":
+                return self.User
+            raise AttributeError(name)
+
+    def setUp(self):
+        self.manager = self._Manager()
+        self.namespace = self._Namespace(self.manager)
+
+        self.original_model = gw.__dict__.get("model", None)
+        self.original_mod = gw.__dict__.get("mod", None)
+        self.original_cache_model = gw._cache.get("model")
+        self.original_cache_mod = gw._cache.get("mod")
+
+        gw.__dict__["model"] = self.namespace
+        gw.__dict__["mod"] = self.namespace
+        gw._cache["model"] = self.namespace
+        gw._cache["mod"] = self.namespace
+
+    def tearDown(self):
+        if self.original_model is not None:
+            gw.__dict__["model"] = self.original_model
+        else:
+            gw.__dict__.pop("model", None)
+
+        if self.original_mod is not None:
+            gw.__dict__["mod"] = self.original_mod
+        else:
+            gw.__dict__.pop("mod", None)
+
+        if self.original_cache_model is not None:
+            gw._cache["model"] = self.original_cache_model
+        else:
+            gw._cache.pop("model", None)
+
+        if self.original_cache_mod is not None:
+            gw._cache["mod"] = self.original_cache_mod
+        else:
+            gw._cache.pop("mod", None)
+
+    def _set_context(self, key, value):
+        gw.context[key] = value
+        self.addCleanup(lambda: gw.context.pop(key, None))
+
+    def test_model_filter_fallback(self):
+        self._set_context("USERNAME", "alice")
+        result = gw.resolve("[User:name=[USERNAME]]")
+        self.assertEqual(self.manager.calls, [((), {"name": "alice"})])
+        self.assertEqual(result, {"args": (), "kwargs": {"name": "alice"}})
+
+    def test_model_path_without_tokens(self):
+        result = gw.resolve("[User]")
+        self.assertIs(result, self.namespace.User)
+
+    def test_expression_mode_skips_model_fallback(self):
+        expr = Gateway(expression_mode=True)
+        expr.__dict__["model"] = self.namespace
+        expr._cache["model"] = self.namespace
+        with self.assertRaises(KeyError):
+            expr.resolve("[User:name=value]")
+        self.assertEqual(self.manager.calls, [])
+
 
 class SpoolTests(unittest.TestCase):
     def setUp(self):
