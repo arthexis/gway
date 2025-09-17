@@ -5,8 +5,13 @@ import unittest
 import unittest.mock
 from pathlib import Path
 from gway import gw
+from gway.builtins import is_test_flag
 
 
+@unittest.skipUnless(
+    is_test_flag("lcd"),
+    "LCD tests disabled (enable with --flags lcd)",
+)
 class LCDTests(unittest.TestCase):
     def test_show_writes_to_i2c_bus(self):
         writes = []

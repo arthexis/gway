@@ -42,6 +42,30 @@ To list all available flags, run:
 
    gway help --list-flags
 
+
+CI Harness
+----------
+
+Continuous integration runs ``tools/ci_tests.py`` to keep builds fast. The
+helper inspects the git diff (``--base`` defaults to ``origin/main`` or the
+``GWAY_CI_BASE`` environment variable) and enables optional suites only when
+their code or tests change. Optional groups currently include:
+
+* ``audio`` – ``projects/audio.py`` and ``tests/test_audio_record.py``
+* ``video`` – ``projects/video.py`` and ``tests/test_video.py``
+* ``lcd`` – ``projects/lcd.py`` and ``tests/test_lcd.py``
+* ``sensors`` – ``projects/sensor.py``, ``projects/pir.py`` and the related
+  sensor test modules
+
+Run the harness locally to mirror CI behaviour:
+
+.. code-block:: bash
+
+   python tools/ci_tests.py --base origin/main -- --coverage
+
+Supply additional flags with ``--include`` or pass ``--flags`` after ``--`` to
+force specific suites when needed.
+
 Importing Project Modules
 -------------------------
 

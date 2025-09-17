@@ -1,9 +1,15 @@
 import io
+import unittest
 from contextlib import redirect_stdout
 
 from gway import gw
+from gway.builtins import is_test_flag
 
 
+@unittest.skipUnless(
+    is_test_flag("sensors"),
+    "Sensor tests disabled (enable with --flags sensors)",
+)
 def test_motion_reports_sequence():
     class FakeGPIO:
         BCM = "BCM"
@@ -46,6 +52,10 @@ def test_motion_reports_sequence():
     assert gpio.cleaned == [17]
 
 
+@unittest.skipUnless(
+    is_test_flag("sensors"),
+    "Sensor tests disabled (enable with --flags sensors)",
+)
 def test_motion_handles_keyboard_interrupt(monkeypatch):
     class FakeGPIO:
         BCM = "BCM"

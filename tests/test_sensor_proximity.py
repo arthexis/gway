@@ -1,10 +1,16 @@
 import io
 import sys
 import types
+import unittest
 from contextlib import redirect_stdout
 from gway import gw
+from gway.builtins import is_test_flag
 
 
+@unittest.skipUnless(
+    is_test_flag("sensors"),
+    "Sensor tests disabled (enable with --flags sensors)",
+)
 def test_watch_proximity_reports_events():
     class FakeGPIO:
         BCM = "BCM"
@@ -35,6 +41,10 @@ def test_watch_proximity_reports_events():
     assert gpio.cleaned == [17]
 
 
+@unittest.skipUnless(
+    is_test_flag("sensors"),
+    "Sensor tests disabled (enable with --flags sensors)",
+)
 def test_proximity_polls_and_prints_symbols():
     class FakeGPIO:
         BCM = "BCM"
@@ -62,6 +72,10 @@ def test_proximity_polls_and_prints_symbols():
     assert gpio.cleaned == [17]
 
 
+@unittest.skipUnless(
+    is_test_flag("sensors"),
+    "Sensor tests disabled (enable with --flags sensors)",
+)
 def test_proximity_uses_rpio_when_rpi_gpio_missing(monkeypatch):
     class FakeGPIO:
         BCM = "BCM"

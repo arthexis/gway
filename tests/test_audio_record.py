@@ -9,8 +9,13 @@ import sys
 import numpy as np
 
 from gway import gw
+from gway.builtins import is_test_flag
 
 
+@unittest.skipUnless(
+    is_test_flag("audio"),
+    "Audio recording tests disabled (enable with --flags audio)",
+)
 class AudioRecordTests(unittest.TestCase):
     @staticmethod
     def _load_audio():
