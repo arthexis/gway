@@ -582,7 +582,13 @@ def add_func_args(subparser, func_obj, *, wizard=False):
     except Exception:
         hints = {}
     seen_kw_only = False
-    subject = gw.subject(f"{func_obj.__module__}.{func_obj.__name__}")
+    module_name = getattr(func_obj, "__module__", type(func_obj).__module__)
+    func_name = getattr(func_obj, "__name__", None)
+    if func_name is None:
+        func_name = getattr(func_obj, "__qualname__", type(func_obj).__name__)
+        subject = None
+    else:
+        subject = gw.subject(f"{module_name}.{func_name}")
 
     for arg_name, param in sig.parameters.items():
         if arg_name in hints:
