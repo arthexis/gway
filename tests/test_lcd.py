@@ -1,3 +1,4 @@
+import datetime
 import sys
 import tempfile
 import types
@@ -242,3 +243,59 @@ class LCDTests(unittest.TestCase):
 
     def test_boot_function_removed(self):
         self.assertFalse(hasattr(gw.lcd, "boot"))
+
+    def test_clock_displays_iso_date_and_time(self):
+        class FakeSMBus:
+            def __init__(self, bus_no):
+                self.bus_no = bus_no
+
+            def write_byte(self, addr, value):
+                pass
+
+        fake_mod = types.SimpleNamespace(SMBus=FakeSMBus)
+        lcd_mod = sys.modules[gw.lcd.show.__module__]
+        fixed = datetime.datetime(2024, 1, 2, 3, 4, 5)
+        with unittest.mock.patch.dict("sys.modules", {"smbus": fake_mod}), \
+             unittest.mock.patch.object(lcd_mod, "_lcd_string") as lcd_str, \
+             unittest.mock.patch.object(lcd_mod.time, "sleep") as sleep, \
+             unittest.mock.patch.object(lcd_mod.datetime, "datetime") as dt_cls:
+            dt_cls.now.return_value = fixed
+            gw.lcd.clock(updates=1)
+
+        self.assertEqual(dt_cls.now.call_args.kwargs, {})
+        self.assertGreaterEqual(lcd_str.call_count, 2)
+        top_call = lcd_str.call_args_list[0]
+        bottom_call = lcd_str.call_args_list[1]
+        self.assertEqual(top_call.args[3], lcd_mod.LCD_LINE_1)
+        self.assertEqual(bottom_call.args[3], lcd_mod.LCD_LINE_2)
+        self.assertEqual(top_call.args[2].strip(), "Tue 2024-01-02")
+        self.assertEqual(bottom_call.args[2].strip(), "03:04:05")
+        intervals = [call.args[0] for call in sleep.call_args_list if call.args]
+        self.assertNotIn(1.0, intervals)
+
+    def test_clock_honours_timezone_string(self):
+        class FakeSMBus:
+            def __init__(self, bus_no):
+                self.bus_no = bus_no
+
+            def write_byte(self, addr, value):
+                pass
+
+        fake_mod = types.SimpleNamespace(SMBus=FakeSMBus)
+        lcd_mod = sys.modules[gw.lcd.show.__module__]
+        fixed = datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc)
+        with unittest.mock.patch.dict("sys.modules", {"smbus": fake_mod}), \
+             unittest.mock.patch.object(lcd_mod, "_lcd_string") as lcd_str, \
+             unittest.mock.patch.object(lcd_mod.time, "sleep") as sleep, \
+             unittest.mock.patch.object(lcd_mod.datetime, "datetime") as dt_cls:
+            dt_cls.now.return_value = fixed
+            gw.lcd.clock(tz="UTC", updates=1)
+
+        self.assertEqual(dt_cls.now.call_args.kwargs, {"tz": datetime.timezone.utc})
+        self.assertGreaterEqual(lcd_str.call_count, 2)
+        top_call = lcd_str.call_args_list[0]
+        bottom_call = lcd_str.call_args_list[1]
+        self.assertEqual(top_call.args[2].strip(), "Tue 2024-01-02")
+        self.assertEqual(bottom_call.args[2].strip(), "03:04:05")
+        intervals = [call.args[0] for call in sleep.call_args_list if call.args]
+        self.assertNotIn(1.0, intervals)
