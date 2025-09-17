@@ -11,6 +11,8 @@
 # Canary check: install the candidate release in an isolated environment and
 # run a smoke test before touching the live installation.  temp_env removes the
 # temporary directory automatically when the test succeeds.
+auto-upgrade log-cycle
 temp_env --pip-args=--quiet gway test --on-failure abort
-shell pip install --quiet --upgrade gway
+auto-upgrade install
+auto-upgrade log-upgrade
 until --abort --pypi
