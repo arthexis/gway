@@ -873,10 +873,31 @@ def load_recipe(recipe_filename, *, strict=True):
     # --- Recipe file resolution (unchanged) ---
     if not os.path.isabs(recipe_filename):
         candidate_names = []
-        base_names = [recipe_filename]
-        if "." in recipe_filename:
-            base_names.append(recipe_filename.replace(".", "_"))
-            base_names.append(recipe_filename.replace(".", os.sep))
+        base_names: list[str] = []
+        seen_bases = set()
+        queue = [recipe_filename]
+
+        while queue:
+            base = queue.pop(0)
+            if base in seen_bases:
+                continue
+            seen_bases.add(base)
+            base_names.append(base)
+
+            dot_variants = []
+            if "." in base:
+                dot_variants.append(base.replace(".", "_"))
+                dot_variants.append(base.replace(".", os.sep))
+
+            dash_variants = []
+            if "-" in base:
+                dash_variants.append(base.replace("-", "_"))
+            if "_" in base:
+                dash_variants.append(base.replace("_", "-"))
+
+            for variant in (*dot_variants, *dash_variants):
+                if variant not in seen_bases:
+                    queue.append(variant)
 
         seen = set()
         for base in base_names:

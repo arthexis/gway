@@ -95,6 +95,7 @@ app start --port 8000
         # Write without extension and with .gwr extension
         (self.recipes_dir / 'sample').write_text(content)
         (self.recipes_dir / 'sample.gwr').write_text(content)
+        (self.recipes_dir / 'sample_script.gwr').write_text('cmd hyphen')
         # Monkey-patch gw.resource to point to our fake recipes directory
         self.original_resource = console.gw.resource
         console.gw.resource = lambda category, name: str(self.recipes_dir / name)
@@ -126,6 +127,10 @@ app start --port 8000
         (self.recipes_dir / 'foo' / 'bar.gwr').write_text('cmd go')
         commands, _ = console.load_recipe('foo.bar')
         self.assertEqual(commands, [['cmd', 'go']])
+
+    def test_load_recipe_accepts_hyphenated_name(self):
+        commands, _ = console.load_recipe('sample-script')
+        self.assertEqual(commands, [['cmd', 'hyphen']])
 
 
 class TestLoadRecipeColonSyntax(unittest.TestCase):
