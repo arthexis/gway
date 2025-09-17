@@ -413,5 +413,30 @@ class TestProcessSigilResolution(unittest.TestCase):
         self.assertEqual(last['name'], 'val')
 
 
+class TestRepeatBuiltin(unittest.TestCase):
+    def test_repeat_replays_previous_commands(self):
+        commands = [["hello-world", "Agent"], ["repeat", "--times", "2", "--rest", "0"]]
+        results, last = console.process(commands)
+
+        self.assertEqual(len(results), 3)
+        self.assertTrue(all(result["name"] == "Agent" for result in results))
+        self.assertEqual(last["name"], "Agent")
+
+    def test_repeat_in_recipe_replays_all_steps(self):
+        commands = [
+            ["hello-world", "Alpha"],
+            ["hello-world", "Beta"],
+            ["repeat", "--times", "1", "--rest", "0"],
+        ]
+        results, last = console.process(commands, origin="recipe")
+
+        self.assertEqual([r["name"] for r in results], ["Alpha", "Beta", "Alpha", "Beta"])
+        self.assertEqual(last["name"], "Beta")
+
+    def test_repeat_requires_previous_commands(self):
+        with self.assertRaises(SystemExit):
+            console.process([["repeat", "--times", "1", "--rest", "0"]])
+
+
 if __name__ == '__main__':
     unittest.main()
