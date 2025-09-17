@@ -36,3 +36,22 @@ The RFID helpers expect the reader to be connected following the default
      - GPIO25 (physical pin 22)
    * - 3v3
      - 3V3 (physical pin 1)
+
+Bringing the reader online
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The MFRC522 driver expects the Raspberry Pi's first SPI controller (``bus 0``)
+to be enabled and exposed as ``/dev/spidev0.0``. If ``gway rfid scan`` reports
+that the SPI device is missing:
+
+* enable SPI via ``sudo raspi-config nonint do_spi 0`` (or through
+  ``raspi-config`` → *Interface Options* → *SPI*)
+* confirm ``dtparam=spi=on`` exists in ``/boot/config.txt`` and reboot
+* ensure the ``spi_bcm2835`` kernel module is loaded (``lsmod | grep spi``)
+* add your user to the ``spi`` group or run the command with ``sudo`` if
+  permissions are denied
+
+Other single-board computers may expose the device under a different
+``/dev/spidevX.Y`` path. Move the reader to the chip select that maps to
+``spidev0.0`` or extend ``projects/rfid.scan`` to pass a custom bus/device pair
+to the MFRC522 driver.
