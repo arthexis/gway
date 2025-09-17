@@ -1,8 +1,19 @@
 
+from dataclasses import dataclass
+
 __all__ = [
     "run_recipe",
     "run",
+    "repeat",
 ]
+
+
+@dataclass(frozen=True)
+class _RepeatDirective:
+    """Internal payload used to signal recipe/CLI repetition."""
+
+    rest: float = 5.0
+    times: int | None = None
 
 
 def run_recipe(*scripts: str, **context):
@@ -19,7 +30,7 @@ def run_recipe(*scripts: str, **context):
         command_sources, comments = load_recipe(script)
         if comments:
             gw.debug("Recipe comments:\n" + "\n".join(comments))
-        result = process(command_sources, **context)
+        result = process(command_sources, origin="recipe", **context)
         results.append(result)
     return results[-1] if len(results) == 1 else results
 
@@ -58,3 +69,23 @@ def run(*script: str, **context):
         gw.debug(f"Wrote ad-hoc script to {recipe_path}")
 
         return gw.run_recipe(recipe_path, **context)
+
+
+def repeat(*, rest: float = 5.0, times: int | None = None) -> _RepeatDirective:
+    from gway import gw
+
+    """Schedule the preceding commands to run again after ``rest`` seconds."""
+
+    rest_value = float(rest)
+    if rest_value < 0:
+        raise ValueError("--rest must be a non-negative number")
+
+    times_value = None if times is None else int(times)
+    if times_value is not None and times_value < 0:
+        raise ValueError("--times must be zero or a positive integer")
+
+    gw.debug(
+        "repeat() directive created",
+        extra={"rest": rest_value, "times": times_value},
+    )
+    return _RepeatDirective(rest=rest_value, times=times_value)

@@ -17,6 +17,7 @@ from . import units
 
 from .logging import setup_logging
 from .builtins import abort
+from .builtins.recipes import _RepeatDirective
 from .gateway import Gateway, gw
 from .sigils import Sigil, Spool
 
@@ -138,11 +139,15 @@ def cli_main():
     if recipe_args:
         if len(recipe_args) == 1:
             command_sources, _ = load_recipe(recipe_args[0])
-            all_results, last_result = process(command_sources, **run_kwargs)
+            all_results, last_result = process(
+                command_sources,
+                origin="recipe",
+                **run_kwargs,
+            )
         else:
             def execute_recipe(recipe_name: str):
                 commands, _ = load_recipe(recipe_name)
-                return process(commands, **run_kwargs)
+                return process(commands, origin="recipe", **run_kwargs)
 
             with ThreadPoolExecutor(max_workers=len(recipe_args)) as executor:
                 futures = [
@@ -155,7 +160,7 @@ def cli_main():
                     last_result = recipe_last
     elif unknown:
         command_sources = chunk(unknown)
-        all_results, last_result = process(command_sources, **run_kwargs)
+        all_results, last_result = process(command_sources, origin="line", **run_kwargs)
     else:
         parser.print_help()
         sys.exit(1)
@@ -207,22 +212,60 @@ def cli_main():
     if start_time:
         print(f"Time: {time.time() - start_time:.3f} seconds")
 
-def process(command_sources, callback=None, **context):
+def process(command_sources, callback=None, *, origin="line", gw_instance=None, **context):
     """Shared logic for executing CLI or recipe commands with optional per-node callback."""
     import argparse
     from gway import gw as _global_gw, Gateway
     from .builtins import abort
 
-    all_results = []
+    all_results: list = []
     last_result = None
+    executed_chunks: list[list[str]] = []
 
-    gw = Gateway(**context) if context else _global_gw
+    gw = gw_instance or (Gateway(**context) if context else _global_gw)
     wizard_enabled = getattr(gw, "wizard_enabled", False)
     interactive_enabled = getattr(gw, "interactive_enabled", False)
     wizard_prompts = wizard_enabled and interactive_enabled
     call_specs = []
     last_project = None
     last_project_name = None
+
+    def handle_repeat(directive: _RepeatDirective):
+        nonlocal last_result
+
+        if not executed_chunks:
+            abort("repeat requires at least one prior command to replay.")
+
+        base_chunks = [list(tokens) for tokens in executed_chunks]
+        loops_remaining = directive.times
+
+        if loops_remaining is not None and loops_remaining <= 0:
+            return
+
+        loop_index = 0
+        while loops_remaining is None or loops_remaining > 0:
+            loop_index += 1
+            rest_seconds = directive.rest
+            if rest_seconds:
+                gw.debug(
+                    f"[repeat] Sleeping {rest_seconds} seconds before loop {loop_index}"
+                )
+                time.sleep(rest_seconds)
+
+            replay_results, replay_last = process(
+                [list(tokens) for tokens in base_chunks],
+                callback=callback,
+                origin=origin,
+                gw_instance=gw,
+                **context,
+            )
+
+            if replay_results:
+                all_results.extend(replay_results)
+                last_result = replay_last
+
+            if loops_remaining is not None:
+                loops_remaining -= 1
 
     def resolve_nested_object(root, tokens):
         """Resolve a sequence of command tokens to a nested object (e.g. gw.project.module.func).
@@ -301,17 +344,18 @@ def process(command_sources, callback=None, **context):
             continue
 
         chunk = join_unquoted_kwargs(list(chunk))
+        chunk_tokens = list(chunk)
 
         # Resolve nested project/function path
         resolved_obj, func_args, path, attr_error = resolve_nested_object(
-            gw, list(chunk)
+            gw, list(chunk_tokens)
         )
         # Retry resolution relative to the last project when the initial
         # lookup fails without consuming any path components. This allows
         # successive chained calls to omit the project name.
         if attr_error is not None and not path and last_project is not None:
             resolved_obj, func_args, path2, attr_error = resolve_nested_object(
-                last_project, list(chunk)
+                last_project, list(chunk_tokens)
             )
             if not path2 and attr_error is not None:
                 # retain original failure if nothing could be resolved
@@ -320,15 +364,15 @@ def process(command_sources, callback=None, **context):
                 path = [last_project_name] + path2
 
         if not callable(resolved_obj):
-            if attr_error is not None and not path and chunk:
-                recipe_name = chunk[0]
+            if attr_error is not None and not path and chunk_tokens:
+                recipe_name = chunk_tokens[0]
                 try:
                     recipe_commands, _ = load_recipe(recipe_name, strict=False)
                 except FileNotFoundError:
                     recipe_commands = None
                 else:
                     recipe_context = (
-                        parse_recipe_context(chunk[1:]) if len(chunk) > 1 else {}
+                        parse_recipe_context(chunk_tokens[1:]) if len(chunk_tokens) > 1 else {}
                     )
                     combined_context = {**context, **recipe_context}
                     gw.debug(
@@ -337,10 +381,13 @@ def process(command_sources, callback=None, **context):
                     recipe_results, recipe_last = process(
                         recipe_commands,
                         callback=callback,
+                        origin="recipe",
+                        gw_instance=gw,
                         **combined_context,
                     )
                     all_results.extend(recipe_results)
                     last_result = recipe_last
+                    executed_chunks.append(chunk_tokens)
                     continue
             if attr_error is not None:
                 abort(str(attr_error))
@@ -348,7 +395,7 @@ def process(command_sources, callback=None, **context):
                 show_functions(resolved_obj.__functions__)
             else:
                 gw.error(f"Object at path {' '.join(path)} is not callable.")
-            abort(f"No project with name '{chunk[0]}'")
+            abort(f"No project with name '{chunk_tokens[0]}'")
 
         # Parse function arguments, using parse_known_args if **kwargs present
         func_parser = argparse.ArgumentParser(prog=".".join(path))
@@ -383,15 +430,19 @@ def process(command_sources, callback=None, **context):
             )
             final_args, final_kwargs = prepare(parsed_args, resolved_obj)
             if wizard_prompts:
-                call_specs.append((resolved_obj, final_args, final_kwargs, path))
+                call_specs.append((resolved_obj, final_args, final_kwargs, path, chunk_tokens))
                 continue
         else:
             final_args, final_kwargs = prepare(parsed_args, resolved_obj)
 
         try:
             result = resolved_obj(*final_args, **final_kwargs)
+            if isinstance(result, _RepeatDirective):
+                handle_repeat(result)
+                continue
             last_result = result
             all_results.append(result)
+            executed_chunks.append(chunk_tokens)
             if path:
                 last_project_name = path[0]
                 try:
@@ -404,11 +455,15 @@ def process(command_sources, callback=None, **context):
             abort(f"Unhandled {type(e).__name__} in {name} -> {str(e)} @ {str(resolved_obj.__module__)}.py")
 
     if wizard_prompts:
-        for func, f_args, f_kwargs, call_path in call_specs:
+        for func, f_args, f_kwargs, call_path, chunk_tokens in call_specs:
             try:
                 result = func(*f_args, **f_kwargs)
+                if isinstance(result, _RepeatDirective):
+                    handle_repeat(result)
+                    continue
                 last_result = result
                 all_results.append(result)
+                executed_chunks.append(chunk_tokens)
                 if call_path:
                     last_project_name = call_path[0]
                     try:
