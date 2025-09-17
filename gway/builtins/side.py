@@ -11,6 +11,21 @@ from typing import Deque, Iterable, List, Tuple
 __all__ = ["side"]
 
 
+_FALSEY_STRINGS = {
+    "",
+    "0",
+    "false",
+    "f",
+    "no",
+    "n",
+    "off",
+    "none",
+    "null",
+    "nil",
+    "undefined",
+}
+
+
 @dataclass
 class _SideCommand:
     tokens: List[str]
@@ -32,6 +47,21 @@ _SIDE_QUEUES: dict[str, _QueueState] = {}
 _PENDING_COMMANDS: list[_SideCommand] = []
 _COMMAND_COUNTER = itertools.count(1)
 _CONSOLE_TOOLS: dict[str, object] | None = None
+
+
+def _coerce_when_to_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in _FALSEY_STRINGS:
+            return False
+        return bool(text)
+    return bool(value)
 
 
 def _get_console_tools() -> dict[str, object]:
@@ -210,16 +240,51 @@ def _launch_command(command: _SideCommand) -> None:
     thread.start()
 
 
-def side(*args: str) -> dict:
+def side(*args: str, when: object | None = None) -> dict:
     """Schedule ``args`` to run in the background, optionally on named queues."""
 
     from gway import gw
 
     queue_tokens, command_tokens = _split_args(args)
     queue_names = _normalize_queue_names(queue_tokens)
+    command_text = " ".join(command_tokens)
 
     if not queue_names:
         queue_names = [_DEFAULT_QUEUE]
+
+    should_run = True
+    original_when = when
+    resolved_when = when
+
+    if when is not None:
+        if isinstance(when, str):
+            try:
+                resolved_when = gw.resolve(when)
+            except Exception as exc:
+                gw.debug(
+                    f"[side] failed to resolve --when expression {when!r}: {exc}"
+                )
+                resolved_when = when
+        try:
+            should_run = gw.cast.to_bool(resolved_when)
+        except Exception as exc:
+            gw.debug(
+                f"[side] failed to coerce --when value {resolved_when!r} to bool: {exc}"
+            )
+            should_run = _coerce_when_to_bool(resolved_when)
+
+    if not should_run:
+        detail = command_text if command_text else "queue initialization"
+        gw.debug(
+            f"[side] skipped {detail} on queues {queue_names} because --when={original_when!r} "
+            f"resolved to {resolved_when!r}"
+        )
+        return {
+            "queues": queue_names,
+            "command": command_text or None,
+            "status": "skipped",
+            "when": original_when,
+        }
 
     with _SIDE_LOCK:
         for name in queue_names:
@@ -242,7 +307,6 @@ def side(*args: str) -> dict:
         _launch_command(ready)
 
     status = "started" if started_now else "queued"
-    command_text = " ".join(command_tokens)
     gw.debug(
         f"[side] {status} command {command.id} on queues {queue_names}: {command_text}"
     )
