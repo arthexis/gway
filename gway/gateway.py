@@ -141,6 +141,17 @@ class Gateway(Resolver, Runner):
                 namespace = self.__dict__[candidate]
                 if namespace is not None:
                     return namespace
+            if candidate in self._cache:
+                namespace = self._cache[candidate]
+                if namespace is not None:
+                    return namespace
+            try:
+                namespace = getattr(self, candidate)
+            except AttributeError:
+                continue
+            else:
+                if namespace is not None:
+                    return namespace
         return None
 
     def _find_model_value(self, key: str, *, exec: bool = False):
