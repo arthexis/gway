@@ -132,3 +132,47 @@ def test_side_supports_colon_queue_names(side_module, monkeypatch):
         time.sleep(0.05)
     assert commands_seen[0] == ["hello-world"]
     assert "watcher" in side_module._SIDE_QUEUES
+
+
+def test_side_when_condition_false_skips_queue_initialization(side_module, monkeypatch):
+    logs: list[str] = []
+
+    def capture_debug(message, *args, **kwargs):
+        logs.append(message)
+
+    monkeypatch.setattr(gw, "debug", capture_debug)
+
+    def fail_process(*args, **kwargs):
+        raise AssertionError("process should not be called when --when is false")
+
+    monkeypatch.setattr("gway.console.process", fail_process)
+
+    result = side_module.side("alpha", when="false")
+
+    assert result["status"] == "skipped"
+    assert result["queues"] == ["alpha"]
+    assert result["command"] is None
+    assert side_module._SIDE_QUEUES == {}
+    assert any("skipped" in message for message in logs)
+
+
+def test_side_when_condition_false_skips_commands(side_module, monkeypatch):
+    logs: list[str] = []
+
+    def capture_debug(message, *args, **kwargs):
+        logs.append(message)
+
+    monkeypatch.setattr(gw, "debug", capture_debug)
+
+    def fail_process(*args, **kwargs):
+        raise AssertionError("process should not be called when --when is false")
+
+    monkeypatch.setattr("gway.console.process", fail_process)
+
+    result = side_module.side("hello-world", when=False)
+
+    assert result["status"] == "skipped"
+    assert result["queues"] == [side_module._DEFAULT_QUEUE]
+    assert result["command"] == "hello-world"
+    assert side_module._SIDE_QUEUES == {}
+    assert any("hello-world" in message for message in logs)
