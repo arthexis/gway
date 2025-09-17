@@ -240,7 +240,7 @@ def _launch_command(command: _SideCommand) -> None:
     thread.start()
 
 
-def side(*args: str, when: object | None = None) -> dict:
+def side(*args: str, when: str | None = None) -> dict:
     """Schedule ``args`` to run in the background, optionally on named queues."""
 
     from gway import gw
