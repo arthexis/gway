@@ -1,8 +1,39 @@
-"""RFID scanning utilities."""
+"""RFID scanning utilities.
+
+The helpers in this module rely on the default wiring expected by the
+``mfrc522`` package's :class:`~mfrc522.SimpleMFRC522` reader. The pinout is
+documented via :func:`pinout` so future integrations can double-check the
+hardware connections without digging through the third-party library.
+"""
 
 import sys
 import time
 import select
+
+
+PINOUT = {
+    "SDA": "CE0 (GPIO8, physical pin 24)",
+    "SCK": "SCLK (GPIO11, physical pin 23)",
+    "MOSI": "MOSI (GPIO10, physical pin 19)",
+    "MISO": "MISO (GPIO9, physical pin 21)",
+    "IRQ": "GPIO4 (physical pin 7)",
+    "GND": "GND (physical pin 6)",
+    "RST": "GPIO25 (physical pin 22)",
+    "3v3": "3V3 (physical pin 1)",
+}
+
+
+def pinout():
+    """Return the expected wiring map between the RFID reader and the Pi.
+
+    ``SimpleMFRC522`` defaults to ``spidev`` on ``/dev/spidev0.0`` (CE0) and
+    pulls its reset pin high using ``GPIO.BOARD`` numbering, which maps to
+    ``GPIO25`` on physical pin 22. The remaining connections align with the
+    Raspberry Pi's SPI interface. Returning the mapping makes it easy to assert
+    the wiring in tests or display it from the CLI.
+    """
+
+    return PINOUT.copy()
 
 
 def scan():
