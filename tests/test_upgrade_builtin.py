@@ -28,9 +28,24 @@ class UpgradeBuiltinTests(unittest.TestCase):
             os.chmod(script, 0o755)
             import pathlib
             with patch.object(gw, "resource", return_value=pathlib.Path(script)):
-                rc = gw.upgrade("--force", "--no-test")
+                rc = gw.upgrade("--force", "--latest", "--no-test")
         self.assertEqual(rc, 0)
-        self.assertIn("called with: --force --no-test", self.stdout.getvalue())
+        self.assertIn(
+            "called with: --force --latest --no-test",
+            self.stdout.getvalue(),
+        )
+
+    def test_upgrade_rejects_conflicting_test_flags(self):
+        with patch.object(gw, "resource") as mock_resource:
+            with self.assertRaises(ValueError):
+                gw.upgrade("--test", "--no-test")
+        mock_resource.assert_not_called()
+
+    def test_upgrade_rejects_unknown_option(self):
+        with patch.object(gw, "resource") as mock_resource:
+            with self.assertRaises(ValueError):
+                gw.upgrade("--invalid")
+        mock_resource.assert_not_called()
 
     def test_upgrade_streams_output(self):
         with tempfile.TemporaryDirectory() as tmp:
