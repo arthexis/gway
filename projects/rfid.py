@@ -46,6 +46,26 @@ def scan():
     try:
         from mfrc522 import SimpleMFRC522  # type: ignore
         import RPi.GPIO as GPIO  # type: ignore
+    except ModuleNotFoundError as exc:  # pragma: no cover - hardware dependent
+        missing = exc.name or str(exc)
+        advice = []
+        if missing == "mfrc522":
+            advice.append(
+                "Install the MFRC522 helper package with `pip install mfrc522`."
+            )
+        if missing in {"RPi", "RPi.GPIO"}:
+            advice.append(
+                "Install the Raspberry Pi GPIO bindings with `pip install RPi.GPIO` on a Pi."
+            )
+        if not advice:
+            advice.append("Install the missing Python module and try again.")
+        print(
+            "RFID libraries not available: {missing}. {advice}".format(
+                missing=missing,
+                advice=" ".join(advice),
+            )
+        )
+        return
     except Exception as exc:  # pragma: no cover - hardware dependent
         print(f"RFID libraries not available: {exc}")
         return
