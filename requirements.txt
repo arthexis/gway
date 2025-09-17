@@ -23,6 +23,7 @@ selenium
 webdriver-manager
 bs4
 markdown
+mfrc522; platform_system == "Linux"
 pandas
 openpyxl
 coverage
