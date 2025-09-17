@@ -3,6 +3,8 @@
 import sys
 import types
 
+import pytest
+
 from projects import rfid
 
 
@@ -113,3 +115,110 @@ def _install_fake_rfid_dependencies(monkeypatch, reader_cls):
     monkeypatch.setitem(sys.modules, "mfrc522", fake_mfrc522)
     monkeypatch.setitem(sys.modules, "RPi", fake_rpi)
     monkeypatch.setitem(sys.modules, "RPi.GPIO", fake_gpio)
+
+
+def _prepare_write_test(monkeypatch, reader_cls):
+    """Utility to install fake RFID dependencies and common patches."""
+
+    _install_fake_rfid_dependencies(monkeypatch, reader_cls)
+    monkeypatch.setattr(rfid.os.path, "exists", lambda path: True)
+    monkeypatch.setattr(rfid.time, "sleep", lambda duration: None)
+
+
+def test_write_waits_for_card_and_writes_uid(monkeypatch, capsys):
+    """The writer should poll until a card is detected, then program it."""
+
+    class FakeWriter:
+        last_instance = None
+
+        def __init__(self):
+            type(self).last_instance = self
+            self.write_calls = []
+            self.reads = 0
+
+        def read_no_block(self):
+            self.reads += 1
+            if self.reads < 2:
+                return (None, "")
+            return (123456789, "old")
+
+        def write(self, text):
+            self.write_calls.append(text)
+
+    _prepare_write_test(monkeypatch, FakeWriter)
+
+    result = rfid.write(uid=42, poll_interval=0)
+
+    captured = capsys.readouterr()
+    assert "Wrote UID 42 to card 123456789." in captured.out
+    assert result == {"card_id": 123456789, "written_uid": 42}
+    assert FakeWriter.last_instance.write_calls == ["42"]
+
+
+def test_write_auto_increment_true_increments_uid(monkeypatch, capsys):
+    """A truthy auto-increment flag should increment the UID by one."""
+
+    class FakeWriter:
+        last_instance = None
+
+        def __init__(self):
+            type(self).last_instance = self
+
+        def read_no_block(self):
+            return (555, "old")
+
+        def write(self, text):
+            self.last_written = text
+
+    _prepare_write_test(monkeypatch, FakeWriter)
+
+    result = rfid.write(uid=99, auto_increment=True, poll_interval=0)
+
+    assert FakeWriter.last_instance.last_written == "100"
+    assert result["written_uid"] == 100
+    assert result["next_uid"] == 101
+    captured = capsys.readouterr()
+    assert "Ready to write UID 100" in captured.out
+    assert "Next UID: 101" in captured.out
+
+
+def test_write_auto_increment_accepts_numeric_string(monkeypatch):
+    """Supplying a numeric string for auto-increment should succeed."""
+
+    class FakeWriter:
+        last_instance = None
+
+        def __init__(self):
+            type(self).last_instance = self
+
+        def read_no_block(self):
+            return (321, "old")
+
+        def write(self, text):
+            self.last_written = text
+
+    _prepare_write_test(monkeypatch, FakeWriter)
+
+    result = rfid.write(uid="10", auto_increment="5", poll_interval=0)
+
+    assert FakeWriter.last_instance.last_written == "15"
+    assert result == {"card_id": 321, "written_uid": 15, "next_uid": 20}
+
+
+def test_write_rejects_invalid_auto_increment(monkeypatch):
+    """Non-numeric strings for auto-increment should raise an informative error."""
+
+    class FakeWriter:
+        def __init__(self):
+            pass
+
+        def read_no_block(self):  # pragma: no cover - should not be called
+            raise AssertionError("read_no_block should not run on invalid input")
+
+        def write(self, text):  # pragma: no cover - should not be called
+            raise AssertionError("write should not run on invalid input")
+
+    _prepare_write_test(monkeypatch, FakeWriter)
+
+    with pytest.raises(ValueError):
+        rfid.write(uid=1, auto_increment="banana")
