@@ -8,6 +8,8 @@ import html
 import re
 import ast
 import importlib.util
+import getpass
+import traceback
 from pathlib import Path
 from io import StringIO
 import unittest
@@ -56,247 +58,337 @@ def build(
     import subprocess
     import toml
 
-    gw.info("Installing requirements before release build...")
-    subprocess.run([
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "-U",
-        "-r",
-        "requirements.txt",
-    ], check=True)
+    interactive_mode = getattr(gw, "interactive_enabled", False)
+    wizard_mode = getattr(gw, "wizard_enabled", False)
 
-    if not (token := gw.resolve("[PYPI_API_TOKEN]", "")):
-        user = gw.resolve("[PYPI_USERNAME]")
-        password = gw.resolve("[PYPI_PASSWORD]")
+    def _format_failure_report(exc: BaseException, tb: str) -> str:
+        lines = [
+            f"GWAY release build failed ({type(exc).__name__}): {exc}",
+        ]
+        if isinstance(exc, subprocess.CalledProcessError):
+            lines.append("")
+            lines.append(f"Command: {' '.join(map(str, exc.cmd))}")
+            lines.append(f"Return code: {exc.returncode}")
+            output = getattr(exc, "stdout", None) or getattr(exc, "stderr", None) or getattr(exc, "output", None)
+            if output:
+                if not isinstance(output, str):
+                    try:
+                        output = output.decode()
+                    except Exception:
+                        output = str(output)
+                lines.append("")
+                lines.append("Command output:")
+                lines.append(output.strip())
+        if tb:
+            lines.append("")
+            lines.append("Traceback:")
+            lines.append(tb.strip())
+        return "\n".join(lines)
 
-    if all:
-        bump = True
-        dist = True
-        twine = True
-        git = True
-        projects = True
-        notify = True
-        tag = True
+    def _handle_failure(exc: BaseException, tb: str) -> None:
+        if not wizard_mode:
+            return
+        report = _format_failure_report(exc, tb)
 
-    gw.info(f"Running tests before project build.")
-    test_result = gw.test()
-    if not test_result:
-        gw.abort("Tests failed, build aborted.")
+        def _copy_report() -> None:
+            try:
+                gw.studio.clip.copy(report, notify=False)
+            except Exception as copy_err:
+                gw.warning(f"Failed to copy failure report: {copy_err}")
+            else:
+                gw.info("Failure report copied to clipboard.")
 
-    if git:
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
-        if status.stdout.strip():
-            gw.abort("Git repository is not clean. Commit or stash changes before building.")
+        if interactive_mode:
+            try:
+                response = input("Copy failure report to clipboard? [Y/n] ").strip().lower()
+            except EOFError:
+                response = "n"
+            if response in ("", "y", "yes"):
+                _copy_report()
+        else:
+            gw.info("Wizard mode enabled; copying failure report to clipboard.")
+            _copy_report()
 
+    def _prompt_input(message: str, *, secret: bool = False) -> str:
+        try:
+            raw = getpass.getpass(message) if secret else input(message)
+        except EOFError:
+            return ""
+        return (raw or "").strip()
 
+    def _do_build() -> None:
+        nonlocal bump, dist, twine, git, projects, notify, tag
 
-    if projects:
-        project_dir = gw.resource("projects")
+        gw.info("Installing requirements before release build...")
+        subprocess.run([
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-U",
+            "-r",
+            "requirements.txt",
+        ], check=True)
 
-    project_name = "gway"
-    description = "Software Project Infrastructure by https://www.gelectriic.com"
-    author_name = "Rafael J. Guillén-Osorio"
-    author_email = "tecnologia@gelectriic.com"
-    python_requires = ">=3.10"
-    license_expression = "MIT"
-    readme_file = Path("README.rst")
+        if all:
+            bump = True
+            dist = True
+            twine = True
+            git = True
+            projects = True
+            notify = True
+            tag = True
 
-    classifiers = [
-        "Programming Language :: Python :: 3",
-        "Operating System :: OS Independent",
-    ]
+        gw.info("Running tests before project build.")
+        test_result = gw.test()
+        if not test_result:
+            gw.abort("Tests failed, build aborted.")
 
-    version_path = Path("VERSION")
-    requirements_path = Path("requirements.txt")
-    pyproject_path = Path("pyproject.toml")
+        if git:
+            status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+            if status.stdout.strip():
+                gw.abort("Git repository is not clean. Commit or stash changes before building.")
 
-    if not version_path.exists():
-        raise FileNotFoundError("VERSION file not found.")
-    if not requirements_path.exists():
-        raise FileNotFoundError("requirements.txt file not found.")
-    if not readme_file.exists():
-        raise FileNotFoundError("README.rst file not found.")
+        if projects:
+            project_dir = gw.resource("projects")
 
-    if bump:
-        current_version = version_path.read_text().strip()
-        major, minor, patch = map(int, current_version.split("."))
-        patch += 1
-        new_version = f"{major}.{minor}.{patch}"
-        version_path.write_text(new_version + "\n")
-        gw.info(f"\nBumped version: {current_version} → {new_version}")
-    else:
-        new_version = version_path.read_text().strip()
+        project_name = "gway"
+        description = "Software Project Infrastructure by https://www.gelectriic.com"
+        author_name = "Rafael J. Guillén-Osorio"
+        author_email = "tecnologia@gelectriic.com"
+        python_requires = ">=3.10"
+        license_expression = "MIT"
+        readme_file = Path("README.rst")
 
-    version = new_version
+        classifiers = [
+            "Programming Language :: Python :: 3",
+            "Operating System :: OS Independent",
+        ]
 
-    # Write BUILD file with current commit hash
-    build_path = Path("BUILD")
-    prev_build = build_path.read_text().strip() if build_path.exists() else None
-    build_hash = gw.hub.commit()
-    build_path.write_text(build_hash + "\n")
-    gw.info(f"Wrote BUILD file with commit {build_hash}")
-    update_changelog(version, build_hash, prev_build)
+        version_path = Path("VERSION")
+        requirements_path = Path("requirements.txt")
+        pyproject_path = Path("pyproject.toml")
 
-    dependencies = [
-        line.strip()
-        for line in requirements_path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
+        if not version_path.exists():
+            raise FileNotFoundError("VERSION file not found.")
+        if not requirements_path.exists():
+            raise FileNotFoundError("requirements.txt file not found.")
+        if not readme_file.exists():
+            raise FileNotFoundError("README.rst file not found.")
 
-    optional_dependencies = {
-        "dev": ["pytest", "pytest-cov"],
-    }
+        if bump:
+            current_version = version_path.read_text().strip()
+            major, minor, patch = map(int, current_version.split("."))
+            patch += 1
+            new_version = f"{major}.{minor}.{patch}"
+            version_path.write_text(new_version + "\n")
+            gw.info(f"\nBumped version: {current_version} → {new_version}")
+        else:
+            new_version = version_path.read_text().strip()
 
-    pyproject_content = {
-        "build-system": {
-            "requires": ["setuptools", "wheel"],
-            "build-backend": "setuptools.build_meta",
-        },
-        "project": {
-            "name": project_name,
-            "version": version,
-            "description": description,
-            "requires-python": python_requires,
-            "license": license_expression,
-            "readme": {
-                "file": "README.rst",
-                "content-type": "text/x-rst"
+        version = new_version
+
+        # Write BUILD file with current commit hash
+        build_path = Path("BUILD")
+        prev_build = build_path.read_text().strip() if build_path.exists() else None
+        build_hash = gw.hub.commit()
+        build_path.write_text(build_hash + "\n")
+        gw.info(f"Wrote BUILD file with commit {build_hash}")
+        update_changelog(version, build_hash, prev_build)
+
+        dependencies = [
+            line.strip()
+            for line in requirements_path.read_text().splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+
+        optional_dependencies = {
+            "dev": ["pytest", "pytest-cov"],
+        }
+
+        pyproject_content = {
+            "build-system": {
+                "requires": ["setuptools", "wheel"],
+                "build-backend": "setuptools.build_meta",
             },
-            "classifiers": classifiers,
-            "dependencies": dependencies,
-            "optional-dependencies": optional_dependencies,
-            "authors": [
-                {
-                    "name": author_name,
-                    "email": author_email,
+            "project": {
+                "name": project_name,
+                "version": version,
+                "description": description,
+                "requires-python": python_requires,
+                "license": license_expression,
+                "readme": {
+                    "file": "README.rst",
+                    "content-type": "text/x-rst"
+                },
+                "classifiers": classifiers,
+                "dependencies": dependencies,
+                "optional-dependencies": optional_dependencies,
+                "authors": [
+                    {
+                        "name": author_name,
+                        "email": author_email,
+                    }
+                ],
+                "scripts": {
+                    project_name: f"{project_name}:cli_main",
+                },
+                "urls": {
+                    "Repository": "https://github.com/arthexis/gway.git",
+                    "Homepage": "https://arthexis.com",
+                    "Sponsor": "https://www.gelectriic.com/",
                 }
-            ],
-            "scripts": {
-                project_name: f"{project_name}:cli_main",
             },
-            "urls": {
-                "Repository": "https://github.com/arthexis/gway.git",
-                "Homepage": "https://arthexis.com",
-                "Sponsor": "https://www.gelectriic.com/",
-            }
-        },
-        "tool": {
-            "setuptools": {
-                "packages": ["gway"],
+            "tool": {
+                "setuptools": {
+                    "packages": ["gway"],
+                }
             }
         }
-    }
 
-    pyproject_path.write_text(toml.dumps(pyproject_content), encoding="utf-8")
-    gw.info(f"Generated {pyproject_path}")
+        pyproject_path.write_text(toml.dumps(pyproject_content), encoding="utf-8")
+        gw.info(f"Generated {pyproject_path}")
 
-    if projects:
-        update_readme_links()
-
-    manifest_path = Path("MANIFEST.in")
-    if not manifest_path.exists():
-        manifest_path.write_text(
-            "include README.rst\n"
-            "include VERSION\n"
-            "include BUILD\n"
-            "include requirements.txt\n"
-            "include pyproject.toml\n"
-        )
-        gw.info("Generated MANIFEST.in")
-
-    if dist:
-        dist_dir = Path("dist")
-        if dist_dir.exists():
-            for item in dist_dir.iterdir():
-                item.unlink()
-            dist_dir.rmdir()
-
-        gw.info("Building distribution package...")
-        subprocess.run([sys.executable, "-m", "build"], check=True)
-        gw.info("Distribution package created in dist/")
-
-        if twine:
-            # ======= Safeguard: Abort if version already on PyPI unless --force =======
-            if not force:
-                releases = []
-                try:
-                    # Use JSON API instead of deprecated XML-RPC
-                    import requests
-                    url = f"https://pypi.org/pypi/{project_name}/json"
-                    resp = requests.get(url, timeout=5)
-                    if resp.ok:
-                        data = resp.json()
-                        releases = list(data.get("releases", {}).keys())
-                    else:
-                        gw.warning(f"Could not fetch releases for {project_name} from PyPI: HTTP {resp.status_code}")
-                except Exception as e:
-                    gw.warning(f"Could not verify existing PyPI versions: {e}")
-                if new_version in releases:
-                    gw.abort(
-                        f"Version {new_version} is already on PyPI. "
-                        "Use --force to override."
-                    )
-            # ===========================================================================
-
-            gw.info("Validating distribution with twine check...")
-            check_result = subprocess.run(
-                [sys.executable, "-m", "twine", "check", "dist/*"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-            if check_result.returncode != 0:
-                gw.error(
-                    "PyPI README rendering check failed, aborting upload:\n"
-                    f"{check_result.stdout}"
-                )
-                gw.info("Stashing release changes due to build failure...")
-                subprocess.run(
-                    ["git", "stash", "--include-untracked", "-m", "gway-release-abort"],
-                    check=False,
-                )
-                gw.error("Build aborted. README syntax errors detected.")
-                return
-
-            gw.info("Twine check passed.")
-
-            if token or (user and password):
-                gw.info("Uploading to PyPI...")
-                upload_command = [
-                    sys.executable, "-m", "twine", "upload", "dist/*"
-                ]
-                if token:
-                    upload_command += ["--username", "__token__", "--password", token]
-                else:
-                    upload_command += ["--username", user, "--password", password]
-
-                subprocess.run(upload_command, check=True)
-                gw.info("Package uploaded to PyPI successfully.")
-            else:
-                gw.warning(
-                    "Twine upload skipped: missing PyPI token or username/password."
-                )
-
-    if git:
-        files_to_add = ["VERSION", "BUILD", "pyproject.toml", "CHANGELOG.rst"]
         if projects:
-            files_to_add.append("README.rst")
-        subprocess.run(["git", "add"] + files_to_add, check=True)
-        commit_msg = f"PyPI Release v{version}" if twine else f"Release v{version}"
-        subprocess.run(["git", "commit", "-m", commit_msg], check=True)
-        subprocess.run(["git", "push"], check=True)
-        gw.info(f"Committed and pushed: {commit_msg}")
+            update_readme_links()
 
-    if tag:
-        tag_name = f"v{version}"
-        subprocess.run(["git", "tag", tag_name], check=True)
-        subprocess.run(["git", "push", "origin", tag_name], check=True)
-        gw.info(f"Created and pushed tag {tag_name}")
+        manifest_path = Path("MANIFEST.in")
+        if not manifest_path.exists():
+            manifest_path.write_text(
+                "include README.rst\n"
+                "include VERSION\n"
+                "include BUILD\n"
+                "include requirements.txt\n"
+                "include pyproject.toml\n"
+            )
+            gw.info("Generated MANIFEST.in")
 
-    if notify:
-        gw.notify(f"Release v{version} build complete")
+        if dist:
+            dist_dir = Path("dist")
+            if dist_dir.exists():
+                for item in dist_dir.iterdir():
+                    item.unlink()
+                dist_dir.rmdir()
+
+            gw.info("Building distribution package...")
+            subprocess.run([sys.executable, "-m", "build"], check=True)
+            gw.info("Distribution package created in dist/")
+
+            if twine:
+                token = str(gw.resolve("[PYPI_API_TOKEN]", default="") or "").strip()
+                if interactive_mode and not token:
+                    token = _prompt_input("PyPI API token (leave blank to provide username/password): ")
+
+                user = ""
+                password = ""
+                if not token:
+                    try:
+                        user = str(gw.resolve("[PYPI_USERNAME]")).strip()
+                    except KeyError:
+                        if interactive_mode:
+                            user = _prompt_input("PyPI username: ")
+                        else:
+                            raise
+                    try:
+                        password = str(gw.resolve("[PYPI_PASSWORD]")).strip()
+                    except KeyError:
+                        if interactive_mode:
+                            password = _prompt_input("PyPI password: ", secret=True)
+                        else:
+                            raise
+
+                if not force:
+                    releases = []
+                    try:
+                        import requests
+                        url = f"https://pypi.org/pypi/{project_name}/json"
+                        resp = requests.get(url, timeout=5)
+                        if resp.ok:
+                            data = resp.json()
+                            releases = list(data.get("releases", {}).keys())
+                        else:
+                            gw.warning(f"Could not fetch releases for {project_name} from PyPI: HTTP {resp.status_code}")
+                    except Exception as e:
+                        gw.warning(f"Could not verify existing PyPI versions: {e}")
+                    if new_version in releases:
+                        gw.abort(
+                            f"Version {new_version} is already on PyPI. "
+                            "Use --force to override."
+                        )
+
+                gw.info("Validating distribution with twine check...")
+                check_result = subprocess.run(
+                    [sys.executable, "-m", "twine", "check", "dist/*"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True
+                )
+                if check_result.returncode != 0:
+                    gw.error(
+                        "PyPI README rendering check failed, aborting upload:\n"
+                        f"{check_result.stdout}"
+                    )
+                    gw.info("Stashing release changes due to build failure...")
+                    subprocess.run(
+                        ["git", "stash", "--include-untracked", "-m", "gway-release-abort"],
+                        check=False,
+                    )
+                    raise RuntimeError(
+                        "Build aborted. README syntax errors detected.\n"
+                        f"{check_result.stdout}"
+                    )
+
+                gw.info("Twine check passed.")
+
+                token = token.strip()
+                user = user.strip()
+                password = password.strip()
+
+                if token or (user and password):
+                    gw.info("Uploading to PyPI...")
+                    upload_command = [
+                        sys.executable, "-m", "twine", "upload", "dist/*"
+                    ]
+                    if token:
+                        upload_command += ["--username", "__token__", "--password", token]
+                    else:
+                        upload_command += ["--username", user, "--password", password]
+
+                    subprocess.run(upload_command, check=True)
+                    gw.info("Package uploaded to PyPI successfully.")
+                else:
+                    gw.warning(
+                        "Twine upload skipped: missing PyPI token or username/password."
+                    )
+
+        if git:
+            files_to_add = ["VERSION", "BUILD", "pyproject.toml", "CHANGELOG.rst"]
+            if projects:
+                files_to_add.append("README.rst")
+            subprocess.run(["git", "add"] + files_to_add, check=True)
+            commit_msg = f"PyPI Release v{version}" if twine else f"Release v{version}"
+            subprocess.run(["git", "commit", "-m", commit_msg], check=True)
+            subprocess.run(["git", "push"], check=True)
+            gw.info(f"Committed and pushed: {commit_msg}")
+
+        if tag:
+            tag_name = f"v{version}"
+            subprocess.run(["git", "tag", tag_name], check=True)
+            subprocess.run(["git", "push", "origin", tag_name], check=True)
+            gw.info(f"Created and pushed tag {tag_name}")
+
+        if notify:
+            gw.notify(f"Release v{version} build complete")
+
+    try:
+        _do_build()
+    except SystemExit as exc:
+        if exc.code not in (None, 0):
+            _handle_failure(exc, traceback.format_exc())
+        raise
+    except Exception as exc:
+        _handle_failure(exc, traceback.format_exc())
+        raise
 
 
 def build_help_db():

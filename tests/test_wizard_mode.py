@@ -10,6 +10,7 @@ def test_wizard_prompts_for_missing():
 
     setattr(console.gw, "dummy", dummy)
     console.gw.wizard_enabled = True
+    console.gw.interactive_enabled = True
 
     inputs = iter(["3", ""])  # a, b (accept default)
     with patch.object(builtins, "input", side_effect=lambda _: next(inputs)):
@@ -20,6 +21,7 @@ def test_wizard_prompts_for_missing():
 
     delattr(console.gw, "dummy")
     console.gw.wizard_enabled = False
+    console.gw.interactive_enabled = False
 
 
 def test_wizard_collects_before_run():
@@ -36,6 +38,7 @@ def test_wizard_collects_before_run():
     setattr(console.gw, "first", first)
     setattr(console.gw, "second", second)
     console.gw.wizard_enabled = True
+    console.gw.interactive_enabled = True
 
     inputs = iter(["1", "2"])
 
@@ -53,6 +56,7 @@ def test_wizard_collects_before_run():
     delattr(console.gw, "first")
     delattr(console.gw, "second")
     console.gw.wizard_enabled = False
+    console.gw.interactive_enabled = False
 
 
 def test_wizard_guesses_names():
@@ -61,6 +65,7 @@ def test_wizard_guesses_names():
 
     setattr(console.gw, "dummy", dummy)
     console.gw.wizard_enabled = True
+    console.gw.interactive_enabled = True
 
     inputs = iter(["", "5"])  # accept guess, provide param
 
@@ -72,3 +77,30 @@ def test_wizard_guesses_names():
 
     delattr(console.gw, "dummy")
     console.gw.wizard_enabled = False
+    console.gw.interactive_enabled = False
+
+
+def test_interactive_prompts_required_only():
+    calls = []
+
+    def dummy(a: int, b: int = 2):
+        return a + b
+
+    setattr(console.gw, "dummy", dummy)
+    console.gw.interactive_enabled = True
+
+    inputs = iter(["3"])
+
+    def fake_input(prompt):
+        calls.append(prompt)
+        return next(inputs)
+
+    with patch.object(builtins, "input", side_effect=fake_input):
+        results, last = console.process([["dummy"]])
+
+    assert results == [5]
+    assert last == 5
+    assert len(calls) == 1
+
+    delattr(console.gw, "dummy")
+    console.gw.interactive_enabled = False

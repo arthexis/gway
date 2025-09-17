@@ -39,11 +39,13 @@ class Gateway(Resolver, Runner):
     silent = False
     verbose = False
     wizard = False
+    interactive = False
     timed = False
 
     def __init__(self, *,
                 client=None, server=None, name="gw", base_path=None, project_path=None,
-                verbose=None, silent=None, debug=None, wizard=None, timed=None, quantity=1, **kwargs
+                verbose=None, silent=None, debug=None, wizard=None, interactive=None,
+                timed=None, quantity=1, **kwargs
             ):
         self._cache = {}
         self._async_threads = []
@@ -57,7 +59,7 @@ class Gateway(Resolver, Runner):
 
         # --- Mode propagation logic: Set global flags via classmethod ---
         explicit_modes = {}
-        for flag in ('debug', 'silent', 'verbose', 'wizard', 'timed'):
+        for flag in ('debug', 'silent', 'verbose', 'wizard', 'interactive', 'timed'):
             val = locals()[flag]
             if val is not None:
                 explicit_modes[flag] = val
@@ -65,7 +67,7 @@ class Gateway(Resolver, Runner):
             type(self).update_modes(**explicit_modes)
 
         # Set instance mode flags to match class-level (which may have just changed)
-        for flag in ('debug', 'silent', 'verbose', 'wizard'):
+        for flag in ('debug', 'silent', 'verbose', 'wizard', 'interactive'):
             setattr(self, f"{flag}_enabled", getattr(type(self), flag))
         self.timed_enabled = timed if timed is not None else getattr(type(self), 'timed', False)
 
@@ -110,10 +112,17 @@ class Gateway(Resolver, Runner):
                     Gateway._builtins[name] = obj
 
     @classmethod
-    def update_modes(cls, *, debug=None, silent=None, verbose=None, wizard=None, timed=None):
+    def update_modes(cls, *, debug=None, silent=None, verbose=None, wizard=None, interactive=None, timed=None):
         """Set global mode flags at the class level and on the global 'gw' instance, if present."""
         updated = {}
-        for flag, value in [('debug', debug), ('silent', silent), ('verbose', verbose), ('wizard', wizard), ('timed', timed)]:
+        for flag, value in [
+            ('debug', debug),
+            ('silent', silent),
+            ('verbose', verbose),
+            ('wizard', wizard),
+            ('interactive', interactive),
+            ('timed', timed),
+        ]:
             if value is not None:
                 setattr(cls, flag, value)
                 updated[flag] = value
