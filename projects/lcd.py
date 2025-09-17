@@ -22,6 +22,7 @@ Wiring (typical backpack):
 
 from __future__ import annotations
 
+import datetime
 import time
 import types
 from gway import gw
@@ -72,6 +73,38 @@ def _lcd_string(bus, addr: int, message: str, line: int) -> None:
     _lcd_byte(bus, addr, line, LCD_CMD)
     for ch in message:
         _lcd_byte(bus, addr, ord(ch), LCD_CHR)
+
+
+def _coerce_timezone(tz: str | datetime.tzinfo | None) -> datetime.tzinfo | None:
+    """Return a ``tzinfo`` instance for *tz*.
+
+    Strings are resolved using :class:`zoneinfo.ZoneInfo` when available with a
+    special-case for ``"UTC"``/``"Z"`` to avoid requiring the optional ``tzdata``
+    package. ``None`` is returned unchanged. ``ValueError`` is raised for
+    unsupported values.
+    """
+
+    if tz is None:
+        return None
+    if isinstance(tz, datetime.tzinfo):
+        return tz
+    if isinstance(tz, str):
+        value = tz.strip()
+        if not value:
+            raise ValueError("timezone string cannot be empty")
+        if value.upper() in {"UTC", "Z"}:
+            return datetime.timezone.utc
+        try:
+            from zoneinfo import ZoneInfo
+        except ModuleNotFoundError as exc:  # pragma: no cover - stdlib guard
+            raise ValueError(
+                "timezone strings require zoneinfo support"
+            ) from exc
+        try:
+            return ZoneInfo(value)
+        except Exception as exc:
+            raise ValueError(f"unknown timezone: {tz!r}") from exc
+    raise ValueError(f"unsupported timezone: {tz!r}")
 
 
 def _import_smbus() -> types.ModuleType | types.SimpleNamespace | None:
@@ -227,6 +260,56 @@ def show(
         _display(prev, 0, False, None)
     else:
         last_path.write_text(message, encoding="utf-8")
+
+
+def clock(
+    *,
+    addr: int = 0x27,
+    tz: str | datetime.tzinfo | None = None,
+    interval: float = 1.0,
+    updates: int | None = None,
+) -> None:
+    """Display a continuously updating clock on the LCD.
+
+    The first row shows the weekday followed by the ISO formatted date (for
+    example ``"Tue 2024-01-02"``) while the second row displays the time with
+    seconds (``"03:04:05"``). The display refreshes every ``interval`` seconds
+    until interrupted or until ``updates`` frames have been shown.
+    """
+
+    tzinfo = _coerce_timezone(tz)
+
+    if interval <= 0:
+        raise ValueError("interval must be greater than 0")
+    if updates is not None:
+        if updates < 0:
+            raise ValueError("updates must be greater than or equal to 0")
+        if updates == 0:
+            return
+
+    smbus_mod = _import_smbus()
+    if smbus_mod is None:
+        return
+
+    bus = smbus_mod.SMBus(1)
+    _lcd_init(bus, addr)
+
+    shown = 0
+    while True:
+        if tzinfo is None:
+            now = datetime.datetime.now()
+        else:
+            now = datetime.datetime.now(tz=tzinfo)
+        top_line = f"{now:%a} {now.date().isoformat()}"
+        bottom_line = now.strftime("%H:%M:%S")
+        _lcd_string(bus, addr, top_line, LCD_LINE_1)
+        _lcd_string(bus, addr, bottom_line, LCD_LINE_2)
+
+        shown += 1
+        if updates is not None and shown >= updates:
+            break
+
+        time.sleep(interval)
 
 
 def brightness(level: int | float | bool | str, *, addr: int = 0x27) -> None:
