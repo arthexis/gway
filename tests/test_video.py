@@ -6,6 +6,7 @@ import types
 import numpy as np
 
 from gway import gw
+from gway.builtins import is_test_flag
 
 
 def _load_video():
@@ -16,6 +17,10 @@ def _load_video():
     return module
 
 
+@unittest.skipUnless(
+    is_test_flag("video"),
+    "Video tests disabled (enable with --flags video)",
+)
 class CaptureCameraTests(unittest.TestCase):
     def test_capture_yields_frames_and_releases(self):
         video = _load_video()
@@ -34,6 +39,10 @@ class CaptureCameraTests(unittest.TestCase):
         fake_cap.release.assert_called_once()
 
 
+@unittest.skipUnless(
+    is_test_flag("video"),
+    "Video tests disabled (enable with --flags video)",
+)
 class DisplayVideoTests(unittest.TestCase):
     def test_display_rejects_non_iterable(self):
         video = _load_video()
