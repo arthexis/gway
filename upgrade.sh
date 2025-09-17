@@ -149,6 +149,13 @@ fi
 echo "[5.3] Upgrading pip to latest version in venv..."
 python -m pip install --upgrade pip || log_action "pip upgrade failed"
 
+echo "[5.4] Installing Python requirements..."
+if ! pip install -r requirements.txt; then
+    echo "Warning: requirements installation failed, continuing"
+    log_action "requirements install failed"
+fi
+
+echo "[5.5] Installing gway in editable mode..."
 if ! pip install -e .; then
     echo "Warning: package installation failed, continuing"
     log_action "pip install failed"

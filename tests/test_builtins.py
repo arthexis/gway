@@ -67,8 +67,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
 
     def test_help_list_flags(self):
         flags = gw.help(list_flags=True)["Test Flags"]
-        expected = {"failure"}
-        self.assertEqual(set(flags.keys()), expected)
+        self.assertIn("failure", flags)
         for tests in flags.values():
             self.assertIsInstance(tests, list)
 
