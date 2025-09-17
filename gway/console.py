@@ -360,10 +360,18 @@ def process(command_sources, callback=None, **context):
         )
 
         var_kw_name = getattr(resolved_obj, "__var_keyword_name__", None)
+        var_pos_name = getattr(resolved_obj, "__var_positional_name__", None)
         if var_kw_name:
             parsed_args, unknown = func_parser.parse_known_args(func_args)
             # stash the raw unknown tokens for prepare
             setattr(parsed_args, var_kw_name, unknown)
+        elif var_pos_name:
+            parsed_args, unknown = func_parser.parse_known_args(func_args)
+            existing = getattr(parsed_args, var_pos_name, []) or []
+            if not isinstance(existing, list):
+                existing = list(existing)
+            existing.extend(unknown)
+            setattr(parsed_args, var_pos_name, existing)
         else:
             parsed_args = func_parser.parse_args(func_args)
 
@@ -624,6 +632,7 @@ def add_func_args(subparser, func_obj, *, interactive=False, wizard=False):
                 nargs='*',
                 help=f"Variable positional arguments for {arg_name}"
             )
+            func_obj.__var_positional_name__ = arg_name
 
         # VAR_KEYWORD: e.g. **kwargs
         elif param.kind == inspect.Parameter.VAR_KEYWORD:

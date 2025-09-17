@@ -556,6 +556,10 @@ def upgrade(*args):
     streaming the script's output as it runs.  The helper also understands a
     ``--safe`` flag which performs the same temporary-environment test used by
     the ``auto_upgrade`` recipe before invoking the shell script.
+    Recognized options mirror the shell script's flags (``--force``,
+    ``--latest``, ``--test`` and ``--no-test``) in addition to ``--safe``.
+    Unknown options raise ``ValueError`` so the CLI can fail fast
+    before handing control to the shell script.
     """
     from gway import gw
     import os
@@ -567,19 +571,29 @@ def upgrade(*args):
     forwarded_args = []
     request_full_tests = False
     skip_tests = False
+    allowed_flags = {"--force", "--latest", "--test", "--no-test", "-h", "--help"}
     for arg in args:
         if arg == "--safe":
             safe_mode = True
-        else:
-            forwarded_args.append(arg)
-            if arg == "--test":
-                request_full_tests = True
-            elif arg == "--no-test":
-                skip_tests = True
+            continue
+        if arg not in allowed_flags:
+            raise ValueError(f"Unrecognized upgrade option: {arg}")
+        forwarded_args.append(arg)
+        if arg == "--test":
+            request_full_tests = True
+        elif arg == "--no-test":
+            skip_tests = True
+
+    if request_full_tests and skip_tests:
+        raise ValueError("--test and --no-test cannot be used together")
+
+    help_requested = any(arg in {"-h", "--help"} for arg in forwarded_args)
 
     if safe_mode:
         if skip_tests:
             gw.info("Skipping safe upgrade check because --no-test was provided.")
+        elif help_requested:
+            gw.info("Skipping safe upgrade check because help was requested.")
         else:
             mode_label = "full test suite" if request_full_tests else "smoke tests"
             gw.info(
