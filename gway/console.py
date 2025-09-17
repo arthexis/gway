@@ -59,6 +59,7 @@ def cli_main():
     add("-d", dest="debug", action="store_true", help="Enable debug logging")
     add("-e", dest="expression", type=str, help="Return resolved sigil at the end")
     add("-j", dest="json", nargs="?", const=True, default=False, help="Output result(s) as JSON")
+    add("-i", dest="interactive", action="store_true", help="Interactive mode (prompt for required parameters)")
     add("-o", dest="outfile", type=str, help="Write text output(s) to this file")
     add("-p", dest="projects", type=str, help="Root project path for custom functions.")
     add(
@@ -107,6 +108,7 @@ def cli_main():
         project_path=args.projects,
         debug=args.debug,
         wizard=args.wizard,
+        interactive=args.interactive,
         timed=args.timed
     )
 
@@ -125,6 +127,10 @@ def cli_main():
         run_kwargs['client'] = args.client
     if args.server:
         run_kwargs['server'] = args.server
+    if args.interactive:
+        run_kwargs['interactive'] = True
+    if args.wizard:
+        run_kwargs['wizard'] = True
     if args.timed:
         run_kwargs['timed'] = True
     run_kwargs.update(extra_context)
@@ -212,6 +218,8 @@ def process(command_sources, callback=None, **context):
 
     gw = Gateway(**context) if context else _global_gw
     wizard_enabled = getattr(gw, "wizard_enabled", False)
+    interactive_enabled = getattr(gw, "interactive_enabled", False)
+    wizard_prompts = wizard_enabled and interactive_enabled
     call_specs = []
     last_project = None
     last_project_name = None
@@ -238,7 +246,7 @@ def process(command_sources, callback=None, **context):
             except AttributeError as e:
                 last_error = e
 
-                if wizard_enabled:
+                if wizard_prompts:
                     candidates = [a for a in dir(obj) if not a.startswith("_")]
                     guess = difflib.get_close_matches(normalized, candidates, n=1)
                     if guess:
@@ -344,7 +352,12 @@ def process(command_sources, callback=None, **context):
 
         # Parse function arguments, using parse_known_args if **kwargs present
         func_parser = argparse.ArgumentParser(prog=".".join(path))
-        add_func_args(func_parser, resolved_obj, wizard=wizard_enabled)
+        add_func_args(
+            func_parser,
+            resolved_obj,
+            interactive=interactive_enabled,
+            wizard=wizard_prompts,
+        )
 
         var_kw_name = getattr(resolved_obj, "__var_keyword_name__", None)
         if var_kw_name:
@@ -354,29 +367,35 @@ def process(command_sources, callback=None, **context):
         else:
             parsed_args = func_parser.parse_args(func_args)
 
-        if wizard_enabled:
-            parsed_args = prompt_for_missing(parsed_args, resolved_obj)
+        if interactive_enabled:
+            parsed_args = prompt_for_missing(
+                parsed_args,
+                resolved_obj,
+                required_only=not wizard_prompts,
+            )
             final_args, final_kwargs = prepare(parsed_args, resolved_obj)
-            call_specs.append((resolved_obj, final_args, final_kwargs, path))
+            if wizard_prompts:
+                call_specs.append((resolved_obj, final_args, final_kwargs, path))
+                continue
         else:
-            # Prepare and invoke
             final_args, final_kwargs = prepare(parsed_args, resolved_obj)
-            try:
-                result = resolved_obj(*final_args, **final_kwargs)
-                last_result = result
-                all_results.append(result)
-                if path:
-                    last_project_name = path[0]
-                    try:
-                        last_project = getattr(gw, normalize_token(last_project_name))
-                    except AttributeError:
-                        last_project = None
-            except Exception as e:
-                gw.exception(e)
-                name = getattr(resolved_obj, "__name__", str(resolved_obj))
-                abort(f"Unhandled {type(e).__name__} in {name} -> {str(e)} @ {str(resolved_obj.__module__)}.py")
 
-    if wizard_enabled:
+        try:
+            result = resolved_obj(*final_args, **final_kwargs)
+            last_result = result
+            all_results.append(result)
+            if path:
+                last_project_name = path[0]
+                try:
+                    last_project = getattr(gw, normalize_token(last_project_name))
+                except AttributeError:
+                    last_project = None
+        except Exception as e:
+            gw.exception(e)
+            name = getattr(resolved_obj, "__name__", str(resolved_obj))
+            abort(f"Unhandled {type(e).__name__} in {name} -> {str(e)} @ {str(resolved_obj.__module__)}.py")
+
+    if wizard_prompts:
         for func, f_args, f_kwargs, call_path in call_specs:
             try:
                 result = func(*f_args, **f_kwargs)
@@ -459,11 +478,11 @@ def prepare(parsed_args, func_obj):
     return func_args, {**func_kwargs, **extra_kwargs}
 
 
-def prompt_for_missing(parsed_args, func_obj):
-    """Prompt user for any parameters missing from *parsed_args*.
+def prompt_for_missing(parsed_args, func_obj, *, required_only=False):
+    """Prompt user for parameters missing from *parsed_args*.
 
-    Displays default values for optional parameters and returns the updated
-    namespace."""
+    When ``required_only`` is True, optional parameters that already have
+    defaults are skipped."""
     sig = inspect.signature(func_obj, eval_str=True)
 
     for name, param in sig.parameters.items():
@@ -473,6 +492,10 @@ def prompt_for_missing(parsed_args, func_obj):
 
         current = getattr(parsed_args, name, inspect._empty)
         if current is not inspect._empty and current is not None:
+            continue
+
+        is_required = param.default is inspect._empty
+        if required_only and not is_required:
             continue
 
         default = None if param.default is inspect.Parameter.empty else param.default
@@ -571,11 +594,12 @@ def show_functions(functions: dict):
         if doc:
             print(f"      {doc}")
 
-def add_func_args(subparser, func_obj, *, wizard=False):
+def add_func_args(subparser, func_obj, *, interactive=False, wizard=False):
     """Add the function's arguments to the CLI subparser.
 
-    When ``wizard`` is True, required arguments are marked optional so they can
-    be filled interactively later."""
+    ``interactive`` relaxes required parameters so they can be asked for later.
+    When ``wizard`` is also True, optional parameters are treated the same way
+    so the wizard can prompt for extra details."""
     sig = inspect.signature(func_obj, eval_str=True)
     try:
         hints = get_type_hints(func_obj)
@@ -617,16 +641,21 @@ def add_func_args(subparser, func_obj, *, wizard=False):
             if auto_inject:
                 opts.pop('required', None)
 
+            is_required = param.default is inspect._empty
+
             # before the first kw-only marker (*) → positional
             if is_positional:
                 # argparse forbids 'required' on positionals:
                 opts.pop('required', None)
 
-                if wizard:
+                if interactive:
                     opts['nargs'] = '?'
-                    opts['default'] = inspect._empty
+                    if is_required or wizard:
+                        opts['default'] = inspect._empty
+                    elif 'default' not in opts and param.default is not inspect._empty:
+                        opts['default'] = param.default
                     subparser.add_argument(arg_name, **opts)
-                elif param.default is not inspect.Parameter.empty or auto_inject:
+                elif param.default is not inspect._empty or auto_inject:
                     subparser.add_argument(arg_name, nargs='?', **opts)
                 else:
                     subparser.add_argument(arg_name, **opts)
@@ -635,7 +664,8 @@ def add_func_args(subparser, func_obj, *, wizard=False):
             else:
                 seen_kw_only = True
                 cli_name = f"--{arg_name.replace('_', '-')}"
-                if param.annotation is bool or isinstance(param.default, bool):
+                is_bool = param.annotation is bool or isinstance(param.default, bool)
+                if is_bool:
                     grp = subparser.add_mutually_exclusive_group(required=False)
                     grp.add_argument(
                         cli_name,
@@ -649,14 +679,20 @@ def add_func_args(subparser, func_obj, *, wizard=False):
                         action="store_false",
                         help=f"Disable {arg_name}"
                     )
-                    if wizard:
-                        subparser.set_defaults(**{arg_name: inspect._empty})
+                    if interactive:
+                        if is_required or wizard:
+                            subparser.set_defaults(**{arg_name: inspect._empty})
+                        else:
+                            subparser.set_defaults(**{arg_name: param.default})
                     else:
                         subparser.set_defaults(**{arg_name: param.default})
                 else:
-                    if wizard:
+                    if interactive:
                         opts['required'] = False
-                        opts['default'] = inspect._empty
+                        if is_required or wizard:
+                            opts['default'] = inspect._empty
+                        elif 'default' not in opts and param.default is not inspect._empty:
+                            opts['default'] = param.default
                     subparser.add_argument(cli_name, **opts)
 
                     # Add unit conversion flags if available
@@ -677,8 +713,13 @@ def add_func_args(subparser, func_obj, *, wizard=False):
                                     if k not in {"required", "default"}}
                         alt_opts["dest"] = arg_name
                         alt_opts["type"] = _wrapper
-                        if wizard:
-                            alt_opts["default"] = inspect._empty
+                        if interactive:
+                            if is_required or wizard:
+                                alt_opts["default"] = inspect._empty
+                            else:
+                                default_value = opts.get('default', param.default)
+                                if default_value is not inspect._empty:
+                                    alt_opts["default"] = default_value
                         alt_opts.setdefault(
                             "help",
                             f"Alias for --{arg_name} in {alt_name} units")
