@@ -151,25 +151,79 @@ def pinout():
     return PINOUT.copy()
 
 
-def scan():
-    """Wait for a card and print its data until a key is pressed.
+def _coerce_scan_threshold(value) -> int:
+    """Normalize the ``after`` threshold into a positive integer."""
+
+    if isinstance(value, bool):
+        raise TypeError("after must be a positive integer")
+    if isinstance(value, int):
+        threshold = int(value)
+    elif isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError("after must be a positive integer")
+        threshold = int(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("after must be a positive integer")
+        try:
+            threshold = int(stripped, 10)
+        except ValueError as exc:  # pragma: no cover - validated below
+            raise ValueError("after must be a positive integer") from exc
+    else:
+        raise TypeError("after must be a positive integer")
+
+    if threshold < 1:
+        raise ValueError("after must be a positive integer")
+    return threshold
+
+
+def scan(*, after=None, once=False):
+    """Wait for a card and print its data until stopped or a threshold is met.
+
+    Args:
+        after: Optional positive integer specifying how many times the same
+            card must be detected before the scan stops automatically.
+        once: Convenience flag equivalent to ``after=1``.
+
+    Returns:
+        The UID of the card that satisfied the threshold when ``after`` or
+        ``once`` is provided. Otherwise ``None`` when stopped manually or when
+        initialization fails.
 
     The function attempts to use a ``SimpleMFRC522`` reader. If the required
     libraries are not available, an informative message is printed and the
     function exits.
     """
+    threshold = None
+    if after is not None:
+        threshold = _coerce_scan_threshold(after)
+    if once:
+        once_threshold = 1
+        if threshold is not None and threshold != once_threshold:
+            raise ValueError("`once` cannot be combined with after != 1")
+        threshold = once_threshold
+
     reader, GPIO = _initialize_reader()
     if reader is None:
         return
     print("Scanning for RFID cards. Press any key to stop.")
+    seen_counts: dict[object, int] = {}
+    detected_uid = None
     try:
         while True:
             if select.select([sys.stdin], [], [], 0)[0]:
                 break
             card_id, text = reader.read_no_block()
-            if card_id:
+            if card_id is not None:
                 text = text.strip() if isinstance(text, str) else text
                 print(f"Card ID: {card_id} Text: {text}")
+                if threshold is not None:
+                    count = seen_counts.get(card_id, 0) + 1
+                    seen_counts[card_id] = count
+                    if count >= threshold:
+                        detected_uid = card_id
+                        break
             time.sleep(0.1)
     finally:  # pragma: no cover - hardware cleanup
         if GPIO is not None:
@@ -177,6 +231,8 @@ def scan():
                 GPIO.cleanup()  # type: ignore[attr-defined]
             except Exception:
                 pass
+
+    return detected_uid
 
 
 def _coerce_uid(uid) -> int:

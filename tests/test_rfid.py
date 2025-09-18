@@ -103,6 +103,59 @@ def test_scan_reports_permission_errors(monkeypatch, capsys):
     assert "spi` group" in captured.out
 
 
+def test_scan_returns_uid_after_threshold(monkeypatch, capsys):
+    """Stop automatically once the same card has been detected enough times."""
+
+    class FakeReader:
+        def __init__(self):
+            self.calls = 0
+            self.responses = [
+                (None, ""),
+                (987654321, " first "),
+                (None, ""),
+                (987654321, " second "),
+            ]
+
+        def read_no_block(self):
+            if self.calls >= len(self.responses):
+                result = self.responses[-1]
+            else:
+                result = self.responses[self.calls]
+            self.calls += 1
+            return result
+
+    _prepare_scan_test(monkeypatch, FakeReader)
+
+    result = rfid.scan(after=2)
+
+    captured = capsys.readouterr()
+    assert result == 987654321
+    assert captured.out.count("Card ID: 987654321") == 2
+
+
+def test_scan_once_returns_uid(monkeypatch, capsys):
+    """The ``--once`` flag should stop after the first successful read."""
+
+    class FakeReader:
+        def read_no_block(self):
+            return (555444333, " payload ")
+
+    _prepare_scan_test(monkeypatch, FakeReader)
+
+    result = rfid.scan(once=True)
+
+    captured = capsys.readouterr()
+    assert result == 555444333
+    assert captured.out.count("Card ID: 555444333") == 1
+
+
+def test_scan_once_rejects_conflicting_after():
+    """Using ``--once`` with a non-matching ``--after`` value should fail."""
+
+    with pytest.raises(ValueError):
+        rfid.scan(after=2, once=True)
+
+
 def _install_fake_rfid_dependencies(monkeypatch, reader_cls):
     """Install stub modules so ``rfid.scan`` can be exercised without hardware."""
 
@@ -115,6 +168,15 @@ def _install_fake_rfid_dependencies(monkeypatch, reader_cls):
     monkeypatch.setitem(sys.modules, "mfrc522", fake_mfrc522)
     monkeypatch.setitem(sys.modules, "RPi", fake_rpi)
     monkeypatch.setitem(sys.modules, "RPi.GPIO", fake_gpio)
+
+
+def _prepare_scan_test(monkeypatch, reader_cls):
+    """Set up the environment for scan tests that expect successful reads."""
+
+    _install_fake_rfid_dependencies(monkeypatch, reader_cls)
+    monkeypatch.setattr(rfid.os.path, "exists", lambda path: True)
+    monkeypatch.setattr(rfid.select, "select", lambda *args: ([], [], []))
+    monkeypatch.setattr(rfid.time, "sleep", lambda duration: None)
 
 
 def _prepare_write_test(monkeypatch, reader_cls):
