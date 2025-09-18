@@ -12,7 +12,7 @@ def sense_motion(
     pin: int = 17,
     gpio_module=None,
     settle_time: float = 2.0,
-    interval: float = 0.5,
+    interval: float = 2.0,
     max_checks: int | None = None,
 ) -> None:
     """Run a simple console prototype for a PIR motion sensor.
@@ -30,7 +30,7 @@ def sense_motion(
         Seconds to wait after setting up the GPIO pin before polling. Defaults
         to ``2`` seconds to match common PIR warm-up requirements.
     interval:
-        Seconds to wait between polls. Defaults to half a second.
+        Seconds to wait between polls. Defaults to two seconds.
     max_checks:
         Maximum number of polls to perform before returning. ``None`` means run
         indefinitely. This is primarily intended for testing.
