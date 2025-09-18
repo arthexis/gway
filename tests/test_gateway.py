@@ -75,6 +75,35 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(res2, {"bar": 99})
         self.assertTrue("bar" in gw.results)
 
+    def test_discard_builtin_removes_results(self):
+        def produce_alpha(value=1):
+            return value
+
+        def update_profile(profile=None):
+            return {"profile": profile or {}, "status": "ok"}
+
+        fetch_alpha = gw.wrap_callable("get_alpha", produce_alpha)
+        update_profile_fn = gw.wrap_callable("update_profile", update_profile)
+
+        fetch_alpha(value=42)
+        update_profile_fn(profile={"name": "River"})
+
+        self.assertEqual(gw.results.get("alpha"), 42)
+        self.assertIn("profile", gw.results)
+        self.assertIn("status", gw.results)
+        self.assertEqual(gw.context.get("profile"), {"name": "River"})
+
+        summary = gw.discard("alpha", "profile", "missing")
+
+        self.assertNotIn("alpha", gw.results)
+        self.assertNotIn("profile", gw.results)
+        self.assertIn("status", gw.results)
+        self.assertNotIn("profile", gw.context)
+        self.assertEqual(summary["discarded"].get("alpha"), 42)
+        self.assertEqual(summary["discarded"].get("profile"), {"name": "River"})
+        self.assertIn("missing", summary)
+        self.assertEqual(summary["missing"], ["missing"])
+
     def test_wrap_callable_raises_on_unresolved_sigils(self):
         from gway.sigils import Sigil
         gw.context.clear()

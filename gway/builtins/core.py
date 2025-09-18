@@ -1,6 +1,7 @@
 __all__ = [
     "hello_world",
     "abort",
+    "discard",
     "envs",
     "version",
     "shell",
@@ -39,6 +40,42 @@ def abort(message: str, *, exit_code: int = 13) -> int:
     gw.critical(message)
     print(f"Halting: {message}")
     raise SystemExit(exit_code)
+
+
+def discard(*names) -> dict:
+    """Remove stored results by key and return a summary."""
+    from gway import gw
+
+    discarded: dict[str, object] = {}
+    missing: list[str] = []
+    sentinel = object()
+
+    def _iter_names(values):
+        for value in values:
+            if value is None:
+                continue
+            if isinstance(value, (list, tuple, set)):
+                yield from _iter_names(value)
+                continue
+            name = str(value)
+            if name:
+                yield name
+
+    for name in _iter_names(names):
+        value = gw.results.pop(name, sentinel)
+        if value is sentinel:
+            missing.append(name)
+            continue
+
+        discarded[name] = value
+        if name in gw.context:
+            gw.context.pop(name, None)
+
+    summary: dict[str, object] = {"discarded": discarded}
+    if missing:
+        summary["missing"] = missing
+
+    return summary
 
 
 def envs(filter: str | None = None) -> dict:
