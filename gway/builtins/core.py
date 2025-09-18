@@ -483,7 +483,7 @@ def temp_env(
 
 def install(
     recipe: str | None = None,
-    *,
+    *recipe_args,
     repair: bool = False,
     remove: bool = False,
     bin: bool = False,
@@ -501,8 +501,9 @@ def install(
     command or with ``--shell`` to restore the previous login shell),
     ``--repair`` to reinstall all known services, ``--bin`` to register the
     ``gway`` CLI globally, and ``--shell`` to configure the ``gway shell``
-    wrapper as the login shell.  Additional flags are forwarded directly to
-    the script.
+    wrapper as the login shell.  Additional positional arguments are passed
+    to ``install.sh`` so recipe-specific flags like ``--latest`` are preserved
+    when installing services.
 
     Returns the exit code from the script execution.
     """
@@ -528,6 +529,9 @@ def install(
             "Options --repair, --remove, --bin and --shell are mutually exclusive. "
             "Combine --remove with --bin or --shell to uninstall those integrations."
         )
+
+    if recipe_args and not recipe:
+        raise ValueError("Recipe arguments require a recipe name or path")
 
     if repair and recipe:
         raise ValueError("--repair cannot be combined with a recipe argument")
@@ -559,6 +563,8 @@ def install(
         cmd.append("--root")
     if recipe:
         cmd.append(recipe)
+    if recipe_args:
+        cmd.extend(recipe_args)
 
     def _stream(src, dst):
         for line in src:

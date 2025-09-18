@@ -33,6 +33,7 @@ REPAIR_FLAG=false
 REMOVE_FLAG=false
 BIN_FLAG=false
 SHELL_FLAG=false
+RECIPE_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --repair)
@@ -60,9 +61,7 @@ for arg in "$@"; do
       if [[ -z "$RECIPE" ]]; then
         RECIPE="$arg"
       else
-        echo "ERROR: Unexpected argument $arg" >&2
-        deactivate
-        exit 1
+        RECIPE_ARGS+=("$arg")
       fi
       ;;
   esac
@@ -132,12 +131,45 @@ if $REPAIR_FLAG; then
   echo "Repairing installed gway services..."
   for unit in /etc/systemd/system/gway-*.service; do
     [[ -f "$unit" ]] || continue
-    recipe=$(grep -oE 'ExecStart=.*-r ([^ ]+)' "$unit" | awk '{print $2}')
+    exec_line=$(grep -E '^ExecStart=' "$unit" | head -n 1)
+    if [[ -z "$exec_line" ]]; then
+      echo "  Skipping $unit (could not determine ExecStart)" >&2
+      continue
+    fi
+
+    exec_cmd=${exec_line#ExecStart=}
+
+    mapfile -t exec_parts < <(python3 - <<'PY' -- "$exec_cmd"
+import shlex
+import sys
+
+for part in shlex.split(sys.argv[1]):
+    print(part)
+PY
+    ) || {
+      echo "  Skipping $unit (failed to parse ExecStart)" >&2
+      continue
+    }
+
+    recipe=""
+    args=()
+    for ((i = 0; i < ${#exec_parts[@]}; i++)); do
+      part="${exec_parts[$i]}"
+      if [[ "$part" == "-r" && $((i + 1)) -lt ${#exec_parts[@]} ]]; then
+        recipe="${exec_parts[$((i + 1))]}"
+        if (( i + 2 < ${#exec_parts[@]} )); then
+          args=("${exec_parts[@]:$((i + 2))}")
+        fi
+        break
+      fi
+    done
+
     if [[ -z "$recipe" ]]; then
       echo "  Skipping $unit (could not determine recipe)" >&2
       continue
     fi
-    "$SCRIPT_PATH" "$recipe"
+
+    "$SCRIPT_PATH" "$recipe" "${args[@]}"
   done
   deactivate
   exit 0
@@ -435,11 +467,23 @@ fi
 echo "Installing systemd service '$SERVICE_NAME' for recipe '$RECIPE'..."
 
 # Build ExecStart command
-GWAY_EXEC="$SCRIPT_DIR/gway.sh"
+GWAY_CMD=("$SCRIPT_DIR/gway.sh")
 if [[ -n "$DEBUG_FLAG" ]]; then
-  GWAY_EXEC+=" $DEBUG_FLAG"
+  GWAY_CMD+=("$DEBUG_FLAG")
 fi
-GWAY_EXEC+=" -r $RECIPE"
+GWAY_CMD+=("-r" "$RECIPE")
+if [[ ${#RECIPE_ARGS[@]} -gt 0 ]]; then
+  GWAY_CMD+=("${RECIPE_ARGS[@]}")
+fi
+
+GWAY_EXEC=""
+for part in "${GWAY_CMD[@]}"; do
+  if [[ -z "$GWAY_EXEC" ]]; then
+    GWAY_EXEC="$(printf '%q' "$part")"
+  else
+    GWAY_EXEC+=" $(printf '%q' "$part")"
+  fi
+done
 
 # Backup existing unit
 if [[ -f "$SERVICE_PATH" ]]; then
