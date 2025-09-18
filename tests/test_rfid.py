@@ -156,6 +156,47 @@ def test_scan_once_rejects_conflicting_after():
         rfid.scan(after=2, once=True)
 
 
+def test_scan_wait_timeout_stops_scan(monkeypatch, capsys):
+    """Automatically exit when the wait timeout elapses."""
+
+    class FakeReader:
+        last_instance = None
+
+        def __init__(self):
+            type(self).last_instance = self
+            self.calls = 0
+
+        def read_no_block(self):
+            self.calls += 1
+            return (None, "")
+
+    fake_clock = _prepare_scan_test(monkeypatch, FakeReader)
+
+    result = rfid.scan(wait="0.3")
+
+    captured = capsys.readouterr()
+    assert result is None
+    assert "Card ID:" not in captured.out
+    assert FakeReader.last_instance.calls == 3
+    assert fake_clock.now == pytest.approx(0.3)
+
+
+def test_scan_rejects_invalid_wait(monkeypatch):
+    """``wait`` must be a positive numeric value."""
+
+    monkeypatch.setattr(
+        rfid,
+        "_initialize_reader",
+        lambda: pytest.fail("_initialize_reader should not run on invalid wait"),
+    )
+
+    with pytest.raises(ValueError):
+        rfid.scan(wait=0)
+
+    with pytest.raises(TypeError):
+        rfid.scan(wait=True)
+
+
 def _install_fake_rfid_dependencies(monkeypatch, reader_cls):
     """Install stub modules so ``rfid.scan`` can be exercised without hardware."""
 
@@ -176,7 +217,21 @@ def _prepare_scan_test(monkeypatch, reader_cls):
     _install_fake_rfid_dependencies(monkeypatch, reader_cls)
     monkeypatch.setattr(rfid.os.path, "exists", lambda path: True)
     monkeypatch.setattr(rfid.select, "select", lambda *args: ([], [], []))
-    monkeypatch.setattr(rfid.time, "sleep", lambda duration: None)
+
+    class FakeClock:
+        def __init__(self):
+            self.now = 0.0
+
+        def monotonic(self):
+            return self.now
+
+        def sleep(self, duration):
+            self.now += duration
+
+    fake_clock = FakeClock()
+    monkeypatch.setattr(rfid.time, "monotonic", fake_clock.monotonic)
+    monkeypatch.setattr(rfid.time, "sleep", fake_clock.sleep)
+    return fake_clock
 
 
 def _prepare_write_test(monkeypatch, reader_cls):
