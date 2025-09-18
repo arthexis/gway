@@ -12,7 +12,10 @@ Functions
   ``.wav`` file in the ``work/`` directory by default. You may customise the duration,
   format (currently ``wav`` only) and target filename. By default the user is
   prompted to press Enter before recording starts; use ``--immediate`` to begin
-  right away.
+  right away. When you only need a short sample, ``--sample N`` caps the capture
+  to ``N`` seconds even if a longer duration was requested. Use ``--stream`` to
+  receive an in-memory handle that downstream helpers (such as ``audio.playback``)
+  can play without hitting the filesystem.
 
 ``playback``
   Play a ``.wav`` file. When invoked with ``--loop`` it keeps the audio
