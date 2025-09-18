@@ -18,6 +18,7 @@ import time
 import select
 import glob
 import os
+import math
 from typing import Iterable, Tuple, Optional
 
 
@@ -178,13 +179,38 @@ def _coerce_scan_threshold(value) -> int:
     return threshold
 
 
-def scan(*, after=None, once=False):
+def _coerce_wait_seconds(value) -> float:
+    """Normalize the ``wait`` timeout into a positive floating point value."""
+
+    if isinstance(value, bool):
+        raise TypeError("wait must be a positive number of seconds")
+    if isinstance(value, (int, float)):
+        seconds = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("wait must be a positive number of seconds")
+        try:
+            seconds = float(stripped)
+        except ValueError as exc:  # pragma: no cover - validated below
+            raise ValueError("wait must be a positive number of seconds") from exc
+    else:
+        raise TypeError("wait must be a positive number of seconds")
+
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError("wait must be a positive number of seconds")
+    return seconds
+
+
+def scan(*, after=None, once=False, wait=None):
     """Wait for a card and print its data until stopped or a threshold is met.
 
     Args:
         after: Optional positive integer specifying how many times the same
             card must be detected before the scan stops automatically.
         once: Convenience flag equivalent to ``after=1``.
+        wait: Optional positive number of seconds after which the scan stops
+            automatically.
 
     Returns:
         The UID of the card that satisfied the threshold when ``after`` or
@@ -204,14 +230,32 @@ def scan(*, after=None, once=False):
             raise ValueError("`once` cannot be combined with after != 1")
         threshold = once_threshold
 
+    wait_seconds = None
+    if wait is not None:
+        wait_seconds = _coerce_wait_seconds(wait)
+
     reader, GPIO = _initialize_reader()
     if reader is None:
         return
-    print("Scanning for RFID cards. Press any key to stop.")
+    if wait_seconds is None:
+        print("Scanning for RFID cards. Press any key to stop.")
+    else:
+        formatted_wait = f"{wait_seconds:g}"
+        print(
+            "Scanning for RFID cards. Press any key to stop. "
+            "Automatically stopping after {seconds} seconds.".format(
+                seconds=formatted_wait
+            )
+        )
     seen_counts: dict[object, int] = {}
     detected_uid = None
     try:
+        deadline = None
+        if wait_seconds is not None:
+            deadline = time.monotonic() + wait_seconds
         while True:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
             if select.select([sys.stdin], [], [], 0)[0]:
                 break
             card_id, text = reader.read_no_block()

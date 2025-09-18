@@ -4,7 +4,8 @@ RFID Utilities
 ``projects/rfid`` offers helpers for working with RFID hardware.
 
 ``scan`` – wait for a card to be scanned and print its information. Press any
-key to stop scanning.
+key to stop scanning or pass ``--wait`` to exit automatically after the
+specified number of seconds.
 
 ``pinout`` – return the expected wiring between the MFRC522 board and a
 Raspberry Pi.
