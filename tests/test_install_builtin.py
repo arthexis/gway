@@ -41,9 +41,27 @@ class InstallBuiltinTests(unittest.TestCase):
         self.assertIn("--root", output)
         self.assertTrue(output.strip().endswith("auto_upgrade"))
 
+    def test_install_forwards_recipe_args(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "install.sh")
+            self._write_script(script, "echo \"args: $@\"")
+
+            with patch.object(gw, "resource", return_value=pathlib.Path(script)):
+                rc = gw.install("auto_upgrade", "--latest", "--interval", "5")
+
+        self.assertEqual(rc, 0)
+        output = self.stdout.getvalue()
+        self.assertIn("--latest", output)
+        self.assertIn("--interval", output)
+        self.assertTrue(output.strip().endswith("5"))
+
     def test_install_remove_requires_recipe(self):
         with self.assertRaises(ValueError):
             gw.install(remove=True)
+
+    def test_install_recipe_args_require_recipe(self):
+        with self.assertRaises(ValueError):
+            gw.install(None, "--latest")
 
     def test_install_rejects_conflicting_actions(self):
         with self.assertRaises(ValueError):
