@@ -5,6 +5,23 @@ set -e
 
 ACTION_LOG=".upgrade_action.log"
 
+REQUIREMENTS_FILE="requirements.txt"
+REQUIREMENTS_HASH_FILE="requirements.md5"
+
+compute_requirements_hash() {
+    python - <<PY
+import hashlib
+from pathlib import Path
+import sys
+
+path = Path("$REQUIREMENTS_FILE")
+if not path.is_file():
+    sys.exit(1)
+
+print(hashlib.md5(path.read_bytes()).hexdigest())
+PY
+}
+
 usage() {
     echo "Usage: $0 [--force] [--latest] [--test] [--no-test]"
     echo "  --force     Reinstall even if no update is detected."
@@ -150,9 +167,37 @@ echo "[5.3] Upgrading pip to latest version in venv..."
 python -m pip install --upgrade pip || log_action "pip upgrade failed"
 
 echo "[5.4] Installing Python requirements..."
-if ! pip install -r requirements.txt; then
-    echo "Warning: requirements installation failed, continuing"
-    log_action "requirements install failed"
+set +e
+REQUIREMENTS_HASH=$(compute_requirements_hash 2>/dev/null)
+HASH_STATUS=$?
+set -e
+REQUIREMENTS_HASH=$(echo "$REQUIREMENTS_HASH" | tr -d '\r\n')
+if [[ $HASH_STATUS -ne 0 ]]; then
+    REQUIREMENTS_HASH=""
+fi
+
+STORED_REQUIREMENTS_HASH=""
+if [[ -f "$REQUIREMENTS_HASH_FILE" ]]; then
+    STORED_REQUIREMENTS_HASH=$(tr -d '\r\n' < "$REQUIREMENTS_HASH_FILE")
+fi
+
+if [[ -n "$REQUIREMENTS_HASH" && "$REQUIREMENTS_HASH" == "$STORED_REQUIREMENTS_HASH" && $FORCE -eq 0 && $ALWAYS_LATEST -eq 0 ]]; then
+    echo "Requirements unchanged (MD5). Skipping pip install (use --force or --latest to override)."
+else
+    if ! pip install -r "$REQUIREMENTS_FILE"; then
+        echo "Warning: requirements installation failed, continuing"
+        log_action "requirements install failed"
+    else
+        if [[ -z "$REQUIREMENTS_HASH" ]]; then
+            set +e
+            REQUIREMENTS_HASH=$(compute_requirements_hash 2>/dev/null)
+            set -e
+            REQUIREMENTS_HASH=$(echo "$REQUIREMENTS_HASH" | tr -d '\r\n')
+        fi
+        if [[ -n "$REQUIREMENTS_HASH" ]]; then
+            printf '%s\n' "$REQUIREMENTS_HASH" > "$REQUIREMENTS_HASH_FILE"
+        fi
+    fi
 fi
 
 echo "[5.5] Installing gway in editable mode..."
