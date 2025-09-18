@@ -106,25 +106,14 @@ def test_scan_reports_permission_errors(monkeypatch, capsys):
 def test_scan_returns_uid_after_threshold(monkeypatch, capsys):
     """Stop automatically once the same card has been detected enough times."""
 
-    class FakeReader:
-        def __init__(self):
-            self.calls = 0
-            self.responses = [
-                (None, ""),
-                (987654321, " first "),
-                (None, ""),
-                (987654321, " second "),
-            ]
+    poll_events = [
+        None,
+        (987654321, (1, 2, 3, 4, 5), " first "),
+        None,
+        (987654321, (1, 2, 3, 4, 5), " second "),
+    ]
 
-        def read_no_block(self):
-            if self.calls >= len(self.responses):
-                result = self.responses[-1]
-            else:
-                result = self.responses[self.calls]
-            self.calls += 1
-            return result
-
-    _prepare_scan_test(monkeypatch, FakeReader)
+    _prepare_scan_test(monkeypatch, poll_events)
 
     result = rfid.scan(after=2)
 
@@ -136,11 +125,9 @@ def test_scan_returns_uid_after_threshold(monkeypatch, capsys):
 def test_scan_once_returns_uid(monkeypatch, capsys):
     """The ``--once`` flag should stop after the first successful read."""
 
-    class FakeReader:
-        def read_no_block(self):
-            return (555444333, " payload ")
+    poll_events = [(555444333, (9, 9, 9, 9, 9), " payload ")]
 
-    _prepare_scan_test(monkeypatch, FakeReader)
+    _prepare_scan_test(monkeypatch, poll_events)
 
     result = rfid.scan(once=True)
 
@@ -159,25 +146,29 @@ def test_scan_once_rejects_conflicting_after():
 def test_scan_wait_timeout_stops_scan(monkeypatch, capsys):
     """Automatically exit when the wait timeout elapses."""
 
-    class FakeReader:
-        last_instance = None
+    poll_events = [None, None, None]
+    _reader, fake_poll = _prepare_scan_test(monkeypatch, poll_events)
 
+    class FakeClock:
         def __init__(self):
-            type(self).last_instance = self
-            self.calls = 0
+            self.now = 0.0
 
-        def read_no_block(self):
-            self.calls += 1
-            return (None, "")
+        def monotonic(self):
+            return self.now
 
-    fake_clock = _prepare_scan_test(monkeypatch, FakeReader)
+        def sleep(self, duration):
+            self.now += duration
+
+    fake_clock = FakeClock()
+    monkeypatch.setattr(rfid.time, "monotonic", fake_clock.monotonic)
+    monkeypatch.setattr(rfid.time, "sleep", fake_clock.sleep)
 
     result = rfid.scan(wait="0.3")
 
     captured = capsys.readouterr()
     assert result is None
     assert "Card ID:" not in captured.out
-    assert FakeReader.last_instance.calls == 3
+    assert fake_poll.call_count == 3
     assert fake_clock.now == pytest.approx(0.3)
 
 
@@ -197,6 +188,50 @@ def test_scan_rejects_invalid_wait(monkeypatch):
         rfid.scan(wait=True)
 
 
+def test_scan_prints_block_data_with_guessed_key(monkeypatch, capsys):
+    """Block output should note when a guessed key succeeded."""
+
+    poll_events = [(123456789, (1, 2, 3, 4, 5), " ")]
+    block_results = [
+        rfid.BlockReadResult(
+            block=1,
+            data=(0x41, 0x42, 0x43),
+            key_type="B",
+            key_hex="A0A1A2A3A4A5",
+            guessed=True,
+        )
+    ]
+
+    _prepare_scan_test(monkeypatch, poll_events, block_sequences=[block_results])
+
+    rfid.scan(block=1, once=True)
+
+    captured = capsys.readouterr()
+    assert "Card ID: 123456789" in captured.out
+    assert "Block 01 (Key B A0A1A2A3A4A5 guessed): 41 42 43" in captured.out
+
+
+def test_scan_reports_block_authentication_failure(monkeypatch, capsys):
+    """Failed authentication should surface the relevant message."""
+
+    poll_events = [(222333444, (9, 8, 7, 6, 5), " ")]
+    block_results = [
+        rfid.BlockReadResult(
+            block=5,
+            error="authentication failed using provided and default keys",
+            guess_attempted=True,
+        )
+    ]
+
+    _prepare_scan_test(monkeypatch, poll_events, block_sequences=[block_results])
+
+    rfid.scan(block=5, once=True)
+
+    captured = capsys.readouterr()
+    assert "Card ID: 222333444" in captured.out
+    assert "Block 05: authentication failed using provided and default keys." in captured.out
+
+
 def _install_fake_rfid_dependencies(monkeypatch, reader_cls):
     """Install stub modules so ``rfid.scan`` can be exercised without hardware."""
 
@@ -211,27 +246,157 @@ def _install_fake_rfid_dependencies(monkeypatch, reader_cls):
     monkeypatch.setitem(sys.modules, "RPi.GPIO", fake_gpio)
 
 
-def _prepare_scan_test(monkeypatch, reader_cls):
+def _prepare_scan_test(
+    monkeypatch,
+    poll_events,
+    *,
+    block_sequences=None,
+):
     """Set up the environment for scan tests that expect successful reads."""
 
-    _install_fake_rfid_dependencies(monkeypatch, reader_cls)
+    reader = types.SimpleNamespace()
+    gpio = types.SimpleNamespace(cleanup=lambda: None)
+    monkeypatch.setattr(rfid, "_initialize_reader", lambda: (reader, gpio))
     monkeypatch.setattr(rfid.os.path, "exists", lambda path: True)
     monkeypatch.setattr(rfid.select, "select", lambda *args: ([], [], []))
 
-    class FakeClock:
-        def __init__(self):
-            self.now = 0.0
+    events_iter = iter(poll_events)
 
-        def monotonic(self):
-            return self.now
+    def fake_poll(_reader):
+        fake_poll.call_count += 1
+        try:
+            return next(events_iter)
+        except StopIteration:
+            return None
 
-        def sleep(self, duration):
-            self.now += duration
+    fake_poll.call_count = 0
+    monkeypatch.setattr(rfid, "_poll_for_card", fake_poll)
 
-    fake_clock = FakeClock()
-    monkeypatch.setattr(rfid.time, "monotonic", fake_clock.monotonic)
-    monkeypatch.setattr(rfid.time, "sleep", fake_clock.sleep)
-    return fake_clock
+    if block_sequences is None:
+        monkeypatch.setattr(rfid, "_read_blocks", lambda *args, **kwargs: [])
+    else:
+        block_iter = iter(block_sequences)
+
+        def fake_read_blocks(*args, **kwargs):
+            try:
+                return next(block_iter)
+            except StopIteration:
+                return []
+
+        monkeypatch.setattr(rfid, "_read_blocks", fake_read_blocks)
+
+    monkeypatch.setattr(rfid.time, "sleep", lambda duration: None)
+    return reader, fake_poll
+
+
+class _BlockTestChip:
+    """Helper to emulate block authentication for ``_read_blocks`` tests."""
+
+    MI_OK = 0
+    PICC_AUTHENT1A = "A"
+    PICC_AUTHENT1B = "B"
+
+    def __init__(self, expected_keys, block_payloads):
+        self.expected_keys = expected_keys
+        self.block_payloads = block_payloads
+        self.stop_calls = 0
+        self.auth_calls = []
+        self.select_calls = []
+
+    def MFRC522_SelectTag(self, uid):
+        self.select_calls.append(tuple(uid))
+
+    def MFRC522_Auth(self, mode, block, key, uid):
+        self.auth_calls.append((mode, block, tuple(key)))
+        key_type = "A" if mode == self.PICC_AUTHENT1A else "B"
+        sector = block // 4
+        expected = self.expected_keys.get((key_type, sector))
+        if expected and tuple(key) == expected:
+            return self.MI_OK
+        return 1
+
+    def MFRC522_Read(self, block):
+        return list(self.block_payloads.get(block, []))
+
+    def MFRC522_StopCrypto1(self):
+        self.stop_calls += 1
+
+
+def _make_block_reader(expected_keys, block_payloads):
+    return types.SimpleNamespace(READER=_BlockTestChip(expected_keys, block_payloads))
+
+
+def test_read_blocks_uses_provided_key_a():
+    """Reading a block with a supplied key A should succeed."""
+
+    key_a = (0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5)
+    reader = _make_block_reader({("A", 1): key_a}, {4: [0x10, 0x20]})
+    key_candidates = {"A": [(key_a, False)], "B": []}
+
+    results = rfid._read_blocks(
+        reader,
+        (1, 2, 3, 4, 5),
+        [4],
+        key_candidates,
+        guess_mode=False,
+    )
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.block == 4
+    assert result.key_type == "A"
+    assert result.key_hex == "A0A1A2A3A4A5"
+    assert result.data == (0x10, 0x20)
+    assert not result.guessed
+    assert reader.READER.stop_calls == 1
+
+
+def test_read_blocks_guesses_key_b():
+    """Default keys should be attempted when none are provided."""
+
+    guessed_key = rfid.COMMON_MIFARE_CLASSIC_KEYS[1]
+    reader = _make_block_reader({("B", 2): guessed_key}, {8: [0xAA]})
+    key_candidates, guess_mode = rfid._prepare_key_candidates(
+        None, None, guess_defaults=True
+    )
+
+    results = rfid._read_blocks(
+        reader,
+        (9, 8, 7, 6, 5),
+        [8],
+        key_candidates,
+        guess_mode=guess_mode,
+    )
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.key_type == "B"
+    assert result.guessed is True
+    assert result.key_hex == "A0A1A2A3A4A5"
+    assert result.data == (0xAA,)
+
+
+def test_read_blocks_reports_failure_when_no_keys_match():
+    """When no keys succeed an informative error message should be returned."""
+
+    reader = _make_block_reader({("A", 0): (0x01, 0x02, 0x03, 0x04, 0x05, 0x06)}, {})
+    key_candidates, guess_mode = rfid._prepare_key_candidates(
+        None, None, guess_defaults=True
+    )
+
+    results = rfid._read_blocks(
+        reader,
+        (0, 0, 0, 0, 1),
+        [0],
+        key_candidates,
+        guess_mode=guess_mode,
+    )
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.error == "authentication failed using provided and default keys"
+    assert result.data is None
+    assert result.key_type is None
 
 
 def _prepare_write_test(monkeypatch, reader_cls):

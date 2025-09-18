@@ -19,7 +19,8 @@ import select
 import glob
 import os
 import math
-from typing import Iterable, Tuple, Optional
+from dataclasses import dataclass
+from typing import Iterable, Tuple, Optional, Sequence
 
 
 PINOUT = {
@@ -35,6 +36,17 @@ PINOUT = {
 
 DEFAULT_SPI_DEVICE = "/dev/spidev0.0"
 SPI_DEVICE_GLOB = "/dev/spidev*"
+
+DEFAULT_KEY_BYTES: Tuple[int, ...] = (0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+COMMON_MIFARE_CLASSIC_KEYS: Tuple[Tuple[int, ...], ...] = (
+    DEFAULT_KEY_BYTES,
+    (0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5),
+    (0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5),
+    (0x4D, 0x3A, 0x99, 0xC3, 0x51, 0xDD),
+    (0x1A, 0x2B, 0x3C, 0x4D, 0x5E, 0x6F),
+    (0x00, 0x00, 0x00, 0x00, 0x00, 0x00),
+    (0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7),
+)
 
 
 def _list_spi_devices() -> list[str]:
@@ -202,7 +214,298 @@ def _coerce_wait_seconds(value) -> float:
     return seconds
 
 
-def scan(*, after=None, once=False, wait=None):
+@dataclass
+class BlockReadResult:
+    """Result of attempting to read a single RFID block."""
+
+    block: int
+    data: Optional[Tuple[int, ...]] = None
+    key_type: Optional[str] = None
+    key_hex: Optional[str] = None
+    guessed: bool = False
+    guess_attempted: bool = False
+    error: Optional[str] = None
+
+
+def _poll_for_card(reader) -> Optional[Tuple[int, Sequence[int], str]]:
+    """Return the card ID, UID bytes, and stored text for a detected card."""
+
+    try:
+        chip = reader.READER  # type: ignore[attr-defined]
+    except AttributeError:
+        return None
+
+    request = getattr(chip, "MFRC522_Request", None)
+    anticoll = getattr(chip, "MFRC522_Anticoll", None)
+    select_tag = getattr(chip, "MFRC522_SelectTag", None)
+    stop_crypto = getattr(chip, "MFRC522_StopCrypto1", None)
+    auth = getattr(chip, "MFRC522_Auth", None)
+    read_block = getattr(chip, "MFRC522_Read", None)
+
+    if not all([request, anticoll, select_tag, stop_crypto, auth, read_block]):
+        return None
+
+    try:
+        status, _ = request(chip.PICC_REQIDL)
+    except Exception:  # pragma: no cover - hardware dependent
+        return None
+    if status != getattr(chip, "MI_OK", 0):
+        return None
+
+    status, uid = anticoll()
+    if status != getattr(chip, "MI_OK", 0) or not uid:
+        return None
+
+    try:
+        card_id = reader.uid_to_num(uid)
+    except Exception:
+        return None
+
+    text = ""
+    try:
+        select_tag(uid)
+        key_bytes = getattr(reader, "KEY", list(DEFAULT_KEY_BYTES))
+        status = auth(chip.PICC_AUTHENT1A, 11, list(key_bytes), uid)
+        if status == getattr(chip, "MI_OK", 0):
+            data: list[int] = []
+            for block in getattr(reader, "BLOCK_ADDRS", []):
+                block_data = read_block(block)
+                if block_data:
+                    data.extend(int(value) & 0xFF for value in block_data)
+            if data:
+                try:
+                    text = "".join(chr(value) for value in data)
+                except Exception:
+                    text = ""
+    finally:
+        try:
+            stop_crypto()
+        except Exception:
+            pass
+
+    return card_id, tuple(int(part) & 0xFF for part in uid), text
+
+
+def _coerce_block(value) -> int:
+    """Return the block number requested by the user."""
+
+    if isinstance(value, bool):
+        raise TypeError("block must be an integer between 0 and 255")
+    if isinstance(value, (int,)):
+        block = int(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("block must be an integer between 0 and 255")
+        base = 10
+        if stripped.lower().startswith("0x"):
+            stripped = stripped[2:]
+            base = 16
+        try:
+            block = int(stripped, base)
+        except ValueError as exc:  # pragma: no cover - validated in tests
+            raise ValueError("block must be an integer between 0 and 255") from exc
+    else:
+        raise TypeError("block must be an integer between 0 and 255")
+
+    if block < 0 or block > 255:
+        raise ValueError("block must be an integer between 0 and 255")
+    return block
+
+
+def _parse_key_bytes(value, *, parameter: str) -> Tuple[int, ...]:
+    """Normalize CLI key arguments into tuples of bytes."""
+
+    if isinstance(value, bool):
+        raise TypeError(f"{parameter} must be a 6-byte hex key")
+    if isinstance(value, (bytes, bytearray)):
+        data = tuple(int(part) & 0xFF for part in value)
+    elif isinstance(value, int):
+        hex_text = f"{value:012X}"
+        data = tuple(int(hex_text[i : i + 2], 16) for i in range(0, 12, 2))
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError(f"{parameter} must be a 6-byte hex key")
+        cleaned = stripped.replace(" ", "").replace(":", "").replace("-", "")
+        if cleaned.lower().startswith("0x"):
+            cleaned = cleaned[2:]
+        if len(cleaned) != 12:
+            raise ValueError(f"{parameter} must be a 12-digit hex string")
+        try:
+            data = tuple(int(cleaned[i : i + 2], 16) for i in range(0, 12, 2))
+        except ValueError as exc:  # pragma: no cover - validated in tests
+            raise ValueError(f"{parameter} must be a 12-digit hex string") from exc
+    else:
+        try:
+            data = tuple(int(part) & 0xFF for part in value)
+        except Exception as exc:
+            raise TypeError(f"{parameter} must be a 6-byte hex key") from exc
+
+    if len(data) != 6:
+        raise ValueError(f"{parameter} must contain exactly 6 bytes")
+    for byte in data:
+        if byte < 0 or byte > 0xFF:
+            raise ValueError(f"{parameter} values must be between 0x00 and 0xFF")
+    return data
+
+
+def _prepare_key_candidates(
+    key_a, key_b, *, guess_defaults: bool
+) -> Tuple[dict[str, list[Tuple[Tuple[int, ...], bool]]], bool]:
+    """Return the keys to try for each key type along with guess usage."""
+
+    candidates: dict[str, list[Tuple[Tuple[int, ...], bool]]] = {"A": [], "B": []}
+    if key_a is not None:
+        candidates["A"].append((_parse_key_bytes(key_a, parameter="key_a"), False))
+    if key_b is not None:
+        candidates["B"].append((_parse_key_bytes(key_b, parameter="key_b"), False))
+
+    guess_mode = False
+    if not candidates["A"] and not candidates["B"]:
+        if guess_defaults:
+            guess_mode = True
+            for key in COMMON_MIFARE_CLASSIC_KEYS:
+                candidates["A"].append((key, True))
+                candidates["B"].append((key, True))
+        else:
+            candidates["A"].append((DEFAULT_KEY_BYTES, False))
+
+    return candidates, guess_mode
+
+
+def _determine_blocks(block: Optional[int], *, deep: bool) -> list[int]:
+    """Return the list of blocks to read based on user input."""
+
+    if block is not None:
+        return [block]
+    if deep:
+        return list(range(64))
+    return [0, 1, 2, 3]
+
+
+def _read_blocks(
+    reader,
+    uid: Sequence[int],
+    blocks: Sequence[int],
+    key_candidates: dict[str, list[Tuple[Tuple[int, ...], bool]]],
+    *,
+    guess_mode: bool,
+) -> list[BlockReadResult]:
+    """Attempt to read each requested block using the provided keys."""
+
+    results: list[BlockReadResult] = []
+    if not blocks:
+        return results
+
+    try:
+        chip = reader.READER  # type: ignore[attr-defined]
+    except AttributeError:
+        return results
+
+    select_tag = getattr(chip, "MFRC522_SelectTag", None)
+    auth = getattr(chip, "MFRC522_Auth", None)
+    read_block = getattr(chip, "MFRC522_Read", None)
+    stop_crypto = getattr(chip, "MFRC522_StopCrypto1", None)
+    if not all([select_tag, auth, read_block, stop_crypto]):
+        return results
+
+    mi_ok = getattr(chip, "MI_OK", 0)
+    auth_codes = {
+        "A": getattr(chip, "PICC_AUTHENT1A", None),
+        "B": getattr(chip, "PICC_AUTHENT1B", None),
+    }
+
+    unique_blocks = sorted(dict.fromkeys(int(block) for block in blocks))
+    for block in unique_blocks:
+        result = BlockReadResult(block=block)
+        result.guess_attempted = guess_mode or any(
+            guessed for key_list in key_candidates.values() for _, guessed in key_list
+        )
+        try:
+            select_tag(uid)
+        except Exception:
+            result.error = "failed to select tag"
+            results.append(result)
+            continue
+
+        auth_block = (block // 4) * 4 + 3
+        success = False
+        try:
+            for key_type in ("A", "B"):
+                auth_code = auth_codes.get(key_type)
+                if auth_code is None:
+                    continue
+                for key_bytes, guessed in key_candidates.get(key_type, []):
+                    try:
+                        status = auth(auth_code, auth_block, list(key_bytes), uid)
+                    except Exception:
+                        status = None
+                    if status == mi_ok:
+                        try:
+                            block_data = read_block(block)
+                        except Exception:
+                            block_data = None
+                        if block_data is None:
+                            data_tuple: Tuple[int, ...] = tuple()
+                        else:
+                            data_tuple = tuple(int(value) & 0xFF for value in block_data)
+                        result.data = data_tuple
+                        result.key_type = key_type
+                        result.key_hex = "".join(f"{byte:02X}" for byte in key_bytes)
+                        result.guessed = guessed
+                        success = True
+                        break
+                if success:
+                    break
+        finally:
+            try:
+                stop_crypto()
+            except Exception:
+                pass
+
+        if not success:
+            if result.guess_attempted:
+                result.error = "authentication failed using provided and default keys"
+            else:
+                result.error = "authentication failed with provided keys"
+        results.append(result)
+
+    return results
+
+
+def _format_block_result(result: BlockReadResult) -> str:
+    """Render a :class:`BlockReadResult` for console output."""
+
+    prefix = f"Block {result.block:02d}"
+    if result.error:
+        return f"{prefix}: {result.error}."
+
+    key_info = ""
+    if result.key_type and result.key_hex:
+        key_info = f" (Key {result.key_type} {result.key_hex}"
+        if result.guessed:
+            key_info += " guessed"
+        key_info += ")"
+
+    if not result.data:
+        return f"{prefix}{key_info}: <no data>"
+
+    hex_bytes = " ".join(f"{byte:02X}" for byte in result.data)
+    ascii_text = "".join(chr(byte) if 32 <= byte < 127 else "." for byte in result.data)
+    return f"{prefix}{key_info}: {hex_bytes}  |{ascii_text}|"
+
+
+def scan(
+    *,
+    after=None,
+    once=False,
+    wait=None,
+    block=None,
+    deep=False,
+    key_a=None,
+    key_b=None,
+):
     """Wait for a card and print its data until stopped or a threshold is met.
 
     Args:
@@ -211,6 +514,10 @@ def scan(*, after=None, once=False, wait=None):
         once: Convenience flag equivalent to ``after=1``.
         wait: Optional positive number of seconds after which the scan stops
             automatically.
+        block: Optional block number to read from the presented card.
+        deep: When ``True`` read all 64 blocks of a MIFARE Classic card.
+        key_a: Hex-encoded key to authenticate as key A when reading blocks.
+        key_b: Hex-encoded key to authenticate as key B when reading blocks.
 
     Returns:
         The UID of the card that satisfied the threshold when ``after`` or
@@ -221,6 +528,7 @@ def scan(*, after=None, once=False, wait=None):
     libraries are not available, an informative message is printed and the
     function exits.
     """
+
     threshold = None
     if after is not None:
         threshold = _coerce_scan_threshold(after)
@@ -234,9 +542,22 @@ def scan(*, after=None, once=False, wait=None):
     if wait is not None:
         wait_seconds = _coerce_wait_seconds(wait)
 
+    block_number = None
+    if block is not None:
+        block_number = _coerce_block(block)
+
+    blocks_to_read = _determine_blocks(block_number, deep=deep)
+    should_guess_defaults = bool(
+        (block_number is not None or deep) and key_a is None and key_b is None
+    )
+    key_candidates, guess_mode = _prepare_key_candidates(
+        key_a, key_b, guess_defaults=should_guess_defaults
+    )
+
     reader, GPIO = _initialize_reader()
     if reader is None:
         return
+
     if wait_seconds is None:
         print("Scanning for RFID cards. Press any key to stop.")
     else:
@@ -247,6 +568,7 @@ def scan(*, after=None, once=False, wait=None):
                 seconds=formatted_wait
             )
         )
+
     seen_counts: dict[object, int] = {}
     detected_uid = None
     try:
@@ -258,16 +580,29 @@ def scan(*, after=None, once=False, wait=None):
                 break
             if select.select([sys.stdin], [], [], 0)[0]:
                 break
-            card_id, text = reader.read_no_block()
-            if card_id is not None:
-                text = text.strip() if isinstance(text, str) else text
-                print(f"Card ID: {card_id} Text: {text}")
-                if threshold is not None:
-                    count = seen_counts.get(card_id, 0) + 1
-                    seen_counts[card_id] = count
-                    if count >= threshold:
-                        detected_uid = card_id
-                        break
+
+            card_info = _poll_for_card(reader)
+            if card_info is None:
+                time.sleep(0.1)
+                continue
+
+            card_id, uid_bytes, card_text = card_info
+            display_text = card_text.strip() if isinstance(card_text, str) else card_text
+            print(f"Card ID: {card_id} Text: {display_text}")
+
+            block_results = _read_blocks(
+                reader, uid_bytes, blocks_to_read, key_candidates, guess_mode=guess_mode
+            )
+            for result in block_results:
+                print(_format_block_result(result))
+
+            if threshold is not None:
+                count = seen_counts.get(card_id, 0) + 1
+                seen_counts[card_id] = count
+                if count >= threshold:
+                    detected_uid = card_id
+                    break
+
             time.sleep(0.1)
     finally:  # pragma: no cover - hardware cleanup
         if GPIO is not None:

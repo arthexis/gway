@@ -5,7 +5,11 @@ RFID Utilities
 
 ``scan`` – wait for a card to be scanned and print its information. Press any
 key to stop scanning or pass ``--wait`` to exit automatically after the
-specified number of seconds.
+specified number of seconds. Provide ``--block`` to read a specific block or
+``--deep`` to iterate through the first 64 blocks of a MIFARE Classic card.
+Authentication keys may be supplied via ``--key-a`` or ``--key-b``; when
+neither is provided the tool automatically tries common manufacturer defaults
+and reports which one worked.
 
 ``pinout`` – return the expected wiring between the MFRC522 board and a
 Raspberry Pi.
