@@ -37,12 +37,21 @@ def random_id(length: int = 8, alphabet: str = _EZ_ALPHABET) -> str:
 
 def notify(message: str, *, title: str = "GWAY Notice", timeout: int = 10):
     from gway import gw
-    """Send a notification via GUI, email or console fallback."""
+
+    """Send a notification via GUI, LCD, email or console fallback."""
     try:
         gw.studio.screen.notify(message, title=title, timeout=timeout)
         return "gui"
     except Exception as e:
         gw.debug(f"GUI notify failed: {e}")
+    try:
+        if hasattr(gw, "lcd"):
+            hold_duration = timeout if timeout and timeout > 0 else 0
+            lcd_text = f"{title}\n{message}" if title else message
+            gw.lcd.show(lcd_text, hold=hold_duration, wrap=True)
+            return "lcd"
+    except Exception as e:
+        gw.debug(f"LCD notify failed: {e}")
     try:
         if hasattr(gw, "mail") and os.environ.get("ADMIN_EMAIL"):
             gw.mail.send(title, body=message, to=os.environ.get("ADMIN_EMAIL"))
