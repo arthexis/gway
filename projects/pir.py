@@ -58,3 +58,7 @@ def sense_motion(
         print("Exiting...")
     finally:
         GPIO.cleanup(pin)
+
+
+# Backwards-compatible alias to align with CLI naming conventions
+sense = sense_motion
