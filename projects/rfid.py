@@ -607,28 +607,27 @@ def scan(
     if reader is None:
         return
 
-    csv_path = None
     csv_file = None
     csv_writer = None
-    if csv_parts is not None:
-        csv_path = gw.resource("work", *csv_parts)
-        csv_file, csv_writer = _open_csv_writer(csv_path)
-        print(f"Logging scans to {csv_path}")
-
-    if wait_seconds is None:
-        print("Scanning for RFID cards. Press any key to stop.")
-    else:
-        formatted_wait = f"{wait_seconds:g}"
-        print(
-            "Scanning for RFID cards. Press any key to stop. "
-            "Automatically stopping after {seconds} seconds.".format(
-                seconds=formatted_wait
-            )
-        )
-
-    seen_counts: dict[object, int] = {}
     detected_uid = None
     try:
+        if csv_parts is not None:
+            csv_path = gw.resource("work", *csv_parts)
+            csv_file, csv_writer = _open_csv_writer(csv_path)
+            print(f"Logging scans to {csv_path}")
+
+        if wait_seconds is None:
+            print("Scanning for RFID cards. Press any key to stop.")
+        else:
+            formatted_wait = f"{wait_seconds:g}"
+            print(
+                "Scanning for RFID cards. Press any key to stop. "
+                "Automatically stopping after {seconds} seconds.".format(
+                    seconds=formatted_wait
+                )
+            )
+
+        seen_counts: dict[object, int] = {}
         deadline = None
         if wait_seconds is not None:
             deadline = time.monotonic() + wait_seconds
