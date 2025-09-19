@@ -40,6 +40,59 @@ E_DELAY = 0.0005
 
 
 _backlight_mask = LCD_BACKLIGHT
+_BACKLIGHT_STATE_RESOURCE = "work/lcd-backlight.txt"
+
+
+def _backlight_state_path():
+    return gw.resource(_BACKLIGHT_STATE_RESOURCE, touch=True)
+
+
+def _load_backlight_state(default: bool | None = None) -> bool:
+    """Return the persisted backlight state."""
+
+    if default is None:
+        default = bool(_backlight_mask)
+
+    try:
+        value = _backlight_state_path().read_text(encoding="utf-8")
+    except Exception:
+        return default
+
+    state = value.strip().lower()
+    if state in {"0", "off", "false", "no"}:
+        return False
+    if state in {"1", "on", "true", "yes"}:
+        return True
+    return default
+
+
+def _persist_backlight_state(is_on: bool) -> None:
+    try:
+        _backlight_state_path().write_text(
+            "on" if is_on else "off", encoding="utf-8"
+        )
+    except Exception:  # pragma: no cover - best effort persistence
+        pass
+
+
+def _apply_backlight(is_on: bool, addr: int) -> None:
+    global _backlight_mask
+
+    _backlight_mask = LCD_BACKLIGHT if is_on else 0
+    _persist_backlight_state(is_on)
+
+    smbus_mod = _import_smbus()
+    if smbus_mod is None:
+        return
+
+    bus = smbus_mod.SMBus(1)
+    bus.write_byte(addr, _backlight_mask)
+
+
+try:  # ensure the cached mask reflects the saved state
+    _backlight_mask = LCD_BACKLIGHT if _load_backlight_state() else 0
+except Exception:  # pragma: no cover - fallback if persistence fails
+    _backlight_mask = LCD_BACKLIGHT
 
 
 def _lcd_toggle_enable(bus, addr: int, data: int) -> None:
@@ -338,14 +391,33 @@ def brightness(level: int | float | bool | str, *, addr: int = 0x27) -> None:
     except (TypeError, ValueError) as exc:
         raise ValueError(f"invalid brightness level: {level!r}") from exc
 
-    global _backlight_mask
-    _backlight_mask = LCD_BACKLIGHT if is_on else 0
+    _apply_backlight(is_on, addr)
 
-    smbus_mod = _import_smbus()
-    if smbus_mod is None:
-        return
 
-    bus = smbus_mod.SMBus(1)
-    bus.write_byte(addr, _backlight_mask)
+def light(
+    *,
+    addr: int = 0x27,
+    on: bool = False,
+    off: bool = False,
+) -> dict[str, str]:
+    """Toggle or set the LCD backlight state.
+
+    With no flags the backlight flips relative to the last saved state. Use
+    ``--on`` or ``--off`` to force a specific value.
+    """
+
+    if on and off:
+        raise ValueError("--on and --off cannot be used together")
+
+    if on:
+        target = True
+    elif off:
+        target = False
+    else:
+        target = not _load_backlight_state()
+
+    _apply_backlight(target, addr)
+    state = "on" if target else "off"
+    return {"backlight": state}
 
 
