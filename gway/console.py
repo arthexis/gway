@@ -49,6 +49,48 @@ def parse_recipe_context(tokens):
     return ctx
 
 
+def _looks_like_context(tokens: list[str]) -> bool:
+    """Return ``True`` when *tokens* resemble ``--key value`` pairs.
+
+    The helper mirrors :func:`parse_recipe_context` without mutating the
+    tokens or raising ``SystemExit`` on malformed input so callers can decide
+    whether to treat the arguments as free-form context instead of a command.
+    """
+
+    if not tokens:
+        return False
+
+    length = len(tokens)
+    index = 0
+
+    while index < length:
+        token = tokens[index]
+        if not token.startswith("--") or len(token) <= 2:
+            return False
+
+        index += 1
+        if index < length and not tokens[index].startswith("--"):
+            index += 1
+            if index < length and not tokens[index].startswith("--"):
+                return False
+
+    return True
+
+
+def _format_unused_context(unused: dict[str, object]) -> str:
+    """Return a human-friendly representation of unused context values."""
+
+    parts: list[str] = []
+    for key, value in unused.items():
+        flag = f"--{key}"
+        if value is True:
+            parts.append(flag)
+        else:
+            parts.append(f"{flag}={value}")
+
+    return " ".join(parts)
+
+
 def cli_main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="Dynamic Project CLI")
@@ -88,6 +130,11 @@ def cli_main():
                 recipe_args.append(value)
 
     extra_context = parse_recipe_context(unknown) if recipe_args and unknown else {}
+    context_only_args: dict[str, object] = {}
+    command_tokens = list(unknown)
+    if not recipe_args and command_tokens and _looks_like_context(command_tokens):
+        context_only_args = parse_recipe_context(command_tokens)
+        command_tokens = []
 
     # Setup logging
     logfile = f"{args.username}.log" if args.username else "gway.log"
@@ -158,9 +205,11 @@ def cli_main():
                     recipe_results, recipe_last = future.result()
                     all_results.extend(recipe_results)
                     last_result = recipe_last
-    elif unknown:
-        command_sources = chunk(unknown)
+    elif command_tokens:
+        command_sources = chunk(command_tokens)
         all_results, last_result = process(command_sources, origin="line", **run_kwargs)
+    elif context_only_args:
+        all_results, last_result = [], None
     else:
         parser.print_help()
         sys.exit(1)
@@ -215,6 +264,11 @@ def cli_main():
 
     if start_time:
         print(f"Time: {time.time() - start_time:.3f} seconds")
+
+    if not all_results and context_only_args:
+        context_text = _format_unused_context(context_only_args)
+        suffix = f" -> {context_text}" if context_text else ""
+        print(f"Nothing to do.{suffix}")
 
 def process(command_sources, callback=None, *, origin="line", gw_instance=None, **context):
     """Shared logic for executing CLI or recipe commands with optional per-node callback."""

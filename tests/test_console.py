@@ -342,6 +342,54 @@ class TestRecipeCliContext(unittest.TestCase):
         finally:
             sys.argv = original_argv
 
+    def test_context_only_arguments_report_nothing_to_do(self):
+        original_argv = sys.argv
+
+        class DummyGateway:
+            def __init__(self, **kwargs):
+                pass
+
+            def verbose(self, *args, **kwargs):
+                pass
+
+        try:
+            with patch('gway.console.argcomplete.autocomplete', lambda *a, **k: None), \
+                 patch('gway.console.setup_logging', lambda *a, **k: None), \
+                 patch('gway.console.Gateway', DummyGateway), \
+                 patch('gway.console.process') as mock_process, \
+                 patch('builtins.print') as mock_print:
+                sys.argv = ['gway', '--upgrade']
+                console.cli_main()
+                mock_process.assert_not_called()
+                messages = [call.args[0] for call in mock_print.call_args_list]
+                self.assertIn('Nothing to do. -> --upgrade', messages)
+        finally:
+            sys.argv = original_argv
+
+    def test_context_only_arguments_with_values_supported(self):
+        original_argv = sys.argv
+
+        class DummyGateway:
+            def __init__(self, **kwargs):
+                pass
+
+            def verbose(self, *args, **kwargs):
+                pass
+
+        try:
+            with patch('gway.console.argcomplete.autocomplete', lambda *a, **k: None), \
+                 patch('gway.console.setup_logging', lambda *a, **k: None), \
+                 patch('gway.console.Gateway', DummyGateway), \
+                 patch('gway.console.process') as mock_process, \
+                 patch('builtins.print') as mock_print:
+                sys.argv = ['gway', '--tag', 'alpha']
+                console.cli_main()
+                mock_process.assert_not_called()
+                messages = [call.args[0] for call in mock_print.call_args_list]
+                self.assertIn('Nothing to do. -> --tag=alpha', messages)
+        finally:
+            sys.argv = original_argv
+
 
 class TestProcessChaining(unittest.TestCase):
     def test_reuses_project_for_chained_calls(self):
