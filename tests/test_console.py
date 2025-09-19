@@ -390,6 +390,30 @@ class TestRecipeCliContext(unittest.TestCase):
         finally:
             sys.argv = original_argv
 
+    def test_leaked_argcomplete_marker_does_not_exit_early(self):
+        original_argv = sys.argv
+
+        class DummyGateway:
+            def __init__(self, **kwargs):
+                pass
+
+            def verbose(self, *args, **kwargs):
+                pass
+
+        try:
+            sys.argv = ['gway']
+            with patch.dict(os.environ, {'_ARGCOMPLETE': '1'}, clear=False), \
+                 patch('gway.console.setup_logging', lambda *a, **k: None), \
+                 patch('gway.console.Gateway', DummyGateway), \
+                 patch.object(console.argparse.ArgumentParser, 'print_help') as mock_help, \
+                 patch('gway.console.argcomplete.autocomplete') as mock_autocomplete:
+                with self.assertRaises(SystemExit):
+                    console.cli_main()
+            mock_autocomplete.assert_not_called()
+            mock_help.assert_called_once()
+        finally:
+            sys.argv = original_argv
+
 
 class TestProcessChaining(unittest.TestCase):
     def test_reuses_project_for_chained_calls(self):
