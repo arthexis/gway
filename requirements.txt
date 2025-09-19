@@ -30,6 +30,7 @@ coverage
 bandit
 argcomplete
 PyJWT
+SpeechRecognition
 sounddevice
 PyYAML
 pywebview

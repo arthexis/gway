@@ -1,0 +1,10 @@
+# file: recipes/speech-recognition.gwr
+#
+# Capture a short audio sample and transcribe it using the speech recognition
+# helpers. The first step records a snippet, and the second step transcribes the
+# saved file. Finally the transcript is echoed via the built-in hello_world
+# helper for quick confirmation.
+
+audio record --duration 5 --immediate
+audio transcribe --source %[audio] --engine auto
+hello-world --greeting Transcript --name %[audio_transcript]
