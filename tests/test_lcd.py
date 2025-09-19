@@ -4,6 +4,7 @@ import tempfile
 import types
 import unittest
 import unittest.mock
+from contextlib import contextmanager
 from pathlib import Path
 from gway import gw
 from gway.builtins import is_test_flag
@@ -14,6 +15,47 @@ from gway.builtins import is_test_flag
     "LCD tests disabled (enable with --flags lcd)",
 )
 class LCDTests(unittest.TestCase):
+    @contextmanager
+    def _mock_backlight(self, initial_state: str):
+        writes: list[tuple[int, int]] = []
+
+        class FakeSMBus:
+            def __init__(self, bus_no):
+                self.bus_no = bus_no
+
+            def write_byte(self, addr, value):
+                writes.append((addr, value))
+
+        fake_mod = types.SimpleNamespace(SMBus=FakeSMBus)
+        lcd_mod = sys.modules[gw.lcd.show.__module__]
+        original_mask = lcd_mod._backlight_mask
+        original_resource = gw.resource
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_path = Path(tmpdir) / "lcd-backlight.txt"
+            state_path.write_text(initial_state)
+
+            def fake_resource(*parts, **kwargs):
+                joined = "/".join(str(p) for p in parts)
+                normalized = joined.replace("\\", "/")
+                if normalized == "work/lcd-backlight.txt":
+                    if kwargs.get("touch") and not state_path.exists():
+                        state_path.touch()
+                    return state_path
+                return original_resource(*parts, **kwargs)
+
+            with unittest.mock.patch.dict("sys.modules", {"smbus": fake_mod}), \
+                 unittest.mock.patch.object(gw, "resource", side_effect=fake_resource):
+                state_value = initial_state.strip().lower()
+                lcd_mod._backlight_mask = (
+                    lcd_mod.LCD_BACKLIGHT
+                    if state_value not in {"0", "off", "false", "no"}
+                    else 0
+                )
+                try:
+                    yield writes, lcd_mod, state_path
+                finally:
+                    lcd_mod._backlight_mask = original_mask
     def test_show_writes_to_i2c_bus(self):
         writes = []
         buses = []
@@ -63,6 +105,47 @@ class LCDTests(unittest.TestCase):
                 gw.lcd.brightness("full")
         finally:
             lcd_mod._backlight_mask = original_mask
+
+    def test_light_toggles_backlight(self):
+        with self._mock_backlight("on") as (writes, lcd_mod, state_path):
+            result = gw.lcd.light()
+            saved = state_path.read_text().strip()
+            writes_copy = list(writes)
+            mask_after = lcd_mod._backlight_mask
+
+        self.assertEqual(result, {"backlight": "off"})
+        self.assertEqual(saved, "off")
+        self.assertEqual(writes_copy, [(0x27, 0)])
+        self.assertEqual(mask_after, 0)
+
+    def test_light_on_flag_sets_backlight_on(self):
+        with self._mock_backlight("off") as (writes, lcd_mod, state_path):
+            result = gw.lcd.light(on=True)
+            saved = state_path.read_text().strip()
+            writes_copy = list(writes)
+            mask_after = lcd_mod._backlight_mask
+            expected_mask = lcd_mod.LCD_BACKLIGHT
+
+        self.assertEqual(result, {"backlight": "on"})
+        self.assertEqual(saved, "on")
+        self.assertEqual(writes_copy, [(0x27, expected_mask)])
+        self.assertEqual(mask_after, expected_mask)
+
+    def test_light_off_flag_sets_backlight_off(self):
+        with self._mock_backlight("on") as (writes, lcd_mod, state_path):
+            result = gw.lcd.light(off=True)
+            saved = state_path.read_text().strip()
+            writes_copy = list(writes)
+            mask_after = lcd_mod._backlight_mask
+
+        self.assertEqual(result, {"backlight": "off"})
+        self.assertEqual(saved, "off")
+        self.assertEqual(writes_copy, [(0x27, 0)])
+        self.assertEqual(mask_after, 0)
+
+    def test_light_conflicting_flags_raise(self):
+        with self.assertRaises(ValueError):
+            gw.lcd.light(on=True, off=True)
 
     def test_scroll_option_scrolls_message(self):
         class FakeSMBus:
