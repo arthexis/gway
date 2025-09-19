@@ -1,7 +1,8 @@
-
 from dataclasses import dataclass
+from pathlib import Path
 
 __all__ = [
+    "recipes",
     "run_recipe",
     "run",
     "repeat",
@@ -14,6 +15,46 @@ class _RepeatDirective:
 
     rest: float = 5.0
     times: int | None = None
+
+
+def recipes(*, include_extensions: bool = False) -> list[str]:
+    from gway import gw
+
+    """Return a sorted list of bundled recipe names."""
+
+    recipes_root = Path(gw.resource("recipes"))
+
+    if not recipes_root.exists():
+        gw.verbose(f"[recipes] No recipes directory found at {recipes_root}")
+        return []
+
+    allowed_suffixes = {".gwr", ".txt"}
+    discovered: set[str] = set()
+
+    for path in recipes_root.rglob("*"):
+        if not path.is_file():
+            continue
+
+        suffix = path.suffix.lower()
+        if suffix and suffix not in allowed_suffixes:
+            continue
+
+        relative_path = path.relative_to(recipes_root)
+
+        if include_extensions or not suffix:
+            entry = relative_path.as_posix()
+        else:
+            try:
+                entry = relative_path.with_suffix("").as_posix()
+            except ValueError:
+                entry = relative_path.as_posix()
+
+        if entry:
+            discovered.add(entry)
+
+    results = sorted(discovered)
+    gw.verbose(f"[recipes] Discovered {len(results)} recipe(s) in {recipes_root}")
+    return results
 
 
 def run_recipe(*scripts: str, **context):

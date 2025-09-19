@@ -35,6 +35,69 @@ class GatewayBuiltinsTests(unittest.TestCase):
         self.assertIn('abort', builtin_ls)
         self.assertIn('run_recipe', builtin_ls)
 
+    def test_recipes_builtin_lists_repository_recipes(self):
+        from pathlib import Path, PurePosixPath
+
+        recipes_dir = Path(gw.resource("recipes"))
+        recipes = gw.recipes()
+
+        self.assertIsInstance(recipes, list)
+        self.assertEqual(recipes, sorted(recipes))
+        self.assertEqual(len(recipes), len(set(recipes)))
+
+        expected = {
+            path.relative_to(recipes_dir).with_suffix("").as_posix()
+            for path in recipes_dir.rglob("*.gwr")
+        }
+
+        self.assertTrue(expected.issubset(set(recipes)))
+
+        recipes_with_ext = gw.recipes(include_extensions=True)
+        self.assertEqual(recipes_with_ext, sorted(recipes_with_ext))
+        self.assertEqual(len(recipes_with_ext), len(set(recipes_with_ext)))
+
+        stripped = set()
+        for entry in recipes_with_ext:
+            posix_entry = PurePosixPath(entry)
+            suffix = posix_entry.suffix
+            self.assertIn(suffix, (".gwr", ".txt", ""))
+            if suffix:
+                stripped.add(posix_entry.with_suffix("").as_posix())
+            else:
+                stripped.add(posix_entry.as_posix())
+
+        self.assertTrue(expected.issubset(stripped))
+
+    def test_recipes_builtin_uses_resource_directory(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        original_resource = gw.resource
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "alpha.gwr").write_text("alpha")
+            (tmp_path / "notes.txt").write_text("notes")
+            nested = tmp_path / "nested"
+            nested.mkdir()
+            (nested / "beta.gwr").write_text("beta")
+
+            def fake_resource(*parts, **kwargs):
+                if parts and parts[0] == "recipes":
+                    return tmp_path.joinpath(*parts[1:])
+                return original_resource(*parts, **kwargs)
+
+            with patch.object(gw, "resource", new=fake_resource):
+                recipes = gw.recipes()
+                self.assertEqual(recipes, ["alpha", "nested/beta", "notes"])
+
+                recipes_with_ext = gw.recipes(include_extensions=True)
+                self.assertEqual(
+                    recipes_with_ext,
+                    ["alpha.gwr", "nested/beta.gwr", "notes.txt"],
+                )
+
     def test_list_projects(self):
         project_ls = gw.projects()
         self.assertIn('clock', project_ls)
