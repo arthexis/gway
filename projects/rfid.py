@@ -19,8 +19,13 @@ import select
 import glob
 import os
 import math
+import csv as csv_module
+import datetime as dt
 from dataclasses import dataclass
 from typing import Iterable, Tuple, Optional, Sequence
+
+
+from gway import gw
 
 
 PINOUT = {
@@ -47,6 +52,9 @@ COMMON_MIFARE_CLASSIC_KEYS: Tuple[Tuple[int, ...], ...] = (
     (0x00, 0x00, 0x00, 0x00, 0x00, 0x00),
     (0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7),
 )
+
+
+DEFAULT_CSV_FILENAME = "rfid-scan.csv"
 
 
 def _list_spi_devices() -> list[str]:
@@ -496,6 +504,41 @@ def _format_block_result(result: BlockReadResult) -> str:
     return f"{prefix}{key_info}: {hex_bytes}  |{ascii_text}|"
 
 
+def _normalize_csv_parts(csv_option) -> Optional[tuple[object, ...]]:
+    """Normalize the ``csv`` argument into resource path components."""
+
+    if csv_option is None or csv_option is False:
+        return None
+    if isinstance(csv_option, bool):
+        return ("rfid", DEFAULT_CSV_FILENAME)
+    if isinstance(csv_option, os.PathLike):
+        return (csv_option,)
+    if isinstance(csv_option, str):
+        target = csv_option.strip()
+        if not target:
+            return ("rfid", DEFAULT_CSV_FILENAME)
+        return (target,)
+    raise TypeError("csv must be a boolean flag or a path-like value")
+
+
+def _open_csv_writer(path):
+    """Return an append-mode CSV file handle and writer for ``path``."""
+
+    needs_header = True
+    if path.exists():
+        try:
+            needs_header = path.stat().st_size == 0
+        except OSError:
+            needs_header = True
+
+    csv_file = path.open("a", newline="", encoding="utf-8")
+    writer = csv_module.writer(csv_file)
+    if needs_header:
+        writer.writerow(["timestamp", "card_id", "text"])
+        csv_file.flush()
+    return csv_file, writer
+
+
 def scan(
     *,
     after=None,
@@ -505,6 +548,7 @@ def scan(
     deep=False,
     key_a=None,
     key_b=None,
+    csv=None,
 ):
     """Wait for a card and print its data until stopped or a threshold is met.
 
@@ -518,6 +562,9 @@ def scan(
         deep: When ``True`` read all 64 blocks of a MIFARE Classic card.
         key_a: Hex-encoded key to authenticate as key A when reading blocks.
         key_b: Hex-encoded key to authenticate as key B when reading blocks.
+        csv: When provided, log detected cards to a CSV file. Pass ``True`` to
+            use the default ``work/rfid/`` location defined by
+            :data:`DEFAULT_CSV_FILENAME` or supply a custom file name.
 
     Returns:
         The UID of the card that satisfied the threshold when ``after`` or
@@ -554,9 +601,19 @@ def scan(
         key_a, key_b, guess_defaults=should_guess_defaults
     )
 
+    csv_parts = _normalize_csv_parts(csv)
+
     reader, GPIO = _initialize_reader()
     if reader is None:
         return
+
+    csv_path = None
+    csv_file = None
+    csv_writer = None
+    if csv_parts is not None:
+        csv_path = gw.resource("work", *csv_parts)
+        csv_file, csv_writer = _open_csv_writer(csv_path)
+        print(f"Logging scans to {csv_path}")
 
     if wait_seconds is None:
         print("Scanning for RFID cards. Press any key to stop.")
@@ -590,6 +647,11 @@ def scan(
             display_text = card_text.strip() if isinstance(card_text, str) else card_text
             print(f"Card ID: {card_id} Text: {display_text}")
 
+            if csv_writer is not None and csv_file is not None:
+                timestamp = dt.datetime.now().isoformat()
+                csv_writer.writerow([timestamp, card_id, display_text])
+                csv_file.flush()
+
             block_results = _read_blocks(
                 reader, uid_bytes, blocks_to_read, key_candidates, guess_mode=guess_mode
             )
@@ -605,6 +667,11 @@ def scan(
 
             time.sleep(0.1)
     finally:  # pragma: no cover - hardware cleanup
+        if csv_file is not None:
+            try:
+                csv_file.close()
+            except Exception:
+                pass
         if GPIO is not None:
             try:
                 GPIO.cleanup()  # type: ignore[attr-defined]
