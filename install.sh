@@ -10,11 +10,33 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 cd "$SCRIPT_DIR"
 
+# Helper to detect the virtualenv scripts directory across platforms
+VENV_DIR=".venv"
+VENV_BIN_DIR=""
+
+detect_venv_bin_dir() {
+  if [[ -d "$VENV_DIR/bin" ]]; then
+    VENV_BIN_DIR="$VENV_DIR/bin"
+  elif [[ -d "$VENV_DIR/Scripts" ]]; then
+    VENV_BIN_DIR="$VENV_DIR/Scripts"
+  else
+    VENV_BIN_DIR=""
+  fi
+}
+
 # 1) Local install: create .venv and install gway
-if [[ ! -d ".venv" ]]; then
+if [[ ! -d "$VENV_DIR" ]]; then
   echo "Creating virtual environment..."
-  python3 -m venv .venv
-  source .venv/bin/activate
+  python3 -m venv "$VENV_DIR"
+  detect_venv_bin_dir
+  if [[ -z "$VENV_BIN_DIR" || ! -f "$VENV_BIN_DIR/activate" ]]; then
+    echo "ERROR: Unable to locate the virtual environment activation script." >&2
+    echo "Tried $VENV_DIR/bin/activate and $VENV_DIR/Scripts/activate." >&2
+    echo "Please ensure Python's venv module is available and retry." >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "$VENV_BIN_DIR/activate"
   echo "Installing gway in editable mode..."
   pip install --upgrade pip
   pip install -e .
@@ -22,7 +44,13 @@ if [[ ! -d ".venv" ]]; then
 fi
 
 # Activate the virtual environment
-source .venv/bin/activate
+detect_venv_bin_dir
+if [[ -z "$VENV_BIN_DIR" || ! -f "$VENV_BIN_DIR/activate" ]]; then
+  echo "ERROR: Virtual environment not found. Run ./install.sh first to create it." >&2
+  exit 1
+fi
+# shellcheck source=/dev/null
+source "$VENV_BIN_DIR/activate"
 
 # Parse arguments
 DEBUG_FLAG=""
@@ -254,7 +282,7 @@ if $SHELL_FLAG; then
     exit 1
   fi
 
-  SHELL_WRAPPER="$SCRIPT_DIR/.venv/bin/gway-shell"
+  SHELL_WRAPPER="$SCRIPT_DIR/$VENV_BIN_DIR/gway-shell"
   TARGET_USER="${SUDO_USER-$(whoami)}"
   CURRENT_USER="$(whoami)"
   CURRENT_ENTRY="$(getent passwd "$TARGET_USER" || true)"
