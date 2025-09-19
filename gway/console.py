@@ -114,7 +114,7 @@ def _format_unused_context(unused: dict[str, object]) -> str:
 
 def cli_main():
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(description="Dynamic Project CLI")
+    parser = argparse.ArgumentParser(prog="gway", description="Dynamic Project CLI")
 
     # Primary behavior flags
     add = parser.add_argument
