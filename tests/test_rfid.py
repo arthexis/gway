@@ -1,5 +1,6 @@
 """Tests for RFID helpers."""
 
+import csv
 import sys
 import types
 
@@ -120,6 +121,75 @@ def test_scan_returns_uid_after_threshold(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert result == 987654321
     assert captured.out.count("Card ID: 987654321") == 2
+
+
+def test_scan_logs_detected_cards_to_default_csv(monkeypatch, tmp_path, capsys):
+    """Enabling ``--csv`` should write detections to the default CSV file."""
+
+    poll_events = [
+        (111111111, (1, 2, 3, 4, 5), " first "),
+        (111111111, (1, 2, 3, 4, 5), " second "),
+    ]
+
+    _prepare_scan_test(monkeypatch, poll_events)
+    _install_fake_datetime(monkeypatch, [
+        "2023-01-01T00:00:01",
+        "2023-01-01T00:00:02",
+    ])
+    _install_fake_resource(monkeypatch, tmp_path)
+
+    result = rfid.scan(after=2, csv=True)
+
+    csv_path = tmp_path / "work" / "rfid" / rfid.DEFAULT_CSV_FILENAME
+    assert csv_path.exists()
+    with csv_path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+
+    assert result == 111111111
+    assert rows == [
+        ["timestamp", "card_id", "text"],
+        ["2023-01-01T00:00:01", "111111111", "first"],
+        ["2023-01-01T00:00:02", "111111111", "second"],
+    ]
+
+    captured = capsys.readouterr()
+    assert f"Logging scans to {csv_path}" in captured.out
+
+
+def test_scan_supports_custom_csv_path(monkeypatch, tmp_path):
+    """Supplying a custom CSV target should log detections to that file."""
+
+    poll_events = [(222333444, (5, 4, 3, 2, 1), " payload ")]
+
+    _prepare_scan_test(monkeypatch, poll_events)
+    _install_fake_datetime(monkeypatch, ["2024-02-02T12:34:56"])
+    _install_fake_resource(monkeypatch, tmp_path)
+
+    result = rfid.scan(once=True, csv="custom/log.csv")
+
+    csv_path = tmp_path / "work" / "custom" / "log.csv"
+    assert csv_path.exists()
+    with csv_path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+
+    assert result == 222333444
+    assert rows == [
+        ["timestamp", "card_id", "text"],
+        ["2024-02-02T12:34:56", "222333444", "payload"],
+    ]
+
+
+def test_scan_rejects_invalid_csv_argument(monkeypatch):
+    """Non-path CSV arguments should raise an informative error."""
+
+    monkeypatch.setattr(
+        rfid,
+        "_initialize_reader",
+        lambda: pytest.fail("_initialize_reader should not run on invalid csv"),
+    )
+
+    with pytest.raises(TypeError):
+        rfid.scan(csv=1234)
 
 
 def test_scan_once_returns_uid(monkeypatch, capsys):
@@ -287,6 +357,49 @@ def _prepare_scan_test(
 
     monkeypatch.setattr(rfid.time, "sleep", lambda duration: None)
     return reader, fake_poll
+
+
+def _install_fake_resource(monkeypatch, base_path):
+    """Patch ``gw.resource`` to operate within a temporary directory."""
+
+    def fake_resource(*parts, touch=False, check=False, text=False, dir=False):
+        path = base_path.joinpath(*parts)
+        if dir:
+            path.mkdir(parents=True, exist_ok=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if touch and not path.exists():
+                path.touch()
+        if text:
+            return path.read_text(encoding="utf-8")
+        return path
+
+    monkeypatch.setattr(rfid.gw, "resource", fake_resource)
+
+
+def _install_fake_datetime(monkeypatch, timestamps):
+    """Patch ``datetime.now`` to return predetermined ISO timestamps."""
+
+    class _FakeTimestamp:
+        def __init__(self, value):
+            self._value = value
+
+        def isoformat(self):
+            return self._value
+
+    class _FakeDatetime:
+        _values = list(timestamps)
+        _index = 0
+
+        @classmethod
+        def now(cls):
+            if cls._index >= len(cls._values):
+                raise AssertionError("datetime.now called more times than expected")
+            value = cls._values[cls._index]
+            cls._index += 1
+            return _FakeTimestamp(value)
+
+    monkeypatch.setattr(rfid.dt, "datetime", _FakeDatetime)
 
 
 class _BlockTestChip:
