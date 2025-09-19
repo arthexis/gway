@@ -67,7 +67,6 @@ if $VENV_CREATED; then
   deactivate
 fi
 
-# Activate the virtual environment
 # shellcheck source=/dev/null
 source "$VENV_BIN_DIR/activate"
 
