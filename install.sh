@@ -13,6 +13,7 @@ cd "$SCRIPT_DIR"
 # Helper to detect the virtualenv scripts directory across platforms
 VENV_DIR=".venv"
 VENV_BIN_DIR=""
+VENV_CREATED=false
 
 detect_venv_bin_dir() {
   if [[ -d "$VENV_DIR/bin" ]]; then
@@ -24,8 +25,7 @@ detect_venv_bin_dir() {
   fi
 }
 
-# 1) Local install: create .venv and install gway
-if [[ ! -d "$VENV_DIR" ]]; then
+create_virtualenv() {
   echo "Creating virtual environment..."
   python3 -m venv "$VENV_DIR"
   detect_venv_bin_dir
@@ -35,6 +35,30 @@ if [[ ! -d "$VENV_DIR" ]]; then
     echo "Please ensure Python's venv module is available and retry." >&2
     exit 1
   fi
+  VENV_CREATED=true
+}
+
+ensure_virtualenv() {
+  detect_venv_bin_dir
+  if [[ ! -f "$VENV_DIR/pyvenv.cfg" ]]; then
+    if [[ -d "$VENV_DIR" ]]; then
+      echo "Removing incomplete virtual environment..."
+      rm -rf "$VENV_DIR"
+    fi
+    create_virtualenv
+    return
+  fi
+
+  if [[ -z "$VENV_BIN_DIR" || ! -f "$VENV_BIN_DIR/activate" ]]; then
+    echo "Virtual environment activation script missing; recreating..."
+    rm -rf "$VENV_DIR"
+    create_virtualenv
+  fi
+}
+
+# 1) Local install: create .venv and install gway if necessary
+ensure_virtualenv
+if $VENV_CREATED; then
   # shellcheck source=/dev/null
   source "$VENV_BIN_DIR/activate"
   echo "Installing gway in editable mode..."
@@ -43,12 +67,6 @@ if [[ ! -d "$VENV_DIR" ]]; then
   deactivate
 fi
 
-# Activate the virtual environment
-detect_venv_bin_dir
-if [[ -z "$VENV_BIN_DIR" || ! -f "$VENV_BIN_DIR/activate" ]]; then
-  echo "ERROR: Virtual environment not found. Run ./install.sh first to create it." >&2
-  exit 1
-fi
 # shellcheck source=/dev/null
 source "$VENV_BIN_DIR/activate"
 
