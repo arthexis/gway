@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 import numpy as np
+import speech_recognition as sr
 import sounddevice as sd
 from gway import gw
 
@@ -171,3 +172,131 @@ def playback(*, audio: str | AudioStream, loop: bool = False):
         target_str = str(target)
         gw.info(f"Played {target_str}")
         return f"Played {target_str}"
+
+
+def transcribe(
+    *,
+    source: str | os.PathLike[str] | AudioStream | None = None,
+    duration: float = 5.0,
+    samplerate: int = 44_100,
+    channels: int = 1,
+    language: str = "en-US",
+    engine: str = "auto",
+    immediate: bool = True,
+):
+    """Transcribe speech from an audio source.
+
+    Args:
+        source: Path to an audio file or an :class:`AudioStream`. When ``None``
+            a fresh recording is captured using :func:`record`.
+        duration: Seconds to capture when ``source`` is ``None``. Defaults to
+            5 seconds.
+        samplerate: Recording sample rate used when capturing audio.
+        channels: Number of channels recorded when capturing audio.
+        language: Language hint passed to the recognition backend.
+        engine: Recognition backend to use (``"sphinx"``, ``"google"`` or
+            ``"auto"``). ``"auto"`` tries ``"sphinx"`` first and then falls
+            back to ``"google"``.
+        immediate: When recording a new sample, start immediately without
+            waiting for user confirmation.
+
+    Returns:
+        Dictionary summarizing the transcription attempt. The transcript is
+        stored under ``"audio_transcript"`` and ``"transcript"`` keys for easy
+        chaining in recipes.
+    """
+
+    if source is None:
+        if duration <= 0:
+            raise ValueError("duration must be a positive number of seconds")
+        if samplerate <= 0:
+            raise ValueError("samplerate must be a positive integer")
+        if channels <= 0:
+            raise ValueError("channels must be a positive integer")
+
+        gw.info("No audio source supplied; capturing a fresh sample")
+        recorded = gw.audio.record(
+            duration=duration,
+            samplerate=samplerate,
+            channels=channels,
+            immediate=immediate,
+        )
+        if isinstance(recorded, AudioStream):
+            audio_path = recorded.path
+        else:
+            audio_path = Path(recorded)
+    elif isinstance(source, AudioStream):
+        audio_path = source.path
+    else:
+        audio_path = Path(source)
+
+    audio_path = audio_path.expanduser().resolve()
+    if not audio_path.exists():
+        raise FileNotFoundError(audio_path)
+
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(str(audio_path)) as audio_file:
+        audio_data = recognizer.record(audio_file)
+
+    requested_engine = engine.lower()
+    if requested_engine not in {"sphinx", "google", "auto"}:
+        raise ValueError(
+            "engine must be one of 'sphinx', 'google' or 'auto'"
+        )
+
+    engines_to_try: tuple[str, ...]
+    if requested_engine == "auto":
+        engines_to_try = ("sphinx", "google")
+    else:
+        engines_to_try = (requested_engine,)
+
+    transcript = ""
+    error: str | None = None
+    used_engine: str | None = None
+
+    for current_engine in engines_to_try:
+        try:
+            if current_engine == "google":
+                transcript = recognizer.recognize_google(audio_data, language=language)
+            else:
+                transcript = recognizer.recognize_sphinx(audio_data, language=language)
+            used_engine = current_engine
+            error = None
+            break
+        except sr.UnknownValueError:
+            transcript = ""
+            used_engine = current_engine
+            error = "unknown-value"
+            break
+        except sr.RequestError as exc:
+            transcript = ""
+            used_engine = current_engine
+            error = f"request-error: {exc}"
+            if requested_engine == "auto":
+                continue
+            break
+
+    if used_engine is None:
+        used_engine = engines_to_try[-1]
+
+    if transcript:
+        preview = transcript if len(transcript) <= 60 else transcript[:57] + "..."
+        gw.info(f"Transcribed audio via {used_engine}: {preview}")
+    elif error:
+        gw.warning(f"Transcription using {used_engine} failed: {error}")
+    else:
+        gw.info(f"No speech detected using {used_engine}")
+
+    result: dict[str, str] = {
+        "audio_transcript": transcript,
+        "transcript": transcript,
+        "audio_source": str(audio_path),
+        "audio_transcription_engine": used_engine,
+        "audio_transcription_language": language,
+        "audio_transcription_status": "ok" if transcript else "error" if error else "empty",
+        "audio_transcription_requested_engine": requested_engine,
+    }
+    if error:
+        result["audio_transcription_error"] = error
+
+    return result
