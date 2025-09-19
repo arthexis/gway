@@ -79,7 +79,7 @@ class Project(SimpleNamespace):
         }
 
         # Display available functions to the user
-        show_functions(functions)
+        return show_functions(functions)
 
     def __getattr__(self, name):
         """Fallback to ``<verb>_<project>`` or delegate to custom handler.
