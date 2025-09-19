@@ -396,7 +396,9 @@ def process(command_sources, callback=None, *, origin="line", gw_instance=None, 
             if attr_error is not None:
                 abort(str(attr_error))
             if hasattr(resolved_obj, '__functions__'):
-                show_functions(resolved_obj.__functions__)
+                summary = show_functions(resolved_obj.__functions__)
+                if summary:
+                    print(summary)
             else:
                 gw.error(f"Object at path {' '.join(path)} is not callable.")
             abort(f"No project with name '{chunk_tokens[0]}'")
@@ -644,22 +646,31 @@ def chunk(args_commands):
 
     return chunks
 
-def show_functions(functions: dict):
-    """Display a formatted view of available functions."""
+def show_functions(functions: dict) -> str:
+    """Build a formatted view of available functions."""
+
     from .builtins import sample_cli
 
-    print("Available functions:")
+    if not functions:
+        return "No functions available."
+
+    lines: list[str] = ["Available functions:"]
+
     for name, func in functions.items():
         name_cli = name.replace("_", "-")
-        cli_args = sample_cli(func)
-        doc = ""
-        if func.__doc__:
-            doc_lines = [line.strip() for line in func.__doc__.splitlines()]
-            doc = next((line for line in doc_lines if line), "")
+        cli_args = (sample_cli(func) or "").strip()
+        entry = f"  > {name_cli}" if not cli_args else f"  > {name_cli} {cli_args}"
+        lines.append(entry)
 
-        print(f"  > {name_cli} {cli_args}")
+        doc = ""
+        docstring = getattr(func, "__doc__", None)
+        if docstring:
+            doc_lines = [line.strip() for line in docstring.splitlines()]
+            doc = next((line for line in doc_lines if line), "")
         if doc:
-            print(f"      {doc}")
+            lines.append(f"      {doc}")
+
+    return "\n".join(lines)
 
 def add_func_args(subparser, func_obj, *, interactive=False, wizard=False):
     """Add the function's arguments to the CLI subparser.
