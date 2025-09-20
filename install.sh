@@ -189,7 +189,14 @@ if $REPAIR_FLAG; then
 import shlex
 import sys
 
-for part in shlex.split(sys.argv[1]):
+argv = sys.argv[1:]
+if argv and argv[0] == "--":
+    argv = argv[1:]
+
+if len(argv) != 1:
+    raise SystemExit("unexpected ExecStart argv shape")
+
+for part in shlex.split(argv[0]):
     print(part)
 PY
     ) || {
