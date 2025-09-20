@@ -7,6 +7,7 @@ requests
 dateparser
 django
 docutils
+evennia
 croniter
 qrcode[pil]
 cryptography
