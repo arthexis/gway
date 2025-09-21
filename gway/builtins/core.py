@@ -491,21 +491,31 @@ def install(
     force: bool = False,
     debug: bool = False,
     root: bool = False,
+    mode: str = "script",
+    latest: bool | str | None = None,
+    quiet: bool | str | None = True,
 ) -> int:
-    """Run ``install.sh`` with validated parameters.
+    """Run ``install.sh`` or upgrade packages via ``pip``.
 
-    The helper mirrors the behavior of invoking ``install.sh`` from the
-    repository root.  Pass a ``recipe`` name (or path) to install or upgrade
-    its systemd service.  Use ``--remove`` to disable a previously installed
-    service (combine it with ``--bin`` to uninstall the global ``gway``
-    command or with ``--shell`` to restore the previous login shell),
-    ``--repair`` to reinstall all known services, ``--bin`` to register the
-    ``gway`` CLI globally, and ``--shell`` to configure the ``gway shell``
-    wrapper as the login shell.  Additional positional arguments are passed
-    to ``install.sh`` so recipe-specific flags like ``--latest`` are preserved
-    when installing services.
+    In the default ``"script"`` mode the helper mirrors invoking
+    ``install.sh`` from the repository root.  Pass a ``recipe`` name (or
+    path) to install or upgrade its systemd service.  Use ``--remove`` to
+    disable a previously installed service (combine it with ``--bin`` to
+    uninstall the global ``gway`` command or with ``--shell`` to restore the
+    previous login shell), ``--repair`` to reinstall all known services,
+    ``--bin`` to register the ``gway`` CLI globally, and ``--shell`` to
+    configure the ``gway shell`` wrapper as the login shell.  Additional
+    positional arguments are passed to ``install.sh`` so recipe-specific flags
+    like ``--latest`` are preserved when installing services.
 
-    Returns the exit code from the script execution.
+    When ``mode`` is set to ``"pip"`` the helper installs or upgrades Python
+    packages using ``python -m pip install --upgrade``.  Positional arguments
+    are treated as package specifiers (defaulting to ``gway`` when omitted).
+    Provide ``latest=True`` to force a reinstall, mirroring the
+    auto-upgrade workflow.  ``quiet`` controls whether ``--quiet`` is passed
+    to pip and ``debug`` adds ``--verbose`` output.
+
+    Returns the exit code from the invoked command.
     """
 
     from gway import gw
@@ -514,6 +524,81 @@ def install(
     import subprocess
     import sys
     from threading import Thread
+
+    def _bool_from(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        text = str(value).strip().lower()
+        if not text:
+            return False
+        return text in {"1", "true", "yes", "on", "force"}
+
+    normalized_mode = str(mode or "script").strip().lower() or "script"
+    if normalized_mode not in {"script", "pip"}:
+        raise ValueError(f"Unsupported install mode: {mode!r}")
+
+    if normalized_mode == "pip":
+        packages: list[str] = []
+        if recipe is not None:
+            recipe_text = str(recipe).strip()
+            if recipe_text:
+                packages.append(recipe_text)
+        for value in recipe_args:
+            value_text = str(value).strip()
+            if value_text:
+                packages.append(value_text)
+        if not packages:
+            packages.append("gway")
+
+        quiet_requested = _bool_from(quiet)
+        if debug:
+            quiet_requested = False
+
+        def _latest_requested(explicit: bool | str | None = None) -> bool:
+            if explicit is not None:
+                return _bool_from(explicit)
+
+            for key in ("auto_upgrade_latest", "latest", "LATEST"):
+                if key in gw.context:
+                    return _bool_from(gw.context[key])
+
+            env_flag = os.environ.get("AUTO_UPGRADE_LATEST")
+            if env_flag is not None:
+                return _bool_from(env_flag)
+
+            return "--latest" in sys.argv
+
+        latest_requested = _latest_requested(latest)
+
+        if any([repair, remove, bin, shell, root]):
+            raise ValueError(
+                "Options --repair, --remove, --bin, --shell and --root cannot be used with pip mode."
+            )
+
+        python_exec = sys.executable or "python3"
+        pip_cmd: list[str] = [python_exec, "-m", "pip", "install"]
+        if quiet_requested:
+            pip_cmd.append("--quiet")
+        pip_cmd.append("--upgrade")
+        if debug:
+            pip_cmd.append("--verbose")
+        if force or latest_requested:
+            pip_cmd.append("--force-reinstall")
+        pip_cmd.extend(packages)
+
+        import shlex
+
+        pretty_cmd = " ".join(shlex.quote(part) for part in pip_cmd)
+        gw.info(f"install (pip): running {pretty_cmd}")
+
+        result = subprocess.run(pip_cmd, check=False)
+        if result.returncode != 0:
+            gw.error(f"pip install failed with exit code {result.returncode}")
+            raise subprocess.CalledProcessError(result.returncode, pip_cmd)
+
+        return result.returncode
 
     if repair and (remove or bin or shell):
         raise ValueError(

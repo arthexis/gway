@@ -3,6 +3,7 @@ import tempfile
 import os
 import sys
 from io import StringIO
+from types import SimpleNamespace
 from unittest.mock import patch
 import pathlib
 
@@ -54,6 +55,41 @@ class InstallBuiltinTests(unittest.TestCase):
         self.assertIn("--latest", output)
         self.assertIn("--interval", output)
         self.assertTrue(output.strip().endswith("5"))
+
+    def test_install_pip_mode_defaults_to_gway(self):
+        result = SimpleNamespace(returncode=0)
+        with patch.object(sys, "executable", "/opt/python"), patch(
+            "subprocess.run", return_value=result
+        ) as run_mock:
+            rc = gw.install(mode="pip")
+
+        self.assertEqual(rc, 0)
+        cmd = run_mock.call_args[0][0]
+        self.assertEqual(cmd[:4], ["/opt/python", "-m", "pip", "install"])
+        self.assertIn("--quiet", cmd)
+        self.assertIn("--upgrade", cmd)
+        self.assertIn("gway", cmd)
+
+    def test_install_pip_mode_honours_latest_flag(self):
+        result = SimpleNamespace(returncode=0)
+        gw.context["auto_upgrade_latest"] = True
+        try:
+            with patch("subprocess.run", return_value=result) as run_mock:
+                gw.install(mode="pip")
+        finally:
+            gw.context.clear()
+
+        cmd = run_mock.call_args[0][0]
+        self.assertIn("--force-reinstall", cmd)
+
+        with patch("subprocess.run", return_value=result) as run_mock:
+            gw.install(mode="pip", latest=False)
+
+        self.assertNotIn("--force-reinstall", run_mock.call_args[0][0])
+
+    def test_install_pip_mode_rejects_service_flags(self):
+        with self.assertRaises(ValueError):
+            gw.install(mode="pip", remove=True)
 
     def test_install_remove_requires_recipe(self):
         with self.assertRaises(ValueError):
