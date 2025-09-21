@@ -89,6 +89,7 @@ def record(
     immediate: bool = False,
     sample: Optional[float] = None,
     stream: bool = False,
+    buffer: float = 0.0,
 ):
     """Record audio from the default input device.
 
@@ -106,6 +107,9 @@ def record(
             recording duration is ``min(duration, sample)``.
         stream: When ``True`` return an :class:`AudioStream` with the
             captured data for real-time streaming instead of a file path.
+        buffer: Seconds of pre-roll audio to include ahead of the main
+            ``duration``. The total recorded length becomes ``duration +
+            buffer`` (respecting the ``sample`` cap when provided).
 
     Returns:
         Absolute path to the recorded audio file, or an :class:`AudioStream`
@@ -114,6 +118,9 @@ def record(
     if format.lower() != "wav":
         raise ValueError("Only 'wav' format is supported")
 
+    if buffer < 0:
+        raise ValueError("buffer must be a non-negative duration")
+
     if sample is not None:
         if sample <= 0:
             raise ValueError("sample must be a positive duration")
@@ -121,7 +128,9 @@ def record(
     else:
         effective_duration = duration
 
-    if effective_duration <= 0:
+    total_duration = effective_duration + buffer
+
+    if total_duration <= 0:
         raise ValueError("Recording duration must be positive")
 
     _ensure_sounddevice("recording")
@@ -135,11 +144,15 @@ def record(
             path = Path.cwd() / path
     path = path.resolve()
     gw.info(f"Recording audio to {path}")
+    if buffer:
+        gw.verbose(
+            f"Including {buffer:.2f}s buffer; capturing {total_duration:.2f}s total"
+        )
     if not immediate:
         gw.info("Press Enter to start recording")
         input()
 
-    frames = int(round(effective_duration * samplerate))
+    frames = int(round(total_duration * samplerate))
     if frames <= 0:
         raise ValueError("Recording duration too short for the given sample rate")
     data = sd.rec(frames, samplerate=samplerate, channels=channels)
@@ -340,3 +353,83 @@ def transcribe(
         result["audio_transcription_error"] = error
 
     return result
+
+
+def _coerce_bool(value) -> bool:
+    """Return ``True`` when *value* represents an affirmative flag."""
+
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+
+    text = str(value).strip().lower()
+    if not text:
+        return False
+    return text not in {"0", "false", "no", "off", "disable", "disabled"}
+
+
+def _coerce_float(value, *, default: float = 0.0) -> float:
+    """Best-effort conversion of *value* to ``float`` with fallback."""
+
+    if isinstance(value, (int, float)):
+        return float(value)
+    if value is None:
+        return default
+
+    text = str(value).strip()
+    if not text:
+        return default
+
+    try:
+        return float(text)
+    except ValueError:
+        return default
+
+
+def configure_loop(
+    *,
+    loop: bool | str | None = None,
+    rest: float | str = 0.0,
+) -> dict[str, object]:
+    """Prepare repeat directives for speech-cog style recipes.
+
+    Args:
+        loop: Truthy values enable looping. When ``loop`` is a numeric string,
+            it is treated as the rest interval in seconds.
+        rest: Seconds of downtime between repetitions when looping is enabled.
+
+    Returns:
+        Dictionary of context overrides consumed by the recipe. The keys are
+        ``"speech_cog_repeat_args"`` and ``"speech_cog_repeat_rest"`` so the
+        recipe can feed them directly into :func:`gw.repeat`.
+    """
+
+    rest_value = _coerce_float(rest, default=0.0)
+
+    numeric_loop: float | None = None
+    if isinstance(loop, (int, float)) and not isinstance(loop, bool):
+        numeric_loop = float(loop)
+    elif isinstance(loop, str):
+        stripped = loop.strip()
+        try:
+            numeric_loop = float(stripped)
+        except ValueError:
+            numeric_loop = None
+
+    if numeric_loop is not None:
+        rest_value = numeric_loop
+        loop_enabled = True
+    else:
+        loop_enabled = _coerce_bool(loop)
+
+    repeat_args = "" if loop_enabled else "--times 0"
+    payload: dict[str, object] = {
+        "speech_cog_repeat_args": repeat_args,
+        "speech_cog_repeat_rest": rest_value,
+        "speech_cog_loop_enabled": loop_enabled,
+    }
+    gw.context.update(payload)
+    return payload

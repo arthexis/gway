@@ -89,6 +89,26 @@ class AudioRecordTests(unittest.TestCase):
         expected_frames = int(round(min(5, 0.01) * 44100))
         fake_sd.rec.assert_called_once_with(expected_frames, samplerate=44100, channels=1)
 
+    def test_buffer_extends_recording(self):
+        audio = self._load_audio()
+        fake_data = np.zeros((6615, 1), dtype="float32")
+        with TemporaryDirectory() as tmpdir:
+            def fake_resource(*parts, **kwargs):
+                return Path(tmpdir).joinpath(*parts)
+
+            fake_wave = MagicMock()
+            fake_wave.__enter__.return_value = MagicMock()
+
+            fake_sd = types.SimpleNamespace(rec=MagicMock(return_value=fake_data), wait=MagicMock())
+            with patch.object(gw, 'resource', fake_resource), \
+                 patch.object(audio, 'sd', fake_sd), \
+                 patch.object(audio, 'wave') as wave_mod:
+                wave_mod.open.return_value = fake_wave
+                audio.record(duration=0.1, buffer=0.05, immediate=True)
+
+        expected_frames = int(round((0.1 + 0.05) * 44100))
+        fake_sd.rec.assert_called_once_with(expected_frames, samplerate=44100, channels=1)
+
     def test_stream_returns_audio_stream(self):
         audio = self._load_audio()
         fake_data = np.ones((22050, 2), dtype="float32") * 0.5
@@ -111,6 +131,41 @@ class AudioRecordTests(unittest.TestCase):
         self.assertEqual(result.samplerate, 44100)
         self.assertEqual(result.channels, 2)
         self.assertTrue(result.path.name.endswith(".wav"))
+
+
+class ConfigureLoopTests(unittest.TestCase):
+    def tearDown(self):
+        for key in (
+            "speech_cog_repeat_args",
+            "speech_cog_repeat_rest",
+            "speech_cog_loop_enabled",
+        ):
+            gw.context.pop(key, None)
+
+    def test_configure_loop_disabled_uses_times_zero(self):
+        from projects import audio as audio_module
+
+        payload = audio_module.configure_loop(loop=False, rest=1)
+        self.assertEqual(payload["speech_cog_repeat_args"], "--times 0")
+        self.assertEqual(payload["speech_cog_repeat_rest"], 1.0)
+        self.assertFalse(payload["speech_cog_loop_enabled"])
+        self.assertEqual(gw.context.get("speech_cog_repeat_args"), "--times 0")
+
+    def test_configure_loop_enables_loop_and_rest(self):
+        from projects import audio as audio_module
+
+        payload = audio_module.configure_loop(loop=True, rest=0.25)
+        self.assertEqual(payload["speech_cog_repeat_args"], "")
+        self.assertAlmostEqual(payload["speech_cog_repeat_rest"], 0.25)
+        self.assertTrue(payload["speech_cog_loop_enabled"])
+
+    def test_numeric_loop_value_sets_rest(self):
+        from projects import audio as audio_module
+
+        payload = audio_module.configure_loop(loop="1.5")
+        self.assertEqual(payload["speech_cog_repeat_args"], "")
+        self.assertAlmostEqual(payload["speech_cog_repeat_rest"], 1.5)
+        self.assertTrue(payload["speech_cog_loop_enabled"])
 
 
 if __name__ == "__main__":
