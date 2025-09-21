@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import os
-import shlex
 import subprocess
 import sys
 from importlib import metadata
@@ -137,25 +136,10 @@ def log_cycle(*, latest: bool | str | None = None, log_name: str = LOG_NAME) -> 
 
 
 def install(*, latest: bool | str | None = None) -> int:
-    """Install or upgrade ``gway`` using pip.
-
-    When *latest* (or the ``--latest`` CLI flag) is truthy the installation is
-    forced even if the version has not changed.
-    """
+    """Install or upgrade ``gway`` using the install builtin."""
 
     latest_requested = _latest_requested(latest)
-    python_exec = sys.executable or "python3"
-    cmd = [python_exec, "-m", "pip", "install", "--quiet", "--upgrade", "gway"]
-    if latest_requested:
-        cmd.insert(-1, "--force-reinstall")
-
-    gw.info(f"[auto-upgrade] Running {' '.join(shlex.quote(part) for part in cmd)}")
-    process = subprocess.run(cmd, check=False)
-    if process.returncode != 0:
-        gw.error(f"gway installation failed with exit code {process.returncode}")
-        raise subprocess.CalledProcessError(process.returncode, cmd)
-
-    return process.returncode
+    return gw.install("gway", mode="pip", latest=latest_requested)
 
 
 def log_upgrade(
@@ -198,4 +182,89 @@ def log_upgrade(
         "log": str(log_path),
         "version": current_version,
     }
+
+
+def _current_release(length: int = 6) -> str | None:
+    """Return the current build identifier if available."""
+
+    try:
+        release = gw.hub.get_build(length=length)
+    except Exception as exc:  # pragma: no cover - best effort helper
+        gw.debug(f"Unable to determine build identifier: {exc}")
+        return None
+
+    release = str(release or "").strip()
+    if not release or release.lower() == "unknown":
+        return None
+
+    return release
+
+
+def notify_upgrade(
+    *,
+    version: str | None = None,
+    release: str | None = None,
+    latest: bool | str | None = None,
+    timestamp: datetime | None = None,
+    timeout: int = 20,
+) -> dict:
+    """Display a toast/LCD message summarising a successful upgrade."""
+
+    latest_requested = _latest_requested(latest)
+    previous_version = gw.context.get("auto_upgrade_previous_version")
+    current_version = (
+        version
+        or gw.context.get("auto_upgrade_current_version")
+        or _installed_version()
+    )
+
+    if not current_version:
+        gw.debug("[auto-upgrade] Skipping notification: current version unknown")
+        return {"status": "skipped", "reason": "unknown-version"}
+
+    if not (latest_requested or previous_version != current_version):
+        gw.debug("[auto-upgrade] Skipping notification: version unchanged")
+        return {
+            "status": "skipped",
+            "reason": "version-unchanged",
+            "version": current_version,
+        }
+
+    release_id = release or _current_release()
+    if release_id:
+        release_id = release_id.lstrip("rR").upper()
+    else:
+        release_id = "000000"
+
+    subject = f"gway v{current_version} r{release_id}"
+    moment = timestamp or datetime.now()
+    body = moment.strftime("%Y%m%d %H:%M")
+
+    try:
+        channel = gw.notify(body, title=subject, timeout=timeout)
+    except Exception as exc:  # pragma: no cover - defensive
+        gw.warning(f"[auto-upgrade] Failed to emit upgrade notification: {exc}")
+        return {
+            "status": "error",
+            "version": current_version,
+            "release": release_id,
+            "message": body,
+        }
+
+    summary = {
+        "status": "notified",
+        "channel": channel,
+        "version": current_version,
+        "release": release_id,
+        "title": subject,
+        "message": body,
+    }
+
+    gw.context["auto_upgrade_notification"] = summary
+    gw.info(
+        "[auto-upgrade] Sent upgrade notification"
+        f" (channel={channel}, version={current_version}, release={release_id})"
+    )
+
+    return summary
 
