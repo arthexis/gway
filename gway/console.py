@@ -883,7 +883,16 @@ def add_func_args(subparser, func_obj, *, interactive=False, wizard=False):
             else:
                 seen_kw_only = True
                 cli_name = f"--{arg_name.replace('_', '-')}"
-                is_bool = param.annotation is bool or isinstance(param.default, bool)
+                annotation_origin = get_origin(param.annotation)
+                is_union_with_bool = False
+                if annotation_origin in (Union, UnionType):
+                    is_union_with_bool = any(arg is bool for arg in get_args(param.annotation))
+
+                is_bool = (
+                    param.annotation is bool
+                    or isinstance(param.default, bool)
+                    or is_union_with_bool
+                )
                 if is_bool:
                     grp = subparser.add_mutually_exclusive_group(required=False)
                     grp.add_argument(
