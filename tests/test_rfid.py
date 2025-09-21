@@ -123,6 +123,43 @@ def test_scan_returns_uid_after_threshold(monkeypatch, capsys):
     assert captured.out.count("Card ID: 987654321") == 2
 
 
+def test_start_trigger_runs_recipe_when_card_detected(monkeypatch, capsys):
+    reader = types.SimpleNamespace()
+    gpio = types.SimpleNamespace(cleanup=lambda: None)
+
+    monkeypatch.setattr(rfid, "_initialize_reader", lambda: (reader, gpio))
+    monkeypatch.setattr(rfid.os.path, "exists", lambda path: True)
+
+    events = [(4242, (1, 2, 3, 4), "payload")]
+
+    def fake_poll(_reader):
+        return events.pop(0) if events else None
+
+    times = iter([0.0, 1.0, 2.0])
+    monkeypatch.setattr(rfid, "_poll_for_card", fake_poll)
+    monkeypatch.setattr(rfid.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(rfid.time, "sleep", lambda duration: None)
+
+    triggered = {}
+
+    def fake_run_recipe(trigger, *, section=None, RFID_UID):
+        triggered.update({
+            "trigger": trigger,
+            "section": section,
+            "uid": RFID_UID,
+        })
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(rfid.gw, "run_recipe", fake_run_recipe)
+
+    rfid.start_trigger(trigger="custom", section="# part", debounce=0, poll_interval=0.1)
+
+    captured = capsys.readouterr()
+    assert triggered == {"trigger": "custom", "section": "# part", "uid": "4242"}
+    assert "Triggering recipe 'custom' for UID 4242" in captured.out
+    assert "RFID trigger stopped." in captured.out
+
+
 def test_scan_logs_detected_cards_to_default_csv(monkeypatch, tmp_path, capsys):
     """Enabling ``--csv`` should write detections to the default CSV file."""
 

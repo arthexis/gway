@@ -20,7 +20,7 @@ from .logging import setup_logging
 from .builtins import abort
 from .builtins.recipes import _RepeatDirective
 from .gateway import Gateway, gw
-from .sigils import Sigil, Spool
+from .sigils import Sigil, Spool, _replace_sigils
 
 
 def _should_enable_argcomplete(environ: dict[str, str] | None = None) -> bool:
@@ -133,6 +133,12 @@ def cli_main():
         action="append",
         help="Execute one or more GWAY recipe (.gwr) files.",
     )
+    add(
+        "--section",
+        dest="section",
+        type=str,
+        help="Execute only the named '# section' within the recipe.",
+    )
     add("-s", dest="server", type=str, help="Override server environment configuration")
     add("-t", dest="timed", action="store_true", help="Enable timing of operations")
     add("-u", dest="username", type=str, help="Operate as the given end-user account.")
@@ -205,9 +211,12 @@ def cli_main():
         run_kwargs['timed'] = True
     run_kwargs.update(extra_context)
 
+    if args.section and not recipe_args:
+        parser.error("--section requires at least one recipe")
+
     if recipe_args:
         if len(recipe_args) == 1:
-            command_sources, _ = load_recipe(recipe_args[0])
+            command_sources, _ = load_recipe(recipe_args[0], section=args.section)
             all_results, last_result = process(
                 command_sources,
                 origin="recipe",
@@ -215,7 +224,7 @@ def cli_main():
             )
         else:
             def execute_recipe(recipe_name: str):
-                commands, _ = load_recipe(recipe_name)
+                commands, _ = load_recipe(recipe_name, section=args.section)
                 return process(commands, origin="recipe", **run_kwargs)
 
             with ThreadPoolExecutor(max_workers=len(recipe_args)) as executor:
@@ -400,30 +409,66 @@ def process(command_sources, callback=None, *, origin="line", gw_instance=None, 
 
         return obj, tokens, path, last_error
 
-    for chunk in command_sources:
-        if not chunk:
+    def _coerce_chunk(entry):
+        if isinstance(entry, dict):
+            tokens = list(entry.get("tokens") or [])
+            comment_text = entry.get("comment")
+        elif hasattr(entry, "tokens"):
+            tokens = list(getattr(entry, "tokens"))
+            comment_text = getattr(entry, "comment", None)
+        else:
+            tokens = list(entry)
+            comment_text = None
+        return tokens, comment_text
+
+    def _render_comment(text: str) -> str:
+        if not text:
+            return text
+        sentinel = object()
+
+        def lookup(key: str):
+            value = gw.find_value(key, fallback=sentinel, exec=True)
+            if value is sentinel:
+                raise KeyError(key)
+            return value
+
+        try:
+            return _replace_sigils(text, lookup)
+        except Exception:
+            return text
+
+    print_comments = origin == "recipe"
+
+    for raw_chunk in command_sources:
+        tokens, comment_text = _coerce_chunk(raw_chunk)
+        if not tokens and not comment_text:
             continue
 
-        gw.debug(f"Next {chunk=}")
+        gw.debug(f"Next {raw_chunk=}")
+
+        if print_comments and comment_text:
+            rendered_comment = _render_comment(str(comment_text))
+            if rendered_comment:
+                print(rendered_comment)
 
         # Invoke callback if provided
         if callback:
-            callback_result = callback(chunk)
+            callback_result = callback(list(tokens))
             if callback_result is False:
-                gw.debug(f"Skipping chunk due to callback: {chunk}")
+                gw.debug(f"Skipping chunk due to callback: {tokens}")
                 continue
             elif isinstance(callback_result, list):
                 gw.debug(f"Callback replaced chunk: {callback_result}")
-                chunk = callback_result
+                tokens = list(callback_result)
             elif callback_result is None or callback_result is True:
                 pass
             else:
                 abort(f"Invalid callback return value for chunk: {callback_result}")
 
-        if not chunk:
+        if not tokens:
             continue
 
-        chunk = join_unquoted_kwargs(list(chunk))
+        chunk = join_unquoted_kwargs(list(tokens))
         chunk_tokens = list(chunk)
 
         # Resolve nested project/function path
@@ -943,7 +988,7 @@ def _unit_converters(param_name: str):
 # We keep recipe functions in console.py because anything that changes cli_main
 # typically has an impact in the recipe parsing process and must be reviewed together.
 
-def load_recipe(recipe_filename, *, strict=True):
+def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
     """Load commands and comments from a .gwr file.
     
     Supports indented 'chained' lines: If a line begins with whitespace and its first
@@ -957,8 +1002,8 @@ def load_recipe(recipe_filename, *, strict=True):
     import os
     from gway import gw
 
-    commands = []
-    comments = []
+    commands: list[dict[str, object]] = []
+    comments: list[str] = []
     recipe_path = None
 
     # --- Recipe file resolution (unchanged) ---
@@ -1018,46 +1063,111 @@ def load_recipe(recipe_filename, *, strict=True):
 
     gw.info(f"Loading commands from recipe: {recipe_path}")
     
-    deindented_lines = []
+    command_chunks: list[dict[str, object]] = []
     last_prefix = ""
     colon_prefix = None
     colon_suffix = ""
+    current_section = None
+
+    def _normalize_section_key(text: str) -> str:
+        trimmed = (text or "").strip()
+        if not trimmed.startswith("#"):
+            trimmed = "# " + trimmed
+        after_hash = trimmed[1:].lstrip()
+        normalized = "# " + " ".join(after_hash.split()) if after_hash else "#"
+        return normalized.casefold()
+
+    def _is_section_header(text: str) -> bool:
+        stripped = text.strip()
+        if not stripped.startswith("#"):
+            return False
+        count = 0
+        for char in stripped:
+            if char == "#":
+                count += 1
+                continue
+            break
+        return count == 1
+
+    def append_comment(text: str, *, header: bool = False) -> None:
+        nonlocal current_section
+        comment_text = text.strip()
+        if not comment_text:
+            return
+        comments.append(comment_text)
+        header_key = None
+        if header:
+            current_section = _normalize_section_key(comment_text)
+            header_key = current_section
+        chunk = {
+            "tokens": [],
+            "comment": comment_text,
+            "section": current_section,
+        }
+        if header_key:
+            chunk["section_header"] = header_key
+        command_chunks.append(chunk)
+
+    def append_command(text: str, inline_comment: str | None) -> None:
+        trimmed = text.strip()
+        if not trimmed:
+            return
+        chunk = {
+            "tokens": trimmed.split(),
+            "comment": inline_comment.strip() if inline_comment else None,
+            "section": current_section,
+        }
+        if inline_comment:
+            comments.append(inline_comment.strip())
+        command_chunks.append(chunk)
     with open(recipe_path) as f:
         continuation = None
 
         def process_line(line: str):
-            nonlocal colon_prefix, colon_suffix, last_prefix
+            nonlocal colon_prefix, colon_suffix, last_prefix, current_section
             stripped_line = line.lstrip()
             if not stripped_line:
                 colon_prefix = None
                 return  # skip blank lines
             if stripped_line.startswith("#"):
-                comments.append(stripped_line)
+                header = _is_section_header(stripped_line)
+                append_comment(stripped_line, header=header)
                 colon_prefix = None
                 return
+            inline_comment = None
+            hash_index = line.find("#")
+            if hash_index != -1:
+                inline_comment = line[hash_index:].strip()
+                command_part = line[:hash_index]
+            else:
+                command_part = line
+            command_part = command_part.rstrip()
+            stripped_command = command_part.lstrip()
+            if inline_comment and not inline_comment.startswith("#"):
+                inline_comment = f"#{inline_comment}"
             if colon_prefix:
-                if stripped_line.startswith("- "):
-                    addition = stripped_line[1:].lstrip()
+                if stripped_command.startswith("- "):
+                    addition = stripped_command[1:].lstrip()
                     line_to_add = colon_prefix + " " + addition
                     if colon_suffix:
                         line_to_add += " " + colon_suffix
-                    deindented_lines.append(line_to_add)
+                    append_command(line_to_add, inline_comment)
                     return
-                if stripped_line.startswith("--"):
-                    line_to_add = colon_prefix + " " + stripped_line
+                if stripped_command.startswith("--"):
+                    line_to_add = colon_prefix + " " + stripped_command
                     if colon_suffix:
                         line_to_add += " " + colon_suffix
-                    deindented_lines.append(line_to_add)
+                    append_command(line_to_add, inline_comment)
                     return
                 colon_prefix = None
                 colon_suffix = ""
-            if stripped_line.endswith(":"):
-                colon_prefix = stripped_line[:-1].rstrip()
+            if stripped_command.endswith(":"):
+                colon_prefix = stripped_command[:-1].rstrip()
                 colon_suffix = ""
                 last_prefix = colon_prefix
                 return
             # Detect colon inside line after a flag
-            no_comment = stripped_line.split("#", 1)[0].rstrip()
+            no_comment = stripped_command
             tokens = no_comment.split()
             for idx, token in enumerate(tokens):
                 if token.endswith(":"):
@@ -1068,21 +1178,21 @@ def load_recipe(recipe_filename, *, strict=True):
             if colon_prefix:
                 return
             # Detect if line is indented and starts with '--'
-            if line[:1].isspace() and stripped_line.startswith("--"):
+            if command_part[:1].isspace() and stripped_command.startswith("--"):
                 # Prepend previous prefix if available
                 if last_prefix:
-                    deindented_lines.append(last_prefix + " " + stripped_line)
+                    append_command(last_prefix + " " + stripped_command, inline_comment)
                 else:
                     # Malformed: indented line but no previous command
-                    deindented_lines.append(stripped_line)
+                    append_command(stripped_command, inline_comment)
             else:
                 # New command: save everything up to the first '--' (including trailing spaces)
-                parts = line.split("--", 1)
+                parts = command_part.split("--", 1)
                 if len(parts) == 2:
                     last_prefix = parts[0].rstrip()
                 else:
-                    last_prefix = line.rstrip()
-                deindented_lines.append(line)
+                    last_prefix = command_part.rstrip()
+                append_command(command_part, inline_comment)
 
         for raw_line in f:
             line = raw_line.rstrip("\n")
@@ -1097,10 +1207,42 @@ def load_recipe(recipe_filename, *, strict=True):
         if continuation is not None:
             process_line(continuation.rstrip())
 
-    # --- Split deindented lines into commands ---
-    for line in deindented_lines:
-        if line.strip() and not line.strip().startswith("#"):
-            commands.append(line.strip().split())
+    if section:
+        target_key = _normalize_section_key(section)
+    else:
+        target_key = None
+
+    filtered_chunks: list[dict[str, object]] = []
+    collecting = target_key is None
+    matched_section = False
+
+    for chunk in command_chunks:
+        chunk_section = chunk.get("section")
+        header_key = chunk.get("section_header")
+        if chunk_section is None:
+            filtered_chunks.append(chunk)
+            continue
+        if target_key is None:
+            filtered_chunks.append(chunk)
+            continue
+        if header_key:
+            if str(header_key).startswith(target_key):
+                collecting = True
+                matched_section = True
+                filtered_chunks.append(chunk)
+                continue
+            if matched_section and collecting:
+                collecting = False
+                break
+            collecting = False
+            continue
+        if collecting:
+            filtered_chunks.append(chunk)
+
+    if target_key is not None and not matched_section:
+        raise ValueError(f"Section '{section}' not found in recipe {recipe_path}")
+
+    commands.extend(filtered_chunks)
 
     return commands, comments
 
