@@ -47,7 +47,7 @@ class AutoUpgradeProjectTests(unittest.TestCase):
     def test_log_upgrade_records_change_and_notifies(self):
         gw.context["auto_upgrade_previous_version"] = "1.0.0"
 
-        with mock.patch.object(auto_upgrade, "_installed_version", return_value="1.1.0"), mock.patch.object(
+        with mock.patch.object(auto_upgrade.package, "_installed_version", return_value="1.1.0"), mock.patch.object(
             auto_upgrade, "_broadcast"
         ) as broadcast_mock:
             result = auto_upgrade.log_upgrade(log_name="change.log")
@@ -60,7 +60,7 @@ class AutoUpgradeProjectTests(unittest.TestCase):
     def test_log_upgrade_skips_notification_when_version_unchanged(self):
         gw.context["auto_upgrade_previous_version"] = "2.0.0"
 
-        with mock.patch.object(auto_upgrade, "_installed_version", return_value="2.0.0"), mock.patch.object(
+        with mock.patch.object(auto_upgrade.package, "_installed_version", return_value="2.0.0"), mock.patch.object(
             auto_upgrade, "_broadcast"
         ) as broadcast_mock:
             result = auto_upgrade.log_upgrade(log_name="skip.log")
