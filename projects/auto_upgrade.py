@@ -1,161 +1,37 @@
-"""Utilities supporting the auto-upgrade recipe.
+"""Gateway auto-upgrade helpers (compatibility shim).
 
-The helpers in this module are invoked from ``recipes/auto_upgrade.gwr``
-to coordinate logging, upgrades and system notifications.  They centralise
-all stateful behaviour so the recipe itself can stay declarative and easy
-to audit.
+The Gateway-specific implementation now lives in :mod:`projects.package.gway` so
+other packages can reuse the shared upgrade plumbing exposed by
+:mod:`projects.package`.  This module simply re-exports the ``gway`` sub-project
+for backwards compatibility with existing recipes and imports.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
-import os
-import shlex
-import subprocess
-import sys
-from importlib import metadata
-from pathlib import Path
-
 from gway import gw
+from gway.projects import package
+from gway.projects.package import gway as _gway
 
+LOG_NAME = _gway.LOG_NAME
+CONFIG = _gway.CONFIG
+CycleState = _gway.CycleState
 
-LOG_NAME = "auto_upgrade.log"
-
-
-def _bool_from(value) -> bool:
-    """Return ``True`` when *value* represents an affirmative flag."""
-
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    if isinstance(value, (int, float)):
-        return bool(value)
-
-    text = str(value).strip().lower()
-    if not text:
-        return False
-    return text in {"1", "true", "yes", "on", "force"}
-
-
-def _latest_requested(explicit: bool | str | None = None) -> bool:
-    """Determine whether the caller requested a ``--latest`` upgrade."""
-
-    if explicit is not None:
-        return _bool_from(explicit)
-
-    for key in ("auto_upgrade_latest", "latest", "LATEST"):
-        if key in gw.context:
-            return _bool_from(gw.context[key])
-
-    env_flag = os.environ.get("AUTO_UPGRADE_LATEST")
-    if env_flag is not None:
-        return _bool_from(env_flag)
-
-    return "--latest" in sys.argv
-
-
-def _log_path(log_name: str = LOG_NAME) -> Path:
-    """Return the canonical path for the auto-upgrade log file."""
-
-    return Path(gw.resource("logs", log_name, touch=True))
-
-
-def _append_log(message: str, *, log_name: str = LOG_NAME) -> Path:
-    """Append *message* to the auto-upgrade log and return the log path."""
-
-    path = _log_path(log_name)
-    timestamp = datetime.now().isoformat(timespec="seconds")
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(f"{timestamp} | {message}\n")
-    return path
-
-
-def _installed_version() -> str | None:
-    """Return the currently installed ``gway`` version, if available."""
-
-    try:
-        return metadata.version("gway")
-    except metadata.PackageNotFoundError:  # pragma: no cover - defensive
-        return None
-    except Exception as exc:  # pragma: no cover - defensive logging
-        gw.warning(f"Unable to determine installed gway version: {exc}")
-        return None
-
-
-def _broadcast(message: str) -> None:
-    """Send *message* to logged-in users via ``wall`` when available."""
-
-    try:
-        subprocess.run(["wall", message], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except FileNotFoundError:
-        gw.debug("wall binary not available; skipping broadcast")
-    except Exception as exc:  # pragma: no cover - best effort notification
-        gw.debug(f"Failed to broadcast upgrade message: {exc}")
-
-
-@dataclass(slots=True)
-class CycleState:
-    log_path: Path
-    latest: bool
-    previous_version: str | None
+# Preserve the helper hooks that tests patch directly.
+_broadcast = _gway._broadcast
+_release_lookup = _gway._release_lookup
+_normalise_release = _gway._normalise_release
 
 
 def log_cycle(*, latest: bool | str | None = None, log_name: str = LOG_NAME) -> CycleState:
-    """Record a log entry for the start of a new upgrade check.
+    """Record a log entry for the start of a new upgrade check."""
 
-    The helper captures the currently installed version, records the check in
-    ``logs/auto_upgrade.log`` and stores the details in ``gw.context`` for later
-    recipe steps.
-    """
-
-    latest_requested = _latest_requested(latest)
-    previous_version = _installed_version()
-
-    log_message = "CHECK"
-    details: list[str] = []
-    if previous_version:
-        details.append(f"installed={previous_version}")
-    if latest_requested:
-        details.append("latest=true")
-    if details:
-        log_message = f"{log_message} | {' '.join(details)}"
-
-    log_path = _append_log(log_message, log_name=log_name)
-
-    gw.context.update(
-        {
-            "auto_upgrade_latest": latest_requested,
-            "auto_upgrade_previous_version": previous_version,
-            "auto_upgrade_log": str(log_path),
-        }
-    )
-
-    gw.info(f"[auto-upgrade] Logged check (latest={latest_requested}, version={previous_version})")
-    return CycleState(log_path=log_path, latest=latest_requested, previous_version=previous_version)
+    return package.log_cycle(CONFIG, latest=latest, log_name=log_name)
 
 
 def install(*, latest: bool | str | None = None) -> int:
-    """Install or upgrade ``gway`` using pip.
+    """Install or upgrade ``gway`` using the install builtin."""
 
-    When *latest* (or the ``--latest`` CLI flag) is truthy the installation is
-    forced even if the version has not changed.
-    """
-
-    latest_requested = _latest_requested(latest)
-    python_exec = sys.executable or "python3"
-    cmd = [python_exec, "-m", "pip", "install", "--quiet", "--upgrade", "gway"]
-    if latest_requested:
-        cmd.insert(-1, "--force-reinstall")
-
-    gw.info(f"[auto-upgrade] Running {' '.join(shlex.quote(part) for part in cmd)}")
-    process = subprocess.run(cmd, check=False)
-    if process.returncode != 0:
-        gw.error(f"gway installation failed with exit code {process.returncode}")
-        raise subprocess.CalledProcessError(process.returncode, cmd)
-
-    return process.returncode
+    return package.install(CONFIG, latest=latest)
 
 
 def log_upgrade(
@@ -167,35 +43,39 @@ def log_upgrade(
 ) -> dict:
     """Record the outcome of an applied upgrade and optionally notify users."""
 
-    latest_requested = _latest_requested(latest)
-    previous_version = gw.context.get("auto_upgrade_previous_version")
-    current_version = version or _installed_version()
-
-    if not current_version:
-        log_message = "UPGRADE | version=unknown"
-    else:
-        log_message = f"UPGRADE | version={current_version}"
-        if previous_version and previous_version != current_version:
-            log_message += f" from={previous_version}"
-        elif previous_version and previous_version == current_version and not latest_requested:
-            log_message = f"UPGRADE-SKIPPED | version={current_version}"
-
-    log_path = _append_log(log_message, log_name=log_name)
-
-    gw.context.update(
-        {
-            "auto_upgrade_log": str(log_path),
-            "auto_upgrade_current_version": current_version,
-        }
+    broadcaster = _broadcast if notify else None
+    return package.log_upgrade(
+        CONFIG,
+        version=version,
+        latest=latest,
+        log_name=log_name,
+        notify=notify,
+        broadcaster=broadcaster,
     )
 
-    gw.info(f"[auto-upgrade] Logged upgrade result: {log_message}")
 
-    if notify and current_version and (latest_requested or previous_version != current_version):
-        _broadcast(f"gway upgraded to {current_version}")
+def _current_release(length: int = 6) -> str | None:
+    """Return the current build identifier if available."""
 
-    return {
-        "log": str(log_path),
-        "version": current_version,
-    }
+    return package.current_release(CONFIG, length=length)
+
+
+def notify_upgrade(
+    *,
+    version: str | None = None,
+    release: str | None = None,
+    latest: bool | str | None = None,
+    timestamp=None,
+    timeout: int = 20,
+) -> dict:
+    """Display a toast/LCD message summarising a successful upgrade."""
+
+    return package.notify_upgrade(
+        CONFIG,
+        version=version,
+        release=release,
+        latest=latest,
+        timestamp=timestamp,
+        timeout=timeout,
+    )
 

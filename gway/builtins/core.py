@@ -10,6 +10,8 @@ __all__ = [
     "upgrade",
 ]
 
+from functools import lru_cache
+
 def hello_world(name: str = "World", *, greeting: str = "Hello", **kwargs):
     """Smoke test function."""
     from gway import gw
@@ -480,6 +482,12 @@ def temp_env(
         else:
             shutil.rmtree(temp_root, ignore_errors=True)
 
+@lru_cache(maxsize=1)
+def _package_project():
+    from gway.projects.package import gway as package_gway
+
+    return package_gway
+
 
 def install(
     recipe: str | None = None,
@@ -491,198 +499,34 @@ def install(
     force: bool = False,
     debug: bool = False,
     root: bool = False,
+    mode: str = "script",
+    latest: bool | str | None = None,
+    quiet: bool | str | None = True,
 ) -> int:
-    """Run ``install.sh`` with validated parameters.
+    """Run ``install.sh`` or upgrade packages via ``pip``."""
 
-    The helper mirrors the behavior of invoking ``install.sh`` from the
-    repository root.  Pass a ``recipe`` name (or path) to install or upgrade
-    its systemd service.  Use ``--remove`` to disable a previously installed
-    service (combine it with ``--bin`` to uninstall the global ``gway``
-    command or with ``--shell`` to restore the previous login shell),
-    ``--repair`` to reinstall all known services, ``--bin`` to register the
-    ``gway`` CLI globally, and ``--shell`` to configure the ``gway shell``
-    wrapper as the login shell.  Additional positional arguments are passed
-    to ``install.sh`` so recipe-specific flags like ``--latest`` are preserved
-    when installing services.
-
-    Returns the exit code from the script execution.
-    """
-
-    from gway import gw
-
-    import os
-    import subprocess
-    import sys
-    from threading import Thread
-
-    if repair and (remove or bin or shell):
-        raise ValueError(
-            "Options --repair, --remove, --bin and --shell are mutually exclusive. "
-            "Combine --remove with --bin or --shell to uninstall those integrations."
-        )
-    if bin and shell and not remove:
-        raise ValueError(
-            "Options --bin and --shell cannot be combined unless used with --remove."
-        )
-    if not remove and sum(bool(flag) for flag in (repair, bin, shell)) > 1:
-        raise ValueError(
-            "Options --repair, --remove, --bin and --shell are mutually exclusive. "
-            "Combine --remove with --bin or --shell to uninstall those integrations."
-        )
-
-    if recipe_args and not recipe:
-        raise ValueError("Recipe arguments require a recipe name or path")
-
-    if repair and recipe:
-        raise ValueError("--repair cannot be combined with a recipe argument")
-    if bin and recipe and not remove:
-        raise ValueError("--bin cannot be combined with a recipe argument")
-    if shell and recipe and not remove:
-        raise ValueError("--shell cannot be combined with a recipe argument")
-    if remove and not recipe and not (bin or shell):
-        raise ValueError("--remove requires a recipe name or path")
-    if root and (remove or repair or bin or shell or not recipe):
-        raise ValueError("--root can only be used when installing a recipe service")
-
-    script = gw.resource("install.sh", check=True)
-
-    cmd = ["bash", os.fspath(script)]
-    if repair:
-        cmd.append("--repair")
-    if bin:
-        cmd.append("--bin")
-    if shell:
-        cmd.append("--shell")
-    if remove:
-        cmd.append("--remove")
-    if force:
-        cmd.append("--force")
-    if debug:
-        cmd.append("--debug")
-    if root:
-        cmd.append("--root")
-    if recipe:
-        cmd.append(recipe)
-    if recipe_args:
-        cmd.extend(recipe_args)
-
-    def _stream(src, dst):
-        for line in src:
-            print(line, end="", file=dst, flush=True)
-
-    process = subprocess.Popen(
-        cmd,
-        cwd=script.parent,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        bufsize=1,
+    project = _package_project()
+    return project.install_builtin(
+        recipe,
+        *recipe_args,
+        repair=repair,
+        remove=remove,
+        bin=bin,
+        shell=shell,
+        force=force,
+        debug=debug,
+        root=root,
+        mode=mode,
+        latest=latest,
+        quiet=quiet,
     )
-
-    threads = [
-        Thread(target=_stream, args=(process.stdout, sys.stdout)),
-        Thread(target=_stream, args=(process.stderr, sys.stderr)),
-    ]
-    for thread in threads:
-        thread.start()
-    process.wait()
-    for thread in threads:
-        thread.join()
-    return process.returncode
 
 
 def upgrade(*args):
-    """Run ``upgrade.sh`` with the given parameters.
+    """Run ``upgrade.sh`` with the given parameters."""
 
-    This mirrors executing the ``upgrade.sh`` script located in the
-    installation directory, passing through all provided arguments and
-    streaming the script's output as it runs.  The helper also understands a
-    ``--safe`` flag which performs the same temporary-environment test used by
-    the ``auto_upgrade`` recipe before invoking the shell script.
-    Recognized options mirror the shell script's flags (``--force``,
-    ``--latest``, ``--test`` and ``--no-test``) in addition to ``--safe``.
-    Unknown options raise ``ValueError`` so the CLI can fail fast
-    before handing control to the shell script.
-    """
-    from gway import gw
-    import os
-    import subprocess
-    import sys
-    from threading import Thread
+    project = _package_project()
+    return project.upgrade_builtin(*args, _temp_env=temp_env)
 
-    safe_mode = False
-    forwarded_args = []
-    request_full_tests = False
-    skip_tests = False
-    allowed_flags = {"--force", "--latest", "--test", "--no-test", "-h", "--help"}
-    for arg in args:
-        if arg == "--safe":
-            safe_mode = True
-            continue
-        if arg not in allowed_flags:
-            raise ValueError(f"Unrecognized upgrade option: {arg}")
-        forwarded_args.append(arg)
-        if arg == "--test":
-            request_full_tests = True
-        elif arg == "--no-test":
-            skip_tests = True
-
-    if request_full_tests and skip_tests:
-        raise ValueError("--test and --no-test cannot be used together")
-
-    help_requested = any(arg in {"-h", "--help"} for arg in forwarded_args)
-
-    if safe_mode:
-        if skip_tests:
-            gw.info("Skipping safe upgrade check because --no-test was provided.")
-        elif help_requested:
-            gw.info("Skipping safe upgrade check because help was requested.")
-        else:
-            mode_label = "full test suite" if request_full_tests else "smoke tests"
-            gw.info(
-                f"Running safe upgrade check in temporary environment ({mode_label})..."
-            )
-            test_args = ["gway", "test"]
-            if not request_full_tests:
-                test_args.extend(["--filter", "smoke"])
-            test_args.extend(["--on-failure", "abort"])
-            try:
-                temp_env(*test_args, pip_args="--quiet")
-            except subprocess.CalledProcessError as exc:
-                gw.error("Safe upgrade check failed; aborting upgrade.")
-                return exc.returncode or 1
-            except Exception as exc:  # pragma: no cover - defensive: log unexpected failures
-                gw.error(f"Safe upgrade check encountered an unexpected error: {exc}")
-                try:
-                    gw.exception(exc)
-                except Exception:
-                    pass
-                return 1
-
-    script = gw.resource("upgrade.sh", check=True)
-    cmd = ["bash", os.fspath(script), *forwarded_args]
-
-    def _stream(src, dst):
-        for line in src:
-            print(line, end="", file=dst, flush=True)
-
-    process = subprocess.Popen(
-        cmd,
-        cwd=script.parent,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        bufsize=1,
-    )
-    threads = [
-        Thread(target=_stream, args=(process.stdout, sys.stdout)),
-        Thread(target=_stream, args=(process.stderr, sys.stderr)),
-    ]
-    for t in threads:
-        t.start()
-    process.wait()
-    for t in threads:
-        t.join()
-    return process.returncode
 
 
