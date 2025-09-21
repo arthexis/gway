@@ -57,7 +57,7 @@ def recipes(*, include_extensions: bool = False) -> list[str]:
     return results
 
 
-def run_recipe(*scripts: str, **context):
+def run_recipe(*scripts: str, section: str | None = None, **context):
     from gway import gw
     """Run commands parsed from .gwr files, falling back to the recipes bundle."""
     from .console import load_recipe, process
@@ -68,7 +68,7 @@ def run_recipe(*scripts: str, **context):
 
     results = []
     for script in scripts:
-        command_sources, comments = load_recipe(script)
+        command_sources, comments = load_recipe(script, section=section)
         if comments:
             gw.debug("Recipe comments:\n" + "\n".join(comments))
         result = process(command_sources, origin="recipe", **context)

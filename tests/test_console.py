@@ -11,6 +11,10 @@ from unittest.mock import patch
 import gway.console as console
 
 
+def _extract_tokens(chunks):
+    return [chunk["tokens"] for chunk in chunks if chunk.get("tokens")]
+
+
 class TestChunkFunction(unittest.TestCase):
     def test_chunk_splits_on_dash_and_semicolon(self):
         self.assertEqual(
@@ -72,7 +76,7 @@ cmd2 --flag
             ['cmd2', '--flag']
         ]
         self.assertEqual(comments, expected_comments)
-        self.assertEqual(commands, expected_commands)
+        self.assertEqual(_extract_tokens(commands), expected_commands)
 
     def test_load_recipe_nonexistent_raises_file_not_found(self):
         # Absolute nonexistent path should raise FileNotFoundError
@@ -113,24 +117,24 @@ app start --port 8000
             ['app', 'start', '--debug']
         ]
         expected_comments = ['# sample recipe']
-        self.assertEqual(commands, expected_commands)
+        self.assertEqual(_extract_tokens(commands), expected_commands)
         self.assertEqual(comments, expected_comments)
 
     def test_load_recipe_accepts_dotted_name(self):
         # File exists as arthexis_com.gwr but load with dot
         (self.recipes_dir / 'arthexis_com.gwr').write_text('cmd run')
         commands, _ = console.load_recipe('arthexis.com')
-        self.assertEqual(commands, [['cmd', 'run']])
+        self.assertEqual(_extract_tokens(commands), [['cmd', 'run']])
 
     def test_load_recipe_accepts_dotted_path(self):
         (self.recipes_dir / 'foo').mkdir()
         (self.recipes_dir / 'foo' / 'bar.gwr').write_text('cmd go')
         commands, _ = console.load_recipe('foo.bar')
-        self.assertEqual(commands, [['cmd', 'go']])
+        self.assertEqual(_extract_tokens(commands), [['cmd', 'go']])
 
     def test_load_recipe_accepts_hyphenated_name(self):
         commands, _ = console.load_recipe('sample-script')
-        self.assertEqual(commands, [['cmd', 'hyphen']])
+        self.assertEqual(_extract_tokens(commands), [['cmd', 'hyphen']])
 
 
 class TestLoadRecipeColonSyntax(unittest.TestCase):
@@ -158,7 +162,7 @@ dummy:
             ['dummy', 'static', 'collect'],
             ['dummy', 'server', 'start-app', '--host', '1', '--port', '2'],
         ]
-        self.assertEqual(commands, expected)
+        self.assertEqual(_extract_tokens(commands), expected)
 
     def test_load_recipe_colon_without_indentation(self):
         content = (
@@ -184,7 +188,7 @@ dummy:
             ['dummy', 'static', 'collect'],
             ['dummy', 'server', 'start-app', '--host', '1', '--port', '2'],
         ]
-        self.assertEqual(commands, expected)
+        self.assertEqual(_extract_tokens(commands), expected)
 
     def test_load_recipe_colon_after_flag_mid_line(self):
         content = (
@@ -205,7 +209,7 @@ dummy:
             ['dummy', 'server', 'start-app', '--port', '8888', '--ws-port', '9999'],
             ['dummy', 'server', 'start-app', '--port', '7777', '--ws-port', '9999'],
         ]
-        self.assertEqual(commands, expected)
+        self.assertEqual(_extract_tokens(commands), expected)
 
     def test_load_recipe_backslash_continuation(self):
         content = (
@@ -224,7 +228,38 @@ dummy:
         expected = [[
             'cmd', '--one', '1', '--two', '2'
         ]]
-        self.assertEqual(commands, expected)
+        self.assertEqual(_extract_tokens(commands), expected)
+
+
+class TestLoadRecipeSections(unittest.TestCase):
+    def test_section_filters_commands_and_includes_prelude(self):
+        content = (
+            """prep run\n# Section One\nfirst do\n## Details\nsecond step\n# Section Two\nthird step\n"""
+        )
+        with tempfile.NamedTemporaryFile('w', delete=False) as handle:
+            handle.write(content)
+            recipe_path = handle.name
+        try:
+            commands, comments = console.load_recipe(recipe_path, section="# section one")
+        finally:
+            os.remove(recipe_path)
+
+        tokens = _extract_tokens(commands)
+        self.assertEqual(tokens, [["prep", "run"], ["first", "do"], ["second", "step"]])
+        chunk_comments = [chunk.get("comment") for chunk in commands if chunk.get("comment")]
+        self.assertIn('# Section One', chunk_comments)
+        self.assertIn('## Details', chunk_comments)
+        self.assertNotIn('# Section Two', chunk_comments)
+
+    def test_missing_section_raises_value_error(self):
+        with tempfile.NamedTemporaryFile('w', delete=False) as handle:
+            handle.write("cmd one\n# Another\ncmd two\n")
+            recipe_path = handle.name
+        try:
+            with self.assertRaises(ValueError):
+                console.load_recipe(recipe_path, section="# missing")
+        finally:
+            os.remove(recipe_path)
 
 
 class TestPrepareKwargParsing(unittest.TestCase):
@@ -318,7 +353,7 @@ class TestRecipeCliContext(unittest.TestCase):
 
         calls = []
 
-        def fake_load(recipe_name, *, strict=True):
+        def fake_load(recipe_name, *, strict=True, section=None):
             return [[recipe_name]], []
 
         def fake_process(commands, **kwargs):
@@ -450,6 +485,27 @@ class TestProcessChaining(unittest.TestCase):
         self.assertEqual(results[0], "foo.wav")
         self.assertEqual(results[1], "foo.wav")
         self.assertEqual(last, "foo.wav")
+
+
+class TestRecipeComments(unittest.TestCase):
+    def setUp(self):
+        console.gw.context.clear()
+
+    def tearDown(self):
+        console.gw.context.clear()
+
+    def test_process_prints_comments_with_sigils(self):
+        console.gw.context['NAME'] = 'Agent'
+        commands = [
+            {"tokens": [], "comment": "# Prelude [NAME]", "section": None},
+            {"tokens": ["dummy", "setup-home"], "comment": "# Running for [NAME]", "section": None},
+        ]
+        with patch('builtins.print') as mock_print:
+            console.process(commands, origin="recipe")
+
+        printed = [call.args[0] for call in mock_print.call_args_list]
+        self.assertIn('# Prelude Agent', printed)
+        self.assertIn('# Running for Agent', printed)
 
 
 class TestProcessRecipeFallback(unittest.TestCase):

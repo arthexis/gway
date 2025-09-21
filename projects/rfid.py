@@ -680,6 +680,118 @@ def scan(
     return detected_uid
 
 
+def _coerce_non_negative_seconds(value, *, allow_zero: bool = False, name: str = "value") -> float:
+    """Return a non-negative float extracted from *value*."""
+
+    if value is None:
+        return 0.0
+    if isinstance(value, bool):
+        raise TypeError(f"{name} must be a non-negative number")
+    if isinstance(value, (int, float)):
+        seconds = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError(f"{name} must be a non-negative number")
+        try:
+            seconds = float(stripped)
+        except ValueError as exc:
+            raise ValueError(f"{name} must be a non-negative number") from exc
+    else:
+        raise TypeError(f"{name} must be a non-negative number")
+
+    if not math.isfinite(seconds) or seconds < 0 or (seconds == 0 and not allow_zero):
+        raise ValueError(f"{name} must be {'non-negative' if allow_zero else 'positive'}")
+    return seconds
+
+
+def start_trigger(
+    *,
+    trigger: str = "rfid_trigger",
+    section: str | None = None,
+    after=None,
+    debounce=1.0,
+    poll_interval=0.1,
+):
+    """Monitor the RFID reader and run *trigger* for each detected card.
+
+    Args:
+        trigger: Recipe name or path to execute when a card satisfies the
+            detection threshold.
+        section: Optional recipe ``#`` section name to execute when triggering.
+        after: Optional number of detections required before firing. Defaults to
+            ``1`` (trigger immediately on the first read).
+        debounce: Minimum number of seconds before the same card can trigger
+            the recipe again. ``0`` disables debouncing.
+        poll_interval: Delay between polling attempts while waiting for cards.
+
+    The function blocks until interrupted (e.g. ``Ctrl+C``) so it can be run as
+    a background service. Each time a card triggers the recipe the UID is
+    exposed as ``[RFID_UID]`` within the recipe context.
+    """
+
+    threshold = _coerce_scan_threshold(after) if after is not None else 1
+    debounce_seconds = _coerce_non_negative_seconds(debounce, allow_zero=True, name="debounce")
+    poll_seconds = _coerce_wait_seconds(poll_interval)
+
+    reader, GPIO = _initialize_reader()
+    if reader is None:
+        return None
+
+    section_note = f" section '{section}'" if section else ""
+    print(
+        "RFID trigger armed. Present a card to run '{trigger}'{suffix}.".format(
+            trigger=trigger,
+            suffix=section_note,
+        )
+    )
+
+    seen_counts: dict[int, int] = {}
+    last_triggered: dict[int, float] = {}
+
+    try:
+        while True:
+            card_info = _poll_for_card(reader)
+            if card_info is None:
+                time.sleep(poll_seconds)
+                continue
+
+            card_id, uid_bytes, card_text = card_info
+            count = seen_counts.get(card_id, 0) + 1
+            seen_counts[card_id] = count
+            if count < threshold:
+                time.sleep(poll_seconds)
+                continue
+
+            seen_counts.pop(card_id, None)
+            now = time.monotonic()
+            last_time = last_triggered.get(card_id)
+            if last_time is not None and now - last_time < debounce_seconds:
+                time.sleep(poll_seconds)
+                continue
+
+            last_triggered[card_id] = now
+            print(f"Triggering recipe '{trigger}' for UID {card_id}")
+            try:
+                gw.run_recipe(trigger, section=section, RFID_UID=str(card_id))
+            except KeyboardInterrupt:
+                raise
+            except Exception as exc:  # pragma: no cover - defensive logging
+                print(f"Recipe '{trigger}' failed: {exc}")
+
+            time.sleep(poll_seconds)
+    except KeyboardInterrupt:
+        print("RFID trigger stopped.")
+    finally:  # pragma: no cover - hardware cleanup
+        if GPIO is not None:
+            try:
+                GPIO.cleanup()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+    return None
+
+
 def _coerce_uid(uid) -> int:
     """Normalize the provided UID into an integer."""
 
