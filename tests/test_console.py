@@ -296,6 +296,25 @@ class TestPrepareKwargParsing(unittest.TestCase):
         self.assertEqual(args, [])
         self.assertEqual(kw["title"], "My Great App")
 
+    def test_optional_positional_precedes_varargs(self):
+        import argparse
+
+        def dummy(recipe=None, *recipe_args):
+            return recipe, recipe_args
+
+        parser = argparse.ArgumentParser()
+        console.add_func_args(parser, dummy)
+
+        parsed, unknown = parser.parse_known_args(["auto-upgrade", "--latest"])
+        extra = list(getattr(parsed, "recipe_args", []) or [])
+        extra.extend(unknown)
+        setattr(parsed, "recipe_args", extra)
+
+        args, kw = console.prepare(parsed, dummy)
+
+        self.assertEqual(args, ["auto-upgrade", "--latest"])
+        self.assertNotIn("recipe", kw)
+
 
 class TestUnionAnnotations(unittest.TestCase):
     def test_add_func_args_handles_pep604_optional(self):
