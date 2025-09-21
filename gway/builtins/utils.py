@@ -1,5 +1,8 @@
-import random
 import os
+import random
+import sys
+from collections.abc import Sequence
+
 from gway.sigils import Sigil
 
 __all__ = [
@@ -35,31 +38,77 @@ def random_id(length: int = 8, alphabet: str = _EZ_ALPHABET) -> str:
     return "".join(random.choices(alphabet, k=length))
 
 
-def notify(message: str, *, title: str = "GWAY Notice", timeout: int = 10):
+def _can_use_gui(gateway) -> bool:
+    """Return ``True`` when the GUI notification channel is available."""
+
+    studio = getattr(gateway, "studio", None)
+    screen = getattr(studio, "screen", None)
+    if screen is None or not hasattr(screen, "notify"):
+        return False
+
+    if sys.platform.startswith("linux"):
+        for env_var in ("DISPLAY", "WAYLAND_DISPLAY", "SWAYSOCK"):
+            if os.environ.get(env_var):
+                return True
+        return False
+
+    return True
+
+
+def _can_use_lcd(gateway) -> bool:
+    """Return ``True`` when an LCD interface is available."""
+
+    lcd = getattr(gateway, "lcd", None)
+    return hasattr(lcd, "show")
+
+
+def notify(
+    message: str | None = None,
+    *,
+    title: str = "GWAY Notice",
+    timeout: int = 10,
+    lines: Sequence[str] | None = None,
+):
     from gway import gw
 
     """Send a notification via GUI, LCD, email or console fallback."""
-    try:
-        gw.studio.screen.notify(message, title=title, timeout=timeout)
-        return "gui"
-    except Exception as e:
-        gw.debug(f"GUI notify failed: {e}")
-    try:
-        if hasattr(gw, "lcd"):
+
+    if lines is not None:
+        derived = "\n".join(str(part) for part in lines)
+        body = message if message is not None else derived
+    else:
+        body = message
+
+    if body is None:
+        raise ValueError("notify requires a message or lines")
+
+    if _can_use_gui(gw):
+        try:
+            gw.studio.screen.notify(body, title=title, timeout=timeout)
+            return "gui"
+        except Exception as exc:
+            gw.debug(f"GUI notify failed: {exc}")
+
+    if _can_use_lcd(gw):
+        try:
             hold_duration = timeout if timeout and timeout > 0 else 0
-            lcd_text = f"{title}\n{message}" if title else message
+            lcd_text = body if not title else f"{title}\n{body}" if body else title
             gw.lcd.show(lcd_text, hold=hold_duration, wrap=True)
             return "lcd"
-    except Exception as e:
-        gw.debug(f"LCD notify failed: {e}")
-    try:
-        if hasattr(gw, "mail") and os.environ.get("ADMIN_EMAIL"):
-            gw.mail.send(title, body=message, to=os.environ.get("ADMIN_EMAIL"))
+        except Exception as exc:
+            gw.debug(f"LCD notify failed: {exc}")
+
+    admin_email = os.environ.get("ADMIN_EMAIL")
+    if hasattr(gw, "mail") and admin_email:
+        try:  # pragma: no cover - depends on mail configuration
+            gw.mail.send(title, body=body, to=admin_email)
             return "email"
-    except Exception as e:  # pragma: no cover - mail may not be configured
-        gw.debug(f"Email notify failed: {e}")
-    print(message)
-    gw.info(f"Console notify: {message}")
+        except Exception as exc:
+            gw.debug(f"Email notify failed: {exc}")
+
+    console_text = body if not title else f"{title}: {body}" if body else title
+    print(console_text)
+    gw.info(f"Console notify: {console_text}")
     return "console"
 
 

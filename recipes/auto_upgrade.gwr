@@ -13,6 +13,7 @@
 # temporary directory automatically when the test succeeds.
 auto-upgrade log-cycle
 temp_env --pip-args=--quiet gway test --on-failure abort
-auto-upgrade install
+install gway --mode pip
 auto-upgrade log-upgrade
+auto-upgrade notify-upgrade
 until --abort --pypi
