@@ -1,10 +1,12 @@
 # file: recipes/speech-cog.gwr
 #
 # Capture a short audio sample and transcribe it using the speech recognition
-# helpers. The first step records a snippet, and the second step transcribes the
-# saved file. Finally the transcript is echoed via the built-in hello_world
-# helper for quick confirmation.
+# helpers. ``--buffer`` records that many seconds of pre-roll before the main
+# clip. ``--loop`` repeats the capture/transcribe cycle until interrupted (use
+# ``--loop N`` to rest ``N`` seconds between cycles).
 
-audio record --duration 5 --immediate
-audio transcribe --source %[audio] --engine auto
+audio configure-loop --loop %[loop|] --rest %[loop_rest|0]
+audio record --duration %[duration|5] --buffer %[buffer|0] --immediate
+audio transcribe --source %[audio] --engine %[engine|auto]
 hello-world --greeting Transcript %[audio_transcript]
+repeat %[speech_cog_repeat_args|--times 0] --rest %[speech_cog_repeat_rest|0]
