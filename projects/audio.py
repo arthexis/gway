@@ -8,12 +8,48 @@ import time
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Optional, TYPE_CHECKING
 
 import numpy as np
 import speech_recognition as sr
-import sounddevice as sd
 from gway import gw
+
+
+try:  # pragma: no cover - import guard is runtime dependent
+    import sounddevice as _sounddevice
+except Exception as exc:  # pragma: no cover - exercised via tests with patched import
+    sd = None
+    _SOUNDDEVICE_IMPORT_ERROR: Exception | None = exc
+else:  # pragma: no cover - exercised when sounddevice is available
+    sd = _sounddevice
+    _SOUNDDEVICE_IMPORT_ERROR = None
+
+if TYPE_CHECKING:  # pragma: no cover - mypy-only guard
+    import sounddevice as sd  # noqa: F401  (re-export for type checkers)
+
+
+def _ensure_sounddevice(action: str) -> None:
+    """Raise a helpful error when PortAudio/sounddevice support is missing."""
+
+    if sd is not None:
+        return
+
+    message = (
+        "Audio {action} requires the 'sounddevice' package with a working "
+        "PortAudio backend. Install the PortAudio shared library (for example "
+        "'apt-get install libportaudio2' on Debian/Ubuntu) and reinstall "
+        "sounddevice, or provide a pre-recorded file via the 'source' "
+        "parameter instead."
+    ).format(action=action)
+    if _SOUNDDEVICE_IMPORT_ERROR is not None:
+        message += f" (original error: {_SOUNDDEVICE_IMPORT_ERROR})"
+    raise RuntimeError(message)
+
+
+def recording_available() -> bool:
+    """Return ``True`` when live recording is supported on this system."""
+
+    return sd is not None
 
 
 @dataclass
@@ -88,6 +124,8 @@ def record(
     if effective_duration <= 0:
         raise ValueError("Recording duration must be positive")
 
+    _ensure_sounddevice("recording")
+
     if file is None:
         work_dir = gw.resource("work", dir=True)
         path = work_dir / f"recording_{int(time.time())}.{format}"
@@ -134,6 +172,8 @@ def playback(*, audio: str | AudioStream, loop: bool = False):
         loop: When ``True`` the audio is played continuously in the
             background using Gateway's async thread management.
     """
+    _ensure_sounddevice("playback")
+
     if isinstance(audio, AudioStream):
         samplerate = audio.samplerate
 
