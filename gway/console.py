@@ -665,7 +665,26 @@ def prepare(parsed_args, func_obj):
                 )
             extra_kwargs[key.replace("-", "_")] = _resolve_cli(val)
 
-    return func_args, {**func_kwargs, **extra_kwargs}
+    # 3) Reconstruct positional arguments in declaration order so optional
+    # positionals preceding *args are not passed as conflicting keywords.
+    ordered_args: list[object] = []
+    var_args_consumed = False
+    for name, param in params.items():
+        if param.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            if name in func_kwargs:
+                ordered_args.append(func_kwargs.pop(name))
+        elif param.kind == inspect.Parameter.VAR_POSITIONAL:
+            if func_args:
+                ordered_args.extend(func_args)
+            var_args_consumed = True
+
+    if not var_args_consumed and func_args:
+        ordered_args.extend(func_args)
+
+    return ordered_args, {**func_kwargs, **extra_kwargs}
 
 
 def prompt_for_missing(parsed_args, func_obj, *, required_only=False):
