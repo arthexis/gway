@@ -453,14 +453,48 @@ find_recipe_file() {
     return 0
   fi
 
+  local queue=()
+  queue+=("$recipe")
   local base_names=()
-  base_names+=("$recipe")
-  if [[ "$recipe" == *.* ]]; then
-    base_names+=("${recipe//./_}")
-    base_names+=("${recipe//./\/}")
-  fi
+  declare -A visited=()
 
-  declare -A seen
+  while ((${#queue[@]} > 0)); do
+    local base="${queue[0]}"
+    queue=("${queue[@]:1}")
+
+    if [[ -n "${visited[$base]+x}" ]]; then
+      continue
+    fi
+    visited[$base]=1
+    base_names+=("$base")
+
+    if [[ "$base" == *.* ]]; then
+      local variant="${base//./_}"
+      if [[ "$variant" != "$base" && -z "${visited[$variant]+x}" ]]; then
+        queue+=("$variant")
+      fi
+      variant="${base//./\/}"
+      if [[ "$variant" != "$base" && -z "${visited[$variant]+x}" ]]; then
+        queue+=("$variant")
+      fi
+    fi
+
+    if [[ "$base" == *-* ]]; then
+      local variant="${base//-/_}"
+      if [[ "$variant" != "$base" && -z "${visited[$variant]+x}" ]]; then
+        queue+=("$variant")
+      fi
+    fi
+
+    if [[ "$base" == *_* ]]; then
+      local variant="${base//_/-}"
+      if [[ "$variant" != "$base" && -z "${visited[$variant]+x}" ]]; then
+        queue+=("$variant")
+      fi
+    fi
+  done
+
+  declare -A seen=()
   local candidates=()
   for base in "${base_names[@]}"; do
     if [[ -z "${seen[$base]+x}" ]]; then
