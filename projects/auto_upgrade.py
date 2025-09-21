@@ -32,16 +32,17 @@ def install(*, latest: bool | str | None = None) -> int:
     """Install or upgrade ``gway`` using the install builtin."""
 
     return package.install(CONFIG, latest=latest)
+  
 
-
-def log_upgrade(
+def notify_upgrade(
     *,
     version: str | None = None,
+    release: str | None = None,
     latest: bool | str | None = None,
-    log_name: str = LOG_NAME,
-    notify: bool = True,
+    timestamp: datetime | None = None,
+    timeout: int = 20,
 ) -> dict:
-    """Record the outcome of an applied upgrade and optionally notify users."""
+    """Display a toast/LCD message summarising a successful upgrade."""
 
     broadcaster = _broadcast if notify else None
     return package.log_upgrade(
@@ -78,4 +79,12 @@ def notify_upgrade(
         timestamp=timestamp,
         timeout=timeout,
     )
+
+    gw.context["auto_upgrade_notification"] = summary
+    gw.info(
+        "[auto-upgrade] Sent upgrade notification"
+        f" (channel={channel}, version={current_version}, release={release_id})"
+    )
+
+    return summary
 
