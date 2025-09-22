@@ -6,7 +6,14 @@ import subprocess
 import re, glob, time, os
 from datetime import datetime
 from pathlib import Path
-from PIL import Image, ImageGrab
+
+from PIL import Image
+
+try:  # pragma: no cover - optional module on Linux
+    from PIL import ImageGrab as _PILImageGrab
+except Exception:  # pragma: no cover - pillow may omit ImageGrab on some builds
+    _PILImageGrab = None
+
 from gway import gw
 
 
@@ -116,6 +123,37 @@ def _sanitize_filename(name: str) -> str:
 
 
 
+def _capture_screen(*, bbox: tuple[int, int, int, int] | None = None) -> Image.Image:
+    """Return a screenshot as a :class:`PIL.Image.Image`.
+
+    Pillow's :mod:`ImageGrab` works on Windows and macOS.  On Linux (including
+    Raspberry Pi OS) we fall back to :mod:`pyscreenshot`, which provides a
+    similar ``grab`` API backed by common desktop utilities.
+    """
+
+    if _PILImageGrab is not None:
+        try:
+            return _PILImageGrab.grab(bbox=bbox)
+        except (OSError, NotImplementedError) as exc:
+            gw.debug(f"ImageGrab unavailable, falling back to pyscreenshot: {exc}")
+        except Exception as exc:  # pragma: no cover - defensive logging
+            gw.debug(f"ImageGrab failed unexpectedly: {exc}")
+
+    try:
+        import pyscreenshot as pysgrab
+    except ImportError as exc:
+        raise RuntimeError(
+            "Screen capture is not supported on this platform. Install the "
+            "'pyscreenshot' package to enable Linux desktop screenshots."
+        ) from exc
+
+    try:
+        return pysgrab.grab(bbox=bbox)
+    except Exception as exc:
+        raise RuntimeError("Screen capture failed using pyscreenshot.") from exc
+
+
+
 def shot(*, name: str = None, mode: str = "full") -> str:
     """
     Take a screenshot in the specified mode and save it under:
@@ -130,6 +168,9 @@ def shot(*, name: str = None, mode: str = "full") -> str:
     Modes:
         - "full": entire screen
         - "active"/"window": active window only (Windows only; falls back to full)
+
+    On Linux systems (including Raspberry Pi OS) ``shot`` uses the
+    :mod:`pyscreenshot` backend, so ensure that dependency is available.
     """
 
     screenshots_dir = gw.resource("work", "screenshots")
@@ -142,19 +183,30 @@ def shot(*, name: str = None, mode: str = "full") -> str:
     filename = f"{window_name}_{timestamp}.png"
     filepath = os.path.join(screenshots_dir, filename)
 
-    if mode in ("active", "window"):
-        try:
-            import pygetwindow as gwnd
-            win = gwnd.getActiveWindow()
-            if win and win.left != -32000:  # Avoid minimized windows
-                bbox = (win.left, win.top, win.right, win.bottom)
-                img = ImageGrab.grab(bbox=bbox)
+    try:
+        if mode in ("active", "window"):
+            bbox = None
+            try:
+                import pygetwindow as gwnd
+
+                win = gwnd.getActiveWindow()
+                if win and win.left != -32000:  # Avoid minimized windows
+                    bbox = (win.left, win.top, win.right, win.bottom)
+            except Exception as exc:  # pragma: no cover - only on Windows
+                gw.debug(f"Active window bounds unavailable, using full screen: {exc}")
+
+            if bbox:
+                try:
+                    img = _capture_screen(bbox=bbox)
+                except RuntimeError as exc:
+                    gw.debug(f"Active window capture failed ({exc}); using full screen")
+                    img = _capture_screen()
             else:
-                img = ImageGrab.grab()
-        except Exception:
-            img = ImageGrab.grab()
-    else:
-        img = ImageGrab.grab()
+                img = _capture_screen()
+        else:
+            img = _capture_screen()
+    except RuntimeError as exc:
+        gw.abort(str(exc))
 
     img.save(filepath)
 
@@ -286,7 +338,11 @@ def reminder(message, *, interval: float = 20.0, daemon=False, lines: int = 2):
         last_img = None
 
         while True:
-            current = ImageGrab.grab()
+            try:
+                current = _capture_screen()
+            except RuntimeError as exc:
+                gw.error(f"Reminder stopped; screen capture unavailable: {exc}")
+                return
             current.save(os.path.join(reminder_dir, "next.png"))
 
             if last_img and images_equal(current, last_img):
