@@ -10,7 +10,7 @@ from PIL import Image
 class DisplayImageTests(unittest.TestCase):
     def _load_screen(self):
         spec = importlib.util.spec_from_file_location(
-            "screen", Path(__file__).resolve().parents[1] / "projects" / "studio" / "screen.py"
+            "screen", Path(__file__).resolve().parents[1] / "projects" / "screen.py"
         )
         screen = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(screen)

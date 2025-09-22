@@ -41,10 +41,12 @@ def random_id(length: int = 8, alphabet: str = _EZ_ALPHABET) -> str:
 def _can_use_gui(gateway) -> bool:
     """Return ``True`` when the GUI notification channel is available."""
 
-    studio = getattr(gateway, "studio", None)
-    screen = getattr(studio, "screen", None)
+    screen = getattr(gateway, "screen", None)
     if screen is None or not hasattr(screen, "notify"):
-        return False
+        studio = getattr(gateway, "studio", None)
+        screen = getattr(studio, "screen", None)
+        if screen is None or not hasattr(screen, "notify"):
+            return False
 
     if sys.platform.startswith("linux"):
         for env_var in ("DISPLAY", "WAYLAND_DISPLAY", "SWAYSOCK"):
@@ -83,8 +85,13 @@ def notify(
         raise ValueError("notify requires a message or lines")
 
     if _can_use_gui(gw):
+        screen = getattr(gw, "screen", None)
+        if screen is None or not hasattr(screen, "notify"):
+            studio = getattr(gw, "studio", None)
+            screen = getattr(studio, "screen", None)
+        notify_func = getattr(screen, "notify", None)
         try:
-            gw.studio.screen.notify(body, title=title, timeout=timeout)
+            notify_func(body, title=title, timeout=timeout)
             return "gui"
         except Exception as exc:
             gw.debug(f"GUI notify failed: {exc}")

@@ -16,7 +16,7 @@ class NotifyBuiltinTests(unittest.TestCase):
         os.environ.pop('ADMIN_EMAIL', None)
 
     def test_console_fallback(self):
-        with patch.object(gw.studio.screen, 'notify', side_effect=Exception('fail')):
+        with patch.object(gw.screen, 'notify', side_effect=Exception('fail')):
             with patch.object(gw.lcd, 'show', side_effect=Exception('lcd fail')):
                 with patch.object(gw.mail, 'send') as mock_send:
                     result = gw.notify('hello world', title='T')
@@ -26,7 +26,7 @@ class NotifyBuiltinTests(unittest.TestCase):
 
     def test_email_fallback(self):
         os.environ['ADMIN_EMAIL'] = 'test@example.com'
-        with patch.object(gw.studio.screen, 'notify', side_effect=Exception('fail')):
+        with patch.object(gw.screen, 'notify', side_effect=Exception('fail')):
             with patch.object(gw.lcd, 'show', side_effect=Exception('lcd fail')):
                 with patch.object(gw.mail, 'send') as mock_send:
                     result = gw.notify('msg', title='Notice')
@@ -34,7 +34,7 @@ class NotifyBuiltinTests(unittest.TestCase):
         self.assertEqual(result, 'email')
 
     def test_lcd_fallback(self):
-        with patch.object(gw.studio.screen, 'notify', side_effect=Exception('fail')):
+        with patch.object(gw.screen, 'notify', side_effect=Exception('fail')):
             with patch.object(gw.lcd, 'show') as mock_lcd:
                 with patch.object(gw.mail, 'send') as mock_send:
                     result = gw.notify('lcd msg', title='LCD Title', timeout=5)
