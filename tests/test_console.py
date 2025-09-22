@@ -468,6 +468,38 @@ class TestRecipeCliContext(unittest.TestCase):
         finally:
             sys.argv = original_argv
 
+    def test_argcomplete_marker_with_missing_fd_does_not_short_circuit(self):
+        original_argv = sys.argv
+
+        class DummyGateway:
+            def __init__(self, **kwargs):
+                pass
+
+            def verbose(self, *args, **kwargs):
+                pass
+
+        try:
+            sys.argv = ['gway', 'hello-world']
+            env = {
+                '_ARGCOMPLETE': '1',
+                'COMP_LINE': 'gway hello-world',
+                'COMP_POINT': '5',
+            }
+            with patch.dict(os.environ, env, clear=False), \
+                 patch('gway.console.setup_logging', lambda *a, **k: None), \
+                 patch('gway.console.Gateway', DummyGateway), \
+                 patch('gway.console.os.fstat', side_effect=OSError()), \
+                 patch('gway.console.argcomplete.autocomplete') as mock_autocomplete, \
+                 patch('gway.console.process', return_value=(['ok'], 'ok')) as mock_process, \
+                 patch('builtins.print') as mock_print:
+                console.cli_main()
+
+            mock_autocomplete.assert_not_called()
+            mock_process.assert_called_once()
+            mock_print.assert_any_call('ok')
+        finally:
+            sys.argv = original_argv
+
 
 class TestProcessChaining(unittest.TestCase):
     def test_reuses_project_for_chained_calls(self):

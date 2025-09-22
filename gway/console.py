@@ -31,7 +31,8 @@ def _should_enable_argcomplete(environ: dict[str, str] | None = None) -> bool:
     :func:`argcomplete.autocomplete` in that state causes it to call
     ``os._exit`` immediately, which makes ``gway`` appear to do nothing.
     We skip the autocomplete hook unless the core variables provided by
-    the completion scripts are present.
+    the completion scripts are present *and* the completion output stream
+    is available.
     """
 
     environ = environ or os.environ
@@ -39,8 +40,22 @@ def _should_enable_argcomplete(environ: dict[str, str] | None = None) -> bool:
     if not marker:
         return True
 
+    if not marker.isdigit():
+        return False
+
     required = {"COMP_LINE", "COMP_POINT"}
-    return required.issubset(environ)
+    if not required.issubset(environ):
+        return False
+
+    if "_ARGCOMPLETE_STDOUT_FILENAME" in environ:
+        return True
+
+    try:
+        os.fstat(8)
+    except OSError:
+        return False
+
+    return True
 
 
 def parse_recipe_context(tokens):
