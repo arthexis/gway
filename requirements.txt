@@ -24,6 +24,7 @@ selenium
 webdriver-manager
 bs4
 markdown
+pyscreenshot; platform_system == "Linux"
 mfrc522; platform_system == "Linux"
 pandas
 openpyxl
