@@ -5,6 +5,8 @@ import time
 import asyncio
 import hashlib
 import threading
+from datetime import datetime, timedelta
+
 import requests
 
 
@@ -360,7 +362,38 @@ def watch_pypi_package(package_name, on_change, *, interval=DEFAULT_PYPI_INTERVA
         last_version = current_version
 
     last_version = None
-    thread = threading.Thread(target=lambda: _retry_loop(
-        _check, interval=interval, stop_event=stop_event, label=f"pypi:{package_name}"), daemon=True)
+    label = f"pypi:{package_name}"
+
+    def _loop():
+        from gway import gw
+
+        auto_info = None
+        if package_name == "gway":
+            auto_info = gw.sys.setdefault("auto_upgrade", {})
+            auto_info.setdefault("package", package_name)
+            auto_info["interval_seconds"] = interval
+
+        while not stop_event.is_set():
+            try:
+                _check()
+                if auto_info is not None:
+                    auto_info["last_check"] = datetime.now().isoformat(timespec="seconds")
+                    auto_info.pop("last_error", None)
+            except Exception as exc:  # pragma: no cover - network failures are best-effort
+                gw.warn(f"[Watcher] {label} error: {exc}")
+                if auto_info is not None:
+                    auto_info["last_error"] = str(exc)
+
+            if stop_event.is_set():
+                break
+
+            if auto_info is not None:
+                next_run = datetime.now() + timedelta(seconds=interval)
+                auto_info["next_check"] = next_run.isoformat(timespec="seconds")
+
+            if stop_event.wait(interval):
+                break
+
+    thread = threading.Thread(target=_loop, daemon=True)
     thread.start()
     return stop_event

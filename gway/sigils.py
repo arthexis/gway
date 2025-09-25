@@ -133,9 +133,24 @@ def _follow_path(value, parts, lookup_fn=None):
             part = part.strip()
             if part.startswith('_'):
                 raise KeyError(f"Path segment '{part}' not found")
-        if isinstance(value, dict) and part in value:
-            value = value[part]
-            continue
+        if isinstance(value, dict):
+            if part in value:
+                value = value[part]
+                continue
+            if isinstance(part, str):
+                normalized = part.lower().replace('-', '_')
+                sentinel = object()
+                resolved = sentinel
+                for key, candidate in value.items():
+                    if not isinstance(key, str):
+                        continue
+                    key_normalized = key.lower().replace('-', '_')
+                    if key_normalized == normalized:
+                        resolved = candidate
+                        break
+                if resolved is not sentinel:
+                    value = resolved
+                    continue
         idx = None
         if isinstance(part, int):
             idx = part

@@ -99,6 +99,13 @@ class Gateway(Resolver, Runner):
         self.context = Gateway._thread_local.context
         self.results = Gateway._thread_local.results
 
+        # Provide a dedicated namespace for system-level sigils such as [SYS.*].
+        sys_namespace = self.context.get('SYS')
+        if not isinstance(sys_namespace, dict):
+            sys_namespace = {}
+        self.context['SYS'] = sys_namespace
+        self.sys = sys_namespace
+
         # self.defaults is class-level, already initialized above
 
         super().__init__([
