@@ -179,6 +179,11 @@ def view_monitor_panel(**_):
     Below the monitor, display last run and next scheduled run.
     """
     html = ['<div class="gway-net-dashboard">']
+    html.append(
+        '<div class="monitor-meta" style="margin-bottom:8px;font-size:90%;color:#555;">'
+        'Next auto upgrade check: <b>[SYS.AUTO-UPGRADE.NEXT-CHECK|not scheduled]</b>'
+        '</div>'
+    )
     if not NETWORK_STATE:
         html.append('<div class="warn" style="color:#a00;">No monitors are currently running.</div>')
     for project in NETWORK_STATE:

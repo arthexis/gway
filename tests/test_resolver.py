@@ -46,5 +46,13 @@ class ResolverLookupTests(unittest.TestCase):
         self.assertEqual(resolver.resolve('[app.name]'), 'Demo')
         self.assertEqual(resolver['app.name'], 'Demo')
 
+    def test_variant_lookup_with_hyphenated_paths(self):
+        nested = {'SYS': {'auto_upgrade': {'next_check': 'soon'}}}
+        resolver = Resolver([('env', {}), ('ctx', nested)])
+        self.assertEqual(
+            resolver.resolve('[SYS.AUTO-UPGRADE.NEXT-CHECK]'),
+            'soon'
+        )
+
 if __name__ == '__main__':
     unittest.main()
