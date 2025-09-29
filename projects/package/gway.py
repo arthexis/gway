@@ -143,7 +143,6 @@ def install_builtin(
     repair: bool = False,
     remove: bool = False,
     bin: bool = False,
-    shell: bool = False,
     force: bool = False,
     debug: bool = False,
     root: bool = False,
@@ -208,9 +207,9 @@ def install_builtin(
 
         latest_requested = _latest_requested(latest)
 
-        if any([repair, remove, bin, shell, root]):
+        if any([repair, remove, bin, root]):
             raise ValueError(
-                "Options --repair, --remove, --bin, --shell and --root cannot be used with pip mode."
+                "Options --repair, --remove, --bin and --root cannot be used with pip mode."
             )
 
         python_exec = sys.executable or "python3"
@@ -234,19 +233,15 @@ def install_builtin(
 
         return result.returncode
 
-    if repair and (remove or bin or shell):
+    if repair and (remove or bin):
         raise ValueError(
-            "Options --repair, --remove, --bin and --shell are mutually exclusive. "
-            "Combine --remove with --bin or --shell to uninstall those integrations."
+            "Options --repair, --remove and --bin are mutually exclusive. "
+            "Combine --remove with --bin to uninstall that integration."
         )
-    if bin and shell and not remove:
+    if not remove and sum(bool(flag) for flag in (repair, bin)) > 1:
         raise ValueError(
-            "Options --bin and --shell cannot be combined unless used with --remove."
-        )
-    if not remove and sum(bool(flag) for flag in (repair, bin, shell)) > 1:
-        raise ValueError(
-            "Options --repair, --remove, --bin and --shell are mutually exclusive. "
-            "Combine --remove with --bin or --shell to uninstall those integrations."
+            "Options --repair, --remove and --bin are mutually exclusive. "
+            "Combine --remove with --bin to uninstall that integration."
         )
 
     if recipe_args and not recipe:
@@ -256,11 +251,9 @@ def install_builtin(
         raise ValueError("--repair cannot be combined with a recipe argument")
     if bin and recipe and not remove:
         raise ValueError("--bin cannot be combined with a recipe argument")
-    if shell and recipe and not remove:
-        raise ValueError("--shell cannot be combined with a recipe argument")
-    if remove and not recipe and not (bin or shell):
+    if remove and not recipe and not bin:
         raise ValueError("--remove requires a recipe name or path")
-    if root and (remove or repair or bin or shell or not recipe):
+    if root and (remove or repair or bin or not recipe):
         raise ValueError("--root can only be used when installing a recipe service")
 
     script = gw.resource("install.sh", check=True)
@@ -270,8 +263,6 @@ def install_builtin(
         cmd.append("--repair")
     if bin:
         cmd.append("--bin")
-    if shell:
-        cmd.append("--shell")
     if remove:
         cmd.append("--remove")
     if force:
