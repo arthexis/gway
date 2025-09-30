@@ -172,8 +172,12 @@ def _import_smbus() -> types.ModuleType | types.SimpleNamespace | None:
             smbus = types.SimpleNamespace(SMBus=SMBus)
         except ModuleNotFoundError:  # pragma: no cover - import error path
             msg = (
-                "smbus module not found. Enable I2C and install 'i2c-tools' and "
-                "'python3-smbus' or 'smbus2'."
+                "smbus module not found. Enable I2C support and install the "
+                "Linux packages before retrying:\n"
+                "  sudo raspi-config  # Interface Options → I2C → Enable\n"
+                "  sudo apt-get update && sudo apt-get install -y i2c-tools python3-smbus\n"
+                "or install the Python fallback module:\n"
+                "  pip install smbus2"
             )
             gw.error(msg)
             print(msg)

@@ -31,6 +31,20 @@ Setup
 Wire the backpack's ``VCC`` to 5V, ``GND`` to ground, ``SDA`` to GPIO2 and
 ``SCL`` to GPIO3.
 
+Troubleshooting
+===============
+
+If running ``gway lcd show`` prints ``smbus module not found`` the I²C driver
+or the required Linux packages are missing.  Enable I²C and install the
+dependencies with::
+
+    sudo raspi-config  # Interface Options → I2C → Enable
+    sudo apt-get update && sudo apt-get install -y i2c-tools python3-smbus
+
+As an alternative to the system package, install the pure Python fallback::
+
+    pip install smbus2
+
 Usage
 =====
 
