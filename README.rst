@@ -1,6 +1,11 @@
 GWAY
 ====
 
+|coverage_badge|
+
+.. |coverage_badge| image:: https://img.shields.io/badge/Coverage-0%25-lightgrey
+   :alt: Test coverage status
+
 Gateway (``gw``) is a lightweight dispatcher that turns every Python function
 into a command line entry.  It includes a recipe
 runner so you can compose automations with only functions
