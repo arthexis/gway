@@ -15,6 +15,63 @@ VENV_DIR=".venv"
 VENV_BIN_DIR=""
 VENV_CREATED=false
 
+REQUIREMENTS_FILE="requirements.txt"
+REQUIREMENTS_HASH_FILE="requirements.md5"
+
+compute_requirements_hash() {
+  python3 - "$REQUIREMENTS_FILE" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.is_file():
+    sys.exit(1)
+
+print(hashlib.md5(path.read_bytes()).hexdigest())
+PY
+}
+
+install_requirements_if_changed() {
+  if [[ ! -f "$REQUIREMENTS_FILE" ]]; then
+    echo "No $REQUIREMENTS_FILE file found; skipping requirements install."
+    return
+  fi
+
+  local current_hash=""
+  local hash_status=0
+  set +e
+  current_hash=$(compute_requirements_hash 2>/dev/null)
+  hash_status=$?
+  set -e
+  current_hash=$(echo "$current_hash" | tr -d '\r\n')
+
+  local stored_hash=""
+  if [[ -f "$REQUIREMENTS_HASH_FILE" ]]; then
+    stored_hash=$(tr -d '\r\n' < "$REQUIREMENTS_HASH_FILE")
+  fi
+
+  if [[ $hash_status -eq 0 && -n "$current_hash" && "$current_hash" == "$stored_hash" ]]; then
+    echo "Requirements unchanged (MD5). Skipping pip install."
+    return
+  fi
+
+  echo "Installing Python requirements..."
+  pip install -r "$REQUIREMENTS_FILE"
+
+  if [[ $hash_status -ne 0 || -z "$current_hash" ]]; then
+    set +e
+    current_hash=$(compute_requirements_hash 2>/dev/null)
+    hash_status=$?
+    set -e
+    current_hash=$(echo "$current_hash" | tr -d '\r\n')
+  fi
+
+  if [[ $hash_status -eq 0 && -n "$current_hash" ]]; then
+    printf '%s\n' "$current_hash" > "$REQUIREMENTS_HASH_FILE"
+  fi
+}
+
 detect_venv_bin_dir() {
   if [[ -d "$VENV_DIR/bin" ]]; then
     VENV_BIN_DIR="$VENV_DIR/bin"
@@ -201,6 +258,7 @@ PY
 
     "$SCRIPT_PATH" "$recipe" "${args[@]}"
   done
+  install_requirements_if_changed
   deactivate
   exit 0
 fi
@@ -248,6 +306,7 @@ if $BIN_FLAG; then
 fi
 
 if $REMOVE_FLAG || $BIN_FLAG; then
+  install_requirements_if_changed
   deactivate
   exit 0
 fi
@@ -428,5 +487,7 @@ $SUDO systemctl restart "$SERVICE_NAME"
 
 echo
 $SUDO systemctl status "$SERVICE_NAME" --no-pager || true
+
+install_requirements_if_changed
 
 deactivate
