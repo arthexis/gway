@@ -1,10 +1,15 @@
 __all__ = [
+    "coverage",
     "is_test_flag",
     "test",
     "list_flags",
 ]
 
+import ast
 import os
+from collections import defaultdict
+from pathlib import Path
+from typing import Iterable
 
 
 def is_test_flag(name: str) -> bool:
@@ -31,6 +36,345 @@ def _install_requirements():
 
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", "."])
+
+
+def _normalize_filters(value: str | None) -> list[str]:
+    if not value:
+        return []
+    tokens = [token.strip() for token in value.replace(",", " ").split() if token.strip()]
+    return [token.lower() for token in tokens]
+
+
+def _format_percentage(value: float | None) -> float:
+    if value is None:
+        return 0.0
+    if value < 0:
+        return 0.0
+    if value > 100:
+        return 100.0
+    return round(value, 2)
+
+
+def _format_badge_number(value: float) -> str:
+    value = max(0.0, min(100.0, value))
+    formatted = f"{value:.1f}".rstrip("0").rstrip(".")
+    return formatted or "0"
+
+
+def _badge_color(value: float) -> str:
+    value = max(0.0, value)
+    if value >= 95:
+        return "brightgreen"
+    if value >= 90:
+        return "green"
+    if value >= 80:
+        return "yellowgreen"
+    if value >= 70:
+        return "yellow"
+    if value >= 50:
+        return "orange"
+    if value > 0:
+        return "red"
+    return "lightgrey"
+
+
+def _badge_url(value: float) -> str:
+    number = _format_badge_number(value)
+    color = _badge_color(value)
+    return f"https://img.shields.io/badge/Coverage-{number}%25-{color}"
+
+
+def _update_readme_badge(percent: float, readme_path: Path) -> tuple[bool, str]:
+    badge_url = _badge_url(percent)
+
+    try:
+        content = readme_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False, badge_url
+
+    marker = ".. |coverage_badge| image:: "
+    lines = content.splitlines()
+    updated = False
+
+    for idx, line in enumerate(lines):
+        if line.strip().startswith(marker):
+            indent = line[: len(line) - len(line.lstrip())]
+            lines[idx] = f"{indent}{marker}{badge_url}"
+            updated = True
+            break
+
+    if updated:
+        readme_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    return updated, badge_url
+
+
+def _summarize_records(records: Iterable[dict]) -> dict:
+    records = list(records)
+    if not records:
+        return {"coverage": 0.0, "statements": 0, "missed": 0, "items": []}
+    total_statements = sum(item["statements"] for item in records)
+    total_missed = sum(item["missed"] for item in records)
+    coverage = 100.0 if total_statements == 0 else (total_statements - total_missed) / total_statements * 100
+    summary = {
+        "coverage": _format_percentage(coverage),
+        "statements": total_statements,
+        "missed": total_missed,
+        "items": [],
+    }
+
+    details = []
+    for item in records:
+        statements = item["statements"]
+        missed = item["missed"]
+        pct = 100.0 if statements == 0 else (statements - missed) / statements * 100
+        details.append(
+            {
+                "name": item["name"],
+                "statements": statements,
+                "missed": missed,
+                "coverage": _format_percentage(pct),
+            }
+        )
+
+    summary["items"] = sorted(details, key=lambda x: (x["name"]))
+    return summary
+
+
+def _collect_functions(
+    path: Path,
+    module: str,
+    statement_lines: set[int],
+    missing_lines: set[int],
+    filters: list[str],
+) -> list[dict]:
+    if not filters:
+        return []
+
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    functions: list[dict] = []
+
+    def visit(node: ast.AST, parents: tuple[str, ...] = ()):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                qual_parts = parents + (child.name,)
+                qual = ".".join(qual_parts)
+                start = getattr(child, "lineno", None)
+                end = getattr(child, "end_lineno", start)
+                if start is None or end is None:
+                    continue
+                line_range = set(range(start, end + 1))
+                statements = [line for line in statement_lines if line in line_range]
+                if not statements:
+                    visit(child, qual_parts)
+                    continue
+                missed = [line for line in missing_lines if line in line_range]
+                qual_lower = qual.lower()
+                if any(f in qual_lower for f in filters):
+                    module_name = module.split(".", 1)[1] if module.startswith("projects.") else module
+                    qualified = f"{module_name}.{qual}" if module_name else qual
+                    functions.append(
+                        {
+                            "name": qualified,
+                            "statements": len(statements),
+                            "missed": len(missed),
+                        }
+                    )
+                visit(child, qual_parts)
+            elif isinstance(child, ast.ClassDef):
+                visit(child, parents + (child.name,))
+            else:
+                visit(child, parents)
+
+    visit(tree)
+    return functions
+
+
+def coverage(
+    *,
+    core: bool = False,
+    project: str | None = None,
+    function: str | None = None,
+    data_file: str | None = None,
+    update_readme: bool = True,
+) -> dict:
+    """Summarize coverage metrics for GWAY core and projects."""
+
+    from gway import gw
+
+    try:
+        from coverage import Coverage
+        from coverage.exceptions import CoverageException
+    except Exception as exc:  # pragma: no cover - handled via CLI messaging
+        raise RuntimeError("The 'coverage' package is required to compute coverage.") from exc
+
+    project_filters = _normalize_filters(project)
+    function_filters = _normalize_filters(function)
+
+    repo_root = Path(__file__).resolve().parents[2]
+    data_path = Path(data_file or os.environ.get("COVERAGE_FILE", repo_root / ".coverage"))
+
+    if not data_path.exists():
+        message = f"Coverage data file not found at {data_path}"
+        gw.warning(message)
+        return {
+            "total": {"coverage": 0.0, "statements": 0, "missed": 0, "items": []},
+            "filters": {"core": core, "project": project, "function": function},
+            "badge": {"url": _badge_url(0.0), "updated": False},
+        }
+
+    cov = Coverage(data_file=str(data_path))
+    try:
+        cov.load()
+    except CoverageException as exc:
+        gw.warning(f"Failed to load coverage data: {exc}")
+        return {
+            "total": {"coverage": 0.0, "statements": 0, "missed": 0, "items": []},
+            "filters": {"core": core, "project": project, "function": function},
+            "badge": {"url": _badge_url(0.0), "updated": False},
+        }
+
+    records: list[dict] = []
+    data = cov.get_data()
+
+    for filename in sorted(data.measured_files()):
+        path = Path(filename)
+        if not path.exists():
+            continue
+        try:
+            rel = path.resolve().relative_to(repo_root)
+        except ValueError:
+            continue
+        if rel.suffix != ".py":
+            continue
+        if rel.parts and rel.parts[0] == "tests":
+            continue
+
+        module_name = ".".join(rel.with_suffix("").parts)
+        if module_name.endswith(".__init__"):
+            module_name = module_name[: -len(".__init__")]
+
+        category = None
+        project_name = None
+        if rel.parts and rel.parts[0] == "gway":
+            category = "core"
+        elif rel.parts and rel.parts[0] == "projects":
+            category = "project"
+            if module_name.startswith("projects."):
+                project_module = module_name.split(".", 1)[1]
+            else:
+                project_module = module_name
+            project_name = project_module.split(".", 1)[0]
+        else:
+            continue
+
+        if core and category != "core":
+            continue
+
+        if project_filters and category != "project":
+            continue
+
+        try:
+            _, statements, _, missing, _ = cov.analysis2(str(path))
+        except Exception:
+            continue
+
+        statement_lines = set(statements)
+        missing_lines = set(missing)
+        if not statement_lines and not function_filters:
+            continue
+
+        module_display = module_name.split(".", 1)[1] if module_name.startswith("projects.") else module_name
+        record = {
+            "category": category,
+            "project": project_name,
+            "module": module_display,
+            "statements": len(statement_lines),
+            "missed": len(missing_lines),
+        }
+
+        if project_filters and category == "project":
+            module_lower = module_display.lower()
+            rel_lower = "/".join(rel.parts).lower()
+            if not any(
+                filt in module_lower or filt in rel_lower or (project_name and filt in project_name.lower())
+                for filt in project_filters
+            ):
+                continue
+
+        if function_filters:
+            record["functions"] = _collect_functions(path, module_name, statement_lines, missing_lines, function_filters)
+            if not record["functions"]:
+                continue
+        else:
+            record["functions"] = []
+
+        records.append(record)
+
+    formatted_records: list[dict] = []
+    for record in records:
+        if function_filters:
+            for fn in record["functions"]:
+                formatted_records.append(
+                    {
+                        "category": record["category"],
+                        "project": record["project"],
+                        "name": fn["name"],
+                        "statements": fn["statements"],
+                        "missed": fn["missed"],
+                    }
+                )
+        else:
+            formatted_records.append(
+                {
+                    "category": record["category"],
+                    "project": record["project"],
+                    "name": record["module"],
+                    "statements": record["statements"],
+                    "missed": record["missed"],
+                }
+            )
+
+    core_records = [item for item in formatted_records if item["category"] == "core"]
+    project_records = [item for item in formatted_records if item["category"] == "project" and item.get("project")]
+
+    result: dict = {
+        "filters": {"core": core, "project": project, "function": function},
+        "total": _summarize_records(formatted_records),
+    }
+
+    if core_records:
+        result["core"] = _summarize_records(core_records)
+
+    if project_records:
+        project_summary = _summarize_records(project_records)
+        grouped: dict[str, list[dict]] = defaultdict(list)
+        for item in project_records:
+            grouped[item["project"]].append(item)
+        project_details = {name: _summarize_records(items) for name, items in grouped.items()}
+        project_summary["projects"] = project_details
+        result["projects"] = project_summary
+
+    total_coverage = result["total"]["coverage"]
+    should_update = update_readme and not core and not project_filters and not function_filters
+    badge_updated = False
+    badge_url = _badge_url(total_coverage)
+    if should_update:
+        badge_updated, badge_url = _update_readme_badge(total_coverage, repo_root / "README.rst")
+        if badge_updated:
+            gw.info(f"Updated coverage badge to {total_coverage:.2f}%")
+
+    result["badge"] = {"updated": badge_updated, "url": badge_url}
+    return result
 
 
 def test(
@@ -143,30 +487,19 @@ def test(
         if cov:
             cov.stop()
             try:
-                percent = cov.report(include=["gway/*"])
-                gw.info(f"gway coverage: {percent:.2f}%")
-                print(f"gway: {percent:.2f}%")
-                projects_dir = "projects"
-                if os.path.isdir(projects_dir):
-                    for proj in sorted(os.listdir(projects_dir)):
-                        if proj.startswith("__"):
-                            continue
-                        path = os.path.join(projects_dir, proj)
-                        include_paths = []
-                        if os.path.isdir(path):
-                            include_paths = [os.path.join(os.path.abspath(path), "*")]
-                        elif os.path.isfile(path) and path.endswith(".py"):
-                            include_paths = [os.path.abspath(path)]
-                        if include_paths:
-                            try:
-                                percent = cov.report(include=include_paths)
-                                gw.info(f"{proj} coverage: {percent:.2f}%")
-                                print(f"{proj}: {percent:.2f}%")
-                            except Exception:
-                                gw.warning(f"Coverage report failed for {proj}")
-                total = cov.report()
-                gw.info(f"Total coverage: {total:.2f}%")
-                print(f"Total: {total:.2f}%")
+                cov.save()
+            except Exception:
+                pass
+            try:
+                summary = coverage(data_file=cov.config.data_file)
+                core_summary = summary.get("core")
+                projects_summary = summary.get("projects", {})
+                if core_summary:
+                    print(f"gway: {core_summary['coverage']:.2f}%")
+                project_details = projects_summary.get("projects", {})
+                for proj_name in sorted(project_details):
+                    print(f"{proj_name}: {project_details[proj_name]['coverage']:.2f}%")
+                print(f"Total: {summary['total']['coverage']:.2f}%")
             except Exception as e:
                 gw.warning(f"Coverage report failed: {e}")
 
