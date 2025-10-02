@@ -76,10 +76,21 @@ def make_grid(
 
     os.makedirs(output_path.parent, exist_ok=True)
 
-    # Determine consistent thumbnail size based on the first card.
-    with Image.open(files[0]) as first_card:
-        first_card.thumbnail(thumb_size, Image.LANCZOS)
-        card_width, card_height = first_card.size
+    # Determine consistent thumbnail size based on the largest resized card.
+    thumbnails: list[Image.Image] = []
+    max_width = 0
+    max_height = 0
+    for filename in files:
+        with Image.open(filename) as card:
+            card.thumbnail(thumb_size, Image.LANCZOS)
+            resized = card.copy()
+
+        thumbnails.append(resized)
+        max_width = max(max_width, resized.width)
+        max_height = max(max_height, resized.height)
+
+    card_width = max_width
+    card_height = max_height
 
     num_cards = len(files)
     rows = math.ceil(num_cards / cards_per_row)
@@ -88,12 +99,10 @@ def make_grid(
 
     grid = Image.new("RGB", (grid_width, grid_height), color=background_color)
 
-    for idx, filename in enumerate(files):
-        with Image.open(filename) as card:
-            card.thumbnail(thumb_size, Image.LANCZOS)
-            x = (idx % cards_per_row) * card_width
-            y = (idx // cards_per_row) * card_height
-            grid.paste(card, (x, y))
+    for idx, card in enumerate(thumbnails):
+        x = (idx % cards_per_row) * card_width + (card_width - card.width) // 2
+        y = (idx // cards_per_row) * card_height + (card_height - card.height) // 2
+        grid.paste(card, (x, y))
 
     grid.save(output_path)
 
