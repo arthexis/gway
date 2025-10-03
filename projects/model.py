@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+import types
 import warnings
 from pathlib import Path
 from typing import Dict, List
@@ -54,13 +55,27 @@ def _ensure_setup() -> None:
             break
     else:
         settings_mod = os.environ["DJANGO_SETTINGS_MODULE"]
+        root = Path(__file__).resolve().parents[1]
+        for path in (root, root / "tests"):
+            path_text = str(path)
+            if path_text not in sys.path:
+                sys.path.insert(0, path_text)
         try:
             importlib.import_module(settings_mod)
         except ModuleNotFoundError:
-            root = Path(__file__).resolve().parents[1]
-            if str(root) not in sys.path:
-                sys.path.insert(0, str(root))
-            importlib.import_module(settings_mod)
+            package_name, _, _ = settings_mod.rpartition(".")
+            package_path = root / package_name.replace(".", "/") if package_name else None
+            if package_name and package_path and package_path.exists():
+                package = sys.modules.get(package_name)
+                if package is None:
+                    package = types.ModuleType(package_name)
+                    package.__path__ = [str(package_path)]
+                    sys.modules[package_name] = package
+                elif not hasattr(package, "__path__"):
+                    package.__path__ = [str(package_path)]
+                importlib.import_module(settings_mod)
+            else:
+                raise
     if not apps.ready:
         if not hasattr(apps.get_models, "cache_clear"):
             # ``apps.get_models`` is patched in tests with a simple function
