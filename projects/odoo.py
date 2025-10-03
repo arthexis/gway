@@ -102,7 +102,7 @@ def _quote_sort_key(quote: dict) -> tuple[str, str]:
     return (create_date, name)
 
 
-def _find_quotes_for_customer(name: str) -> list[str]:
+def _find_quotes_for_customer(name: str) -> list[dict]:
     normalized_name = (name or "").strip()
     if not normalized_name:
         return []
@@ -135,7 +135,7 @@ def _find_quotes_for_customer(name: str) -> list[str]:
             seen_terms.add(canonical)
             search_terms.append(variant)
 
-    fields = ['id', 'name', 'state', 'partner_id', 'create_date']
+    fields = ['id', 'name', 'state', 'partner_id', 'create_date', 'amount_total']
     domain_base = [('state', '!=', 'cancel')]
     quotes_by_id: dict[int, dict] = {}
 
@@ -222,7 +222,20 @@ def _find_quotes_for_customer(name: str) -> list[str]:
         quotes_to_use = quotes
 
     ordered = sorted(quotes_to_use, key=_quote_sort_key, reverse=True)
-    return [quote.get('name', '') for quote in ordered if quote.get('name')]
+
+    sanitized: list[dict] = []
+    for quote in ordered:
+        name_value = quote.get('name')
+        if not name_value:
+            continue
+        sanitized.append({
+            'id': quote.get('id'),
+            'name': name_value,
+            'amount_total': quote.get('amount_total'),
+            'state': quote.get('state'),
+            'create_date': quote.get('create_date'),
+        })
+    return sanitized
 
 
 def execute_kw(*args, model: str, method: str, **kwargs) -> dict:
@@ -751,6 +764,9 @@ def add_quote_ids(
     csvfile: str,
     name_col: str | int | None = None,
     quote_col: str = "Quotation",
+    quote_cap: float | str | None = 50_000,
+    filler: str | None = "XX",
+    skip_missing: bool | str = False,
 ) -> dict:
     """Add quotation identifiers to a CSV file based on customer names.
 
@@ -761,12 +777,29 @@ def add_quote_ids(
             column when omitted.
         quote_col (str): Header to use for the quotation column. Defaults to
             ``"Quotation"``.
+        quote_cap (float | str | None): Maximum allowed total amount for a
+            quotation to be added. Defaults to 50,000 MXN. Provide ``None`` or
+            an empty value to disable the cap.
+        filler (str | None): Value to use when no quotation is found. Defaults
+            to ``"XX"``. Use ``None`` to leave the cell blank.
+        skip_missing (bool | str): When truthy, rows without a matching quote
+            are removed from the CSV entirely.
 
     Returns:
         dict: Summary including counts of processed rows and matched quotations.
     """
     csv_path = _resolve_csv_path(csvfile)
     gw.info(f"Annotating {csv_path} with quotation identifiers")
+
+    def _sanitize_dialect(dialect_obj) -> csv.Dialect:
+        delimiter = getattr(dialect_obj, 'delimiter', None)
+        if not delimiter or len(delimiter) != 1:
+            return csv.excel
+        if delimiter in {'\n', '\r', '\r\n'}:
+            return csv.excel
+        if delimiter.isspace() or delimiter.isalnum():
+            return csv.excel
+        return dialect_obj
 
     with csv_path.open('r', newline='', encoding='utf-8-sig') as handle:
         sample = handle.read(2048)
@@ -775,6 +808,8 @@ def add_quote_ids(
             dialect = csv.Sniffer().sniff(sample)
         except csv.Error:
             dialect = csv.excel
+        else:
+            dialect = _sanitize_dialect(dialect)
         try:
             has_header = csv.Sniffer().has_header(sample)
         except csv.Error:
@@ -863,13 +898,52 @@ def add_quote_ids(
     else:
         quote_index = max((len(row) for row in data_rows), default=0)
 
+    def _parse_quote_cap(value: float | str | None) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            cap_value = float(value)
+        elif isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            try:
+                cap_value = float(stripped)
+            except ValueError:
+                gw.abort(f"Invalid quote_cap value: {value}")
+        else:
+            gw.abort(f"Invalid quote_cap value: {value}")
+        if cap_value < 0:
+            gw.abort("quote_cap cannot be negative")
+        return cap_value
+
+    def _parse_skip_missing(value: bool | str) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if not lowered:
+                return False
+            if lowered in {"1", "true", "t", "yes", "y", "on"}:
+                return True
+            if lowered in {"0", "false", "f", "no", "n", "off"}:
+                return False
+        gw.abort(f"Invalid skip_missing value: {value}")
+
+    cap_limit = _parse_quote_cap(quote_cap)
+    filler_value = "" if filler is None else str(filler)
+    skip_missing_rows = _parse_skip_missing(skip_missing)
+
     processed_rows: list[list[str]] = []
     if header_row is not None:
         processed_rows.append(header_row)
 
-    quote_cache: dict[str, list[str]] = {}
+    quote_cache: dict[str, list[dict]] = {}
     matched_rows = 0
     quotes_added = 0
+    skipped_rows = 0
 
     for row in data_rows:
         row_data = list(row)
@@ -885,12 +959,45 @@ def add_quote_ids(
         else:
             quotes = []
 
+        selected_quote_name: str | None = None
         if quotes:
+            def _amount_for_quote(entry: dict) -> float | None:
+                value = entry.get('amount_total')
+                if value is None:
+                    return None
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return None
+
+            eligible_quotes: list[tuple[float, dict]] = []
+            for quote in quotes:
+                amount = _amount_for_quote(quote)
+                if amount is None:
+                    continue
+                if cap_limit is not None and amount > cap_limit:
+                    continue
+                eligible_quotes.append((amount, quote))
+
+            if eligible_quotes:
+                eligible_quotes.sort(
+                    key=lambda item: (
+                        item[0],
+                        *_quote_sort_key(item[1]),
+                    ),
+                    reverse=True,
+                )
+                selected_quote_name = eligible_quotes[0][1].get('name')
+
+        if selected_quote_name:
             matched_rows += 1
-            quotes_added += len(quotes)
-            quote_value = " ".join(quotes)
+            quotes_added += 1
+            quote_value = selected_quote_name
         else:
-            quote_value = ""
+            if skip_missing_rows:
+                skipped_rows += 1
+                continue
+            quote_value = filler_value
 
         target_index = quote_index if quote_index is not None else len(row_data)
         while len(row_data) <= target_index:
@@ -916,6 +1023,8 @@ def add_quote_ids(
         'quote_column': quote_column_name,
         'name_column_index': name_index,
         'quote_column_index': quote_index,
+        'skipped_rows': skipped_rows,
+        'quote_cap': cap_limit,
     }
 
 
