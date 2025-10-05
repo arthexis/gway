@@ -338,6 +338,24 @@ def process(command_sources, callback=None, *, origin="line", gw_instance=None, 
     executed_chunks: list[list[str]] = []
 
     gw = gw_instance or (Gateway(**context) if context else _global_gw)
+
+    if context:
+        sanitized_context = {k: v for k, v in context.items() if v is not None}
+        if sanitized_context:
+            try:
+                gw.context.update(sanitized_context)
+            except Exception:
+                pass
+            try:
+                sys_namespace = getattr(gw, "sys", None)
+                if isinstance(sys_namespace, dict):
+                    existing = sys_namespace.get("cli_context")
+                    if not isinstance(existing, dict):
+                        existing = {}
+                    existing.update(sanitized_context)
+                    sys_namespace["cli_context"] = existing
+            except Exception:
+                pass
     wizard_enabled = getattr(gw, "wizard_enabled", False)
     interactive_enabled = getattr(gw, "interactive_enabled", False)
     wizard_prompts = wizard_enabled and interactive_enabled
