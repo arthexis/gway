@@ -274,6 +274,33 @@ def dashboard(
 
     def discover_functions(target: object) -> list[tuple[str, Callable[[], Any]]]:
         functions: list[tuple[str, Callable[[], Any]]] = []
+
+        candidate_names: set[str] = set()
+        for name in (project_name, getattr(target, "_name", None), getattr(target, "__name__", None)):
+            if not name:
+                continue
+            candidate_names.add(name)
+            candidate_names.add(name.rsplit(".", 1)[-1])
+
+        module_prefixes: set[str] = set()
+        for name in candidate_names:
+            module_prefixes.add(name)
+            module_prefixes.add(name.replace(".", "_"))
+            if not name.startswith("projects."):
+                module_prefixes.add(f"projects.{name}")
+
+        def matches_project(module_name: str) -> bool:
+            if not module_name:
+                return False
+            for prefix in module_prefixes:
+                if module_name == prefix:
+                    return True
+                if module_name.startswith(prefix + "."):
+                    return True
+                if module_name.endswith(f".{prefix}"):
+                    return True
+            return False
+
         for attr_name in sorted(dir(target)):
             if attr_name.startswith("_"):
                 continue
@@ -284,7 +311,7 @@ def dashboard(
             if not callable(attr):
                 continue
             module_name = getattr(attr, "__module__", "")
-            if not module_name.startswith("projects."):
+            if module_prefixes and not matches_project(module_name):
                 continue
             functions.append((attr_name, attr))
         return functions
