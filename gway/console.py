@@ -129,10 +129,11 @@ def _format_unused_context(unused: dict[str, object]) -> str:
 
 def cli_main():
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(prog="gway", description="Dynamic Project CLI")
+    parser = argparse.ArgumentParser(prog="gway", description="Dynamic Project CLI", add_help=False)
 
     # Primary behavior flags
     add = parser.add_argument
+    add("-h", "--help", action="store_true", help="show this help message and exit")
     add("-a", dest="all", action="store_true", help="Show all text results, not just the last")
     add("-c", dest="client", type=str, help="Specify client environment")
     add("-d", dest="debug", action="store_true", help="Enable debug logging")
@@ -228,6 +229,16 @@ def cli_main():
 
     if args.section and not recipe_args:
         parser.error("--section requires at least one recipe")
+
+    help_for_command = bool(args.help and command_tokens)
+    if args.help and not help_for_command:
+        parser.print_help()
+        sys.exit(0)
+
+    if help_for_command:
+        parser.print_help()
+        if "--help" not in command_tokens:
+            command_tokens.append("--help")
 
     if recipe_args:
         if len(recipe_args) == 1:
