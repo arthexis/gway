@@ -163,6 +163,12 @@ def cli_main():
     add("-z", dest="silent", action="store_true", help="Suppress all non-critical output")
     if _should_enable_argcomplete():
         argcomplete.autocomplete(parser)
+    def _print_main_help() -> None:
+        """Display the main parser help with an extra trailing newline."""
+
+        parser.print_help()
+        print(file=sys.stdout)
+
     args, unknown = parser.parse_known_args()
 
     recipe_args: list[str] = []
@@ -232,11 +238,11 @@ def cli_main():
 
     help_for_command = bool(args.help and command_tokens)
     if args.help and not help_for_command:
-        parser.print_help()
+        _print_main_help()
         sys.exit(0)
 
     if help_for_command:
-        parser.print_help()
+        _print_main_help()
         if "--help" not in command_tokens:
             command_tokens.append("--help")
 
@@ -268,7 +274,7 @@ def cli_main():
     elif context_only_args:
         all_results, last_result = [], None
     else:
-        parser.print_help()
+        _print_main_help()
         sys.exit(1)
 
     # Resolve expression if requested
