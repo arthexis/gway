@@ -9,6 +9,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Iterable, Iterator
 
+from gway import gw
+
 __all__ = ["scan_logs", "candidate_log_paths"]
 
 _LOG_LINE = re.compile(
@@ -31,18 +33,27 @@ def candidate_log_paths() -> Iterator[Path]:
 
     env_path = os.environ.get("MTGA_LOG_PATH")
     if env_path:
-        yield Path(env_path).expanduser()
+        candidate = Path(env_path).expanduser()
+        gw.verbose(f"[mtg] Checking log path from MTGA_LOG_PATH: {candidate}")
+        yield candidate
 
     env_dir = os.environ.get("MTGA_LOG_DIR")
     if env_dir:
-        yield Path(env_dir).expanduser() / "Player.log"
+        candidate = Path(env_dir).expanduser() / "Player.log"
+        gw.verbose(f"[mtg] Checking log path from MTGA_LOG_DIR: {candidate}")
+        yield candidate
 
     home = Path.home()
     windows_path = home / "AppData" / "LocalLow" / "Wizards Of The Coast" / "MTGA" / "Player.log"
     mac_path = home / "Library" / "Logs" / "Wizards Of The Coast" / "MTGA" / "Player.log"
     linux_path = home / "Documents" / "MTGA" / "Player.log"
 
-    for path in (windows_path, mac_path, linux_path):
+    for label, path in (
+        ("Windows", windows_path),
+        ("macOS", mac_path),
+        ("Linux", linux_path),
+    ):
+        gw.verbose(f"[mtg] Checking {label} log path: {path}")
         yield path
 
 
