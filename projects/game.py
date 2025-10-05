@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Callable, Iterable
 
 from gway import gw
 
@@ -220,4 +220,230 @@ def open_cookbook(
         "selected_folder": str(state.current_folder()),
         "selected_recipe": str(selected_recipe) if selected_recipe else None,
         "recipes_viewed": [str(path) for path in sorted(visited)],
+    }
+
+
+def dashboard(
+    *,
+    project: str | object,
+    window_size: tuple[int, int] = (960, 640),
+    frame_rate: int = 30,
+) -> dict[str, object]:
+    """Display a pygame dashboard for invoking project functions.
+
+    Parameters
+    ----------
+    project:
+        Gateway project name or project object exposing callable utilities.
+    window_size:
+        Size of the pygame window in pixels.
+    frame_rate:
+        Target frames per second for the draw loop.
+
+    Returns
+    -------
+    dict
+        Summary of executed functions and their latest results.
+    """
+
+    if not gw.interactive_enabled:
+        raise RuntimeError("dashboard requires interactive mode. Run with `-i`.")
+
+    try:
+        import pygame
+    except ImportError as exc:  # pragma: no cover - import guard
+        raise RuntimeError(
+            "dashboard requires the 'pygame' package. Install it with `pip install pygame`."
+        ) from exc
+
+    project_obj: object
+    project_name: str
+    if isinstance(project, str):
+        if not project.strip():
+            raise ValueError("Project name cannot be empty.")
+        try:
+            project_obj = getattr(gw, project)
+        except AttributeError as exc:
+            raise ValueError(f"Gateway has no project named '{project}'.") from exc
+        project_name = project
+    else:
+        project_obj = project
+        project_name = getattr(project_obj, "_name", None) or getattr(
+            project_obj, "__name__", project_obj.__class__.__name__
+        )
+
+    def discover_functions(target: object) -> list[tuple[str, Callable[[], Any]]]:
+        functions: list[tuple[str, Callable[[], Any]]] = []
+        for attr_name in sorted(dir(target)):
+            if attr_name.startswith("_"):
+                continue
+            try:
+                attr = getattr(target, attr_name)
+            except AttributeError:
+                continue
+            if not callable(attr):
+                continue
+            module_name = getattr(attr, "__module__", "")
+            if not module_name.startswith("projects."):
+                continue
+            functions.append((attr_name, attr))
+        return functions
+
+    functions = discover_functions(project_obj)
+    if not functions:
+        raise RuntimeError(f"No callable functions found for project '{project_name}'.")
+
+    pygame.init()
+    screen = pygame.display.set_mode(window_size)
+    pygame.display.set_caption(f"Gateway {project_name} Dashboard")
+    clock = pygame.time.Clock()
+
+    title_font = pygame.font.SysFont("arial", 28)
+    button_font = pygame.font.SysFont("arial", 20)
+    log_font = pygame.font.SysFont("consolas", 18)
+
+    background = (12, 16, 26)
+    panel_bg = (24, 32, 48)
+    button_bg = (56, 80, 120)
+    button_hover = (80, 120, 170)
+    text_color = (230, 230, 230)
+    error_color = (220, 110, 110)
+
+    button_panel = pygame.Rect(20, 60, 360, window_size[1] - 80)
+    log_panel = pygame.Rect(
+        button_panel.right + 20,
+        60,
+        window_size[0] - button_panel.width - 60,
+        window_size[1] - 80,
+    )
+
+    button_height = 44
+    button_spacing = 12
+    scroll_offset = 0
+    call_history: list[dict[str, Any]] = []
+    log_lines: list[tuple[str, bool]] = []
+
+    def clamp_scroll(offset: int) -> int:
+        total_height = len(functions) * (button_height + button_spacing) - button_spacing
+        visible_height = button_panel.height - 40
+        if total_height <= visible_height:
+            return 0
+        max_offset = total_height - visible_height
+        return max(0, min(offset, max_offset))
+
+    def append_log(message: str, *, is_error: bool = False) -> None:
+        text = message
+        if len(text) > 160:
+            text = text[:157] + "..."
+        log_lines.append((text, is_error))
+        if len(log_lines) > 10:
+            del log_lines[0]
+
+    def invoke(func_name: str, func: Callable[[], Any]) -> None:
+        try:
+            result = func()
+        except TypeError as exc:
+            message = str(exc)
+            append_log(f"{func_name} requires arguments: {message}", is_error=True)
+            call_history.append({
+                "name": func_name,
+                "error": message,
+            })
+        except Exception as exc:  # pragma: no cover - runtime execution
+            message = str(exc)
+            append_log(f"{func_name} failed: {message}", is_error=True)
+            call_history.append({
+                "name": func_name,
+                "error": message,
+            })
+        else:
+            display = result
+            if isinstance(display, bytes):
+                try:
+                    display = display.decode("utf-8")
+                except Exception:
+                    display = repr(display)
+            if display is None:
+                display_text = "None"
+            else:
+                display_text = str(display)
+            if len(display_text) > 160:
+                display_text = display_text[:157] + "..."
+            append_log(f"{func_name} -> {display_text}")
+            call_history.append({
+                "name": func_name,
+                "result": result,
+                "result_preview": display_text,
+            })
+
+    try:
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                    elif event.key == pygame.K_UP:
+                        scroll_offset = clamp_scroll(scroll_offset - (button_height + button_spacing))
+                    elif event.key == pygame.K_DOWN:
+                        scroll_offset = clamp_scroll(scroll_offset + (button_height + button_spacing))
+                elif event.type == pygame.MOUSEWHEEL:
+                    scroll_offset = clamp_scroll(scroll_offset - event.y * (button_height // 2))
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mouse_pos = event.pos
+                    y_position = button_panel.y + 20 - scroll_offset
+                    for func_name, func in functions:
+                        rect = pygame.Rect(button_panel.x + 16, y_position, button_panel.width - 32, button_height)
+                        if rect.collidepoint(mouse_pos):
+                            invoke(func_name, func)
+                            break
+                        y_position += button_height + button_spacing
+
+            screen.fill(background)
+            pygame.draw.rect(screen, panel_bg, button_panel, border_radius=8)
+            pygame.draw.rect(screen, panel_bg, log_panel, border_radius=8)
+
+            title_surface = title_font.render(f"{project_name.title()} Dashboard", True, text_color)
+            screen.blit(title_surface, (20, 16))
+
+            instructions = button_font.render("Click a function to execute (Esc to close)", True, text_color)
+            screen.blit(instructions, (button_panel.x + 16, button_panel.y + 10))
+
+            mouse_pos = pygame.mouse.get_pos()
+            y_position = button_panel.y + 20 - scroll_offset
+            for func_name, _func in functions:
+                rect = pygame.Rect(button_panel.x + 16, y_position, button_panel.width - 32, button_height)
+                if rect.bottom < button_panel.y + 40 or rect.top > button_panel.bottom - 20:
+                    y_position += button_height + button_spacing
+                    continue
+                is_hovered = rect.collidepoint(mouse_pos)
+                color = button_hover if is_hovered else button_bg
+                pygame.draw.rect(screen, color, rect, border_radius=6)
+                label_surface = button_font.render(func_name, True, text_color)
+                label_rect = label_surface.get_rect(center=rect.center)
+                screen.blit(label_surface, label_rect)
+                y_position += button_height + button_spacing
+
+            pygame.draw.rect(screen, panel_bg, log_panel, border_radius=8)
+            log_title = button_font.render("Activity", True, text_color)
+            screen.blit(log_title, (log_panel.x + 16, log_panel.y + 10))
+
+            log_y = log_panel.y + 50
+            max_lines = max(1, log_panel.height // 22)
+            for message, is_error in log_lines[-max_lines:]:
+                color = error_color if is_error else text_color
+                log_surface = log_font.render(message, True, color)
+                screen.blit(log_surface, (log_panel.x + 16, log_y))
+                log_y += log_surface.get_height() + 6
+
+            pygame.display.flip()
+            clock.tick(frame_rate)
+    finally:
+        pygame.quit()
+
+    return {
+        "project": project_name,
+        "invocations": call_history,
     }
