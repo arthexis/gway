@@ -4,6 +4,7 @@ Changelog
 Unreleased
 ----------
 
+- deprecate ``mtg`` project and replace it with explicit runtime errors
 - ensure ``gway.builtins`` package is included in distribution
 - add boot service to show LCD message at startup
 - drop RFID helpers from ``auth_db`` and add ``rfid.scan`` utility
