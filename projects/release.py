@@ -10,6 +10,8 @@ import ast
 import importlib.util
 import getpass
 import traceback
+import shutil
+import stat
 from pathlib import Path
 from io import StringIO
 import unittest
@@ -266,9 +268,24 @@ def build(
         if dist:
             dist_dir = Path("dist")
             if dist_dir.exists():
-                for item in dist_dir.iterdir():
-                    item.unlink()
-                dist_dir.rmdir()
+                gw.info("Cleaning existing dist/ directory before build.")
+
+                def _on_rm_error(func, path_str, exc_info):
+                    exc = exc_info[1]
+                    if isinstance(exc, PermissionError):
+                        try:
+                            os.chmod(path_str, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+                        except Exception:
+                            pass
+                        func(path_str)
+                    else:
+                        raise exc
+
+                try:
+                    shutil.rmtree(dist_dir, onerror=_on_rm_error)
+                except Exception as exc:  # pragma: no cover - best effort cleanup
+                    gw.warning(f"Could not fully clean dist/: {exc}")
+            dist_dir.mkdir(exist_ok=True)
 
             gw.info("Building distribution package...")
             subprocess.run([sys.executable, "-m", "build"], check=True)
