@@ -36,6 +36,18 @@ class SigilTests(unittest.TestCase):
         s = Sigil('Key is ["LITERAL"]')
         self.assertEqual(s % {}, 'Key is LITERAL')
 
+    def test_fallback_literal_is_used_when_missing(self):
+        s = Sigil("%[user|Guest]")
+        self.assertEqual(s % {}, "Guest")
+
+    def test_fallback_prefers_resolved_value(self):
+        s = Sigil("%[user|Guest]")
+        self.assertEqual(s % {"user": "Alice"}, "Alice")
+
+    def test_fallback_supports_nested_sigils(self):
+        self._set_context("FALLBACK", "Alt")
+        self.assertEqual(gw.resolve("%[unknown|[FALLBACK]]"), "Alt")
+
     def test_unresolved_unquoted_raises(self):
         s = Sigil("Oops [nope]")
         with self.assertRaises(KeyError):

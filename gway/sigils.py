@@ -69,8 +69,24 @@ def _resolve_single(raw, lookup_fn):
     from gway import gw
 
     raw = raw.strip()
+    original_raw = raw
     wrap_with_brackets = raw.startswith('[') and raw.endswith(']')
     quoted = (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'"))
+
+    fallback_spec = None
+    fallback_quoted = False
+    if not quoted:
+        fallback_split = _split_outside_brackets_once(raw, '|')
+        if fallback_split:
+            raw, fallback_spec = fallback_split
+            raw = raw.strip()
+            if fallback_spec is not None:
+                fallback_spec = fallback_spec.strip()
+                fallback_quoted = (
+                    (fallback_spec.startswith('"') and fallback_spec.endswith('"'))
+                    or (fallback_spec.startswith("'") and fallback_spec.endswith("'"))
+                )
+
     key = _unquote(raw) if quoted else raw
     key = re.sub(r"^(gw|gway)[. ]+", "", key)
 
@@ -112,14 +128,26 @@ def _resolve_single(raw, lookup_fn):
                     val = None
 
     if val is not None:
-        gw.verbose(f"Resolved sigil [{raw}] → {val}")
+        gw.verbose(f"Resolved sigil [{original_raw}] → {val}")
         return val
 
+    if fallback_spec is not None:
+        fallback_source = _unquote(fallback_spec) if fallback_quoted else fallback_spec
+        if fallback_source:
+            try:
+                fallback_value = _replace_sigils(fallback_source, lookup_fn)
+            except KeyError:
+                fallback_value = fallback_source
+        else:
+            fallback_value = ""
+        gw.verbose(f"Sigil [{original_raw}] not resolved, using fallback {fallback_value!r}")
+        return fallback_value
+
     if quoted:
-        gw.verbose(f"Sigil [{raw}] not resolved, using quoted literal '{key}'")
+        gw.verbose(f"Sigil [{original_raw}] not resolved, using quoted literal '{key}'")
         return key
 
-    raise KeyError(f"Unresolved sigil: [{raw}]")
+    raise KeyError(f"Unresolved sigil: [{original_raw}]")
 
 def _follow_path(value, parts, lookup_fn=None):
     for part in parts:
@@ -194,6 +222,9 @@ def _replace_sigils(text, lookup_fn):
     """
     Replace all sigils in the text, raising if any sigil is unresolved.
     """
+
+    if isinstance(text, str) and text.startswith('%') and _is_single_sigil(text[1:]):
+        return _resolve_single(text[2:-1], lookup_fn)
 
     if _is_single_sigil(text):
         return _resolve_single(text[1:-1], lookup_fn)
