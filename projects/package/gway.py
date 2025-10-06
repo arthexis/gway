@@ -368,11 +368,16 @@ def upgrade_builtin(*args, _temp_env=None):
                     pass
                 return 1
 
-    script = gw.resource("upgrade.sh", check=True)
-    script_path = os.fspath(script)
+    script_name = "upgrade.sh"
+    runner: list[str] = ["bash"]
+
     if os.name == "nt":  # pragma: no cover - exercised via unit test patching
-        script_path = script.as_posix()
-    cmd = ["bash", script_path, *forwarded_args]
+        script_name = "upgrade.bat"
+        runner = ["cmd", "/c"]
+
+    script = gw.resource(script_name, check=True)
+    script_path = os.fspath(script)
+    cmd = [*runner, script_path, *forwarded_args]
 
     def _stream(src, dst):
         for line in src:
