@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -338,21 +341,49 @@ def dashboard(
     button_hover = (80, 120, 170)
     text_color = (230, 230, 230)
     error_color = (220, 110, 110)
+    input_bg = (18, 24, 38)
+    input_border = (70, 90, 130)
+    input_focus_border = (120, 160, 220)
+    placeholder_color = (150, 160, 180)
 
     button_spacing = 12
     scroll_offset = 0
     call_history: list[dict[str, Any]] = []
     log_lines: list[tuple[str, bool]] = []
 
-    instructions_text = "Click a function to execute (Esc to close)"
+    base_instructions = "Select a function to configure parameters (Esc to close)"
+    instructions_text = base_instructions
+    pending_call: dict[str, Any] | None = None
+    form_fields: list[dict[str, Any]] = []
+    active_field_index: int | None = None
+    form_error: str | None = None
+    form_scroll_offset = 0
+    scroll_target_index: int | None = None
+
+    form_content_top_offset = 66
+    form_bottom_margin = 24
 
     def compute_layout(current_size: tuple[int, int]) -> dict[str, Any]:
         width, height = current_size
         button_width = max(260, int(width * 0.32))
         panel_height = max(220, height - 80)
         button_rect = pygame.Rect(20, 60, button_width, panel_height)
-        log_width = max(240, width - button_rect.width - 60)
-        log_rect = pygame.Rect(button_rect.right + 20, 60, log_width, panel_height)
+        sidebar_width = max(240, width - button_rect.width - 60)
+        sidebar_x = button_rect.right + 20
+        spacing = 20
+        min_form_height = 140
+        min_log_height = 160
+        available_height = panel_height
+        if available_height - spacing < min_form_height + min_log_height:
+            form_height = max(min_form_height, (available_height - spacing) // 2)
+            log_height = max(min_log_height, available_height - form_height - spacing)
+        else:
+            preferred_form = int(available_height * 0.45)
+            max_form_height = max(min_form_height, available_height - spacing - min_log_height)
+            form_height = min(max_form_height, max(min_form_height, preferred_form))
+            log_height = max(min_log_height, available_height - form_height - spacing)
+        form_rect = pygame.Rect(sidebar_x, 60, sidebar_width, form_height)
+        log_rect = pygame.Rect(sidebar_x, form_rect.bottom + spacing, sidebar_width, log_height)
         instructions_height = button_font.size(instructions_text)[1]
         list_top = button_rect.y + 16 + instructions_height + 12
         list_bottom = button_rect.bottom - 20
@@ -363,6 +394,7 @@ def dashboard(
         button_text_width = max(20, button_rect.width - 32)
         return {
             "button_panel": button_rect,
+            "form_panel": form_rect,
             "log_panel": log_rect,
             "button_list_top": list_top,
             "button_list_bottom": list_bottom,
@@ -448,29 +480,65 @@ def dashboard(
         max_offset = total_height - visible_height
         return max(0, min(offset, max_offset))
 
+    def format_value_preview(value: Any) -> str:
+        text = repr(value)
+        if len(text) > 40:
+            text = text[:37] + "..."
+        return text
+
+    def format_call_arguments(args: Iterable[Any], kwargs: dict[str, Any]) -> str:
+        parts: list[str] = []
+        for value in args:
+            parts.append(format_value_preview(value))
+        for key, value in kwargs.items():
+            parts.append(f"{key}={format_value_preview(value)}")
+        return f"({', '.join(parts)})" if parts else "()"
+
     def append_log(message: str, *, is_error: bool = False) -> None:
         text = message if len(message) <= 800 else message[:797] + "..."
         log_lines.append((text, is_error))
         if len(log_lines) > 50:
             del log_lines[0]
 
-    def invoke(func_name: str, func: Callable[[], Any]) -> None:
+    def invoke(
+        func_name: str,
+        func: Callable[..., Any],
+        *,
+        args: Iterable[Any] = (),
+        kwargs: dict[str, Any] | None = None,
+    ) -> tuple[bool, str | None]:
+        call_args = tuple(args)
+        call_kwargs = dict(kwargs or {})
+        argument_preview = format_call_arguments(call_args, call_kwargs)
         try:
-            result = func()
+            result = func(*call_args, **call_kwargs)
         except TypeError as exc:
             message = str(exc)
-            append_log(f"{func_name} requires arguments: {message}", is_error=True)
-            call_history.append({
-                "name": func_name,
-                "error": message,
-            })
+            append_log(
+                f"{func_name}{argument_preview} requires arguments: {message}",
+                is_error=True,
+            )
+            call_history.append(
+                {
+                    "name": func_name,
+                    "args": list(call_args),
+                    "kwargs": call_kwargs,
+                    "error": message,
+                }
+            )
+            return False, message
         except Exception as exc:  # pragma: no cover - runtime execution
             message = str(exc)
-            append_log(f"{func_name} failed: {message}", is_error=True)
-            call_history.append({
-                "name": func_name,
-                "error": message,
-            })
+            append_log(f"{func_name}{argument_preview} failed: {message}", is_error=True)
+            call_history.append(
+                {
+                    "name": func_name,
+                    "args": list(call_args),
+                    "kwargs": call_kwargs,
+                    "error": message,
+                }
+            )
+            return False, message
         else:
             display = result
             if isinstance(display, bytes):
@@ -484,31 +552,255 @@ def dashboard(
                 display_text = str(display)
             if len(display_text) > 160:
                 display_text = display_text[:157] + "..."
-            append_log(f"{func_name} -> {display_text}")
-            call_history.append({
-                "name": func_name,
-                "result": result,
-                "result_preview": display_text,
+            append_log(f"{func_name}{argument_preview} -> {display_text}")
+            call_history.append(
+                {
+                    "name": func_name,
+                    "args": list(call_args),
+                    "kwargs": call_kwargs,
+                    "result": result,
+                    "result_preview": display_text,
+                }
+            )
+            return True, None
+
+    def layout_form_fields(
+        layout: dict[str, Any],
+        fields: list[dict[str, Any]],
+        scroll_offset: int,
+    ) -> dict[str, Any]:
+        form_rect = layout["form_panel"]
+        label_height = button_font.get_linesize()
+        input_height = 32
+        spacing = 12
+        start_y = form_rect.y + form_content_top_offset
+        y_cursor = start_y - scroll_offset
+        absolute_cursor = start_y
+        entries: list[dict[str, Any]] = []
+        for field in fields:
+            label_pos = (form_rect.x + 16, y_cursor)
+            input_rect = pygame.Rect(
+                form_rect.x + 16,
+                y_cursor + label_height + 4,
+                form_rect.width - 32,
+                input_height,
+            )
+            field["rect"] = input_rect
+            entries.append({
+                "label_pos": label_pos,
+                "input_rect": input_rect,
             })
+            y_cursor = input_rect.bottom + spacing
+            absolute_cursor += label_height + 4 + input_height + spacing
+        submit_rect = pygame.Rect(form_rect.x + 16, y_cursor, 160, 36)
+        error_height = 0
+        if form_error:
+            error_lines = wrap_text_words(form_error, log_font, form_rect.width - 32)
+            error_height = len(error_lines) * log_font.get_linesize() + 12
+        content_height = max(0, (absolute_cursor + 36 + error_height) - start_y)
+        return {
+            "entries": entries,
+            "submit_rect": submit_rect,
+            "content_height": content_height,
+        }
+
+    def recompute_form_layout(current_layout: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        nonlocal form_scroll_offset
+        if not pending_call:
+            form_scroll_offset = 0
+            return {"entries": [], "submit_rect": None, "content_height": 0}, 0
+        measurement = layout_form_fields(current_layout, form_fields, 0)
+        visible_height = max(
+            0,
+            current_layout["form_panel"].height - (form_content_top_offset + form_bottom_margin),
+        )
+        max_offset = max(0, measurement["content_height"] - visible_height)
+        form_scroll_offset = max(0, min(form_scroll_offset, max_offset))
+        layout_with_offset = layout_form_fields(current_layout, form_fields, form_scroll_offset)
+        return layout_with_offset, max_offset
+
+    def parse_input_value(text: str) -> Any:
+        stripped = text.strip()
+        if not stripped:
+            return ""
+        try:
+            return ast.literal_eval(stripped)
+        except Exception:
+            return stripped
+
+    def prepare_form(entry: dict[str, Any]) -> None:
+        nonlocal pending_call, form_fields, active_field_index, form_error, form_scroll_offset
+        nonlocal instructions_text, scroll_target_index
+        func = entry["func"]
+        signature = inspect.signature(func)
+        pending_call = {
+            "name": entry["name"],
+            "func": func,
+            "signature": signature,
+        }
+        form_fields = [{"param": param, "text": "", "rect": None} for param in signature.parameters.values()]
+        active_field_index = 0 if form_fields else None
+        scroll_target_index = active_field_index
+        form_error = None
+        form_scroll_offset = 0
+        instructions_text = f"Enter parameters for {entry['name']} and submit"
+
+    def build_call_arguments() -> tuple[tuple[Any, ...], dict[str, Any]]:
+        if not pending_call:
+            return (), {}
+        positional_args: list[Any] = []
+        keyword_args: dict[str, Any] = {}
+        varargs: list[Any] = []
+        kw_varargs: dict[str, Any] = {}
+        missing_required: list[str] = []
+        for field in form_fields:
+            param: inspect.Parameter = field["param"]
+            text = field["text"].strip()
+            if param.kind == inspect.Parameter.VAR_POSITIONAL:
+                if not text:
+                    continue
+                value = parse_input_value(text)
+                if isinstance(value, (list, tuple)):
+                    varargs.extend(value)
+                else:
+                    varargs.append(value)
+                continue
+            if param.kind == inspect.Parameter.VAR_KEYWORD:
+                if not text:
+                    continue
+                value = parse_input_value(text)
+                if not isinstance(value, dict):
+                    raise ValueError(
+                        f"Parameter '{param.name}' must be a mapping for **{param.name}."
+                    )
+                for key in value:
+                    if key in keyword_args:
+                        raise ValueError(f"Duplicate keyword argument '{key}'.")
+                kw_varargs.update(value)
+                continue
+            if not text:
+                if param.default is inspect._empty:
+                    missing_required.append(param.name)
+                continue
+            value = parse_input_value(text)
+            if param.kind == inspect.Parameter.POSITIONAL_ONLY:
+                positional_args.append(value)
+            else:
+                keyword_args[param.name] = value
+        if missing_required:
+            missing = ", ".join(missing_required)
+            raise ValueError(f"Missing required parameters: {missing}")
+        positional_args.extend(varargs)
+        for key, value in kw_varargs.items():
+            if key in keyword_args:
+                raise ValueError(f"Duplicate keyword argument '{key}'.")
+            keyword_args[key] = value
+        return tuple(positional_args), keyword_args
+
+    def submit_form() -> None:
+        nonlocal form_error, instructions_text
+        if not pending_call:
+            return
+        try:
+            args, kwargs = build_call_arguments()
+        except ValueError as exc:
+            form_error = str(exc)
+            return
+        success, error_text = invoke(
+            pending_call["name"],
+            pending_call["func"],
+            args=args,
+            kwargs=kwargs,
+        )
+        if success:
+            form_error = None
+            instructions_text = f"Executed {pending_call['name']}"
+        else:
+            form_error = error_text
+            instructions_text = f"Review parameters for {pending_call['name']}"
+
+    def handle_field_key(event) -> bool:
+        nonlocal active_field_index, form_error, scroll_target_index
+        if pending_call is None:
+            return False
+        if not form_fields and event.key == pygame.K_RETURN:
+            submit_form()
+            return True
+        if active_field_index is None:
+            return False
+        if event.key == pygame.K_TAB:
+            if form_fields:
+                step = -1 if pygame.key.get_mods() & pygame.KMOD_SHIFT else 1
+                active_field_index = (active_field_index + step) % len(form_fields)
+                scroll_target_index = active_field_index
+            return True
+        if event.key == pygame.K_RETURN:
+            submit_form()
+            return True
+        if event.key == pygame.K_BACKSPACE:
+            field = form_fields[active_field_index]
+            field["text"] = field["text"][:-1]
+            form_error = None
+            return True
+        if event.key == pygame.K_UP:
+            if active_field_index > 0:
+                active_field_index -= 1
+                scroll_target_index = active_field_index
+            return True
+        if event.key == pygame.K_DOWN:
+            if active_field_index is not None and active_field_index < len(form_fields) - 1:
+                active_field_index += 1
+                scroll_target_index = active_field_index
+            return True
+        if event.key == pygame.K_ESCAPE:
+            return False
+        if event.unicode and event.unicode.isprintable():
+            form_fields[active_field_index]["text"] += event.unicode
+            form_error = None
+            return True
+        return False
 
     try:
         running = True
         layout = compute_layout(screen.get_size())
         button_entries = build_button_entries(layout)
+        form_layout, max_form_offset = recompute_form_layout(layout)
         scroll_step = button_font.get_linesize() + button_spacing
         wheel_step = max(1, scroll_step // 2)
+        form_wheel_step = 40
         while running:
             # Update layout each frame to reflect current window size
             layout = compute_layout(screen.get_size())
             button_entries = build_button_entries(layout)
             scroll_step = button_font.get_linesize() + button_spacing
             wheel_step = max(1, scroll_step // 2)
+            form_layout, max_form_offset = recompute_form_layout(layout)
+            if pending_call and scroll_target_index is not None and scroll_target_index < len(form_layout["entries"]):
+                visible_top = layout["form_panel"].y + form_content_top_offset
+                visible_bottom = layout["form_panel"].bottom - form_bottom_margin
+                entry_rect = form_layout["entries"][scroll_target_index]["input_rect"]
+                if entry_rect.top < visible_top:
+                    form_scroll_offset = max(
+                        0,
+                        min(max_form_offset, form_scroll_offset - (visible_top - entry_rect.top)),
+                    )
+                    form_layout, max_form_offset = recompute_form_layout(layout)
+                elif entry_rect.bottom > visible_bottom:
+                    form_scroll_offset = max(
+                        0,
+                        min(max_form_offset, form_scroll_offset + (entry_rect.bottom - visible_bottom)),
+                    )
+                    form_layout, max_form_offset = recompute_form_layout(layout)
+            scroll_target_index = None
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False
+                    elif pending_call and handle_field_key(event):
+                        form_layout, max_form_offset = recompute_form_layout(layout)
+                        continue
                     elif event.key == pygame.K_UP:
                         scroll_offset = clamp_scroll(scroll_offset - scroll_step, layout, button_entries)
                     elif event.key == pygame.K_DOWN:
@@ -520,10 +812,26 @@ def dashboard(
                     layout = compute_layout((new_width, new_height))
                     button_entries = build_button_entries(layout)
                     scroll_offset = clamp_scroll(scroll_offset, layout, button_entries)
+                    form_layout, max_form_offset = recompute_form_layout(layout)
                 elif event.type == pygame.MOUSEWHEEL:
-                    scroll_offset = clamp_scroll(scroll_offset - event.y * wheel_step, layout, button_entries)
+                    mouse_pos = pygame.mouse.get_pos()
+                    if (
+                        pending_call
+                        and layout["form_panel"].collidepoint(mouse_pos)
+                        and max_form_offset > 0
+                    ):
+                        form_scroll_offset = max(
+                            0,
+                            min(form_scroll_offset - event.y * form_wheel_step, max_form_offset),
+                        )
+                        form_layout = layout_form_fields(layout, form_fields, form_scroll_offset)
+                        continue
+                    scroll_offset = clamp_scroll(
+                        scroll_offset - event.y * wheel_step, layout, button_entries
+                    )
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     mouse_pos = event.pos
+                    handled = False
                     y_position = layout["button_list_top"] - scroll_offset
                     for entry in button_entries:
                         rect = pygame.Rect(
@@ -533,16 +841,47 @@ def dashboard(
                             entry["height"],
                         )
                         if rect.collidepoint(mouse_pos):
-                            invoke(entry["name"], entry["func"])
+                            prepare_form(entry)
+                            form_layout, max_form_offset = recompute_form_layout(layout)
+                            handled = True
                             break
                         y_position += entry["height"] + button_spacing
+                    if handled:
+                        continue
+                    if pending_call and layout["form_panel"].collidepoint(mouse_pos):
+                        clicked_field = False
+                        for index, entry_layout in enumerate(form_layout["entries"]):
+                            if entry_layout["input_rect"].collidepoint(mouse_pos):
+                                active_field_index = index
+                                scroll_target_index = index
+                                form_error = None
+                                clicked_field = True
+                                handled = True
+                                break
+                        submit_rect = form_layout.get("submit_rect")
+                        if (
+                            not clicked_field
+                            and submit_rect is not None
+                            and submit_rect.collidepoint(mouse_pos)
+                        ):
+                            submit_form()
+                            form_layout, max_form_offset = recompute_form_layout(layout)
+                            handled = True
+                        elif not clicked_field:
+                            active_field_index = None
+                        if handled:
+                            continue
+                    active_field_index = None
 
             scroll_offset = clamp_scroll(scroll_offset, layout, button_entries)
+            form_layout, max_form_offset = recompute_form_layout(layout)
 
             screen.fill(background)
             button_panel = layout["button_panel"]
+            form_panel = layout["form_panel"]
             log_panel = layout["log_panel"]
             pygame.draw.rect(screen, panel_bg, button_panel, border_radius=8)
+            pygame.draw.rect(screen, panel_bg, form_panel, border_radius=8)
             pygame.draw.rect(screen, panel_bg, log_panel, border_radius=8)
 
             title_surface = title_font.render(f"{project_name.title()} Dashboard", True, text_color)
@@ -578,7 +917,100 @@ def dashboard(
                     text_y += line_height
                 y_position += entry["height"] + button_spacing
 
-            pygame.draw.rect(screen, panel_bg, log_panel, border_radius=8)
+            form_title = button_font.render("Parameters", True, text_color)
+            screen.blit(form_title, (form_panel.x + 16, form_panel.y + 10))
+            header_y = form_panel.y + 36
+            if pending_call:
+                name_lines = wrap_text_words(
+                    pending_call["name"], log_font, form_panel.width - 32
+                )
+                info_y = header_y
+                for line in name_lines:
+                    name_surface = log_font.render(line, True, text_color)
+                    screen.blit(name_surface, (form_panel.x + 16, info_y))
+                    info_y += name_surface.get_height()
+                content_clip = pygame.Rect(
+                    form_panel.x + 8,
+                    form_panel.y + form_content_top_offset,
+                    form_panel.width - 16,
+                    max(0, form_panel.height - (form_content_top_offset + form_bottom_margin)),
+                )
+                screen.set_clip(content_clip)
+                if not form_fields:
+                    empty_surface = log_font.render(
+                        "No parameters required.", True, placeholder_color
+                    )
+                    screen.blit(empty_surface, (content_clip.x + 8, content_clip.y + 6))
+                for index, (field, entry_layout) in enumerate(
+                    zip(form_fields, form_layout["entries"])
+                ):
+                    param: inspect.Parameter = field["param"]
+                    if param.kind == inspect.Parameter.VAR_POSITIONAL:
+                        label_text = f"*{param.name}" if param.name else "*args"
+                    elif param.kind == inspect.Parameter.VAR_KEYWORD:
+                        label_text = f"**{param.name}" if param.name else "**kwargs"
+                    else:
+                        label_text = param.name
+                    label_surface = button_font.render(label_text, True, text_color)
+                    screen.blit(label_surface, entry_layout["label_pos"])
+                    input_rect = entry_layout["input_rect"]
+                    pygame.draw.rect(screen, input_bg, input_rect, border_radius=6)
+                    border_color = (
+                        input_focus_border if active_field_index == index else input_border
+                    )
+                    border_width = 2 if active_field_index == index else 1
+                    pygame.draw.rect(
+                        screen,
+                        border_color,
+                        input_rect,
+                        width=border_width,
+                        border_radius=6,
+                    )
+                    text_value = field["text"]
+                    if text_value:
+                        text_surface = log_font.render(text_value, True, text_color)
+                    else:
+                        if param.kind == inspect.Parameter.VAR_POSITIONAL:
+                            placeholder = f"tuple/list for *{param.name}" if param.name else "tuple/list"
+                        elif param.kind == inspect.Parameter.VAR_KEYWORD:
+                            placeholder = f"dict for **{param.name}" if param.name else "dict"
+                        elif param.default is inspect._empty:
+                            placeholder = "required"
+                        else:
+                            placeholder = f"default: {format_value_preview(param.default)}"
+                        text_surface = log_font.render(placeholder, True, placeholder_color)
+                    screen.blit(text_surface, (input_rect.x + 8, input_rect.y + 6))
+                submit_rect = form_layout.get("submit_rect")
+                if submit_rect is not None:
+                    submit_color = (
+                        button_hover if submit_rect.collidepoint(mouse_pos) else button_bg
+                    )
+                    pygame.draw.rect(screen, submit_color, submit_rect, border_radius=6)
+                    submit_label = button_font.render("Submit", True, text_color)
+                    submit_label_rect = submit_label.get_rect(center=submit_rect.center)
+                    screen.blit(submit_label, submit_label_rect.topleft)
+                if form_error:
+                    error_lines = wrap_text_words(
+                        form_error, log_font, form_panel.width - 32
+                    )
+                    error_y = (
+                        submit_rect.bottom + 8 if submit_rect is not None else content_clip.y + 8
+                    )
+                    for line in error_lines:
+                        error_surface = log_font.render(line, True, error_color)
+                        screen.blit(error_surface, (form_panel.x + 16, error_y))
+                        error_y += error_surface.get_height()
+                screen.set_clip(None)
+            else:
+                message_lines = wrap_text_words(
+                    "Select a function to configure.", log_font, form_panel.width - 32
+                )
+                message_y = header_y
+                for line in message_lines:
+                    message_surface = log_font.render(line, True, placeholder_color)
+                    screen.blit(message_surface, (form_panel.x + 16, message_y))
+                    message_y += message_surface.get_height()
+
             log_title = button_font.render("Activity", True, text_color)
             screen.blit(log_title, (log_panel.x + 16, log_panel.y + 10))
 
