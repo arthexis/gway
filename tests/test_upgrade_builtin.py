@@ -138,8 +138,8 @@ class UpgradeBuiltinTests(unittest.TestCase):
         mock_popen.assert_not_called()
         self.assertNotIn("should-not-run", self.stdout.getvalue())
 
-    def test_upgrade_normalizes_windows_path_for_bash(self):
-        win_path = pathlib.PureWindowsPath("C:/Users/test/gway/upgrade.sh")
+    def test_upgrade_uses_windows_batch_script(self):
+        win_path = pathlib.PureWindowsPath("C:/Users/test/gway/upgrade.bat")
 
         class ImmediateThread:
             def __init__(self, target=None, args=None, **_kwargs):
@@ -173,8 +173,9 @@ class UpgradeBuiltinTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         called_cmd = mock_popen.call_args[0][0]
-        self.assertEqual(called_cmd[0], "bash")
-        self.assertEqual(called_cmd[1], "C:/Users/test/gway/upgrade.sh")
+        self.assertEqual(called_cmd[0], "cmd")
+        self.assertEqual(called_cmd[1], "/c")
+        self.assertEqual(called_cmd[2], os.fspath(win_path))
         self.assertIn("--force", called_cmd)
 
 
