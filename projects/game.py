@@ -321,7 +321,10 @@ def dashboard(
         raise RuntimeError(f"No callable functions found for project '{project_name}'.")
 
     pygame.init()
-    screen = pygame.display.set_mode(window_size)
+    min_width, min_height = 640, 480
+    initial_width = max(window_size[0], min_width)
+    initial_height = max(window_size[1], min_height)
+    screen = pygame.display.set_mode((initial_width, initial_height), pygame.RESIZABLE)
     pygame.display.set_caption(f"Gateway {project_name} Dashboard")
     clock = pygame.time.Clock()
 
@@ -336,34 +339,119 @@ def dashboard(
     text_color = (230, 230, 230)
     error_color = (220, 110, 110)
 
-    button_panel = pygame.Rect(20, 60, 360, window_size[1] - 80)
-    log_panel = pygame.Rect(
-        button_panel.right + 20,
-        60,
-        window_size[0] - button_panel.width - 60,
-        window_size[1] - 80,
-    )
-
-    button_height = 44
     button_spacing = 12
     scroll_offset = 0
     call_history: list[dict[str, Any]] = []
     log_lines: list[tuple[str, bool]] = []
 
-    def clamp_scroll(offset: int) -> int:
-        total_height = len(functions) * (button_height + button_spacing) - button_spacing
-        visible_height = button_panel.height - 40
+    instructions_text = "Click a function to execute (Esc to close)"
+
+    def compute_layout(current_size: tuple[int, int]) -> dict[str, Any]:
+        width, height = current_size
+        button_width = max(260, int(width * 0.32))
+        panel_height = max(220, height - 80)
+        button_rect = pygame.Rect(20, 60, button_width, panel_height)
+        log_width = max(240, width - button_rect.width - 60)
+        log_rect = pygame.Rect(button_rect.right + 20, 60, log_width, panel_height)
+        instructions_height = button_font.size(instructions_text)[1]
+        list_top = button_rect.y + 16 + instructions_height + 12
+        list_bottom = button_rect.bottom - 20
+        visible_height = max(0, list_bottom - list_top)
+        log_text_top = log_rect.y + 50
+        log_text_bottom = log_rect.bottom - 20
+        log_visible_height = max(0, log_text_bottom - log_text_top)
+        button_text_width = max(20, button_rect.width - 32)
+        return {
+            "button_panel": button_rect,
+            "log_panel": log_rect,
+            "button_list_top": list_top,
+            "button_list_bottom": list_bottom,
+            "button_visible_height": visible_height,
+            "log_text_top": log_text_top,
+            "log_visible_height": log_visible_height,
+            "button_text_width": button_text_width,
+        }
+
+    def wrap_text_characters(text: str, font: Any, max_width: int) -> list[str]:
+        if not text:
+            return [""]
+        lines: list[str] = []
+        current = ""
+        for char in text:
+            candidate = current + char
+            if font.size(candidate)[0] <= max_width:
+                current = candidate
+            else:
+                if current:
+                    lines.append(current)
+                current = char if char != " " else ""
+        if current:
+            lines.append(current)
+        if not lines:
+            lines.append("")
+        return lines
+
+    def wrap_text_words(text: str, font: Any, max_width: int) -> list[str]:
+        if not text:
+            return [""]
+        wrapped: list[str] = []
+        for paragraph in text.splitlines() or [""]:
+            words = paragraph.split()
+            if not words:
+                wrapped.append("")
+                continue
+            line = words[0]
+            for word in words[1:]:
+                candidate = f"{line} {word}"
+                if font.size(candidate)[0] <= max_width:
+                    line = candidate
+                else:
+                    wrapped.append(line)
+                    if font.size(word)[0] <= max_width:
+                        line = word
+                    else:
+                        pieces = wrap_text_characters(word, font, max_width)
+                        if pieces:
+                            wrapped.extend(pieces[:-1])
+                            line = pieces[-1]
+                        else:
+                            line = ""
+            wrapped.append(line)
+        return wrapped or [""]
+
+    def build_button_entries(layout: dict[str, Any]) -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
+        text_width = layout["button_text_width"]
+        button_min_height = button_font.get_linesize() + 16
+        for func_name, func in functions:
+            lines = wrap_text_characters(func_name, button_font, text_width)
+            line_height = button_font.get_linesize()
+            height = max(button_min_height, line_height * len(lines) + 12)
+            entries.append({
+                "name": func_name,
+                "func": func,
+                "lines": lines,
+                "height": height,
+            })
+        return entries
+
+    def clamp_scroll(offset: int, layout: dict[str, Any], entries: list[dict[str, Any]]) -> int:
+        visible_height = layout["button_visible_height"]
+        if visible_height <= 0:
+            return 0
+        if not entries:
+            return 0
+        total_height = sum(entry["height"] for entry in entries)
+        total_height += button_spacing * (len(entries) - 1) if len(entries) > 1 else 0
         if total_height <= visible_height:
             return 0
         max_offset = total_height - visible_height
         return max(0, min(offset, max_offset))
 
     def append_log(message: str, *, is_error: bool = False) -> None:
-        text = message
-        if len(text) > 160:
-            text = text[:157] + "..."
+        text = message if len(message) <= 800 else message[:797] + "..."
         log_lines.append((text, is_error))
-        if len(log_lines) > 10:
+        if len(log_lines) > 50:
             del log_lines[0]
 
     def invoke(func_name: str, func: Callable[[], Any]) -> None:
@@ -405,7 +493,16 @@ def dashboard(
 
     try:
         running = True
+        layout = compute_layout(screen.get_size())
+        button_entries = build_button_entries(layout)
+        scroll_step = button_font.get_linesize() + button_spacing
+        wheel_step = max(1, scroll_step // 2)
         while running:
+            # Update layout each frame to reflect current window size
+            layout = compute_layout(screen.get_size())
+            button_entries = build_button_entries(layout)
+            scroll_step = button_font.get_linesize() + button_spacing
+            wheel_step = max(1, scroll_step // 2)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -413,57 +510,104 @@ def dashboard(
                     if event.key == pygame.K_ESCAPE:
                         running = False
                     elif event.key == pygame.K_UP:
-                        scroll_offset = clamp_scroll(scroll_offset - (button_height + button_spacing))
+                        scroll_offset = clamp_scroll(scroll_offset - scroll_step, layout, button_entries)
                     elif event.key == pygame.K_DOWN:
-                        scroll_offset = clamp_scroll(scroll_offset + (button_height + button_spacing))
+                        scroll_offset = clamp_scroll(scroll_offset + scroll_step, layout, button_entries)
+                elif event.type == pygame.VIDEORESIZE:
+                    new_width = max(min_width, event.w)
+                    new_height = max(min_height, event.h)
+                    screen = pygame.display.set_mode((new_width, new_height), pygame.RESIZABLE)
+                    layout = compute_layout((new_width, new_height))
+                    button_entries = build_button_entries(layout)
+                    scroll_offset = clamp_scroll(scroll_offset, layout, button_entries)
                 elif event.type == pygame.MOUSEWHEEL:
-                    scroll_offset = clamp_scroll(scroll_offset - event.y * (button_height // 2))
+                    scroll_offset = clamp_scroll(scroll_offset - event.y * wheel_step, layout, button_entries)
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     mouse_pos = event.pos
-                    y_position = button_panel.y + 20 - scroll_offset
-                    for func_name, func in functions:
-                        rect = pygame.Rect(button_panel.x + 16, y_position, button_panel.width - 32, button_height)
+                    y_position = layout["button_list_top"] - scroll_offset
+                    for entry in button_entries:
+                        rect = pygame.Rect(
+                            layout["button_panel"].x + 16,
+                            y_position,
+                            layout["button_panel"].width - 32,
+                            entry["height"],
+                        )
                         if rect.collidepoint(mouse_pos):
-                            invoke(func_name, func)
+                            invoke(entry["name"], entry["func"])
                             break
-                        y_position += button_height + button_spacing
+                        y_position += entry["height"] + button_spacing
+
+            scroll_offset = clamp_scroll(scroll_offset, layout, button_entries)
 
             screen.fill(background)
+            button_panel = layout["button_panel"]
+            log_panel = layout["log_panel"]
             pygame.draw.rect(screen, panel_bg, button_panel, border_radius=8)
             pygame.draw.rect(screen, panel_bg, log_panel, border_radius=8)
 
             title_surface = title_font.render(f"{project_name.title()} Dashboard", True, text_color)
             screen.blit(title_surface, (20, 16))
 
-            instructions = button_font.render("Click a function to execute (Esc to close)", True, text_color)
-            screen.blit(instructions, (button_panel.x + 16, button_panel.y + 10))
+            instructions = button_font.render(instructions_text, True, text_color)
+            instructions_pos = (button_panel.x + 16, button_panel.y + 10)
+            screen.blit(instructions, instructions_pos)
 
             mouse_pos = pygame.mouse.get_pos()
-            y_position = button_panel.y + 20 - scroll_offset
-            for func_name, _func in functions:
-                rect = pygame.Rect(button_panel.x + 16, y_position, button_panel.width - 32, button_height)
-                if rect.bottom < button_panel.y + 40 or rect.top > button_panel.bottom - 20:
-                    y_position += button_height + button_spacing
+            y_position = layout["button_list_top"] - scroll_offset
+            clip_top = layout["button_list_top"]
+            clip_bottom = layout["button_list_bottom"]
+            for entry in button_entries:
+                rect = pygame.Rect(
+                    button_panel.x + 16,
+                    y_position,
+                    button_panel.width - 32,
+                    entry["height"],
+                )
+                if rect.bottom < clip_top or rect.top > clip_bottom:
+                    y_position += entry["height"] + button_spacing
                     continue
                 is_hovered = rect.collidepoint(mouse_pos)
                 color = button_hover if is_hovered else button_bg
                 pygame.draw.rect(screen, color, rect, border_radius=6)
-                label_surface = button_font.render(func_name, True, text_color)
-                label_rect = label_surface.get_rect(center=rect.center)
-                screen.blit(label_surface, label_rect)
-                y_position += button_height + button_spacing
+                line_height = button_font.get_linesize()
+                total_text_height = line_height * len(entry["lines"])
+                text_y = rect.y + (rect.height - total_text_height) // 2
+                for line in entry["lines"]:
+                    label_surface = button_font.render(line, True, text_color)
+                    screen.blit(label_surface, (rect.x + 12, text_y))
+                    text_y += line_height
+                y_position += entry["height"] + button_spacing
 
             pygame.draw.rect(screen, panel_bg, log_panel, border_radius=8)
             log_title = button_font.render("Activity", True, text_color)
             screen.blit(log_title, (log_panel.x + 16, log_panel.y + 10))
 
-            log_y = log_panel.y + 50
-            max_lines = max(1, log_panel.height // 22)
-            for message, is_error in log_lines[-max_lines:]:
-                color = error_color if is_error else text_color
-                log_surface = log_font.render(message, True, color)
-                screen.blit(log_surface, (log_panel.x + 16, log_y))
-                log_y += log_surface.get_height() + 6
+            log_inner_width = max(20, log_panel.width - 32)
+            log_y = layout["log_text_top"]
+            available_height = layout["log_visible_height"]
+            if available_height > 0:
+                rendered_lines: list[tuple[str, tuple[int, int, int]]] = []
+                consumed_height = 0
+                for message, is_error in reversed(log_lines):
+                    line_color = error_color if is_error else text_color
+                    wrapped_lines = wrap_text_words(message, log_font, log_inner_width)
+                    for line in reversed(wrapped_lines):
+                        line_height = log_font.get_linesize()
+                        if consumed_height + line_height > available_height and rendered_lines:
+                            break
+                        if consumed_height + line_height > available_height:
+                            continue
+                        rendered_lines.append((line, line_color))
+                        consumed_height += line_height
+                    if consumed_height >= available_height:
+                        break
+                rendered_lines.reverse()
+                for text, color in rendered_lines:
+                    log_surface = log_font.render(text, True, color)
+                    screen.blit(log_surface, (log_panel.x + 16, log_y))
+                    log_y += log_surface.get_height()
+                    if log_y > log_panel.bottom - 20:
+                        break
 
             pygame.display.flip()
             clock.tick(frame_rate)
