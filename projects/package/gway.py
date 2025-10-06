@@ -150,7 +150,7 @@ def install_builtin(
     latest: bool | str | None = None,
     quiet: bool | str | None = True,
 ) -> int:
-    """Run ``install.sh`` or upgrade packages via ``pip``."""
+    """Run ``install.sh``/``install.bat`` or upgrade packages via ``pip``."""
 
     from gway import gw
 
@@ -256,9 +256,16 @@ def install_builtin(
     if root and (remove or repair or bin or not recipe):
         raise ValueError("--root can only be used when installing a recipe service")
 
-    script = gw.resource("install.sh", check=True)
+    script_name = "install.sh"
+    runner: list[str] = ["bash"]
 
-    cmd = ["bash", os.fspath(script)]
+    if os.name == "nt":
+        script_name = "install.bat"
+        runner = ["cmd", "/c"]
+
+    script = gw.resource(script_name, check=True)
+
+    cmd = [*runner, os.fspath(script)]
     if repair:
         cmd.append("--repair")
     if bin:
