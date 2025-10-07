@@ -355,6 +355,11 @@ def open_viewer(
     small_font = pygame.font.SysFont(None, 18)
     clock = pygame.time.Clock()
 
+    card_positions: dict[str, pygame.Rect] = {}
+    draw_order: list[str] = []
+    dragging_card: str | None = None
+    drag_offset = (0, 0)
+
     mask_filter = _default_mask(mask) if mask is not None else None
     last_mtime = path.stat().st_mtime if path.exists() else None
     refresh_interval = max(0.1, float(refresh_interval))
@@ -393,6 +398,25 @@ def open_viewer(
                 running = False
             elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
                 running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mouse_pos = event.pos
+                for key in reversed(draw_order):
+                    rect = card_positions.get(key)
+                    if rect and rect.collidepoint(mouse_pos):
+                        dragging_card = key
+                        drag_offset = (mouse_pos[0] - rect.x, mouse_pos[1] - rect.y)
+                        draw_order.remove(key)
+                        draw_order.append(key)
+                        break
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                dragging_card = None
+            elif event.type == pygame.MOUSEMOTION and dragging_card:
+                rect = card_positions.get(dragging_card)
+                if rect is not None and event.buttons[0]:
+                    rect.x = event.pos[0] - drag_offset[0]
+                    rect.y = event.pos[1] - drag_offset[1]
+                elif not event.buttons[0]:
+                    dragging_card = None
 
         now = time.monotonic()
         if now >= next_refresh:
@@ -435,26 +459,56 @@ def open_viewer(
         padding = 24
         columns = max(1, (width - padding) // (card_width + padding))
 
-        displayed_cards = len(card_ids)
+        card_info: dict[str, dict[str, Any]] = {}
         for index, (holder, card_id) in enumerate(card_ids):
+            key = f"{holder}:{card_id}"
             row = index // columns
             col = index % columns
-            x = padding + col * (card_width + padding)
-            y = padding + row * (card_height + padding)
+            if key not in card_positions:
+                x = padding + col * (card_width + padding)
+                y = padding + row * (card_height + padding)
+                card_positions[key] = pygame.Rect(x, y, card_width, card_height)
+            else:
+                rect = card_positions[key]
+                rect.width = card_width
+                rect.height = card_height
 
-            rect = pygame.Rect(x, y, card_width, card_height)
+            card_info[key] = {
+                "holder": holder,
+                "card_id": card_id,
+                "payload": _card_payload(card_id, data),
+            }
+
+        valid_keys = set(card_info)
+        for key in list(card_positions):
+            if key not in valid_keys:
+                del card_positions[key]
+        draw_order = [key for key in draw_order if key in valid_keys]
+        for key in card_info:
+            if key not in draw_order:
+                draw_order.append(key)
+        if dragging_card and dragging_card not in card_positions:
+            dragging_card = None
+
+        displayed_cards = len(card_ids)
+        for key in draw_order:
+            info = card_info.get(key)
+            rect = card_positions.get(key)
+            if not info or rect is None:
+                continue
+
             pygame.draw.rect(surface, card_color, rect, border_radius=12)
             pygame.draw.rect(surface, card_border, rect, width=3, border_radius=12)
 
-            payload = _card_payload(card_id, data)
-            lines = _wrap_text(payload.get("label", card_id), card_width - 20)
+            payload = info["payload"]
+            lines = _wrap_text(payload.get("label", info["card_id"]), card_width - 20)
             if mask_filter is None:
-                lines.append(f"[{holder}]")
+                lines.append(f"[{info['holder']}]")
 
-            text_y = y + 12
+            text_y = rect.y + 12
             for line in lines[:6]:
                 rendered = font.render(line, True, text_color)
-                surface.blit(rendered, (x + 10, text_y))
+                surface.blit(rendered, (rect.x + 10, text_y))
                 text_y += rendered.get_height() + 4
 
             note = payload.get("note")
@@ -462,7 +516,7 @@ def open_viewer(
                 note_lines = _wrap_text(note, card_width - 20)
                 for line in note_lines[:4]:
                     rendered = small_font.render(line, True, text_color)
-                    surface.blit(rendered, (x + 10, text_y))
+                    surface.blit(rendered, (rect.x + 10, text_y))
                     text_y += rendered.get_height() + 2
 
         discard_rect = pygame.Rect(
