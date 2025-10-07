@@ -1,0 +1,21 @@
+name: Temp Env Smoke Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  temp-env-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install gway CLI
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+      - name: Smoke test PyPI installation
+        run: gway temp-env gway test --filter smoke
