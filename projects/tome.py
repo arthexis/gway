@@ -115,6 +115,7 @@ def _ensure_schema(data: dict[str, Any]) -> dict[str, Any]:
     zones.setdefault("deck", [])
     zones.setdefault("discard", [])
     zones.setdefault("hands", {})
+    zones.setdefault("table", [])
     state = data.setdefault("card_state", {})
     for card_id in cards:
         state.setdefault(card_id, {"zone": "deck"})
@@ -138,6 +139,7 @@ def _new_tome(name: str, slug: str) -> dict[str, Any]:
             "deck": random_cards,
             "discard": [],
             "hands": {},
+            "table": [],
         },
         "card_state": state,
     }
@@ -199,6 +201,7 @@ def shuffle(tome: str | None = None, *, all: bool = False, mask: str | None = No
     deck: list[str] = zones.setdefault("deck", [])
     hands: dict[str, list[str]] = zones.setdefault("hands", {})
     discard: list[str] = zones.setdefault("discard", [])
+    table: list[str] = zones.setdefault("table", [])
     state = data.setdefault("card_state", {})
 
     recalled: list[str] = []
@@ -212,6 +215,9 @@ def shuffle(tome: str | None = None, *, all: bool = False, mask: str | None = No
         if discard:
             recalled.extend(discard)
             zones["discard"] = []
+        if table:
+            recalled.extend(table)
+            zones["table"] = []
         for card_id in recalled:
             state[card_id] = {"zone": "deck"}
         deck.extend(recalled)
@@ -286,6 +292,92 @@ def _resolve_card_identifier(cards: Iterable[str], identifier: str | None) -> st
     return None
 
 
+def _normalize_card_queries(*candidates: Any) -> list[str]:
+    queries: list[str] = []
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        if isinstance(candidate, str):
+            parts = [part for part in candidate.replace(",", " ").split() if part]
+            queries.extend(parts)
+        else:
+            for item in candidate:
+                if item is None:
+                    continue
+                parts = str(item).replace(",", " ").split()
+                queries.extend(part for part in parts if part)
+    return queries
+
+
+def _resolve_card_queries(cards: list[str], queries: list[str]) -> tuple[list[str], list[str]]:
+    remaining = list(cards)
+    resolved: list[str] = []
+    missing: list[str] = []
+    for query in queries:
+        target = _resolve_card_identifier(remaining, query)
+        if target:
+            resolved.append(target)
+            remaining.remove(target)
+        else:
+            missing.append(query)
+    return resolved, missing
+
+
+def _move_hand_cards_to_table(
+    data: dict[str, Any],
+    holder: str,
+    card_ids: Iterable[str],
+) -> list[str]:
+    zones = data.setdefault("zones", {})
+    hands: dict[str, list[str]] = zones.setdefault("hands", {})
+    table: list[str] = zones.setdefault("table", [])
+    state = data.setdefault("card_state", {})
+
+    hand_cards = list(hands.get(holder, []))
+    moved: list[str] = []
+    for card_id in card_ids:
+        if card_id in hand_cards:
+            hand_cards.remove(card_id)
+            if card_id in table:
+                table.remove(card_id)
+            table.append(card_id)
+            state[card_id] = {"zone": "table", "holder": holder}
+            moved.append(card_id)
+
+    if hand_cards:
+        hands[holder] = hand_cards
+    elif holder in hands:
+        del hands[holder]
+
+    zones["table"] = table
+    zones["hands"] = hands
+    return moved
+
+
+def _move_table_cards_to_hand(
+    data: dict[str, Any],
+    holder: str,
+    card_ids: Iterable[str],
+) -> list[str]:
+    zones = data.setdefault("zones", {})
+    hands: dict[str, list[str]] = zones.setdefault("hands", {})
+    table: list[str] = zones.setdefault("table", [])
+    state = data.setdefault("card_state", {})
+
+    hand_cards = hands.setdefault(holder, [])
+    moved: list[str] = []
+    for card_id in card_ids:
+        if card_id in table:
+            table.remove(card_id)
+            hand_cards.append(card_id)
+            state[card_id] = {"zone": "hand", "holder": holder}
+            moved.append(card_id)
+
+    zones["table"] = table
+    zones["hands"] = hands
+    return moved
+
+
 def hand(tome: str | None = None, *, mask: str | None = None, card: str | None = None, note: str | None = None) -> dict[str, Any]:
     """Inspect the hand for the given mask, optionally updating a card note."""
     name, data, path = _load_tome_data(tome)
@@ -323,6 +415,87 @@ def hand(tome: str | None = None, *, mask: str | None = None, card: str | None =
     return result
 
 
+def bind(
+    tome: str | None = None,
+    *,
+    mask: str | None = None,
+    card: str | None = None,
+    cards: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    """Move one or more cards from a hand onto the shared table."""
+
+    name, data, path = _load_tome_data(tome)
+    zones = data.setdefault("zones", {})
+    hands: dict[str, list[str]] = zones.setdefault("hands", {})
+    table: list[str] = zones.setdefault("table", [])
+
+    holder = _default_mask(mask)
+    hand_cards = list(hands.get(holder, []))
+    queries = _normalize_card_queries(card, cards)
+    if not queries and hand_cards:
+        queries = [hand_cards[0]]
+
+    selected, missing = _resolve_card_queries(hand_cards, queries) if queries else ([], queries)
+    moved = _move_hand_cards_to_table(data, holder, selected)
+    if moved or missing:
+        _save_tome(path, data)
+
+    result = {
+        "tome": name,
+        "mask": holder,
+        "moved": [_card_payload(card_id, data) for card_id in moved],
+        "table_count": len(table),
+    }
+    if missing:
+        result["missing"] = missing
+    if moved:
+        result["message"] = f"Moved {len(moved)} card(s) to table"
+    else:
+        result["message"] = "No cards moved"
+    return result
+
+
+def pick(
+    tome: str | None = None,
+    *,
+    mask: str | None = None,
+    card: str | None = None,
+    cards: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    """Return cards from the shared table to a hand."""
+
+    name, data, path = _load_tome_data(tome)
+    zones = data.setdefault("zones", {})
+    table: list[str] = zones.setdefault("table", [])
+
+    holder = _default_mask(mask)
+    queries = _normalize_card_queries(card, cards)
+    if not queries and table:
+        queries = [table[-1]]
+
+    selected, missing = _resolve_card_queries(table, queries) if queries else ([], queries)
+    moved = _move_table_cards_to_hand(data, holder, selected)
+    if moved or missing:
+        _save_tome(path, data)
+
+    hands: dict[str, list[str]] = zones.setdefault("hands", {})
+    hand_cards = hands.get(holder, [])
+    result = {
+        "tome": name,
+        "mask": holder,
+        "moved": [_card_payload(card_id, data) for card_id in moved],
+        "hand_count": len(hand_cards),
+        "table_remaining": len(table),
+    }
+    if missing:
+        result["missing"] = missing
+    if moved:
+        result["message"] = f"Picked {len(moved)} card(s) from table"
+    else:
+        result["message"] = "No cards picked"
+    return result
+
+
 def open_viewer(
     tome: str | None = None,
     *,
@@ -355,10 +528,16 @@ def open_viewer(
     small_font = pygame.font.SysFont(None, 18)
     clock = pygame.time.Clock()
 
+    card_width, card_height = 160, 220
+    padding = 24
+    hand_gap = 18
+
     card_positions: dict[str, pygame.Rect] = {}
     draw_order: list[str] = []
     dragging_card: str | None = None
     drag_offset = (0, 0)
+    card_info: dict[str, dict[str, Any]] = {}
+    table_line_y = 0
 
     mask_filter = _default_mask(mask) if mask is not None else None
     last_mtime = path.stat().st_mtime if path.exists() else None
@@ -371,6 +550,7 @@ def open_viewer(
     face_down_color = (80, 55, 33)
     text_color = (10, 10, 10)
     face_down_text = (230, 230, 230)
+    guide_color = (220, 220, 220)
 
     def _wrap_text(text: str, max_width: int) -> list[str]:
         words = text.split()
@@ -409,7 +589,56 @@ def open_viewer(
                         draw_order.append(key)
                         break
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                dragging_card = None
+                if dragging_card:
+                    rect = card_positions.get(dragging_card)
+                    info = card_info.get(dragging_card)
+                    if rect and info:
+                        if rect.bottom < table_line_y and info.get("zone") != "table":
+                            moved = _move_hand_cards_to_table(data, info["holder"], [info["card_id"]])
+                            if moved:
+                                new_key = f"table::{info['card_id']}"
+                                card_positions[new_key] = pygame.Rect(
+                                    rect.x,
+                                    rect.y,
+                                    card_width,
+                                    card_height,
+                                )
+                                card_positions.pop(dragging_card, None)
+                                if dragging_card in draw_order:
+                                    draw_order.remove(dragging_card)
+                                if new_key not in draw_order:
+                                    draw_order.append(new_key)
+                                _save_tome(path, data)
+                                try:
+                                    last_mtime = path.stat().st_mtime
+                                except OSError:
+                                    last_mtime = None
+                        elif rect.bottom >= table_line_y and info.get("zone") != "hand":
+                            target_holder = info.get("holder")
+                            if not target_holder and mask_filter:
+                                target_holder = mask_filter
+                            if not target_holder:
+                                target_holder = _default_mask(None)
+                            moved = _move_table_cards_to_hand(data, target_holder, [info["card_id"]])
+                            if moved:
+                                new_key = f"hand:{target_holder}:{info['card_id']}"
+                                card_positions[new_key] = pygame.Rect(
+                                    rect.x,
+                                    rect.y,
+                                    card_width,
+                                    card_height,
+                                )
+                                card_positions.pop(dragging_card, None)
+                                if dragging_card in draw_order:
+                                    draw_order.remove(dragging_card)
+                                if new_key not in draw_order:
+                                    draw_order.append(new_key)
+                                _save_tome(path, data)
+                                try:
+                                    last_mtime = path.stat().st_mtime
+                                except OSError:
+                                    last_mtime = None
+                    dragging_card = None
             elif event.type == pygame.MOUSEMOTION and dragging_card:
                 rect = card_positions.get(dragging_card)
                 if rect is not None and event.buttons[0]:
@@ -443,54 +672,120 @@ def open_viewer(
         width, height = surface.get_size()
         surface.fill(table_color)
 
-        zones = data.get("zones", {})
-        hands: dict[str, list[str]] = zones.get("hands", {})
-        if mask_filter:
-            relevant = {mask_filter: hands.get(mask_filter, [])}
-        else:
-            relevant = hands
-        card_ids = [
-            (holder, card_id)
-            for holder, cards in relevant.items()
-            for card_id in cards
-        ]
-
-        card_width, card_height = 160, 220
-        padding = 24
         columns = max(1, (width - padding) // (card_width + padding))
 
-        card_info: dict[str, dict[str, Any]] = {}
-        for index, (holder, card_id) in enumerate(card_ids):
-            key = f"{holder}:{card_id}"
-            row = index // columns
-            col = index % columns
-            if key not in card_positions:
+        discard_rect = pygame.Rect(
+            width - card_width - padding,
+            height - card_height - padding,
+            card_width,
+            card_height,
+        )
+        table_line_y = max(0, discard_rect.y - 16)
+        table_area_bottom = table_line_y - hand_gap
+        max_table_y = max(padding, table_area_bottom - card_height)
+
+        zones = data.get("zones", {})
+        table_cards: list[str] = zones.get("table", [])
+        hands: dict[str, list[str]] = zones.get("hands", {})
+
+        updated_info: dict[str, dict[str, Any]] = {}
+
+        for index, card_id in enumerate(table_cards):
+            key = f"table::{card_id}"
+            rect = card_positions.get(key)
+            if rect is None:
+                col = index % columns
+                row = index // columns
                 x = padding + col * (card_width + padding)
                 y = padding + row * (card_height + padding)
-                card_positions[key] = pygame.Rect(x, y, card_width, card_height)
+                if y + card_height > table_area_bottom:
+                    y = max_table_y
+                rect = pygame.Rect(x, y, card_width, card_height)
+                card_positions[key] = rect
             else:
-                rect = card_positions[key]
                 rect.width = card_width
                 rect.height = card_height
 
-            card_info[key] = {
-                "holder": holder,
+            payload = _card_payload(card_id, data)
+            updated_info[key] = {
+                "zone": "table",
+                "holder": payload.get("holder"),
                 "card_id": card_id,
-                "payload": _card_payload(card_id, data),
+                "payload": payload,
             }
 
-        valid_keys = set(card_info)
+        if mask_filter:
+            holder_sequence = [mask_filter]
+        else:
+            holder_sequence = [holder for holder, cards in sorted(hands.items()) if cards]
+
+        if mask_filter and mask_filter not in holder_sequence:
+            holder_sequence.append(mask_filter)
+
+        row_index = 0
+        for holder in holder_sequence:
+            cards_in_hand = list(hands.get(holder, []))
+            if not cards_in_hand and mask_filter is None:
+                continue
+            row_y = table_line_y + hand_gap + row_index * (card_height + hand_gap)
+            anchor_right = discard_rect.x - hand_gap
+            for offset, card_id in enumerate(reversed(cards_in_hand)):
+                key = f"hand:{holder}:{card_id}"
+                rect = card_positions.get(key)
+                x = anchor_right - card_width - offset * (card_width + hand_gap)
+                if rect is None:
+                    rect = pygame.Rect(x, row_y, card_width, card_height)
+                    card_positions[key] = rect
+                elif dragging_card != key:
+                    rect.x = x
+                    rect.y = row_y
+                    rect.width = card_width
+                    rect.height = card_height
+                else:
+                    rect.width = card_width
+                    rect.height = card_height
+
+                payload = _card_payload(card_id, data)
+                updated_info[key] = {
+                    "zone": "hand",
+                    "holder": holder,
+                    "card_id": card_id,
+                    "payload": payload,
+                }
+            row_index += 1
+
+        valid_keys = set(updated_info)
         for key in list(card_positions):
             if key not in valid_keys:
                 del card_positions[key]
         draw_order = [key for key in draw_order if key in valid_keys]
-        for key in card_info:
+        for key in updated_info:
             if key not in draw_order:
                 draw_order.append(key)
+        card_info = updated_info
         if dragging_card and dragging_card not in card_positions:
             dragging_card = None
 
-        displayed_cards = len(card_ids)
+        displayed_cards = len(table_cards)
+        if mask_filter:
+            displayed_cards += len(hands.get(mask_filter, []))
+        else:
+            displayed_cards += sum(len(cards) for cards in hands.values())
+
+        if table_line_y > 0:
+            dash_length = 12
+            dash_gap = 8
+            step = dash_length + dash_gap
+            for start_x in range(0, width, step):
+                end_x = min(start_x + dash_length, width)
+                pygame.draw.line(
+                    surface,
+                    guide_color,
+                    (start_x, table_line_y),
+                    (end_x, table_line_y),
+                    2,
+                )
+
         for key in draw_order:
             info = card_info.get(key)
             rect = card_positions.get(key)
@@ -502,8 +797,9 @@ def open_viewer(
 
             payload = info["payload"]
             lines = _wrap_text(payload.get("label", info["card_id"]), card_width - 20)
-            if mask_filter is None:
-                lines.append(f"[{info['holder']}]")
+            holder_name = info.get("holder")
+            if holder_name and (mask_filter is None or info.get("zone") == "table"):
+                lines.append(f"[{holder_name}]")
 
             text_y = rect.y + 12
             for line in lines[:6]:
@@ -518,13 +814,6 @@ def open_viewer(
                     rendered = small_font.render(line, True, text_color)
                     surface.blit(rendered, (rect.x + 10, text_y))
                     text_y += rendered.get_height() + 2
-
-        discard_rect = pygame.Rect(
-            width - card_width - padding,
-            height - card_height - padding,
-            card_width,
-            card_height,
-        )
         pygame.draw.rect(surface, face_down_color, discard_rect, border_radius=12)
         pygame.draw.rect(surface, card_border, discard_rect, width=3, border_radius=12)
 
@@ -546,5 +835,6 @@ def open_viewer(
         "tome": name,
         "displayed_cards": displayed_cards,
         "discard_count": discard_count,
+        "table_cards": len(data.get("zones", {}).get("table", [])),
         "message": "Viewer closed",
     }
