@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -320,3 +321,176 @@ def hand(tome: str | None = None, *, mask: str | None = None, card: str | None =
     elif note is not None and card and not target_id:
         result["warning"] = f"Card '{card}' not found in hand"
     return result
+
+
+def open_viewer(
+    tome: str | None = None,
+    *,
+    mask: str | None = None,
+    refresh_interval: float = 0.5,
+) -> dict[str, Any]:
+    """Open a resizable pygame window visualizing the tome state.
+
+    The viewer shows the discard pile ("used tome") as a face-down stack with a
+    card count in the lower-right corner while rendering the drawn cards face up
+    on the table. When ``mask`` is provided, only that mask's hand is displayed;
+    otherwise all hands are shown. The display automatically reloads the tome
+    file when it changes on disk so it can be left open while other commands
+    manipulate the tome.
+    """
+
+    name, data, path = _load_tome_data(tome)
+
+    import pygame
+
+    pygame.init()
+    try:
+        pygame.display.set_mode((960, 720), pygame.RESIZABLE)
+    except pygame.error as exc:  # pragma: no cover - depends on environment
+        pygame.quit()
+        return {"tome": name, "error": f"Unable to open display: {exc}"}
+
+    pygame.display.set_caption(f"{name} Tome Viewer")
+    font = pygame.font.SysFont(None, 24)
+    small_font = pygame.font.SysFont(None, 18)
+    clock = pygame.time.Clock()
+
+    mask_filter = _default_mask(mask) if mask is not None else None
+    last_mtime = path.stat().st_mtime if path.exists() else None
+    refresh_interval = max(0.1, float(refresh_interval))
+    next_refresh = time.monotonic()
+
+    table_color = (16, 99, 45)
+    card_color = (245, 245, 245)
+    card_border = (30, 30, 30)
+    face_down_color = (80, 55, 33)
+    text_color = (10, 10, 10)
+    face_down_text = (230, 230, 230)
+
+    def _wrap_text(text: str, max_width: int) -> list[str]:
+        words = text.split()
+        if not words:
+            return [""]
+        lines: list[str] = []
+        current = words[0]
+        for word in words[1:]:
+            test = f"{current} {word}"
+            if font.size(test)[0] <= max_width:
+                current = test
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
+        return lines
+
+    running = True
+    displayed_cards = 0
+    discard_count = len(data.get("zones", {}).get("discard", []))
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
+                running = False
+
+        now = time.monotonic()
+        if now >= next_refresh:
+            next_refresh = now + refresh_interval
+            if path.exists():
+                try:
+                    mtime = path.stat().st_mtime
+                except OSError:
+                    mtime = None
+                if mtime and (last_mtime is None or mtime > last_mtime):
+                    try:
+                        loaded = json.loads(path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                    else:
+                        data = _ensure_schema(loaded)
+                        name = data.get("name", name)
+                        last_mtime = mtime
+                        discard_count = len(data.get("zones", {}).get("discard", []))
+
+        surface = pygame.display.get_surface()
+        if surface is None:
+            break
+        width, height = surface.get_size()
+        surface.fill(table_color)
+
+        zones = data.get("zones", {})
+        hands: dict[str, list[str]] = zones.get("hands", {})
+        if mask_filter:
+            relevant = {mask_filter: hands.get(mask_filter, [])}
+        else:
+            relevant = hands
+        card_ids = [
+            (holder, card_id)
+            for holder, cards in relevant.items()
+            for card_id in cards
+        ]
+
+        card_width, card_height = 160, 220
+        padding = 24
+        columns = max(1, (width - padding) // (card_width + padding))
+
+        displayed_cards = len(card_ids)
+        for index, (holder, card_id) in enumerate(card_ids):
+            row = index // columns
+            col = index % columns
+            x = padding + col * (card_width + padding)
+            y = padding + row * (card_height + padding)
+
+            rect = pygame.Rect(x, y, card_width, card_height)
+            pygame.draw.rect(surface, card_color, rect, border_radius=12)
+            pygame.draw.rect(surface, card_border, rect, width=3, border_radius=12)
+
+            payload = _card_payload(card_id, data)
+            lines = _wrap_text(payload.get("label", card_id), card_width - 20)
+            if mask_filter is None:
+                lines.append(f"[{holder}]")
+
+            text_y = y + 12
+            for line in lines[:6]:
+                rendered = font.render(line, True, text_color)
+                surface.blit(rendered, (x + 10, text_y))
+                text_y += rendered.get_height() + 4
+
+            note = payload.get("note")
+            if note:
+                note_lines = _wrap_text(note, card_width - 20)
+                for line in note_lines[:4]:
+                    rendered = small_font.render(line, True, text_color)
+                    surface.blit(rendered, (x + 10, text_y))
+                    text_y += rendered.get_height() + 2
+
+        discard_rect = pygame.Rect(
+            width - card_width - padding,
+            height - card_height - padding,
+            card_width,
+            card_height,
+        )
+        pygame.draw.rect(surface, face_down_color, discard_rect, border_radius=12)
+        pygame.draw.rect(surface, card_border, discard_rect, width=3, border_radius=12)
+
+        title_text = font.render("Used Tome", True, face_down_text)
+        count_text = font.render(str(discard_count), True, face_down_text)
+        surface.blit(title_text, (discard_rect.x + 12, discard_rect.y + 16))
+        surface.blit(count_text, (discard_rect.x + 12, discard_rect.y + 16 + title_text.get_height() + 8))
+
+        deck_count = len(zones.get("deck", []))
+        deck_text = small_font.render(f"Deck: {deck_count}", True, face_down_text)
+        surface.blit(deck_text, (discard_rect.x + 12, discard_rect.bottom - deck_text.get_height() - 16))
+
+        pygame.display.flip()
+        clock.tick(30)
+
+    pygame.quit()
+
+    return {
+        "tome": name,
+        "displayed_cards": displayed_cards,
+        "discard_count": discard_count,
+        "message": "Viewer closed",
+    }
