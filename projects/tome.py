@@ -539,6 +539,10 @@ def open_viewer(
     drag_offset = (0, 0)
     card_info: dict[str, dict[str, Any]] = {}
     table_line_y = 0
+    last_click_time = 0
+    last_click_pos: tuple[int, int] | None = None
+    last_click_button: int | None = None
+    double_click_threshold_ms = 350
 
     mask_filter = _default_mask(mask) if mask is not None else None
     last_mtime = path.stat().st_mtime if path.exists() else None
@@ -645,11 +649,29 @@ def open_viewer(
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = event.pos
-                if getattr(event, "clicks", 1) >= 2 and discard_rect.collidepoint(mouse_pos):
-                    target_holder = mask_filter or _default_mask(None)
-                    if target_holder:
-                        _draw_random_card(target_holder)
-                    continue
+                current_time = pygame.time.get_ticks()
+                clicked_discard = discard_rect.collidepoint(mouse_pos)
+                is_double_click = False
+                if clicked_discard:
+                    if (
+                        last_click_button == event.button
+                        and last_click_pos is not None
+                        and discard_rect.collidepoint(last_click_pos)
+                        and current_time - last_click_time <= double_click_threshold_ms
+                    ):
+                        is_double_click = True
+                    last_click_time = current_time
+                    last_click_pos = mouse_pos
+                    last_click_button = event.button
+                    if getattr(event, "clicks", 0) >= 2 or is_double_click:
+                        target_holder = mask_filter or _default_mask(None)
+                        if target_holder:
+                            _draw_random_card(target_holder)
+                        continue
+                else:
+                    last_click_time = current_time
+                    last_click_pos = mouse_pos
+                    last_click_button = event.button
                 for key in reversed(draw_order):
                     rect = card_positions.get(key)
                     if rect and rect.collidepoint(mouse_pos):
