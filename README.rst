@@ -3,7 +3,7 @@ GWAY
 
 |coverage_badge|
 
-.. |coverage_badge| image:: https://img.shields.io/badge/Coverage-0%25-lightgrey
+.. |coverage_badge| image:: https://img.shields.io/badge/Coverage-40.6%25-red
    :alt: Test coverage status
 
 Gateway (``gw``) is a lightweight dispatcher that turns every Python function
