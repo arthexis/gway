@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import os
 import random
-import time
 from dataclasses import dataclass
 from pathlib import Path
+from queue import Empty, Queue
+from threading import Event, Thread
 from typing import Any, Iterable
 
 from gway import gw
@@ -541,8 +542,37 @@ def open_viewer(
 
     mask_filter = _default_mask(mask) if mask is not None else None
     last_mtime = path.stat().st_mtime if path.exists() else None
-    refresh_interval = max(0.1, float(refresh_interval))
-    next_refresh = time.monotonic()
+    watch_interval = max(0.1, float(refresh_interval))
+
+    updates: Queue[tuple[dict[str, Any], float]] = Queue()
+    stop_event = Event()
+
+    def _enqueue_update(updated_data: dict[str, Any], mtime: float | None) -> None:
+        if mtime is None:
+            return
+        updates.put((updated_data, mtime))
+
+    def _watch_file() -> None:
+        local_last = last_mtime
+        while not stop_event.is_set():
+            if path.exists():
+                try:
+                    mtime = path.stat().st_mtime
+                except OSError:
+                    mtime = None
+                if mtime and (local_last is None or mtime > local_last):
+                    try:
+                        loaded = json.loads(path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                    else:
+                        ensured = _ensure_schema(loaded)
+                        _enqueue_update(ensured, mtime)
+                        local_last = mtime
+            stop_event.wait(watch_interval)
+
+    watcher = Thread(target=_watch_file, daemon=True)
+    watcher.start()
 
     table_color = (16, 99, 45)
     card_color = (245, 245, 245)
@@ -568,11 +598,46 @@ def open_viewer(
         lines.append(current)
         return lines
 
+    discard_rect = pygame.Rect(0, 0, 0, 0)
+
+    def _draw_random_card(target_holder: str) -> bool:
+        nonlocal data, last_mtime
+        zones = data.setdefault("zones", {})
+        deck: list[str] = zones.setdefault("deck", [])
+        if not deck:
+            return False
+        index = random.randrange(len(deck))
+        card_id = deck.pop(index)
+        zones["deck"] = deck
+        hands: dict[str, list[str]] = zones.setdefault("hands", {})
+        hand = hands.setdefault(target_holder, [])
+        hand.append(card_id)
+        zones["hands"][target_holder] = hand
+        state = data.setdefault("card_state", {})
+        state[card_id] = {"zone": "hand", "holder": target_holder}
+        _save_tome(path, data)
+        try:
+            last_mtime = path.stat().st_mtime
+        except OSError:
+            last_mtime = None
+        return True
+
     running = True
     displayed_cards = 0
     discard_count = len(data.get("zones", {}).get("discard", []))
 
-    while running:
+    try:
+        while running:
+            try:
+                while True:
+                    updated_data, mtime = updates.get_nowait()
+                    data = updated_data
+                    name = data.get("name", name)
+                    discard_count = len(data.get("zones", {}).get("discard", []))
+                    last_mtime = mtime
+            except Empty:
+                pass
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -580,6 +645,11 @@ def open_viewer(
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = event.pos
+                if getattr(event, "clicks", 1) >= 2 and discard_rect.collidepoint(mouse_pos):
+                    target_holder = mask_filter or _default_mask(None)
+                    if target_holder:
+                        _draw_random_card(target_holder)
+                    continue
                 for key in reversed(draw_order):
                     rect = card_positions.get(key)
                     if rect and rect.collidepoint(mouse_pos):
@@ -646,25 +716,6 @@ def open_viewer(
                     rect.y = event.pos[1] - drag_offset[1]
                 elif not event.buttons[0]:
                     dragging_card = None
-
-        now = time.monotonic()
-        if now >= next_refresh:
-            next_refresh = now + refresh_interval
-            if path.exists():
-                try:
-                    mtime = path.stat().st_mtime
-                except OSError:
-                    mtime = None
-                if mtime and (last_mtime is None or mtime > last_mtime):
-                    try:
-                        loaded = json.loads(path.read_text(encoding="utf-8"))
-                    except (OSError, json.JSONDecodeError):
-                        pass
-                    else:
-                        data = _ensure_schema(loaded)
-                        name = data.get("name", name)
-                        last_mtime = mtime
-                        discard_count = len(data.get("zones", {}).get("discard", []))
 
         surface = pygame.display.get_surface()
         if surface is None:
@@ -829,7 +880,11 @@ def open_viewer(
         pygame.display.flip()
         clock.tick(30)
 
-    pygame.quit()
+    finally:
+        stop_event.set()
+        if watcher.is_alive():
+            watcher.join(timeout=1.0)
+        pygame.quit()
 
     return {
         "tome": name,
@@ -838,3 +893,14 @@ def open_viewer(
         "table_cards": len(data.get("zones", {}).get("table", [])),
         "message": "Viewer closed",
     }
+
+
+def view(
+    tome: str | None = None,
+    *,
+    mask: str | None = None,
+    refresh_interval: float = 0.5,
+) -> dict[str, Any]:
+    """Alias for :func:`open_viewer` to quickly launch the tome viewer."""
+
+    return open_viewer(tome=tome, mask=mask, refresh_interval=refresh_interval)
