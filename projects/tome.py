@@ -642,265 +642,265 @@ def open_viewer(
             except Empty:
                 pass
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
-                running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mouse_pos = event.pos
-                current_time = pygame.time.get_ticks()
-                clicked_discard = discard_rect.collidepoint(mouse_pos)
-                is_double_click = False
-                if clicked_discard:
-                    if (
-                        last_click_button == event.button
-                        and last_click_pos is not None
-                        and discard_rect.collidepoint(last_click_pos)
-                        and current_time - last_click_time <= double_click_threshold_ms
-                    ):
-                        is_double_click = True
-                    last_click_time = current_time
-                    last_click_pos = mouse_pos
-                    last_click_button = event.button
-                    if getattr(event, "clicks", 0) >= 2 or is_double_click:
-                        target_holder = mask_filter or _default_mask(None)
-                        if target_holder:
-                            _draw_random_card(target_holder)
-                        continue
-                else:
-                    last_click_time = current_time
-                    last_click_pos = mouse_pos
-                    last_click_button = event.button
-                for key in reversed(draw_order):
-                    rect = card_positions.get(key)
-                    if rect and rect.collidepoint(mouse_pos):
-                        dragging_card = key
-                        drag_offset = (mouse_pos[0] - rect.x, mouse_pos[1] - rect.y)
-                        draw_order.remove(key)
-                        draw_order.append(key)
-                        break
-            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                if dragging_card:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
+                    running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mouse_pos = event.pos
+                    current_time = pygame.time.get_ticks()
+                    clicked_discard = discard_rect.collidepoint(mouse_pos)
+                    is_double_click = False
+                    if clicked_discard:
+                        if (
+                            last_click_button == event.button
+                            and last_click_pos is not None
+                            and discard_rect.collidepoint(last_click_pos)
+                            and current_time - last_click_time <= double_click_threshold_ms
+                        ):
+                            is_double_click = True
+                        last_click_time = current_time
+                        last_click_pos = mouse_pos
+                        last_click_button = event.button
+                        if getattr(event, "clicks", 0) >= 2 or is_double_click:
+                            target_holder = mask_filter or _default_mask(None)
+                            if target_holder:
+                                _draw_random_card(target_holder)
+                            continue
+                    else:
+                        last_click_time = current_time
+                        last_click_pos = mouse_pos
+                        last_click_button = event.button
+                    for key in reversed(draw_order):
+                        rect = card_positions.get(key)
+                        if rect and rect.collidepoint(mouse_pos):
+                            dragging_card = key
+                            drag_offset = (mouse_pos[0] - rect.x, mouse_pos[1] - rect.y)
+                            draw_order.remove(key)
+                            draw_order.append(key)
+                            break
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    if dragging_card:
+                        rect = card_positions.get(dragging_card)
+                        info = card_info.get(dragging_card)
+                        if rect and info:
+                            if rect.bottom < table_line_y and info.get("zone") != "table":
+                                moved = _move_hand_cards_to_table(data, info["holder"], [info["card_id"]])
+                                if moved:
+                                    new_key = f"table::{info['card_id']}"
+                                    card_positions[new_key] = pygame.Rect(
+                                        rect.x,
+                                        rect.y,
+                                        card_width,
+                                        card_height,
+                                    )
+                                    card_positions.pop(dragging_card, None)
+                                    if dragging_card in draw_order:
+                                        draw_order.remove(dragging_card)
+                                    if new_key not in draw_order:
+                                        draw_order.append(new_key)
+                                    _save_tome(path, data)
+                                    try:
+                                        last_mtime = path.stat().st_mtime
+                                    except OSError:
+                                        last_mtime = None
+                            elif rect.bottom >= table_line_y and info.get("zone") != "hand":
+                                target_holder = info.get("holder")
+                                if not target_holder and mask_filter:
+                                    target_holder = mask_filter
+                                if not target_holder:
+                                    target_holder = _default_mask(None)
+                                moved = _move_table_cards_to_hand(data, target_holder, [info["card_id"]])
+                                if moved:
+                                    new_key = f"hand:{target_holder}:{info['card_id']}"
+                                    card_positions[new_key] = pygame.Rect(
+                                        rect.x,
+                                        rect.y,
+                                        card_width,
+                                        card_height,
+                                    )
+                                    card_positions.pop(dragging_card, None)
+                                    if dragging_card in draw_order:
+                                        draw_order.remove(dragging_card)
+                                    if new_key not in draw_order:
+                                        draw_order.append(new_key)
+                                    _save_tome(path, data)
+                                    try:
+                                        last_mtime = path.stat().st_mtime
+                                    except OSError:
+                                        last_mtime = None
+                        dragging_card = None
+                elif event.type == pygame.MOUSEMOTION and dragging_card:
                     rect = card_positions.get(dragging_card)
-                    info = card_info.get(dragging_card)
-                    if rect and info:
-                        if rect.bottom < table_line_y and info.get("zone") != "table":
-                            moved = _move_hand_cards_to_table(data, info["holder"], [info["card_id"]])
-                            if moved:
-                                new_key = f"table::{info['card_id']}"
-                                card_positions[new_key] = pygame.Rect(
-                                    rect.x,
-                                    rect.y,
-                                    card_width,
-                                    card_height,
-                                )
-                                card_positions.pop(dragging_card, None)
-                                if dragging_card in draw_order:
-                                    draw_order.remove(dragging_card)
-                                if new_key not in draw_order:
-                                    draw_order.append(new_key)
-                                _save_tome(path, data)
-                                try:
-                                    last_mtime = path.stat().st_mtime
-                                except OSError:
-                                    last_mtime = None
-                        elif rect.bottom >= table_line_y and info.get("zone") != "hand":
-                            target_holder = info.get("holder")
-                            if not target_holder and mask_filter:
-                                target_holder = mask_filter
-                            if not target_holder:
-                                target_holder = _default_mask(None)
-                            moved = _move_table_cards_to_hand(data, target_holder, [info["card_id"]])
-                            if moved:
-                                new_key = f"hand:{target_holder}:{info['card_id']}"
-                                card_positions[new_key] = pygame.Rect(
-                                    rect.x,
-                                    rect.y,
-                                    card_width,
-                                    card_height,
-                                )
-                                card_positions.pop(dragging_card, None)
-                                if dragging_card in draw_order:
-                                    draw_order.remove(dragging_card)
-                                if new_key not in draw_order:
-                                    draw_order.append(new_key)
-                                _save_tome(path, data)
-                                try:
-                                    last_mtime = path.stat().st_mtime
-                                except OSError:
-                                    last_mtime = None
-                    dragging_card = None
-            elif event.type == pygame.MOUSEMOTION and dragging_card:
-                rect = card_positions.get(dragging_card)
-                if rect is not None and event.buttons[0]:
-                    rect.x = event.pos[0] - drag_offset[0]
-                    rect.y = event.pos[1] - drag_offset[1]
-                elif not event.buttons[0]:
-                    dragging_card = None
+                    if rect is not None and event.buttons[0]:
+                        rect.x = event.pos[0] - drag_offset[0]
+                        rect.y = event.pos[1] - drag_offset[1]
+                    elif not event.buttons[0]:
+                        dragging_card = None
 
-        surface = pygame.display.get_surface()
-        if surface is None:
-            break
-        width, height = surface.get_size()
-        surface.fill(table_color)
+            surface = pygame.display.get_surface()
+            if surface is None:
+                break
+            width, height = surface.get_size()
+            surface.fill(table_color)
 
-        columns = max(1, (width - padding) // (card_width + padding))
+            columns = max(1, (width - padding) // (card_width + padding))
 
-        discard_rect = pygame.Rect(
-            width - card_width - padding,
-            height - card_height - padding,
-            card_width,
-            card_height,
-        )
-        table_line_y = max(0, discard_rect.y - 16)
-        table_area_bottom = table_line_y - hand_gap
-        max_table_y = max(padding, table_area_bottom - card_height)
+            discard_rect = pygame.Rect(
+                width - card_width - padding,
+                height - card_height - padding,
+                card_width,
+                card_height,
+            )
+            table_line_y = max(0, discard_rect.y - 16)
+            table_area_bottom = table_line_y - hand_gap
+            max_table_y = max(padding, table_area_bottom - card_height)
 
-        zones = data.get("zones", {})
-        table_cards: list[str] = zones.get("table", [])
-        hands: dict[str, list[str]] = zones.get("hands", {})
+            zones = data.get("zones", {})
+            table_cards: list[str] = zones.get("table", [])
+            hands: dict[str, list[str]] = zones.get("hands", {})
 
-        updated_info: dict[str, dict[str, Any]] = {}
+            updated_info: dict[str, dict[str, Any]] = {}
 
-        for index, card_id in enumerate(table_cards):
-            key = f"table::{card_id}"
-            rect = card_positions.get(key)
-            if rect is None:
-                col = index % columns
-                row = index // columns
-                x = padding + col * (card_width + padding)
-                y = padding + row * (card_height + padding)
-                if y + card_height > table_area_bottom:
-                    y = max_table_y
-                rect = pygame.Rect(x, y, card_width, card_height)
-                card_positions[key] = rect
-            else:
-                rect.width = card_width
-                rect.height = card_height
-
-            payload = _card_payload(card_id, data)
-            updated_info[key] = {
-                "zone": "table",
-                "holder": payload.get("holder"),
-                "card_id": card_id,
-                "payload": payload,
-            }
-
-        if mask_filter:
-            holder_sequence = [mask_filter]
-        else:
-            holder_sequence = [holder for holder, cards in sorted(hands.items()) if cards]
-
-        if mask_filter and mask_filter not in holder_sequence:
-            holder_sequence.append(mask_filter)
-
-        row_index = 0
-        for holder in holder_sequence:
-            cards_in_hand = list(hands.get(holder, []))
-            if not cards_in_hand and mask_filter is None:
-                continue
-            row_y = table_line_y + hand_gap + row_index * (card_height + hand_gap)
-            anchor_right = discard_rect.x - hand_gap
-            for offset, card_id in enumerate(reversed(cards_in_hand)):
-                key = f"hand:{holder}:{card_id}"
+            for index, card_id in enumerate(table_cards):
+                key = f"table::{card_id}"
                 rect = card_positions.get(key)
-                x = anchor_right - card_width - offset * (card_width + hand_gap)
                 if rect is None:
-                    rect = pygame.Rect(x, row_y, card_width, card_height)
+                    col = index % columns
+                    row = index // columns
+                    x = padding + col * (card_width + padding)
+                    y = padding + row * (card_height + padding)
+                    if y + card_height > table_area_bottom:
+                        y = max_table_y
+                    rect = pygame.Rect(x, y, card_width, card_height)
                     card_positions[key] = rect
-                elif dragging_card != key:
-                    rect.x = x
-                    rect.y = row_y
-                    rect.width = card_width
-                    rect.height = card_height
                 else:
                     rect.width = card_width
                     rect.height = card_height
 
                 payload = _card_payload(card_id, data)
                 updated_info[key] = {
-                    "zone": "hand",
-                    "holder": holder,
+                    "zone": "table",
+                    "holder": payload.get("holder"),
                     "card_id": card_id,
                     "payload": payload,
                 }
-            row_index += 1
 
-        valid_keys = set(updated_info)
-        for key in list(card_positions):
-            if key not in valid_keys:
-                del card_positions[key]
-        draw_order = [key for key in draw_order if key in valid_keys]
-        for key in updated_info:
-            if key not in draw_order:
-                draw_order.append(key)
-        card_info = updated_info
-        if dragging_card and dragging_card not in card_positions:
-            dragging_card = None
+            if mask_filter:
+                holder_sequence = [mask_filter]
+            else:
+                holder_sequence = [holder for holder, cards in sorted(hands.items()) if cards]
 
-        displayed_cards = len(table_cards)
-        if mask_filter:
-            displayed_cards += len(hands.get(mask_filter, []))
-        else:
-            displayed_cards += sum(len(cards) for cards in hands.values())
+            if mask_filter and mask_filter not in holder_sequence:
+                holder_sequence.append(mask_filter)
 
-        if table_line_y > 0:
-            dash_length = 12
-            dash_gap = 8
-            step = dash_length + dash_gap
-            for start_x in range(0, width, step):
-                end_x = min(start_x + dash_length, width)
-                pygame.draw.line(
-                    surface,
-                    guide_color,
-                    (start_x, table_line_y),
-                    (end_x, table_line_y),
-                    2,
-                )
+            row_index = 0
+            for holder in holder_sequence:
+                cards_in_hand = list(hands.get(holder, []))
+                if not cards_in_hand and mask_filter is None:
+                    continue
+                row_y = table_line_y + hand_gap + row_index * (card_height + hand_gap)
+                anchor_right = discard_rect.x - hand_gap
+                for offset, card_id in enumerate(reversed(cards_in_hand)):
+                    key = f"hand:{holder}:{card_id}"
+                    rect = card_positions.get(key)
+                    x = anchor_right - card_width - offset * (card_width + hand_gap)
+                    if rect is None:
+                        rect = pygame.Rect(x, row_y, card_width, card_height)
+                        card_positions[key] = rect
+                    elif dragging_card != key:
+                        rect.x = x
+                        rect.y = row_y
+                        rect.width = card_width
+                        rect.height = card_height
+                    else:
+                        rect.width = card_width
+                        rect.height = card_height
 
-        for key in draw_order:
-            info = card_info.get(key)
-            rect = card_positions.get(key)
-            if not info or rect is None:
-                continue
+                    payload = _card_payload(card_id, data)
+                    updated_info[key] = {
+                        "zone": "hand",
+                        "holder": holder,
+                        "card_id": card_id,
+                        "payload": payload,
+                    }
+                row_index += 1
 
-            pygame.draw.rect(surface, card_color, rect, border_radius=12)
-            pygame.draw.rect(surface, card_border, rect, width=3, border_radius=12)
+            valid_keys = set(updated_info)
+            for key in list(card_positions):
+                if key not in valid_keys:
+                    del card_positions[key]
+            draw_order = [key for key in draw_order if key in valid_keys]
+            for key in updated_info:
+                if key not in draw_order:
+                    draw_order.append(key)
+            card_info = updated_info
+            if dragging_card and dragging_card not in card_positions:
+                dragging_card = None
 
-            payload = info["payload"]
-            lines = _wrap_text(payload.get("label", info["card_id"]), card_width - 20)
-            holder_name = info.get("holder")
-            if holder_name and (mask_filter is None or info.get("zone") == "table"):
-                lines.append(f"[{holder_name}]")
+            displayed_cards = len(table_cards)
+            if mask_filter:
+                displayed_cards += len(hands.get(mask_filter, []))
+            else:
+                displayed_cards += sum(len(cards) for cards in hands.values())
 
-            text_y = rect.y + 12
-            for line in lines[:6]:
-                rendered = font.render(line, True, text_color)
-                surface.blit(rendered, (rect.x + 10, text_y))
-                text_y += rendered.get_height() + 4
+            if table_line_y > 0:
+                dash_length = 12
+                dash_gap = 8
+                step = dash_length + dash_gap
+                for start_x in range(0, width, step):
+                    end_x = min(start_x + dash_length, width)
+                    pygame.draw.line(
+                        surface,
+                        guide_color,
+                        (start_x, table_line_y),
+                        (end_x, table_line_y),
+                        2,
+                    )
 
-            note = payload.get("note")
-            if note:
-                note_lines = _wrap_text(note, card_width - 20)
-                for line in note_lines[:4]:
-                    rendered = small_font.render(line, True, text_color)
+            for key in draw_order:
+                info = card_info.get(key)
+                rect = card_positions.get(key)
+                if not info or rect is None:
+                    continue
+
+                pygame.draw.rect(surface, card_color, rect, border_radius=12)
+                pygame.draw.rect(surface, card_border, rect, width=3, border_radius=12)
+
+                payload = info["payload"]
+                lines = _wrap_text(payload.get("label", info["card_id"]), card_width - 20)
+                holder_name = info.get("holder")
+                if holder_name and (mask_filter is None or info.get("zone") == "table"):
+                    lines.append(f"[{holder_name}]")
+
+                text_y = rect.y + 12
+                for line in lines[:6]:
+                    rendered = font.render(line, True, text_color)
                     surface.blit(rendered, (rect.x + 10, text_y))
-                    text_y += rendered.get_height() + 2
-        pygame.draw.rect(surface, face_down_color, discard_rect, border_radius=12)
-        pygame.draw.rect(surface, card_border, discard_rect, width=3, border_radius=12)
+                    text_y += rendered.get_height() + 4
 
-        title_text = font.render("Used Tome", True, face_down_text)
-        count_text = font.render(str(discard_count), True, face_down_text)
-        surface.blit(title_text, (discard_rect.x + 12, discard_rect.y + 16))
-        surface.blit(count_text, (discard_rect.x + 12, discard_rect.y + 16 + title_text.get_height() + 8))
+                note = payload.get("note")
+                if note:
+                    note_lines = _wrap_text(note, card_width - 20)
+                    for line in note_lines[:4]:
+                        rendered = small_font.render(line, True, text_color)
+                        surface.blit(rendered, (rect.x + 10, text_y))
+                        text_y += rendered.get_height() + 2
+            pygame.draw.rect(surface, face_down_color, discard_rect, border_radius=12)
+            pygame.draw.rect(surface, card_border, discard_rect, width=3, border_radius=12)
 
-        deck_count = len(zones.get("deck", []))
-        deck_text = small_font.render(f"Deck: {deck_count}", True, face_down_text)
-        surface.blit(deck_text, (discard_rect.x + 12, discard_rect.bottom - deck_text.get_height() - 16))
+            title_text = font.render("Used Tome", True, face_down_text)
+            count_text = font.render(str(discard_count), True, face_down_text)
+            surface.blit(title_text, (discard_rect.x + 12, discard_rect.y + 16))
+            surface.blit(count_text, (discard_rect.x + 12, discard_rect.y + 16 + title_text.get_height() + 8))
 
-        pygame.display.flip()
-        clock.tick(30)
+            deck_count = len(zones.get("deck", []))
+            deck_text = small_font.render(f"Deck: {deck_count}", True, face_down_text)
+            surface.blit(deck_text, (discard_rect.x + 12, discard_rect.bottom - deck_text.get_height() - 16))
+
+            pygame.display.flip()
+            clock.tick(30)
 
     finally:
         stop_event.set()
