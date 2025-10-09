@@ -117,10 +117,115 @@ def _ensure_schema(data: dict[str, Any]) -> dict[str, Any]:
     zones.setdefault("discard", [])
     zones.setdefault("hands", {})
     zones.setdefault("table", [])
+
+    binds = data.setdefault("binds", {})
+    try:
+        bind_sequence = int(data.get("bind_sequence", 1))
+    except (TypeError, ValueError):
+        bind_sequence = 1
+    data["bind_sequence"] = max(1, bind_sequence)
+
+    valid_cards = set(cards)
+    assigned: dict[str, str] = {}
+    for bind_id, members in list(binds.items()):
+        unique_members: list[str] = []
+        for card_id in members:
+            if card_id in valid_cards and card_id not in assigned:
+                unique_members.append(card_id)
+                assigned[card_id] = bind_id
+        if len(unique_members) >= 2:
+            binds[bind_id] = unique_members
+        else:
+            binds.pop(bind_id, None)
+
     state = data.setdefault("card_state", {})
+    for card_id in list(state):
+        if card_id not in cards:
+            state.pop(card_id, None)
+
     for card_id in cards:
-        state.setdefault(card_id, {"zone": "deck"})
+        card_state = state.setdefault(card_id, {"zone": "deck"})
+        bind_id = assigned.get(card_id)
+        if bind_id:
+            card_state["bind"] = bind_id
+        else:
+            card_state.pop("bind", None)
+        state[card_id] = card_state
     return data
+
+
+def _new_bind_id(data: dict[str, Any]) -> str:
+    sequence = int(data.get("bind_sequence", 1) or 1)
+    bind_id = f"bind_{sequence}"
+    data["bind_sequence"] = sequence + 1
+    return bind_id
+
+
+def _unbind_card(data: dict[str, Any], card_id: str) -> bool:
+    binds: dict[str, list[str]] = data.setdefault("binds", {})
+    state = data.setdefault("card_state", {})
+    info = state.setdefault(card_id, {"zone": "deck"})
+    bind_id = info.pop("bind", None)
+    if not bind_id:
+        return False
+    members = binds.get(bind_id, [])
+    if card_id in members:
+        members = [member for member in members if member != card_id]
+    if len(members) >= 2:
+        binds[bind_id] = members
+        for member in members:
+            state.setdefault(member, {"zone": "deck"})["bind"] = bind_id
+    else:
+        for member in members:
+            state.setdefault(member, {"zone": "deck"}).pop("bind", None)
+        binds.pop(bind_id, None)
+    return True
+
+
+def _merge_cards_into_bind(data: dict[str, Any], cards: Iterable[str]) -> str | None:
+    binds: dict[str, list[str]] = data.setdefault("binds", {})
+    state = data.setdefault("card_state", {})
+
+    ordered: list[str] = []
+    for card_id in cards:
+        if card_id not in ordered:
+            ordered.append(card_id)
+        bind_id = state.get(card_id, {}).get("bind")
+        if bind_id and bind_id in binds:
+            for member in binds[bind_id]:
+                if member not in ordered:
+                    ordered.append(member)
+
+    if len(ordered) < 2:
+        return None
+
+    target_bind: str | None = None
+    for card_id in ordered:
+        bind_id = state.get(card_id, {}).get("bind")
+        if bind_id and bind_id in binds:
+            target_bind = bind_id
+            break
+
+    if target_bind is None:
+        target_bind = _new_bind_id(data)
+
+    # Remove members from other binds
+    for bind_id, members in list(binds.items()):
+        if bind_id == target_bind:
+            continue
+        remaining = [card for card in members if card not in ordered]
+        if len(remaining) >= 2:
+            binds[bind_id] = remaining
+        else:
+            for member in remaining:
+                state.setdefault(member, {"zone": "deck"}).pop("bind", None)
+            binds.pop(bind_id, None)
+
+    binds[target_bind] = ordered
+    for card_id in ordered:
+        state.setdefault(card_id, {"zone": "deck"})["bind"] = target_bind
+
+    return target_bind
 
 
 def _new_tome(name: str, slug: str) -> dict[str, Any]:
@@ -143,6 +248,8 @@ def _new_tome(name: str, slug: str) -> dict[str, Any]:
             "table": [],
         },
         "card_state": state,
+        "binds": {},
+        "bind_sequence": 1,
     }
 
 
@@ -192,6 +299,9 @@ def _card_payload(card_id: str, data: dict[str, Any]) -> dict[str, Any]:
     holder = state.get("holder")
     if holder:
         payload["holder"] = holder
+    bind_id = state.get("bind")
+    if bind_id:
+        payload["bind"] = bind_id
     return payload
 
 
@@ -217,6 +327,8 @@ def shuffle(tome: str | None = None, *, all: bool = False, mask: str | None = No
             recalled.extend(discard)
             zones["discard"] = []
         if table:
+            for card_id in list(table):
+                _unbind_card(data, card_id)
             recalled.extend(table)
             zones["table"] = []
         for card_id in recalled:
@@ -369,6 +481,7 @@ def _move_table_cards_to_hand(
     moved: list[str] = []
     for card_id in card_ids:
         if card_id in table:
+            _unbind_card(data, card_id)
             table.remove(card_id)
             hand_cards.append(card_id)
             state[card_id] = {"zone": "hand", "holder": holder}
@@ -532,11 +645,20 @@ def open_viewer(
     card_width, card_height = 160, 220
     padding = 24
     hand_gap = 18
+    bind_step_x = 26
+    bind_step_y = 18
 
     card_positions: dict[str, pygame.Rect] = {}
     draw_order: list[str] = []
     dragging_card: str | None = None
     drag_offset = (0, 0)
+    dragging_group_keys: dict[str, str] = {}
+    dragging_group_members: list[str] = []
+    dragging_origin_zone: str | None = None
+    dragging_origin_holder: str | None = None
+    dragging_anchor_card_id: str | None = None
+    dragging_bind_id: str | None = None
+    group_offsets: dict[str, tuple[int, int]] = {}
     card_info: dict[str, dict[str, Any]] = {}
     table_line_y = 0
     hand_drop_ratio = 0.3
@@ -677,72 +799,265 @@ def open_viewer(
                         last_click_time = current_time
                         last_click_pos = mouse_pos
                         last_click_button = event.button
+                    mods = pygame.key.get_mods()
                     for key in reversed(draw_order):
                         rect = card_positions.get(key)
-                        if rect and rect.collidepoint(mouse_pos):
-                            dragging_card = key
-                            drag_offset = (mouse_pos[0] - rect.x, mouse_pos[1] - rect.y)
-                            draw_order.remove(key)
-                            draw_order.append(key)
-                            break
+                        if not (rect and rect.collidepoint(mouse_pos)):
+                            continue
+                        info = card_info.get(key)
+                        if not info:
+                            continue
+                        dragging_card = key
+                        dragging_anchor_card_id = info.get("card_id")
+                        dragging_origin_zone = info.get("zone")
+                        dragging_origin_holder = info.get("holder")
+                        dragging_bind_id = info.get("bind")
+                        drag_offset = (mouse_pos[0] - rect.x, mouse_pos[1] - rect.y)
+                        members = list(info.get("bind_members") or [info["card_id"]])
+                        if dragging_anchor_card_id in members:
+                            members.remove(dragging_anchor_card_id)
+                            members.insert(0, dragging_anchor_card_id)
+                        ctrl_pressed = bool(mods & pygame.KMOD_CTRL)
+                        if ctrl_pressed and len(members) > 1 and dragging_anchor_card_id:
+                            if _unbind_card(data, dragging_anchor_card_id):
+                                _save_tome(path, data)
+                                try:
+                                    last_mtime = path.stat().st_mtime
+                                except OSError:
+                                    last_mtime = None
+                                members = [dragging_anchor_card_id]
+                                dragging_bind_id = None
+                                payload = _card_payload(dragging_anchor_card_id, data)
+                                info = {
+                                    "zone": payload.get("zone", info.get("zone")),
+                                    "holder": payload.get("holder"),
+                                    "card_id": dragging_anchor_card_id,
+                                    "payload": payload,
+                                }
+                                card_info[key] = info
+                                dragging_origin_zone = info.get("zone")
+                                dragging_origin_holder = info.get("holder")
+                        dragging_group_members = members
+                        group_offsets = {}
+                        dragging_group_keys = {}
+                        zone = dragging_origin_zone
+                        for index, member in enumerate(members):
+                            if zone == "table":
+                                member_key = f"table::{member}"
+                            else:
+                                if member != dragging_anchor_card_id:
+                                    continue
+                                member_key = key
+                            member_rect = card_positions.get(member_key)
+                            if member_rect is None:
+                                offset_x = bind_step_x * index
+                                offset_y = bind_step_y * index
+                                member_rect = pygame.Rect(
+                                    rect.x + offset_x,
+                                    rect.y + offset_y,
+                                    card_width,
+                                    card_height,
+                                )
+                                card_positions[member_key] = member_rect
+                            else:
+                                member_rect.width = card_width
+                                member_rect.height = card_height
+                            if member_key == key:
+                                offset = (0, 0)
+                            else:
+                                offset = (member_rect.x - rect.x, member_rect.y - rect.y)
+                            group_offsets[member] = offset
+                            dragging_group_keys[member] = member_key
+                            if member_key in draw_order:
+                                draw_order.remove(member_key)
+                        reordered_keys = [dragging_group_keys[m] for m in members if m in dragging_group_keys]
+                        if reordered_keys:
+                            for member_key in reordered_keys[1:]:
+                                draw_order.append(member_key)
+                            draw_order.append(reordered_keys[0])
+                        if len(members) <= 1:
+                            dragging_bind_id = None
+                        break
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     if dragging_card:
                         rect = card_positions.get(dragging_card)
                         info = card_info.get(dragging_card)
-                        if rect and info:
-                            if rect.bottom < table_line_y and info.get("zone") != "table":
-                                moved = _move_hand_cards_to_table(data, info["holder"], [info["card_id"]])
+                        anchor_card_id = dragging_anchor_card_id or (info.get("card_id") if info else None)
+                        holder = dragging_origin_holder or (info.get("holder") if info else None)
+                        zone = dragging_origin_zone or (info.get("zone") if info else None)
+                        moved_to_hand = False
+                        if rect and anchor_card_id:
+                            if zone != "table" and rect.bottom < table_line_y and holder:
+                                moved = _move_hand_cards_to_table(data, holder, [anchor_card_id])
                                 if moved:
-                                    new_key = f"table::{info['card_id']}"
-                                    card_positions[new_key] = pygame.Rect(
-                                        rect.x,
-                                        rect.y,
-                                        card_width,
-                                        card_height,
-                                    )
-                                    card_positions.pop(dragging_card, None)
+                                    new_key = f"table::{anchor_card_id}"
+                                    card_positions[new_key] = rect
+                                    if dragging_card != new_key:
+                                        card_positions.pop(dragging_card, None)
                                     if dragging_card in draw_order:
                                         draw_order.remove(dragging_card)
                                     if new_key not in draw_order:
                                         draw_order.append(new_key)
+                                    dragging_card = new_key
+                                    zone = "table"
+                                    dragging_origin_zone = "table"
+                                    dragging_group_members = [anchor_card_id]
+                                    dragging_group_keys = {anchor_card_id: new_key}
+                                    group_offsets = {anchor_card_id: (0, 0)}
+                                    dragging_bind_id = None
                                     _save_tome(path, data)
                                     try:
                                         last_mtime = path.stat().st_mtime
                                     except OSError:
                                         last_mtime = None
-                            elif rect.bottom >= table_line_y and info.get("zone") != "hand":
-                                target_holder = info.get("holder")
-                                if not target_holder and mask_filter:
-                                    target_holder = mask_filter
-                                if not target_holder:
-                                    target_holder = _default_mask(None)
-                                moved = _move_table_cards_to_hand(data, target_holder, [info["card_id"]])
-                                if moved:
-                                    new_key = f"hand:{target_holder}:{info['card_id']}"
-                                    card_positions[new_key] = pygame.Rect(
-                                        rect.x,
-                                        rect.y,
-                                        card_width,
-                                        card_height,
-                                    )
-                                    card_positions.pop(dragging_card, None)
-                                    if dragging_card in draw_order:
-                                        draw_order.remove(dragging_card)
-                                    if new_key not in draw_order:
-                                        draw_order.append(new_key)
+                            elif zone == "table" and rect.bottom >= table_line_y:
+                                if len(dragging_group_members) > 1 or dragging_bind_id:
+                                    rect.y = max(padding, table_line_y - card_height - 4)
+                                    rect.height = card_height
+                                    rect.width = card_width
+                                    for member, key_name in dragging_group_keys.items():
+                                        if key_name == dragging_card:
+                                            continue
+                                        offset = group_offsets.get(member, (bind_step_x, bind_step_y))
+                                        member_rect = card_positions.get(key_name)
+                                        if member_rect:
+                                            member_rect.x = rect.x + offset[0]
+                                            member_rect.y = rect.y + offset[1]
+                                            member_rect.width = card_width
+                                            member_rect.height = card_height
+                                else:
+                                    target_holder = holder or mask_filter or _default_mask(None)
+                                    if target_holder:
+                                        moved = _move_table_cards_to_hand(data, target_holder, [anchor_card_id])
+                                        if moved:
+                                            new_key = f"hand:{target_holder}:{anchor_card_id}"
+                                            card_positions[new_key] = rect
+                                            card_positions.pop(dragging_card, None)
+                                            if dragging_card in draw_order:
+                                                draw_order.remove(dragging_card)
+                                            if new_key not in draw_order:
+                                                draw_order.append(new_key)
+                                            moved_to_hand = True
+                                            _save_tome(path, data)
+                                            try:
+                                                last_mtime = path.stat().st_mtime
+                                            except OSError:
+                                                last_mtime = None
+                        if rect and not moved_to_hand and zone == "table" and anchor_card_id:
+                            table_keys = []
+                            for member in dragging_group_members:
+                                key_name = dragging_group_keys.get(member) or f"table::{member}"
+                                table_keys.append((member, key_name))
+                            collided: list[str] = []
+                            for member, key_name in table_keys:
+                                member_rect = card_positions.get(key_name)
+                                if not member_rect:
+                                    continue
+                                for other_key, other_rect in card_positions.items():
+                                    if other_key == key_name or not other_key.startswith("table::"):
+                                        continue
+                                    if other_rect is None:
+                                        continue
+                                    if member_rect.colliderect(other_rect):
+                                        other_id = other_key.split("::", 1)[1]
+                                        other_info = card_info.get(other_key)
+                                        if other_info and other_info.get("bind_members") and len(other_info["bind_members"]) > 1:
+                                            for candidate in other_info["bind_members"]:
+                                                if candidate not in collided and candidate not in dragging_group_members:
+                                                    collided.append(candidate)
+                                        else:
+                                            if other_id not in collided and other_id not in dragging_group_members:
+                                                collided.append(other_id)
+                            if collided:
+                                merge_list = dragging_group_members + collided
+                                bind_id = _merge_cards_into_bind(data, merge_list)
+                                if bind_id:
                                     _save_tome(path, data)
                                     try:
                                         last_mtime = path.stat().st_mtime
                                     except OSError:
                                         last_mtime = None
+                                    members = data.get("binds", {}).get(bind_id, [])
+                                    if members:
+                                        if anchor_card_id in members:
+                                            anchor_index = members.index(anchor_card_id)
+                                        else:
+                                            anchor_index = 0
+                                        base_x = rect.x - bind_step_x * anchor_index
+                                        base_y = rect.y - bind_step_y * anchor_index
+                                        dragging_group_members = list(members)
+                                        dragging_group_keys = {}
+                                        for idx, member in enumerate(members):
+                                            key_name = f"table::{member}"
+                                            member_rect = card_positions.get(key_name)
+                                            if member_rect is None:
+                                                member_rect = pygame.Rect(
+                                                    base_x + bind_step_x * idx,
+                                                    base_y + bind_step_y * idx,
+                                                    card_width,
+                                                    card_height,
+                                                )
+                                                card_positions[key_name] = member_rect
+                                            else:
+                                                member_rect.x = base_x + bind_step_x * idx
+                                                member_rect.y = base_y + bind_step_y * idx
+                                                member_rect.width = card_width
+                                                member_rect.height = card_height
+                                            dragging_group_keys[member] = key_name
+                                            if key_name not in draw_order:
+                                                draw_order.append(key_name)
+                                        group_offsets = {
+                                            member: (bind_step_x * idx, bind_step_y * idx)
+                                            for idx, member in enumerate(members)
+                                        }
+                                        dragging_bind_id = bind_id
                         dragging_card = None
+                        dragging_group_keys = {}
+                        dragging_group_members = []
+                        dragging_origin_zone = None
+                        dragging_origin_holder = None
+                        dragging_anchor_card_id = None
+                        dragging_bind_id = None
+                        group_offsets = {}
                 elif event.type == pygame.MOUSEMOTION and dragging_card:
                     rect = card_positions.get(dragging_card)
                     if rect is not None and event.buttons[0]:
                         rect.x = event.pos[0] - drag_offset[0]
                         rect.y = event.pos[1] - drag_offset[1]
+                        rect.width = card_width
+                        rect.height = card_height
+                        for member in dragging_group_members:
+                            key_name = dragging_group_keys.get(member)
+                            if not key_name or key_name == dragging_card:
+                                continue
+                            member_rect = card_positions.get(key_name)
+                            offset = group_offsets.get(member)
+                            if offset is None:
+                                index = dragging_group_members.index(member)
+                                offset = (bind_step_x * index, bind_step_y * index)
+                                group_offsets[member] = offset
+                            if member_rect is None:
+                                member_rect = pygame.Rect(
+                                    rect.x + offset[0],
+                                    rect.y + offset[1],
+                                    card_width,
+                                    card_height,
+                                )
+                                card_positions[key_name] = member_rect
+                            else:
+                                member_rect.x = rect.x + offset[0]
+                                member_rect.y = rect.y + offset[1]
+                                member_rect.width = card_width
+                                member_rect.height = card_height
                     elif not event.buttons[0]:
                         dragging_card = None
+                        dragging_group_keys = {}
+                        dragging_group_members = []
+                        dragging_origin_zone = None
+                        dragging_origin_holder = None
+                        dragging_anchor_card_id = None
+                        dragging_bind_id = None
+                        group_offsets = {}
 
             surface = pygame.display.get_surface()
             if surface is None:
@@ -774,9 +1089,36 @@ def open_viewer(
             updated_info: dict[str, dict[str, Any]] = {}
             hand_layouts: dict[str, pygame.Rect] = {}
 
-            for index, card_id in enumerate(table_cards):
-                key = f"table::{card_id}"
-                rect = card_positions.get(key)
+            binds_map: dict[str, list[str]] = data.get("binds", {})
+            state = data.get("card_state", {})
+            table_groups: list[tuple[str | None, list[str]]] = []
+            seen_table: set[str] = set()
+            for card_id in table_cards:
+                if card_id in seen_table:
+                    continue
+                bind_id = state.get(card_id, {}).get("bind")
+                members: list[str] = []
+                if bind_id and bind_id in binds_map:
+                    members = [member for member in binds_map[bind_id] if member in table_cards]
+                if bind_id and len(members) < 2:
+                    members = []
+                if members:
+                    if (
+                        dragging_anchor_card_id
+                        and dragging_anchor_card_id in members
+                        and members[0] != dragging_anchor_card_id
+                    ):
+                        members = [dragging_anchor_card_id] + [m for m in members if m != dragging_anchor_card_id]
+                    table_groups.append((bind_id, members))
+                    seen_table.update(members)
+                else:
+                    table_groups.append((None, [card_id]))
+                    seen_table.add(card_id)
+
+            for index, (bind_id, members) in enumerate(table_groups):
+                anchor_card_id = members[0]
+                anchor_key = f"table::{anchor_card_id}"
+                rect = card_positions.get(anchor_key)
                 if rect is None:
                     col = index % columns
                     row = index // columns
@@ -785,18 +1127,62 @@ def open_viewer(
                     if y + card_height > table_area_bottom:
                         y = max_table_y
                     rect = pygame.Rect(x, y, card_width, card_height)
-                    card_positions[key] = rect
+                    card_positions[anchor_key] = rect
                 else:
                     rect.width = card_width
                     rect.height = card_height
 
-                payload = _card_payload(card_id, data)
-                updated_info[key] = {
+                # Ensure members follow the anchor position
+                for member_index, member in enumerate(members):
+                    key = f"table::{member}"
+                    offset_x = bind_step_x * member_index
+                    offset_y = bind_step_y * member_index
+                    if key == anchor_key:
+                        member_rect = rect
+                    else:
+                        member_rect = card_positions.get(key)
+                        desired_x = rect.x + offset_x
+                        desired_y = rect.y + offset_y
+                        if member_rect is None:
+                            member_rect = pygame.Rect(
+                                desired_x,
+                                desired_y,
+                                card_width,
+                                card_height,
+                            )
+                            card_positions[key] = member_rect
+                        else:
+                            member_rect.x = desired_x
+                            member_rect.y = desired_y
+                            member_rect.width = card_width
+                            member_rect.height = card_height
+
+                non_anchor_members = members[1:]
+                for member in non_anchor_members:
+                    key = f"table::{member}"
+                    payload = _card_payload(member, data)
+                    entry = {
+                        "zone": "table",
+                        "holder": payload.get("holder"),
+                        "card_id": member,
+                        "payload": payload,
+                    }
+                    if bind_id and len(members) >= 2:
+                        entry["bind"] = bind_id
+                        entry["bind_members"] = tuple(members)
+                    updated_info[key] = entry
+
+                anchor_payload = _card_payload(anchor_card_id, data)
+                anchor_entry = {
                     "zone": "table",
-                    "holder": payload.get("holder"),
-                    "card_id": card_id,
-                    "payload": payload,
+                    "holder": anchor_payload.get("holder"),
+                    "card_id": anchor_card_id,
+                    "payload": anchor_payload,
                 }
+                if bind_id and len(members) >= 2:
+                    anchor_entry["bind"] = bind_id
+                    anchor_entry["bind_members"] = tuple(members)
+                updated_info[anchor_key] = anchor_entry
 
             if mask_filter:
                 holder_sequence = [mask_filter]
