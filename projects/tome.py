@@ -539,6 +539,11 @@ def open_viewer(
     drag_offset = (0, 0)
     card_info: dict[str, dict[str, Any]] = {}
     table_line_y = 0
+    hand_drop_ratio = 0.3
+    hover_raise_ratio = 0.4
+    hover_speed_ratio = 0.5
+    hover_offsets: dict[str, float] = {}
+    discard_hover_offset = 0.0
     last_click_time = 0
     last_click_pos: tuple[int, int] | None = None
     last_click_button: int | None = None
@@ -747,13 +752,18 @@ def open_viewer(
 
             columns = max(1, (width - padding) // (card_width + padding))
 
+            hand_drop_offset = int(card_height * hand_drop_ratio)
+            hover_raise = max(hand_drop_offset + 8, int(card_height * hover_raise_ratio))
+            hover_speed = max(4, int(max(hover_raise * hover_speed_ratio, 1)))
+
+            discard_base_y = height - card_height - padding + hand_drop_offset
             discard_rect = pygame.Rect(
                 width - card_width - padding,
-                height - card_height - padding,
+                discard_base_y,
                 card_width,
                 card_height,
             )
-            table_line_y = max(0, discard_rect.y - 16)
+            table_line_y = max(0, discard_base_y - 16)
             table_area_bottom = table_line_y - hand_gap
             max_table_y = max(padding, table_area_bottom - card_height)
 
@@ -762,6 +772,7 @@ def open_viewer(
             hands: dict[str, list[str]] = zones.get("hands", {})
 
             updated_info: dict[str, dict[str, Any]] = {}
+            hand_layouts: dict[str, pygame.Rect] = {}
 
             for index, card_id in enumerate(table_cards):
                 key = f"table::{card_id}"
@@ -806,17 +817,18 @@ def open_viewer(
                     key = f"hand:{holder}:{card_id}"
                     rect = card_positions.get(key)
                     x = anchor_right - card_width - offset * (card_width + hand_gap)
+                    base_rect = pygame.Rect(x, row_y, card_width, card_height)
                     if rect is None:
-                        rect = pygame.Rect(x, row_y, card_width, card_height)
+                        rect = base_rect.copy()
                         card_positions[key] = rect
                     elif dragging_card != key:
-                        rect.x = x
-                        rect.y = row_y
+                        rect.x = base_rect.x
                         rect.width = card_width
                         rect.height = card_height
                     else:
                         rect.width = card_width
                         rect.height = card_height
+                    hand_layouts[key] = base_rect
 
                     payload = _card_payload(card_id, data)
                     updated_info[key] = {
@@ -838,6 +850,44 @@ def open_viewer(
             card_info = updated_info
             if dragging_card and dragging_card not in card_positions:
                 dragging_card = None
+
+            mouse_pos = pygame.mouse.get_pos()
+            for key in list(hover_offsets):
+                if key not in hand_layouts:
+                    del hover_offsets[key]
+            for key, base_rect in hand_layouts.items():
+                if dragging_card == key:
+                    hover_offsets[key] = 0.0
+                    continue
+                rect = card_positions.get(key)
+                if rect is None:
+                    continue
+                hovered = rect.collidepoint(mouse_pos)
+                target_offset = -hover_raise if hovered else 0
+                current_offset = hover_offsets.get(key, 0.0)
+                if current_offset < target_offset:
+                    current_offset = min(target_offset, current_offset + hover_speed)
+                elif current_offset > target_offset:
+                    current_offset = max(target_offset, current_offset - hover_speed)
+                hover_offsets[key] = current_offset
+                rect.x = base_rect.x
+                rect.width = base_rect.width
+                rect.height = base_rect.height
+                rect.y = base_rect.y + int(current_offset)
+
+            discard_current_rect = pygame.Rect(
+                discard_rect.x,
+                discard_base_y + int(discard_hover_offset),
+                discard_rect.width,
+                discard_rect.height,
+            )
+            hovered_discard = discard_current_rect.collidepoint(mouse_pos)
+            discard_target = -hover_raise if hovered_discard else 0
+            if discard_hover_offset < discard_target:
+                discard_hover_offset = min(discard_target, discard_hover_offset + hover_speed)
+            elif discard_hover_offset > discard_target:
+                discard_hover_offset = max(discard_target, discard_hover_offset - hover_speed)
+            discard_rect.y = discard_base_y + int(discard_hover_offset)
 
             displayed_cards = len(table_cards)
             if mask_filter:
