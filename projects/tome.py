@@ -615,6 +615,7 @@ def open_viewer(
     *,
     mask: str | None = None,
     refresh_interval: float = 0.5,
+    maximize: bool = False,
 ) -> dict[str, Any]:
     """Open a resizable pygame window visualizing the tome state.
 
@@ -623,7 +624,8 @@ def open_viewer(
     on the table. When ``mask`` is provided, only that mask's hand is displayed;
     otherwise all hands are shown. The display automatically reloads the tome
     file when it changes on disk so it can be left open while other commands
-    manipulate the tome.
+    manipulate the tome. When ``maximize`` is ``True`` the window attempts to
+    match the desktop size so the viewer launches maximized.
     """
 
     name, data, path = _load_tome_data(tome)
@@ -632,7 +634,33 @@ def open_viewer(
 
     pygame.init()
     try:
-        pygame.display.set_mode((960, 720), pygame.RESIZABLE)
+        flags = pygame.RESIZABLE
+        window_size = (960, 720)
+        if maximize:
+            os.environ.setdefault("SDL_VIDEO_CENTERED", "0")
+            os.environ.setdefault("SDL_VIDEO_WINDOW_POS", "0,0")
+            try:
+                desktop_sizes = pygame.display.get_desktop_sizes()
+            except pygame.error:
+                desktop_sizes = []
+            target_size: tuple[int, int] | None = None
+            if desktop_sizes:
+                width, height = desktop_sizes[0]
+                if width > 0 and height > 0:
+                    target_size = (int(width), int(height))
+            if target_size is None:
+                try:
+                    display_info = pygame.display.Info()
+                except pygame.error:
+                    display_info = None
+                if display_info:
+                    width = getattr(display_info, "current_w", 0) or 0
+                    height = getattr(display_info, "current_h", 0) or 0
+                    if width > 0 and height > 0:
+                        target_size = (int(width), int(height))
+            if target_size is not None:
+                window_size = target_size
+        pygame.display.set_mode(window_size, flags)
     except pygame.error as exc:  # pragma: no cover - depends on environment
         pygame.quit()
         return {"tome": name, "error": f"Unable to open display: {exc}"}
@@ -1358,7 +1386,13 @@ def view(
     *,
     mask: str | None = None,
     refresh_interval: float = 0.5,
+    maximize: bool = False,
 ) -> dict[str, Any]:
     """Alias for :func:`open_viewer` to quickly launch the tome viewer."""
 
-    return open_viewer(tome=tome, mask=mask, refresh_interval=refresh_interval)
+    return open_viewer(
+        tome=tome,
+        mask=mask,
+        refresh_interval=refresh_interval,
+        maximize=maximize,
+    )
