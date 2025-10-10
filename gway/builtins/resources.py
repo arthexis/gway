@@ -18,45 +18,49 @@ def resource(*parts, touch: bool = False, check: bool = False, text: bool = Fals
     rel_path = pathlib.Path(*parts)
     tried = []
 
-    candidate = pathlib.Path.cwd() / rel_path
-    if candidate.exists() or touch or dir:
-        path = candidate
-    else:
+    def _safe_home() -> pathlib.Path | None:
+        """Return a usable home directory path or ``None``."""
+        env_candidates = [
+            os.environ.get("GWAY_HOME"),
+            os.environ.get("HOME"),
+            os.environ.get("USERPROFILE"),
+        ]
+        for value in env_candidates:
+            if value:
+                return pathlib.Path(value).expanduser()
+
+        homedrive = os.environ.get("HOMEDRIVE")
+        homepath = os.environ.get("HOMEPATH")
+        if homedrive and homepath:
+            return pathlib.Path(homedrive) / homepath.lstrip("\\/")
+
+        try:
+            return pathlib.Path.home()
+        except RuntimeError:
+            return None
+
+    search_roots = [pathlib.Path.cwd()]
+    env_root = os.environ.get("GWAY_ROOT")
+    if env_root:
+        search_roots.append(pathlib.Path(env_root))
+
+    home_dir = _safe_home()
+    if home_dir is not None:
+        search_roots.append(home_dir)
+
+    pkg_root = pathlib.Path(__file__).resolve().parents[1]
+    search_roots.append(pkg_root)
+
+    path = None
+    for root in search_roots:
+        candidate = root / rel_path
+        if candidate.exists() or touch or dir:
+            path = candidate
+            break
         tried.append(str(candidate))
-        env_root = os.environ.get("GWAY_ROOT")
-        if env_root:
-            candidate = pathlib.Path(env_root) / rel_path
-            if candidate.exists() or touch or dir:
-                path = candidate
-            else:
-                tried.append(str(candidate))
-                candidate = pathlib.Path.home() / rel_path
-                if candidate.exists() or touch or dir:
-                    path = candidate
-                else:
-                    tried.append(str(candidate))
-                    # Fallback: look relative to the installed package
-                    pkg_root = pathlib.Path(__file__).resolve().parents[1]
-                    candidate = pkg_root / rel_path
-                    if candidate.exists() or touch or dir:
-                        path = candidate
-                    else:
-                        tried.append(str(candidate))
-                        path = pathlib.Path.cwd() / rel_path
-        else:
-            candidate = pathlib.Path.home() / rel_path
-            if candidate.exists() or touch or dir:
-                path = candidate
-            else:
-                tried.append(str(candidate))
-                # Fallback: look relative to the installed package
-                pkg_root = pathlib.Path(__file__).resolve().parents[1]
-                candidate = pkg_root / rel_path
-                if candidate.exists() or touch or dir:
-                    path = candidate
-                else:
-                    tried.append(str(candidate))
-                    path = pathlib.Path.cwd() / rel_path
+
+    if path is None:
+        path = pathlib.Path.cwd() / rel_path
 
     if not (touch or dir) and check and not path.exists():
         gw.abort(f"Required resource {path} missing. Tried: {tried}")
