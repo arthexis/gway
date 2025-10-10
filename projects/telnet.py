@@ -6,7 +6,7 @@ import telnetlib
 from typing import Any
 
 
-def connectfunction(*, host: str, port: int = 23, timeout: float | None = 10.0) -> dict[str, Any]:
+def connect(*, host: str, port: int = 23, timeout: float | None = 10.0) -> dict[str, Any]:
     """Open a Telnet connection to ``host`` and ``port``.
 
     Parameters
