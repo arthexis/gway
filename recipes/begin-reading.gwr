@@ -1,0 +1,12 @@
+# file: recipes/begin-reading.gwr
+#
+# Reset a tome to the first page and launch the viewer maximized.
+# Pass --tome "Name" to choose a tome, use --tome "*" for the most
+# recently accessed tome, or omit --tome to reopen the default tome.
+
+# Recall every card, shuffle the deck, and store the selection as the
+# active tome for follow-up commands.
+tome shuffle %[tome|] --all true
+
+# Open the tome viewer maximized so reading can begin immediately.
+tome open-viewer %[tome|] --maximize
