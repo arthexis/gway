@@ -21,15 +21,27 @@ class InstallBuiltinTests(unittest.TestCase):
 
     def _write_script(self, path: str, *lines: str) -> None:
         with open(path, "w", encoding="utf-8") as handle:
-            handle.write("#!/usr/bin/env bash\n")
+            if os.name == "nt":
+                handle.write("@echo off\n")
+            else:
+                handle.write("#!/usr/bin/env bash\n")
             for line in lines:
                 handle.write(f"{line}\n")
-        os.chmod(path, 0o755)
+        if os.name != "nt":
+            os.chmod(path, 0o755)
+
+    def _install_script(self, directory: str) -> str:
+        if os.name == "nt":
+            script = os.path.join(directory, "install.bat")
+            self._write_script(script, "echo args: %*")
+        else:
+            script = os.path.join(directory, "install.sh")
+            self._write_script(script, 'echo "args: $@"')
+        return script
 
     def test_install_passes_recipe_and_flags(self):
         with tempfile.TemporaryDirectory() as tmp:
-            script = os.path.join(tmp, "install.sh")
-            self._write_script(script, "echo \"args: $@\"")
+            script = self._install_script(tmp)
 
             with patch.object(gw, "resource", return_value=pathlib.Path(script)):
                 rc = gw.install("auto_upgrade", debug=True, force=True, root=True)
@@ -44,8 +56,7 @@ class InstallBuiltinTests(unittest.TestCase):
 
     def test_install_forwards_recipe_args(self):
         with tempfile.TemporaryDirectory() as tmp:
-            script = os.path.join(tmp, "install.sh")
-            self._write_script(script, "echo \"args: $@\"")
+            script = self._install_script(tmp)
 
             with patch.object(gw, "resource", return_value=pathlib.Path(script)):
                 rc = gw.install("auto_upgrade", "--latest", "--interval", "5")
@@ -115,8 +126,7 @@ class InstallBuiltinTests(unittest.TestCase):
 
     def test_install_passes_remove_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
-            script = os.path.join(tmp, "install.sh")
-            self._write_script(script, "echo \"args: $@\"")
+            script = self._install_script(tmp)
 
             with patch.object(gw, "resource", return_value=pathlib.Path(script)):
                 rc = gw.install("auto_upgrade", remove=True)
@@ -127,8 +137,7 @@ class InstallBuiltinTests(unittest.TestCase):
 
     def test_install_allows_bin_with_remove(self):
         with tempfile.TemporaryDirectory() as tmp:
-            script = os.path.join(tmp, "install.sh")
-            self._write_script(script, "echo \"args: $@\"")
+            script = self._install_script(tmp)
 
             with patch.object(gw, "resource", return_value=pathlib.Path(script)):
                 rc = gw.install("auto_upgrade", remove=True, bin=True)
@@ -139,8 +148,7 @@ class InstallBuiltinTests(unittest.TestCase):
 
     def test_install_remove_bin_without_recipe(self):
         with tempfile.TemporaryDirectory() as tmp:
-            script = os.path.join(tmp, "install.sh")
-            self._write_script(script, "echo \"args: $@\"")
+            script = self._install_script(tmp)
 
             with patch.object(gw, "resource", return_value=pathlib.Path(script)):
                 rc = gw.install(remove=True, bin=True)
