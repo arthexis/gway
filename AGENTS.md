@@ -27,6 +27,7 @@ Existing utilities (``gw.awg`` etc.) are loaded lazily and should be reused via
 5. Design outputs so multiple commands can chain together. Gateway stores each result under its detected ``subject`` and merges dictionaries into the shared context, so returning named fields makes recipe injection effortless (see ``gway/gateway.py``).
 6. Always reach helpers through the shared ``gw`` instance (``from gway import gw``) instead of importing project modules manually; the ``gw`` singleton exposes utilities like ``gw.resource`` and ``gw.mail`` for reuse (see ``projects/help_db.py`` and ``gway/gateway.py``).
 7. When adding behavior that prompts users for input, only trigger those questions while running in interactive mode (``-i`` / ``gw.interactive_enabled``). Wizard mode may layer on extra, optional questions, but only after the user explicitly requests it with ``-w``.
+8. When creation of a new recipe is requested, avoid spinning up an entirely new project just to implement a one- or two-line helper. Search for existing builtins and project functions to reuse; if gaps exist, add the missing components or extend existing helpers with the parameters your recipe needs.
 
 ## Testing
 - Install requirements and the package in editable mode before running tests:
