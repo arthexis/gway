@@ -2,6 +2,7 @@ include README.rst
 include VERSION
 include requirements.txt
 include pyproject.toml
+recursive-include gway/builtins *.py
 recursive-include projects *
 recursive-include data *
 recursive-include recipes *
