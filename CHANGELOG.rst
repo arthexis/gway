@@ -5,7 +5,8 @@ Unreleased
 ----------
 
 - deprecate ``mtg`` project and replace it with explicit runtime errors
-- ensure ``gway.builtins`` package is included in distribution
+- ensure ``gway.builtins`` package is included in distribution and covered by
+  distribution build tests
 - add boot service to show LCD message at startup
 - drop RFID helpers from ``auth_db`` and add ``rfid.scan`` utility
 - allow ``lcd show --scroll`` and ``--wrap`` to snake text together
