@@ -207,28 +207,44 @@ def install_builtin(
 
         latest_requested = _latest_requested(latest)
 
-        if any([repair, remove, bin, root]):
-            raise ValueError(
-                "Options --repair, --remove, --bin and --root cannot be used with pip mode."
-            )
+        disallowed_flags: list[str] = []
+        if bin:
+            disallowed_flags.append("--bin")
+        if root:
+            disallowed_flags.append("--root")
+        if disallowed_flags:
+            joined = " and ".join(disallowed_flags)
+            raise ValueError(f"Options {joined} cannot be used with pip mode.")
+
+        if remove and repair:
+            raise ValueError("--repair cannot be combined with --remove in pip mode.")
 
         python_exec = sys.executable or "python3"
-        pip_cmd: list[str] = [python_exec, "-m", "pip", "install"]
+        pip_cmd: list[str] = [python_exec, "-m", "pip"]
+        uninstall_requested = bool(remove)
+        pip_cmd.append("uninstall" if uninstall_requested else "install")
+
         if quiet_requested:
             pip_cmd.append("--quiet")
-        pip_cmd.append("--upgrade")
         if debug:
             pip_cmd.append("--verbose")
-        if force or latest_requested:
-            pip_cmd.append("--force-reinstall")
+
+        if uninstall_requested:
+            pip_cmd.append("-y")
+        else:
+            pip_cmd.append("--upgrade")
+            if force or latest_requested or repair:
+                pip_cmd.append("--force-reinstall")
+
         pip_cmd.extend(packages)
 
         pretty_cmd = " ".join(shlex.quote(part) for part in pip_cmd)
-        gw.info(f"install (pip): running {pretty_cmd}")
+        action_label = "uninstall" if uninstall_requested else "install"
+        gw.info(f"install (pip {action_label}): running {pretty_cmd}")
 
         result = subprocess.run(pip_cmd, check=False)
         if result.returncode != 0:
-            gw.error(f"pip install failed with exit code {result.returncode}")
+            gw.error(f"pip {action_label} failed with exit code {result.returncode}")
             raise subprocess.CalledProcessError(result.returncode, pip_cmd)
 
         return result.returncode

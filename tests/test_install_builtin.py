@@ -100,7 +100,34 @@ class InstallBuiltinTests(unittest.TestCase):
 
     def test_install_pip_mode_rejects_service_flags(self):
         with self.assertRaises(ValueError):
-            gw.install(mode="pip", remove=True)
+            gw.install(mode="pip", remove=True, bin=True)
+        with self.assertRaises(ValueError):
+            gw.install(mode="pip", root=True)
+
+    def test_install_pip_mode_supports_remove(self):
+        result = SimpleNamespace(returncode=0)
+        with patch.object(sys, "executable", "/opt/python"), patch(
+            "subprocess.run", return_value=result
+        ) as run_mock:
+            rc = gw.install(mode="pip", remove=True)
+
+        self.assertEqual(rc, 0)
+        cmd = run_mock.call_args[0][0]
+        self.assertEqual(cmd[:4], ["/opt/python", "-m", "pip", "uninstall"])
+        self.assertIn("-y", cmd)
+        self.assertIn("gway", cmd)
+
+    def test_install_pip_mode_repair_forces_reinstall(self):
+        result = SimpleNamespace(returncode=0)
+        with patch.object(sys, "executable", "/opt/python"), patch(
+            "subprocess.run", return_value=result
+        ) as run_mock:
+            gw.install("custom", mode="pip", repair=True)
+
+        cmd = run_mock.call_args[0][0]
+        self.assertEqual(cmd[:4], ["/opt/python", "-m", "pip", "install"])
+        self.assertIn("--force-reinstall", cmd)
+        self.assertIn("custom", cmd)
 
     def test_install_remove_requires_recipe(self):
         with self.assertRaises(ValueError):
