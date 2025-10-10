@@ -98,6 +98,8 @@ def auto_releaser_scan(
             status = "missing-remote"
         elif last_commit is not None and remote_commit == last_commit:
             status = "unchanged"
+        elif head_commit is not None and remote_commit == head_commit:
+            status = "unchanged"
 
     return {
         "status": status,
