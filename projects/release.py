@@ -12,9 +12,15 @@ import getpass
 import traceback
 import shutil
 import stat
+import subprocess
+import sys
+import platform
+from datetime import datetime
 from pathlib import Path
 from io import StringIO
+import textwrap
 import unittest
+from typing import cast
 
 try:
     from coverage import Coverage
@@ -28,6 +34,101 @@ from gway import gw
 PROJECT_READMES = [
     'awg', 'cdv', 'monitor', 'release',
 ]
+
+
+def _git_rev_parse(ref: str) -> str | None:
+    """Return the commit hash for *ref*, or ``None`` if it cannot be resolved."""
+
+    try:
+        output = subprocess.check_output(
+            ["git", "rev-parse", ref],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return None
+    return output.strip() or None
+
+
+def open_notepad(path: os.PathLike[str] | str, *, wait: bool = False) -> subprocess.Popen | None:
+    """Open *path* in Windows Notepad when available."""
+
+    if platform.system() != "Windows":
+        return None
+
+    target = Path(path)
+    try:
+        process = subprocess.Popen(["notepad.exe", str(target)])
+    except Exception as exc:  # pragma: no cover - depends on host OS
+        gw.warning(f"[release] Unable to launch Notepad for {target}: {exc}")
+        return None
+
+    if wait:
+        try:
+            process.wait()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            gw.debug(f"[release] Waiting on Notepad failed: {exc}")
+    return process
+
+
+def auto_releaser_scan(
+    *,
+    branch: str = "main",
+    remote: str = "origin",
+    last_commit: str | None = None,
+) -> dict[str, object]:
+    """Fetch ``remote/branch`` and report whether a new commit is available."""
+
+    fetch_result = subprocess.run(
+        ["git", "fetch", "--all", "--prune"],
+        capture_output=True,
+        text=True,
+    )
+    remote_ref = f"{remote}/{branch}"
+    head_commit = _git_rev_parse("HEAD")
+
+    status = "updated"
+    remote_commit: str | None = None
+
+    if fetch_result.returncode != 0:
+        status = "fetch-error"
+    else:
+        remote_commit = _git_rev_parse(remote_ref)
+        if remote_commit is None:
+            status = "missing-remote"
+        elif last_commit is not None and remote_commit == last_commit:
+            status = "unchanged"
+
+    return {
+        "status": status,
+        "remote_ref": remote_ref,
+        "remote_commit": remote_commit,
+        "head_commit": head_commit,
+        "fetch_result": fetch_result,
+    }
+
+
+def auto_releaser_check(
+    *,
+    branch: str = "main",
+    remote: str = "origin",
+    last_commit: str | None = None,
+) -> dict[str, object]:
+    """Return a summary of the current remote commit state for auto releases."""
+
+    scan = auto_releaser_scan(branch=branch, remote=remote, last_commit=last_commit)
+    fetch_result = scan["fetch_result"]
+    summary = {
+        "status": scan["status"],
+        "remote": scan["remote_ref"],
+        "remote_commit": scan.get("remote_commit"),
+        "head_commit": scan.get("head_commit"),
+        "fetch_exit_code": getattr(fetch_result, "returncode", None),
+    }
+    if isinstance(fetch_result, subprocess.CompletedProcess):
+        summary["fetch_stdout"] = (fetch_result.stdout or "").strip() or None
+        summary["fetch_stderr"] = (fetch_result.stderr or "").strip() or None
+    return summary
 
 
 def build(
@@ -406,6 +507,285 @@ def build(
     except Exception as exc:
         _handle_failure(exc, traceback.format_exc())
         raise
+
+
+def auto_releaser(
+    *,
+    branch: str = "main",
+    remote: str = "origin",
+    poll_interval: float = 60.0,
+    success_rest: float = 300.0,
+    failure_rest: float = 60.0,
+    retry_on_failure: bool = False,
+    background: bool = False,
+) -> dict[str, object] | None:
+    """Continuously monitor the repository and trigger release builds.
+
+    The helper polls ``remote/branch`` for new commits, fast-forwards the
+    checkout and runs ``gway release build --all`` when changes are found.
+    Successful releases pause for ``success_rest`` seconds (five minutes by
+    default). Failures capture the git and release logs, raise a Windows toast
+    notification and open Notepad with a detailed report so operators can act
+    quickly. When ``background`` is true the loop is launched on a daemon
+    thread so recipes can manage it via ``until``.
+    """
+
+    def _parse_bool(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        text = str(value).strip().lower()
+        if text in {"", "0", "false", "off", "no", "n"}:
+            return False
+        if text in {"1", "true", "on", "yes", "y"}:
+            return True
+        raise ValueError(f"Cannot interpret {value!r} as a boolean flag")
+
+    def _sleep(duration: float) -> None:
+        if duration > 0:
+            time.sleep(duration)
+
+    def _run_command(command: list[str], name: str) -> subprocess.CompletedProcess[str]:
+        gw.debug(f"[auto_releaser] Running {name}: {' '.join(command)}")
+        return subprocess.run(command, capture_output=True, text=True)
+
+    def _format_command(result: subprocess.CompletedProcess[str] | None) -> str:
+        if result is None:
+            return "Command not executed."
+        args = result.args
+        if isinstance(args, (list, tuple)):
+            cmd_text = " ".join(str(part) for part in args)
+        else:
+            cmd_text = str(args)
+        sections = [f"Command: {cmd_text}", f"Exit code: {result.returncode}"]
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+        if stdout:
+            sections.append("STDOUT:\n" + stdout)
+        if stderr:
+            sections.append("STDERR:\n" + stderr)
+        return "\n\n".join(sections)
+
+    def _notify_failure(title: str, message: str) -> None:
+        notifier = getattr(getattr(gw, "screen", None), "notify", None)
+        if callable(notifier):
+            try:
+                notifier(message, title=title, timeout=30)
+                return
+            except Exception as exc:  # pragma: no cover - UI best effort
+                gw.debug(f"[auto_releaser] screen.notify failed: {exc}")
+        try:
+            gw.notify(message, title=title, timeout=30)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            gw.warning(f"[auto_releaser] Failed to send notification: {exc}")
+
+    poll = max(1.0, float(poll_interval))
+    success_delay = max(0.0, float(success_rest))
+    failure_delay = max(0.0, float(failure_rest))
+    retry_failed = _parse_bool(retry_on_failure)
+
+    logs_dir = Path(gw.resource("logs", "auto_releaser", dir=True))
+    system = platform.system()
+    last_processed_remote: str | None = None
+
+    def _loop() -> None:
+        nonlocal last_processed_remote
+
+        gw.info(
+            "Starting auto releaser loop",
+            extra={
+                "remote": remote,
+                "branch": branch,
+                "poll_interval": poll,
+                "success_rest": success_delay,
+                "failure_rest": failure_delay,
+                "retry_on_failure": retry_failed,
+            },
+        )
+
+        try:
+            while True:
+                scan = auto_releaser_scan(
+                    branch=branch,
+                    remote=remote,
+                    last_commit=last_processed_remote,
+                )
+                status = scan["status"]
+                remote_ref = str(scan["remote_ref"])
+                remote_commit = cast(str | None, scan.get("remote_commit"))
+                head_commit = cast(str | None, scan.get("head_commit"))
+                fetch_result = cast(
+                    subprocess.CompletedProcess[str] | None,
+                    scan.get("fetch_result"),
+                )
+
+                if status == "fetch-error":
+                    timestamp = datetime.now()
+                    report_path = logs_dir / f"failure_{timestamp:%Y%m%d_%H%M%S}.log"
+                    report = textwrap.dedent(
+                        f"""\
+                        Auto releaser failure: git fetch
+                        Timestamp: {timestamp.isoformat()}
+                        Remote: {remote_ref}
+                        Local HEAD: {head_commit or 'unknown'}
+
+                        {_format_command(fetch_result)}
+                        """
+                    ).strip()
+                    report_path.write_text(report + "\n", encoding="utf-8")
+                    gw.error(f"[auto_releaser] git fetch failed. Report saved to {report_path}")
+                    _notify_failure(
+                        "Auto release failed",
+                        f"git fetch failed for {remote_ref}. See {report_path}",
+                    )
+                    open_notepad(report_path)
+                    _sleep(failure_delay)
+                    continue
+
+                if status == "missing-remote":
+                    timestamp = datetime.now()
+                    report_path = logs_dir / f"failure_{timestamp:%Y%m%d_%H%M%S}.log"
+                    report = textwrap.dedent(
+                        f"""\
+                        Auto releaser failure: unknown remote commit
+                        Timestamp: {timestamp.isoformat()}
+                        Remote: {remote_ref}
+                        Local HEAD: {head_commit or 'unknown'}
+
+                        git fetch output:
+                        {_format_command(fetch_result)}
+                        """
+                    ).strip()
+                    report_path.write_text(report + "\n", encoding="utf-8")
+                    gw.error(
+                        f"[auto_releaser] Unable to resolve commit for {remote_ref}. Report saved to {report_path}"
+                    )
+                    _notify_failure(
+                        "Auto release failed",
+                        f"Cannot resolve {remote_ref}. See {report_path}",
+                    )
+                    open_notepad(report_path)
+                    _sleep(failure_delay)
+                    continue
+
+                if status == "unchanged":
+                    gw.debug(f"[auto_releaser] No changes detected on {remote_ref}. Sleeping {poll}s")
+                    _sleep(poll)
+                    continue
+
+                gw.info(
+                    f"New commit detected on {remote_ref}",
+                    extra={"commit": remote_commit, "previous": last_processed_remote},
+                )
+
+                merge_result = _run_command(["git", "merge", "--ff-only", remote_ref], "git merge --ff-only")
+                if merge_result.returncode != 0:
+                    timestamp = datetime.now()
+                    report_path = logs_dir / f"failure_{timestamp:%Y%m%d_%H%M%S}.log"
+                    report_lines = [
+                        "Auto releaser failure: git merge --ff-only",
+                        f"Timestamp: {timestamp.isoformat()}",
+                        f"Remote: {remote_ref}",
+                        f"Remote commit: {remote_commit}",
+                        f"Local HEAD: {head_commit or 'unknown'}",
+                        "",
+                        "git fetch output:",
+                        _format_command(fetch_result),
+                        "",
+                        "git merge output:",
+                        _format_command(merge_result),
+                    ]
+                    report_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+                    gw.error(f"[auto_releaser] git merge failed. Report saved to {report_path}")
+                    _notify_failure(
+                        "Auto release failed",
+                        f"git merge failed for {remote_ref}. See {report_path}",
+                    )
+                    open_notepad(report_path)
+                    if not retry_failed:
+                        last_processed_remote = remote_commit
+                    _sleep(failure_delay)
+                    continue
+
+                head_commit = _git_rev_parse("HEAD")
+                release_cmd = [sys.executable, "-m", "gway", "release", "build", "--all"]
+                release_result = _run_command(release_cmd, "gway release build")
+
+                if release_result.returncode == 0:
+                    gw.info(
+                        f"Release completed for {remote_ref}",
+                        extra={"commit": remote_commit, "system": system},
+                    )
+                    last_processed_remote = remote_commit
+                    _sleep(success_delay)
+                    continue
+
+                timestamp = datetime.now()
+                report_path = logs_dir / f"failure_{timestamp:%Y%m%d_%H%M%S}.log"
+                report_sections = [
+                    "Auto releaser failure: release build",
+                    f"Timestamp: {timestamp.isoformat()}",
+                    f"Remote: {remote_ref}",
+                    f"Remote commit: {remote_commit}",
+                    f"Local HEAD: {head_commit or 'unknown'}",
+                    "",
+                    "git fetch output:",
+                    _format_command(fetch_result),
+                    "",
+                    "git merge output:",
+                    _format_command(merge_result),
+                    "",
+                    "release build output:",
+                    _format_command(release_result),
+                ]
+                report_text = "\n".join(report_sections) + "\n"
+                report_path.write_text(report_text, encoding="utf-8")
+                short_commit = (remote_commit or "unknown")[:8]
+                gw.error(
+                    f"[auto_releaser] Release build failed for {remote_ref}@{short_commit}. Report saved to {report_path}"
+                )
+                _notify_failure(
+                    "Auto release failed",
+                    f"Release build failed for {remote_ref}@{short_commit}. See {report_path}",
+                )
+                open_notepad(report_path)
+                if not retry_failed:
+                    last_processed_remote = remote_commit
+                _sleep(failure_delay)
+        except KeyboardInterrupt:
+            gw.info("Auto releaser loop interrupted by user")
+
+    if background:
+        thread_name = f"auto-releaser-{branch}"
+
+        def _target() -> None:
+            try:
+                _loop()
+            except Exception as exc:  # pragma: no cover - defensive logging
+                gw.exception(exc)
+
+        thread = threading.Thread(target=_target, name=thread_name, daemon=True)
+        if hasattr(gw, "_async_threads"):
+            gw._async_threads.append(thread)
+        thread.start()
+        return {
+            "status": "started",
+            "thread": thread.name,
+            "remote": remote,
+            "branch": branch,
+            "poll_interval": poll,
+            "success_rest": success_delay,
+            "failure_rest": failure_delay,
+            "retry_on_failure": retry_failed,
+        }
+
+    _loop()
+    return {
+        "status": "stopped",
+        "remote": remote,
+        "branch": branch,
+    }
 
 
 def build_help_db():
