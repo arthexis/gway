@@ -6,7 +6,7 @@
 
 # Recall every card, shuffle the deck, and store the selection as the
 # active tome for follow-up commands.
-tome shuffle %[tome|] --all true
+tome shuffle %[tome|] --all
 
 # Open the tome viewer maximized so reading can begin immediately.
 tome open-viewer %[tome|] --maximize
