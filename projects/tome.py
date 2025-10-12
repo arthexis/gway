@@ -955,6 +955,7 @@ def open_viewer(
                         group_offsets = {}
                         dragging_group_keys = {}
                         zone = dragging_origin_zone
+                        anchor_member_key: str | None = None
                         for index, member in enumerate(members):
                             if zone == "table":
                                 member_key = f"table::{member}"
@@ -982,13 +983,15 @@ def open_viewer(
                                 offset = (member_rect.x - rect.x, member_rect.y - rect.y)
                             group_offsets[member] = offset
                             dragging_group_keys[member] = member_key
-                            if member_key in draw_order:
+                            if member_key == key and member_key in draw_order:
                                 draw_order.remove(member_key)
+                            if member == dragging_anchor_card_id:
+                                anchor_member_key = member_key
                         reordered_keys = [dragging_group_keys[m] for m in members if m in dragging_group_keys]
-                        if reordered_keys:
-                            for member_key in reordered_keys[1:]:
-                                draw_order.append(member_key)
-                            draw_order.append(reordered_keys[0])
+                        if not anchor_member_key and reordered_keys:
+                            anchor_member_key = reordered_keys[0]
+                        if anchor_member_key and anchor_member_key not in draw_order:
+                            draw_order.append(anchor_member_key)
                         if len(members) <= 1:
                             dragging_bind_id = None
                         if dragging_origin_zone == "table":
