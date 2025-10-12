@@ -4,17 +4,29 @@ from __future__ import annotations
 
 import subprocess
 
+from importlib import import_module
+
 from gway import gw
 
-from . import (
-    CycleState,
-    UpgradeConfig,
-    current_release as _current_release,
-    install as _install,
-    log_cycle as _log_cycle,
-    log_upgrade as _log_upgrade,
-    notify_upgrade as _notify_upgrade,
-)
+try:  # pragma: no cover - fallback when executed outside the package context
+    from . import (
+        CycleState,
+        UpgradeConfig,
+        current_release as _current_release,
+        install as _install,
+        log_cycle as _log_cycle,
+        log_upgrade as _log_upgrade,
+        notify_upgrade as _notify_upgrade,
+    )
+except ImportError:  # pragma: no cover - defensive for direct path imports
+    _helpers = import_module("projects.package.__package__")
+    CycleState = _helpers.CycleState
+    UpgradeConfig = _helpers.UpgradeConfig
+    _current_release = _helpers.current_release
+    _install = _helpers.install
+    _log_cycle = _helpers.log_cycle
+    _log_upgrade = _helpers.log_upgrade
+    _notify_upgrade = _helpers.notify_upgrade
 
 __all__ = [
     "LOG_NAME",
