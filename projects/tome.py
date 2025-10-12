@@ -810,6 +810,23 @@ def open_viewer(
     value_good_color = (32, 170, 70)
     value_bad_color = (200, 45, 45)
 
+    lift_pixels = 14
+    lift_duration_ms = 160
+    shadow_offset = (8, 10)
+    lifted_cards: dict[str, dict[str, float]] = {}
+
+    def _current_lift_offset(key: str) -> float:
+        state = lifted_cards.get(key)
+        if not state:
+            return 0.0
+        start = float(state.get("start", 0.0))
+        elapsed = max(0.0, pygame.time.get_ticks() - start)
+        progress = min(1.0, elapsed / max(lift_duration_ms, 1))
+        eased = 1.0 - (1.0 - progress) * (1.0 - progress)
+        offset = lift_pixels * eased
+        state["offset"] = offset
+        return offset
+
     def _wrap_text(text: str, max_width: int) -> list[str]:
         words = text.split()
         if not words:
@@ -974,6 +991,16 @@ def open_viewer(
                             draw_order.append(reordered_keys[0])
                         if len(members) <= 1:
                             dragging_bind_id = None
+                        if dragging_origin_zone == "table":
+                            now = pygame.time.get_ticks()
+                            affected_keys = list(dragging_group_keys.values())
+                            if dragging_card and dragging_card not in affected_keys:
+                                affected_keys.append(dragging_card)
+                            if not affected_keys and key:
+                                affected_keys.append(key)
+                            for member_key in affected_keys:
+                                if member_key:
+                                    lifted_cards[member_key] = {"start": float(now), "offset": 0.0}
                         break
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     if dragging_card:
@@ -983,6 +1010,9 @@ def open_viewer(
                         holder = dragging_origin_holder or (info.get("holder") if info else None)
                         zone = dragging_origin_zone or (info.get("zone") if info else None)
                         moved_to_hand = False
+                        lift_keys_to_clear = list(dragging_group_keys.values())
+                        if dragging_card and dragging_card not in lift_keys_to_clear:
+                            lift_keys_to_clear.append(dragging_card)
                         if rect and anchor_card_id:
                             if zone != "table" and rect.bottom < table_line_y and holder:
                                 moved = _move_hand_cards_to_table(data, holder, [anchor_card_id])
@@ -1008,38 +1038,45 @@ def open_viewer(
                                     except OSError:
                                         last_mtime = None
                             elif zone == "table" and rect.bottom >= table_line_y:
-                                if len(dragging_group_members) > 1 or dragging_bind_id:
-                                    rect.y = max(padding, table_line_y - card_height - 4)
-                                    rect.height = card_height
-                                    rect.width = card_width
-                                    for member, key_name in dragging_group_keys.items():
-                                        if key_name == dragging_card:
-                                            continue
-                                        offset = group_offsets.get(member, (bind_step_x, bind_step_y))
-                                        member_rect = card_positions.get(key_name)
-                                        if member_rect:
-                                            member_rect.x = rect.x + offset[0]
-                                            member_rect.y = rect.y + offset[1]
-                                            member_rect.width = card_width
-                                            member_rect.height = card_height
-                                else:
-                                    target_holder = holder or mask_filter or _default_mask(None)
-                                    if target_holder:
-                                        moved = _move_table_cards_to_hand(data, target_holder, [anchor_card_id])
-                                        if moved:
-                                            new_key = f"hand:{target_holder}:{anchor_card_id}"
-                                            card_positions[new_key] = rect
-                                            card_positions.pop(dragging_card, None)
-                                            if dragging_card in draw_order:
-                                                draw_order.remove(dragging_card)
-                                            if new_key not in draw_order:
-                                                draw_order.append(new_key)
-                                            moved_to_hand = True
-                                            _save_tome(path, data)
-                                            try:
-                                                last_mtime = path.stat().st_mtime
-                                            except OSError:
-                                                last_mtime = None
+                                lift_offset = 0.0
+                                if dragging_card:
+                                    lift_offset = _current_lift_offset(dragging_card)
+                                visual_bottom = rect.bottom - int(round(lift_offset))
+                                if visual_bottom < table_line_y:
+                                    lift_offset = 0.0
+                                if visual_bottom >= table_line_y:
+                                    if len(dragging_group_members) > 1 or dragging_bind_id:
+                                        rect.y = max(padding, table_line_y - card_height - 4)
+                                        rect.height = card_height
+                                        rect.width = card_width
+                                        for member, key_name in dragging_group_keys.items():
+                                            if key_name == dragging_card:
+                                                continue
+                                            offset = group_offsets.get(member, (bind_step_x, bind_step_y))
+                                            member_rect = card_positions.get(key_name)
+                                            if member_rect:
+                                                member_rect.x = rect.x + offset[0]
+                                                member_rect.y = rect.y + offset[1]
+                                                member_rect.width = card_width
+                                                member_rect.height = card_height
+                                    else:
+                                        target_holder = holder or mask_filter or _default_mask(None)
+                                        if target_holder:
+                                            moved = _move_table_cards_to_hand(data, target_holder, [anchor_card_id])
+                                            if moved:
+                                                new_key = f"hand:{target_holder}:{anchor_card_id}"
+                                                card_positions[new_key] = rect
+                                                card_positions.pop(dragging_card, None)
+                                                if dragging_card in draw_order:
+                                                    draw_order.remove(dragging_card)
+                                                if new_key not in draw_order:
+                                                    draw_order.append(new_key)
+                                                moved_to_hand = True
+                                                _save_tome(path, data)
+                                                try:
+                                                    last_mtime = path.stat().st_mtime
+                                                except OSError:
+                                                    last_mtime = None
                         if rect and not moved_to_hand and zone == "table" and anchor_card_id:
                             table_keys = []
                             for member in dragging_group_members:
@@ -1108,6 +1145,8 @@ def open_viewer(
                                             for idx, member in enumerate(members)
                                         }
                                         dragging_bind_id = bind_id
+                        for key_name in lift_keys_to_clear:
+                            lifted_cards.pop(key_name, None)
                         dragging_card = None
                         dragging_group_keys = {}
                         dragging_group_members = []
@@ -1147,6 +1186,10 @@ def open_viewer(
                                 member_rect.width = card_width
                                 member_rect.height = card_height
                     elif not event.buttons[0]:
+                        for key_name in list(dragging_group_keys.values()):
+                            lifted_cards.pop(key_name, None)
+                        if dragging_card:
+                            lifted_cards.pop(dragging_card, None)
                         dragging_card = None
                         dragging_group_keys = {}
                         dragging_group_members = []
@@ -1404,7 +1447,14 @@ def open_viewer(
 
                 card_id = info.get("card_id")
                 payload = info.get("payload", {})
-                hovered = rect.collidepoint(mouse_pos)
+                render_rect = rect.copy()
+                lift_offset = 0.0
+                if info.get("zone") == "table":
+                    lift_offset = _current_lift_offset(key)
+                    if lift_offset:
+                        render_rect.y -= int(round(lift_offset))
+
+                hovered = render_rect.collidepoint(mouse_pos)
                 if hovered:
                     members = list(info.get("bind_members") or [])
                     if card_id and not members:
@@ -1414,8 +1464,24 @@ def open_viewer(
                         if hover_card_ids:
                             hover_anchor_payload = payload
 
-                pygame.draw.rect(surface, card_color, rect, border_radius=12)
-                pygame.draw.rect(surface, card_border, rect, width=3, border_radius=12)
+                if lift_offset:
+                    shadow_rect = pygame.Rect(
+                        render_rect.x + shadow_offset[0],
+                        render_rect.y + shadow_offset[1] + int(round(lift_offset * 0.5)),
+                        render_rect.width,
+                        render_rect.height,
+                    )
+                    shadow_surface = pygame.Surface((shadow_rect.width, shadow_rect.height), pygame.SRCALPHA)
+                    pygame.draw.rect(
+                        shadow_surface,
+                        (0, 0, 0, 90),
+                        shadow_surface.get_rect(),
+                        border_radius=12,
+                    )
+                    surface.blit(shadow_surface, shadow_rect.topleft)
+
+                pygame.draw.rect(surface, card_color, render_rect, border_radius=12)
+                pygame.draw.rect(surface, card_border, render_rect, width=3, border_radius=12)
 
                 label_text = payload.get("label", card_id or key)
                 lines = _wrap_text(label_text, card_width - 20)
@@ -1423,10 +1489,10 @@ def open_viewer(
                 if holder_name and (mask_filter is None or info.get("zone") == "table"):
                     lines.append(f"[{holder_name}]")
 
-                text_y = rect.y + 12
+                text_y = render_rect.y + 12
                 for line in lines[:6]:
                     rendered = font.render(line, True, text_color)
-                    surface.blit(rendered, (rect.x + 10, text_y))
+                    surface.blit(rendered, (render_rect.x + 10, text_y))
                     text_y += rendered.get_height() + 4
 
                 note = payload.get("note")
@@ -1434,7 +1500,7 @@ def open_viewer(
                     note_lines = _wrap_text(note, card_width - 20)
                     for line in note_lines[:4]:
                         rendered = small_font.render(line, True, text_color)
-                        surface.blit(rendered, (rect.x + 10, text_y))
+                        surface.blit(rendered, (render_rect.x + 10, text_y))
                         text_y += rendered.get_height() + 2
             if hover_card_ids:
                 value_data: list[tuple[str, tuple[int, int] | None]] = []
