@@ -288,14 +288,34 @@ class Gateway(Resolver, Runner):
         # Update global gw instance if it exists and is not the current instance
         try:
             import sys
+
             mod = sys.modules[cls.__module__]
-            if hasattr(mod, "gw"):
-                g = getattr(mod, "gw")
-                if isinstance(g, Gateway):
-                    for flag, value in updated.items():
-                        setattr(g, f"{flag}_enabled", value)
-                        if flag in ('debug', 'silent', 'verbose', 'wizard'):
-                            setattr(g, flag, (lambda msg, *a, **k: g.logger.debug(msg, *a, stacklevel=2, **k)) if value else Null)
+            if not hasattr(mod, "gw"):
+                return
+
+            g = getattr(mod, "gw")
+            if not isinstance(g, Gateway):
+                return
+
+            log_methods = {
+                "debug": "debug",
+                "silent": "info",
+                "verbose": "info",
+                "wizard": "debug",
+            }
+
+            def _build_logger(method_name):
+                bound_method = getattr(g.logger, method_name)
+
+                def _logger(msg, *a, **k):
+                    return bound_method(msg, *a, stacklevel=2, **k)
+
+                return _logger
+
+            for flag, value in updated.items():
+                setattr(g, f"{flag}_enabled", value)
+                if flag in log_methods:
+                    setattr(g, flag, _build_logger(log_methods[flag]) if value else Null)
         except Exception:
             pass
 
