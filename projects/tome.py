@@ -305,6 +305,73 @@ def _card_payload(card_id: str, data: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+_CARD_VALUE_MAP: dict[str, tuple[int, int]] = {
+    "A": (1, 11),
+    "2": (2, 2),
+    "3": (3, 3),
+    "4": (4, 4),
+    "5": (5, 5),
+    "6": (6, 6),
+    "7": (7, 7),
+    "8": (8, 8),
+    "9": (9, 9),
+    "10": (10, 10),
+    "J": (10, 10),
+    "Q": (10, 10),
+    "K": (10, 10),
+    "JOKER": (0, 0),
+}
+
+
+_RANK_WORD_MAP: dict[str, str] = {
+    "ace": "A",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+    "jack": "J",
+    "queen": "Q",
+    "king": "K",
+    "joker": "JOKER",
+}
+
+
+def _resolve_card_rank(card_id: str, label: str | None = None) -> str | None:
+    """Return the canonical rank code for a card identifier and label."""
+
+    if card_id:
+        upper = card_id.upper()
+        if upper.startswith("10"):
+            return "10"
+        if "JOKER" in upper:
+            return "JOKER"
+        if upper and upper[0] in _CARD_VALUE_MAP:
+            return upper[0]
+    if label:
+        lowered = label.strip().lower()
+        if not lowered:
+            return None
+        if "joker" in lowered:
+            return "JOKER"
+        first_word = lowered.split()[0]
+        return _RANK_WORD_MAP.get(first_word)
+    return None
+
+
+def _card_value_range(card_id: str, *, label: str | None = None) -> tuple[int, int] | None:
+    """Return the blackjack value range for a given card."""
+
+    rank = _resolve_card_rank(card_id, label)
+    if not rank:
+        return None
+    return _CARD_VALUE_MAP.get(rank)
+
+
 def shuffle(tome: str | None = None, *, all: bool = False, mask: str | None = None) -> dict[str, Any]:
     """Shuffle the selected tome, optionally recalling all cards before shuffling."""
     name, data, path = _load_tome_data(tome)
@@ -740,6 +807,8 @@ def open_viewer(
     text_color = (10, 10, 10)
     face_down_text = (230, 230, 230)
     guide_color = (220, 220, 220)
+    value_good_color = (32, 170, 70)
+    value_bad_color = (200, 45, 45)
 
     def _wrap_text(text: str, max_width: int) -> list[str]:
         words = text.split()
@@ -1266,6 +1335,10 @@ def open_viewer(
                 dragging_card = None
 
             mouse_pos = pygame.mouse.get_pos()
+            shift_pressed = bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)
+            hover_card_ids: list[str] = []
+            hover_anchor_payload: dict[str, Any] | None = None
+            tooltip_lines: list[tuple[str, tuple[int, int, int]]] = []
             for key in list(hover_offsets):
                 if key not in hand_layouts:
                     del hover_offsets[key]
@@ -1329,11 +1402,23 @@ def open_viewer(
                 if not info or rect is None:
                     continue
 
+                card_id = info.get("card_id")
+                payload = info.get("payload", {})
+                hovered = rect.collidepoint(mouse_pos)
+                if hovered:
+                    members = list(info.get("bind_members") or [])
+                    if card_id and not members:
+                        members = [card_id]
+                    if members:
+                        hover_card_ids = [member for member in members if member]
+                        if hover_card_ids:
+                            hover_anchor_payload = payload
+
                 pygame.draw.rect(surface, card_color, rect, border_radius=12)
                 pygame.draw.rect(surface, card_border, rect, width=3, border_radius=12)
 
-                payload = info["payload"]
-                lines = _wrap_text(payload.get("label", info["card_id"]), card_width - 20)
+                label_text = payload.get("label", card_id or key)
+                lines = _wrap_text(label_text, card_width - 20)
                 holder_name = info.get("holder")
                 if holder_name and (mask_filter is None or info.get("zone") == "table"):
                     lines.append(f"[{holder_name}]")
@@ -1351,6 +1436,48 @@ def open_viewer(
                         rendered = small_font.render(line, True, text_color)
                         surface.blit(rendered, (rect.x + 10, text_y))
                         text_y += rendered.get_height() + 2
+            if hover_card_ids:
+                value_data: list[tuple[str, tuple[int, int] | None]] = []
+                for member_id in hover_card_ids:
+                    member_payload = None
+                    if hover_anchor_payload and hover_anchor_payload.get("id") == member_id:
+                        member_payload = hover_anchor_payload
+                    if member_payload is None:
+                        member_payload = _card_payload(member_id, data)
+                    label = member_payload.get("label", member_id)
+                    value_range = _card_value_range(member_id, label=label)
+                    value_data.append((label, value_range))
+
+                if shift_pressed or len(value_data) <= 1:
+                    for label, value_range in value_data:
+                        if value_range is None:
+                            tooltip_lines.append((f"{label}: –", text_color))
+                            continue
+                        _, high_value = value_range
+                        color = value_good_color if high_value <= 21 else value_bad_color
+                        tooltip_lines.append((f"{label}: {high_value}", color))
+                else:
+                    total = 0
+                    aces = 0
+                    unknown = False
+                    for _, value_range in value_data:
+                        if value_range is None:
+                            unknown = True
+                            break
+                        low, high = value_range
+                        total += low
+                        if high > low:
+                            aces += 1
+                    if not unknown:
+                        best_total = total
+                        for _ in range(aces):
+                            if best_total + 10 <= 21:
+                                best_total += 10
+                        color = value_good_color if best_total <= 21 else value_bad_color
+                        tooltip_lines.append((f"Value: {best_total}", color))
+                    else:
+                        tooltip_lines.append(("Value: –", text_color))
+
             pygame.draw.rect(surface, face_down_color, discard_rect, border_radius=12)
             pygame.draw.rect(surface, card_border, discard_rect, width=3, border_radius=12)
 
@@ -1362,6 +1489,31 @@ def open_viewer(
             deck_count = len(zones.get("deck", []))
             deck_text = small_font.render(f"Deck: {deck_count}", True, face_down_text)
             surface.blit(deck_text, (discard_rect.x + 12, discard_rect.bottom - deck_text.get_height() - 16))
+
+            if tooltip_lines:
+                tooltip_padding = 8
+                text_gap = 2
+                metrics = [small_font.size(text) for text, _ in tooltip_lines]
+                max_width = max((w for w, _ in metrics), default=0)
+                total_height = sum((h for _, h in metrics))
+                tooltip_width = max_width + tooltip_padding * 2
+                tooltip_height = total_height + tooltip_padding * 2
+                if len(metrics) > 1:
+                    tooltip_height += text_gap * (len(metrics) - 1)
+                tooltip_x = mouse_pos[0] + 16
+                tooltip_y = mouse_pos[1] + 16
+                if tooltip_x + tooltip_width > width - padding:
+                    tooltip_x = max(padding, width - tooltip_width - padding)
+                if tooltip_y + tooltip_height > height - padding:
+                    tooltip_y = max(padding, height - tooltip_height - padding)
+                tooltip_rect = pygame.Rect(tooltip_x, tooltip_y, tooltip_width, tooltip_height)
+                pygame.draw.rect(surface, card_color, tooltip_rect, border_radius=8)
+                pygame.draw.rect(surface, card_border, tooltip_rect, width=1, border_radius=8)
+                text_y = tooltip_rect.y + tooltip_padding
+                for (text, color), (_, line_height) in zip(tooltip_lines, metrics):
+                    rendered = small_font.render(text, True, color)
+                    surface.blit(rendered, (tooltip_rect.x + tooltip_padding, text_y))
+                    text_y += line_height + text_gap
 
             pygame.display.flip()
             clock.tick(30)
