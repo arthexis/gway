@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 import subprocess
+import sys
 import builtins
 import getpass
 
@@ -125,6 +126,38 @@ class ReleaseBuildNotifyTests(unittest.TestCase):
         finally:
             gw.interactive_enabled = original_interactive
             gw.wizard_enabled = original_wizard
+
+    def test_missing_pypi_credentials_skip_upload(self):
+        cp = subprocess.CompletedProcess([], 0, "", "")
+
+        def fake_resolve(key, *args, **kwargs):
+            default = kwargs.get("default", "")
+            if key == "[PYPI_API_TOKEN]":
+                return default
+            if key in ("[PYPI_USERNAME]", "[PYPI_PASSWORD]"):
+                if "default" in kwargs:
+                    return default
+                raise KeyError(key)
+            return ""
+
+        with patch.object(gw, "test", return_value=True), \
+             patch.object(gw, "resolve", side_effect=fake_resolve), \
+             patch.object(gw.hub, "commit", return_value="abc"), \
+             patch.object(gw.release, "update_changelog"), \
+             patch("requests.get") as mock_get, \
+             patch("subprocess.run", return_value=cp) as mock_run, \
+             patch.object(gw, "warning") as mock_warning:
+            mock_get.return_value.ok = True
+            mock_get.return_value.json.return_value = {"releases": {}}
+            gw.release.build(dist=True, twine=True)
+
+        mock_run.assert_any_call([sys.executable, "-m", "twine", "check", "dist/*"],
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT,
+                                 text=True)
+        mock_warning.assert_any_call(
+            "Twine upload skipped: missing PyPI token or username/password."
+        )
 
 if __name__ == "__main__":
     unittest.main()

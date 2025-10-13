@@ -397,23 +397,21 @@ def build(
                 if interactive_mode and not token:
                     token = _prompt_input("PyPI API token (leave blank to provide username/password): ")
 
+                def _resolve_credential(sig: str, *, prompt: str, secret: bool = False) -> str:
+                    value = str(gw.resolve(sig, default="") or "").strip()
+                    if value:
+                        return value
+                    if interactive_mode:
+                        return _prompt_input(prompt, secret=secret)
+                    return ""
+
                 user = ""
                 password = ""
                 if not token:
-                    try:
-                        user = str(gw.resolve("[PYPI_USERNAME]")).strip()
-                    except KeyError:
-                        if interactive_mode:
-                            user = _prompt_input("PyPI username: ")
-                        else:
-                            raise
-                    try:
-                        password = str(gw.resolve("[PYPI_PASSWORD]")).strip()
-                    except KeyError:
-                        if interactive_mode:
-                            password = _prompt_input("PyPI password: ", secret=True)
-                        else:
-                            raise
+                    user = _resolve_credential("[PYPI_USERNAME]", prompt="PyPI username: ")
+                    password = _resolve_credential(
+                        "[PYPI_PASSWORD]", prompt="PyPI password: ", secret=True
+                    )
 
                 if not force:
                     releases = []
