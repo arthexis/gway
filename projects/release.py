@@ -476,6 +476,23 @@ def build(
                     gw.warning(
                         "Twine upload skipped: missing PyPI token or username/password."
                     )
+                    if git:
+                        gw.info(
+                            "Stashing release changes due to missing PyPI credentials..."
+                        )
+                        subprocess.run(
+                            [
+                                "git",
+                                "stash",
+                                "--include-untracked",
+                                "-m",
+                                "gway-release-abort",
+                            ],
+                            check=False,
+                        )
+                    gw.abort(
+                        "Missing PyPI credentials. Aborting release before git/tag steps."
+                    )
 
         if git:
             files_to_add = ["VERSION", "BUILD", "pyproject.toml", "CHANGELOG.rst"]
