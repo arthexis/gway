@@ -2,7 +2,7 @@ import unittest
 import tempfile
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, call
 import subprocess
 import sys
 import builtins
@@ -37,14 +37,22 @@ class ReleaseBuildNotifyTests(unittest.TestCase):
 
     def test_all_enables_notify(self):
         cp = subprocess.CompletedProcess([], 0, "", "")
+
+        def fake_resolve(key, *args, **kwargs):
+            if key == "[PYPI_API_TOKEN]":
+                return "token"
+            return ""
+
         with patch.object(gw, "test", return_value=True), \
-             patch.object(gw, "resolve", return_value=""), \
+             patch.object(gw, "resolve", side_effect=fake_resolve), \
              patch.object(gw.hub, "commit", return_value="abc"), \
              patch.object(gw.release, "update_changelog"), \
              patch.object(gw.release, "update_readme_links"), \
              patch("subprocess.run", return_value=cp), \
-             patch("requests.get"), \
+             patch("requests.get") as mock_get, \
              patch.object(gw, "notify") as mock_notify:
+            mock_get.return_value.ok = True
+            mock_get.return_value.json.return_value = {"releases": {}}
             gw.release.build(all=True)
             mock_notify.assert_called_once()
 
@@ -146,10 +154,12 @@ class ReleaseBuildNotifyTests(unittest.TestCase):
              patch.object(gw.release, "update_changelog"), \
              patch("requests.get") as mock_get, \
              patch("subprocess.run", return_value=cp) as mock_run, \
-             patch.object(gw, "warning") as mock_warning:
+             patch.object(gw, "warning") as mock_warning, \
+             patch.object(gw, "abort", side_effect=SystemExit) as mock_abort:
             mock_get.return_value.ok = True
             mock_get.return_value.json.return_value = {"releases": {}}
-            gw.release.build(dist=True, twine=True)
+            with self.assertRaises(SystemExit):
+                gw.release.build(dist=True, twine=True, git=True)
 
         mock_run.assert_any_call([sys.executable, "-m", "twine", "check", "dist/*"],
                                  stdout=subprocess.PIPE,
@@ -157,6 +167,25 @@ class ReleaseBuildNotifyTests(unittest.TestCase):
                                  text=True)
         mock_warning.assert_any_call(
             "Twine upload skipped: missing PyPI token or username/password."
+        )
+        stash_call = call([
+            "git",
+            "stash",
+            "--include-untracked",
+            "-m",
+            "gway-release-abort",
+        ], check=False)
+        self.assertIn(stash_call, mock_run.call_args_list)
+        self.assertNotIn(
+            call(["git", "commit", "-m", "PyPI Release v0.0.1"], check=True),
+            mock_run.call_args_list,
+        )
+        self.assertNotIn(
+            call(["git", "push"], check=True),
+            mock_run.call_args_list,
+        )
+        mock_abort.assert_called_once_with(
+            "Missing PyPI credentials. Aborting release before git/tag steps."
         )
 
 if __name__ == "__main__":
