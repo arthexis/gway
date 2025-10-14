@@ -10,6 +10,7 @@ import argparse
 import argcomplete
 import csv
 import difflib
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import get_origin, get_args, Literal, Union, get_type_hints
 from types import UnionType
@@ -147,7 +148,7 @@ def cli_main():
         dest="recipes",
         nargs="+",
         action="append",
-        help="Execute one or more GWAY recipe (.gwr) files.",
+        help="Execute one or more GWAY recipe (.gwr/.md) files.",
     )
     add(
         "--section",
@@ -1067,7 +1068,7 @@ def _unit_converters(param_name: str):
 # typically has an impact in the recipe parsing process and must be reviewed together.
 
 def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
-    """Load commands and comments from a .gwr file.
+    """Load commands and comments from a recipe file.
     
     Supports indented 'chained' lines: If a line begins with whitespace and its first
     non-whitespace characters are `--`, prepend the last full non-indented command prefix.
@@ -1119,7 +1120,7 @@ def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
                 candidate_names.append(base)
                 seen.add(base)
             if not os.path.splitext(base)[1]:
-                for ext in (".gwr", ".txt"):
+                for ext in (".gwr", ".md", ".txt"):
                     name = base + ext
                     if name not in seen:
                         candidate_names.append(name)
@@ -1186,6 +1187,57 @@ def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
             chunk["section_header"] = header_key
         command_chunks.append(chunk)
 
+    markdown_fence: str | None = None
+    markdown_state = {"bullet_removed": False, "ordered_removed": False}
+
+    def _strip_markdown_syntax(text: str) -> str | None:
+        """Remove Markdown-only prefixes and wrappers from *text*."""
+
+        working = text
+        markdown_state["bullet_removed"] = False
+        markdown_state["ordered_removed"] = False
+        leading = len(working) - len(working.lstrip(" \t"))
+        prefix = working[:leading]
+        content = working[leading:]
+
+        if not content:
+            return text
+
+        while content.startswith(">"):
+            content = content[1:].lstrip(" \t")
+
+        bullet_match = re.match(r"^([-*+])\s+(.*)$", content)
+        if bullet_match:
+            content = bullet_match.group(2)
+            markdown_state["bullet_removed"] = True
+        else:
+            ordered_match = re.match(r"^(\d+)([.)])\s+(.*)$", content)
+            if ordered_match:
+                content = ordered_match.group(3)
+                markdown_state["ordered_removed"] = True
+
+        content = content.strip()
+
+        if not content:
+            return None
+
+        if content in {"---", "***", "___"}:
+            return None
+
+        if content.startswith("`") and content.endswith("`") and len(content) >= 2:
+            content = content[1:-1].strip()
+
+        for marker in ("**", "__", "*", "_"):
+            if content.startswith(marker) and content.endswith(marker) and len(content) >= 2 * len(marker):
+                content = content[len(marker):-len(marker)].strip()
+                break
+
+        if not content:
+            return None
+
+        return prefix + content
+
+
     def append_command(text: str, inline_comment: str | None) -> None:
         trimmed = text.strip()
         if not trimmed:
@@ -1231,6 +1283,14 @@ def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
                         line_to_add += " " + colon_suffix
                     append_command(line_to_add, inline_comment)
                     return
+                if markdown_state["bullet_removed"] or markdown_state["ordered_removed"]:
+                    addition = stripped_command
+                    if addition:
+                        line_to_add = colon_prefix + " " + addition
+                        if colon_suffix:
+                            line_to_add += " " + colon_suffix
+                        append_command(line_to_add, inline_comment)
+                        return
                 if stripped_command.startswith("--"):
                     line_to_add = colon_prefix + " " + stripped_command
                     if colon_suffix:
@@ -1273,10 +1333,32 @@ def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
                 append_command(command_part, inline_comment)
 
         for raw_line in f:
+            markdown_state["bullet_removed"] = False
+            markdown_state["ordered_removed"] = False
             line = raw_line.rstrip("\n")
             if continuation is not None:
                 line = continuation + line.lstrip()
                 continuation = None
+
+            stripped_for_fence = line.strip()
+
+            if markdown_fence:
+                if stripped_for_fence.startswith(markdown_fence):
+                    markdown_fence = None
+                    colon_prefix = None
+                    continue
+            else:
+                if stripped_for_fence.startswith("```") or stripped_for_fence.startswith("~~~"):
+                    markdown_fence = stripped_for_fence[:3]
+                    colon_prefix = None
+                    continue
+
+                normalized = _strip_markdown_syntax(line)
+                if normalized is None:
+                    colon_prefix = None
+                    continue
+                line = normalized
+
             if line.endswith("\\"):
                 continuation = line[:-1].rstrip() + " "
                 continue

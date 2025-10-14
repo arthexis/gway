@@ -387,7 +387,7 @@ find_recipe_file() {
       seen[$base]=1
     fi
     if [[ "$base" != *.* ]]; then
-      for ext in ".gwr" ".txt"; do
+      for ext in ".gwr" ".md" ".txt"; do
         local name="$base$ext"
         if [[ -z "${seen[$name]+x}" ]]; then
           candidates+=("$name")

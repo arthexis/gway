@@ -47,7 +47,8 @@ class GatewayBuiltinsTests(unittest.TestCase):
 
         expected = {
             path.relative_to(recipes_dir).with_suffix("").as_posix()
-            for path in recipes_dir.rglob("*.gwr")
+            for pattern in ("*.gwr", "*.md")
+            for path in recipes_dir.rglob(pattern)
         }
 
         self.assertTrue(expected.issubset(set(recipes)))
@@ -60,7 +61,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
         for entry in recipes_with_ext:
             posix_entry = PurePosixPath(entry)
             suffix = posix_entry.suffix
-            self.assertIn(suffix, (".gwr", ".txt", ""))
+            self.assertIn(suffix, (".gwr", ".md", ".txt", ""))
             if suffix:
                 stripped.add(posix_entry.with_suffix("").as_posix())
             else:
@@ -79,6 +80,7 @@ class GatewayBuiltinsTests(unittest.TestCase):
             tmp_path = Path(tmp)
             (tmp_path / "alpha.gwr").write_text("alpha")
             (tmp_path / "notes.txt").write_text("notes")
+            (tmp_path / "guide.md").write_text("guide")
             nested = tmp_path / "nested"
             nested.mkdir()
             (nested / "beta.gwr").write_text("beta")
@@ -90,12 +92,12 @@ class GatewayBuiltinsTests(unittest.TestCase):
 
             with patch.object(gw, "resource", new=fake_resource):
                 recipes = gw.recipes()
-                self.assertEqual(recipes, ["alpha", "nested/beta", "notes"])
+                self.assertEqual(recipes, ["alpha", "guide", "nested/beta", "notes"])
 
                 recipes_with_ext = gw.recipes(include_extensions=True)
                 self.assertEqual(
                     recipes_with_ext,
-                    ["alpha.gwr", "nested/beta.gwr", "notes.txt"],
+                    ["alpha.gwr", "guide.md", "nested/beta.gwr", "notes.txt"],
                 )
 
     def test_list_projects(self):
