@@ -28,7 +28,7 @@ def recipes(*, include_extensions: bool = False) -> list[str]:
         gw.verbose(f"[recipes] No recipes directory found at {recipes_root}")
         return []
 
-    allowed_suffixes = {".gwr", ".txt"}
+    allowed_suffixes = {".gwr", ".md", ".txt"}
     discovered: set[str] = set()
 
     for path in recipes_root.rglob("*"):
@@ -59,7 +59,7 @@ def recipes(*, include_extensions: bool = False) -> list[str]:
 
 def run_recipe(*scripts: str, section: str | None = None, **context):
     from gway import gw
-    """Run commands parsed from .gwr files, falling back to the recipes bundle."""
+    """Run commands parsed from recipe files, falling back to the recipes bundle."""
     from .console import load_recipe, process
 
     if not scripts:

@@ -99,6 +99,7 @@ app start --port 8000
         # Write without extension and with .gwr extension
         (self.recipes_dir / 'sample').write_text(content)
         (self.recipes_dir / 'sample.gwr').write_text(content)
+        (self.recipes_dir / 'sample.md').write_text(content)
         (self.recipes_dir / 'sample_script.gwr').write_text('cmd hyphen')
         # Monkey-patch gw.resource to point to our fake recipes directory
         self.original_resource = console.gw.resource
@@ -135,6 +136,47 @@ app start --port 8000
     def test_load_recipe_accepts_hyphenated_name(self):
         commands, _ = console.load_recipe('sample-script')
         self.assertEqual(_extract_tokens(commands), [['cmd', 'hyphen']])
+
+    def test_load_recipe_accepts_markdown_extension(self):
+        markdown_content = (
+            """# Sample Markdown Recipe
+
+- app start --port 8000
+  --debug
+
+1. env setup --name test
+
+> gw clock.now
+
+`script run --fast`
+
+---
+
+```gwr
+cast run --mode fenced
+  --option yes
+```
+"""
+        )
+        (self.recipes_dir / 'markdown.md').write_text(markdown_content)
+        commands, comments = console.load_recipe('markdown.md')
+
+        expected_commands = [
+            ['app', 'start', '--port', '8000'],
+            ['app', 'start', '--debug'],
+            ['env', 'setup', '--name', 'test'],
+            ['gw', 'clock.now'],
+            ['script', 'run', '--fast'],
+            ['cast', 'run', '--mode', 'fenced'],
+            ['cast', 'run', '--option', 'yes'],
+        ]
+        self.assertEqual(_extract_tokens(commands), expected_commands)
+        self.assertIn('# Sample Markdown Recipe', comments)
+
+    def test_load_recipe_resolves_markdown_without_extension(self):
+        (self.recipes_dir / 'only-md.md').write_text('cmd go')
+        commands, _ = console.load_recipe('only-md')
+        self.assertEqual(_extract_tokens(commands), [['cmd', 'go']])
 
 
 class TestLoadRecipeColonSyntax(unittest.TestCase):

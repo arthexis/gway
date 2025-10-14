@@ -26,7 +26,11 @@ class _CookbookState:
 
     def recipes(self) -> list[Path]:
         folder = self.current_folder()
-        recipe_files = sorted(folder.glob("*.gwr"))
+        recipe_files = sorted(
+            path
+            for pattern in ("*.gwr", "*.md")
+            for path in folder.glob(pattern)
+        )
         return recipe_files
 
     def current_recipe(self) -> Path | None:
@@ -78,7 +82,7 @@ def open_cookbook(
     Parameters
     ----------
     recipes_root:
-        Directory containing ``.gwr`` recipe files. Defaults to the built-in
+        Directory containing ``.gwr`` or ``.md`` recipe files. Defaults to the built-in
         ``recipes`` resource.
     window_size:
         Size of the pygame window in pixels.
