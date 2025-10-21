@@ -115,6 +115,7 @@ def _ensure_schema(data: dict[str, Any]) -> dict[str, Any]:
     zones = data.setdefault("zones", {})
     zones.setdefault("deck", [])
     zones.setdefault("discard", [])
+    zones.setdefault("hole", [])
     zones.setdefault("hands", {})
     zones.setdefault("table", [])
 
@@ -225,7 +226,84 @@ def _merge_cards_into_bind(data: dict[str, Any], cards: Iterable[str]) -> str | 
     for card_id in ordered:
         state.setdefault(card_id, {"zone": "deck"})["bind"] = target_bind
 
+    _trim_bind_group(data, target_bind)
+
     return target_bind
+
+
+def _move_card_to_hole(data: dict[str, Any], card_id: str) -> None:
+    zones = data.setdefault("zones", {})
+    state = data.setdefault("card_state", {})
+
+    info = state.setdefault(card_id, {"zone": "deck"})
+    current_zone = info.get("zone")
+    holder = info.get("holder")
+
+    if info.get("bind"):
+        _unbind_card(data, card_id)
+
+    if current_zone == "table":
+        table = zones.setdefault("table", [])
+        if card_id in table:
+            table.remove(card_id)
+    elif current_zone == "hand" and holder:
+        hands = zones.setdefault("hands", {})
+        hand_cards = list(hands.get(holder, []))
+        if card_id in hand_cards:
+            hand_cards.remove(card_id)
+            if hand_cards:
+                hands[holder] = hand_cards
+            else:
+                hands.pop(holder, None)
+    elif current_zone == "deck":
+        deck = zones.setdefault("deck", [])
+        if card_id in deck:
+            deck.remove(card_id)
+    elif current_zone == "discard":
+        discard = zones.setdefault("discard", [])
+        if card_id in discard:
+            discard.remove(card_id)
+    elif current_zone and current_zone not in {"hole"}:
+        zone_cards = zones.get(current_zone)
+        if isinstance(zone_cards, list) and card_id in zone_cards:
+            zone_cards.remove(card_id)
+            zones[current_zone] = zone_cards
+
+    hole = zones.setdefault("hole", [])
+    if card_id not in hole:
+        hole.append(card_id)
+
+    info = state.setdefault(card_id, {})
+    info["zone"] = "hole"
+    info.pop("holder", None)
+    info.pop("bind", None)
+    state[card_id] = info
+
+
+def _trim_bind_group(data: dict[str, Any], bind_id: str, *, max_size: int = 5) -> list[str]:
+    binds: dict[str, list[str]] = data.setdefault("binds", {})
+    removed: list[str] = []
+
+    if bind_id not in binds:
+        return removed
+
+    while len(binds.get(bind_id, [])) > max_size:
+        members = list(binds.get(bind_id, []))
+        if not members:
+            break
+        card_id = random.choice(members)
+        removed.append(card_id)
+        _move_card_to_hole(data, card_id)
+
+    return removed
+
+
+def _trim_all_bind_groups(data: dict[str, Any], *, max_size: int = 5) -> list[str]:
+    removed: list[str] = []
+    binds: dict[str, list[str]] = data.setdefault("binds", {})
+    for bind_id in list(binds):
+        removed.extend(_trim_bind_group(data, bind_id, max_size=max_size))
+    return removed
 
 
 def _new_tome(name: str, slug: str) -> dict[str, Any]:
@@ -244,6 +322,7 @@ def _new_tome(name: str, slug: str) -> dict[str, Any]:
         "zones": {
             "deck": random_cards,
             "discard": [],
+            "hole": [],
             "hands": {},
             "table": [],
         },
@@ -379,6 +458,7 @@ def shuffle(tome: str | None = None, *, all: bool = False, mask: str | None = No
     deck: list[str] = zones.setdefault("deck", [])
     hands: dict[str, list[str]] = zones.setdefault("hands", {})
     discard: list[str] = zones.setdefault("discard", [])
+    hole: list[str] = zones.setdefault("hole", [])
     table: list[str] = zones.setdefault("table", [])
     state = data.setdefault("card_state", {})
 
@@ -393,6 +473,9 @@ def shuffle(tome: str | None = None, *, all: bool = False, mask: str | None = No
         if discard:
             recalled.extend(discard)
             zones["discard"] = []
+        if hole:
+            recalled.extend(hole)
+            zones["hole"] = []
         if table:
             for card_id in list(table):
                 _unbind_card(data, card_id)
@@ -870,16 +953,36 @@ def open_viewer(
     running = True
     displayed_cards = 0
     discard_count = len(data.get("zones", {}).get("discard", []))
+    hole_count = len(data.get("zones", {}).get("hole", []))
+
+    initial_trimmed = _trim_all_bind_groups(data)
+    if initial_trimmed:
+        _save_tome(path, data)
+        discard_count = len(data.get("zones", {}).get("discard", []))
+        hole_count = len(data.get("zones", {}).get("hole", []))
+        try:
+            last_mtime = path.stat().st_mtime
+        except OSError:
+            last_mtime = None
 
     try:
         while running:
             try:
                 while True:
                     updated_data, mtime = updates.get_nowait()
+                    trimmed_cards = _trim_all_bind_groups(updated_data)
                     data = updated_data
                     name = data.get("name", name)
                     discard_count = len(data.get("zones", {}).get("discard", []))
-                    last_mtime = mtime
+                    hole_count = len(data.get("zones", {}).get("hole", []))
+                    if trimmed_cards:
+                        _save_tome(path, data)
+                        try:
+                            last_mtime = path.stat().st_mtime
+                        except OSError:
+                            last_mtime = None
+                    else:
+                        last_mtime = mtime
             except Empty:
                 pass
 
@@ -1221,11 +1324,19 @@ def open_viewer(
                 card_width,
                 card_height,
             )
+            hole_rect = pygame.Rect(
+                padding,
+                discard_base_y,
+                card_width,
+                card_height,
+            )
             table_line_y = max(0, discard_base_y - 16)
             table_area_bottom = table_line_y - hand_gap
             max_table_y = max(padding, table_area_bottom - card_height)
 
             zones = data.get("zones", {})
+            discard_count = len(zones.get("discard", []))
+            hole_count = len(zones.get("hole", []))
             table_cards: list[str] = zones.get("table", [])
             hands: dict[str, list[str]] = zones.get("hands", {})
 
@@ -1547,6 +1658,20 @@ def open_viewer(
                     else:
                         tooltip_lines.append(("Value: –", text_color))
 
+            pygame.draw.rect(surface, face_down_color, hole_rect, border_radius=12)
+            pygame.draw.rect(surface, card_border, hole_rect, width=3, border_radius=12)
+
+            hole_title = font.render("HOLE", True, face_down_text)
+            hole_count_text = font.render(str(hole_count), True, face_down_text)
+            surface.blit(hole_title, (hole_rect.x + 12, hole_rect.y + 16))
+            surface.blit(
+                hole_count_text,
+                (
+                    hole_rect.x + 12,
+                    hole_rect.y + 16 + hole_title.get_height() + 8,
+                ),
+            )
+
             pygame.draw.rect(surface, face_down_color, discard_rect, border_radius=12)
             pygame.draw.rect(surface, card_border, discard_rect, width=3, border_radius=12)
 
@@ -1597,6 +1722,7 @@ def open_viewer(
         "tome": name,
         "displayed_cards": displayed_cards,
         "discard_count": discard_count,
+        "hole_count": hole_count,
         "table_cards": len(data.get("zones", {}).get("table", [])),
         "message": "Viewer closed",
     }
