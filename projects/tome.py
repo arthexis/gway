@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
@@ -48,6 +49,9 @@ def _remember_last(name: str) -> None:
     path.write_text(name, encoding="utf-8")
 
 
+_MAX_TOME_SLUG_LENGTH = 80
+
+
 def _slugify(name: str) -> str:
     cleaned = []
     for ch in name:
@@ -58,7 +62,17 @@ def _slugify(name: str) -> str:
         else:
             cleaned.append("-")
     slug = "".join(cleaned).strip("-_")
-    return slug or "tome"
+    if not slug:
+        slug = "tome"
+    if len(slug) > _MAX_TOME_SLUG_LENGTH:
+        digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+        prefix_length = _MAX_TOME_SLUG_LENGTH - len(digest) - 1
+        if prefix_length <= 0:
+            slug = digest[:_MAX_TOME_SLUG_LENGTH]
+        else:
+            prefix = slug[:prefix_length].rstrip("-_")
+            slug = f"{prefix}-{digest}" if prefix else digest
+    return slug
 
 
 def _resolve_name(requested: str | None) -> tuple[str, str]:
