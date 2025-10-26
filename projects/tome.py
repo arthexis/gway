@@ -6,7 +6,10 @@ import hashlib
 import json
 import os
 import random
+import tempfile
+import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event, Thread
@@ -852,6 +855,7 @@ def open_viewer(
     dragging_bind_id: str | None = None
     group_offsets: dict[str, tuple[int, int]] = {}
     card_info: dict[str, dict[str, Any]] = {}
+    dragging_snapshot: dict[str, Any] | None = None
     table_line_y = 0
     hand_drop_ratio = 0.3
     hover_raise_ratio = 0.4
@@ -912,6 +916,42 @@ def open_viewer(
     shadow_offset = (8, 10)
     lifted_cards: dict[str, dict[str, float]] = {}
 
+    log_file_path = Path(tempfile.gettempdir()) / f"tome_{path.stem}_moves.log"
+    try:
+        log_file_path.unlink(missing_ok=True)
+    except TypeError:
+        try:
+            if log_file_path.exists():
+                log_file_path.unlink()
+        except OSError:
+            pass
+
+    message_history: list[tuple[str, float]] = []
+    max_messages = 6
+    message_duration = 6.0
+    undo_stack: list[tuple[dict[str, Any], str]] = []
+
+    def _clone_data(source: dict[str, Any]) -> dict[str, Any]:
+        return json.loads(json.dumps(source))
+
+    def _add_message(text: str) -> None:
+        timestamp = time.time()
+        message_history.append((text, timestamp))
+        if len(message_history) > max_messages:
+            message_history[:] = message_history[-max_messages:]
+        try:
+            log_file_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_file_path.open("a", encoding="utf-8") as log_file:
+                log_file.write(f"{datetime.now().isoformat()} {text}\n")
+        except OSError:
+            pass
+
+    def _record_move(snapshot: dict[str, Any] | None, description: str) -> None:
+        if snapshot is None:
+            return
+        undo_stack.append((snapshot, description))
+        _add_message(description)
+
     def _current_lift_offset(key: str) -> float:
         state = lifted_cards.get(key)
         if not state:
@@ -942,12 +982,12 @@ def open_viewer(
 
     discard_rect = pygame.Rect(0, 0, 0, 0)
 
-    def _draw_random_card(target_holder: str) -> bool:
+    def _draw_random_card(target_holder: str) -> str | None:
         nonlocal data, last_mtime
         zones = data.setdefault("zones", {})
         deck: list[str] = zones.setdefault("deck", [])
         if not deck:
-            return False
+            return None
         index = random.randrange(len(deck))
         card_id = deck.pop(index)
         zones["deck"] = deck
@@ -962,7 +1002,7 @@ def open_viewer(
             last_mtime = path.stat().st_mtime
         except OSError:
             last_mtime = None
-        return True
+        return card_id
 
     running = True
     displayed_cards = 0
@@ -1005,6 +1045,36 @@ def open_viewer(
                     running = False
                 elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
                     running = False
+                elif (
+                    event.type == pygame.KEYDOWN
+                    and event.key == pygame.K_z
+                    and bool(event.mod & pygame.KMOD_CTRL)
+                ):
+                    if undo_stack:
+                        previous_state, description = undo_stack.pop()
+                        data = _clone_data(previous_state)
+                        _save_tome(path, data)
+                        try:
+                            last_mtime = path.stat().st_mtime
+                        except OSError:
+                            last_mtime = None
+                        discard_count = len(data.get("zones", {}).get("discard", []))
+                        hole_count = len(data.get("zones", {}).get("hole", []))
+                        card_positions.clear()
+                        draw_order.clear()
+                        dragging_card = None
+                        dragging_group_keys = {}
+                        dragging_group_members = []
+                        dragging_origin_zone = None
+                        dragging_origin_holder = None
+                        dragging_anchor_card_id = None
+                        dragging_bind_id = None
+                        group_offsets = {}
+                        dragging_snapshot = None
+                        _add_message(f"Undid: {description}")
+                    else:
+                        _add_message("Nothing to undo")
+                    continue
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     mouse_pos = event.pos
                     current_time = pygame.time.get_ticks()
@@ -1024,7 +1094,13 @@ def open_viewer(
                         if getattr(event, "clicks", 0) >= 2 or is_double_click:
                             target_holder = mask_filter or _default_mask(None)
                             if target_holder:
-                                _draw_random_card(target_holder)
+                                snapshot_before_draw = _clone_data(data)
+                                drawn_card = _draw_random_card(target_holder)
+                                if drawn_card:
+                                    payload = _card_payload(drawn_card, data)
+                                    label = payload.get("label", drawn_card)
+                                    description = f"Drew {label} to {target_holder}'s hand"
+                                    _record_move(snapshot_before_draw, description)
                             continue
                     else:
                         last_click_time = current_time
@@ -1043,6 +1119,7 @@ def open_viewer(
                         dragging_origin_zone = info.get("zone")
                         dragging_origin_holder = info.get("holder")
                         dragging_bind_id = info.get("bind")
+                        dragging_snapshot = _clone_data(data)
                         drag_offset = (mouse_pos[0] - rect.x, mouse_pos[1] - rect.y)
                         members = list(info.get("bind_members") or [info["card_id"]])
                         if dragging_anchor_card_id in members:
@@ -1130,6 +1207,8 @@ def open_viewer(
                         holder = dragging_origin_holder or (info.get("holder") if info else None)
                         zone = dragging_origin_zone or (info.get("zone") if info else None)
                         moved_to_hand = False
+                        move_messages: list[str] = []
+                        move_snapshot = dragging_snapshot
                         lift_keys_to_clear = list(dragging_group_keys.values())
                         if dragging_card and dragging_card not in lift_keys_to_clear:
                             lift_keys_to_clear.append(dragging_card)
@@ -1157,6 +1236,14 @@ def open_viewer(
                                         last_mtime = path.stat().st_mtime
                                     except OSError:
                                         last_mtime = None
+                                    labels = [
+                                        _card_payload(card_id, data).get("label", card_id)
+                                        for card_id in moved
+                                    ]
+                                    holder_name = holder or mask_filter or _default_mask(None) or "default"
+                                    move_messages.append(
+                                        f"Moved {', '.join(labels)} from {holder_name}'s hand to table"
+                                    )
                             elif zone == "table" and rect.bottom >= table_line_y:
                                 lift_offset = 0.0
                                 if dragging_card:
@@ -1197,6 +1284,13 @@ def open_viewer(
                                                     last_mtime = path.stat().st_mtime
                                                 except OSError:
                                                     last_mtime = None
+                                                labels = [
+                                                    _card_payload(card_id, data).get("label", card_id)
+                                                    for card_id in moved
+                                                ]
+                                                move_messages.append(
+                                                    f"Moved {', '.join(labels)} from table to {target_holder}'s hand"
+                                                )
                         if rect and not moved_to_hand and zone == "table" and anchor_card_id:
                             table_keys = []
                             for member in dragging_group_members:
@@ -1265,8 +1359,18 @@ def open_viewer(
                                             for idx, member in enumerate(members)
                                         }
                                         dragging_bind_id = bind_id
+                                        labels = [
+                                            _card_payload(card_id, data).get("label", card_id)
+                                            for card_id in merge_list
+                                        ]
+                                        move_messages.append(
+                                            f"Merged {', '.join(labels)} into a bind"
+                                        )
                         for key_name in lift_keys_to_clear:
                             lifted_cards.pop(key_name, None)
+                        if move_messages:
+                            description = " | ".join(move_messages)
+                            _record_move(move_snapshot, description)
                         dragging_card = None
                         dragging_group_keys = {}
                         dragging_group_members = []
@@ -1275,6 +1379,7 @@ def open_viewer(
                         dragging_anchor_card_id = None
                         dragging_bind_id = None
                         group_offsets = {}
+                        dragging_snapshot = None
                 elif event.type == pygame.MOUSEMOTION and dragging_card:
                     rect = card_positions.get(dragging_card)
                     if rect is not None and event.buttons[0]:
@@ -1318,6 +1423,7 @@ def open_viewer(
                         dragging_anchor_card_id = None
                         dragging_bind_id = None
                         group_offsets = {}
+                        dragging_snapshot = None
 
             surface = pygame.display.get_surface()
             if surface is None:
@@ -1722,6 +1828,39 @@ def open_viewer(
                     rendered = small_font.render(text, True, color)
                     surface.blit(rendered, (tooltip_rect.x + tooltip_padding, text_y))
                     text_y += line_height + text_gap
+
+            now_ts = time.time()
+            message_history[:] = [
+                (text, ts)
+                for text, ts in message_history
+                if now_ts - ts <= message_duration
+            ]
+            if message_history:
+                overlay_padding = 12
+                line_gap = 4
+                rendered_lines: list[pygame.Surface] = []
+                max_width = 0
+                total_height = 0
+                for text, _ in message_history:
+                    rendered = small_font.render(text, True, (255, 255, 255))
+                    rendered.set_alpha(220)
+                    rendered_lines.append(rendered)
+                    max_width = max(max_width, rendered.get_width())
+                    total_height += rendered.get_height()
+                if rendered_lines:
+                    total_height += line_gap * (len(rendered_lines) - 1)
+                    overlay_width = max_width + overlay_padding * 2
+                    overlay_height = total_height + overlay_padding * 2
+                    overlay_surface = pygame.Surface((overlay_width, overlay_height), pygame.SRCALPHA)
+                    overlay_surface.fill((0, 0, 0, 140))
+                    text_y = overlay_padding
+                    for rendered in rendered_lines:
+                        overlay_surface.blit(rendered, (overlay_padding, text_y))
+                        text_y += rendered.get_height() + line_gap
+                    surface.blit(
+                        overlay_surface,
+                        (padding, height - overlay_height - padding),
+                    )
 
             pygame.display.flip()
             clock.tick(30)
