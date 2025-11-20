@@ -461,16 +461,18 @@ def process(command_sources, callback=None, *, origin="line", gw_instance=None, 
         return obj, tokens, path, last_error
 
     def _coerce_chunk(entry):
+        python_code = None
         if isinstance(entry, dict):
             tokens = list(entry.get("tokens") or [])
             comment_text = entry.get("comment")
+            python_code = entry.get("python")
         elif hasattr(entry, "tokens"):
             tokens = list(getattr(entry, "tokens"))
             comment_text = getattr(entry, "comment", None)
         else:
             tokens = list(entry)
             comment_text = None
-        return tokens, comment_text
+        return tokens, comment_text, python_code
 
     def _render_comment(text: str) -> str:
         if not text:
@@ -491,8 +493,8 @@ def process(command_sources, callback=None, *, origin="line", gw_instance=None, 
     print_comments = origin == "recipe"
 
     for raw_chunk in command_sources:
-        tokens, comment_text = _coerce_chunk(raw_chunk)
-        if not tokens and not comment_text:
+        tokens, comment_text, python_code = _coerce_chunk(raw_chunk)
+        if not tokens and not comment_text and python_code is None:
             continue
 
         gw.debug(f"Next {raw_chunk=}")
@@ -504,9 +506,10 @@ def process(command_sources, callback=None, *, origin="line", gw_instance=None, 
 
         # Invoke callback if provided
         if callback:
-            callback_result = callback(list(tokens))
+            callback_target = list(tokens) if tokens else (["<python>"] if python_code is not None else [])
+            callback_result = callback(callback_target)
             if callback_result is False:
-                gw.debug(f"Skipping chunk due to callback: {tokens}")
+                gw.debug(f"Skipping chunk due to callback: {callback_target}")
                 continue
             elif isinstance(callback_result, list):
                 gw.debug(f"Callback replaced chunk: {callback_result}")
@@ -515,6 +518,21 @@ def process(command_sources, callback=None, *, origin="line", gw_instance=None, 
                 pass
             else:
                 abort(f"Invalid callback return value for chunk: {callback_result}")
+
+        if python_code is not None:
+            local_ns = {"gw": gw}
+            try:
+                exec(python_code, local_ns, local_ns)
+            except Exception as e:
+                gw.exception(e)
+                abort(f"Unhandled {type(e).__name__} in python block -> {e}")
+            result_value = local_ns.get("result")
+            if "result" not in local_ns:
+                result_value = local_ns.get("_")
+            all_results.append(result_value)
+            last_result = result_value
+            executed_chunks.append(tokens or ["<python>"])
+            continue
 
         if not tokens:
             continue
@@ -1237,7 +1255,6 @@ def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
 
         return prefix + content
 
-
     def append_command(text: str, inline_comment: str | None) -> None:
         trimmed = text.strip()
         if not trimmed:
@@ -1250,7 +1267,15 @@ def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
         if inline_comment:
             comments.append(inline_comment.strip())
         command_chunks.append(chunk)
-    with open(recipe_path) as f:
+
+    def _reset_prefix_state():
+        nonlocal colon_prefix, colon_suffix, last_prefix
+        last_prefix = ""
+        colon_prefix = None
+        colon_suffix = ""
+
+    def _process_stream(lines: list[str], *, markdown_enabled: bool) -> None:
+        nonlocal markdown_fence
         continuation = None
 
         def process_line(line: str):
@@ -1332,7 +1357,7 @@ def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
                     last_prefix = command_part.rstrip()
                 append_command(command_part, inline_comment)
 
-        for raw_line in f:
+        for raw_line in lines:
             markdown_state["bullet_removed"] = False
             markdown_state["ordered_removed"] = False
             line = raw_line.rstrip("\n")
@@ -1340,24 +1365,25 @@ def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
                 line = continuation + line.lstrip()
                 continuation = None
 
-            stripped_for_fence = line.strip()
+            if markdown_enabled:
+                stripped_for_fence = line.strip()
 
-            if markdown_fence:
-                if stripped_for_fence.startswith(markdown_fence):
-                    markdown_fence = None
-                    colon_prefix = None
-                    continue
-            else:
-                if stripped_for_fence.startswith("```") or stripped_for_fence.startswith("~~~"):
-                    markdown_fence = stripped_for_fence[:3]
-                    colon_prefix = None
-                    continue
+                if markdown_fence:
+                    if stripped_for_fence.startswith(markdown_fence):
+                        markdown_fence = None
+                        colon_prefix = None
+                        continue
+                else:
+                    if stripped_for_fence.startswith("```") or stripped_for_fence.startswith("~~~"):
+                        markdown_fence = stripped_for_fence[:3]
+                        colon_prefix = None
+                        continue
 
-                normalized = _strip_markdown_syntax(line)
-                if normalized is None:
-                    colon_prefix = None
-                    continue
-                line = normalized
+                    normalized = _strip_markdown_syntax(line)
+                    if normalized is None:
+                        colon_prefix = None
+                        continue
+                    line = normalized
 
             if line.endswith("\\"):
                 continuation = line[:-1].rstrip() + " "
@@ -1366,6 +1392,57 @@ def load_recipe(recipe_filename, *, strict=True, section: str | None = None):
 
         if continuation is not None:
             process_line(continuation.rstrip())
+
+    with open(recipe_path) as f:
+        raw_lines = [line.rstrip("\n") for line in f]
+
+    fence = None
+    fence_lang: str | None = None
+    code_blocks: list[tuple[str | None, list[str]]] = []
+    buffered_block: list[str] = []
+
+    for line in raw_lines:
+        stripped = line.strip()
+        if fence:
+            if stripped.startswith(fence):
+                code_blocks.append((fence_lang, buffered_block))
+                buffered_block = []
+                fence = None
+                fence_lang = None
+            else:
+                buffered_block.append(line)
+            continue
+
+        fence_match = re.match(r"^(```|~~~)\s*([\w-]+)?\s*$", stripped)
+        if fence_match:
+            fence = fence_match.group(1)
+            fence_lang = (fence_match.group(2) or "").strip() or None
+            buffered_block = []
+            continue
+
+    if fence is not None:
+        code_blocks.append((fence_lang, buffered_block))
+
+    if code_blocks:
+        for lang, lines in code_blocks:
+            normalized_lang = (lang or "").casefold()
+            if normalized_lang in {"", "gway"}:
+                _reset_prefix_state()
+                _process_stream(lines, markdown_enabled=False)
+            elif normalized_lang.startswith("python"):
+                chunk = {
+                    "python": "\n".join(lines).rstrip("\n"),
+                    "comment": None,
+                    "section": current_section,
+                }
+                command_chunks.append(chunk)
+            else:
+                raise ValueError(
+                    f"Unsupported code block language '{lang}' in recipe {recipe_path}"
+                )
+    else:
+        _reset_prefix_state()
+        _process_stream(raw_lines, markdown_enabled=True)
 
     if section:
         target_key = _normalize_section_key(section)
