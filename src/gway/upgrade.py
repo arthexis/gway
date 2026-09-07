@@ -29,14 +29,18 @@ class Upgrader:
         self.repositories = repositories or RepositoryManager(self.registry.paths)
         self.runner = runner or Runner(self.registry.paths)
 
-    def project(self, name: str) -> Project:
+    def project(self, name: str, *, force: bool = False) -> Project:
         current = self.registry.require(name)
         if not current.repository:
             raise UpgradeError(
                 f"project is locally registered and cannot be upgraded by GWAY: {current.name}"
             )
 
-        revision = self.repositories.upgrade(current.path, current.repository)
+        revision = self.repositories.upgrade(
+            current.path,
+            current.repository,
+            force=force,
+        )
         refreshed = Project.from_path(current.path)
         if refreshed.name != current.name:
             raise UpgradeError(
@@ -55,12 +59,12 @@ class Upgrader:
             refreshed = replace(refreshed, environment=environment)
         return self.registry.register(refreshed)
 
-    def all_projects(self) -> list[Project]:
+    def all_projects(self, *, force: bool = False) -> list[Project]:
         upgraded: list[Project] = []
         for project in self.registry.list():
             if project.repository is None:
                 continue
-            upgraded.append(self.project(project.name))
+            upgraded.append(self.project(project.name, force=force))
         return upgraded
 
     @staticmethod
