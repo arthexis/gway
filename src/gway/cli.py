@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from . import __version__
 from .adapters import AdapterError
-from .dispatcher import DispatchError, Dispatcher
+from .dispatcher import Dispatcher, DispatchError
 from .project import ManifestError
 from .registry import Registry, RegistryError
 
