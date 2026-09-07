@@ -70,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Upgrade GWAY itself in the current installation environment.",
     )
+    upgrade.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Discard local managed-checkout changes and reset projects to their trusted "
+            "upstream branches before upgrading."
+        ),
+    )
 
     return parser
 
@@ -124,7 +132,7 @@ def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> None:
 
     upgrader = Upgrader(registry)
     if namespace.project:
-        project = upgrader.project(namespace.project)
+        project = upgrader.project(namespace.project, force=namespace.force)
         print(f"upgraded {project.name}\t{project.repository}@{project.revision}")
         return
 
@@ -134,7 +142,7 @@ def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> None:
         print("upgraded gway\tarthexis/gway@main")
 
     if bare or namespace.all:
-        for project in upgrader.all_projects():
+        for project in upgrader.all_projects(force=namespace.force):
             print(f"upgraded {project.name}\t{project.repository}@{project.revision}")
 
 
