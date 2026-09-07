@@ -752,7 +752,29 @@ works without Arthexis-specific code in the GWAY repository.
 
 This is the second end-to-end milestone.
 
-## Chunk 8 - Update and remove lifecycle
+## Chunk 8 - Convert gway-epaper
+
+**Purpose:** validate the Python adapter against another hardware-facing Raspberry Pi project after the Django/Arthexis milestone.
+
+Work in `gway-epaper`:
+
+- add/validate `gway.toml` with a deliberate Python command namespace;
+- expose ordinary typed Python functions for the intended operator surface;
+- keep display/backend dependencies and hardware-specific logic inside the managed project environment;
+- ensure GWAY owns command discovery, generated help, aliases, type conversion, JSON rendering, and dispatch;
+- keep helpers and any low-level bootstrap paths private to the project rather than maintaining a competing GWAY-facing parser;
+- document `gway epaper ...` usage.
+
+Acceptance on a development machine and then the target Raspberry Pi/ePaper hardware:
+
+```text
+gway install epaper
+gway epaper --help
+```
+
+plus one hardware-independent diagnostic/status command on a development machine and the relevant display command validation on target hardware.
+
+## Chunk 9 - Update and remove lifecycle
 
 **Purpose:** make installed projects maintainable.
 
@@ -771,7 +793,7 @@ Acceptance:
 
 A project can be installed, updated to a newer revision, inspected, and removed without manual Git operations.
 
-## Chunk 9 - Appliance/system installation mode
+## Chunk 10 - Appliance/system installation mode
 
 **Purpose:** support Debian/Raspberry Pi boxes cleanly.
 
@@ -788,7 +810,7 @@ Acceptance:
 
 A clean Debian/RPi environment can install GWAY system-wide and manage projects without relying on a developer home directory.
 
-## Chunk 10 - Convert gway-box and remaining operational projects
+## Chunk 11 - Convert gway-box and remaining operational projects
 
 **Purpose:** make the new GWAY the common entrypoint for appliance projects.
 
@@ -814,7 +836,7 @@ gway box provision
 
 and have the required operational repositories installed and runnable through GWAY.
 
-## Chunk 11 - CLI polish and completion
+## Chunk 12 - CLI polish and completion
 
 **Purpose:** improve usability after architecture and lifecycle are stable.
 
@@ -830,7 +852,7 @@ Work may include:
 
 Do not prioritize this before both Python and Django end-to-end paths work.
 
-## Chunk 12 - Re-evaluate legacy features
+## Chunk 13 - Re-evaluate legacy features
 
 Only after the new architecture is in production use, evaluate whether any legacy features deserve clean reimplementation:
 
@@ -855,6 +877,7 @@ new skeleton
   -> gway-wireguard end-to-end
   -> Django adapter
   -> Arthexis end-to-end
+  -> gway-epaper end-to-end
   -> update/remove
   -> system install
   -> gway-box provisioning
@@ -862,7 +885,7 @@ new skeleton
 
 The critical architectural checkpoint is after `gway-wireguard`: at that point the core promise of installing a GitHub project and automatically turning its Python API into a CLI should be proven before Django or appliance complexity is added.
 
-The critical ecosystem checkpoint is after Arthexis: at that point one GWAY command model should successfully cover both native GWAY-style Python repositories and generic Django projects through adapters.
+The critical ecosystem checkpoint is after Arthexis: at that point one GWAY command model should successfully cover both native GWAY-style Python repositories and generic Django projects through adapters. The subsequent `gway-epaper` milestone then validates that the same Python-adapter contract scales cleanly to another hardware-facing project before lifecycle and appliance work expands.
 
 # Versioning and compatibility
 
