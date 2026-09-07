@@ -27,8 +27,11 @@ class Project:
         if not manifest.is_file():
             raise ManifestError(f"missing gway.toml in {root}")
 
-        with manifest.open("rb") as stream:
-            data = tomllib.load(stream)
+        try:
+            with manifest.open("rb") as stream:
+                data = tomllib.load(stream)
+        except tomllib.TOMLDecodeError as exc:
+            raise ManifestError(f"invalid gway.toml in {root}: {exc}") from exc
 
         project_data = data.get("project")
         adapter_data = data.get("adapter")
