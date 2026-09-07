@@ -13,7 +13,7 @@ authors = [
   { name = "Rafael J. Guillén-Osorio", email = "tecnologia@gelectriic.com" },
 ]
 dependencies = [
-  "sigils>=0.4.1,<0.5",
+  "gway-sigils>=0.4.2,<0.5",
 ]
 
 [project.optional-dependencies]
