@@ -72,12 +72,23 @@ class _ArgumentParser(argparse.ArgumentParser):
         raise AdapterError(message)
 
 
+def _environment_site_packages(environment: Path) -> Path:
+    if sys.platform == "win32":
+        return environment / "Lib" / "site-packages"
+    version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    return environment / "lib" / version / "site-packages"
+
+
 @contextmanager
 def _project_import_path(project: Project):
     candidates = [project.path]
     src = project.path / "src"
     if src.is_dir():
         candidates.insert(0, src)
+    if project.environment is not None:
+        site_packages = _environment_site_packages(project.environment)
+        if site_packages.is_dir():
+            candidates.insert(0, site_packages)
 
     inserted: list[str] = []
     try:
