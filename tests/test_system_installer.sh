@@ -29,14 +29,24 @@ archive_existing_gway
 [[ -x "${WRAPPER}" ]]
 grep -q 'managed' "${WRAPPER}"
 
+# Freeze the timestamp so repeated collisions exercise the numeric fallback.
+date() {
+    printf '20260907T120000Z\n'
+}
+
 # A different later legacy command never overwrites the first archive.
 printf '#!/bin/sh\necho legacy-two\n' >"${WRAPPER}"
 chmod 755 "${WRAPPER}"
 archive_existing_gway
 [[ ! -e "${WRAPPER}" ]]
 grep -q 'legacy-one' "${LEGACY_WRAPPER}"
-mapfile -t backups < <(compgen -G "${LEGACY_WRAPPER}.*")
-[[ "${#backups[@]}" -eq 1 ]]
-grep -q 'legacy-two' "${backups[0]}"
+grep -q 'legacy-two' "${LEGACY_WRAPPER}.20260907T120000Z"
+
+# A third differing command in the same timestamp gets a numeric suffix.
+printf '#!/bin/sh\necho legacy-three\n' >"${WRAPPER}"
+chmod 755 "${WRAPPER}"
+archive_existing_gway
+[[ ! -e "${WRAPPER}" ]]
+grep -q 'legacy-three' "${LEGACY_WRAPPER}.20260907T120000Z.1"
 
 printf 'system installer legacy archival tests passed\n'
