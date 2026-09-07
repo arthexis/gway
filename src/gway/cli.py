@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
+import os
+import shlex
+import shutil
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from importlib.metadata import version as distribution_version
 
 from . import __version__
@@ -19,6 +23,13 @@ from .upgrade import UpgradeError, Upgrader
 
 CORE_COMMANDS = frozenset({"list", "info", "path", "register", "install", "upgrade"})
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
+_PERMISSION_ERRNOS = frozenset({errno.EACCES, errno.EPERM})
+_RESET = "\033[0m"
+_KEY = "\033[36m"
+_STRING = "\033[32m"
+_NUMBER = "\033[33m"
+_BOOL = "\033[35m"
+_NULL = "\033[2m"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Render command results as JSON instead of human-readable output.",
     )
 
     subparsers = parser.add_subparsers(dest="command")
@@ -109,13 +125,129 @@ def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
             print(f"  {name}")
 
 
-def _render_result(result: object, *, json_output: bool = False) -> None:
+def _paint(text: str, code: str, *, color: bool) -> str:
+    if not color:
+        return text
+    return f"{code}{text}{_RESET}"
+
+
+def _scalar_text(value: object, *, color: bool) -> str:
+    if value is None:
+        return _paint("null", _NULL, color=color)
+    if isinstance(value, bool):
+        return _paint("true" if value else "false", _BOOL, color=color)
+    if isinstance(value, (int, float)):
+        return _paint(str(value), _NUMBER, color=color)
+    if isinstance(value, str):
+        return _paint(value, _STRING, color=color)
+    return str(value)
+
+
+def _is_nested(value: object) -> bool:
+    return isinstance(value, Mapping) or (
+        isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+    )
+
+
+def _empty_collection_text(value: object) -> str | None:
+    if isinstance(value, Mapping) and not value:
+        return "{}"
+    if (
+        isinstance(value, Sequence)
+        and not isinstance(value, (str, bytes, bytearray))
+        and not value
+    ):
+        return "[]"
+    return None
+
+
+def _pretty_lines(value: object, *, indent: int = 0, color: bool = False) -> list[str]:
+    prefix = "  " * indent
+    if isinstance(value, Mapping):
+        lines: list[str] = []
+        for key, item in value.items():
+            label = _paint(str(key), _KEY, color=color)
+            empty = _empty_collection_text(item)
+            if empty is not None:
+                lines.append(f"{prefix}{label}: {empty}")
+            elif _is_nested(item):
+                lines.append(f"{prefix}{label}:")
+                lines.extend(_pretty_lines(item, indent=indent + 1, color=color))
+            else:
+                lines.append(f"{prefix}{label}: {_scalar_text(item, color=color)}")
+        return lines
+
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        lines = []
+        for item in value:
+            empty = _empty_collection_text(item)
+            if empty is not None:
+                lines.append(f"{prefix}- {empty}")
+            elif _is_nested(item):
+                lines.append(f"{prefix}-")
+                lines.extend(_pretty_lines(item, indent=indent + 1, color=color))
+            else:
+                lines.append(f"{prefix}- {_scalar_text(item, color=color)}")
+        return lines
+
+    return [f"{prefix}{_scalar_text(value, color=color)}"]
+
+
+def _color_enabled() -> bool:
+    if "NO_COLOR" in os.environ or os.environ.get("TERM") == "dumb":
+        return False
+    return bool(getattr(sys.stdout, "isatty", lambda: False)())
+
+
+def _render_result(
+    result: object,
+    *,
+    json_output: bool = False,
+    color: bool | None = None,
+) -> None:
     if result is None:
         return
     if json_output:
         print(json.dumps(result, indent=2, default=str))
-    else:
-        print(result)
+        return
+
+    use_color = _color_enabled() if color is None else color
+    for line in _pretty_lines(result, color=use_color):
+        print(line)
+
+
+def _extract_json_flag(args: list[str]) -> tuple[list[str], bool]:
+    json_output = "--json" in args
+    if not json_output:
+        return args, False
+    return [arg for arg in args if arg != "--json"], True
+
+
+def _permission_failure(exc: BaseException) -> OSError | None:
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, PermissionError):
+            return current
+        if isinstance(current, OSError) and current.errno in _PERMISSION_ERRNOS:
+            return current
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def _can_suggest_sudo() -> bool:
+    if os.name != "posix" or shutil.which("sudo") is None:
+        return False
+    geteuid = getattr(os, "geteuid", None)
+    return not callable(geteuid) or geteuid() != 0
+
+
+def _report_error(exc: BaseException, args: Sequence[str]) -> None:
+    print(f"gway: {exc}", file=sys.stderr)
+    if _permission_failure(exc) is not None and _can_suggest_sudo():
+        command = shlex.join(["gway", *args])
+        print(f"hint: try running with sudo: sudo {command}", file=sys.stderr)
 
 
 def _install_runtime_component(name: str) -> bool:
@@ -148,7 +280,8 @@ def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> None:
 
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
     parser = build_parser()
-    args = list(sys.argv[1:] if argv is None else argv)
+    original_args = list(sys.argv[1:] if argv is None else argv)
+    args, json_output = _extract_json_flag(original_args)
     if not args:
         parser.print_help()
         return 0
@@ -156,18 +289,14 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
     active_dispatcher = dispatcher or Dispatcher()
     if args[0] not in CORE_COMMANDS and not args[0].startswith("-"):
         project_args = list(args[1:])
-        json_output = False
-        if "--json" in project_args:
-            project_args.remove("--json")
-            json_output = True
         try:
             if project_args in (["--help"], ["-h"]):
                 _print_project_help(active_dispatcher, args[0])
                 return 0
             result = active_dispatcher.run(args[0], project_args)
             _render_result(result, json_output=json_output)
-        except (AdapterError, DispatchError, RegistryError) as exc:
-            print(f"gway: {exc}", file=sys.stderr)
+        except (AdapterError, DispatchError, RegistryError, OSError) as exc:
+            _report_error(exc, original_args)
             return 2
         return 0
 
@@ -201,8 +330,9 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         RepositoryError,
         RunnerError,
         UpgradeError,
+        OSError,
     ) as exc:
-        print(f"gway: {exc}", file=sys.stderr)
+        _report_error(exc, original_args)
         return 2
 
     return 0
