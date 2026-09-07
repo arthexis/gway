@@ -7,11 +7,15 @@ from collections.abc import Sequence
 
 from . import __version__
 from .adapters import AdapterError
+from .config import ConfigError
 from .dispatcher import Dispatcher, DispatchError
+from .install import Installer
 from .project import ManifestError
 from .registry import Registry, RegistryError
+from .repository import RepositoryError
+from .runner import RunnerError
 
-CORE_COMMANDS = frozenset({"list", "info", "path", "register"})
+CORE_COMMANDS = frozenset({"list", "info", "path", "register", "install"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Register a local project containing gway.toml.",
     )
     register.add_argument("path")
+
+    install = subparsers.add_parser(
+        "install",
+        help="Install a trusted GitHub project.",
+    )
+    install.add_argument("project")
 
     return parser
 
@@ -103,9 +113,18 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         elif namespace.command == "register":
             project = registry.register_path(namespace.path)
             print(f"registered {project.name}\t{project.path}")
+        elif namespace.command == "install":
+            project = Installer(registry).install(namespace.project)
+            print(f"installed {project.name}\t{project.repository}@{project.revision}")
         else:
             parser.print_help()
-    except (ManifestError, RegistryError) as exc:
+    except (
+        ConfigError,
+        ManifestError,
+        RegistryError,
+        RepositoryError,
+        RunnerError,
+    ) as exc:
         print(f"gway: {exc}", file=sys.stderr)
         return 2
 

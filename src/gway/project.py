@@ -10,6 +10,13 @@ class ManifestError(ValueError):
     pass
 
 
+def _validate_name(name: str) -> None:
+    if not name or name != name.strip() or name in {".", ".."}:
+        raise ValueError("project name must be a safe directory name")
+    if "/" in name or "\\" in name or Path(name).is_absolute():
+        raise ValueError("project name must be a safe directory name")
+
+
 @dataclass(frozen=True)
 class Project:
     name: str
@@ -19,6 +26,10 @@ class Project:
     aliases: tuple[str, ...] = ()
     repository: str | None = None
     revision: str | None = None
+    environment: Path | None = None
+
+    def __post_init__(self) -> None:
+        _validate_name(self.name)
 
     @classmethod
     def from_path(cls, path: str | Path) -> Project:
@@ -44,6 +55,10 @@ class Project:
         adapter_type = adapter_data.get("type")
         if not isinstance(name, str) or not name.strip():
             raise ManifestError("[project].name must be a non-empty string")
+        try:
+            _validate_name(name)
+        except ValueError as exc:
+            raise ManifestError("[project].name must be a safe directory name") from exc
         if not isinstance(adapter_type, str) or not adapter_type.strip():
             raise ManifestError("[adapter].type must be a non-empty string")
 
@@ -73,10 +88,12 @@ class Project:
             "aliases": list(self.aliases),
             "repository": self.repository,
             "revision": self.revision,
+            "environment": str(self.environment) if self.environment is not None else None,
         }
 
     @classmethod
     def from_record(cls, data: dict[str, Any]) -> Project:
+        environment = data.get("environment")
         return cls(
             name=data["name"],
             path=Path(data["path"]),
@@ -85,4 +102,5 @@ class Project:
             aliases=tuple(data.get("aliases", [])),
             repository=data.get("repository"),
             revision=data.get("revision"),
+            environment=Path(environment) if environment else None,
         )
