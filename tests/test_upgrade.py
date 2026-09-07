@@ -133,7 +133,7 @@ def test_all_projects_skips_local_registrations(tmp_path: Path) -> None:
     assert repositories.calls == [(managed, "arthexis/gway-wireguard", True)]
 
 
-def test_self_upgrade_uses_current_python_and_pip(monkeypatch) -> None:
+def test_self_upgrade_uses_current_python_and_forces_reinstall(monkeypatch) -> None:
     calls: list[tuple[list[str], bool]] = []
 
     def fake_run(args, *, check):
@@ -153,6 +153,7 @@ def test_self_upgrade_uses_current_python_and_pip(monkeypatch) -> None:
                 "install",
                 "--disable-pip-version-check",
                 "--upgrade",
+                "--force-reinstall",
                 "git+https://example.invalid/gway.git@main",
             ],
             True,
@@ -285,8 +286,8 @@ def test_repository_force_validates_origin_before_mutation(monkeypatch, tmp_path
     with pytest.raises(RepositoryError, match="origin does not match"):
         manager.upgrade(checkout, "arthexis/gway-wireguard", force=True)
 
-    destructive = ("fetch", "reset", "clean")
-    assert not any(any(value in command for value in destructive) for command in calls)
+    mutating = ("fetch", "reset", "clean")
+    assert not any(any(value in command for value in mutating) for command in calls)
 
 
 def test_runner_refresh_reinstalls_editable_project(monkeypatch, tmp_path: Path) -> None:
