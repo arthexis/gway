@@ -38,3 +38,28 @@ gway epaper --help
 plus one hardware-independent diagnostic/status command that can run on a development machine and the relevant display command validation on the target Raspberry Pi/ePaper hardware.
 
 Chunk 8 acceptance should also verify the common permission UX with at least one core command path and one managed project command path: a real OS permission exception must produce a non-zero result and a correct `sudo gway ...` hint without re-executing the command.
+
+## Lower-priority dispatcher follow-up
+
+After the current lifecycle/appliance milestones, add an opt-in manifest capability for a managed project to export selected command names directly into GWAY's root namespace. This is especially useful for Django applications such as Arthexis where an operator-facing management command should be invokable as:
+
+```text
+gway ocpp
+```
+
+instead of requiring:
+
+```text
+gway arthexis ocpp
+```
+
+The project-qualified form must remain valid. The manifest option should be generic rather than Django-specific and should not require GWAY to know Arthexis command names.
+
+Root-export resolution must stay deterministic:
+
+1. GWAY core commands win;
+2. explicit installed project names/aliases win;
+3. only then may opted-in project commands be considered at the root;
+4. collisions between exported commands from multiple projects must produce a clear ambiguity error rather than selecting one implicitly.
+
+Treat this as CLI/dispatcher polish, not a Chunk 8 blocker. A likely implementation home is Chunk 12 once install/update/remove and appliance behavior are stable.
