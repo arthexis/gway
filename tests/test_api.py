@@ -2,7 +2,6 @@ from pathlib import Path
 
 from gway import Gway, gw, gway
 
-
 MANIFEST = """[project]
 name = "wireguard"
 aliases = ["wg"]
