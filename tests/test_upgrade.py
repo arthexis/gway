@@ -285,7 +285,8 @@ def test_repository_force_validates_origin_before_mutation(monkeypatch, tmp_path
     with pytest.raises(RepositoryError, match="origin does not match"):
         manager.upgrade(checkout, "arthexis/gway-wireguard", force=True)
 
-    assert not any(any(value in command for value in ("fetch", "reset", "clean")) for command in calls)
+    destructive = ("fetch", "reset", "clean")
+    assert not any(any(value in command for value in destructive) for command in calls)
 
 
 def test_runner_refresh_reinstalls_editable_project(monkeypatch, tmp_path: Path) -> None:
