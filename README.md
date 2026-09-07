@@ -2,7 +2,13 @@
 
 GWAY is a lightweight project manager and command dispatcher for the Arthexis/GWAY ecosystem.
 
-The new 1.x generation discovers and manages projects from GitHub and exposes each project's commands through a common `gway <project> <command>` interface. Framework-specific command discovery is provided by adapters; the first planned adapters are Python function introspection and Django management commands.
+The 1.x generation discovers and manages projects from GitHub and exposes each project's commands through a common `gway <project> <command>` interface. Framework-specific command discovery is provided by adapters, including Python function introspection and Django management commands.
+
+Install the released package with:
+
+```bash
+python -m pip install gway
+```
 
 GWAY also keeps a first-class Python API. The intended stable import is:
 
@@ -14,7 +20,7 @@ gw.wireguard.status()
 gw.arthexis.check()
 ```
 
-`from gway import gw` remains available as a compatibility alias. The Python facade will use the same registry, adapter, dispatcher, and runner as the CLI rather than bypassing managed project isolation.
+`from gway import gw` remains available as a compatibility alias. The Python facade uses the same registry, adapter, dispatcher, and runner as the CLI rather than bypassing managed project isolation.
 
 ## Sigils on the CLI
 
@@ -24,7 +30,7 @@ Because Sigils is a required GWAY runtime component, installing GWAY already ins
 
 ```bash
 gway install sigils
-# installed sigils    gway-sigils@0.4.2
+# installed sigils    gway-sigils@0.4.3
 ```
 
 The PyPI distribution name `gway-sigils` is therefore an implementation/distribution detail; users do not need to type the `gway-` prefix through GWAY. The command refers to the environment that owns the `gway` executable: a global GWAY installation gives Sigils the same global scope, while virtualenv or pipx installations remain scoped to that environment.
@@ -83,8 +89,6 @@ sudo gway wireguard --help
 
 ## Development
 
-GWAY currently contains the generation-1 skeleton only.
-
 ```bash
 python -m pip install -e '.[dev]'
 python -m gway --help
@@ -92,4 +96,4 @@ gway --help
 pytest
 ```
 
-The package and executable remain named `gway`; development continues on the `1.0.0` version line.
+The package and executable remain named `gway`; the stable 1.x line starts at version 1.0.0.
