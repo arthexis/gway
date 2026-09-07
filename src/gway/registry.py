@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from .config import GwayPaths, default_paths
+from .project import Project
+
+
+class RegistryError(ValueError):
+    pass
+
+
+class Registry:
+    def __init__(self, paths: GwayPaths | None = None) -> None:
+        self.paths = paths or default_paths()
+
+    def _load_records(self) -> dict[str, dict]:
+        path = self.paths.state_file
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RegistryError(f"cannot read registry {path}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise RegistryError(f"unsupported registry format in {path}")
+        if data.get("version") != 1 or not isinstance(data.get("projects"), dict):
+            raise RegistryError(f"unsupported registry format in {path}")
+        return data["projects"]
+
+    def _save_records(self, records: dict[str, dict]) -> None:
+        path = self.paths.state_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"version": 1, "projects": records}
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+
+    def list(self) -> list[Project]:
+        return [Project.from_record(record) for _, record in sorted(self._load_records().items())]
+
+    def get(self, name_or_alias: str) -> Project | None:
+        records = self._load_records()
+        if name_or_alias in records:
+            return Project.from_record(records[name_or_alias])
+        for record in records.values():
+            if name_or_alias in record.get("aliases", []):
+                return Project.from_record(record)
+        return None
+
+    def require(self, name_or_alias: str) -> Project:
+        project = self.get(name_or_alias)
+        if project is None:
+            raise RegistryError(f"project is not registered: {name_or_alias}")
+        return project
+
+    def register(self, project: Project) -> Project:
+        records = self._load_records()
+        claimed = {project.name, *project.aliases}
+        if len(claimed) != 1 + len(project.aliases):
+            raise RegistryError(f"duplicate name or alias in project {project.name}")
+
+        for existing_name, record in records.items():
+            if existing_name == project.name:
+                continue
+            existing_claims = {existing_name, *record.get("aliases", [])}
+            overlap = claimed & existing_claims
+            if overlap:
+                value = sorted(overlap)[0]
+                raise RegistryError(f"project name or alias already registered: {value}")
+
+        records[project.name] = project.to_record()
+        self._save_records(records)
+        return project
+
+    def register_path(self, path: str | Path) -> Project:
+        return self.register(Project.from_path(path))

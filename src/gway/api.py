@@ -1,30 +1,38 @@
-"""Public Python API for GWAY.
-
-The facade is intentionally small. Managed project resolution and command dispatch
-will be connected as the registry/adapter chunks are implemented.
-"""
+"""Public Python API for GWAY."""
 
 from __future__ import annotations
+
+from .project import Project
+from .registry import Registry
 
 
 class Gway:
     """Stable Python facade for managed GWAY projects.
 
-    Future managed command access will mirror the CLI namespace, for example::
-
-        from gway import gway as gw
-        gw.wireguard.status()
-        gw.arthexis.check()
-
-    The facade will delegate through the same registry, adapter, dispatcher, and
-    runner used by the CLI so managed project environments remain isolated.
+    The facade and CLI share the same registry. Managed command namespaces will
+    be attached to this object by the dispatcher/adapters in later chunks.
     """
 
+    @property
+    def registry(self) -> Registry:
+        return Registry()
+
+    def projects(self) -> list[Project]:
+        """Return registered projects."""
+        return self.registry.list()
+
+    def project(self, name_or_alias: str) -> Project:
+        """Return metadata for one registered project."""
+        return self.registry.require(name_or_alias)
+
     def __getattr__(self, name: str):
-        raise AttributeError(
-            f"managed project access is not implemented yet: {name!r}; "
-            "see PLAN.md implementation chunks 1-3"
-        )
+        project = self.registry.get(name)
+        if project is not None:
+            raise AttributeError(
+                f"managed command dispatch for project {project.name!r} is not "
+                "implemented yet; see PLAN.md Chunk 2"
+            )
+        raise AttributeError(f"project is not registered: {name}")
 
 
 gway = Gway()
