@@ -17,6 +17,7 @@ The pre-1.0 implementation is preserved in `arthexis/gway-legacy`. Do not reintr
 - The first supported adapters are Python and Django only.
 - Prefer Python standard-library dependencies in core when practical.
 - Preserve `gway <project> <command>` as the user-facing command shape.
+- For genuine local OS permission failures (`PermissionError`, `EACCES`, `EPERM`) at the common CLI boundary, preserve the failure and print a concise `sudo gway ...` hint using the user's original argument vector. Apply this consistently to core lifecycle commands and managed project commands; never rerun automatically as root and do not infer permission failures from message text alone.
 - Do not add bundled `projects/`, recipes, a second sigil implementation, shared mutable result/context state, Arthexis-specific imports, or legacy helper collections.
 - Add new behavior in the implementation chunk described by `PLAN.md`; avoid pulling later-chunk complexity forward.
 
