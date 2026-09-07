@@ -19,6 +19,7 @@ class Project:
     aliases: tuple[str, ...] = ()
     repository: str | None = None
     revision: str | None = None
+    environment: Path | None = None
 
     @classmethod
     def from_path(cls, path: str | Path) -> Project:
@@ -73,10 +74,12 @@ class Project:
             "aliases": list(self.aliases),
             "repository": self.repository,
             "revision": self.revision,
+            "environment": str(self.environment) if self.environment is not None else None,
         }
 
     @classmethod
     def from_record(cls, data: dict[str, Any]) -> Project:
+        environment = data.get("environment")
         return cls(
             name=data["name"],
             path=Path(data["path"]),
@@ -85,4 +88,5 @@ class Project:
             aliases=tuple(data.get("aliases", [])),
             repository=data.get("repository"),
             revision=data.get("revision"),
+            environment=Path(environment) if environment else None,
         )
