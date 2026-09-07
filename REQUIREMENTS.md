@@ -14,6 +14,21 @@ Requirements:
 - never automatically re-execute a failed command as root;
 - apply consistently to GWAY lifecycle commands and managed project commands that reach the common CLI error boundary.
 
+## CLI output
+
+GWAY owns final result rendering across core lifecycle commands and managed project commands.
+
+Requirements:
+
+- human-readable output is the default;
+- mappings render one field per line, with nested mappings and sequences indented consistently;
+- sequences render one item per line, with nested values indented consistently;
+- scalar values render plainly without Python container syntax;
+- interactive terminal output uses lightweight ANSI color to distinguish keys and scalar value types, while non-interactive output remains uncolored and `NO_COLOR` disables color explicitly;
+- machine-readable JSON is emitted only when the global `--json` flag is present;
+- `--json` is reserved by the GWAY CLI and applies consistently to core and managed-project results rather than being forwarded to adapters;
+- JSON output must remain valid, uncolored JSON suitable for piping to other tools.
+
 ## Optional root command export
 
 At lower priority, managed projects should be able to opt in through `gway.toml` to exporting project commands into GWAY's root command namespace. This must be adapter-neutral so Django projects such as Arthexis can expose an operator command as `gway ocpp` while retaining the qualified form `gway arthexis ocpp`.
