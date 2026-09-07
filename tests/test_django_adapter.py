@@ -64,7 +64,7 @@ def test_runner_prepares_django_project_environment(monkeypatch, tmp_path: Path)
         adapter_type="django",
         adapter_config={
             "manage": "manage.py",
-            "settings": "fixture_project.settings",
+            "settings": "gway_django_fixture.settings",
         },
     )
     calls: list[list[str]] = []
