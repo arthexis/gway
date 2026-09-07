@@ -69,6 +69,14 @@ def add(
 def echo_values(prefix: str, *values: int) -> list[object]:
     \"\"\"Echo typed variadic values.\"\"\"
     return [prefix, *values]
+
+
+def echo_flags(*values: bool) -> list[bool]:
+    return list(values)
+
+
+def positional_limit(limit: int = 10, /) -> int:
+    return limit
 """,
         encoding="utf-8",
     )
@@ -81,6 +89,34 @@ def echo_values(prefix: str, *values: int) -> list[object]:
         if name == "fixture_project" or name.startswith("fixture_project."):
             del sys.modules[name]
 
+    return Project.from_path(root)
+
+
+def make_single_module_project(tmp_path: Path) -> Project:
+    root = tmp_path / "single-module-project"
+    root.mkdir()
+    (root / "gway.toml").write_text(
+        """[project]
+name = "single"
+
+[adapter]
+type = "python"
+module = "commands"
+""",
+        encoding="utf-8",
+    )
+    (root / "commands.py").write_text(
+        """def lazy_value() -> str:
+    import sibling
+
+    return sibling.VALUE
+""",
+        encoding="utf-8",
+    )
+    (root / "sibling.py").write_text("VALUE = 'loaded'\n", encoding="utf-8")
+
+    for name in ("commands", "sibling"):
+        sys.modules.pop(name, None)
     return Project.from_path(root)
 
 
@@ -106,7 +142,9 @@ def test_python_adapter_discovers_public_nested_functions(tmp_path: Path) -> Non
 
     assert set(commands) == {
         ("peer", "add"),
+        ("peer", "echo-flags"),
         ("peer", "echo-values"),
+        ("peer", "positional-limit"),
         ("status",),
     }
     assert commands[("peer", "add")].summary == "Add a fixture peer."
@@ -157,6 +195,28 @@ def test_python_adapter_supports_typed_varargs(tmp_path: Path) -> None:
     result = dispatcher.run("fx", ["peer", "echo-values", "numbers", "1", "2", "3"])
 
     assert result == ["numbers", 1, 2, 3]
+
+
+def test_python_adapter_parses_boolean_varargs(tmp_path: Path) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+
+    result = dispatcher.run("fixture", ["peer", "echo-flags", "true", "false", "0", "on"])
+
+    assert result == [True, False, False, True]
+
+
+def test_python_adapter_passes_defaulted_positional_only_arguments(tmp_path: Path) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+
+    assert dispatcher.run("fixture", ["peer", "positional-limit"]) == 10
+    assert dispatcher.run("fixture", ["peer", "positional-limit", "--limit", "7"]) == 7
+
+
+def test_python_adapter_keeps_project_path_active_during_execution(tmp_path: Path) -> None:
+    project = make_single_module_project(tmp_path)
+    adapter = PythonAdapter(project)
+
+    assert adapter.run(("lazy-value",), []) == "loaded"
 
 
 def test_python_command_help_uses_docstring(tmp_path: Path, capsys) -> None:
