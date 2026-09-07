@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,8 +13,25 @@ class GwayPaths:
     data_dir: Path
 
     @property
+    def config_file(self) -> Path:
+        return self.config_dir / "config.toml"
+
+    @property
     def state_file(self) -> Path:
         return self.data_dir / "state.json"
+
+    @property
+    def projects_dir(self) -> Path:
+        return self.data_dir / "projects"
+
+    @property
+    def environments_dir(self) -> Path:
+        return self.data_dir / "environments"
+
+
+@dataclass(frozen=True)
+class GwayConfig:
+    trusted_owners: tuple[str, ...] = ("arthexis",)
 
 
 def default_paths(
@@ -42,3 +60,27 @@ def default_paths(
         data_dir = data_root / "gway"
 
     return GwayPaths(config_dir=config_dir, data_dir=data_dir)
+
+
+def load_config(paths: GwayPaths | None = None) -> GwayConfig:
+    active_paths = paths or default_paths()
+    path = active_paths.config_file
+    if not path.exists():
+        return GwayConfig()
+
+    try:
+        with path.open("rb") as stream:
+            data = tomllib.load(stream)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError(f"cannot read GWAY config {path}: {exc}") from exc
+
+    github = data.get("github", {})
+    if not isinstance(github, dict):
+        raise ValueError("[github] must be a table")
+    owners = github.get("owners", ["arthexis"])
+    if not isinstance(owners, list) or not owners or not all(
+        isinstance(owner, str) and owner.strip() for owner in owners
+    ):
+        raise ValueError("[github].owners must be a non-empty array of strings")
+
+    return GwayConfig(trusted_owners=tuple(owners))
