@@ -16,6 +16,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
+  "Django>=4.2",
   "pytest>=8",
   "ruff>=0.12",
 ]
