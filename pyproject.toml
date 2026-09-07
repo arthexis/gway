@@ -1,37 +1,34 @@
 [build-system]
-requires = [ "setuptools", "wheel",]
+requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "gway"
-version = "0.4.59"
-description = "Software Project Infrastructure by https://www.gelectriic.com"
+version = "1.0.0.dev0"
+description = "GitHub-backed project manager and universal command dispatcher"
+readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE.md" }
-classifiers = [ "Programming Language :: Python :: 3", "Operating System :: OS Independent",]
-dependencies = [ "toml", "setuptools", "twine", "build", "colorama", "requests", "dateparser", "django", "docutils", "evennia", "croniter", "qrcode[pil]", "cryptography", "jinja2", "pygame", "httpx", "pyperclip; platform_system == \"Windows\"", "plyer", "numpy", "pygetwindow; platform_system == \"Windows\"", "duckdb", "pywin32; platform_system == \"Windows\"", "selenium", "webdriver-manager", "bs4", "markdown", "pyscreenshot; platform_system == \"Linux\"", "pandas", "openpyxl", "coverage", "argcomplete", "PyJWT", "SpeechRecognition", "sounddevice", "PyYAML", "pywebview",]
-[[project.authors]]
-name = "Rafael J. Guillén-Osorio"
-email = "tecnologia@gelectriic.com"
-
-[project.readme]
-file = "README.rst"
-content-type = "text/x-rst"
+authors = [
+  { name = "Rafael J. Guillén-Osorio", email = "tecnologia@gelectriic.com" },
+]
+dependencies = []
 
 [project.optional-dependencies]
-dev = [ "pytest", "pytest-cov",]
-lcd = ["smbus2"]
+dev = ["pytest>=8"]
 
 [project.scripts]
-gway = "gway:cli_main"
+gway = "gway.cli:main"
 
 [project.urls]
-Repository = "https://github.com/arthexis/gway.git"
-Homepage = "https://arthexis.com"
-Sponsor = "https://www.gelectriic.com/"
+Repository = "https://github.com/arthexis/gway"
+Legacy = "https://github.com/arthexis/gway-legacy"
 
 [tool.setuptools]
-include-package-data = true
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-include = ["gway*", "projects*"]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

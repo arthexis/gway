@@ -1,52 +1,41 @@
 # Repository Guidelines
 
 ## Project Summary
-**GWAY** is a CLI and function-dispatch framework. Any Python function inside
-`projects/` can be invoked from the command line or via ``from gway import gw``.
-Existing utilities (``gw.awg`` etc.) are loaded lazily and should be reused via
-``gw.<project>.<sub>.<function>``.
 
-### Glossary
-* **Gateway (`gw`)** – main object providing access to all projects and saved results.
-* **Sigil** – placeholder syntax like ``[VAR|default]`` resolved from context or environment.
-* **Recipe (.gwr)** – automation script run with ``gway -r file``.
-* **CDV** – colon-delimited value storage used by ``gw.cdv`` utilities.
+GWAY 1.x is a lightweight GitHub-backed project manager and universal command dispatcher. It installs trusted projects into managed local environments and exposes their commands through `gway <project> <command>`.
 
-### Recommendations
-* Reuse built-in helpers by importing ``gw`` and calling ``gw.<project>.<function>``.
-* Results from previous calls are stored in ``gw.results`` and may be referenced with sigils for chaining.
-* Check ``README.rst`` for full documentation of available projects and commands.
-* Don't add to the main ``README.rst`` unless instructed otherwise. Enrich the
-  static ``README`` files of individual projects instead.
+The pre-1.0 implementation is preserved in `arthexis/gway-legacy`. Do not reintroduce legacy architecture into this repository unless `PLAN.md` explicitly schedules it.
 
-### Agent Advice
-1. When designing new prototypes, stick with the short, verb-led names used across existing projects (``clock.now``, ``clock.plus``, ``clock.timestamp``) so Gateway can recover a ``subject`` from ``verb_subject`` names when chaining results (see ``projects/clock.py`` and ``gway/gateway.py``).
-2. Prefer plain functions over classes and return CLI-friendly payloads such as status strings or dictionaries that can be unpacked into result keys, following patterns like ``env.save`` returning the updated environment mapping and ``mail.send`` reporting delivery status text (see ``projects/env.py`` and ``projects/mail.py``).
-3. Keep CLI parameters optional by placing them after ``*``; anything before ``*`` becomes required even if it has a default. Functions like ``clock.now`` and ``help_db.build`` show the keyword-only style to emulate (see ``projects/clock.py`` and ``projects/help_db.py``).
-4. Treat every public function (those not starting with ``_``) as CLI-ready: accept primitive arguments directly while still supporting richer objects when passed, as the mail helpers do with simple subject/body strings plus optional async behavior (see ``projects/mail.py``).
-5. Design outputs so multiple commands can chain together. Gateway stores each result under its detected ``subject`` and merges dictionaries into the shared context, so returning named fields makes recipe injection effortless (see ``gway/gateway.py``).
-6. Always reach helpers through the shared ``gw`` instance (``from gway import gw``) instead of importing project modules manually; the ``gw`` singleton exposes utilities like ``gw.resource`` and ``gw.mail`` for reuse (see ``projects/help_db.py`` and ``gway/gateway.py``).
-7. When adding behavior that prompts users for input, only trigger those questions while running in interactive mode (``-i`` / ``gw.interactive_enabled``). Wizard mode may layer on extra, optional questions, but only after the user explicitly requests it with ``-w``.
-8. When creation of a new recipe is requested, avoid spinning up an entirely new project just to implement a one- or two-line helper. Search for existing builtins and project functions to reuse; if gaps exist, add the missing components or extend existing helpers with the parameters your recipe needs.
+## Design Rules
+
+- Keep GWAY small and framework-neutral.
+- Keep domain/application dependencies in managed projects, not in GWAY core.
+- Projects own their command surfaces; GWAY discovers them through adapters.
+- Framework differences belong behind adapter interfaces.
+- The first supported adapters are Python and Django only.
+- Prefer Python standard-library dependencies in core when practical.
+- Preserve `gway <project> <command>` as the user-facing command shape.
+- Do not add bundled `projects/`, recipes, sigils, shared mutable result/context state, Arthexis-specific imports, or legacy helper collections.
+- Add new behavior in the implementation chunk described by `PLAN.md`; avoid pulling later-chunk complexity forward.
+
+## Package Layout
+
+Use a `src/` layout. Core responsibilities should stay separated as the implementation grows: project metadata, registry/config, repository management, adapters, dispatch, CLI, and execution.
 
 ## Testing
-- Install requirements and the package in editable mode before running tests:
-  ```bash
-  pip install -r requirements.txt
-  pip install -e .
-  ```
-- Run the test suite using the built-in runner:
-  ```bash
-  gway test --coverage
-  ```
-  (omit `--coverage` if not needed)
 
-These instructions apply to CODEX and CI environments.
-## Renaming functions
-When changing a function name, update all related assets to keep the project consistent:
-- Python modules inside `projects/`
-- project documentation under `data/static`
-- static assets such as CSS or templates
-- recipe files in `recipes/`
-- tests and helper tooling
-- help database entries
+Install in editable mode and run pytest:
+
+```bash
+python -m pip install -e '.[dev]'
+pytest
+```
+
+At minimum, changes to CLI/bootstrap behavior must keep both of these working:
+
+```bash
+python -m gway --help
+gway --help
+```
+
+Tests should verify behavior that exists, not merely assert that removed legacy behavior stays absent. A narrow import-safety test is acceptable where it protects the generation boundary itself.
