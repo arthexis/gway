@@ -56,4 +56,4 @@ def test_runner_creates_python_environment_and_installs_project(monkeypatch, tmp
 
     assert environment == paths.environments_dir / "fixture"
     assert calls[0][1:3] == ["-m", "venv"]
-    assert calls[1][-3:] == ["-e", str(root)] if False else calls[1][-2:] == ["-e", str(root)]
+    assert calls[1][-2:] == ["-e", str(root)]
