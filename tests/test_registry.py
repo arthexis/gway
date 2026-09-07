@@ -9,10 +9,15 @@ from gway.registry import Registry, RegistryError
 
 def make_project(root: Path, *, name: str = "wireguard", aliases: str = '["wg"]') -> Path:
     root.mkdir()
-    (root / "gway.toml").write_text(
-        f'''[project]\nname = "{name}"\naliases = {aliases}\n\n[adapter]\ntype = "python"\nmodule = "example.gway"\n''',
-        encoding="utf-8",
-    )
+    manifest = f"""[project]
+name = "{name}"
+aliases = {aliases}
+
+[adapter]
+type = "python"
+module = "example.gway"
+"""
+    (root / "gway.toml").write_text(manifest, encoding="utf-8")
     return root
 
 
