@@ -130,7 +130,7 @@ def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> None:
 
     bare = not namespace.all and not namespace.upgrade_self
     if bare or namespace.upgrade_self:
-        upgrader.self()
+        upgrader.upgrade_self()
         print("upgraded gway\tarthexis/gway@main")
 
     if bare or namespace.all:
