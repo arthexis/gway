@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from gway.adapters.django import DjangoAdapter
 from gway.cli import main
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
@@ -55,6 +56,22 @@ def test_django_migrate_preserves_native_plan_option(
     assert main(["django-fixture", "migrate", "--plan"], dispatcher=dispatcher) == 0
 
     assert "Planned operations" in capsys.readouterr().out
+
+
+def test_django_helper_module_without_command_is_ignored() -> None:
+    class Base:
+        class BaseCommand:
+            pass
+
+    class Management:
+        @staticmethod
+        def load_command_class(source, name):
+            raise AttributeError(
+                f"module '{source}.management.commands.{name}' has no attribute 'Command'",
+                name="Command",
+            )
+
+    assert DjangoAdapter._load_command("utils", "apps.users", Management, Base) is None
 
 
 def test_runner_prepares_django_project_environment(monkeypatch, tmp_path: Path) -> None:
