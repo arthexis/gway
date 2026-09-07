@@ -18,7 +18,11 @@ class CommandNotFound(DispatchError):
 class Dispatcher:
     """Resolve registered projects, adapters, and managed command paths."""
 
-    def __init__(self, registry: Registry | None = None, adapters: AdapterRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: Registry | None = None,
+        adapters: AdapterRegistry | None = None,
+    ) -> None:
         self.registry = registry or Registry()
         self.adapters = adapters or AdapterRegistry()
 
@@ -27,11 +31,15 @@ class Dispatcher:
         return self.adapters.create(project)
 
     @staticmethod
-    def _resolve_command(commands: Sequence[Command], tokens: Sequence[str]) -> tuple[Command, list[str]]:
+    def _resolve_command(
+        commands: Sequence[Command],
+        tokens: Sequence[str],
+    ) -> tuple[Command, list[str]]:
         matches = [
             command
             for command in commands
-            if len(tokens) >= len(command.path) and tuple(tokens[: len(command.path)]) == command.path
+            if len(tokens) >= len(command.path)
+            and tuple(tokens[: len(command.path)]) == command.path
         ]
         if not matches:
             requested = " ".join(tokens) if tokens else "<command>"
