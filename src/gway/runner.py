@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -55,6 +56,7 @@ class Runner:
                 check=True,
             )
         except (OSError, subprocess.CalledProcessError) as exc:
+            shutil.rmtree(environment, ignore_errors=True)
             raise RunnerError(f"cannot prepare environment for {project.name}: {exc}") from exc
 
         return environment
