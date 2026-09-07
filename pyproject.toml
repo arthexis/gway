@@ -15,7 +15,10 @@ authors = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = [
+  "pytest>=8",
+  "ruff>=0.12",
+]
 
 [project.scripts]
 gway = "gway.cli:main"
@@ -32,3 +35,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
