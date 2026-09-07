@@ -79,6 +79,7 @@ class Upgrader:
                     "install",
                     "--disable-pip-version-check",
                     "--upgrade",
+                    "--force-reinstall",
                     source_spec,
                 ],
                 check=True,
