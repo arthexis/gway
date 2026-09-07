@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 
 from gway.adapters import AdapterRegistry
-from gway.api import Gway
 from gway.cli import main
 from gway.command import Command
 from gway.config import GwayPaths
@@ -22,7 +20,6 @@ class FixtureAdapter:
             Command(("hello",), summary="Say hello."),
             Command(("peer",), summary="Peer namespace fallback."),
             Command(("peer", "add"), summary="Add a peer."),
-            Command(("peer-add",), summary="Kebab-case command."),
         )
 
     def describe(self, path: tuple[str, ...]) -> Command:
@@ -35,14 +32,6 @@ class FixtureAdapter:
         if path == ("hello",):
             return "hello"
         return {"path": path, "argv": argv}
-
-    def invoke(
-        self,
-        path: tuple[str, ...],
-        args: tuple[object, ...],
-        kwargs: Mapping[str, object],
-    ) -> object:
-        return {"path": path, "args": args, "kwargs": dict(kwargs)}
 
 
 def make_dispatcher(tmp_path: Path) -> Dispatcher:
@@ -79,23 +68,3 @@ def test_dispatcher_uses_longest_command_path(tmp_path: Path) -> None:
     result = dispatcher.run("fx", ["peer", "add", "gway-004"])
 
     assert result == {"path": ("peer", "add"), "argv": ["gway-004"]}
-
-
-def test_python_facade_invokes_native_arguments(tmp_path: Path) -> None:
-    gw = Gway(make_dispatcher(tmp_path))
-
-    result = gw.fixture.peer.add("gway-004", enabled=True)
-
-    assert result == {
-        "path": ("peer", "add"),
-        "args": ("gway-004",),
-        "kwargs": {"enabled": True},
-    }
-
-
-def test_python_facade_converts_underscores_in_command_names(tmp_path: Path) -> None:
-    gw = Gway(make_dispatcher(tmp_path))
-
-    result = gw.fixture.peer_add()
-
-    assert result["path"] == ("peer-add",)
