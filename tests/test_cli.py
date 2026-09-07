@@ -10,6 +10,16 @@ from gway import __version__
 from gway.cli import main
 
 
+MANIFEST = """[project]
+name = "wireguard"
+aliases = ["wg"]
+
+[adapter]
+type = "python"
+module = "example.gway"
+"""
+
+
 def test_main_without_arguments_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 0
     output = capsys.readouterr().out
@@ -44,10 +54,7 @@ def test_module_entrypoint_help() -> None:
 def test_register_list_info_and_path(tmp_path: Path, monkeypatch, capsys) -> None:
     project = tmp_path / "wireguard"
     project.mkdir()
-    (project / "gway.toml").write_text(
-        '[project]\nname = "wireguard"\naliases = ["wg"]\n\n[adapter]\ntype = "python"\nmodule = "example.gway"\n',
-        encoding="utf-8",
-    )
+    (project / "gway.toml").write_text(MANIFEST, encoding="utf-8")
     monkeypatch.setenv("GWAY_DATA_HOME", str(tmp_path / "state"))
 
     assert main(["register", str(project)]) == 0
