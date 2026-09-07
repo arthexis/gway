@@ -19,12 +19,19 @@ def _python_factory(project: Project) -> ProjectAdapter:
     return PythonAdapter(project)
 
 
+def _django_factory(project: Project) -> ProjectAdapter:
+    from .django import DjangoAdapter
+
+    return DjangoAdapter(project)
+
+
 class AdapterRegistry:
     """Map manifest adapter types to adapter factories."""
 
     def __init__(self) -> None:
         self._factories: dict[str, AdapterFactory] = {}
         self.register("python", _python_factory)
+        self.register("django", _django_factory)
 
     def register(self, adapter_type: str, factory: AdapterFactory) -> None:
         if not adapter_type:
