@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from importlib.metadata import version as distribution_version
 
 from . import __version__
 from .adapters import AdapterError
@@ -16,6 +17,7 @@ from .repository import RepositoryError
 from .runner import RunnerError
 
 CORE_COMMANDS = frozenset({"list", "info", "path", "register", "install"})
+RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     install = subparsers.add_parser(
         "install",
-        help="Install a trusted GitHub project.",
+        help="Install a trusted GitHub project or built-in runtime component.",
     )
     install.add_argument("project")
 
@@ -88,6 +90,14 @@ def _render_result(result: object, *, json_output: bool = False) -> None:
         print(json.dumps(result, indent=2, default=str))
     else:
         print(result)
+
+
+def _install_runtime_component(name: str) -> bool:
+    distribution = RUNTIME_COMPONENTS.get(name)
+    if distribution is None:
+        return False
+    print(f"installed {name}\t{distribution}@{distribution_version(distribution)}")
+    return True
 
 
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
@@ -131,8 +141,9 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             project = registry.register_path(namespace.path)
             print(f"registered {project.name}\t{project.path}")
         elif namespace.command == "install":
-            project = Installer(registry).install(namespace.project)
-            print(f"installed {project.name}\t{project.repository}@{project.revision}")
+            if not _install_runtime_component(namespace.project):
+                project = Installer(registry).install(namespace.project)
+                print(f"installed {project.name}\t{project.repository}@{project.revision}")
         else:
             parser.print_help()
     except (

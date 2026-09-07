@@ -16,7 +16,36 @@ gw.arthexis.check()
 
 `from gway import gw` remains available as a compatibility alias. The Python facade will use the same registry, adapter, dispatcher, and runner as the CLI rather than bypassing managed project isolation.
 
-The pre-1.0 implementation has been preserved in [`arthexis/gway-legacy`](https://github.com/arthexis/gway-legacy). Legacy bundled projects, recipes, sigils, shared mutable context, and application-specific dependencies are intentionally not part of this codebase.
+## Sigils on the CLI
+
+`gway-sigils` is GWAY's single runtime dependency and provides the `sigils` Python package used as part of the command-value language. Project names and command paths stay literal for predictable routing; argument values are interpolated before adapter parsing.
+
+Because Sigils is a required GWAY runtime component, installing GWAY already installs it into the same Python environment. The short GWAY-facing name remains `sigils`, so this is an idempotent runtime install/verification command rather than a second managed-project checkout:
+
+```bash
+gway install sigils
+# installed sigils    gway-sigils@0.4.2
+```
+
+The PyPI distribution name `gway-sigils` is therefore an implementation/distribution detail; users do not need to type the `gway-` prefix through GWAY. The command refers to the environment that owns the `gway` executable: a global GWAY installation gives Sigils the same global scope, while virtualenv or pipx installations remain scoped to that environment.
+
+```bash
+gway web build --output "[project.path]/dist"
+gway ocpp connect --label "%[cwd]-[project.name]"
+```
+
+`%[...]` expressions are captured eagerly before the project-aware lazy context is built. `[...]` expressions resolve immediately before the selected adapter parses the command arguments.
+
+The built-in GWAY context includes:
+
+- `[cwd]` and `[home]`
+- `[gway.config_dir]` and `[gway.data_dir]`
+- `[project.name]`, `[project.path]`, `[project.adapter]`, `[project.aliases]`, `[project.repository]`, `[project.revision]`, and `[project.environment]`
+- `[command.name]` and `[command.path]`
+
+All regular Sigils built-ins remain available, including the environment tool and eager/lazy recursive semantics supplied by the `sigils` library itself.
+
+The pre-1.0 implementation has been preserved in [`arthexis/gway-legacy`](https://github.com/arthexis/gway-legacy). Legacy bundled projects, recipes, shared mutable context, and application-specific dependencies are intentionally not part of this codebase.
 
 See [`PLAN.md`](PLAN.md) for the architecture and implementation sequence. `gway-epaper` is now explicitly scheduled immediately after the Django/Arthexis end-to-end milestone; see [`PLAN-EPAPER.md`](PLAN-EPAPER.md) for that roadmap extension.
 

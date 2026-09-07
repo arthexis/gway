@@ -81,3 +81,17 @@ def test_dispatcher_uses_longest_command_path(tmp_path: Path) -> None:
     result = dispatcher.run("fx", ["peer", "add", "gway-004"])
 
     assert result == {"path": ("peer", "add"), "argv": ["gway-004"]}
+
+
+def test_dispatcher_resolves_project_aware_sigils(tmp_path: Path) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+
+    result = dispatcher.run(
+        "fx",
+        ["peer", "add", "[project.name]", "[project.path]", "[command.path]"],
+    )
+
+    assert result == {
+        "path": ("peer", "add"),
+        "argv": ["fixture", str((tmp_path / "fixture").resolve()), "peer add"],
+    }

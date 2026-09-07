@@ -12,7 +12,9 @@ license = { file = "LICENSE.md" }
 authors = [
   { name = "Rafael J. Guillén-Osorio", email = "tecnologia@gelectriic.com" },
 ]
-dependencies = []
+dependencies = [
+  "gway-sigils>=0.4.2,<0.5",
+]
 
 [project.optional-dependencies]
 dev = [

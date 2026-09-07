@@ -50,6 +50,17 @@ def test_module_entrypoint_help() -> None:
     assert "usage: gway" in result.stdout
 
 
+def test_install_sigils_uses_short_runtime_alias(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("GWAY_DATA_HOME", str(tmp_path / "state"))
+
+    assert main(["install", "sigils"]) == 0
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("installed sigils\tgway-sigils@")
+
+    assert main(["list"]) == 0
+    assert capsys.readouterr().out == ""
+
+
 def test_register_list_info_and_path(tmp_path: Path, monkeypatch, capsys) -> None:
     project = tmp_path / "wireguard"
     project.mkdir()
