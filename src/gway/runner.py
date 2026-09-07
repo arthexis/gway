@@ -30,7 +30,7 @@ class Runner:
         return environment / "bin" / "python"
 
     def prepare(self, project: Project) -> Path | None:
-        if project.adapter_type != "python":
+        if project.adapter_type not in {"python", "django"}:
             return None
 
         environment = self.environment_path(project)
