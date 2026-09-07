@@ -43,12 +43,15 @@ class RepositoryManager:
 
     @staticmethod
     def _exists(repository: ResolvedRepository) -> bool:
-        result = subprocess.run(
-            ["git", "ls-remote", "--exit-code", repository.clone_url, "HEAD"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "ls-remote", "--exit-code", repository.clone_url, "HEAD"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except OSError as exc:
+            raise RepositoryError(f"cannot run git: {exc}") from exc
         return result.returncode == 0
 
     def resolve(self, spec: str) -> ResolvedRepository:
