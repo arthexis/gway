@@ -14,6 +14,11 @@ export GWAY_SYSTEM_DATA_HOME="${TMP_DIR}/var/lib/gway"
 source "${ROOT_DIR}/install.sh"
 mkdir -p "${BIN_DIR}"
 
+# Fresh installs with no existing wrapper must return success under set -e.
+archive_existing_gway
+[[ ! -e "${WRAPPER}" ]]
+[[ ! -e "${LEGACY_WRAPPER}" ]]
+
 # First unmanaged/legacy command is preserved at the canonical archive path.
 printf '#!/bin/sh\necho legacy-one\n' >"${WRAPPER}"
 chmod 755 "${WRAPPER}"
