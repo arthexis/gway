@@ -119,7 +119,7 @@ is_managed_wrapper() {
 }
 
 archive_existing_gway() {
-    local archive suffix
+    local archive suffix counter
     [[ -e "${WRAPPER}" || -L "${WRAPPER}" ]] || return
     is_managed_wrapper "${WRAPPER}" && return
 
@@ -132,6 +132,11 @@ archive_existing_gway() {
         fi
         suffix="$(date -u +%Y%m%dT%H%M%SZ)"
         archive="${LEGACY_WRAPPER}.${suffix}"
+        counter=1
+        while [[ -e "${archive}" || -L "${archive}" ]]; do
+            archive="${LEGACY_WRAPPER}.${suffix}.${counter}"
+            ((counter += 1))
+        done
     fi
 
     mv "${WRAPPER}" "${archive}"
@@ -219,6 +224,6 @@ main() {
     esac
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "$0" ]]; then
     main "$@"
 fi
