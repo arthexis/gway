@@ -9,7 +9,6 @@ import pytest
 from gway import __version__
 from gway.cli import main
 
-
 MANIFEST = """[project]
 name = "wireguard"
 aliases = ["wg"]
