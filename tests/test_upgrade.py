@@ -36,10 +36,15 @@ class FixtureRunner:
 
 def write_manifest(path: Path, *, name: str = "wireguard", alias: str = "wg") -> None:
     path.mkdir(parents=True, exist_ok=True)
-    (path / "gway.toml").write_text(
-        f'''[project]\nname = "{name}"\naliases = ["{alias}"]\n\n[adapter]\ntype = "python"\nmodule = "example.gway"\n''',
-        encoding="utf-8",
-    )
+    manifest = f'''[project]
+name = "{name}"
+aliases = ["{alias}"]
+
+[adapter]
+type = "python"
+module = "example.gway"
+'''
+    (path / "gway.toml").write_text(manifest, encoding="utf-8")
 
 
 def managed_project(path: Path, environment: Path | None = None) -> Project:
