@@ -34,7 +34,10 @@ def test_explicit_repository_uses_trusted_owner(tmp_path: Path) -> None:
     assert repository.clone_url == "https://github.com/arthexis/example.git"
 
 
-def test_runner_creates_python_environment_and_installs_project(monkeypatch, tmp_path: Path) -> None:
+def test_runner_creates_python_environment_and_installs_project(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "project"
     root.mkdir()
     project = Project(
