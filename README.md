@@ -27,7 +27,7 @@ gway install sigils
 # installed sigils    gway-sigils@0.4.2
 ```
 
-The PyPI distribution name `gway-sigils` is therefore an implementation/distribution detail; users do not need to type the `gway-` prefix through GWAY.
+The PyPI distribution name `gway-sigils` is therefore an implementation/distribution detail; users do not need to type the `gway-` prefix through GWAY. The command refers to the environment that owns the `gway` executable; if GWAY itself is installed system-wide, Sigils is system-wide with it, while virtualenv/pipx installations remain correctly scoped to that environment.
 
 ```bash
 gway web build --output "[project.path]/dist"
