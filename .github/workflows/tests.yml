@@ -1,13 +1,15 @@
 name: PR checks
 
 on:
+  push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-${{ github.event.pull_request.number }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,6 +22,7 @@ jobs:
         python -m gway --help
         gway --help
         python -c "import gway; print(gway.__version__)"
+        gway install sigils
         bash -n install.sh
         ./install.sh --check
         cat install.sh | bash -s -- --check
