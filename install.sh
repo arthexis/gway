@@ -120,8 +120,12 @@ is_managed_wrapper() {
 
 archive_existing_gway() {
     local archive suffix counter
-    [[ -e "${WRAPPER}" || -L "${WRAPPER}" ]] || return
-    is_managed_wrapper "${WRAPPER}" && return
+    if [[ ! -e "${WRAPPER}" && ! -L "${WRAPPER}" ]]; then
+        return 0
+    fi
+    if is_managed_wrapper "${WRAPPER}"; then
+        return 0
+    fi
 
     archive="${LEGACY_WRAPPER}"
     if [[ -e "${archive}" || -L "${archive}" ]]; then
