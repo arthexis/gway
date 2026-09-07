@@ -17,7 +17,6 @@ LEGACY_WRAPPER="${BIN_DIR}/gway-legacy"
 CONFIG_HOME="${GWAY_SYSTEM_CONFIG_HOME:-/etc/gway}"
 DATA_HOME="${GWAY_SYSTEM_DATA_HOME:-/var/lib/gway}"
 SOURCE_SPEC="${GWAY_SOURCE_SPEC:-git+https://github.com/arthexis/gway.git@main}"
-MODE="install"
 PYTHON=""
 
 usage() {
@@ -189,30 +188,37 @@ install_gway() {
     printf 'GWAY system installation ready\n'
 }
 
-while (($#)); do
-    case "$1" in
-        --check)
-            MODE="check"
+main() {
+    local mode="install"
+    while (($#)); do
+        case "$1" in
+            --check)
+                mode="check"
+                ;;
+            -h|--help)
+                usage
+                return 0
+                ;;
+            *)
+                die "unknown argument '$1'"
+                ;;
+        esac
+        shift
+    done
+
+    case "${mode}" in
+        check)
+            check_configuration
             ;;
-        -h|--help)
-            usage
-            exit 0
+        install)
+            install_gway
             ;;
         *)
-            die "unknown argument '$1'"
+            die "internal error: unknown mode '${mode}'"
             ;;
     esac
-    shift
-done
+}
 
-case "${MODE}" in
-    check)
-        check_configuration
-        ;;
-    install)
-        install_gway
-        ;;
-    *)
-        die "internal error: unknown mode '${MODE}'"
-        ;;
-esac
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
