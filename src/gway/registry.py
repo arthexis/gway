@@ -23,6 +23,8 @@ class Registry:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise RegistryError(f"cannot read registry {path}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise RegistryError(f"unsupported registry format in {path}")
         if data.get("version") != 1 or not isinstance(data.get("projects"), dict):
             raise RegistryError(f"unsupported registry format in {path}")
         return data["projects"]
