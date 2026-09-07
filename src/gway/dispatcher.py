@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from .adapters import AdapterRegistry
 from .command import Command
 from .registry import Registry
+from .sigils import resolve_cli_values
 
 
 class DispatchError(ValueError):
@@ -16,7 +17,7 @@ class CommandNotFound(DispatchError):
 
 
 class Dispatcher:
-    """Resolve registered projects, adapters, and managed command paths."""
+    """Resolve registered projects, adapters, managed commands, and CLI sigils."""
 
     def __init__(
         self,
@@ -53,10 +54,17 @@ class Dispatcher:
         return tuple(adapter.commands())
 
     def run(self, project_name: str, tokens: Sequence[str]) -> object:
-        adapter = self._adapter(project_name)
+        project = self.registry.require(project_name)
+        adapter = self.adapters.create(project)
         commands = tuple(adapter.commands())
         command, argv = self._resolve_command(commands, tokens)
-        return adapter.run(command.path, argv)
+        resolved_argv = resolve_cli_values(
+            argv,
+            project,
+            command.path,
+            paths=self.registry.paths,
+        )
+        return adapter.run(command.path, resolved_argv)
 
     def describe(self, project_name: str, path: tuple[str, ...]) -> Command:
         adapter = self._adapter(project_name)
