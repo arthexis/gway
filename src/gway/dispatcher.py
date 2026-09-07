@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
 from .adapters import AdapterRegistry
 from .command import Command
@@ -56,14 +56,3 @@ class Dispatcher:
     def describe(self, project_name: str, path: tuple[str, ...]) -> Command:
         adapter = self._adapter(project_name)
         return adapter.describe(path)
-
-    def invoke(
-        self,
-        project_name: str,
-        path: tuple[str, ...],
-        args: tuple[object, ...],
-        kwargs: Mapping[str, object],
-    ) -> object:
-        adapter = self._adapter(project_name)
-        adapter.describe(path)
-        return adapter.invoke(path, args, kwargs)
