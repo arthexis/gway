@@ -22,4 +22,5 @@ jobs:
         python -c "import gway; print(gway.__version__)"
         bash -n install.sh
         ./install.sh --check
+        cat install.sh | bash -s -- --check
         bash tests/test_system_installer.sh
