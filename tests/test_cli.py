@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -38,6 +39,36 @@ def test_module_entrypoint_help() -> None:
     )
     assert result.returncode == 0
     assert "usage: gway" in result.stdout
+
+
+def test_register_list_info_and_path(tmp_path: Path, monkeypatch, capsys) -> None:
+    project = tmp_path / "wireguard"
+    project.mkdir()
+    (project / "gway.toml").write_text(
+        '[project]\nname = "wireguard"\naliases = ["wg"]\n\n[adapter]\ntype = "python"\nmodule = "example.gway"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GWAY_DATA_HOME", str(tmp_path / "state"))
+
+    assert main(["register", str(project)]) == 0
+    capsys.readouterr()
+
+    assert main(["list"]) == 0
+    assert "wireguard (wg)" in capsys.readouterr().out
+
+    assert main(["info", "wg"]) == 0
+    info = capsys.readouterr().out
+    assert "name: wireguard" in info
+    assert "adapter: python" in info
+
+    assert main(["path", "wireguard"]) == 0
+    assert capsys.readouterr().out.strip() == str(project.resolve())
+
+
+def test_unknown_project_returns_error(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("GWAY_DATA_HOME", str(tmp_path / "state"))
+    assert main(["info", "missing"]) == 2
+    assert "project is not registered: missing" in capsys.readouterr().err
 
 
 def test_legacy_projects_package_is_not_imported() -> None:
