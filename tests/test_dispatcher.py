@@ -62,6 +62,19 @@ def test_cli_dispatches_registered_project(tmp_path: Path, capsys) -> None:
     assert capsys.readouterr().out == "hello\n"
 
 
+def test_cli_renders_project_level_help(tmp_path: Path, capsys) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+
+    assert main(["fx", "--help"], dispatcher=dispatcher) == 0
+    output = capsys.readouterr().out
+
+    assert "usage: gway fixture <command> [arguments]" in output
+    assert "hello" in output
+    assert "Say hello." in output
+    assert "peer add" in output
+    assert "Add a peer." in output
+
+
 def test_dispatcher_uses_longest_command_path(tmp_path: Path) -> None:
     dispatcher = make_dispatcher(tmp_path)
 
