@@ -25,7 +25,7 @@ class Installer:
     def install(self, spec: str) -> Project:
         repository = self.repositories.resolve(spec)
         checkout = self.repositories.clone(repository)
-        environment = None
+        project: Project | None = None
         try:
             project = Project.from_path(checkout)
             project = replace(
@@ -33,14 +33,11 @@ class Installer:
                 repository=repository.full_name,
                 revision=self.repositories.revision(checkout),
             )
-            environment = self.runner.prepare(project)
+            self.runner.prepare(project)
             return self.registry.register(project)
         except Exception:
             shutil.rmtree(checkout, ignore_errors=True)
-            if environment is not None:
+            if project is not None:
+                environment = self.runner.environment_path(project)
                 shutil.rmtree(environment, ignore_errors=True)
-            else:
-                candidate = self.runner.paths.environments_dir / checkout.name
-                if candidate.exists():
-                    shutil.rmtree(candidate, ignore_errors=True)
             raise
