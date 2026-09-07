@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Protocol
 
 from gway.command import Command
@@ -17,10 +17,3 @@ class ProjectAdapter(Protocol):
     def describe(self, path: tuple[str, ...]) -> Command: ...
 
     def run(self, path: tuple[str, ...], argv: list[str]) -> object: ...
-
-    def invoke(
-        self,
-        path: tuple[str, ...],
-        args: tuple[object, ...],
-        kwargs: Mapping[str, object],
-    ) -> object: ...
