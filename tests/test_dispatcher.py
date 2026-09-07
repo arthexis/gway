@@ -22,6 +22,7 @@ class FixtureAdapter:
             Command(("hello",), summary="Say hello."),
             Command(("peer",), summary="Peer namespace fallback."),
             Command(("peer", "add"), summary="Add a peer."),
+            Command(("peer-add",), summary="Kebab-case command."),
         )
 
     def describe(self, path: tuple[str, ...]) -> Command:
