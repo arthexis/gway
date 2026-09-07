@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+class ConfigError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class GwayPaths:
     config_dir: Path
@@ -72,15 +76,15 @@ def load_config(paths: GwayPaths | None = None) -> GwayConfig:
         with path.open("rb") as stream:
             data = tomllib.load(stream)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise ValueError(f"cannot read GWAY config {path}: {exc}") from exc
+        raise ConfigError(f"cannot read GWAY config {path}: {exc}") from exc
 
     github = data.get("github", {})
     if not isinstance(github, dict):
-        raise ValueError("[github] must be a table")
+        raise ConfigError("[github] must be a table")
     owners = github.get("owners", ["arthexis"])
     if not isinstance(owners, list) or not owners or not all(
         isinstance(owner, str) and owner.strip() for owner in owners
     ):
-        raise ValueError("[github].owners must be a non-empty array of strings")
+        raise ConfigError("[github].owners must be a non-empty array of strings")
 
     return GwayConfig(trusted_owners=tuple(owners))
