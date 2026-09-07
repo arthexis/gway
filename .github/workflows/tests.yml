@@ -21,6 +21,7 @@ jobs:
       install-smoke-command: |
         python -m gway --help
         gway --help
+        gway upgrade --help
         python -c "import gway; print(gway.__version__)"
         gway install sigils
         bash -n install.sh
