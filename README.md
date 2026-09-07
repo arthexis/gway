@@ -18,7 +18,7 @@ gw.arthexis.check()
 
 ## Sigils on the CLI
 
-`sigils` is GWAY's single runtime dependency and is part of the command-value language. Project names and command paths stay literal for predictable routing; argument values are interpolated before adapter parsing.
+`gway-sigils` is GWAY's single runtime dependency and provides the `sigils` Python package used as part of the command-value language. Project names and command paths stay literal for predictable routing; argument values are interpolated before adapter parsing.
 
 ```bash
 gway web build --output "[project.path]/dist"
