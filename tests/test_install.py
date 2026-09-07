@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from gway.config import GwayPaths
@@ -16,7 +17,7 @@ class FixtureRepositories:
         return ResolvedRepository("arthexis", "gway-fixture")
 
     def clone(self, repository: ResolvedRepository) -> Path:
-        checkout = self.root / "data" / "projects" / repository.name
+        checkout = self.root / "data" / "projects" / repository.owner / repository.name
         package = checkout / "src" / "fixture_project"
         package.mkdir(parents=True)
         (checkout / "gway.toml").write_text(
@@ -33,7 +34,9 @@ module = "fixture_project.gway"
         (package / "__init__.py").write_text("", encoding="utf-8")
         (package / "gway.py").write_text(
             """def status() -> str:
-    return "installed-ok"
+    import fixture_dependency
+
+    return fixture_dependency.VALUE
 """,
             encoding="utf-8",
         )
@@ -52,7 +55,16 @@ class FixtureRunner:
 
     def prepare(self, project) -> Path:
         environment = self.environment_path(project)
-        environment.mkdir(parents=True)
+        if sys.platform == "win32":
+            site_packages = environment / "Lib" / "site-packages"
+        else:
+            version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+            site_packages = environment / "lib" / version / "site-packages"
+        site_packages.mkdir(parents=True)
+        (site_packages / "fixture_dependency.py").write_text(
+            'VALUE = "installed-ok"\n',
+            encoding="utf-8",
+        )
         return environment
 
 
@@ -69,6 +81,6 @@ def test_install_records_state_and_dispatches_immediately(tmp_path: Path) -> Non
 
     assert project.repository == "arthexis/gway-fixture"
     assert project.revision == "0123456789abcdef"
+    assert project.environment == paths.environments_dir / "fixture"
     assert registry.require("fx") == project
-    assert paths.environments_dir.joinpath("fixture").is_dir()
     assert Dispatcher(registry).run("fixture", ["status"]) == "installed-ok"
