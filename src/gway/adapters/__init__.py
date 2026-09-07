@@ -13,11 +13,18 @@ class AdapterError(ValueError):
     pass
 
 
+def _python_factory(project: Project) -> ProjectAdapter:
+    from .python import PythonAdapter
+
+    return PythonAdapter(project)
+
+
 class AdapterRegistry:
     """Map manifest adapter types to adapter factories."""
 
     def __init__(self) -> None:
         self._factories: dict[str, AdapterFactory] = {}
+        self.register("python", _python_factory)
 
     def register(self, adapter_type: str, factory: AdapterFactory) -> None:
         if not adapter_type:
