@@ -111,7 +111,8 @@ class PythonAdapter:
             try:
                 return importlib.import_module(module_name)
             except (ImportError, ModuleNotFoundError) as exc:
-                raise AdapterError(f"cannot import Python adapter module {module_name!r}: {exc}") from exc
+                message = f"cannot import Python adapter module {module_name!r}: {exc}"
+                raise AdapterError(message) from exc
 
     def _modules(self) -> tuple[ModuleType, ...]:
         root = self._import_module(self.module_name)
@@ -133,7 +134,8 @@ class PythonAdapter:
         try:
             hints = get_type_hints(function)
         except (NameError, TypeError) as exc:
-            raise AdapterError(f"cannot resolve type hints for {function.__name__}: {exc}") from exc
+            message = f"cannot resolve type hints for {function.__name__}: {exc}"
+            raise AdapterError(message) from exc
 
         parameters: list[Parameter] = []
         for parameter in signature.parameters.values():
@@ -165,27 +167,29 @@ class PythonAdapter:
 
     def _discover(self) -> dict[tuple[str, ...], Command]:
         commands: dict[tuple[str, ...], Command] = {}
-        for module in self._modules():
-            if module.__name__ == self.module_name:
-                prefix: tuple[str, ...] = ()
-            else:
-                relative = module.__name__[len(self.module_name) + 1 :]
-                prefix = tuple(_cli_name(part) for part in relative.split("."))
+        with _project_import_path(self.project):
+            modules = self._modules()
+            for module in modules:
+                if module.__name__ == self.module_name:
+                    prefix: tuple[str, ...] = ()
+                else:
+                    relative = module.__name__[len(self.module_name) + 1 :]
+                    prefix = tuple(_cli_name(part) for part in relative.split("."))
 
-            for name, function in inspect.getmembers(module, inspect.isfunction):
-                if name.startswith("_"):
-                    continue
-                if function.__module__ != module.__name__:
-                    continue
-                path = (*prefix, _cli_name(name))
-                summary, description = _summary_and_description(function)
-                commands[path] = Command(
-                    path=path,
-                    summary=summary,
-                    description=description,
-                    parameters=self._parameter_metadata(function),
-                    adapter_data=function,
-                )
+                for name, function in inspect.getmembers(module, inspect.isfunction):
+                    if name.startswith("_"):
+                        continue
+                    if function.__module__ != module.__name__:
+                        continue
+                    path = (*prefix, _cli_name(name))
+                    summary, description = _summary_and_description(function)
+                    commands[path] = Command(
+                        path=path,
+                        summary=summary,
+                        description=description,
+                        parameters=self._parameter_metadata(function),
+                        adapter_data=function,
+                    )
         return commands
 
     def _command_map(self) -> dict[tuple[str, ...], Command]:
@@ -194,7 +198,8 @@ class PythonAdapter:
         return self._commands
 
     def commands(self) -> tuple[Command, ...]:
-        return tuple(self._command_map()[path] for path in sorted(self._command_map()))
+        commands = self._command_map()
+        return tuple(commands[path] for path in sorted(commands))
 
     def describe(self, path: tuple[str, ...]) -> Command:
         try:
@@ -212,7 +217,6 @@ class PythonAdapter:
             description=command.description,
             add_help=False,
         )
-        parser.add_argument("-h", "--help", action="store_true", dest="_gway_help")
 
         signature = inspect.signature(function)
         hints = get_type_hints(function)
@@ -246,14 +250,21 @@ class PythonAdapter:
                 default = (
                     None if parameter.default is inspect.Parameter.empty else parameter.default
                 )
+                required = (
+                    parameter.kind is inspect.Parameter.KEYWORD_ONLY
+                    and parameter.default is inspect.Parameter.empty
+                )
                 parser.add_argument(
                     option,
                     action=argparse.BooleanOptionalAction,
                     default=default,
-                    required=parameter.kind is inspect.Parameter.KEYWORD_ONLY
-                    and parameter.default is inspect.Parameter.empty,
+                    required=required,
                 )
             else:
+                required = (
+                    parameter.kind is inspect.Parameter.KEYWORD_ONLY
+                    and parameter.default is inspect.Parameter.empty
+                )
                 parser.add_argument(
                     option,
                     dest=parameter.name,
@@ -262,8 +273,7 @@ class PythonAdapter:
                     default=None
                     if parameter.default is inspect.Parameter.empty
                     else parameter.default,
-                    required=parameter.kind is inspect.Parameter.KEYWORD_ONLY
-                    and parameter.default is inspect.Parameter.empty,
+                    required=required,
                 )
         return parser
 
@@ -274,12 +284,12 @@ class PythonAdapter:
             raise AdapterError(f"Python command {' '.join(path)} is not callable")
 
         parser = self._parser_for(command)
-        namespace = parser.parse_args(argv)
-        values = vars(namespace)
-        if values.pop("_gway_help"):
+        if "--help" in argv or "-h" in argv:
             parser.print_help()
             return None
 
+        namespace = parser.parse_args(argv)
+        values = vars(namespace)
         signature = inspect.signature(function)
         positional: list[object] = []
         keywords: dict[str, object] = {}
