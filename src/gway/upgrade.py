@@ -64,7 +64,7 @@ class Upgrader:
         return upgraded
 
     @staticmethod
-    def self(source_spec: str = SELF_SOURCE_SPEC) -> None:
+    def upgrade_self(source_spec: str = SELF_SOURCE_SPEC) -> None:
         """Upgrade GWAY in the Python environment executing this command."""
         try:
             subprocess.run(
