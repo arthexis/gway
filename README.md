@@ -87,6 +87,34 @@ sudo gway install wireguard
 sudo gway wireguard --help
 ```
 
+## Upgrading GWAY and managed projects
+
+GWAY owns the lifecycle of projects installed through `gway install`. Upgrade one managed project with:
+
+```bash
+sudo gway upgrade wireguard
+```
+
+Upgrade all managed projects while leaving GWAY itself unchanged:
+
+```bash
+sudo gway upgrade --all
+```
+
+Upgrade only GWAY in the Python environment that owns the current `gway` executable:
+
+```bash
+sudo gway upgrade --self
+```
+
+A bare upgrade performs both operations in order: GWAY itself first, then every managed project:
+
+```bash
+sudo gway upgrade
+```
+
+Managed project upgrades require a clean checkout whose `origin` still matches the trusted repository recorded by GWAY. Upgrades use `git pull --ff-only`, refresh the project's isolated Python environment, re-read `gway.toml`, and record the new revision. Locally registered projects created with `gway register` are not modified by `--all`; naming one explicitly is rejected.
+
 ## Development
 
 ```bash
