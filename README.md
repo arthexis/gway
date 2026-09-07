@@ -20,6 +20,15 @@ gw.arthexis.check()
 
 `gway-sigils` is GWAY's single runtime dependency and provides the `sigils` Python package used as part of the command-value language. Project names and command paths stay literal for predictable routing; argument values are interpolated before adapter parsing.
 
+Because Sigils is a required GWAY runtime component, installing GWAY already installs it into the same Python environment. The short GWAY-facing name remains `sigils`, so this is an idempotent runtime install/verification command rather than a second managed-project checkout:
+
+```bash
+gway install sigils
+# installed sigils    gway-sigils@0.4.2
+```
+
+The PyPI distribution name `gway-sigils` is therefore an implementation/distribution detail; users do not need to type the `gway-` prefix through GWAY.
+
 ```bash
 gway web build --output "[project.path]/dist"
 gway ocpp connect --label "%[cwd]-[project.name]"
