@@ -1,0 +1,22 @@
+# GWAY
+
+GWAY is a lightweight project manager and command dispatcher for the Arthexis/GWAY ecosystem.
+
+The new 1.x generation discovers and manages projects from GitHub and exposes each project's commands through a common `gway <project> <command>` interface. Framework-specific command discovery is provided by adapters; the first planned adapters are Python function introspection and Django management commands.
+
+The pre-1.0 implementation has been preserved in [`arthexis/gway-legacy`](https://github.com/arthexis/gway-legacy). Legacy bundled projects, recipes, sigils, shared mutable context, and application-specific dependencies are intentionally not part of this codebase.
+
+See [`PLAN.md`](PLAN.md) for the architecture and implementation sequence.
+
+## Development
+
+GWAY currently contains the generation-1 skeleton only.
+
+```bash
+python -m pip install -e '.[dev]'
+python -m gway --help
+gway --help
+pytest
+```
+
+The package and executable remain named `gway`; development continues on the `1.0.0` version line.
