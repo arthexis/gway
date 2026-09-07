@@ -1,9 +1,11 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from gway.config import GwayConfig, GwayPaths
 from gway.project import Project
-from gway.repository import RepositoryManager
+from gway.repository import RepositoryManager, ResolvedRepository
 from gway.runner import Runner
 
 
@@ -32,6 +34,31 @@ def test_explicit_repository_uses_trusted_owner(tmp_path: Path) -> None:
 
     assert repository.full_name == "arthexis/example"
     assert repository.clone_url == "https://github.com/arthexis/example.git"
+
+
+def test_checkouts_are_namespaced_by_owner(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "gway.repository.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    manager = RepositoryManager(paths, GwayConfig(("arthexis", "example")))
+
+    first = manager.clone(ResolvedRepository("arthexis", "shared"))
+    second = manager.clone(ResolvedRepository("example", "shared"))
+
+    assert first == paths.projects_dir / "arthexis" / "shared"
+    assert second == paths.projects_dir / "example" / "shared"
+
+
+def test_project_name_must_be_safe_directory_segment(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="safe directory name"):
+        Project(
+            name="../escape",
+            path=tmp_path,
+            adapter_type="python",
+            adapter_config={"module": "fixture.gway"},
+        )
 
 
 def test_runner_creates_python_environment_and_installs_project(
