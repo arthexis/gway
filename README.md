@@ -4,6 +4,18 @@ GWAY is a lightweight project manager and command dispatcher for the Arthexis/GW
 
 The new 1.x generation discovers and manages projects from GitHub and exposes each project's commands through a common `gway <project> <command>` interface. Framework-specific command discovery is provided by adapters; the first planned adapters are Python function introspection and Django management commands.
 
+GWAY also keeps a first-class Python API. The intended stable import is:
+
+```python
+from gway import gway as gw
+
+# Mirrors the CLI namespace once the relevant managed projects are installed.
+gw.wireguard.status()
+gw.arthexis.check()
+```
+
+`from gway import gw` remains available as a compatibility alias. The Python facade will use the same registry, adapter, dispatcher, and runner as the CLI rather than bypassing managed project isolation.
+
 The pre-1.0 implementation has been preserved in [`arthexis/gway-legacy`](https://github.com/arthexis/gway-legacy). Legacy bundled projects, recipes, sigils, shared mutable context, and application-specific dependencies are intentionally not part of this codebase.
 
 See [`PLAN.md`](PLAN.md) for the architecture and implementation sequence.
