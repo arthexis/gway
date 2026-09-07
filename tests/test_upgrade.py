@@ -18,10 +18,10 @@ from gway.upgrade import UpgradeError, Upgrader
 class FixtureRepositories:
     def __init__(self, revision: str = "new-revision") -> None:
         self.revision = revision
-        self.calls: list[tuple[Path, str]] = []
+        self.calls: list[tuple[Path, str, bool]] = []
 
-    def upgrade(self, checkout: Path, full_name: str) -> str:
-        self.calls.append((checkout, full_name))
+    def upgrade(self, checkout: Path, full_name: str, *, force: bool = False) -> str:
+        self.calls.append((checkout, full_name, force))
         return self.revision
 
 
@@ -77,8 +77,25 @@ def test_project_upgrade_refreshes_manifest_environment_and_registry(tmp_path: P
     assert project.adapter_config == {"module": "example.gway"}
     assert project.environment == environment
     assert registry.require("wg") == project
-    assert repositories.calls == [(checkout, "arthexis/gway-wireguard")]
+    assert repositories.calls == [(checkout, "arthexis/gway-wireguard", False)]
     assert runner.calls == [project]
+
+
+def test_project_upgrade_propagates_force(tmp_path: Path) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    registry = Registry(paths)
+    checkout = tmp_path / "wireguard"
+    write_manifest(checkout)
+    registry.register(managed_project(checkout))
+    repositories = FixtureRepositories()
+
+    Upgrader(
+        registry,
+        repositories=repositories,
+        runner=FixtureRunner(),
+    ).project("wireguard", force=True)
+
+    assert repositories.calls == [(checkout, "arthexis/gway-wireguard", True)]
 
 
 def test_project_upgrade_rejects_local_registration(tmp_path: Path) -> None:
@@ -90,7 +107,8 @@ def test_project_upgrade_rejects_local_registration(tmp_path: Path) -> None:
 
     with pytest.raises(UpgradeError, match="locally registered"):
         Upgrader(registry, repositories=FixtureRepositories(), runner=FixtureRunner()).project(
-            "local"
+            "local",
+            force=True,
         )
 
 
@@ -109,10 +127,10 @@ def test_all_projects_skips_local_registrations(tmp_path: Path) -> None:
         registry,
         repositories=repositories,
         runner=FixtureRunner(),
-    ).all_projects()
+    ).all_projects(force=True)
 
     assert [project.name for project in upgraded] == ["wireguard"]
-    assert len(repositories.calls) == 1
+    assert repositories.calls == [(managed, "arthexis/gway-wireguard", True)]
 
 
 def test_self_upgrade_uses_current_python_and_pip(monkeypatch) -> None:
@@ -180,15 +198,94 @@ def test_repository_upgrade_rejects_dirty_checkout(monkeypatch, tmp_path: Path) 
     checkout = tmp_path / "checkout"
     checkout.mkdir()
 
-    monkeypatch.setattr(
-        "gway.repository.subprocess.run",
-        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=" M file.py\n", stderr=""),
-    )
+    def fake_run(args, **kwargs):
+        command = [str(value) for value in args]
+        if "status" in command:
+            return SimpleNamespace(returncode=0, stdout=" M file.py\n", stderr="")
+        if "get-url" in command:
+            return SimpleNamespace(
+                returncode=0,
+                stdout="https://github.com/arthexis/gway-wireguard.git\n",
+                stderr="",
+            )
+        if "symbolic-ref" in command:
+            return SimpleNamespace(returncode=0, stdout="main\n", stderr="")
+        raise AssertionError(command)
+
+    monkeypatch.setattr("gway.repository.subprocess.run", fake_run)
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     manager = RepositoryManager(paths, GwayConfig(("arthexis",)))
 
     with pytest.raises(RepositoryError, match="local changes"):
         manager.upgrade(checkout, "arthexis/gway-wireguard")
+
+
+def test_repository_force_resets_dirty_checkout_to_trusted_upstream(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        command = [str(value) for value in args]
+        calls.append(command)
+        if "status" in command:
+            return SimpleNamespace(returncode=0, stdout=" M file.py\n?? scratch/\n", stderr="")
+        if "get-url" in command:
+            return SimpleNamespace(
+                returncode=0,
+                stdout="https://github.com/arthexis/gway-wireguard.git\n",
+                stderr="",
+            )
+        if "symbolic-ref" in command:
+            return SimpleNamespace(returncode=0, stdout="main\n", stderr="")
+        if any(value in command for value in ("fetch", "reset", "clean")):
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if "rev-parse" in command:
+            return SimpleNamespace(returncode=0, stdout="fedcba\n", stderr="")
+        raise AssertionError(command)
+
+    monkeypatch.setattr("gway.repository.subprocess.run", fake_run)
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    manager = RepositoryManager(paths, GwayConfig(("arthexis",)))
+
+    revision = manager.upgrade(checkout, "arthexis/gway-wireguard", force=True)
+
+    assert revision == "fedcba"
+    assert ["git", "-C", str(checkout), "fetch", "--prune", "origin"] in calls
+    assert ["git", "-C", str(checkout), "reset", "--hard", "origin/main"] in calls
+    assert ["git", "-C", str(checkout), "clean", "-fd"] in calls
+    assert not any("pull" in command for command in calls)
+
+
+def test_repository_force_validates_origin_before_mutation(monkeypatch, tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        command = [str(value) for value in args]
+        calls.append(command)
+        if "status" in command:
+            return SimpleNamespace(returncode=0, stdout=" M file.py\n", stderr="")
+        if "get-url" in command:
+            return SimpleNamespace(
+                returncode=0,
+                stdout="https://github.com/example/other.git\n",
+                stderr="",
+            )
+        raise AssertionError(command)
+
+    monkeypatch.setattr("gway.repository.subprocess.run", fake_run)
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    manager = RepositoryManager(paths, GwayConfig(("arthexis",)))
+
+    with pytest.raises(RepositoryError, match="origin does not match"):
+        manager.upgrade(checkout, "arthexis/gway-wireguard", force=True)
+
+    assert not any(any(value in command for value in ("fetch", "reset", "clean")) for command in calls)
 
 
 def test_runner_refresh_reinstalls_editable_project(monkeypatch, tmp_path: Path) -> None:
@@ -237,12 +334,12 @@ def test_cli_upgrade_modes(monkeypatch, tmp_path: Path, capsys) -> None:
         def __init__(self, registry) -> None:
             pass
 
-        def project(self, name: str) -> Project:
-            calls.append(f"project:{name}")
+        def project(self, name: str, *, force: bool = False) -> Project:
+            calls.append(f"project:{name}:force={force}")
             return project
 
-        def all_projects(self) -> list[Project]:
-            calls.append("all")
+        def all_projects(self, *, force: bool = False) -> list[Project]:
+            calls.append(f"all:force={force}")
             return [project]
 
         def upgrade_self(self) -> None:
@@ -251,12 +348,17 @@ def test_cli_upgrade_modes(monkeypatch, tmp_path: Path, capsys) -> None:
     monkeypatch.setattr("gway.cli.Upgrader", FakeUpgrader)
 
     assert main(["upgrade", "wireguard"]) == 0
-    assert calls == ["project:wireguard"]
+    assert calls == ["project:wireguard:force=False"]
     calls.clear()
     capsys.readouterr()
 
-    assert main(["upgrade", "--all"]) == 0
-    assert calls == ["all"]
+    assert main(["upgrade", "wireguard", "--force"]) == 0
+    assert calls == ["project:wireguard:force=True"]
+    calls.clear()
+    capsys.readouterr()
+
+    assert main(["upgrade", "--all", "--force"]) == 0
+    assert calls == ["all:force=True"]
     calls.clear()
     capsys.readouterr()
 
@@ -265,5 +367,5 @@ def test_cli_upgrade_modes(monkeypatch, tmp_path: Path, capsys) -> None:
     calls.clear()
     capsys.readouterr()
 
-    assert main(["upgrade"]) == 0
-    assert calls == ["self", "all"]
+    assert main(["upgrade", "--force"]) == 0
+    assert calls == ["self", "all:force=True"]
