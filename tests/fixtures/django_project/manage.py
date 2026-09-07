@@ -6,7 +6,7 @@ import sys
 
 
 def main() -> None:
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fixture_project.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "gway_django_fixture.settings")
     from django.core.management import execute_from_command_line
 
     execute_from_command_line(sys.argv)
