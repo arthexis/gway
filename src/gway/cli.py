@@ -15,8 +15,9 @@ from .project import ManifestError
 from .registry import Registry, RegistryError
 from .repository import RepositoryError
 from .runner import RunnerError
+from .upgrade import UpgradeError, Upgrader
 
-CORE_COMMANDS = frozenset({"list", "info", "path", "register", "install"})
+CORE_COMMANDS = frozenset({"list", "info", "path", "register", "install", "upgrade"})
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
 
 
@@ -52,6 +53,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Install a trusted GitHub project or built-in runtime component.",
     )
     install.add_argument("project")
+
+    upgrade = subparsers.add_parser(
+        "upgrade",
+        help="Upgrade GWAY itself and/or trusted managed projects.",
+    )
+    upgrade.add_argument("project", nargs="?")
+    upgrade.add_argument(
+        "--all",
+        action="store_true",
+        help="Upgrade all trusted managed projects.",
+    )
+    upgrade.add_argument(
+        "--self",
+        dest="upgrade_self",
+        action="store_true",
+        help="Upgrade GWAY itself in the current installation environment.",
+    )
 
     return parser
 
@@ -100,6 +118,26 @@ def _install_runtime_component(name: str) -> bool:
     return True
 
 
+def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> None:
+    if namespace.project and (namespace.all or namespace.upgrade_self):
+        raise UpgradeError("PROJECT cannot be combined with --all or --self")
+
+    upgrader = Upgrader(registry)
+    if namespace.project:
+        project = upgrader.project(namespace.project)
+        print(f"upgraded {project.name}\t{project.repository}@{project.revision}")
+        return
+
+    bare = not namespace.all and not namespace.upgrade_self
+    if bare or namespace.upgrade_self:
+        upgrader.upgrade_self()
+        print("upgraded gway\tarthexis/gway@main")
+
+    if bare or namespace.all:
+        for project in upgrader.all_projects():
+            print(f"upgraded {project.name}\t{project.repository}@{project.revision}")
+
+
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
     parser = build_parser()
     args = list(sys.argv[1:] if argv is None else argv)
@@ -144,6 +182,8 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             if not _install_runtime_component(namespace.project):
                 project = Installer(registry).install(namespace.project)
                 print(f"installed {project.name}\t{project.repository}@{project.revision}")
+        elif namespace.command == "upgrade":
+            _run_upgrade(namespace, registry)
         else:
             parser.print_help()
     except (
@@ -152,6 +192,7 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         RegistryError,
         RepositoryError,
         RunnerError,
+        UpgradeError,
     ) as exc:
         print(f"gway: {exc}", file=sys.stderr)
         return 2

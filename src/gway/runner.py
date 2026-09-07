@@ -15,7 +15,7 @@ class RunnerError(ValueError):
 
 
 class Runner:
-    """Prepare isolated environments for managed projects."""
+    """Prepare and refresh isolated environments for managed projects."""
 
     def __init__(self, paths: GwayPaths | None = None) -> None:
         self.paths = paths or default_paths()
@@ -58,5 +58,37 @@ class Runner:
         except (OSError, subprocess.CalledProcessError) as exc:
             shutil.rmtree(environment, ignore_errors=True)
             raise RunnerError(f"cannot prepare environment for {project.name}: {exc}") from exc
+
+        return environment
+
+    def refresh(self, project: Project) -> Path | None:
+        """Refresh an existing managed environment after its checkout changes."""
+        if project.adapter_type not in {"python", "django"}:
+            return None
+
+        environment = project.environment or self.environment_path(project)
+        if not environment.exists():
+            return self.prepare(project)
+
+        python = self.environment_python(environment)
+        if not python.is_file():
+            raise RunnerError(f"managed environment is missing Python: {environment}")
+
+        try:
+            subprocess.run(
+                [
+                    str(python),
+                    "-m",
+                    "pip",
+                    "install",
+                    "--disable-pip-version-check",
+                    "--upgrade",
+                    "-e",
+                    str(project.path),
+                ],
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise RunnerError(f"cannot refresh environment for {project.name}: {exc}") from exc
 
         return environment
