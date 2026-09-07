@@ -87,4 +87,4 @@ def load_config(paths: GwayPaths | None = None) -> GwayConfig:
     ):
         raise ConfigError("[github].owners must be a non-empty array of strings")
 
-    return GwayConfig(trusted_owners=tuple(owners))
+    return GwayConfig(trusted_owners=tuple(owner.strip() for owner in owners))
