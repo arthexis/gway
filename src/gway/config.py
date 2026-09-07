@@ -82,8 +82,10 @@ def load_config(paths: GwayPaths | None = None) -> GwayConfig:
     if not isinstance(github, dict):
         raise ConfigError("[github] must be a table")
     owners = github.get("owners", ["arthexis"])
-    if not isinstance(owners, list) or not owners or not all(
-        isinstance(owner, str) and owner.strip() for owner in owners
+    if (
+        not isinstance(owners, list)
+        or not owners
+        or not all(isinstance(owner, str) and owner.strip() for owner in owners)
     ):
         raise ConfigError("[github].owners must be a non-empty array of strings")
 
