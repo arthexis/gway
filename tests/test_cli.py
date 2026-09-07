@@ -50,6 +50,12 @@ def test_module_entrypoint_help() -> None:
     assert "usage: gway" in result.stdout
 
 
+def test_install_sigils_uses_short_runtime_alias(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["install", "sigils"]) == 0
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("installed sigils\tgway-sigils@")
+
+
 def test_register_list_info_and_path(tmp_path: Path, monkeypatch, capsys) -> None:
     project = tmp_path / "wireguard"
     project.mkdir()
