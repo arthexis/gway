@@ -4,4 +4,4 @@ name = "django-fixture"
 [adapter]
 type = "django"
 manage = "manage.py"
-settings = "fixture_project.settings"
+settings = "gway_django_fixture.settings"
