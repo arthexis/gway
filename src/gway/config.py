@@ -26,19 +26,19 @@ def default_paths(
     if values.get("GWAY_CONFIG_HOME"):
         config_dir = Path(values["GWAY_CONFIG_HOME"]).expanduser()
     elif os.name == "nt":
-        config_root = Path(values.get("APPDATA", home_dir / "AppData" / "Roaming"))
+        config_root = Path(values.get("APPDATA") or home_dir / "AppData" / "Roaming")
         config_dir = config_root / "gway"
     else:
-        config_root = Path(values.get("XDG_CONFIG_HOME", home_dir / ".config"))
+        config_root = Path(values.get("XDG_CONFIG_HOME") or home_dir / ".config")
         config_dir = config_root / "gway"
 
     if values.get("GWAY_DATA_HOME"):
         data_dir = Path(values["GWAY_DATA_HOME"]).expanduser()
     elif os.name == "nt":
-        data_root = Path(values.get("LOCALAPPDATA", home_dir / "AppData" / "Local"))
+        data_root = Path(values.get("LOCALAPPDATA") or home_dir / "AppData" / "Local")
         data_dir = data_root / "gway"
     else:
-        data_root = Path(values.get("XDG_DATA_HOME", home_dir / ".local" / "share"))
+        data_root = Path(values.get("XDG_DATA_HOME") or home_dir / ".local" / "share")
         data_dir = data_root / "gway"
 
     return GwayPaths(config_dir=config_dir, data_dir=data_dir)
