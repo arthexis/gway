@@ -38,6 +38,15 @@ def test_manifest_requires_adapter(tmp_path: Path) -> None:
         Project.from_path(root)
 
 
+def test_malformed_manifest_raises_manifest_error(tmp_path: Path) -> None:
+    root = tmp_path / "bad"
+    root.mkdir()
+    (root / "gway.toml").write_text("[project\n", encoding="utf-8")
+
+    with pytest.raises(ManifestError, match="invalid gway.toml"):
+        Project.from_path(root)
+
+
 def test_registry_persists_and_resolves_aliases(tmp_path: Path) -> None:
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     registry = Registry(paths)
@@ -47,6 +56,15 @@ def test_registry_persists_and_resolves_aliases(tmp_path: Path) -> None:
     assert registry.require("wg") == project
     assert Registry(paths).require("wg") == project
     assert paths.state_file.is_file()
+
+
+def test_registry_rejects_non_object_root(tmp_path: Path) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    paths.data_dir.mkdir(parents=True)
+    paths.state_file.write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(RegistryError, match="unsupported registry format"):
+        Registry(paths).list()
 
 
 def test_registry_rejects_alias_collisions(tmp_path: Path) -> None:
