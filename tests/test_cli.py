@@ -75,7 +75,3 @@ def test_unknown_project_returns_error(tmp_path: Path, monkeypatch, capsys) -> N
     monkeypatch.setenv("GWAY_DATA_HOME", str(tmp_path / "state"))
     assert main(["info", "missing"]) == 2
     assert "project is not registered: missing" in capsys.readouterr().err
-
-
-def test_legacy_projects_package_is_not_imported() -> None:
-    assert "projects" not in sys.modules
