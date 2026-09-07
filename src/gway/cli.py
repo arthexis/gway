@@ -5,8 +5,12 @@ import sys
 from collections.abc import Sequence
 
 from . import __version__
+from .adapters import AdapterError
+from .dispatcher import Dispatcher, DispatchError
 from .project import ManifestError
 from .registry import Registry, RegistryError
+
+CORE_COMMANDS = frozenset({"list", "info", "path", "register"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,15 +56,29 @@ def _print_info(registry: Registry, name: str) -> None:
         print(f"revision: {project.revision}")
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def _render_result(result: object) -> None:
+    if result is not None:
+        print(result)
+
+
+def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
     parser = build_parser()
-    args = list(argv) if argv is not None else None
-    if args == []:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if not args:
         parser.print_help()
         return 0
 
+    active_dispatcher = dispatcher or Dispatcher()
+    if args[0] not in CORE_COMMANDS and not args[0].startswith("-"):
+        try:
+            _render_result(active_dispatcher.run(args[0], args[1:]))
+        except (AdapterError, DispatchError, RegistryError) as exc:
+            print(f"gway: {exc}", file=sys.stderr)
+            return 2
+        return 0
+
     namespace = parser.parse_args(args)
-    registry = Registry()
+    registry = active_dispatcher.registry
 
     try:
         if namespace.command == "list":

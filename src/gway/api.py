@@ -30,7 +30,7 @@ class Gway:
         if project is not None:
             raise AttributeError(
                 f"managed command dispatch for project {project.name!r} is not "
-                "implemented yet; see PLAN.md Chunk 2"
+                "implemented yet; see PLAN.md Chunk 12"
             )
         raise AttributeError(f"project is not registered: {name}")
 
