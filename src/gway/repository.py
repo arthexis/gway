@@ -108,8 +108,12 @@ class RepositoryManager:
             raise RepositoryError(f"empty revision for {checkout}")
         return revision
 
-    def upgrade(self, checkout: Path, full_name: str) -> str:
-        """Fast-forward one trusted managed checkout and return its new revision."""
+    @staticmethod
+    def _git_failure(result: subprocess.CompletedProcess[str], fallback: str) -> str:
+        return result.stderr.strip() or result.stdout.strip() or fallback
+
+    def upgrade(self, checkout: Path, full_name: str, *, force: bool = False) -> str:
+        """Upgrade one trusted managed checkout and return its new revision."""
         parts = full_name.split("/")
         if len(parts) != 2 or not all(parts):
             raise RepositoryError(f"invalid managed repository: {full_name}")
@@ -126,10 +130,6 @@ class RepositoryManager:
                 capture_output=True,
                 text=True,
             )
-            if status.stdout.strip():
-                raise RepositoryError(
-                    f"managed checkout has local changes; refusing upgrade: {checkout}"
-                )
 
             origin = subprocess.run(
                 ["git", "-C", str(checkout), "remote", "get-url", "origin"],
@@ -151,15 +151,51 @@ class RepositoryManager:
             if not branch:
                 raise RepositoryError(f"managed checkout is not on a branch: {checkout}")
 
-            pull = subprocess.run(
-                ["git", "-C", str(checkout), "pull", "--ff-only"],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if pull.returncode != 0:
-                detail = pull.stderr.strip() or pull.stdout.strip() or "git pull --ff-only failed"
-                raise RepositoryError(f"cannot fast-forward {full_name}: {detail}")
+            if force:
+                fetch = subprocess.run(
+                    ["git", "-C", str(checkout), "fetch", "--prune", "origin"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if fetch.returncode != 0:
+                    detail = self._git_failure(fetch, "git fetch failed")
+                    raise RepositoryError(f"cannot fetch {full_name}: {detail}")
+
+                reset = subprocess.run(
+                    ["git", "-C", str(checkout), "reset", "--hard", f"origin/{branch}"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if reset.returncode != 0:
+                    detail = self._git_failure(reset, "git reset --hard failed")
+                    raise RepositoryError(f"cannot reset {full_name}: {detail}")
+
+                clean = subprocess.run(
+                    ["git", "-C", str(checkout), "clean", "-fd"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if clean.returncode != 0:
+                    detail = self._git_failure(clean, "git clean -fd failed")
+                    raise RepositoryError(f"cannot clean {full_name}: {detail}")
+            else:
+                if status.stdout.strip():
+                    raise RepositoryError(
+                        f"managed checkout has local changes; refusing upgrade: {checkout}"
+                    )
+
+                pull = subprocess.run(
+                    ["git", "-C", str(checkout), "pull", "--ff-only"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if pull.returncode != 0:
+                    detail = self._git_failure(pull, "git pull --ff-only failed")
+                    raise RepositoryError(f"cannot fast-forward {full_name}: {detail}")
         except OSError as exc:
             raise RepositoryError(f"cannot run git: {exc}") from exc
         except subprocess.CalledProcessError as exc:
