@@ -15,7 +15,7 @@ from .adapters import AdapterError
 from .config import ConfigError
 from .dispatcher import Dispatcher, DispatchError
 from .install import Installer
-from .project import ManifestError
+from .project import ManifestError, Project
 from .registry import Registry, RegistryError
 from .repository import RepositoryError
 from .runner import RunnerError
@@ -98,17 +98,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_info(registry: Registry, name: str) -> None:
-    project = registry.require(name)
-    print(f"name: {project.name}")
-    print(f"path: {project.path}")
-    print(f"adapter: {project.adapter_type}")
+def _project_record(project: Project) -> dict[str, object]:
+    record: dict[str, object] = {
+        "name": project.name,
+        "path": project.path,
+        "adapter": project.adapter_type,
+    }
     if project.aliases:
-        print(f"aliases: {', '.join(project.aliases)}")
+        record["aliases"] = list(project.aliases)
     if project.repository:
-        print(f"repository: {project.repository}")
+        record["repository"] = project.repository
     if project.revision:
-        print(f"revision: {project.revision}")
+        record["revision"] = project.revision
+    return record
 
 
 def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
@@ -250,32 +252,57 @@ def _report_error(exc: BaseException, args: Sequence[str]) -> None:
         print(f"hint: try running with sudo: sudo {command}", file=sys.stderr)
 
 
-def _install_runtime_component(name: str) -> bool:
+def _runtime_component_record(name: str) -> dict[str, object] | None:
     distribution = RUNTIME_COMPONENTS.get(name)
     if distribution is None:
-        return False
-    print(f"installed {name}\t{distribution}@{distribution_version(distribution)}")
-    return True
+        return None
+    return {
+        "status": "installed",
+        "name": name,
+        "distribution": distribution,
+        "version": distribution_version(distribution),
+    }
 
 
-def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> None:
+def _managed_status(status: str, project: Project) -> dict[str, object]:
+    record: dict[str, object] = {
+        "status": status,
+        "name": project.name,
+        "path": project.path,
+    }
+    if project.repository:
+        record["repository"] = project.repository
+    if project.revision:
+        record["revision"] = project.revision
+    return record
+
+
+def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> object:
     if namespace.project and (namespace.all or namespace.upgrade_self):
         raise UpgradeError("PROJECT cannot be combined with --all or --self")
 
     upgrader = Upgrader(registry)
     if namespace.project:
         project = upgrader.project(namespace.project, force=namespace.force)
-        print(f"upgraded {project.name}\t{project.repository}@{project.revision}")
-        return
+        return _managed_status("upgraded", project)
 
+    results: list[dict[str, object]] = []
     bare = not namespace.all and not namespace.upgrade_self
     if bare or namespace.upgrade_self:
         upgrader.upgrade_self()
-        print("upgraded gway\tarthexis/gway@main")
+        results.append(
+            {
+                "status": "upgraded",
+                "name": "gway",
+                "repository": "arthexis/gway",
+                "revision": "main",
+            }
+        )
 
     if bare or namespace.all:
         for project in upgrader.all_projects(force=namespace.force):
-            print(f"upgraded {project.name}\t{project.repository}@{project.revision}")
+            results.append(_managed_status("upgraded", project))
+    return results
 
 
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
@@ -304,25 +331,27 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
     registry = active_dispatcher.registry
 
     try:
+        result: object = None
         if namespace.command == "list":
-            for project in registry.list():
-                aliases = f" ({', '.join(project.aliases)})" if project.aliases else ""
-                print(f"{project.name}{aliases}\t{project.path}")
+            result = [_project_record(project) for project in registry.list()]
         elif namespace.command == "info":
-            _print_info(registry, namespace.project)
+            result = _project_record(registry.require(namespace.project))
         elif namespace.command == "path":
-            print(registry.require(namespace.project).path)
+            result = registry.require(namespace.project).path
         elif namespace.command == "register":
             project = registry.register_path(namespace.path)
-            print(f"registered {project.name}\t{project.path}")
+            result = _managed_status("registered", project)
         elif namespace.command == "install":
-            if not _install_runtime_component(namespace.project):
+            result = _runtime_component_record(namespace.project)
+            if result is None:
                 project = Installer(registry).install(namespace.project)
-                print(f"installed {project.name}\t{project.repository}@{project.revision}")
+                result = _managed_status("installed", project)
         elif namespace.command == "upgrade":
-            _run_upgrade(namespace, registry)
+            result = _run_upgrade(namespace, registry)
         else:
             parser.print_help()
+            return 0
+        _render_result(result, json_output=json_output)
     except (
         ConfigError,
         ManifestError,
