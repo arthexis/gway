@@ -21,7 +21,7 @@ class Project:
     revision: str | None = None
 
     @classmethod
-    def from_path(cls, path: str | Path) -> "Project":
+    def from_path(cls, path: str | Path) -> Project:
         root = Path(path).expanduser().resolve()
         manifest = root / "gway.toml"
         if not manifest.is_file():
@@ -73,7 +73,7 @@ class Project:
         }
 
     @classmethod
-    def from_record(cls, data: dict[str, Any]) -> "Project":
+    def from_record(cls, data: dict[str, Any]) -> Project:
         return cls(
             name=data["name"],
             path=Path(data["path"]),
