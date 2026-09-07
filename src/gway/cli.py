@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
 
@@ -56,8 +57,12 @@ def _print_info(registry: Registry, name: str) -> None:
         print(f"revision: {project.revision}")
 
 
-def _render_result(result: object) -> None:
-    if result is not None:
+def _render_result(result: object, *, json_output: bool = False) -> None:
+    if result is None:
+        return
+    if json_output:
+        print(json.dumps(result, indent=2, default=str))
+    else:
         print(result)
 
 
@@ -70,8 +75,14 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
 
     active_dispatcher = dispatcher or Dispatcher()
     if args[0] not in CORE_COMMANDS and not args[0].startswith("-"):
+        project_args = list(args[1:])
+        json_output = False
+        if "--json" in project_args:
+            project_args.remove("--json")
+            json_output = True
         try:
-            _render_result(active_dispatcher.run(args[0], args[1:]))
+            result = active_dispatcher.run(args[0], project_args)
+            _render_result(result, json_output=json_output)
         except (AdapterError, DispatchError, RegistryError) as exc:
             print(f"gway: {exc}", file=sys.stderr)
             return 2
