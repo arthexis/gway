@@ -113,7 +113,17 @@ A bare upgrade performs both operations in order: GWAY itself first, then every 
 sudo gway upgrade
 ```
 
-Managed project upgrades require a clean checkout whose `origin` still matches the trusted repository recorded by GWAY. Upgrades use `git pull --ff-only`, refresh the project's isolated Python environment, re-read `gway.toml`, and record the new revision. Locally registered projects created with `gway register` are not modified by `--all`; naming one explicitly is rejected.
+Managed project upgrades normally require a clean checkout whose `origin` still matches the trusted repository recorded by GWAY. Normal upgrades use `git pull --ff-only`, refresh the project's isolated Python environment, re-read `gway.toml`, and record the new revision. Locally registered projects created with `gway register` are not modified by `--all`; naming one explicitly is rejected.
+
+For appliance recovery, `--force` deliberately discards local managed-checkout changes after validating the registered origin and current branch. It fetches the trusted upstream, resets the checkout to `origin/<branch>`, and removes ordinary untracked files/directories; ignored files are preserved. It can target one project or all managed projects:
+
+```bash
+sudo gway upgrade wireguard --force
+sudo gway upgrade --all --force
+sudo gway upgrade --force
+```
+
+The last form upgrades GWAY itself normally, then force-resets and upgrades all managed projects.
 
 ## Development
 
