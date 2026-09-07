@@ -33,7 +33,9 @@ class Installer:
                 repository=repository.full_name,
                 revision=self.repositories.revision(checkout),
             )
-            self.runner.prepare(project)
+            environment = self.runner.prepare(project)
+            if environment is not None:
+                project = replace(project, environment=environment)
             return self.registry.register(project)
         except Exception:
             shutil.rmtree(checkout, ignore_errors=True)
