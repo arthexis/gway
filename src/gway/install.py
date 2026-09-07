@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import replace
+from pathlib import Path
 
 from .project import Project
 from .registry import Registry
@@ -25,7 +26,7 @@ class Installer:
     def install(self, spec: str) -> Project:
         repository = self.repositories.resolve(spec)
         checkout = self.repositories.clone(repository)
-        project: Project | None = None
+        prepared_environment: Path | None = None
         try:
             project = Project.from_path(checkout)
             project = replace(
@@ -33,13 +34,12 @@ class Installer:
                 repository=repository.full_name,
                 revision=self.repositories.revision(checkout),
             )
-            environment = self.runner.prepare(project)
-            if environment is not None:
-                project = replace(project, environment=environment)
+            prepared_environment = self.runner.prepare(project)
+            if prepared_environment is not None:
+                project = replace(project, environment=prepared_environment)
             return self.registry.register(project)
         except Exception:
             shutil.rmtree(checkout, ignore_errors=True)
-            if project is not None:
-                environment = self.runner.environment_path(project)
-                shutil.rmtree(environment, ignore_errors=True)
+            if prepared_environment is not None:
+                shutil.rmtree(prepared_environment, ignore_errors=True)
             raise
