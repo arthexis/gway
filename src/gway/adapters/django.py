@@ -105,6 +105,10 @@ class DjangoAdapter:
             return source
         try:
             return management.load_command_class(source, name)
+        except AttributeError as exc:
+            if getattr(exc, "name", None) == "Command":
+                return None
+            raise AdapterError(f"cannot load Django command {name!r}: {exc}") from exc
         except Exception as exc:
             raise AdapterError(f"cannot load Django command {name!r}: {exc}") from exc
 
@@ -119,6 +123,8 @@ class DjangoAdapter:
 
             for name, source in discovered.items():
                 command = self._load_command(name, source, management, base)
+                if command is None:
+                    continue
                 try:
                     parser = command.create_parser(f"gway {self.project.name}", name)
                 except Exception as exc:
