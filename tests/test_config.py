@@ -17,7 +17,7 @@ def test_load_config_reads_trusted_github_owners(tmp_path: Path) -> None:
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     paths.config_dir.mkdir()
     paths.config_file.write_text(
-        '[github]\nowners = ["arthexis", "example"]\n',
+        '[github]\nowners = [" arthexis ", "example"]\n',
         encoding="utf-8",
     )
 
