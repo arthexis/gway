@@ -77,7 +77,7 @@ class RepositoryManager:
 
     def clone(self, repository: ResolvedRepository) -> Path:
         self._validate_owner(repository.owner)
-        destination = self.paths.projects_dir / repository.name
+        destination = self.paths.projects_dir / repository.owner / repository.name
         if destination.exists():
             raise RepositoryError(f"managed checkout already exists: {destination}")
 
