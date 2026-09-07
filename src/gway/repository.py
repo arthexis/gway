@@ -107,3 +107,62 @@ class RepositoryManager:
         if not revision:
             raise RepositoryError(f"empty revision for {checkout}")
         return revision
+
+    def upgrade(self, checkout: Path, full_name: str) -> str:
+        """Fast-forward one trusted managed checkout and return its new revision."""
+        parts = full_name.split("/")
+        if len(parts) != 2 or not all(parts):
+            raise RepositoryError(f"invalid managed repository: {full_name}")
+        repository = ResolvedRepository(*parts)
+        self._validate_owner(repository.owner)
+
+        if not checkout.is_dir():
+            raise RepositoryError(f"managed checkout does not exist: {checkout}")
+
+        try:
+            status = subprocess.run(
+                ["git", "-C", str(checkout), "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            if status.stdout.strip():
+                raise RepositoryError(
+                    f"managed checkout has local changes; refusing upgrade: {checkout}"
+                )
+
+            origin = subprocess.run(
+                ["git", "-C", str(checkout), "remote", "get-url", "origin"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            if origin.rstrip("/") != repository.clone_url.rstrip("/"):
+                raise RepositoryError(
+                    f"managed checkout origin does not match registry repository: {checkout}"
+                )
+
+            branch = subprocess.run(
+                ["git", "-C", str(checkout), "symbolic-ref", "--quiet", "--short", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            if not branch:
+                raise RepositoryError(f"managed checkout is not on a branch: {checkout}")
+
+            pull = subprocess.run(
+                ["git", "-C", str(checkout), "pull", "--ff-only"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if pull.returncode != 0:
+                detail = pull.stderr.strip() or pull.stdout.strip() or "git pull --ff-only failed"
+                raise RepositoryError(f"cannot fast-forward {full_name}: {detail}")
+        except OSError as exc:
+            raise RepositoryError(f"cannot run git: {exc}") from exc
+        except subprocess.CalledProcessError as exc:
+            raise RepositoryError(f"cannot validate managed checkout {checkout}: {exc}") from exc
+
+        return self.revision(checkout)
