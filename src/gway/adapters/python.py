@@ -147,11 +147,15 @@ class PythonAdapter:
             required = parameter.default is inspect.Parameter.empty and parameter.kind not in (
                 inspect.Parameter.VAR_POSITIONAL,
             )
-            positional = parameter.kind in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                inspect.Parameter.VAR_POSITIONAL,
-            ) and parameter.default is inspect.Parameter.empty
+            positional = (
+                parameter.kind
+                in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.VAR_POSITIONAL,
+                )
+                and parameter.default is inspect.Parameter.empty
+            )
             parameters.append(
                 Parameter(
                     name=parameter.name,
@@ -226,7 +230,12 @@ class PythonAdapter:
             option = f"--{_cli_name(parameter.name)}"
 
             if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
-                parser.add_argument(parameter.name, nargs="*", type=converter, choices=choices)
+                parser.add_argument(
+                    parameter.name,
+                    nargs="*",
+                    type=_bool_value if converter is bool else converter,
+                    choices=choices,
+                )
                 continue
             if parameter.kind is inspect.Parameter.VAR_KEYWORD:
                 raise AdapterError(
@@ -297,12 +306,15 @@ class PythonAdapter:
             value = values.get(parameter.name)
             if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
                 positional.extend(value or [])
-            elif parameter.kind in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            ) and parameter.default is inspect.Parameter.empty:
+            elif parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
+                positional.append(value)
+            elif (
+                parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+                and parameter.default is inspect.Parameter.empty
+            ):
                 positional.append(value)
             elif value is not None:
                 keywords[parameter.name] = value
 
-        return function(*positional, **keywords)
+        with _project_import_path(self.project):
+            return function(*positional, **keywords)
