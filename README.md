@@ -20,6 +20,38 @@ The pre-1.0 implementation has been preserved in [`arthexis/gway-legacy`](https:
 
 See [`PLAN.md`](PLAN.md) for the architecture and implementation sequence. `gway-epaper` is now explicitly scheduled immediately after the Django/Arthexis end-to-end milestone; see [`PLAN-EPAPER.md`](PLAN-EPAPER.md) for that roadmap extension.
 
+## System / appliance installation
+
+GWAY 1.x can be installed or upgraded as a system command without changing the operating system's default `python3`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/arthexis/gway/main/install.sh | sudo bash
+```
+
+The bootstrap installer:
+
+- selects an available Python 3.11 or newer interpreter;
+- installs GWAY into `/opt/gway/venv`;
+- creates system state under `/etc/gway` and `/var/lib/gway`;
+- installs `/usr/local/bin/gway` as the system dispatcher;
+- automatically archives an existing unmanaged `/usr/local/bin/gway` as `/usr/local/bin/gway-legacy` before replacement;
+- preserves additional differing legacy commands with collision-safe timestamped archive names;
+- can be rerun safely to upgrade an existing managed GWAY installation.
+
+Validate prerequisites without changing the machine:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/arthexis/gway/main/install.sh -o /tmp/gway-install.sh
+bash /tmp/gway-install.sh --check
+```
+
+After installation, managed projects can be installed directly, for example:
+
+```bash
+sudo gway install wireguard
+sudo gway wireguard --help
+```
+
 ## Development
 
 GWAY currently contains the generation-1 skeleton only.
