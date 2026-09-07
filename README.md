@@ -18,7 +18,7 @@ gw.arthexis.check()
 
 The pre-1.0 implementation has been preserved in [`arthexis/gway-legacy`](https://github.com/arthexis/gway-legacy). Legacy bundled projects, recipes, sigils, shared mutable context, and application-specific dependencies are intentionally not part of this codebase.
 
-See [`PLAN.md`](PLAN.md) for the architecture and implementation sequence.
+See [`PLAN.md`](PLAN.md) for the architecture and implementation sequence. `gway-epaper` is now explicitly scheduled immediately after the Django/Arthexis end-to-end milestone; see [`PLAN-EPAPER.md`](PLAN-EPAPER.md) for that roadmap extension.
 
 ## Development
 

@@ -67,6 +67,20 @@ def _print_info(registry: Registry, name: str) -> None:
         print(f"revision: {project.revision}")
 
 
+def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
+    project = dispatcher.registry.require(project_name)
+    commands = dispatcher.commands(project_name)
+    print(f"usage: gway {project.name} <command> [arguments]")
+    print()
+    print("commands:")
+    for command in commands:
+        name = " ".join(command.path)
+        if command.summary:
+            print(f"  {name:<24} {command.summary}")
+        else:
+            print(f"  {name}")
+
+
 def _render_result(result: object, *, json_output: bool = False) -> None:
     if result is None:
         return
@@ -91,6 +105,9 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             project_args.remove("--json")
             json_output = True
         try:
+            if project_args in (["--help"], ["-h"]):
+                _print_project_help(active_dispatcher, args[0])
+                return 0
             result = active_dispatcher.run(args[0], project_args)
             _render_result(result, json_output=json_output)
         except (AdapterError, DispatchError, RegistryError) as exc:

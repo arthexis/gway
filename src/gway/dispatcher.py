@@ -47,6 +47,11 @@ class Dispatcher:
         command = max(matches, key=lambda item: len(item.path))
         return command, list(tokens[len(command.path) :])
 
+    def commands(self, project_name: str) -> tuple[Command, ...]:
+        """Return the discovered command surface for one managed project."""
+        adapter = self._adapter(project_name)
+        return tuple(adapter.commands())
+
     def run(self, project_name: str, tokens: Sequence[str]) -> object:
         adapter = self._adapter(project_name)
         commands = tuple(adapter.commands())
