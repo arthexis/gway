@@ -78,6 +78,11 @@ def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
     return completed
 
 
+def _strict_fallback_missing(value: object) -> bool:
+    """Return whether a resolved CLI result should advance across ``||``."""
+    return value is None or (isinstance(value, (set, frozenset)) and not value)
+
+
 class Dispatcher:
     """Resolve registered projects, adapters, managed commands, and CLI sigils."""
 
@@ -116,12 +121,23 @@ class Dispatcher:
         return tuple(adapter.commands())
 
     def _run_expression(self, expression: str, *, interactive: bool) -> object:
-        """Evaluate a managed fallback expression using Sigil-style semantics."""
-        last_falsey: object = None
+        """Evaluate loose ``|`` and strict ``||`` fallback expressions."""
+        branches = parse_managed_branches(expression)
+        result: object = None
         resolved = False
         last_missing: Exception | None = None
 
-        for branch in parse_managed_branches(expression):
+        for index, branch in enumerate(branches):
+            if index:
+                should_fallback = (
+                    not resolved
+                    or _strict_fallback_missing(result)
+                    if branch.operator == "||"
+                    else not resolved or not bool(result)
+                )
+                if not should_fallback:
+                    return result
+
             if branch.is_literal:
                 return branch.literal
 
@@ -133,15 +149,13 @@ class Dispatcher:
                 )
             except (CommandNotFound, RegistryError) as exc:
                 last_missing = exc
+                resolved = False
                 continue
 
             resolved = True
-            if result:
-                return result
-            last_falsey = result
 
         if resolved:
-            return last_falsey
+            return result
         if last_missing is not None:
             raise last_missing
         return None
