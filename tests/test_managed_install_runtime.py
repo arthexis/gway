@@ -16,6 +16,7 @@ class LayoutRepositories:
     def __init__(self, staging: Path, target_root: Path) -> None:
         self.staging = staging
         self.target_root = target_root
+        self.validated: list[tuple[Path, str]] = []
 
     def resolve(self, spec: str) -> ResolvedRepository:
         assert spec == "arthexis"
@@ -42,6 +43,9 @@ upgrade = "example.lifecycle:upgrade"
         (self.staging / "gway.toml").write_text(manifest, encoding="utf-8")
         return self.staging
 
+    def validate_checkout(self, checkout: Path, full_name: str) -> None:
+        self.validated.append((checkout, full_name))
+
     def revision(self, checkout: Path) -> str:
         assert checkout == self.target_root / "app"
         return "managed-revision"
@@ -50,12 +54,19 @@ upgrade = "example.lifecycle:upgrade"
 class LayoutRunner:
     def __init__(self) -> None:
         self.prepared: list[Project] = []
+        self.refreshed: list[Project] = []
         self.lifecycle: list[tuple[Project, str]] = []
 
     def prepare(self, project: Project) -> Path:
         self.prepared.append(project)
         assert project.install_layout is not None
         project.install_layout.environment.mkdir(parents=True)
+        return project.install_layout.environment
+
+    def refresh(self, project: Project) -> Path:
+        self.refreshed.append(project)
+        assert project.install_layout is not None
+        project.install_layout.environment.mkdir(parents=True, exist_ok=True)
         return project.install_layout.environment
 
     def run_lifecycle(self, project: Project, action: str) -> None:
@@ -85,6 +96,26 @@ def test_installer_places_checkout_and_environment_from_manifest(tmp_path: Path)
     assert not staging.exists()
     assert registry.require("arthexis") == project
     assert runner.lifecycle == [(project, "install")]
+
+
+def test_second_install_adopts_matching_managed_checkout(tmp_path: Path) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    target = tmp_path / "opt" / "arthexis"
+    staging = paths.projects_dir / "arthexis" / "arthexis"
+    registry = Registry(paths)
+    repositories = LayoutRepositories(staging, target)
+    runner = LayoutRunner()
+    installer = Installer(registry, repositories=repositories, runner=runner)
+
+    first = installer.install("arthexis")
+    second = installer.install("arthexis")
+
+    assert second.path == first.path == target / "app"
+    assert second.environment == first.environment == target / ".venv"
+    assert not staging.exists()
+    assert repositories.validated == [(target / "app", "arthexis/arthexis")]
+    assert runner.refreshed == [replace(second, environment=None)]
+    assert registry.require("arthexis") == second
 
 
 def test_runner_uses_manifest_environment_and_executes_hook(monkeypatch, tmp_path: Path) -> None:
