@@ -182,6 +182,19 @@ class Dispatcher:
         command = max(matches, key=lambda item: len(item.path))
         return command, list(tokens[len(command.path) :])
 
+    @staticmethod
+    def _resolve_default_command(
+        commands: Sequence[Command],
+        default_path: tuple[str, ...],
+        tokens: Sequence[str],
+    ) -> tuple[Command, list[str]]:
+        for command in commands:
+            if command.path == default_path:
+                return command, list(tokens)
+        raise CommandNotFound(
+            f"configured default command not found: {' '.join(default_path)}"
+        )
+
     def commands(self, project_name: str) -> tuple[Command, ...]:
         """Return the discovered command surface for one managed project."""
         adapter = self._adapter(project_name)
@@ -241,7 +254,16 @@ class Dispatcher:
         project = self.registry.require(project_name)
         adapter = self.adapters.create(project)
         commands = tuple(adapter.commands())
-        command, argv = self._resolve_command(commands, tokens)
+        try:
+            command, argv = self._resolve_command(commands, tokens)
+        except CommandNotFound:
+            if not project.default_command:
+                raise
+            command, argv = self._resolve_default_command(
+                commands,
+                project.default_command,
+                tokens,
+            )
         argv = _decode_structured_argv(command, argv)
         if interactive:
             argv = _fill_required_options(command, argv)
