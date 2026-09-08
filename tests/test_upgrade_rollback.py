@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from gway.config import GwayPaths
-from gway.project import LifecycleHooks, Project
+from gway.project import Project
 from gway.registry import Registry
 from gway.upgrade import Upgrader
 
@@ -92,9 +92,7 @@ def test_refresh_failure_restores_previous_revision_and_registry(tmp_path: Path)
     with pytest.raises(RuntimeError, match="refresh failed"):
         Upgrader(registry, repositories=repositories, runner=runner).project("fixture")
 
-    assert repositories.resets == [
-        (checkout, "arthexis/gway-fixture", "old-revision")
-    ]
+    assert repositories.resets == [(checkout, "arthexis/gway-fixture", "old-revision")]
     assert runner.calls == 2
     assert registry.require("fixture") == current
 
@@ -105,22 +103,13 @@ def test_lifecycle_failure_restores_previous_revision_and_environment(tmp_path: 
     checkout = tmp_path / "fixture"
     environment = tmp_path / "environment"
     write_manifest(checkout, lifecycle=True)
-    current = registered_project(checkout, environment)
-    current = Project(
-        **{
-            **current.__dict__,
-            "lifecycle_hooks": LifecycleHooks(upgrade="example.lifecycle:upgrade"),
-        }
-    )
-    registry.register(current)
+    current = registry.register(registered_project(checkout, environment))
     repositories = RollbackRepositories()
     runner = LifecycleFails(environment)
 
     with pytest.raises(RuntimeError, match="lifecycle failed"):
         Upgrader(registry, repositories=repositories, runner=runner).project("fixture")
 
-    assert repositories.resets == [
-        (checkout, "arthexis/gway-fixture", "old-revision")
-    ]
+    assert repositories.resets == [(checkout, "arthexis/gway-fixture", "old-revision")]
     assert runner.refreshes == 2
     assert registry.require("fixture") == current
