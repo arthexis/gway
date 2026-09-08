@@ -9,20 +9,20 @@ from gway.registry import Registry
 
 def write_manifest(root: Path, extra: str = "") -> Path:
     root.mkdir()
-    manifest = f'''[project]
+    manifest = f"""[project]
 name = "arthexis"
 
 [adapter]
 type = "django"
 manage = "manage.py"
 {extra}
-'''
+"""
     (root / "gway.toml").write_text(manifest, encoding="utf-8")
     return root
 
 
 def install_lifecycle_manifest() -> str:
-    return '''
+    return """
 [install]
 root = "/opt/arthexis"
 checkout = "app"
@@ -31,13 +31,11 @@ environment = ".venv"
 [lifecycle]
 install = "apps.core.system.lifecycle:install"
 upgrade = "apps.core.system.lifecycle:upgrade"
-'''
+"""
 
 
 def test_install_layout_and_lifecycle_hooks_are_loaded(tmp_path: Path) -> None:
-    project = Project.from_path(
-        write_manifest(tmp_path / "project", install_lifecycle_manifest())
-    )
+    project = Project.from_path(write_manifest(tmp_path / "project", install_lifecycle_manifest()))
 
     assert project.install_layout == InstallLayout(
         root=Path("/opt/arthexis"),
@@ -77,12 +75,12 @@ def test_registry_round_trips_install_contract(tmp_path: Path) -> None:
 def test_install_root_must_be_absolute(tmp_path: Path) -> None:
     root = write_manifest(
         tmp_path / "project",
-        '''
+        """
 [install]
 root = "var/arthexis"
 checkout = "app"
 environment = ".venv"
-''',
+""",
     )
 
     with pytest.raises(ManifestError, match=r"\[install\]\.root.*absolute"):
@@ -93,12 +91,12 @@ environment = ".venv"
 def test_install_children_must_stay_within_root(tmp_path: Path, field: str) -> None:
     checkout = '"../app"' if field == "checkout" else '"app"'
     environment = '"../venv"' if field == "environment" else '".venv"'
-    extra = f'''
+    extra = f"""
 [install]
 root = "/opt/arthexis"
 checkout = {checkout}
 environment = {environment}
-'''
+"""
     root = write_manifest(tmp_path / "project", extra)
 
     with pytest.raises(ManifestError, match=rf"\[install\]\.{field}.*root"):
@@ -108,11 +106,11 @@ environment = {environment}
 def test_install_requires_all_layout_fields(tmp_path: Path) -> None:
     root = write_manifest(
         tmp_path / "project",
-        '''
+        """
 [install]
 root = "/opt/arthexis"
 checkout = "app"
-''',
+""",
     )
 
     with pytest.raises(ManifestError, match=r"\[install\]\.environment"):
@@ -128,15 +126,13 @@ checkout = "app"
         "apps/core/system/lifecycle:install",
     ],
 )
-def test_lifecycle_hooks_require_module_function_references(
-    tmp_path: Path, reference: str
-) -> None:
+def test_lifecycle_hooks_require_module_function_references(tmp_path: Path, reference: str) -> None:
     root = write_manifest(
         tmp_path / "project",
-        f'''
+        f"""
 [lifecycle]
 install = "{reference}"
-''',
+""",
     )
 
     with pytest.raises(ManifestError, match="module:function"):
@@ -147,10 +143,10 @@ def test_lifecycle_may_declare_only_one_hook(tmp_path: Path) -> None:
     project = Project.from_path(
         write_manifest(
             tmp_path / "project",
-            '''
+            """
 [lifecycle]
 upgrade = "example.lifecycle:upgrade"
-''',
+""",
         )
     )
 
