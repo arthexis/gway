@@ -42,6 +42,7 @@ class Runner:
             subprocess.run(
                 [sys.executable, "-m", "venv", str(environment)],
                 check=True,
+                stdout=sys.stderr,
             )
             subprocess.run(
                 [
@@ -54,6 +55,7 @@ class Runner:
                     str(project.path),
                 ],
                 check=True,
+                stdout=sys.stderr,
             )
         except (OSError, subprocess.CalledProcessError) as exc:
             shutil.rmtree(environment, ignore_errors=True)
@@ -87,6 +89,7 @@ class Runner:
                     str(project.path),
                 ],
                 check=True,
+                stdout=sys.stderr,
             )
         except (OSError, subprocess.CalledProcessError) as exc:
             raise RunnerError(f"cannot refresh environment for {project.name}: {exc}") from exc
