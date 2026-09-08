@@ -49,11 +49,23 @@ def _attached_short_option(token: str, option: str, parameter: Parameter) -> boo
     )
 
 
+def _abbreviated_long_option(token: str, option: str) -> bool:
+    option_name = token.partition("=")[0]
+    return (
+        option.startswith("--")
+        and option_name.startswith("--")
+        and option_name != "--"
+        and option.startswith(option_name)
+    )
+
+
 def _option_present(argv: Sequence[str], parameter: Parameter) -> bool:
     for option in _option_names(parameter):
         negative = f"--no-{option[2:]}" if option.startswith("--") else ""
         for token in argv:
             if token == option or token.startswith(f"{option}="):
+                return True
+            if _abbreviated_long_option(token, option):
                 return True
             if _attached_short_option(token, option, parameter):
                 return True
@@ -108,6 +120,16 @@ def _match_option(
     parameter = option_parameters.get(option_name)
     if parameter is not None:
         return parameter, bool(separator)
+
+    if option_name.startswith("--") and option_name != "--":
+        matches = [
+            candidate
+            for option, candidate in option_parameters.items()
+            if option.startswith("--") and option.startswith(option_name)
+        ]
+        if matches and all(candidate is matches[0] for candidate in matches):
+            return matches[0], bool(separator)
+
     for option, candidate in option_parameters.items():
         if _attached_short_option(token, option, candidate):
             return candidate, True
@@ -141,8 +163,8 @@ def _option_value_count(
     return 1 if _option_consumes_value(parameter) and start < len(argv) else 0
 
 
-def _structured_keyword_names(argv: Sequence[str]) -> set[str]:
-    names: set[str] = set()
+def _structured_keyword_counts(argv: Sequence[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
     literal = False
     for token in argv:
         if not literal and token == "--":
@@ -153,8 +175,12 @@ def _structured_keyword_names(argv: Sequence[str]) -> set[str]:
         payload = token[len(STRUCTURED_KWARG_PREFIX) :]
         name, separator, _ = payload.partition("=")
         if separator:
-            names.add(name)
-    return names
+            counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def _structured_keyword_names(argv: Sequence[str]) -> set[str]:
+    return set(_structured_keyword_counts(argv))
 
 
 def _option_parameters(command: Command) -> dict[str, Parameter]:
@@ -239,7 +265,8 @@ def _required_positional_count(parameter: Parameter) -> int:
 
 def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
     completed = list(argv)
-    structured_names = _structured_keyword_names(completed)
+    structured_counts = _structured_keyword_counts(completed)
+    structured_names = set(structured_counts)
     provided_positionals = _provided_positional_count(command, completed)
     trailing_variadic = _trailing_variadic_option(command, completed)
     inserted_literal_separator = False
@@ -247,16 +274,16 @@ def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
     for parameter in command.parameters:
         if not parameter.required:
             continue
-        if parameter.name in structured_names:
-            continue
         if parameter.positional:
             required_count = _required_positional_count(parameter)
-            supplied = min(provided_positionals, required_count)
-            provided_positionals -= supplied
-            missing = required_count - supplied
+            structured_supplied = min(structured_counts.get(parameter.name, 0), required_count)
+            ordinary_capacity = required_count - structured_supplied
+            ordinary_supplied = min(provided_positionals, ordinary_capacity)
+            provided_positionals -= ordinary_supplied
+            missing = required_count - structured_supplied - ordinary_supplied
             if not missing:
                 continue
-            if trailing_variadic and not structured_names and "--" not in completed:
+            if trailing_variadic and "--" not in completed:
                 completed.append("--")
                 inserted_literal_separator = True
                 trailing_variadic = False
@@ -265,8 +292,11 @@ def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
                 if structured_names and not inserted_literal_separator:
                     completed.append(f"{STRUCTURED_KWARG_PREFIX}{parameter.name}={prompted}")
                     structured_names.add(parameter.name)
+                    structured_counts[parameter.name] = structured_counts.get(parameter.name, 0) + 1
                 else:
                     completed.append(prompted)
+            continue
+        if parameter.name in structured_names:
             continue
         if not _option_present(completed, parameter):
             completed.extend(_prompt_value(parameter))
@@ -291,7 +321,7 @@ def _structured_value_tokens(parameter: Parameter, value: str) -> list[str]:
 def _decode_structured_argv(command: Command, argv: Sequence[str]) -> list[str]:
     """Bind colon-delimited positional/keyword values to command parameters."""
     positional: list[str] = []
-    keywords: dict[str, str] = {}
+    keywords: dict[str, list[str]] = {}
     ordinary: list[str] = []
     literal = False
 
@@ -308,7 +338,7 @@ def _decode_structured_argv(command: Command, argv: Sequence[str]) -> list[str]:
             name, separator, value = payload.partition("=")
             if not separator:
                 raise DispatchError(f"invalid structured keyword argument: {payload!r}")
-            keywords[name] = value
+            keywords.setdefault(name, []).append(value)
             continue
         ordinary.append(token)
 
@@ -326,7 +356,8 @@ def _decode_structured_argv(command: Command, argv: Sequence[str]) -> list[str]:
 
     for parameter in command.parameters:
         if parameter.name in keywords:
-            result.extend(_structured_value_tokens(parameter, keywords.pop(parameter.name)))
+            for value in keywords.pop(parameter.name):
+                result.extend(_structured_value_tokens(parameter, value))
             continue
         if pending is None:
             continue
