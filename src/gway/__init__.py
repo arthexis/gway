@@ -11,8 +11,8 @@ from pathlib import Path
 if Path(sys.argv[0]).name.lower() in {"gway", "gway.exe"}:
     os.environ["GIT_TERMINAL_PROMPT"] = "0"
 
-from .api import Gway, gw, gway
-from .sigils import gway_context
+from .api import Gway, gw, gway  # noqa: E402
+from .sigils import gway_context  # noqa: E402
 
 __all__ = ["Gway", "gway", "gw", "gway_context", "__version__"]
 
