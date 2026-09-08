@@ -34,16 +34,16 @@ python -m pip install -e '.[dev]'
 pytest
 ```
 
-Before pushing, normalize Ruff lint and formatting with:
+Before pushing, normalize Ruff lint and formatting with the `ci-base` quality helper:
 
 ```bash
-bash scripts/quality.sh --fix
+bash .ci/quality.sh --fix src tests
 ```
 
-To run the same non-mutating quality checks used by CI:
+To run the same non-mutating Ruff checks used by CI:
 
 ```bash
-bash scripts/quality.sh --check
+bash .ci/quality.sh --check src tests
 ```
 
 At minimum, changes to CLI/bootstrap behavior must keep both of these working:
