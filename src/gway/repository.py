@@ -180,9 +180,8 @@ class RepositoryManager:
                     raise RepositoryError(f"cannot reset {full_name}: {detail}")
             else:
                 if status.stdout.strip():
-                    raise RepositoryError(
-                        f"managed checkout has local changes; use --force to discard them: {checkout}"
-                    )
+                    detail = "managed checkout has local changes; use --force to discard them"
+                    raise RepositoryError(f"{detail}: {checkout}")
 
                 pull = subprocess.run(
                     ["git", "-C", str(checkout), "pull", "--ff-only", "--quiet"],
