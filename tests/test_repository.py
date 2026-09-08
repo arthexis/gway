@@ -26,6 +26,29 @@ def test_short_name_prefers_gway_repository(monkeypatch, tmp_path: Path) -> None
     assert calls[0][3] == "https://github.com/arthexis/gway-wireguard.git"
 
 
+def test_short_name_fallback_disables_git_terminal_prompt(monkeypatch, tmp_path: Path) -> None:
+    calls: list[tuple[list[str], dict]] = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(
+            returncode=0 if args[3] == "https://github.com/arthexis/arthexis.git" else 2
+        )
+
+    monkeypatch.setattr("gway.repository.subprocess.run", fake_run)
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    manager = RepositoryManager(paths, GwayConfig(("arthexis",)))
+
+    repository = manager.resolve("arthexis")
+
+    assert repository.full_name == "arthexis/arthexis"
+    assert [call[0][3] for call in calls] == [
+        "https://github.com/arthexis/gway-arthexis.git",
+        "https://github.com/arthexis/arthexis.git",
+    ]
+    assert all(call[1]["env"]["GIT_TERMINAL_PROMPT"] == "0" for call in calls)
+
+
 def test_explicit_repository_uses_trusted_owner(tmp_path: Path) -> None:
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     manager = RepositoryManager(paths, GwayConfig(("arthexis",)))
