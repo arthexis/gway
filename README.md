@@ -40,6 +40,30 @@ gway web build --output "[project.path]/dist"
 gway ocpp connect --label "%[cwd]-[project.name]"
 ```
 
+Managed expressions mirror Sigils call syntax. Dots or whitespace traverse project/command paths, while `:` introduces structured arguments:
+
+```text
+gway network ip : wlan0
+gway network ip : interface=wlan0
+gway demo combine : first : second : mode=fast
+gway demo echo := left=right
+gway demo shape : a,b,c : values=x,y
+```
+
+Each `:` introduces one argument. `name=value` binds a keyword argument, while `:=value` forces a positional argument even when the value contains `=`. Commas inside one argument create a tuple value rather than multiple arguments. Whitespace around `:`, `:=`, `=`, and `,` is ignored.
+
+The fallback grammar is also shared with Sigils: `|` advances on any falsey value, `||` advances only on unresolved/missing values, `None`, or an empty set/frozenset, and `|:literal` / `||:literal` provide terminal literal fallbacks. A trailing colon keeps the left side literal, so `gway health.errors:` returns `health.errors` rather than invoking it.
+
+GWAY-backed Sigils use the same registered command surface, including structured arguments:
+
+```text
+[network ip : wlan0]
+[network ip : interface=wlan0]
+[device memory : percent]
+```
+
+Calls are memoized only within one Sigil evaluation scope, keyed by project, command path, positional arguments, and keyword arguments. A new evaluation creates a fresh cache.
+
 `%[...]` expressions are captured eagerly before project-provided lazy context is requested. `[...]` expressions resolve immediately before the selected adapter parses the command arguments.
 
 The built-in GWAY context includes:
