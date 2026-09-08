@@ -120,7 +120,10 @@ def test_second_install_adopts_matching_managed_checkout(tmp_path: Path) -> None
     assert registry.require("arthexis") == second
 
 
-def test_failed_checkout_move_removes_partial_managed_destination(monkeypatch, tmp_path: Path) -> None:
+def test_failed_checkout_move_removes_partial_managed_destination(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     target = tmp_path / "opt" / "arthexis"
     staging = paths.projects_dir / "arthexis" / "arthexis"
