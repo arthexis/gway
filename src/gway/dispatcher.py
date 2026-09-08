@@ -191,9 +191,7 @@ class Dispatcher:
         for command in commands:
             if command.path == default_path:
                 return command, list(tokens)
-        raise CommandNotFound(
-            f"configured default command not found: {' '.join(default_path)}"
-        )
+        raise CommandNotFound(f"configured default command not found: {' '.join(default_path)}")
 
     def commands(self, project_name: str) -> tuple[Command, ...]:
         """Return the discovered command surface for one managed project."""
