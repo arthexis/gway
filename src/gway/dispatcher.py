@@ -87,6 +87,45 @@ def _prompt_value(parameter: Parameter) -> list[str]:
         print("A value is required.", file=sys.stderr)
 
 
+def _option_value_count(
+    parameter: Parameter,
+    argv: Sequence[str],
+    start: int,
+    option_parameters: Mapping[str, Parameter],
+) -> int:
+    arity = parameter.option_arity
+    if isinstance(arity, int):
+        return max(0, min(arity, len(argv) - start))
+    if arity in {"*", "+"}:
+        count = 0
+        while start + count < len(argv):
+            token = argv[start + count]
+            option_name = token.partition("=")[0]
+            if token == "--" or option_name in option_parameters:
+                break
+            count += 1
+        return count
+    if arity == "?":
+        if start >= len(argv):
+            return 0
+        token = argv[start]
+        option_name = token.partition("=")[0]
+        return 0 if token == "--" or option_name in option_parameters else 1
+    return 1 if _option_consumes_value(parameter) and start < len(argv) else 0
+
+
+def _structured_keyword_names(argv: Sequence[str]) -> set[str]:
+    names: set[str] = set()
+    for token in argv:
+        if not token.startswith(STRUCTURED_KWARG_PREFIX):
+            continue
+        payload = token[len(STRUCTURED_KWARG_PREFIX) :]
+        name, separator, _ = payload.partition("=")
+        if separator:
+            names.add(name)
+    return names
+
+
 def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
     option_parameters: dict[str, Parameter] = {}
     for parameter in command.parameters:
@@ -102,6 +141,13 @@ def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
     literal = False
     while index < len(argv):
         token = argv[index]
+        if token.startswith(STRUCTURED_KWARG_PREFIX):
+            index += 1
+            continue
+        if token.startswith(STRUCTURED_ARG_PREFIX):
+            count += 1
+            index += 1
+            continue
         if not literal and token == "--":
             literal = True
             index += 1
@@ -112,8 +158,8 @@ def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
             parameter = option_parameters.get(option_name)
             if parameter is not None:
                 index += 1
-                if not separator and _option_consumes_value(parameter) and index < len(argv):
-                    index += 1
+                if not separator:
+                    index += _option_value_count(parameter, argv, index, option_parameters)
                 continue
 
         count += 1
@@ -123,15 +169,23 @@ def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
 
 def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
     completed = list(argv)
+    structured_names = _structured_keyword_names(completed)
     provided_positionals = _provided_positional_count(command, completed)
     for parameter in command.parameters:
         if not parameter.required:
+            continue
+        if parameter.name in structured_names:
             continue
         if parameter.positional:
             if provided_positionals:
                 provided_positionals -= 1
                 continue
-            completed.extend(_prompt_value(parameter))
+            prompted = _prompt_value(parameter)[0]
+            if structured_names:
+                completed.append(f"{STRUCTURED_KWARG_PREFIX}{parameter.name}={prompted}")
+                structured_names.add(parameter.name)
+            else:
+                completed.append(prompted)
             continue
         if not _option_present(completed, parameter):
             completed.extend(_prompt_value(parameter))
@@ -317,9 +371,9 @@ class Dispatcher:
                 project.default_command,
                 tokens,
             )
-        argv = _decode_structured_argv(command, argv)
         if interactive:
             argv = _fill_required_options(command, argv)
+        argv = _decode_structured_argv(command, argv)
 
         templates = capture_cli_values(argv, paths=self.registry.paths)
         extra_context: dict[str, object] | None = None
