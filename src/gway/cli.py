@@ -60,7 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser("list", help="List registered projects.")
+    list_projects = subparsers.add_parser("list", help="List registered projects.")
+    list_projects.add_argument(
+        "--detail",
+        action="store_true",
+        help="Show detailed metadata for each registered project.",
+    )
 
     info = subparsers.add_parser("info", help="Show project metadata.")
     info.add_argument("project")
@@ -492,7 +497,11 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
     try:
         result: object = None
         if namespace.command == "list":
-            result = [_project_record(project) for project in registry.list()]
+            projects = registry.list()
+            if namespace.detail:
+                result = [_project_record(project) for project in projects]
+            else:
+                result = [project.name for project in projects]
         elif namespace.command == "info":
             result = _project_record(registry.require(namespace.project))
         elif namespace.command == "path":
