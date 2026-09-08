@@ -63,7 +63,7 @@ def test_install_sigils_uses_short_runtime_alias(tmp_path: Path, monkeypatch, ca
     assert "distribution: gway-sigils" in output
 
     assert main(["list"]) == 0
-    assert capsys.readouterr().out == ""
+    assert capsys.readouterr().out == "[]\n"
 
 
 def test_register_list_info_and_path(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -128,6 +128,19 @@ def test_pretty_output_indents_nested_values_and_supports_color(capsys) -> None:
     assert "\033[" in capsys.readouterr().out
 
 
+def test_pretty_output_keeps_top_level_empty_collections_visible(capsys) -> None:
+    _render_result({})
+    assert capsys.readouterr().out == "{}\n"
+    _render_result([])
+    assert capsys.readouterr().out == "[]\n"
+
+
+def test_json_output_normalizes_non_finite_numbers(capsys) -> None:
+    _render_result({"nan": float("nan"), "infinity": float("inf")}, json_output=True)
+    output = json.loads(capsys.readouterr().out)
+    assert output == {"nan": "nan", "infinity": "inf"}
+
+
 def test_core_permission_failure_suggests_original_command(
     tmp_path: Path,
     monkeypatch,
@@ -145,6 +158,29 @@ def test_core_permission_failure_suggests_original_command(
     assert main(["register", str(project)]) == 2
     error = capsys.readouterr().err
     assert "Permission denied" in error
+    assert f"sudo gway register {project}" in error
+
+
+def test_wrapped_permission_failure_is_reported_without_traceback(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project = tmp_path / "wireguard"
+    monkeypatch.setenv("GWAY_DATA_HOME", str(tmp_path / "state"))
+    monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
+
+    def denied(self, path):
+        try:
+            raise PermissionError(13, "Permission denied", str(path))
+        except PermissionError as exc:
+            raise RuntimeError("wrapped failure") from exc
+
+    monkeypatch.setattr(Registry, "register_path", denied)
+
+    assert main(["register", str(project)]) == 2
+    error = capsys.readouterr().err
+    assert "wrapped failure" in error
     assert f"sudo gway register {project}" in error
 
 
