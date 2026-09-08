@@ -35,10 +35,26 @@ jobs:
         cat install.sh | bash -s -- --check
         bash tests/test_system_installer.sh
 
+  runner-heartbeat:
+    name: Runner heartbeat
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Report runner health
+        run: |
+          set -euo pipefail
+          echo "runner=${RUNNER_NAME:-unknown}"
+          echo "os=${RUNNER_OS:-unknown} arch=${RUNNER_ARCH:-unknown}"
+          uname -a
+          df -h .
+          python3 --version || true
+
   linux-sanity:
     name: Linux sanity
-    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.pull_request.mergeable_state != 'behind')
-    runs-on: [self-hosted, Linux, X64, arthexis-ci]
+    needs: runner-heartbeat
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     env:
       PYTHONDONTWRITEBYTECODE: '1'
