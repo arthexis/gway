@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from gway import service
 from gway.project import InstallLayout, Project
 
@@ -125,6 +127,53 @@ def test_install_writes_all_units_before_reload_and_activation(
         ("restart", "gway-arthexis-web.service"),
         ("restart", "gway-arthexis-health.service"),
     ]
+
+
+def test_uninstall_stops_units_in_reverse_topology_order(tmp_path: Path, monkeypatch) -> None:
+    project = make_project(tmp_path)
+    manager = service.ServiceManager(project, profile="Control", unit_directory=tmp_path / "systemd")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_systemctl(*args: str, check: bool = True):
+        calls.append(args)
+        return completed(*args)
+
+    monkeypatch.setattr(service, "_systemctl", fake_systemctl)
+
+    manager.uninstall()
+
+    disables = [args for args in calls if args[:2] == ("disable", "--now")]
+    assert disables == [
+        ("disable", "--now", "gway-arthexis-health.service"),
+        ("disable", "--now", "gway-arthexis-worker.service"),
+        ("disable", "--now", "gway-arthexis-web.service"),
+    ]
+
+
+def test_duplicate_resolved_unit_names_are_rejected(tmp_path: Path) -> None:
+    root = tmp_path / "duplicate"
+    root.mkdir()
+    (root / "gway.toml").write_text(
+        """[project]
+name = "duplicate"
+
+[adapter]
+type = "python"
+module = "example.gway"
+
+[services.one]
+name = "shared"
+command = ["python", "-m", "one"]
+
+[services.two]
+name = "shared.service"
+command = ["python", "-m", "two"]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(service.ServiceError, match="duplicate systemd unit names"):
+        service.ServiceManager(Project.from_path(root))
 
 
 def test_legacy_service_shape_remains_compatible(tmp_path: Path) -> None:
