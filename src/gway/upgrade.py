@@ -29,6 +29,18 @@ class Upgrader:
         self.repositories = repositories or RepositoryManager(self.registry.paths)
         self.runner = runner or Runner(self.registry.paths)
 
+    def _restore_project(self, current: Project, revision: str) -> None:
+        assert current.repository is not None
+        self.repositories.reset(current.path, current.repository, revision)
+        restored = Project.from_path(current.path)
+        restored = replace(
+            restored,
+            repository=current.repository,
+            revision=revision,
+            environment=current.environment,
+        )
+        self.runner.refresh(restored)
+
     def project(self, name: str, *, force: bool = False) -> Project:
         current = self.registry.require(name)
         if not current.repository:
@@ -36,29 +48,41 @@ class Upgrader:
                 f"project is locally registered and cannot be upgraded by GWAY: {current.name}"
             )
 
+        previous_revision = current.revision or self.repositories.revision(current.path)
         revision = self.repositories.upgrade(
             current.path,
             current.repository,
             force=force,
         )
-        refreshed = Project.from_path(current.path)
-        if refreshed.name != current.name:
-            raise UpgradeError(
-                f"managed project changed name from {current.name!r} to {refreshed.name!r}; "
-                "refusing upgrade"
-            )
+        try:
+            refreshed = Project.from_path(current.path)
+            if refreshed.name != current.name:
+                raise UpgradeError(
+                    f"managed project changed name from {current.name!r} to {refreshed.name!r}; "
+                    "refusing upgrade"
+                )
 
-        refreshed = replace(
-            refreshed,
-            repository=current.repository,
-            revision=revision,
-            environment=current.environment,
-        )
-        environment = self.runner.refresh(refreshed)
-        if environment is not None:
-            refreshed = replace(refreshed, environment=environment)
-        if refreshed.lifecycle_hooks is not None:
-            self.runner.run_lifecycle(refreshed, "upgrade")
+            refreshed = replace(
+                refreshed,
+                repository=current.repository,
+                revision=revision,
+                environment=current.environment,
+            )
+            environment = self.runner.refresh(refreshed)
+            if environment is not None:
+                refreshed = replace(refreshed, environment=environment)
+            if refreshed.lifecycle_hooks is not None:
+                self.runner.run_lifecycle(refreshed, "upgrade")
+        except Exception as exc:
+            try:
+                self._restore_project(current, previous_revision)
+            except Exception as rollback_exc:
+                raise UpgradeError(
+                    f"upgrade failed for {current.name} and rollback to {previous_revision} "
+                    f"also failed: {rollback_exc}"
+                ) from exc
+            raise
+
         return self.registry.register(refreshed)
 
     def all_projects(self, *, force: bool = False) -> list[Project]:
