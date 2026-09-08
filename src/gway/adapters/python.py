@@ -77,6 +77,13 @@ def _argument_value(value: str, converter):
     return _bool_value(value) if converter is bool else converter(value)
 
 
+def _argument_converter(converter):
+    def convert(value: str):
+        return _argument_value(value, converter)
+
+    return convert
+
+
 def _decode_structured_value(value: object) -> object:
     """Convert an internally marked comma group to one Python tuple value."""
     if isinstance(value, str) and value.startswith(STRUCTURED_TUPLE_PREFIX):
@@ -259,7 +266,7 @@ class PythonAdapter:
             annotation = hints.get(parameter.name, parameter.annotation)
             converter, choices = _converter(annotation)
             option = f"--{_cli_name(parameter.name)}"
-            value_type = lambda value, converter=converter: _argument_value(value, converter)
+            value_type = _argument_converter(converter)
 
             if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
                 parser.add_argument(
