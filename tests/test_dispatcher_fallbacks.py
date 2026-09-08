@@ -23,7 +23,10 @@ class StubDispatcher(Dispatcher):
         return result
 
 
-def evaluate(expression: str, results: dict[tuple[str, ...], object]) -> tuple[object, StubDispatcher]:
+def evaluate(
+    expression: str,
+    results: dict[tuple[str, ...], object],
+) -> tuple[object, StubDispatcher]:
     dispatcher = StubDispatcher(results)
     project, args = normalize_managed_args([expression])
     return dispatcher.run(project, args), dispatcher
