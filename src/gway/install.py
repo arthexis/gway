@@ -49,7 +49,11 @@ class Installer:
             return target, existing, True
 
         target.parent.mkdir(parents=True, exist_ok=True)
-        placed = Path(shutil.move(str(checkout), str(target)))
+        try:
+            placed = Path(shutil.move(str(checkout), str(target)))
+        except Exception:
+            shutil.rmtree(target, ignore_errors=True)
+            raise
         return placed, replace(project, path=placed), False
 
     def install(self, spec: str) -> Project:
