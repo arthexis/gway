@@ -114,9 +114,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("install", "uninstall", "start", "stop", "restart", "status"),
     )
     service.add_argument(
-        "--project",
-        required=True,
+        "project",
+        nargs="?",
         help="Registered project name or alias.",
+    )
+    service.add_argument(
+        "--project",
+        dest="project_option",
+        help="Registered project name or alias (legacy option spelling).",
     )
     service.add_argument(
         "--user",
@@ -316,6 +321,15 @@ def _extract_global_flags(args: list[str]) -> tuple[list[str], bool, bool]:
     return [arg for arg in args if arg not in reserved], json_output, interactive
 
 
+def _prompt_required_value(name: str) -> str:
+    while True:
+        print(f"{name}: ", end="", file=sys.stderr, flush=True)
+        value = input()
+        if value:
+            return value
+        print("A value is required.", file=sys.stderr)
+
+
 def _permission_failure(exc: BaseException) -> OSError | None:
     pending: list[BaseException] = [exc]
     seen: set[int] = set()
@@ -487,6 +501,16 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         return 0
 
     namespace = parser.parse_args(args)
+    if namespace.command == "service":
+        if namespace.project and namespace.project_option and namespace.project != namespace.project_option:
+            parser.error("PROJECT and --project must name the same project")
+        namespace.project = namespace.project or namespace.project_option
+        if namespace.project is None:
+            if interactive:
+                namespace.project = _prompt_required_value("project")
+            else:
+                parser.error("the following arguments are required: project")
+
     registry = active_dispatcher.registry
 
     try:
