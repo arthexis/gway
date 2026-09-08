@@ -47,6 +47,9 @@ class _GwayCommandCall:
         self.__sigils_requires_args__ = any(parameter.required for parameter in command.parameters)
 
     def __call__(self, *args: object, **kwargs: object) -> object:
+        if self.__sigils_requires_args__ and not args and not kwargs:
+            return None
+
         project = self.registry.require(self.project_name)
         cache_key = (
             project.name,
