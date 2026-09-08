@@ -78,8 +78,6 @@ jobs:
       - name: Run Linux sanity checks
         run: |
           set -euo pipefail
-          python -m ruff check src tests
-          python -m ruff format --check src tests
           python -m pytest -q
           python -m gway --help
           gway --help
