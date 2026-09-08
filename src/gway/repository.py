@@ -75,9 +75,16 @@ class RepositoryManager:
 
         raise RepositoryError(f"cannot resolve GitHub project: {value}")
 
-    def clone(self, repository: ResolvedRepository) -> Path:
+    def default_checkout(self, repository: ResolvedRepository) -> Path:
+        return self.paths.projects_dir / repository.owner / repository.name
+
+    def clone(
+        self,
+        repository: ResolvedRepository,
+        destination: Path | None = None,
+    ) -> Path:
         self._validate_owner(repository.owner)
-        destination = self.paths.projects_dir / repository.owner / repository.name
+        destination = destination or self.default_checkout(repository)
         if destination.exists():
             raise RepositoryError(f"managed checkout already exists: {destination}")
 
@@ -169,36 +176,24 @@ class RepositoryManager:
                     text=True,
                 )
                 if reset.returncode != 0:
-                    detail = self._git_failure(reset, "git reset --hard failed")
+                    detail = self._git_failure(reset, "git reset failed")
                     raise RepositoryError(f"cannot reset {full_name}: {detail}")
-
-                clean = subprocess.run(
-                    ["git", "-C", str(checkout), "clean", "-fd"],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-                if clean.returncode != 0:
-                    detail = self._git_failure(clean, "git clean -fd failed")
-                    raise RepositoryError(f"cannot clean {full_name}: {detail}")
             else:
                 if status.stdout.strip():
                     raise RepositoryError(
-                        f"managed checkout has local changes; refusing upgrade: {checkout}"
+                        f"managed checkout has local changes; use --force to discard them: {checkout}"
                     )
 
                 pull = subprocess.run(
-                    ["git", "-C", str(checkout), "pull", "--ff-only"],
+                    ["git", "-C", str(checkout), "pull", "--ff-only", "--quiet"],
                     check=False,
                     capture_output=True,
                     text=True,
                 )
                 if pull.returncode != 0:
-                    detail = self._git_failure(pull, "git pull --ff-only failed")
-                    raise RepositoryError(f"cannot fast-forward {full_name}: {detail}")
+                    detail = self._git_failure(pull, "git pull failed")
+                    raise RepositoryError(f"cannot upgrade {full_name}: {detail}")
         except OSError as exc:
             raise RepositoryError(f"cannot run git: {exc}") from exc
-        except subprocess.CalledProcessError as exc:
-            raise RepositoryError(f"cannot validate managed checkout {checkout}: {exc}") from exc
 
         return self.revision(checkout)
