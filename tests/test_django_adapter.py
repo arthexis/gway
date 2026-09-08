@@ -72,6 +72,30 @@ def test_django_parameter_metadata_preserves_declared_option_spellings() -> None
     assert parameter is not None
     assert parameter.name == "device"
     assert parameter.options == ("-t", "--target")
+    assert parameter.consumes_value is True
+
+
+def test_django_parameter_metadata_marks_zero_arity_options() -> None:
+    parser = argparse.ArgumentParser()
+    action = parser.add_argument("--traceback", action="store_true")
+    parameter = _parameter_from_action(action)
+    assert parameter is not None
+    assert parameter.consumes_value is False
+
+
+def test_django_interactive_preserves_positional_after_zero_arity_option(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+
+    def unexpected_input() -> str:
+        raise AssertionError("interactive mode should not prompt for an existing positional")
+
+    monkeypatch.setattr("builtins.input", unexpected_input)
+    assert main(["django-fixture", "echo", "-i", "--traceback", "hello"], dispatcher=dispatcher) == 0
+    assert capsys.readouterr().out == "hello\n"
 
 
 def test_django_sigil_context_reaches_real_management_command(
