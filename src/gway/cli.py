@@ -199,11 +199,7 @@ def _is_nested(value: object) -> bool:
 def _empty_collection_text(value: object) -> str | None:
     if isinstance(value, Mapping) and not value:
         return "{}"
-    if (
-        isinstance(value, Sequence)
-        and not isinstance(value, (str, bytes, bytearray))
-        and not value
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)) and not value:
         return "[]"
     return None
 
