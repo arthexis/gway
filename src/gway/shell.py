@@ -13,9 +13,7 @@ SUPPORTED_SHELLS = ("bash", "zsh")
 BEGIN_MARKER = "# >>> gway shell integration >>>"
 END_MARKER = "# <<< gway shell integration <<<"
 ALIAS_LINE = "alias -- -='gway'"
-_MANAGED_BLOCK = re.compile(
-    rf"(?ms)^{re.escape(BEGIN_MARKER)}\n.*?^{re.escape(END_MARKER)}\n?"
-)
+_MANAGED_BLOCK = re.compile(rf"(?ms)^{re.escape(BEGIN_MARKER)}\n.*?^{re.escape(END_MARKER)}\n?")
 
 
 class ShellError(ValueError):
@@ -140,8 +138,7 @@ def shell_status(
     name = detect_shell(shell, environ=env)
     path = rc_path(name, environ=env)
     installed = (
-        path.exists()
-        and _MANAGED_BLOCK.search(path.read_text(encoding="utf-8")) is not None
+        path.exists() and _MANAGED_BLOCK.search(path.read_text(encoding="utf-8")) is not None
     )
     return {
         "status": "installed" if installed else "not-installed",
