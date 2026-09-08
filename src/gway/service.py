@@ -22,9 +22,7 @@ _SERVICE_KEY = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def _strings(value: object, field: str, section: str = "service") -> list[str]:
-    valid = isinstance(value, list) and all(
-        isinstance(item, str) and item for item in value
-    )
+    valid = isinstance(value, list) and all(isinstance(item, str) and item for item in value)
     if value is None:
         return []
     if not valid:
@@ -73,9 +71,7 @@ def _manifest_services(project: Project) -> tuple[dict[str, dict[str, Any]], boo
         with manifest.open("rb") as stream:
             data = tomllib.load(stream)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise ServiceError(
-            f"cannot read service manifest for {project.name}: {exc}"
-        ) from exc
+        raise ServiceError(f"cannot read service manifest for {project.name}: {exc}") from exc
 
     legacy = data.get("service")
     services = data.get("services")
@@ -148,9 +144,7 @@ class _ServiceUnit:
         default_description = f"GWAY {self.project.name} {self.key} service"
         description = self.config.get("description", default_description)
         if not isinstance(description, str) or not description.strip():
-            raise ServiceError(
-                f"[{section}].description must be a non-empty string"
-            )
+            raise ServiceError(f"[{section}].description must be a non-empty string")
         if "\n" in description or "\r" in description:
             raise ServiceError(f"[{section}].description must not contain newlines")
 
@@ -171,19 +165,13 @@ class _ServiceUnit:
         if not isinstance(restart, str) or not restart:
             raise ServiceError(f"[{section}].restart must be a non-empty string")
         if not isinstance(restart_sec, (int, float)) or restart_sec < 0:
-            raise ServiceError(
-                f"[{section}].restart_sec must be a non-negative number"
-            )
+            raise ServiceError(f"[{section}].restart_sec must be a non-negative number")
         if not isinstance(timeout_stop_sec, (int, float)) or timeout_stop_sec < 0:
-            raise ServiceError(
-                f"[{section}].timeout_stop_sec must be a non-negative number"
-            )
+            raise ServiceError(f"[{section}].timeout_stop_sec must be a non-negative number")
 
         environment = self.config.get("environment", {"PYTHONUNBUFFERED": "1"})
         valid_environment = isinstance(environment, dict) and all(
-            isinstance(key, str)
-            and key
-            and isinstance(value, (str, int, float, bool))
+            isinstance(key, str) and key and isinstance(value, (str, int, float, bool))
             for key, value in environment.items()
         )
         if not valid_environment:
@@ -284,26 +272,20 @@ class ServiceManager:
 
         if selected_service is not None:
             if selected_service not in configs:
-                message = (
-                    f"project does not declare service {selected_service!r}: "
-                    f"{project.name}"
-                )
+                message = f"project does not declare service {selected_service!r}: {project.name}"
                 raise ServiceError(message)
             configs = {selected_service: configs[selected_service]}
         elif active_profile:
             selected: dict[str, dict[str, Any]] = {}
             for key, config in configs.items():
-                profiles = _strings(
-                    config.get("profiles"), "profiles", f"services.{key}"
-                )
+                profiles = _strings(config.get("profiles"), "profiles", f"services.{key}")
                 if not profiles or active_profile in profiles:
                     selected[key] = config
             configs = selected
 
         if not configs:
             message = (
-                f"project has no services applicable to profile "
-                f"{active_profile!r}: {project.name}"
+                f"project has no services applicable to profile {active_profile!r}: {project.name}"
             )
             raise ServiceError(message)
         self.units = [
