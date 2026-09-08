@@ -16,6 +16,7 @@ from . import __version__
 from .adapters import AdapterError
 from .config import ConfigError
 from .dispatcher import Dispatcher, DispatchError
+from .expression import ExpressionError, normalize_managed_args
 from .install import Installer
 from .project import ManifestError, Project
 from .registry import Registry, RegistryError
@@ -441,6 +442,7 @@ def _known_cli_error(exc: BaseException) -> bool:
             AdapterError,
             ConfigError,
             DispatchError,
+            ExpressionError,
             ManifestError,
             RegistryError,
             RepositoryError,
@@ -469,12 +471,16 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
 
     active_dispatcher = dispatcher or Dispatcher()
     if args[0] not in CORE_COMMANDS and not args[0].startswith("-"):
-        project_args = list(args[1:])
         try:
+            project_name, project_args = normalize_managed_args(args)
             if project_args in (["--help"], ["-h"]):
-                _print_project_help(active_dispatcher, args[0])
+                _print_project_help(active_dispatcher, project_name)
                 return 0
-            result = active_dispatcher.run(args[0], project_args, interactive=interactive)
+            result = active_dispatcher.run(
+                project_name,
+                project_args,
+                interactive=interactive,
+            )
             _render_result(result, json_output=json_output)
         except Exception as exc:
             return _handle_cli_exception(exc, original_args)
