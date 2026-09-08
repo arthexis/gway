@@ -155,6 +155,7 @@ install_wrapper() {
 # GWAY_SYSTEM_BOOTSTRAP_WRAPPER=1
 export GWAY_CONFIG_HOME="\${GWAY_CONFIG_HOME:-${CONFIG_HOME}}"
 export GWAY_DATA_HOME="\${GWAY_DATA_HOME:-${DATA_HOME}}"
+export GIT_TERMINAL_PROMPT=0
 exec "${VENV}/bin/gway" "\$@"
 EOF
     chmod 755 "${WRAPPER}"
@@ -187,6 +188,7 @@ install_gway() {
     ensure_git
     create_venv
 
+    export GIT_TERMINAL_PROMPT=0
     "${VENV}/bin/python" -m pip install --upgrade pip
     "${VENV}/bin/python" -m pip install --upgrade "${SOURCE_SPEC}"
 
