@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from gway import bootstrap
 
 
@@ -17,4 +19,4 @@ def test_bootstrap_disables_git_terminal_prompts_for_all_cli_verbs(monkeypatch) 
 
     assert result == 17
     assert calls == [["install", "arthexis"]]
-    assert __import__("os").environ["GIT_TERMINAL_PROMPT"] == "0"
+    assert os.environ["GIT_TERMINAL_PROMPT"] == "0"
