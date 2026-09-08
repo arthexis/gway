@@ -193,7 +193,7 @@ def test_concurrent_installer_lock_prevents_publication(tmp_path: Path) -> None:
 
     assert lock.exists()
     assert not (target / "app").exists()
-    assert not list(target.glob(".app.gway-*"))
+    assert set(target.glob(".app.gway-*")) == {lock}
     assert not staging.exists()
 
 
