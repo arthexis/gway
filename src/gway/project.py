@@ -27,18 +27,14 @@ def _relative_install_path(value: object, field: str) -> Path:
     return path
 
 
-_HOOK_REFERENCE = re.compile(
-    r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*$"
-)
+_HOOK_REFERENCE = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*$")
 
 
 def _lifecycle_hook(value: object, field: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or not _HOOK_REFERENCE.fullmatch(value):
-        raise ManifestError(
-            f"[lifecycle].{field} must be a module:function reference"
-        )
+        raise ManifestError(f"[lifecycle].{field} must be a module:function reference")
     return value
 
 
@@ -183,9 +179,7 @@ class Project:
             InstallLayout.from_manifest(install_data) if install_data is not None else None
         )
         lifecycle_hooks = (
-            LifecycleHooks.from_manifest(lifecycle_data)
-            if lifecycle_data is not None
-            else None
+            LifecycleHooks.from_manifest(lifecycle_data) if lifecycle_data is not None else None
         )
 
         return cls(
