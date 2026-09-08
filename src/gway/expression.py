@@ -8,6 +8,7 @@ from dataclasses import dataclass
 MANAGED_EXPRESSION_PROJECT = "\0gway-expression"
 STRUCTURED_ARG_PREFIX = "\0gway-arg:"
 STRUCTURED_KWARG_PREFIX = "\0gway-kw:"
+STRUCTURED_TUPLE_PREFIX = "\0gway-tuple:"
 
 
 class ExpressionError(ValueError):
@@ -35,11 +36,13 @@ def _split_compact_path(token: str) -> list[str]:
     return path
 
 
-def _normalize_tuple_text(value: str) -> str:
-    """Keep comma members grouped while ignoring surrounding whitespace."""
+def _normalize_argument_value(value: str) -> str:
+    """Normalize whitespace and retain tuple intent for comma-delimited values."""
+    value = value.strip()
     if "," not in value:
-        return value.strip()
-    return ",".join(item.strip() for item in value.split(","))
+        return value
+    members = ",".join(item.strip() for item in value.split(","))
+    return f"{STRUCTURED_TUPLE_PREFIX}{members}"
 
 
 def _structured_argument(segment: str) -> str:
@@ -50,7 +53,7 @@ def _structured_argument(segment: str) -> str:
 
     # :=value explicitly means positional, even when value itself contains '='.
     if segment.startswith("="):
-        value = _normalize_tuple_text(segment[1:].strip())
+        value = _normalize_argument_value(segment[1:].strip())
         return f"{STRUCTURED_ARG_PREFIX}{value}"
 
     if "=" in segment:
@@ -58,10 +61,10 @@ def _structured_argument(segment: str) -> str:
         name = name.strip()
         if not name.isidentifier():
             raise ExpressionError(f"invalid managed keyword argument: {segment!r}")
-        value = _normalize_tuple_text(value)
+        value = _normalize_argument_value(value)
         return f"{STRUCTURED_KWARG_PREFIX}{name}={value}"
 
-    return f"{STRUCTURED_ARG_PREFIX}{_normalize_tuple_text(segment)}"
+    return f"{STRUCTURED_ARG_PREFIX}{_normalize_argument_value(segment)}"
 
 
 def _target_words(text: str) -> list[str]:
@@ -146,9 +149,9 @@ def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
     """Parse calls plus loose ``|`` and strict ``||`` fallback chains.
 
     Colons separate call arguments, ``name=value`` marks keyword arguments,
-    ``:=value`` explicitly marks a positional argument, and commas remain
-    grouped inside one argument. ``|`` advances on any falsey result while
-    ``||`` advances only on missing/None/empty-set values.
+    ``:=value`` explicitly marks a positional argument, and commas create one
+    tuple argument. ``|`` advances on any falsey result while ``||`` advances
+    only on missing/None/empty-set values.
     """
     expression = expression.strip()
     if not expression:
@@ -188,6 +191,7 @@ __all__ = [
     "ManagedBranch",
     "STRUCTURED_ARG_PREFIX",
     "STRUCTURED_KWARG_PREFIX",
+    "STRUCTURED_TUPLE_PREFIX",
     "normalize_managed_args",
     "parse_managed_branches",
 ]
