@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import io
 import os
 import sys
 from collections.abc import Mapping
@@ -67,6 +68,7 @@ def _parameter_from_action(action: argparse.Action) -> Parameter | None:
         annotation=getattr(action, "type", None),
         default=action.default,
         help=action.help,
+        options=tuple(action.option_strings),
     )
 
 
@@ -205,7 +207,15 @@ class DjangoAdapter:
         if django_command is None:
             raise AdapterError(f"Django command {' '.join(path)} is unavailable")
 
-        with _project_context(self.project, self.settings):
-            self._bootstrap()
-            django_command.run_from_argv([f"gway {self.project.name}", path[0], *argv])
-        return None
+        output = io.StringIO()
+        previous_stdout = django_command.stdout
+        try:
+            with _project_context(self.project, self.settings):
+                _, base = self._bootstrap()
+                django_command.stdout = base.OutputWrapper(output)
+                django_command.run_from_argv([f"gway {self.project.name}", path[0], *argv])
+        finally:
+            django_command.stdout = previous_stdout
+
+        text = output.getvalue().rstrip("\n")
+        return text or None

@@ -4,6 +4,7 @@ import json
 import sys
 from pathlib import Path
 
+import gway.cli as cli
 from gway.adapters import AdapterRegistry
 from gway.adapters.python import PythonAdapter
 from gway.cli import main
@@ -34,6 +35,11 @@ module = "fixture_project.gway"
         """def status() -> dict[str, str]:
     \"\"\"Show fixture status.\"\"\"
     return {\"status\": \"ok\"}
+
+
+def denied() -> None:
+    \"\"\"Raise a real OS permission failure.\"\"\"
+    raise PermissionError(13, \"Permission denied\", \"/fixture/protected\")
 
 
 def _private() -> str:
@@ -141,6 +147,7 @@ def test_python_adapter_discovers_public_nested_functions(tmp_path: Path) -> Non
     commands = {command.path: command for command in adapter.commands()}
 
     assert set(commands) == {
+        ("denied",),
         ("peer", "add"),
         ("peer", "echo-flags"),
         ("peer", "echo-values"),
@@ -230,9 +237,23 @@ def test_python_command_help_uses_docstring(tmp_path: Path, capsys) -> None:
     assert "--mode {fast,safe}" in output
 
 
-def test_project_command_json_output(tmp_path: Path, capsys) -> None:
+def test_project_command_json_output_uses_global_flag(tmp_path: Path, capsys) -> None:
     dispatcher = make_dispatcher(tmp_path)
 
-    assert main(["fixture", "status", "--json"], dispatcher=dispatcher) == 0
+    assert main(["--json", "fixture", "status"], dispatcher=dispatcher) == 0
 
     assert json.loads(capsys.readouterr().out) == {"status": "ok"}
+
+
+def test_managed_permission_failure_suggests_original_command(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+    monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
+
+    assert main(["fixture", "denied"], dispatcher=dispatcher) == 2
+    error = capsys.readouterr().err
+    assert "Permission denied" in error
+    assert "sudo gway fixture denied" in error

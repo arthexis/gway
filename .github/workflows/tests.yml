@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   python:
-    uses: arthexis/ci-base/.github/workflows/consumer-ci.yml@v1
+    uses: arthexis/ci-base/.github/workflows/python-ci.yml@v1
     with:
       install-command: python -m pip install -e '.[dev]'
       lint-paths: src tests
@@ -34,3 +34,59 @@ jobs:
         ./install.sh --check
         cat install.sh | bash -s -- --check
         bash tests/test_system_installer.sh
+
+  runner-heartbeat:
+    name: Runner heartbeat
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Report runner health
+        run: |
+          set -euo pipefail
+          echo "runner=${RUNNER_NAME:-unknown}"
+          echo "os=${RUNNER_OS:-unknown} arch=${RUNNER_ARCH:-unknown}"
+          uname -a
+          df -h .
+          python3 --version || true
+
+  linux-sanity:
+    name: Linux sanity
+    needs: runner-heartbeat
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      XDG_CONFIG_HOME: ${{ github.workspace }}/.gway-ci/config
+      XDG_DATA_HOME: ${{ github.workspace }}/.gway-ci/data
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          clean: true
+
+      - name: Clean workspace
+        run: git clean -ffdx
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install GWAY
+        run: python -m pip install --disable-pip-version-check -e '.[dev]'
+
+      - name: Run Linux sanity checks
+        run: |
+          set -euo pipefail
+          python -m ruff check src tests
+          python -m ruff format --check src tests
+          python -m pytest -q
+          python -m gway --help
+          gway --help
+          gway upgrade --help
+          python -c "import gway; print(gway.__version__)"
+          gway install sigils
+          bash -n install.sh
+          ./install.sh --check
+          cat install.sh | bash -s -- --check
+          bash tests/test_system_installer.sh
