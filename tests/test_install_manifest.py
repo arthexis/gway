@@ -9,19 +9,34 @@ from gway.registry import Registry
 
 def write_manifest(root: Path, extra: str = "") -> Path:
     root.mkdir()
-    (root / "gway.toml").write_text(
-        f'''[project]\nname = "arthexis"\n\n[adapter]\ntype = "django"\nmanage = "manage.py"\n{extra}\n''',
-        encoding="utf-8",
-    )
+    manifest = f'''[project]
+name = "arthexis"
+
+[adapter]
+type = "django"
+manage = "manage.py"
+{extra}
+'''
+    (root / "gway.toml").write_text(manifest, encoding="utf-8")
     return root
+
+
+def install_lifecycle_manifest() -> str:
+    return '''
+[install]
+root = "/opt/arthexis"
+checkout = "app"
+environment = ".venv"
+
+[lifecycle]
+install = "apps.core.system.lifecycle:install"
+upgrade = "apps.core.system.lifecycle:upgrade"
+'''
 
 
 def test_install_layout_and_lifecycle_hooks_are_loaded(tmp_path: Path) -> None:
     project = Project.from_path(
-        write_manifest(
-            tmp_path / "project",
-            '''\n[install]\nroot = "/opt/arthexis"\ncheckout = "app"\nenvironment = ".venv"\n\n[lifecycle]\ninstall = "apps.core.system.lifecycle:install"\nupgrade = "apps.core.system.lifecycle:upgrade"\n''',
-        )
+        write_manifest(tmp_path / "project", install_lifecycle_manifest())
     )
 
     assert project.install_layout == InstallLayout(
@@ -45,7 +60,7 @@ def test_install_and_lifecycle_are_optional_for_existing_projects(tmp_path: Path
 def test_registry_round_trips_install_contract(tmp_path: Path) -> None:
     project_root = write_manifest(
         tmp_path / "project",
-        '''\n[install]\nroot = "/opt/arthexis"\ncheckout = "app"\nenvironment = ".venv"\n\n[lifecycle]\ninstall = "apps.core.system.lifecycle:install"\nupgrade = "apps.core.system.lifecycle:upgrade"\n''',
+        install_lifecycle_manifest(),
     )
     registry = Registry(GwayPaths(tmp_path / "config", tmp_path / "data"))
 
@@ -62,7 +77,12 @@ def test_registry_round_trips_install_contract(tmp_path: Path) -> None:
 def test_install_root_must_be_absolute(tmp_path: Path) -> None:
     root = write_manifest(
         tmp_path / "project",
-        '''\n[install]\nroot = "var/arthexis"\ncheckout = "app"\nenvironment = ".venv"\n''',
+        '''
+[install]
+root = "var/arthexis"
+checkout = "app"
+environment = ".venv"
+''',
     )
 
     with pytest.raises(ManifestError, match=r"\[install\]\.root.*absolute"):
@@ -73,10 +93,13 @@ def test_install_root_must_be_absolute(tmp_path: Path) -> None:
 def test_install_children_must_stay_within_root(tmp_path: Path, field: str) -> None:
     checkout = '"../app"' if field == "checkout" else '"app"'
     environment = '"../venv"' if field == "environment" else '".venv"'
-    root = write_manifest(
-        tmp_path / "project",
-        f'''\n[install]\nroot = "/opt/arthexis"\ncheckout = {checkout}\nenvironment = {environment}\n''',
-    )
+    extra = f'''
+[install]
+root = "/opt/arthexis"
+checkout = {checkout}
+environment = {environment}
+'''
+    root = write_manifest(tmp_path / "project", extra)
 
     with pytest.raises(ManifestError, match=rf"\[install\]\.{field}.*root"):
         Project.from_path(root)
@@ -85,7 +108,11 @@ def test_install_children_must_stay_within_root(tmp_path: Path, field: str) -> N
 def test_install_requires_all_layout_fields(tmp_path: Path) -> None:
     root = write_manifest(
         tmp_path / "project",
-        '''\n[install]\nroot = "/opt/arthexis"\ncheckout = "app"\n''',
+        '''
+[install]
+root = "/opt/arthexis"
+checkout = "app"
+''',
     )
 
     with pytest.raises(ManifestError, match=r"\[install\]\.environment"):
@@ -106,7 +133,10 @@ def test_lifecycle_hooks_require_module_function_references(
 ) -> None:
     root = write_manifest(
         tmp_path / "project",
-        f'''\n[lifecycle]\ninstall = "{reference}"\n''',
+        f'''
+[lifecycle]
+install = "{reference}"
+''',
     )
 
     with pytest.raises(ManifestError, match="module:function"):
@@ -117,7 +147,10 @@ def test_lifecycle_may_declare_only_one_hook(tmp_path: Path) -> None:
     project = Project.from_path(
         write_manifest(
             tmp_path / "project",
-            '''\n[lifecycle]\nupgrade = "example.lifecycle:upgrade"\n''',
+            '''
+[lifecycle]
+upgrade = "example.lifecycle:upgrade"
+''',
         )
     )
 
