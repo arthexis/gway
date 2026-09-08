@@ -24,6 +24,7 @@ class Project:
     adapter_type: str
     adapter_config: dict[str, Any]
     aliases: tuple[str, ...] = ()
+    default_command: tuple[str, ...] = ()
     repository: str | None = None
     revision: str | None = None
     environment: Path | None = None
@@ -72,12 +73,21 @@ class Project:
         ):
             raise ManifestError("[project].aliases must be an array of strings")
 
+        default_data = project_data.get("default")
+        if default_data is None:
+            default_command: tuple[str, ...] = ()
+        elif isinstance(default_data, str) and default_data.strip():
+            default_command = tuple(default_data.split())
+        else:
+            raise ManifestError("[project].default must be a non-empty command string")
+
         adapter_config = dict(adapter_data)
         adapter_config.pop("type", None)
 
         return cls(
             name=name,
             aliases=tuple(aliases_data),
+            default_command=default_command,
             path=root,
             adapter_type=adapter_type,
             adapter_config=adapter_config,
@@ -91,6 +101,7 @@ class Project:
             "adapter_type": self.adapter_type,
             "adapter_config": self.adapter_config,
             "aliases": list(self.aliases),
+            "default_command": list(self.default_command),
             "repository": self.repository,
             "revision": self.revision,
             "environment": str(self.environment) if self.environment is not None else None,
@@ -107,6 +118,7 @@ class Project:
             adapter_type=data["adapter_type"],
             adapter_config=dict(data.get("adapter_config", {})),
             aliases=tuple(data.get("aliases", [])),
+            default_command=tuple(data.get("default_command", [])),
             repository=data.get("repository"),
             revision=data.get("revision"),
             environment=Path(environment) if environment else None,
