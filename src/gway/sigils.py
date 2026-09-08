@@ -44,9 +44,7 @@ class _GwayCommandCall:
         self.project_name = project_name
         self.command = command
         self.cache = cache
-        self.__sigils_requires_args__ = any(
-            parameter.required for parameter in command.parameters
-        )
+        self.__sigils_requires_args__ = any(parameter.required for parameter in command.parameters)
 
     def __call__(self, *args: object, **kwargs: object) -> object:
         project = self.registry.require(self.project_name)
