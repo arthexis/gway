@@ -279,13 +279,17 @@ class ServiceManager:
         self.project = project
         self.unit_directory = Path(unit_directory)
         configs, legacy = _manifest_services(project)
+        selected_service = service or os.environ.get("GWAY_SERVICE")
         active_profile = profile or os.environ.get("GWAY_SERVICE_PROFILE")
 
-        if service is not None:
-            if service not in configs:
-                message = f"project does not declare service {service!r}: {project.name}"
+        if selected_service is not None:
+            if selected_service not in configs:
+                message = (
+                    f"project does not declare service {selected_service!r}: "
+                    f"{project.name}"
+                )
                 raise ServiceError(message)
-            configs = {service: configs[service]}
+            configs = {selected_service: configs[selected_service]}
         elif active_profile:
             selected: dict[str, dict[str, Any]] = {}
             for key, config in configs.items():
@@ -318,14 +322,13 @@ class ServiceManager:
         return [unit.unit_name for unit in self.units]
 
     @property
-    def unit_name(self) -> str:
-        if len(self.units) != 1:
-            raise ServiceError("multiple services selected; choose one with --service")
-        return self.units[0].unit_name
+    def unit_name(self) -> str | list[str]:
+        names = self.unit_names
+        return names[0] if len(names) == 1 else names
 
     def render(self, *, user: str | None = None) -> str:
         if len(self.units) != 1:
-            raise ServiceError("multiple services selected; choose one with --service")
+            raise ServiceError("multiple services selected; choose one service")
         return self.units[0].render(user=user)
 
     def install(
