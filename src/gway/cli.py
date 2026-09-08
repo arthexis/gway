@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-i",
         "--interactive",
         action="store_true",
-        help="Prompt for missing required managed-command option values.",
+        help="Prompt for missing required managed-command values.",
     )
 
     subparsers = parser.add_subparsers(dest="command")
@@ -315,10 +315,28 @@ def _render_result(
 
 
 def _extract_global_flags(args: list[str]) -> tuple[list[str], bool, bool]:
-    json_output = "--json" in args
-    interactive = "-i" in args or "--interactive" in args
-    reserved = {"--json", "-i", "--interactive"}
-    return [arg for arg in args if arg not in reserved], json_output, interactive
+    filtered: list[str] = []
+    json_output = False
+    interactive = False
+    literal = False
+
+    for arg in args:
+        if literal:
+            filtered.append(arg)
+            continue
+        if arg == "--":
+            literal = True
+            filtered.append(arg)
+            continue
+        if arg == "--json":
+            json_output = True
+            continue
+        if arg in {"-i", "--interactive"}:
+            interactive = True
+            continue
+        filtered.append(arg)
+
+    return filtered, json_output, interactive
 
 
 def _prompt_required_value(name: str) -> str:
