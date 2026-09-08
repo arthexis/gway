@@ -145,10 +145,11 @@ def test_failed_checkout_move_removes_partial_managed_destination(
         installer.install("arthexis")
 
     assert not (target / "app").exists()
+    assert not list(target.glob(".app.gway-*"))
     assert not staging.exists()
 
 
-def test_concurrent_checkout_creation_is_not_deleted(monkeypatch, tmp_path: Path) -> None:
+def test_checkout_is_published_only_after_relocation(monkeypatch, tmp_path: Path) -> None:
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     target = tmp_path / "opt" / "arthexis"
     checkout_target = target / "app"
@@ -158,21 +159,50 @@ def test_concurrent_checkout_creation_is_not_deleted(monkeypatch, tmp_path: Path
         repositories=LayoutRepositories(staging, target),
         runner=LayoutRunner(),
     )
-    original_mkdir = Path.mkdir
+    original_move = __import__("shutil").move
 
-    def racing_mkdir(path: Path, *args, **kwargs) -> None:
-        if path == checkout_target:
-            original_mkdir(path)
-            (path / "other-process").write_text("owned elsewhere", encoding="utf-8")
-            raise FileExistsError(str(path))
-        original_mkdir(path, *args, **kwargs)
+    def observing_move(source: str, destination: str):
+        assert not checkout_target.exists()
+        return original_move(source, destination)
 
-    monkeypatch.setattr(Path, "mkdir", racing_mkdir)
+    monkeypatch.setattr("gway.install.shutil.move", observing_move)
 
-    with pytest.raises(ValueError, match="managed checkout appeared during install"):
+    project = installer.install("arthexis")
+
+    assert project.path == checkout_target
+    assert checkout_target.exists()
+    assert not list(target.glob(".app.gway-*"))
+
+
+def test_concurrent_checkout_publication_is_not_deleted(monkeypatch, tmp_path: Path) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    target = tmp_path / "opt" / "arthexis"
+    checkout_target = target / "app"
+    staging = paths.projects_dir / "arthexis" / "arthexis"
+    installer = Installer(
+        Registry(paths),
+        repositories=LayoutRepositories(staging, target),
+        runner=LayoutRunner(),
+    )
+    original_rename = Path.rename
+
+    def racing_rename(path: Path, destination: Path):
+        if destination == checkout_target:
+            checkout_target.mkdir()
+            (checkout_target / "other-process").write_text(
+                "owned elsewhere",
+                encoding="utf-8",
+            )
+            raise FileExistsError(str(destination))
+        return original_rename(path, destination)
+
+    monkeypatch.setattr(Path, "rename", racing_rename)
+
+    with pytest.raises(FileExistsError):
         installer.install("arthexis")
 
     assert (checkout_target / "other-process").read_text(encoding="utf-8") == "owned elsewhere"
+    assert not list(target.glob(".app.gway-*"))
     assert not staging.exists()
 
 
