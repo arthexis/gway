@@ -32,7 +32,7 @@ class Installer:
             raise ValueError(f"managed checkout already exists: {layout.checkout}")
         layout.checkout.parent.mkdir(parents=True, exist_ok=True)
         placed = Path(shutil.move(str(checkout), str(layout.checkout)))
-        return placed, Project.from_path(placed)
+        return placed, replace(project, path=placed)
 
     def install(self, spec: str) -> Project:
         repository = self.repositories.resolve(spec)
