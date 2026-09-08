@@ -66,6 +66,37 @@ def rc_path(
     return base / ".zshrc"
 
 
+def _read_rc(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return path.read_bytes().decode("utf-8", errors="surrogateescape")
+
+
+def _write_rc_atomic(path: Path, text: str) -> None:
+    # Replacing a symlink would destroy the user's rc-file indirection. Resolve
+    # it first and atomically replace the target instead.
+    target = path.resolve(strict=False) if path.is_symlink() else path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    data = text.encode("utf-8", errors="surrogateescape")
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.gway-",
+        dir=target.parent,
+    )
+    temporary = Path(temporary_name)
+
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if target.exists():
+            shutil.copystat(target, temporary, follow_symlinks=True)
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def _replace_managed_block(text: str, replacement: str) -> tuple[str, bool]:
     if _MANAGED_BLOCK.search(text):
         return _MANAGED_BLOCK.sub(replacement, text, count=1), True
@@ -84,12 +115,11 @@ def install_shell(
     env = os.environ if environ is None else environ
     name = detect_shell(shell, environ=env)
     path = rc_path(name, environ=env)
-    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    current = _read_rc(path)
     updated, replaced = _replace_managed_block(current, integration_snippet(name))
 
     if updated != current:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(updated, encoding="utf-8")
+        _write_rc_atomic(path, updated)
 
     return {
         "status": "installed",
@@ -116,10 +146,10 @@ def uninstall_shell(
             "changed": False,
         }
 
-    current = path.read_text(encoding="utf-8")
+    current = _read_rc(path)
     updated, count = _MANAGED_BLOCK.subn("", current, count=1)
     if count:
-        path.write_text(updated, encoding="utf-8")
+        _write_rc_atomic(path, updated)
 
     return {
         "status": "uninstalled" if count else "not-installed",
@@ -137,9 +167,7 @@ def shell_status(
     env = os.environ if environ is None else environ
     name = detect_shell(shell, environ=env)
     path = rc_path(name, environ=env)
-    installed = (
-        path.exists() and _MANAGED_BLOCK.search(path.read_text(encoding="utf-8")) is not None
-    )
+    installed = path.exists() and _MANAGED_BLOCK.search(_read_rc(path)) is not None
     return {
         "status": "installed" if installed else "not-installed",
         "shell": name,
@@ -160,8 +188,17 @@ def _shell_executable(name: str, environ: Mapping[str, str]) -> str:
     return executable
 
 
-def _startup_contents(name: str, original_rc: Path) -> str:
+def _startup_contents(
+    name: str,
+    original_rc: Path,
+    original_zdotdir: str | None,
+) -> str:
     lines = []
+    if name == "zsh":
+        if original_zdotdir is None:
+            lines.append("unset ZDOTDIR")
+        else:
+            lines.append(f"export ZDOTDIR={shlex.quote(original_zdotdir)}")
     if original_rc.exists():
         lines.append(f". {shlex.quote(str(original_rc))}")
     lines.extend((ALIAS_LINE, "export GWAY_SHELL=1"))
@@ -178,10 +215,11 @@ def launch_shell(
     name = detect_shell(shell, environ=env)
     executable = _shell_executable(name, env)
     original_rc = rc_path(name, environ=env)
+    original_zdotdir = env.get("ZDOTDIR")
 
     with tempfile.TemporaryDirectory(prefix="gway-shell-") as temp_dir:
         temp_path = Path(temp_dir)
-        startup = _startup_contents(name, original_rc)
+        startup = _startup_contents(name, original_rc, original_zdotdir)
 
         if name == "bash":
             rcfile = temp_path / "bashrc"
