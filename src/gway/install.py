@@ -43,7 +43,8 @@ class Installer:
                     f"expected {project.name!r}: {target}"
                 )
             if existing.install_layout != project.install_layout:
-                raise ValueError(f"existing managed checkout has incompatible install layout: {target}")
+                message = "existing managed checkout has incompatible install layout"
+                raise ValueError(f"{message}: {target}")
             shutil.rmtree(checkout, ignore_errors=True)
             return target, existing, True
 
