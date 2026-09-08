@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,89 @@ def _validate_name(name: str) -> None:
         raise ValueError("project name must be a safe directory name")
 
 
+def _relative_install_path(value: object, field: str) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise ManifestError(f"[install].{field} must be a non-empty relative path")
+    path = Path(value)
+    if path.is_absolute() or any(part == ".." for part in path.parts):
+        raise ManifestError(f"[install].{field} must stay within [install].root")
+    return path
+
+
+_HOOK_REFERENCE = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*$")
+
+
+def _lifecycle_hook(value: object, field: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _HOOK_REFERENCE.fullmatch(value):
+        raise ManifestError(f"[lifecycle].{field} must be a module:function reference")
+    return value
+
+
+@dataclass(frozen=True)
+class InstallLayout:
+    root: Path
+    checkout: Path
+    environment: Path
+
+    @classmethod
+    def from_manifest(cls, data: dict[str, Any]) -> InstallLayout:
+        root_value = data.get("root")
+        if not isinstance(root_value, str) or not root_value.strip():
+            raise ManifestError("[install].root must be a non-empty absolute path")
+        root = Path(root_value).expanduser()
+        if not root.is_absolute():
+            raise ManifestError("[install].root must be a non-empty absolute path")
+
+        checkout = _relative_install_path(data.get("checkout"), "checkout")
+        environment = _relative_install_path(data.get("environment"), "environment")
+        return cls(
+            root=root,
+            checkout=root / checkout,
+            environment=root / environment,
+        )
+
+    def to_record(self) -> dict[str, str]:
+        return {
+            "root": str(self.root),
+            "checkout": str(self.checkout),
+            "environment": str(self.environment),
+        }
+
+    @classmethod
+    def from_record(cls, data: dict[str, Any]) -> InstallLayout:
+        return cls(
+            root=Path(data["root"]),
+            checkout=Path(data["checkout"]),
+            environment=Path(data["environment"]),
+        )
+
+
+@dataclass(frozen=True)
+class LifecycleHooks:
+    install: str | None = None
+    upgrade: str | None = None
+
+    @classmethod
+    def from_manifest(cls, data: dict[str, Any]) -> LifecycleHooks:
+        install = _lifecycle_hook(data.get("install"), "install")
+        upgrade = _lifecycle_hook(data.get("upgrade"), "upgrade")
+        if install is None and upgrade is None:
+            raise ManifestError("[lifecycle] must declare install and/or upgrade")
+        return cls(install=install, upgrade=upgrade)
+
+    def to_record(self) -> dict[str, str | None]:
+        return {"install": self.install, "upgrade": self.upgrade}
+
+    @classmethod
+    def from_record(cls, data: dict[str, Any]) -> LifecycleHooks:
+        return cls(
+            install=data.get("install"),
+            upgrade=data.get("upgrade"),
+        )
+
+
 @dataclass(frozen=True)
 class Project:
     name: str
@@ -29,6 +113,8 @@ class Project:
     revision: str | None = None
     environment: Path | None = None
     service_config: dict[str, Any] | None = None
+    install_layout: InstallLayout | None = None
+    lifecycle_hooks: LifecycleHooks | None = None
 
     def __post_init__(self) -> None:
         _validate_name(self.name)
@@ -49,12 +135,18 @@ class Project:
         project_data = data.get("project")
         adapter_data = data.get("adapter")
         service_data = data.get("service")
+        install_data = data.get("install")
+        lifecycle_data = data.get("lifecycle")
         if not isinstance(project_data, dict):
             raise ManifestError("gway.toml requires [project]")
         if not isinstance(adapter_data, dict):
             raise ManifestError("gway.toml requires [adapter]")
         if service_data is not None and not isinstance(service_data, dict):
             raise ManifestError("[service] must be a table")
+        if install_data is not None and not isinstance(install_data, dict):
+            raise ManifestError("[install] must be a table")
+        if lifecycle_data is not None and not isinstance(lifecycle_data, dict):
+            raise ManifestError("[lifecycle] must be a table")
 
         name = project_data.get("name")
         adapter_type = adapter_data.get("type")
@@ -83,6 +175,12 @@ class Project:
 
         adapter_config = dict(adapter_data)
         adapter_config.pop("type", None)
+        install_layout = (
+            InstallLayout.from_manifest(install_data) if install_data is not None else None
+        )
+        lifecycle_hooks = (
+            LifecycleHooks.from_manifest(lifecycle_data) if lifecycle_data is not None else None
+        )
 
         return cls(
             name=name,
@@ -92,6 +190,8 @@ class Project:
             adapter_type=adapter_type,
             adapter_config=adapter_config,
             service_config=dict(service_data) if service_data is not None else None,
+            install_layout=install_layout,
+            lifecycle_hooks=lifecycle_hooks,
         )
 
     def to_record(self) -> dict[str, Any]:
@@ -106,12 +206,20 @@ class Project:
             "revision": self.revision,
             "environment": str(self.environment) if self.environment is not None else None,
             "service_config": self.service_config,
+            "install_layout": (
+                self.install_layout.to_record() if self.install_layout is not None else None
+            ),
+            "lifecycle_hooks": (
+                self.lifecycle_hooks.to_record() if self.lifecycle_hooks is not None else None
+            ),
         }
 
     @classmethod
     def from_record(cls, data: dict[str, Any]) -> Project:
         environment = data.get("environment")
         service_config = data.get("service_config")
+        install_layout = data.get("install_layout")
+        lifecycle_hooks = data.get("lifecycle_hooks")
         return cls(
             name=data["name"],
             path=Path(data["path"]),
@@ -123,4 +231,14 @@ class Project:
             revision=data.get("revision"),
             environment=Path(environment) if environment else None,
             service_config=dict(service_config) if service_config is not None else None,
+            install_layout=(
+                InstallLayout.from_record(install_layout)
+                if isinstance(install_layout, dict)
+                else None
+            ),
+            lifecycle_hooks=(
+                LifecycleHooks.from_record(lifecycle_hooks)
+                if isinstance(lifecycle_hooks, dict)
+                else None
+            ),
         )
