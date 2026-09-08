@@ -5,7 +5,7 @@ from pathlib import Path
 
 from gway.adapters import AdapterRegistry
 from gway.cli import main
-from gway.command import Command
+from gway.command import Command, Parameter
 from gway.config import GwayPaths
 from gway.dispatcher import CommandNotFound, Dispatcher
 from gway.project import Project
@@ -21,6 +21,18 @@ class FixtureAdapter:
             Command(("hello",), summary="Say hello."),
             Command(("peer",), summary="Peer namespace fallback."),
             Command(("peer", "add"), summary="Add a peer."),
+            Command(
+                ("token", "create"),
+                summary="Create a token for one device.",
+                parameters=(
+                    Parameter(
+                        "device_name",
+                        required=True,
+                        positional=False,
+                        annotation=str,
+                    ),
+                ),
+            ),
             Command(
                 ("server", "status"),
                 summary=(
@@ -68,6 +80,22 @@ def test_cli_dispatches_registered_project(tmp_path: Path, capsys) -> None:
 
     assert main(["fixture", "hello"], dispatcher=dispatcher) == 0
     assert capsys.readouterr().out == "hello\n"
+
+
+def test_cli_interactive_prompts_for_missing_required_option(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+    answers = iter(["gway-004"])
+    monkeypatch.setattr("builtins.input", lambda prompt: next(answers))
+
+    assert main(["-i", "fixture", "token", "create"], dispatcher=dispatcher) == 0
+
+    output = capsys.readouterr().out
+    assert "--device-name" in output
+    assert "gway-004" in output
 
 
 def test_cli_renders_project_level_help(tmp_path: Path, capsys) -> None:
