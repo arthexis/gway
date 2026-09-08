@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from gway.config import GwayPaths
 from gway.install import Installer
-from gway.lifecycle import run_hook
+from gway.lifecycle import LifecycleError, run_hook
 from gway.project import Project
 from gway.registry import Registry
 from gway.repository import ResolvedRepository
@@ -83,7 +85,7 @@ def test_lifecycle_hook_dispatches_through_project_adapter(monkeypatch, tmp_path
     root = tmp_path / "project"
     root.mkdir()
     (root / "gway.toml").write_text(
-        '''[project]
+        """[project]
 name = "fixture"
 
 [adapter]
@@ -92,7 +94,7 @@ module = "fixture.commands"
 
 [lifecycle]
 prepare = "managed_prepare"
-''',
+""",
         encoding="utf-8",
     )
     project = Project.from_path(root)
@@ -111,5 +113,38 @@ prepare = "managed_prepare"
     monkeypatch.setattr("gway.lifecycle.AdapterRegistry", Adapters)
 
     assert run_hook(project, "prepare") == "prepared"
-    assert calls == [(('managed_prepare',), [])]
+    assert calls == [(("managed_prepare",), [])]
     assert run_hook(project, "upgrade") is None
+
+
+def test_lifecycle_hook_translates_nonzero_system_exit(monkeypatch, tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "gway.toml").write_text(
+        """[project]
+name = "fixture"
+
+[adapter]
+type = "python"
+module = "fixture.commands"
+
+[lifecycle]
+prepare = "managed_prepare"
+""",
+        encoding="utf-8",
+    )
+    project = Project.from_path(root)
+
+    class Adapter:
+        def run(self, path, argv):
+            raise SystemExit(2)
+
+    class Adapters:
+        def create(self, selected):
+            assert selected == project
+            return Adapter()
+
+    monkeypatch.setattr("gway.lifecycle.AdapterRegistry", Adapters)
+
+    with pytest.raises(LifecycleError, match="exit status 2"):
+        run_hook(project, "prepare")
