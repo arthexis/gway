@@ -5,7 +5,6 @@ import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-
 MANAGED_EXPRESSION_PROJECT = "\0gway-expression"
 
 
