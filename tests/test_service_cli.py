@@ -69,7 +69,9 @@ def test_service_status_keeps_legacy_project_flag(tmp_path: Path, monkeypatch, c
     assert "project: epaper" in capsys.readouterr().out
 
 
-def test_service_accepts_name_and_alias_for_same_project(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_service_accepts_name_and_alias_for_same_project(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
     register_project(tmp_path, monkeypatch, capsys)
 
     def fake_status(self):
