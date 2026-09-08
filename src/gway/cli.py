@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-i",
         "--interactive",
         action="store_true",
-        help="Prompt for missing required managed-command option values.",
+        help="Prompt for missing required managed-command values.",
     )
 
     subparsers = parser.add_subparsers(dest="command")
@@ -119,9 +119,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("install", "uninstall", "start", "stop", "restart", "status"),
     )
     service.add_argument(
-        "--project",
-        required=True,
+        "project",
+        nargs="?",
         help="Registered project name or alias.",
+    )
+    service.add_argument(
+        "--project",
+        dest="project_option",
+        help="Registered project name or alias (legacy option spelling).",
     )
     service.add_argument(
         "--user",
@@ -315,10 +320,37 @@ def _render_result(
 
 
 def _extract_global_flags(args: list[str]) -> tuple[list[str], bool, bool]:
-    json_output = "--json" in args
-    interactive = "-i" in args or "--interactive" in args
-    reserved = {"--json", "-i", "--interactive"}
-    return [arg for arg in args if arg not in reserved], json_output, interactive
+    filtered: list[str] = []
+    json_output = False
+    interactive = False
+    literal = False
+
+    for arg in args:
+        if literal:
+            filtered.append(arg)
+            continue
+        if arg == "--":
+            literal = True
+            filtered.append(arg)
+            continue
+        if arg == "--json":
+            json_output = True
+            continue
+        if arg in {"-i", "--interactive"}:
+            interactive = True
+            continue
+        filtered.append(arg)
+
+    return filtered, json_output, interactive
+
+
+def _prompt_required_value(name: str) -> str:
+    while True:
+        print(f"{name}: ", end="", file=sys.stderr, flush=True)
+        value = input()
+        if value:
+            return value
+        print("A value is required.", file=sys.stderr)
 
 
 def _permission_failure(exc: BaseException) -> OSError | None:
@@ -491,8 +523,25 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             return _handle_cli_exception(exc, original_args)
         return 0
 
-    namespace = parser.parse_args(args)
     registry = active_dispatcher.registry
+    namespace = parser.parse_args(args)
+    if namespace.command == "service":
+        if namespace.project and namespace.project_option:
+            try:
+                positional_name = registry.require(namespace.project).name
+                option_name = registry.require(namespace.project_option).name
+            except RegistryError:
+                same_project = namespace.project == namespace.project_option
+            else:
+                same_project = positional_name == option_name
+            if not same_project:
+                parser.error("PROJECT and --project must name the same project")
+        namespace.project = namespace.project or namespace.project_option
+        if namespace.project is None:
+            if interactive:
+                namespace.project = _prompt_required_value("project")
+            else:
+                parser.error("the following arguments are required: project")
 
     try:
         result: object = None

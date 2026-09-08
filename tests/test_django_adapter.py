@@ -10,7 +10,7 @@ import pytest
 from gway.adapters.django import DjangoAdapter, _parameter_from_action
 from gway.cli import main
 from gway.config import GwayPaths
-from gway.dispatcher import Dispatcher
+from gway.dispatcher import Dispatcher, _provided_positional_count
 from gway.project import Project
 from gway.registry import Registry
 from gway.runner import Runner
@@ -72,6 +72,48 @@ def test_django_parameter_metadata_preserves_declared_option_spellings() -> None
     assert parameter is not None
     assert parameter.name == "device"
     assert parameter.options == ("-t", "--target")
+    assert parameter.consumes_value is True
+    assert parameter.option_arity is None
+
+
+def test_django_parameter_metadata_marks_zero_arity_options() -> None:
+    parser = argparse.ArgumentParser()
+    action = parser.add_argument("--traceback", action="store_true")
+    parameter = _parameter_from_action(action)
+    assert parameter is not None
+    assert parameter.consumes_value is False
+    assert parameter.option_arity == 0
+
+
+def test_django_parameter_metadata_preserves_multi_value_arity() -> None:
+    parser = argparse.ArgumentParser()
+    pair_action = parser.add_argument("--pair", nargs=2)
+    positional_action = parser.add_argument("value")
+    pair = _parameter_from_action(pair_action)
+    positional = _parameter_from_action(positional_action)
+    assert pair is not None
+    assert positional is not None
+    assert pair.option_arity == 2
+    command = __import__("gway.command", fromlist=["Command"]).Command(
+        ("example",), parameters=(pair, positional)
+    )
+    assert _provided_positional_count(command, ["--pair", "a", "b"]) == 0
+
+
+def test_django_interactive_preserves_positional_after_zero_arity_option(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+
+    def unexpected_input() -> str:
+        raise AssertionError("interactive mode should not prompt for an existing positional")
+
+    monkeypatch.setattr("builtins.input", unexpected_input)
+    args = ["django-fixture", "echo", "-i", "--traceback", "hello"]
+    assert main(args, dispatcher=dispatcher) == 0
+    assert capsys.readouterr().out == "hello\n"
 
 
 def test_django_sigil_context_reaches_real_management_command(

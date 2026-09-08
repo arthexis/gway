@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -49,8 +50,37 @@ class Installer:
             return target, existing, True
 
         target.parent.mkdir(parents=True, exist_ok=True)
-        placed = Path(shutil.move(str(checkout), str(target)))
-        return placed, replace(project, path=placed), False
+        lock = target.with_name(f".{target.name}.gway-install-lock")
+        try:
+            lock.mkdir()
+        except FileExistsError as exc:
+            raise ValueError(f"managed checkout install already in progress: {target}") from exc
+
+        temporary: Path | None = None
+        try:
+            if target.exists():
+                raise ValueError(f"managed checkout appeared during install: {target}")
+
+            temporary = Path(
+                tempfile.mkdtemp(
+                    prefix=f".{target.name}.gway-",
+                    dir=target.parent,
+                )
+            )
+            for entry in checkout.iterdir():
+                shutil.move(str(entry), str(temporary / entry.name))
+            shutil.copystat(checkout, temporary, follow_symlinks=False)
+            checkout.rmdir()
+
+            if target.exists():
+                raise ValueError(f"managed checkout appeared during install: {target}")
+            temporary.rename(target)
+            temporary = None
+        finally:
+            if temporary is not None:
+                shutil.rmtree(temporary, ignore_errors=True)
+            shutil.rmtree(lock, ignore_errors=True)
+        return target, replace(project, path=target), False
 
     def install(self, spec: str) -> Project:
         repository = self.repositories.resolve(spec)

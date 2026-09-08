@@ -69,6 +69,8 @@ def _parameter_from_action(action: argparse.Action) -> Parameter | None:
         default=action.default,
         help=action.help,
         options=tuple(action.option_strings),
+        consumes_value=None if positional else action.nargs != 0,
+        option_arity=action.nargs,
     )
 
 
