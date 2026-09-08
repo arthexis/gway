@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import gway.service as service
+from gway import service
 from gway.project import Project
 
 
