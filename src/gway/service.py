@@ -3,6 +3,7 @@ from __future__ import annotations
 import getpass
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tomllib
@@ -327,10 +328,12 @@ class ServiceManager:
         if not callable(geteuid) or geteuid() == 0:
             return
         names = ",".join(self.environment_selectors)
-        command = " ".join(
+        command = shlex.join(
             [
-                f"sudo --preserve-env={names}",
-                "gway service",
+                "sudo",
+                f"--preserve-env={names}",
+                "gway",
+                "service",
                 action,
                 self.project.name,
                 *arguments,
