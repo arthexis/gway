@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
+import subprocess
 
 from gway import service
 from gway.project import InstallLayout, Project
