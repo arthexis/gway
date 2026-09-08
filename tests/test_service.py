@@ -54,8 +54,7 @@ def test_render_uses_project_manifest_and_expands_placeholders(tmp_path: Path) -
 
     assert "Description=GWAY e-paper display service\n" in unit
     expected = (
-        f'ExecStart="{sys.executable}" "-m" "gway_epaper.service" '
-        f'"{project.path}/epaper.toml"'
+        f'ExecStart="{sys.executable}" "-m" "gway_epaper.service" "{project.path}/epaper.toml"'
     )
     assert expected in unit
     assert "User=display\n" in unit
@@ -121,7 +120,7 @@ def test_project_without_service_is_rejected(tmp_path: Path) -> None:
     root = tmp_path / "plain"
     root.mkdir()
     (root / "gway.toml").write_text(
-        "[project]\nname = \"plain\"\n[adapter]\ntype = \"python\"\nmodule = \"plain\"\n",
+        '[project]\nname = "plain"\n[adapter]\ntype = "python"\nmodule = "plain"\n',
         encoding="utf-8",
     )
     project = Project.from_path(root)
