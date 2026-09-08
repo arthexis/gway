@@ -4,6 +4,9 @@ import pytest
 
 from gway.expression import (
     MANAGED_EXPRESSION_PROJECT,
+    STRUCTURED_ARG_PREFIX,
+    STRUCTURED_KWARG_PREFIX,
+    STRUCTURED_TUPLE_PREFIX,
     ExpressionError,
     normalize_managed_args,
     parse_managed_branches,
@@ -43,16 +46,54 @@ def test_trailing_colon_routes_to_literal_expression() -> None:
     assert branch.literal == "health.errors"
 
 
-def test_colon_argument_becomes_normal_dispatch_argument() -> None:
+def test_colon_argument_routes_through_expression_mode() -> None:
     project, args = normalize_managed_args(["charger.status:1"])
-    assert project == "charger"
-    assert args == ["status", "1"]
+    assert project == MANAGED_EXPRESSION_PROJECT
+    assert args == ["charger.status:1"]
+    branch = parse_managed_branches(args[0])[0]
+    assert branch.project == "charger"
+    assert branch.args == ("status", f"{STRUCTURED_ARG_PREFIX}1")
 
 
-def test_remaining_cli_arguments_follow_compact_expression() -> None:
-    project, args = normalize_managed_args(["charger.status:1", "--verbose"])
-    assert project == "charger"
-    assert args == ["status", "1", "--verbose"]
+def test_spaced_colon_positional_argument() -> None:
+    project, args = normalize_managed_args(["network", "ip", ":", "wlan0"])
+    assert project == MANAGED_EXPRESSION_PROJECT
+    branch = parse_managed_branches(args[0])[0]
+    assert branch.project == "network"
+    assert branch.args == ("ip", f"{STRUCTURED_ARG_PREFIX}wlan0")
+
+
+def test_keyword_argument_is_preserved_for_command_aware_binding() -> None:
+    branch = parse_managed_branches("network ip : interface = wlan0")[0]
+    assert branch.args == (
+        "ip",
+        f"{STRUCTURED_KWARG_PREFIX}interface=wlan0",
+    )
+
+
+def test_explicit_positional_colon_equals() -> None:
+    branch = parse_managed_branches("demo echo := left=right")[0]
+    assert branch.project == "demo"
+    assert branch.args == ("echo", f"{STRUCTURED_ARG_PREFIX}left=right")
+
+
+def test_multiple_colons_create_multiple_arguments() -> None:
+    branch = parse_managed_branches("demo combine : first : second : mode=fast")[0]
+    assert branch.args == (
+        "combine",
+        f"{STRUCTURED_ARG_PREFIX}first",
+        f"{STRUCTURED_ARG_PREFIX}second",
+        f"{STRUCTURED_KWARG_PREFIX}mode=fast",
+    )
+
+
+def test_commas_create_grouped_tuple_arguments() -> None:
+    branch = parse_managed_branches("demo shape : a , b , c : values = x , y")[0]
+    assert branch.args == (
+        "shape",
+        f"{STRUCTURED_ARG_PREFIX}{STRUCTURED_TUPLE_PREFIX}a,b,c",
+        f"{STRUCTURED_KWARG_PREFIX}values={STRUCTURED_TUPLE_PREFIX}x,y",
+    )
 
 
 def test_fallback_expression_routes_to_dispatcher_expression_mode() -> None:

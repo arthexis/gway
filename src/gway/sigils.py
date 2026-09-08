@@ -10,10 +10,90 @@ from .project import Project
 from .registry import Registry
 
 RESERVED_CONTEXT_KEYS = frozenset({"cwd", "home", "gway", "project", "command"})
+_SIGILS_SUPPORTS_PROVIDER_CALLS = hasattr(Sigil, "_provider_callable")
+
+
+def _freeze(value: object) -> object:
+    """Return a hashable representation suitable for per-evaluation memoization."""
+    if isinstance(value, dict):
+        return tuple(sorted((str(key), _freeze(item)) for key, item in value.items()))
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return tuple(sorted((_freeze(item) for item in value), key=repr))
+    try:
+        hash(value)
+    except TypeError:
+        return repr(value)
+    return value
+
+
+class _GwayCommandCall:
+    """Provider-approved callable wrapper around one registered GWAY command."""
+
+    __sigils_safe_callable__ = True
+
+    def __init__(
+        self,
+        registry: Registry,
+        project_name: str,
+        command,
+        cache: dict[tuple[object, ...], object],
+    ) -> None:
+        self.registry = registry
+        self.project_name = project_name
+        self.command = command
+        self.cache = cache
+        self.__sigils_requires_args__ = any(parameter.required for parameter in command.parameters)
+
+    def __call__(self, *args: object, **kwargs: object) -> object:
+        project = self.registry.require(self.project_name)
+        cache_key = (
+            project.name,
+            self.command.path,
+            _freeze(args),
+            _freeze(kwargs),
+        )
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        function = self.command.adapter_data
+        if callable(function):
+            result = function(*args, **kwargs)
+        else:
+            # Non-Python adapters still use the ordinary dispatcher boundary.
+            # Structured values are kept grouped; tuples become one comma-delimited
+            # argument and named values use their normal long-option spelling.
+            from .dispatcher import Dispatcher
+
+            argv: list[str] = []
+            for value in args:
+                if isinstance(value, tuple):
+                    argv.append(",".join(str(item) for item in value))
+                else:
+                    argv.append(str(value))
+            for name, value in kwargs.items():
+                option = f"--{name.replace('_', '-')}"
+                if isinstance(value, bool):
+                    argv.append(option if value else f"--no-{option[2:]}")
+                else:
+                    rendered = (
+                        ",".join(str(item) for item in value)
+                        if isinstance(value, tuple)
+                        else str(value)
+                    )
+                    argv.extend((option, rendered))
+            result = Dispatcher(registry=self.registry).run(
+                self.project_name,
+                (*self.command.path, *argv),
+            )
+
+        self.cache[cache_key] = result
+        return result
 
 
 class _GwayNamespaceProvider:
-    """Resolve a managed project's zero-argument commands as Sigil values."""
+    """Resolve registered managed commands as protected Sigil values/callables."""
 
     def __init__(
         self,
@@ -21,7 +101,7 @@ class _GwayNamespaceProvider:
         project_name: str,
         *,
         prefix: tuple[str, ...] = (),
-        cache: dict[tuple[str, tuple[str, ...]], object] | None = None,
+        cache: dict[tuple[object, ...], object] | None = None,
     ) -> None:
         self.registry = registry
         self.project_name = project_name
@@ -29,13 +109,9 @@ class _GwayNamespaceProvider:
         self.cache = cache if cache is not None else {}
 
     def resolve_sigil(self, key: str) -> object:
-        # Python command names are exposed by GWAY with underscores normalized
-        # to the same hyphenated spelling used by the CLI.
         command_key = key.replace("_", "-")
         path = (*self.prefix, command_key)
 
-        # Import lazily to avoid a module cycle: Dispatcher itself uses this
-        # module for command-argument Sigil resolution.
         from .dispatcher import Dispatcher
 
         dispatcher = Dispatcher(registry=self.registry)
@@ -44,16 +120,21 @@ class _GwayNamespaceProvider:
 
         command = command_map.get(path)
         if command is not None:
-            # Sigil invocation intentionally supplies no arguments. Commands
-            # with required parameters therefore are not value-resolvable yet.
-            if any(parameter.required for parameter in command.parameters):
-                raise KeyError(key)
+            if not _SIGILS_SUPPORTS_PROVIDER_CALLS:
+                if any(parameter.required for parameter in command.parameters):
+                    raise KeyError(key)
+                project = self.registry.require(self.project_name)
+                cache_key = (project.name, path, (), ())
+                if cache_key not in self.cache:
+                    self.cache[cache_key] = dispatcher.run(self.project_name, path)
+                return self.cache[cache_key]
 
-            project = self.registry.require(self.project_name)
-            cache_key = (project.name, path)
-            if cache_key not in self.cache:
-                self.cache[cache_key] = dispatcher.run(self.project_name, path)
-            return self.cache[cache_key]
+            return _GwayCommandCall(
+                self.registry,
+                self.project_name,
+                command,
+                self.cache,
+            )
 
         if any(candidate[: len(path)] == path for candidate in command_map):
             return SafeNamespace(
@@ -76,12 +157,12 @@ def gway_context(
     """Return lazy managed-project namespaces for one Sigil evaluation scope.
 
     Each call creates a fresh memoization scope. Repeated references to the
-    same managed command within that scope reuse its value; callers that need
-    live values, such as display render loops, should call ``gway_context()``
-    again for each render.
+    same managed command and arguments within that scope reuse its value;
+    callers that need live values should call ``gway_context()`` again for each
+    evaluation or render frame.
     """
     active_registry = registry or Registry(paths or default_paths())
-    cache: dict[tuple[str, tuple[str, ...]], object] = {}
+    cache: dict[tuple[object, ...], object] = {}
     context: dict[str, object] = {}
 
     for project in active_registry.list():
