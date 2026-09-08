@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ class ManagedBranch:
     project: str | None = None
     args: tuple[str, ...] = ()
     literal: str | None = None
+    operator: str | None = None
 
     @property
     def is_literal(self) -> bool:
@@ -34,12 +36,7 @@ def _split_compact(token: str) -> tuple[list[str], str | None]:
 
 
 def normalize_managed_args(args: Sequence[str]) -> tuple[str, list[str]]:
-    """Normalize dotted/colon managed CLI syntax into dispatcher arguments.
-
-    Fallback expressions and terminal-colon literals are tagged for dispatcher
-    evaluation. Ordinary dotted and explicit-call syntax is normalized directly
-    into the existing project/command argument stream.
-    """
+    """Normalize dotted/colon managed CLI syntax into dispatcher arguments."""
     if not args:
         raise ExpressionError("managed command expression is empty")
 
@@ -75,7 +72,7 @@ def normalize_managed_args(args: Sequence[str]) -> tuple[str, list[str]]:
     return project, command_args
 
 
-def _command_branch(text: str) -> ManagedBranch:
+def _command_branch(text: str, *, operator: str | None = None) -> ManagedBranch:
     try:
         words = shlex.split(text)
     except ValueError as exc:
@@ -92,7 +89,7 @@ def _command_branch(text: str) -> ManagedBranch:
         if argument:
             command_args.append(argument)
         command_args.extend(remaining)
-        return ManagedBranch(project=project, args=tuple(command_args))
+        return ManagedBranch(project=project, args=tuple(command_args), operator=operator)
 
     project = first
     if remaining and ("." in remaining[0] or ":" in remaining[0]):
@@ -101,17 +98,17 @@ def _command_branch(text: str) -> ManagedBranch:
         if argument:
             command_args.append(argument)
         command_args.extend(remaining[1:])
-        return ManagedBranch(project=project, args=tuple(command_args))
+        return ManagedBranch(project=project, args=tuple(command_args), operator=operator)
 
-    return ManagedBranch(project=project, args=tuple(remaining))
+    return ManagedBranch(project=project, args=tuple(remaining), operator=operator)
 
 
 def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
-    """Parse Sigil-style CLI fallback and literal syntax.
+    """Parse loose ``|`` and strict ``||`` fallback chains.
 
-    ``|`` separates fallback command expressions. ``|:literal`` is a terminal
-    literal fallback. A trailing colon with no right-hand caller is also a
-    literal, so ``gway ready:`` returns ``ready``.
+    ``|`` advances on any falsey result. ``||`` advances only on a missing
+    command/project, ``None``, or an empty set/frozenset. ``|:literal`` and
+    ``||:literal`` are terminal literal fallbacks.
     """
     if not expression:
         raise ExpressionError("managed command expression is empty")
@@ -121,18 +118,27 @@ def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
             return (ManagedBranch(literal=expression[:-1].strip()),)
         return (_command_branch(expression),)
 
+    parts = re.split(r"(\|\|?)", expression)
     branches: list[ManagedBranch] = []
-    for raw_branch in expression.split("|"):
-        branch = raw_branch.strip()
+    first = parts[0].strip()
+    if not first:
+        raise ExpressionError("managed fallback branch is empty")
+    branches.append(_command_branch(first))
+
+    for index in range(1, len(parts), 2):
+        operator = parts[index]
+        branch = parts[index + 1].strip()
         if not branch:
             raise ExpressionError("managed fallback branch is empty")
         if branch.startswith(":"):
-            branches.append(ManagedBranch(literal=branch[1:]))
+            branches.append(ManagedBranch(literal=branch[1:], operator=operator))
             break
         if branch.endswith(":"):
-            branches.append(ManagedBranch(literal=branch[:-1].strip()))
+            branches.append(
+                ManagedBranch(literal=branch[:-1].strip(), operator=operator)
+            )
             break
-        branches.append(_command_branch(branch))
+        branches.append(_command_branch(branch, operator=operator))
 
     return tuple(branches)
 
