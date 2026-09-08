@@ -129,6 +129,52 @@ def test_install_writes_all_units_before_reload_and_activation(
     ]
 
 
+def test_install_validates_every_unit_before_writing(tmp_path: Path) -> None:
+    root = tmp_path / "invalid"
+    root.mkdir()
+    (root / "gway.toml").write_text(
+        """[project]
+name = "invalid"
+
+[adapter]
+type = "python"
+module = "example.gway"
+
+[services.first]
+command = ["python", "-m", "first"]
+
+[services.second]
+command = []
+""",
+        encoding="utf-8",
+    )
+    unit_directory = tmp_path / "systemd"
+    unit_directory.mkdir()
+    first_unit = unit_directory / "gway-invalid-first.service"
+    first_unit.write_text("old definition", encoding="utf-8")
+    manager = service.ServiceManager(Project.from_path(root), unit_directory=unit_directory)
+
+    with pytest.raises(service.ServiceError, match=r"\[services.second\]\.command"):
+        manager.install(user="arthexis")
+
+    assert first_unit.read_text(encoding="utf-8") == "old definition"
+    assert not (unit_directory / "gway-invalid-second.service").exists()
+
+
+def test_environment_selector_install_requires_preserving_sudo(tmp_path: Path, monkeypatch) -> None:
+    project = make_project(tmp_path)
+    monkeypatch.delenv("GWAY_SERVICE", raising=False)
+    monkeypatch.setenv("GWAY_SERVICE_PROFILE", "Control")
+    monkeypatch.setattr(service.os, "geteuid", lambda: 1000)
+    manager = service.ServiceManager(project)
+
+    with pytest.raises(
+        service.ServiceError,
+        match=r"sudo --preserve-env=GWAY_SERVICE_PROFILE",
+    ):
+        manager.install(user="arthexis")
+
+
 def test_uninstall_stops_units_in_reverse_topology_order(tmp_path: Path, monkeypatch) -> None:
     project = make_project(tmp_path)
     manager = service.ServiceManager(
