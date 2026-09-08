@@ -30,7 +30,7 @@ Because Sigils is a required GWAY runtime component, installing GWAY already ins
 
 ```bash
 gway install sigils
-# installed sigils    gway-sigils@0.4.3
+# installed sigils    gway-sigils@0.4.4
 ```
 
 The PyPI distribution name `gway-sigils` is therefore an implementation/distribution detail; users do not need to type the `gway-` prefix through GWAY. The command refers to the environment that owns the `gway` executable: a global GWAY installation gives Sigils the same global scope, while virtualenv or pipx installations remain scoped to that environment.
@@ -40,7 +40,7 @@ gway web build --output "[project.path]/dist"
 gway ocpp connect --label "%[cwd]-[project.name]"
 ```
 
-`%[...]` expressions are captured eagerly before the project-aware lazy context is built. `[...]` expressions resolve immediately before the selected adapter parses the command arguments.
+`%[...]` expressions are captured eagerly before project-provided lazy context is requested. `[...]` expressions resolve immediately before the selected adapter parses the command arguments.
 
 The built-in GWAY context includes:
 
@@ -49,11 +49,34 @@ The built-in GWAY context includes:
 - `[project.name]`, `[project.path]`, `[project.adapter]`, `[project.aliases]`, `[project.repository]`, `[project.revision]`, and `[project.environment]`
 - `[command.name]` and `[command.path]`
 
-All regular Sigils built-ins remain available, including the environment tool and eager/lazy recursive semantics supplied by the `sigils` library itself.
+Adapters may add lazy-only top-level roots through the optional `SigilContextAdapter` capability. Added roots cannot replace GWAY's reserved `cwd`, `home`, `gway`, `project`, or `command` namespaces.
+
+Django projects can configure an explicit provider in `gway.toml`:
+
+```toml
+[adapter]
+type = "django"
+manage = "manage.py"
+settings = "config.settings"
+sigils = "apps.sigils.gway:context"
+```
+
+The provider is imported after `django.setup()` and is called as:
+
+```python
+def context(*, project, command_path):
+    return {"NODE": ...}
+```
+
+It must return a mapping. For model-backed data, prefer `sigils.SafeNamespace` so only explicitly exposed keys may be traversed and resolution cannot fall through to arbitrary attributes, callables, or Sigils tools.
+
+All regular Sigils built-ins remain available outside protected namespaces, including the environment tool and eager/lazy recursive semantics supplied by the `sigils` library itself.
 
 The pre-1.0 implementation has been preserved in [`arthexis/gway-legacy`](https://github.com/arthexis/gway-legacy). Legacy bundled projects, recipes, shared mutable context, and application-specific dependencies are intentionally not part of this codebase.
 
 See [`PLAN.md`](PLAN.md) for the architecture and implementation sequence. `gway-epaper` is now explicitly scheduled immediately after the Django/Arthexis end-to-end milestone; see [`PLAN-EPAPER.md`](PLAN-EPAPER.md) for that roadmap extension.
+
+For a reproducible bridge validation before enabling a real ORM-backed provider, see [`MANUAL-SIGIL-CONTEXT.md`](MANUAL-SIGIL-CONTEXT.md).
 
 ## System / appliance installation
 

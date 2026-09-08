@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gway"
-version = "1.0.0"
+version = "1.0.1"
 description = "GitHub-backed project manager and universal command dispatcher"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,7 +13,7 @@ authors = [
   { name = "Rafael J. Guillén-Osorio", email = "tecnologia@gelectriic.com" },
 ]
 dependencies = [
-  "gway-sigils>=0.4.3,<0.5",
+  "gway-sigils>=0.4.4,<0.5",
 ]
 
 [project.optional-dependencies]

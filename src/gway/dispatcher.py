@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from .adapters import AdapterRegistry
+from .adapters.base import SigilContextAdapter
 from .command import Command, Parameter
 from .registry import Registry
-from .sigils import resolve_cli_values
+from .sigils import capture_cli_values, resolve_captured_cli_values
 
 
 class DispatchError(ValueError):
@@ -126,12 +127,25 @@ class Dispatcher:
         command, argv = self._resolve_command(commands, tokens)
         if interactive:
             argv = _fill_required_options(command, argv)
-        resolved_argv = resolve_cli_values(
-            argv,
-            project,
-            command.path,
-            paths=self.registry.paths,
-        )
+
+        templates = capture_cli_values(argv, paths=self.registry.paths)
+        extra_context: dict[str, object] | None = None
+        if isinstance(adapter, SigilContextAdapter):
+            provided_context = adapter.sigil_context(command.path)
+            if not isinstance(provided_context, Mapping):
+                raise DispatchError("adapter sigil_context() must return a mapping")
+            extra_context = dict(provided_context)
+
+        try:
+            resolved_argv = resolve_captured_cli_values(
+                templates,
+                project,
+                command.path,
+                paths=self.registry.paths,
+                extra_context=extra_context,
+            )
+        except ValueError as exc:
+            raise DispatchError(str(exc)) from exc
         return adapter.run(command.path, resolved_argv)
 
     def describe(self, project_name: str, path: tuple[str, ...]) -> Command:

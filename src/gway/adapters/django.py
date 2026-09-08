@@ -5,6 +5,7 @@ import importlib
 import io
 import os
 import sys
+from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -85,6 +86,11 @@ class DjangoAdapter:
         if settings is not None and (not isinstance(settings, str) or not settings.strip()):
             raise AdapterError("django adapter settings must be a non-empty string")
         self.settings = settings
+
+        sigils = project.adapter_config.get("sigils")
+        if sigils is not None and (not isinstance(sigils, str) or not sigils.strip()):
+            raise AdapterError("django adapter sigils must be a module:function reference")
+        self.sigils = sigils
         self._commands: dict[tuple[str, ...], Command] | None = None
 
     def _bootstrap(self):
@@ -100,6 +106,40 @@ class DjangoAdapter:
         except Exception as exc:
             raise AdapterError(f"cannot initialize Django for {self.project.name}: {exc}") from exc
         return management, base
+
+    def _load_sigil_provider(self):
+        if self.sigils is None:
+            return None
+        module_name, separator, attribute = self.sigils.partition(":")
+        if not separator or not module_name.strip() or not attribute.strip():
+            raise AdapterError("django adapter sigils must use module:function syntax")
+        try:
+            module = importlib.import_module(module_name)
+        except (ImportError, ModuleNotFoundError) as exc:
+            raise AdapterError(
+                f"cannot import Django Sigil provider {module_name!r}: {exc}"
+            ) from exc
+        try:
+            provider = getattr(module, attribute)
+        except AttributeError as exc:
+            raise AdapterError(f"Django Sigil provider {self.sigils!r} does not exist") from exc
+        if not callable(provider):
+            raise AdapterError(f"Django Sigil provider {self.sigils!r} is not callable")
+        return provider
+
+    def sigil_context(self, command_path: tuple[str, ...]) -> Mapping[str, object]:
+        """Return project-provided lazy Sigil context after Django initialization."""
+        if self.sigils is None:
+            return {}
+        with _project_context(self.project, self.settings):
+            self._bootstrap()
+            provider = self._load_sigil_provider()
+            if provider is None:
+                return {}
+            context = provider(project=self.project, command_path=command_path)
+        if not isinstance(context, Mapping):
+            raise AdapterError(f"Django Sigil provider {self.sigils!r} must return a mapping")
+        return context
 
     @staticmethod
     def _load_command(name: str, source: object, management, base):

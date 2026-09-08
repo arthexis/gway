@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from gway.project import Project
 
-from .base import ProjectAdapter
+from .base import ProjectAdapter, SigilContextAdapter
 
 AdapterFactory = Callable[[Project], ProjectAdapter]
 
@@ -46,4 +46,10 @@ class AdapterRegistry:
         return factory(project)
 
 
-__all__ = ["AdapterError", "AdapterFactory", "AdapterRegistry", "ProjectAdapter"]
+__all__ = [
+    "AdapterError",
+    "AdapterFactory",
+    "AdapterRegistry",
+    "ProjectAdapter",
+    "SigilContextAdapter",
+]

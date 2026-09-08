@@ -8,6 +8,8 @@ from sigils import Context, Sigil
 from .config import GwayPaths, default_paths
 from .project import Project
 
+RESERVED_CONTEXT_KEYS = frozenset({"cwd", "home", "gway", "project", "command"})
+
 
 def base_context(paths: GwayPaths | None = None) -> dict[str, object]:
     """Return the context available before project resolution."""
@@ -27,6 +29,7 @@ def project_context(
     command_path: tuple[str, ...],
     *,
     paths: GwayPaths | None = None,
+    extra_context: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Return the lazy-resolution context for one dispatched command."""
     context = base_context(paths)
@@ -49,6 +52,12 @@ def project_context(
             },
         }
     )
+    if extra_context:
+        collisions = RESERVED_CONTEXT_KEYS.intersection(extra_context)
+        if collisions:
+            names = ", ".join(sorted(collisions))
+            raise ValueError(f"adapter Sigil context cannot replace reserved keys: {names}")
+        context.update(extra_context)
     return context
 
 
@@ -63,22 +72,48 @@ def capture_cli_values(
         return tuple(Sigil(value) for value in values)
 
 
+def resolve_captured_cli_values(
+    templates: Sequence[Sigil],
+    project: Project,
+    command_path: tuple[str, ...],
+    *,
+    paths: GwayPaths | None = None,
+    extra_context: dict[str, object] | None = None,
+) -> list[str]:
+    """Resolve already-captured CLI templates with project-aware lazy context."""
+    context = project_context(
+        project,
+        command_path,
+        paths=paths,
+        extra_context=extra_context,
+    )
+    return [template.solve(context) for template in templates]
+
+
 def resolve_cli_values(
     values: Sequence[str],
     project: Project,
     command_path: tuple[str, ...],
     *,
     paths: GwayPaths | None = None,
+    extra_context: dict[str, object] | None = None,
 ) -> list[str]:
     """Resolve CLI argument values using eager then project-aware lazy semantics."""
     templates = capture_cli_values(values, paths=paths)
-    context = project_context(project, command_path, paths=paths)
-    return [template.solve(context) for template in templates]
+    return resolve_captured_cli_values(
+        templates,
+        project,
+        command_path,
+        paths=paths,
+        extra_context=extra_context,
+    )
 
 
 __all__ = [
+    "RESERVED_CONTEXT_KEYS",
     "base_context",
     "capture_cli_values",
     "project_context",
+    "resolve_captured_cli_values",
     "resolve_cli_values",
 ]
