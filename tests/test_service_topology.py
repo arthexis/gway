@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 from gway import service
 from gway.project import InstallLayout, Project
-
 
 MULTI_MANIFEST = """[project]
 name = "arthexis"
