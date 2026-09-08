@@ -41,6 +41,14 @@ class RepositoryManager:
         if owner not in self.config.trusted_owners:
             raise RepositoryError(f"untrusted GitHub owner: {owner}")
 
+    def _managed_repository(self, full_name: str) -> ResolvedRepository:
+        parts = full_name.split("/")
+        if len(parts) != 2 or not all(parts):
+            raise RepositoryError(f"invalid managed repository: {full_name}")
+        repository = ResolvedRepository(*parts)
+        self._validate_owner(repository.owner)
+        return repository
+
     @staticmethod
     def _exists(repository: ResolvedRepository) -> bool:
         try:
@@ -119,13 +127,42 @@ class RepositoryManager:
     def _git_failure(result: subprocess.CompletedProcess[str], fallback: str) -> str:
         return result.stderr.strip() or result.stdout.strip() or fallback
 
+    def validate_checkout(self, checkout: Path, full_name: str) -> None:
+        repository = self._managed_repository(full_name)
+        if not checkout.is_dir():
+            raise RepositoryError(f"managed checkout does not exist: {checkout}")
+        try:
+            origin = subprocess.run(
+                ["git", "-C", str(checkout), "remote", "get-url", "origin"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise RepositoryError(f"cannot validate managed checkout {checkout}: {exc}") from exc
+        if origin.rstrip("/") != repository.clone_url.rstrip("/"):
+            raise RepositoryError(
+                f"managed checkout origin does not match registry repository: {checkout}"
+            )
+
+    def reset(self, checkout: Path, full_name: str, revision: str) -> None:
+        self.validate_checkout(checkout, full_name)
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(checkout), "reset", "--hard", revision],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError as exc:
+            raise RepositoryError(f"cannot run git: {exc}") from exc
+        if result.returncode != 0:
+            detail = self._git_failure(result, "git reset --hard failed")
+            raise RepositoryError(f"cannot restore {full_name} to {revision}: {detail}")
+
     def upgrade(self, checkout: Path, full_name: str, *, force: bool = False) -> str:
         """Upgrade one trusted managed checkout and return its new revision."""
-        parts = full_name.split("/")
-        if len(parts) != 2 or not all(parts):
-            raise RepositoryError(f"invalid managed repository: {full_name}")
-        repository = ResolvedRepository(*parts)
-        self._validate_owner(repository.owner)
+        repository = self._managed_repository(full_name)
 
         if not checkout.is_dir():
             raise RepositoryError(f"managed checkout does not exist: {checkout}")
