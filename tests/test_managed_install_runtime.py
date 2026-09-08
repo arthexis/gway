@@ -4,6 +4,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from gway.config import GwayPaths
 from gway.install import Installer
 from gway.project import InstallLayout, LifecycleHooks, Project
@@ -116,6 +118,32 @@ def test_second_install_adopts_matching_managed_checkout(tmp_path: Path) -> None
     assert repositories.validated == [(target / "app", "arthexis/arthexis")]
     assert runner.refreshed == [replace(second, environment=None)]
     assert registry.require("arthexis") == second
+
+
+def test_failed_checkout_move_removes_partial_managed_destination(monkeypatch, tmp_path: Path) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    target = tmp_path / "opt" / "arthexis"
+    staging = paths.projects_dir / "arthexis" / "arthexis"
+    installer = Installer(
+        Registry(paths),
+        repositories=LayoutRepositories(staging, target),
+        runner=LayoutRunner(),
+    )
+
+    def fail_move(source: str, destination: str) -> None:
+        assert Path(source) == staging
+        partial = Path(destination)
+        partial.mkdir(parents=True)
+        (partial / "partial-copy").write_text("incomplete", encoding="utf-8")
+        raise OSError("copy failed")
+
+    monkeypatch.setattr("gway.install.shutil.move", fail_move)
+
+    with pytest.raises(OSError, match="copy failed"):
+        installer.install("arthexis")
+
+    assert not (target / "app").exists()
+    assert not staging.exists()
 
 
 def test_runner_uses_manifest_environment_and_executes_hook(monkeypatch, tmp_path: Path) -> None:
