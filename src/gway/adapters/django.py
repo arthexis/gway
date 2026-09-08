@@ -114,7 +114,9 @@ class DjangoAdapter:
         try:
             module = importlib.import_module(module_name)
         except (ImportError, ModuleNotFoundError) as exc:
-            raise AdapterError(f"cannot import Django Sigil provider {module_name!r}: {exc}") from exc
+            raise AdapterError(
+                f"cannot import Django Sigil provider {module_name!r}: {exc}"
+            ) from exc
         try:
             provider = getattr(module, attribute)
         except AttributeError as exc:
