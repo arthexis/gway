@@ -30,7 +30,27 @@ def register_project(tmp_path: Path, monkeypatch, capsys) -> Path:
     return project
 
 
-def test_service_status_uses_project_flag_and_alias(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_service_status_uses_positional_project_and_alias(tmp_path: Path, monkeypatch, capsys) -> None:
+    register_project(tmp_path, monkeypatch, capsys)
+
+    def fake_status(self):
+        return {
+            "project": self.project.name,
+            "unit": self.unit_name,
+            "active": True,
+            "enabled": True,
+        }
+
+    monkeypatch.setattr(cli.ServiceManager, "status", fake_status)
+
+    assert main(["service", "status", "gway-epaper"]) == 0
+    output = capsys.readouterr().out
+    assert "project: epaper" in output
+    assert "unit: gway-epaper.service" in output
+    assert "active: true" in output
+
+
+def test_service_status_keeps_legacy_project_flag(tmp_path: Path, monkeypatch, capsys) -> None:
     register_project(tmp_path, monkeypatch, capsys)
 
     def fake_status(self):
@@ -44,10 +64,36 @@ def test_service_status_uses_project_flag_and_alias(tmp_path: Path, monkeypatch,
     monkeypatch.setattr(cli.ServiceManager, "status", fake_status)
 
     assert main(["service", "status", "--project", "gway-epaper"]) == 0
-    output = capsys.readouterr().out
-    assert "project: epaper" in output
-    assert "unit: gway-epaper.service" in output
-    assert "active: true" in output
+    assert "project: epaper" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["service", "status", "-i"],
+        ["-i", "service", "status"],
+    ],
+)
+def test_service_interactive_prompts_for_missing_project(
+    argv: list[str], tmp_path: Path, monkeypatch, capsys
+) -> None:
+    register_project(tmp_path, monkeypatch, capsys)
+
+    def fake_status(self):
+        return {
+            "project": self.project.name,
+            "unit": self.unit_name,
+            "active": True,
+            "enabled": True,
+        }
+
+    monkeypatch.setattr(cli.ServiceManager, "status", fake_status)
+    monkeypatch.setattr("builtins.input", lambda: "gway-epaper")
+
+    assert main(argv) == 0
+    captured = capsys.readouterr()
+    assert "project: epaper" in captured.out
+    assert "project: " in captured.err
 
 
 def test_service_install_forwards_install_options(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -65,7 +111,6 @@ def test_service_install_forwards_install_options(tmp_path: Path, monkeypatch, c
             [
                 "service",
                 "install",
-                "--project",
                 "epaper",
                 "--user",
                 "display",
