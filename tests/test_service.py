@@ -9,7 +9,6 @@ import pytest
 from gway import service
 from gway.project import Project
 
-
 MANIFEST = """[project]
 name = "epaper"
 aliases = ["gway-epaper"]
