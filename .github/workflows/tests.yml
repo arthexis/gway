@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   python:
-    uses: arthexis/ci-base/.github/workflows/consumer-ci.yml@v1
+    uses: arthexis/ci-base/.github/workflows/python-ci.yml@v1
     with:
       install-command: python -m pip install -e '.[dev]'
       lint-paths: src tests
