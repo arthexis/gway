@@ -23,10 +23,23 @@ class LayoutRepositories:
 
     def clone(self, repository: ResolvedRepository) -> Path:
         self.staging.mkdir(parents=True)
-        (self.staging / "gway.toml").write_text(
-            f'''[project]\nname = "arthexis"\n\n[adapter]\ntype = "python"\nmodule = "example.gway"\n\n[install]\nroot = "{self.target_root}"\ncheckout = "app"\nenvironment = ".venv"\n\n[lifecycle]\ninstall = "example.lifecycle:install"\nupgrade = "example.lifecycle:upgrade"\n''',
-            encoding="utf-8",
-        )
+        manifest = f"""[project]
+name = "arthexis"
+
+[adapter]
+type = "python"
+module = "example.gway"
+
+[install]
+root = "{self.target_root}"
+checkout = "app"
+environment = ".venv"
+
+[lifecycle]
+install = "example.lifecycle:install"
+upgrade = "example.lifecycle:upgrade"
+"""
+        (self.staging / "gway.toml").write_text(manifest, encoding="utf-8")
         return self.staging
 
     def revision(self, checkout: Path) -> str:
