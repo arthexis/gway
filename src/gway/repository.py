@@ -176,23 +176,36 @@ class RepositoryManager:
                     text=True,
                 )
                 if reset.returncode != 0:
-                    detail = self._git_failure(reset, "git reset failed")
+                    detail = self._git_failure(reset, "git reset --hard failed")
                     raise RepositoryError(f"cannot reset {full_name}: {detail}")
+
+                clean = subprocess.run(
+                    ["git", "-C", str(checkout), "clean", "-fd"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if clean.returncode != 0:
+                    detail = self._git_failure(clean, "git clean -fd failed")
+                    raise RepositoryError(f"cannot clean {full_name}: {detail}")
             else:
                 if status.stdout.strip():
-                    detail = "managed checkout has local changes; use --force to discard them"
-                    raise RepositoryError(f"{detail}: {checkout}")
+                    raise RepositoryError(
+                        f"managed checkout has local changes; refusing upgrade: {checkout}"
+                    )
 
                 pull = subprocess.run(
-                    ["git", "-C", str(checkout), "pull", "--ff-only", "--quiet"],
+                    ["git", "-C", str(checkout), "pull", "--ff-only"],
                     check=False,
                     capture_output=True,
                     text=True,
                 )
                 if pull.returncode != 0:
-                    detail = self._git_failure(pull, "git pull failed")
-                    raise RepositoryError(f"cannot upgrade {full_name}: {detail}")
+                    detail = self._git_failure(pull, "git pull --ff-only failed")
+                    raise RepositoryError(f"cannot fast-forward {full_name}: {detail}")
         except OSError as exc:
             raise RepositoryError(f"cannot run git: {exc}") from exc
+        except subprocess.CalledProcessError as exc:
+            raise RepositoryError(f"cannot validate managed checkout {checkout}: {exc}") from exc
 
         return self.revision(checkout)
