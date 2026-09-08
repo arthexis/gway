@@ -5,6 +5,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 
+MANAGED_EXPRESSION_PROJECT = "\0gway-expression"
+
+
 class ExpressionError(ValueError):
     """Raised when compact managed-command expression syntax is malformed."""
 
@@ -33,13 +36,16 @@ def _split_compact(token: str) -> tuple[list[str], str | None]:
 def normalize_managed_args(args: Sequence[str]) -> tuple[str, list[str]]:
     """Normalize dotted/colon managed CLI syntax into dispatcher arguments.
 
-    Dots explicitly separate project/command path components. A colon marks an
-    explicit call boundary and optionally contributes one argument. Literal
-    trailing-colon handling is performed by :func:`parse_managed_branches`
-    before this lower-level normalizer is used.
+    Fallback expressions and terminal-colon literals are tagged for dispatcher
+    evaluation. Ordinary dotted and explicit-call syntax is normalized directly
+    into the existing project/command argument stream.
     """
     if not args:
         raise ExpressionError("managed command expression is empty")
+
+    expression = " ".join(args)
+    if "|" in expression or expression.endswith(":"):
+        return MANAGED_EXPRESSION_PROJECT, [expression]
 
     first = args[0]
     remaining = list(args[1:])
@@ -76,30 +82,47 @@ def _command_branch(text: str) -> ManagedBranch:
         raise ExpressionError(f"invalid managed command expression: {text!r}") from exc
     if not words:
         raise ExpressionError("managed fallback branch is empty")
-    project, args = normalize_managed_args(words)
-    return ManagedBranch(project=project, args=tuple(args))
+
+    first = words[0]
+    remaining = list(words[1:])
+    if "." in first or ":" in first:
+        path, argument = _split_compact(first)
+        project = path[0]
+        command_args = path[1:]
+        if argument:
+            command_args.append(argument)
+        command_args.extend(remaining)
+        return ManagedBranch(project=project, args=tuple(command_args))
+
+    project = first
+    if remaining and ("." in remaining[0] or ":" in remaining[0]):
+        path, argument = _split_compact(remaining[0])
+        command_args = path
+        if argument:
+            command_args.append(argument)
+        command_args.extend(remaining[1:])
+        return ManagedBranch(project=project, args=tuple(command_args))
+
+    return ManagedBranch(project=project, args=tuple(remaining))
 
 
-def parse_managed_branches(args: Sequence[str]) -> tuple[ManagedBranch, ...]:
+def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
     """Parse Sigil-style CLI fallback and literal syntax.
 
     ``|`` separates fallback command expressions. ``|:literal`` is a terminal
     literal fallback. A trailing colon with no right-hand caller is also a
-    literal, so ``gway ready:`` returns ``ready``. When no fallback operator is
-    present, normal shell argument boundaries are preserved.
+    literal, so ``gway ready:`` returns ``ready``.
     """
-    if not args:
+    if not expression:
         raise ExpressionError("managed command expression is empty")
 
-    joined = " ".join(args)
-    if "|" not in joined:
-        if len(args) == 1 and args[0].endswith(":"):
-            return (ManagedBranch(literal=args[0][:-1]),)
-        project, command_args = normalize_managed_args(args)
-        return (ManagedBranch(project=project, args=tuple(command_args)),)
+    if "|" not in expression:
+        if expression.endswith(":"):
+            return (ManagedBranch(literal=expression[:-1].strip()),)
+        return (_command_branch(expression),)
 
     branches: list[ManagedBranch] = []
-    for raw_branch in joined.split("|"):
+    for raw_branch in expression.split("|"):
         branch = raw_branch.strip()
         if not branch:
             raise ExpressionError("managed fallback branch is empty")
@@ -116,6 +139,7 @@ def parse_managed_branches(args: Sequence[str]) -> tuple[ManagedBranch, ...]:
 
 __all__ = [
     "ExpressionError",
+    "MANAGED_EXPRESSION_PROJECT",
     "ManagedBranch",
     "normalize_managed_args",
     "parse_managed_branches",
