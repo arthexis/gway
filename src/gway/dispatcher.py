@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Sequence
 
 from .adapters import AdapterRegistry
@@ -16,44 +17,54 @@ class CommandNotFound(DispatchError):
     pass
 
 
-def _option_name(parameter: Parameter) -> str:
+def _option_names(parameter: Parameter) -> tuple[str, ...]:
     if parameter.options:
-        long_options = [option for option in parameter.options if option.startswith("--")]
-        if long_options:
-            return long_options[0]
-        return parameter.options[0]
-    return f"--{parameter.name.replace('_', '-')}"
+        return parameter.options
+    return (f"--{parameter.name.replace('_', '-')}",)
+
+
+def _option_name(parameter: Parameter) -> str:
+    options = _option_names(parameter)
+    long_options = [option for option in options if option.startswith("--")]
+    if long_options:
+        return long_options[0]
+    return options[0]
 
 
 def _option_present(argv: Sequence[str], parameter: Parameter) -> bool:
-    option = _option_name(parameter)
-    negative = f"--no-{option[2:]}" if option.startswith("--") else ""
-    for token in argv:
-        if token == option or token.startswith(f"{option}="):
-            return True
-        if negative and token == negative:
-            return True
+    for option in _option_names(parameter):
+        negative = f"--no-{option[2:]}" if option.startswith("--") else ""
+        for token in argv:
+            if token == option or token.startswith(f"{option}="):
+                return True
+            if negative and token == negative:
+                return True
     return False
+
+
+def _read_prompt(prompt: str) -> str:
+    print(prompt, end="", file=sys.stderr, flush=True)
+    return input()
 
 
 def _prompt_value(parameter: Parameter) -> list[str]:
     option = _option_name(parameter)
     if parameter.annotation is bool:
         while True:
-            answer = input(f"{parameter.name} [y/n]: ").strip().lower()
+            answer = _read_prompt(f"{parameter.name} [y/n]: ").strip().lower()
             if answer in {"y", "yes", "1", "true", "on"}:
                 return [option]
             if answer in {"n", "no", "0", "false", "off"}:
                 if option.startswith("--"):
                     return [f"--no-{option[2:]}"]
                 return [option, "false"]
-            print("Please answer yes or no.")
+            print("Please answer yes or no.", file=sys.stderr)
 
     while True:
-        value = input(f"{parameter.name}: ")
+        value = _read_prompt(f"{parameter.name}: ")
         if value:
             return [option, value]
-        print("A value is required.")
+        print("A value is required.", file=sys.stderr)
 
 
 def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
