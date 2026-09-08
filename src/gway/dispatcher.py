@@ -61,12 +61,12 @@ class Dispatcher:
         command, argv = self._resolve_command(commands, tokens)
 
         templates = capture_cli_values(argv, paths=self.registry.paths)
-        extra_context: Mapping[str, object] | None = None
+        extra_context: dict[str, object] | None = None
         if isinstance(adapter, SigilContextAdapter):
             provided_context = adapter.sigil_context(command.path)
             if not isinstance(provided_context, Mapping):
                 raise DispatchError("adapter sigil_context() must return a mapping")
-            extra_context = provided_context
+            extra_context = dict(provided_context)
 
         try:
             resolved_argv = resolve_captured_cli_values(
