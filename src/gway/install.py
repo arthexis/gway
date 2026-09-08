@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -49,18 +50,20 @@ class Installer:
             return target, existing, True
 
         target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            target.mkdir()
-        except FileExistsError as exc:
-            raise ValueError(f"managed checkout appeared during install: {target}") from exc
-
+        temporary = Path(
+            tempfile.mkdtemp(
+                prefix=f".{target.name}.gway-",
+                dir=target.parent,
+            )
+        )
         try:
             for entry in checkout.iterdir():
-                shutil.move(str(entry), str(target / entry.name))
-            shutil.copystat(checkout, target, follow_symlinks=False)
+                shutil.move(str(entry), str(temporary / entry.name))
+            shutil.copystat(checkout, temporary, follow_symlinks=False)
             checkout.rmdir()
+            temporary.rename(target)
         except Exception:
-            shutil.rmtree(target, ignore_errors=True)
+            shutil.rmtree(temporary, ignore_errors=True)
             raise
         return target, replace(project, path=target), False
 
