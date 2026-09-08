@@ -52,7 +52,7 @@ class Project:
         root = self.install_config.get("root")
         if root is None:
             return None
-        return Path(str(root)).expanduser()
+        return Path(str(root)).expanduser().resolve()
 
     @property
     def managed_checkout(self) -> Path | None:
@@ -120,6 +120,8 @@ class Project:
             install_root = install_data.get("root")
             if not isinstance(install_root, str) or not install_root.strip():
                 raise ManifestError("[install].root must be a non-empty path")
+            if not Path(install_root).expanduser().is_absolute():
+                raise ManifestError("[install].root must be an absolute path")
             _validate_relative_component(install_data.get("checkout", name), "[install].checkout")
             _validate_relative_component(
                 install_data.get("environment", ".venv"), "[install].environment"
@@ -141,9 +143,7 @@ class Project:
             adapter_config=adapter_config,
             service_config=dict(service_data) if service_data is not None else None,
             install_config=dict(install_data) if install_data is not None else None,
-            lifecycle_config=(
-                dict(lifecycle_data) if lifecycle_data is not None else None
-            ),
+            lifecycle_config=(dict(lifecycle_data) if lifecycle_data is not None else None),
         )
 
     def to_record(self) -> dict[str, Any]:
@@ -178,7 +178,5 @@ class Project:
             environment=Path(environment) if environment else None,
             service_config=dict(service_config) if service_config is not None else None,
             install_config=dict(install_config) if install_config is not None else None,
-            lifecycle_config=(
-                dict(lifecycle_config) if lifecycle_config is not None else None
-            ),
+            lifecycle_config=(dict(lifecycle_config) if lifecycle_config is not None else None),
         )
