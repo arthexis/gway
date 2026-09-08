@@ -75,8 +75,6 @@ def _replace_managed_block(text: str, replacement: str) -> tuple[str, bool]:
     prefix = text
     if prefix and not prefix.endswith("\n"):
         prefix += "\n"
-    if prefix and not prefix.endswith("\n\n"):
-        prefix += "\n"
     return prefix + replacement, False
 
 
