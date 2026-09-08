@@ -6,7 +6,8 @@ from collections.abc import Mapping, Sequence
 from .adapters import AdapterRegistry
 from .adapters.base import SigilContextAdapter
 from .command import Command, Parameter
-from .registry import Registry
+from .expression import MANAGED_EXPRESSION_PROJECT, parse_managed_branches
+from .registry import Registry, RegistryError
 from .sigils import capture_cli_values, resolve_captured_cli_values
 
 
@@ -114,6 +115,37 @@ class Dispatcher:
         adapter = self._adapter(project_name)
         return tuple(adapter.commands())
 
+    def _run_expression(self, expression: str, *, interactive: bool) -> object:
+        """Evaluate a managed fallback expression using Sigil-style semantics."""
+        last_falsey: object = None
+        resolved = False
+        last_missing: Exception | None = None
+
+        for branch in parse_managed_branches(expression):
+            if branch.is_literal:
+                return branch.literal
+
+            try:
+                result = self.run(
+                    branch.project or "",
+                    branch.args,
+                    interactive=interactive,
+                )
+            except (CommandNotFound, RegistryError) as exc:
+                last_missing = exc
+                continue
+
+            resolved = True
+            if result:
+                return result
+            last_falsey = result
+
+        if resolved:
+            return last_falsey
+        if last_missing is not None:
+            raise last_missing
+        return None
+
     def run(
         self,
         project_name: str,
@@ -121,6 +153,11 @@ class Dispatcher:
         *,
         interactive: bool = False,
     ) -> object:
+        if project_name == MANAGED_EXPRESSION_PROJECT:
+            if len(tokens) != 1:
+                raise DispatchError("managed expression dispatch expects one expression")
+            return self._run_expression(tokens[0], interactive=interactive)
+
         project = self.registry.require(project_name)
         adapter = self.adapters.create(project)
         commands = tuple(adapter.commands())
