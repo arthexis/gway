@@ -523,22 +523,25 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             return _handle_cli_exception(exc, original_args)
         return 0
 
+    registry = active_dispatcher.registry
     namespace = parser.parse_args(args)
     if namespace.command == "service":
-        if (
-            namespace.project
-            and namespace.project_option
-            and namespace.project != namespace.project_option
-        ):
-            parser.error("PROJECT and --project must name the same project")
+        if namespace.project and namespace.project_option:
+            try:
+                positional_name = registry.require(namespace.project).name
+                option_name = registry.require(namespace.project_option).name
+            except RegistryError:
+                same_project = namespace.project == namespace.project_option
+            else:
+                same_project = positional_name == option_name
+            if not same_project:
+                parser.error("PROJECT and --project must name the same project")
         namespace.project = namespace.project or namespace.project_option
         if namespace.project is None:
             if interactive:
                 namespace.project = _prompt_required_value("project")
             else:
                 parser.error("the following arguments are required: project")
-
-    registry = active_dispatcher.registry
 
     try:
         result: object = None
