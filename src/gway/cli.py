@@ -48,6 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Render command results as JSON instead of human-readable output.",
     )
+    parser.add_argument(
+        "-i",
+        "--interactive",
+        action="store_true",
+        help="Prompt for missing required managed-command option values.",
+    )
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -242,11 +248,11 @@ def _render_result(
         print(line)
 
 
-def _extract_json_flag(args: list[str]) -> tuple[list[str], bool]:
+def _extract_global_flags(args: list[str]) -> tuple[list[str], bool, bool]:
     json_output = "--json" in args
-    if not json_output:
-        return args, False
-    return [arg for arg in args if arg != "--json"], True
+    interactive = "-i" in args or "--interactive" in args
+    reserved = {"--json", "-i", "--interactive"}
+    return [arg for arg in args if arg not in reserved], json_output, interactive
 
 
 def _permission_failure(exc: BaseException) -> OSError | None:
@@ -332,7 +338,7 @@ def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> object:
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
     parser = build_parser()
     original_args = list(sys.argv[1:] if argv is None else argv)
-    args, json_output = _extract_json_flag(original_args)
+    args, json_output, interactive = _extract_global_flags(original_args)
     if not args:
         parser.print_help()
         return 0
@@ -344,7 +350,7 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             if project_args in (["--help"], ["-h"]):
                 _print_project_help(active_dispatcher, args[0])
                 return 0
-            result = active_dispatcher.run(args[0], project_args)
+            result = active_dispatcher.run(args[0], project_args, interactive=interactive)
             _render_result(result, json_output=json_output)
         except (AdapterError, DispatchError, RegistryError, OSError) as exc:
             _report_error(exc, original_args)
