@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import errno
 import json
+import math
 import os
 import shlex
 import shutil
@@ -131,23 +132,37 @@ def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
     if not rows:
         return
 
-    terminal_width = max(40, shutil.get_terminal_size(fallback=(100, 24)).columns)
-    name_width = max(len(name) for name, _ in rows)
-    left_indent = 2
+    terminal_width = max(1, shutil.get_terminal_size(fallback=(100, 24)).columns)
+    left_indent = 2 if terminal_width >= 4 else 0
     gap = 2
+    name_width = max(len(name) for name, _ in rows)
     description_column = left_indent + name_width + gap
     description_width = terminal_width - description_column
 
     for name, summary in rows:
         if not summary:
-            print(f"{' ' * left_indent}{name}")
+            for line in textwrap.wrap(
+                name,
+                width=max(1, terminal_width - left_indent),
+                break_long_words=True,
+                break_on_hyphens=False,
+            ) or [""]:
+                print(f"{' ' * left_indent}{line}")
             continue
 
         if description_width < 20:
-            print(f"{' ' * left_indent}{name}")
-            wrapped = textwrap.wrap(summary, width=max(20, terminal_width - left_indent * 2))
-            for line in wrapped:
-                print(f"{' ' * (left_indent * 2)}{line}")
+            available = max(1, terminal_width - left_indent)
+            for line in textwrap.wrap(
+                name,
+                width=available,
+                break_long_words=True,
+                break_on_hyphens=False,
+            ) or [""]:
+                print(f"{' ' * left_indent}{line}")
+            detail_indent = min(left_indent * 2, max(0, terminal_width - 1))
+            detail_width = max(1, terminal_width - detail_indent)
+            for line in textwrap.wrap(summary, width=detail_width) or [""]:
+                print(f"{' ' * detail_indent}{line}")
             continue
 
         wrapped = textwrap.wrap(summary, width=description_width) or [""]
@@ -195,13 +210,17 @@ def _empty_collection_text(value: object) -> str | None:
 
 def _pretty_lines(value: object, *, indent: int = 0, color: bool = False) -> list[str]:
     prefix = "  " * indent
+    empty = _empty_collection_text(value)
+    if empty is not None:
+        return [f"{prefix}{empty}"]
+
     if isinstance(value, Mapping):
         lines: list[str] = []
         for key, item in value.items():
             label = _paint(str(key), _KEY, color=color)
-            empty = _empty_collection_text(item)
-            if empty is not None:
-                lines.append(f"{prefix}{label}: {empty}")
+            item_empty = _empty_collection_text(item)
+            if item_empty is not None:
+                lines.append(f"{prefix}{label}: {item_empty}")
             elif _is_nested(item):
                 lines.append(f"{prefix}{label}:")
                 lines.extend(_pretty_lines(item, indent=indent + 1, color=color))
@@ -212,9 +231,9 @@ def _pretty_lines(value: object, *, indent: int = 0, color: bool = False) -> lis
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         lines = []
         for item in value:
-            empty = _empty_collection_text(item)
-            if empty is not None:
-                lines.append(f"{prefix}- {empty}")
+            item_empty = _empty_collection_text(item)
+            if item_empty is not None:
+                lines.append(f"{prefix}- {item_empty}")
             elif _is_nested(item):
                 lines.append(f"{prefix}-")
                 lines.extend(_pretty_lines(item, indent=indent + 1, color=color))
@@ -223,6 +242,16 @@ def _pretty_lines(value: object, *, indent: int = 0, color: bool = False) -> lis
         return lines
 
     return [f"{prefix}{_scalar_text(value, color=color)}"]
+
+
+def _json_safe(value: object) -> object:
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 def _color_enabled() -> bool:
@@ -240,7 +269,7 @@ def _render_result(
     if result is None:
         return
     if json_output:
-        print(json.dumps(result, indent=2, default=str))
+        print(json.dumps(_json_safe(result), indent=2, default=str, allow_nan=False))
         return
 
     use_color = _color_enabled() if color is None else color
@@ -256,15 +285,20 @@ def _extract_global_flags(args: list[str]) -> tuple[list[str], bool, bool]:
 
 
 def _permission_failure(exc: BaseException) -> OSError | None:
-    current: BaseException | None = exc
+    pending: list[BaseException] = [exc]
     seen: set[int] = set()
-    while current is not None and id(current) not in seen:
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
         seen.add(id(current))
         if isinstance(current, PermissionError):
             return current
         if isinstance(current, OSError) and current.errno in _PERMISSION_ERRNOS:
             return current
-        current = current.__cause__ or current.__context__
+        for linked in (current.__cause__, current.__context__):
+            if linked is not None:
+                pending.append(linked)
     return None
 
 
@@ -307,7 +341,12 @@ def _managed_status(status: str, project: Project) -> dict[str, object]:
     return record
 
 
-def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> object:
+def _run_upgrade(
+    namespace: argparse.Namespace,
+    registry: Registry,
+    *,
+    json_output: bool,
+) -> object:
     if namespace.project and (namespace.all or namespace.upgrade_self):
         raise UpgradeError("PROJECT cannot be combined with --all or --self")
 
@@ -317,10 +356,17 @@ def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> object:
         return _managed_status("upgraded", project)
 
     results: list[dict[str, object]] = []
+
+    def completed(record: dict[str, object]) -> None:
+        if json_output:
+            results.append(record)
+        else:
+            _render_result(record)
+
     bare = not namespace.all and not namespace.upgrade_self
     if bare or namespace.upgrade_self:
         upgrader.upgrade_self()
-        results.append(
+        completed(
             {
                 "status": "upgraded",
                 "name": "gway",
@@ -331,8 +377,33 @@ def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> object:
 
     if bare or namespace.all:
         for project in upgrader.all_projects(force=namespace.force):
-            results.append(_managed_status("upgraded", project))
-    return results
+            completed(_managed_status("upgraded", project))
+
+    return results if json_output else None
+
+
+def _known_cli_error(exc: BaseException) -> bool:
+    return isinstance(
+        exc,
+        (
+            AdapterError,
+            ConfigError,
+            DispatchError,
+            ManifestError,
+            RegistryError,
+            RepositoryError,
+            RunnerError,
+            UpgradeError,
+            OSError,
+        ),
+    )
+
+
+def _handle_cli_exception(exc: Exception, args: Sequence[str]) -> int:
+    if not _known_cli_error(exc) and _permission_failure(exc) is None:
+        raise exc
+    _report_error(exc, args)
+    return 2
 
 
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
@@ -352,9 +423,8 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 return 0
             result = active_dispatcher.run(args[0], project_args, interactive=interactive)
             _render_result(result, json_output=json_output)
-        except (AdapterError, DispatchError, RegistryError, OSError) as exc:
-            _report_error(exc, original_args)
-            return 2
+        except Exception as exc:
+            return _handle_cli_exception(exc, original_args)
         return 0
 
     namespace = parser.parse_args(args)
@@ -377,21 +447,12 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 project = Installer(registry).install(namespace.project)
                 result = _managed_status("installed", project)
         elif namespace.command == "upgrade":
-            result = _run_upgrade(namespace, registry)
+            result = _run_upgrade(namespace, registry, json_output=json_output)
         else:
             parser.print_help()
             return 0
         _render_result(result, json_output=json_output)
-    except (
-        ConfigError,
-        ManifestError,
-        RegistryError,
-        RepositoryError,
-        RunnerError,
-        UpgradeError,
-        OSError,
-    ) as exc:
-        _report_error(exc, original_args)
-        return 2
+    except Exception as exc:
+        return _handle_cli_exception(exc, original_args)
 
     return 0
