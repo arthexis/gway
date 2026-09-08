@@ -502,7 +502,11 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
 
     namespace = parser.parse_args(args)
     if namespace.command == "service":
-        if namespace.project and namespace.project_option and namespace.project != namespace.project_option:
+        if (
+            namespace.project
+            and namespace.project_option
+            and namespace.project != namespace.project_option
+        ):
             parser.error("PROJECT and --project must name the same project")
         namespace.project = namespace.project or namespace.project_option
         if namespace.project is None:
