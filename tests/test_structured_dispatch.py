@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from gway.command import Command, Parameter
 from gway.dispatcher import _decode_structured_argv
-from gway.expression import STRUCTURED_ARG_PREFIX, STRUCTURED_KWARG_PREFIX
+from gway.expression import (
+    STRUCTURED_ARG_PREFIX,
+    STRUCTURED_KWARG_PREFIX,
+    STRUCTURED_TUPLE_PREFIX,
+)
 
 
 def _command() -> Command:
@@ -54,9 +58,10 @@ def test_structured_boolean_keyword_uses_boolean_option() -> None:
     assert argv == ["wlan0", "--verbose"]
 
 
-def test_comma_value_remains_one_dispatch_value() -> None:
+def test_tuple_value_remains_one_marked_dispatch_value() -> None:
+    marker = f"{STRUCTURED_TUPLE_PREFIX}wlan0,eth0"
     argv = _decode_structured_argv(
         _command(),
-        [f"{STRUCTURED_ARG_PREFIX}wlan0,eth0"],
+        [f"{STRUCTURED_ARG_PREFIX}{marker}"],
     )
-    assert argv == ["wlan0,eth0"]
+    assert argv == [marker]
