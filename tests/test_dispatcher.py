@@ -132,7 +132,7 @@ def test_cli_wraps_help_descriptions_in_right_column(tmp_path: Path, monkeypatch
     dispatcher = make_dispatcher(tmp_path)
     monkeypatch.setattr(
         "gway.cli.shutil.get_terminal_size",
-        lambda fallback: os.terminal_size((58, 24)),
+        lambda fallback=(80, 24): os.terminal_size((58, 24)),
     )
 
     assert main(["fixture", "--help"], dispatcher=dispatcher) == 0
@@ -153,7 +153,7 @@ def test_cli_help_stays_within_narrow_terminal(tmp_path: Path, monkeypatch, caps
     dispatcher = make_dispatcher(tmp_path)
     monkeypatch.setattr(
         "gway.cli.shutil.get_terminal_size",
-        lambda fallback: os.terminal_size((32, 24)),
+        lambda fallback=(80, 24): os.terminal_size((32, 24)),
     )
 
     assert main(["fixture", "--help"], dispatcher=dispatcher) == 0
