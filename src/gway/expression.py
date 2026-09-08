@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 MANAGED_EXPRESSION_PROJECT = "\0gway-expression"
+STRUCTURED_ARG_PREFIX = "\0gway-arg:"
 STRUCTURED_KWARG_PREFIX = "\0gway-kw:"
 
 
@@ -49,7 +50,8 @@ def _structured_argument(segment: str) -> str:
 
     # :=value explicitly means positional, even when value itself contains '='.
     if segment.startswith("="):
-        return _normalize_tuple_text(segment[1:].strip())
+        value = _normalize_tuple_text(segment[1:].strip())
+        return f"{STRUCTURED_ARG_PREFIX}{value}"
 
     if "=" in segment:
         name, value = segment.split("=", 1)
@@ -59,7 +61,7 @@ def _structured_argument(segment: str) -> str:
         value = _normalize_tuple_text(value)
         return f"{STRUCTURED_KWARG_PREFIX}{name}={value}"
 
-    return _normalize_tuple_text(segment)
+    return f"{STRUCTURED_ARG_PREFIX}{_normalize_tuple_text(segment)}"
 
 
 def _target_words(text: str) -> list[str]:
@@ -184,6 +186,7 @@ __all__ = [
     "ExpressionError",
     "MANAGED_EXPRESSION_PROJECT",
     "ManagedBranch",
+    "STRUCTURED_ARG_PREFIX",
     "STRUCTURED_KWARG_PREFIX",
     "normalize_managed_args",
     "parse_managed_branches",
