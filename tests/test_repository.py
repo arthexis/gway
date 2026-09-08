@@ -31,7 +31,9 @@ def test_short_name_fallback_disables_git_terminal_prompt(monkeypatch, tmp_path:
 
     def fake_run(args, **kwargs):
         calls.append((args, kwargs))
-        return SimpleNamespace(returncode=0 if "arthexis/arthexis.git" in args else 2)
+        return SimpleNamespace(
+            returncode=0 if args[3] == "https://github.com/arthexis/arthexis.git" else 2
+        )
 
     monkeypatch.setattr("gway.repository.subprocess.run", fake_run)
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
