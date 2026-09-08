@@ -72,7 +72,8 @@ def test_keyword_argument_is_preserved_for_command_aware_binding() -> None:
 
 
 def test_explicit_positional_colon_equals() -> None:
-    branch = parse_managed_branches("echo := left=right")[0]
+    branch = parse_managed_branches("demo echo := left=right")[0]
+    assert branch.project == "demo"
     assert branch.args == ("echo", f"{STRUCTURED_ARG_PREFIX}left=right")
 
 
