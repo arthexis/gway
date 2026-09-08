@@ -19,6 +19,7 @@ class ServiceError(ValueError):
 
 _UNIT_NAME = re.compile(r"^[A-Za-z0-9_.@-]+$")
 _SERVICE_KEY = re.compile(r"^[A-Za-z0-9_.-]+$")
+_SYSTEM_UNIT_DIRECTORY = Path("/etc/systemd/system")
 
 
 def _strings(value: object, field: str, section: str = "service") -> list[str]:
@@ -267,8 +268,18 @@ class ServiceManager:
         self.project = project
         self.unit_directory = Path(unit_directory)
         configs, legacy = _manifest_services(project)
-        selected_service = service or os.environ.get("GWAY_SERVICE")
-        active_profile = profile or os.environ.get("GWAY_SERVICE_PROFILE")
+        environment_service = os.environ.get("GWAY_SERVICE")
+        environment_profile = os.environ.get("GWAY_SERVICE_PROFILE")
+        self.environment_selectors = [
+            name
+            for name, explicit, value in (
+                ("GWAY_SERVICE", service, environment_service),
+                ("GWAY_SERVICE_PROFILE", profile, environment_profile),
+            )
+            if explicit is None and value
+        ]
+        selected_service = service or environment_service
+        active_profile = profile or environment_profile
 
         if selected_service is not None:
             if selected_service not in configs:
@@ -302,6 +313,17 @@ class ServiceManager:
         if len(unit_names) != len(set(unit_names)):
             raise ServiceError("selected services resolve to duplicate systemd unit names")
 
+    def _require_selector_preserving_elevation(self) -> None:
+        if not self.environment_selectors or self.unit_directory != _SYSTEM_UNIT_DIRECTORY:
+            return
+        geteuid = getattr(os, "geteuid", None)
+        if not callable(geteuid) or geteuid() == 0:
+            return
+        names = ",".join(self.environment_selectors)
+        raise ServiceError(
+            f"service selection uses environment variables; rerun with sudo --preserve-env={names}"
+        )
+
     @property
     def unit_names(self) -> list[str]:
         return [unit.unit_name for unit in self.units]
@@ -323,6 +345,7 @@ class ServiceManager:
         enable: bool = True,
         start: bool = True,
     ) -> Path | list[Path]:
+        self._require_selector_preserving_elevation()
         rendered = [(unit, unit.render(user=user)) for unit in self.units]
         paths = [unit.write(content) for unit, content in rendered]
         _systemctl("daemon-reload")
