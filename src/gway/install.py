@@ -50,21 +50,36 @@ class Installer:
             return target, existing, True
 
         target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = Path(
-            tempfile.mkdtemp(
-                prefix=f".{target.name}.gway-",
-                dir=target.parent,
-            )
-        )
+        lock = target.with_name(f".{target.name}.gway-install-lock")
         try:
+            lock.mkdir()
+        except FileExistsError as exc:
+            raise ValueError(f"managed checkout install already in progress: {target}") from exc
+
+        temporary: Path | None = None
+        try:
+            if target.exists():
+                raise ValueError(f"managed checkout appeared during install: {target}")
+
+            temporary = Path(
+                tempfile.mkdtemp(
+                    prefix=f".{target.name}.gway-",
+                    dir=target.parent,
+                )
+            )
             for entry in checkout.iterdir():
                 shutil.move(str(entry), str(temporary / entry.name))
             shutil.copystat(checkout, temporary, follow_symlinks=False)
             checkout.rmdir()
+
+            if target.exists():
+                raise ValueError(f"managed checkout appeared during install: {target}")
             temporary.rename(target)
-        except Exception:
-            shutil.rmtree(temporary, ignore_errors=True)
-            raise
+            temporary = None
+        finally:
+            if temporary is not None:
+                shutil.rmtree(temporary, ignore_errors=True)
+            shutil.rmtree(lock, ignore_errors=True)
         return target, replace(project, path=target), False
 
     def install(self, spec: str) -> Project:
