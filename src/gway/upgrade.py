@@ -4,6 +4,7 @@ import subprocess
 import sys
 from dataclasses import replace
 
+from .lifecycle import run_hook
 from .project import Project
 from .registry import Registry
 from .repository import RepositoryManager
@@ -57,6 +58,7 @@ class Upgrader:
         environment = self.runner.refresh(refreshed)
         if environment is not None:
             refreshed = replace(refreshed, environment=environment)
+        run_hook(refreshed, "prepare")
         return self.registry.register(refreshed)
 
     def all_projects(self, *, force: bool = False) -> list[Project]:
