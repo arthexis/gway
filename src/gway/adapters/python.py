@@ -337,10 +337,7 @@ class PythonAdapter:
             return None
 
         namespace = parser.parse_args(argv)
-        values = {
-            key: _decode_structured_value(value)
-            for key, value in vars(namespace).items()
-        }
+        values = {key: _decode_structured_value(value) for key, value in vars(namespace).items()}
         signature = inspect.signature(function)
         positional: list[object] = []
         keywords: dict[str, object] = {}
