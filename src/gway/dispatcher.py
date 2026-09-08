@@ -130,8 +130,7 @@ class Dispatcher:
         for index, branch in enumerate(branches):
             if index:
                 should_fallback = (
-                    not resolved
-                    or _strict_fallback_missing(result)
+                    not resolved or _strict_fallback_missing(result)
                     if branch.operator == "||"
                     else not resolved or not bool(result)
                 )
