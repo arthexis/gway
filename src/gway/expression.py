@@ -123,6 +123,8 @@ def normalize_managed_args(args: Sequence[str]) -> tuple[str, list[str]]:
         raise ExpressionError("managed command expression is empty")
 
     expression = " ".join(args).strip()
+    if expression.startswith(":"):
+        raise ExpressionError(f"invalid managed command expression: {expression!r}")
     if "|" in expression or ":" in expression:
         return MANAGED_EXPRESSION_PROJECT, [expression]
 
