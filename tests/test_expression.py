@@ -6,6 +6,7 @@ from gway.expression import (
     MANAGED_EXPRESSION_PROJECT,
     STRUCTURED_ARG_PREFIX,
     STRUCTURED_KWARG_PREFIX,
+    STRUCTURED_TUPLE_PREFIX,
     ExpressionError,
     normalize_managed_args,
     parse_managed_branches,
@@ -85,12 +86,12 @@ def test_multiple_colons_create_multiple_arguments() -> None:
     )
 
 
-def test_commas_remain_grouped_and_whitespace_is_ignored() -> None:
+def test_commas_create_grouped_tuple_arguments() -> None:
     branch = parse_managed_branches("demo shape : a , b , c : values = x , y")[0]
     assert branch.args == (
         "shape",
-        f"{STRUCTURED_ARG_PREFIX}a,b,c",
-        f"{STRUCTURED_KWARG_PREFIX}values=x,y",
+        f"{STRUCTURED_ARG_PREFIX}{STRUCTURED_TUPLE_PREFIX}a,b,c",
+        f"{STRUCTURED_KWARG_PREFIX}values={STRUCTURED_TUPLE_PREFIX}x,y",
     )
 
 
