@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from gway.cli import _extract_global_flags
 from gway.command import Command, Parameter
-from gway.dispatcher import _fill_required_options
+from gway.dispatcher import _decode_structured_argv, _fill_required_options
+from gway.expression import STRUCTURED_KWARG_PREFIX
 
 
 def _issue_command() -> Command:
@@ -32,6 +33,18 @@ def test_interactive_keeps_provided_positional_and_prompts_for_rest(monkeypatch,
     captured = capsys.readouterr()
     assert "project: " not in captured.err
     assert "text: " in captured.err
+
+
+def test_interactive_preserves_named_later_positional_binding(monkeypatch, capsys) -> None:
+    monkeypatch.setattr("builtins.input", lambda: "request")
+    text = f"{STRUCTURED_KWARG_PREFIX}text=LCD write fails"
+
+    completed = _fill_required_options(_issue_command(), [text])
+
+    assert _decode_structured_argv(_issue_command(), completed) == ["request", "LCD write fails"]
+    captured = capsys.readouterr()
+    assert "project: " in captured.err
+    assert "text: " not in captured.err
 
 
 def test_global_flags_stop_at_end_of_options_marker() -> None:
