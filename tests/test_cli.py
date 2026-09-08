@@ -116,12 +116,7 @@ def test_pretty_output_indents_nested_values_and_supports_color(capsys) -> None:
 
     _render_result(value, color=False)
     assert capsys.readouterr().out == (
-        "status: ok\n"
-        "device:\n"
-        "  online: true\n"
-        "  ports:\n"
-        "    - 1\n"
-        "    - 2\n"
+        "status: ok\ndevice:\n  online: true\n  ports:\n    - 1\n    - 2\n"
     )
 
     _render_result(value, color=True)
