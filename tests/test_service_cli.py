@@ -30,7 +30,9 @@ def register_project(tmp_path: Path, monkeypatch, capsys) -> Path:
     return project
 
 
-def test_service_status_uses_positional_project_and_alias(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_service_status_uses_positional_project_and_alias(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
     register_project(tmp_path, monkeypatch, capsys)
 
     def fake_status(self):
