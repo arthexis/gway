@@ -146,6 +146,7 @@ def test_failed_checkout_move_removes_partial_managed_destination(
 
     assert not (target / "app").exists()
     assert not list(target.glob(".app.gway-*"))
+    assert not (target / ".app.gway-install-lock").exists()
     assert not staging.exists()
 
 
@@ -172,6 +173,28 @@ def test_checkout_is_published_only_after_relocation(monkeypatch, tmp_path: Path
     assert project.path == checkout_target
     assert checkout_target.exists()
     assert not list(target.glob(".app.gway-*"))
+    assert not (target / ".app.gway-install-lock").exists()
+
+
+def test_concurrent_installer_lock_prevents_publication(tmp_path: Path) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    target = tmp_path / "opt" / "arthexis"
+    staging = paths.projects_dir / "arthexis" / "arthexis"
+    lock = target / ".app.gway-install-lock"
+    lock.mkdir(parents=True)
+    installer = Installer(
+        Registry(paths),
+        repositories=LayoutRepositories(staging, target),
+        runner=LayoutRunner(),
+    )
+
+    with pytest.raises(ValueError, match="managed checkout install already in progress"):
+        installer.install("arthexis")
+
+    assert lock.exists()
+    assert not (target / "app").exists()
+    assert not list(target.glob(".app.gway-*"))
+    assert not staging.exists()
 
 
 def test_concurrent_checkout_publication_is_not_deleted(monkeypatch, tmp_path: Path) -> None:
@@ -203,6 +226,7 @@ def test_concurrent_checkout_publication_is_not_deleted(monkeypatch, tmp_path: P
 
     assert (checkout_target / "other-process").read_text(encoding="utf-8") == "owned elsewhere"
     assert not list(target.glob(".app.gway-*"))
+    assert not (target / ".app.gway-install-lock").exists()
     assert not staging.exists()
 
 
