@@ -49,6 +49,12 @@ def _option_present(argv: Sequence[str], parameter: Parameter) -> bool:
     return False
 
 
+def _option_consumes_value(parameter: Parameter) -> bool:
+    if parameter.consumes_value is not None:
+        return parameter.consumes_value
+    return parameter.annotation is not bool
+
+
 def _read_prompt(prompt: str) -> str:
     print(prompt, end="", file=sys.stderr, flush=True)
     return input()
@@ -106,7 +112,7 @@ def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
             parameter = option_parameters.get(option_name)
             if parameter is not None:
                 index += 1
-                if not separator and parameter.annotation is not bool and index < len(argv):
+                if not separator and _option_consumes_value(parameter) and index < len(argv):
                     index += 1
                 continue
 
