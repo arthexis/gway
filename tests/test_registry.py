@@ -30,6 +30,59 @@ def test_project_manifest_is_loaded(tmp_path: Path) -> None:
     assert project.path == (tmp_path / "project").resolve()
 
 
+def test_project_manifest_loads_managed_install_contract(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    managed_root = tmp_path / "opt" / "fixture"
+    (root / "gway.toml").write_text(
+        f'''[project]
+name = "fixture"
+
+[adapter]
+type = "python"
+module = "fixture.commands"
+
+[install]
+root = "{managed_root.as_posix()}"
+checkout = "app"
+environment = ".venv"
+
+[lifecycle]
+prepare = "managed_prepare"
+''',
+        encoding="utf-8",
+    )
+
+    project = Project.from_path(root)
+
+    assert project.managed_root == managed_root
+    assert project.managed_checkout == managed_root / "app"
+    assert project.managed_environment == managed_root / ".venv"
+    assert project.lifecycle_config == {"prepare": "managed_prepare"}
+
+
+def test_manifest_rejects_escaping_managed_paths(tmp_path: Path) -> None:
+    root = tmp_path / "bad"
+    root.mkdir()
+    (root / "gway.toml").write_text(
+        '''[project]
+name = "bad"
+
+[adapter]
+type = "python"
+module = "bad.commands"
+
+[install]
+root = "/opt/bad"
+checkout = "../escape"
+''',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ManifestError, match="safe relative path"):
+        Project.from_path(root)
+
+
 def test_manifest_requires_adapter(tmp_path: Path) -> None:
     root = tmp_path / "bad"
     root.mkdir()
