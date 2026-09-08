@@ -120,9 +120,7 @@ class DjangoAdapter:
         try:
             provider = getattr(module, attribute)
         except AttributeError as exc:
-            raise AdapterError(
-                f"Django Sigil provider {self.sigils!r} does not exist"
-            ) from exc
+            raise AdapterError(f"Django Sigil provider {self.sigils!r} does not exist") from exc
         if not callable(provider):
             raise AdapterError(f"Django Sigil provider {self.sigils!r} is not callable")
         return provider
@@ -138,9 +136,7 @@ class DjangoAdapter:
                 return {}
             context = provider(project=self.project, command_path=command_path)
         if not isinstance(context, Mapping):
-            raise AdapterError(
-                f"Django Sigil provider {self.sigils!r} must return a mapping"
-            )
+            raise AdapterError(f"Django Sigil provider {self.sigils!r} must return a mapping")
         return context
 
     @staticmethod
