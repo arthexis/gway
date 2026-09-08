@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import collections.abc
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -31,7 +30,7 @@ def project_context(
     command_path: tuple[str, ...],
     *,
     paths: GwayPaths | None = None,
-    extra_context: collections.abc.Mapping[str, object] | None = None,
+    extra_context: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Return the lazy-resolution context for one dispatched command."""
     context = base_context(paths)
@@ -80,7 +79,7 @@ def resolve_captured_cli_values(
     command_path: tuple[str, ...],
     *,
     paths: GwayPaths | None = None,
-    extra_context: collections.abc.Mapping[str, object] | None = None,
+    extra_context: dict[str, object] | None = None,
 ) -> list[str]:
     """Resolve already-captured CLI templates with project-aware lazy context."""
     context = project_context(
@@ -98,7 +97,7 @@ def resolve_cli_values(
     command_path: tuple[str, ...],
     *,
     paths: GwayPaths | None = None,
-    extra_context: collections.abc.Mapping[str, object] | None = None,
+    extra_context: dict[str, object] | None = None,
 ) -> list[str]:
     """Resolve CLI argument values using eager then project-aware lazy semantics."""
     templates = capture_cli_values(values, paths=paths)
