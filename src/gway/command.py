@@ -16,6 +16,7 @@ class Parameter:
     help: str | None = None
     options: tuple[str, ...] = field(default_factory=tuple)
     consumes_value: bool | None = None
+    option_arity: int | str | None = None
 
 
 @dataclass(frozen=True)
