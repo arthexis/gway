@@ -24,7 +24,10 @@ def make_dispatcher(tmp_path: Path) -> Dispatcher:
     return Dispatcher(registry)
 
 
-def test_django_project_help_uses_discovered_management_commands(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_django_project_help_uses_discovered_management_commands(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     assert main(["django-fixture", "--help"], dispatcher=dispatcher) == 0
     output = capsys.readouterr().out
@@ -34,20 +37,29 @@ def test_django_project_help_uses_discovered_management_commands(tmp_path: Path,
     assert "echo" in output
 
 
-def test_django_check_runs_through_native_management_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_django_check_runs_through_native_management_command(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     assert main(["django-fixture", "check"], dispatcher=dispatcher) == 0
     assert "System check identified no issues" in capsys.readouterr().out
 
 
-def test_django_check_json_stdout_is_one_json_value(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_django_check_json_stdout_is_one_json_value(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     assert main(["--json", "django-fixture", "check"], dispatcher=dispatcher) == 0
     output = json.loads(capsys.readouterr().out)
     assert "System check identified no issues" in output
 
 
-def test_django_migrate_preserves_native_plan_option(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_django_migrate_preserves_native_plan_option(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     assert main(["django-fixture", "migrate", "--plan"], dispatcher=dispatcher) == 0
     assert "Planned operations" in capsys.readouterr().out
@@ -62,13 +74,19 @@ def test_django_parameter_metadata_preserves_declared_option_spellings() -> None
     assert parameter.options == ("-t", "--target")
 
 
-def test_django_sigil_context_reaches_real_management_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_django_sigil_context_reaches_real_management_command(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     assert main(["django-fixture", "echo", "[THING.name]"], dispatcher=dispatcher) == 0
     assert capsys.readouterr().out == "demo\n"
 
 
-def test_django_sigil_provider_receives_project_and_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_django_sigil_provider_receives_project_and_command(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     assert main(["django-fixture", "echo", "[THING.project]"], dispatcher=dispatcher) == 0
     assert capsys.readouterr().out == "django-fixture\n"
@@ -76,7 +94,10 @@ def test_django_sigil_provider_receives_project_and_command(tmp_path: Path, caps
     assert capsys.readouterr().out == "echo\n"
 
 
-def test_django_safe_namespace_blocks_tool_escape(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_django_safe_namespace_blocks_tool_escape(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     token = "[THING.name.upper]"
     assert main(["django-fixture", "echo", token], dispatcher=dispatcher) == 0
