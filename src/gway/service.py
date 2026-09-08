@@ -22,10 +22,14 @@ _SERVICE_KEY = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def _strings(value: object, field: str, section: str = "service") -> list[str]:
+    valid = isinstance(value, list) and all(
+        isinstance(item, str) and item for item in value
+    )
     if value is None:
         return []
-    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
-        raise ServiceError(f"[{section}].{field} must be an array of non-empty strings")
+    if not valid:
+        message = f"[{section}].{field} must be an array of non-empty strings"
+        raise ServiceError(message)
     return list(value)
 
 
@@ -69,7 +73,9 @@ def _manifest_services(project: Project) -> tuple[dict[str, dict[str, Any]], boo
         with manifest.open("rb") as stream:
             data = tomllib.load(stream)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise ServiceError(f"cannot read service manifest for {project.name}: {exc}") from exc
+        raise ServiceError(
+            f"cannot read service manifest for {project.name}: {exc}"
+        ) from exc
 
     legacy = data.get("service")
     services = data.get("services")
@@ -80,7 +86,8 @@ def _manifest_services(project: Project) -> tuple[dict[str, dict[str, Any]], boo
             raise ServiceError("[service] must be a table")
         return {"default": dict(legacy)}, True
     if services is None:
-        raise ServiceError(f"project does not declare [service] or [services]: {project.name}")
+        message = f"project does not declare [service] or [services]: {project.name}"
+        raise ServiceError(message)
     if not isinstance(services, dict) or not services:
         raise ServiceError("[services] must contain at least one service table")
 
@@ -134,19 +141,29 @@ class _ServiceUnit:
         section = "service" if self.legacy else f"services.{self.key}"
         command = _strings(self.config.get("command"), "command", section)
         if not command:
-            raise ServiceError(f"[{section}].command must contain at least one argument")
+            message = f"[{section}].command must contain at least one argument"
+            raise ServiceError(message)
         command = [_expand(argument, self.project) for argument in command]
 
-        description = self.config.get(
-            "description", f"GWAY {self.project.name} {self.key} service"
-        )
+        default_description = f"GWAY {self.project.name} {self.key} service"
+        description = self.config.get("description", default_description)
         if not isinstance(description, str) or not description.strip():
-            raise ServiceError(f"[{section}].description must be a non-empty string")
+            raise ServiceError(
+                f"[{section}].description must be a non-empty string"
+            )
         if "\n" in description or "\r" in description:
             raise ServiceError(f"[{section}].description must not contain newlines")
 
-        wants = _strings(self.config.get("wants", ["network-online.target"]), "wants", section)
-        after = _strings(self.config.get("after", ["network-online.target"]), "after", section)
+        wants = _strings(
+            self.config.get("wants", ["network-online.target"]),
+            "wants",
+            section,
+        )
+        after = _strings(
+            self.config.get("after", ["network-online.target"]),
+            "after",
+            section,
+        )
         requires = _strings(self.config.get("requires"), "requires", section)
         restart = self.config.get("restart", "on-failure")
         restart_sec = self.config.get("restart_sec", 5)
@@ -154,16 +171,24 @@ class _ServiceUnit:
         if not isinstance(restart, str) or not restart:
             raise ServiceError(f"[{section}].restart must be a non-empty string")
         if not isinstance(restart_sec, (int, float)) or restart_sec < 0:
-            raise ServiceError(f"[{section}].restart_sec must be a non-negative number")
+            raise ServiceError(
+                f"[{section}].restart_sec must be a non-negative number"
+            )
         if not isinstance(timeout_stop_sec, (int, float)) or timeout_stop_sec < 0:
-            raise ServiceError(f"[{section}].timeout_stop_sec must be a non-negative number")
+            raise ServiceError(
+                f"[{section}].timeout_stop_sec must be a non-negative number"
+            )
 
         environment = self.config.get("environment", {"PYTHONUNBUFFERED": "1"})
-        if not isinstance(environment, dict) or not all(
-            isinstance(key, str) and key and isinstance(value, (str, int, float, bool))
+        valid_environment = isinstance(environment, dict) and all(
+            isinstance(key, str)
+            and key
+            and isinstance(value, (str, int, float, bool))
             for key, value in environment.items()
-        ):
-            raise ServiceError(f"[{section}].environment must be a table of scalar values")
+        )
+        if not valid_environment:
+            message = f"[{section}].environment must be a table of scalar values"
+            raise ServiceError(message)
 
         working_directory = self.config.get("working_directory")
         if working_directory is not None and not isinstance(working_directory, str):
@@ -176,13 +201,21 @@ class _ServiceUnit:
             lines.append(f"Requires={' '.join(requires)}")
         if after:
             lines.append(f"After={' '.join(after)}")
-        lines.extend(["", "[Service]", "Type=simple", f"User={_service_user(self.config, user)}"])
+        lines.extend(
+            [
+                "",
+                "[Service]",
+                "Type=simple",
+                f"User={_service_user(self.config, user)}",
+            ]
+        )
         if working_directory:
             expanded = _expand(working_directory, self.project)
             lines.append(f"WorkingDirectory={_unit_arg(expanded)}")
         for key, value in environment.items():
             lines.append(f"Environment={_unit_arg(f'{key}={value}')}")
-        lines.append(f"ExecStart={' '.join(_unit_arg(argument) for argument in command)}")
+        command_text = " ".join(_unit_arg(argument) for argument in command)
+        lines.append(f"ExecStart={command_text}")
         lines.extend(
             [
                 f"Restart={restart}",
@@ -196,15 +229,11 @@ class _ServiceUnit:
         )
         return "\n".join(lines)
 
-    def install(self, *, user: str | None = None, enable: bool = True, start: bool = True) -> Path:
+    def write(self, *, user: str | None = None) -> Path:
         self.unit_directory.mkdir(parents=True, exist_ok=True)
         temporary = self.unit_path.with_suffix(self.unit_path.suffix + ".tmp")
         temporary.write_text(self.render(user=user), encoding="utf-8")
         os.replace(temporary, self.unit_path)
-        if enable:
-            _systemctl("enable", self.unit_name)
-        if start:
-            _systemctl("restart", self.unit_name)
         return self.unit_path
 
     def uninstall(self) -> bool:
@@ -254,21 +283,25 @@ class ServiceManager:
 
         if service is not None:
             if service not in configs:
-                raise ServiceError(f"project does not declare service {service!r}: {project.name}")
+                message = f"project does not declare service {service!r}: {project.name}"
+                raise ServiceError(message)
             configs = {service: configs[service]}
         elif active_profile:
-            configs = {
-                key: config
-                for key, config in configs.items()
-                if not _strings(config.get("profiles"), "profiles", f"services.{key}")
-                or active_profile
-                in _strings(config.get("profiles"), "profiles", f"services.{key}")
-            }
+            selected: dict[str, dict[str, Any]] = {}
+            for key, config in configs.items():
+                profiles = _strings(
+                    config.get("profiles"), "profiles", f"services.{key}"
+                )
+                if not profiles or active_profile in profiles:
+                    selected[key] = config
+            configs = selected
 
         if not configs:
-            raise ServiceError(
-                f"project has no services applicable to profile {active_profile!r}: {project.name}"
+            message = (
+                f"project has no services applicable to profile "
+                f"{active_profile!r}: {project.name}"
             )
+            raise ServiceError(message)
         self.units = [
             _ServiceUnit(
                 project,
@@ -279,6 +312,10 @@ class ServiceManager:
             )
             for key, config in configs.items()
         ]
+
+    @property
+    def unit_names(self) -> list[str]:
+        return [unit.unit_name for unit in self.units]
 
     @property
     def unit_name(self) -> str:
@@ -298,8 +335,14 @@ class ServiceManager:
         enable: bool = True,
         start: bool = True,
     ) -> Path | list[Path]:
-        paths = [unit.install(user=user, enable=enable, start=start) for unit in self.units]
+        paths = [unit.write(user=user) for unit in self.units]
         _systemctl("daemon-reload")
+        if enable:
+            for unit in self.units:
+                _systemctl("enable", unit.unit_name)
+        if start:
+            for unit in self.units:
+                _systemctl("restart", unit.unit_name)
         return paths[0] if len(paths) == 1 else paths
 
     def uninstall(self) -> bool | dict[str, bool]:
