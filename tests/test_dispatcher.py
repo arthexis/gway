@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from gway.adapters import AdapterRegistry
@@ -20,6 +21,13 @@ class FixtureAdapter:
             Command(("hello",), summary="Say hello."),
             Command(("peer",), summary="Peer namespace fallback."),
             Command(("peer", "add"), summary="Add a peer."),
+            Command(
+                ("server", "status"),
+                summary=(
+                    "Show deployed gateway, registry, enrollment, and DNS status without "
+                    "letting wrapped text run underneath command names."
+                ),
+            ),
         )
 
     def describe(self, path: tuple[str, ...]) -> Command:
@@ -73,6 +81,27 @@ def test_cli_renders_project_level_help(tmp_path: Path, capsys) -> None:
     assert "Say hello." in output
     assert "peer add" in output
     assert "Add a peer." in output
+
+
+def test_cli_wraps_help_descriptions_in_right_column(tmp_path: Path, monkeypatch, capsys) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+    monkeypatch.setattr(
+        "gway.cli.shutil.get_terminal_size",
+        lambda fallback: os.terminal_size((58, 24)),
+    )
+
+    assert main(["fixture", "--help"], dispatcher=dispatcher) == 0
+    lines = capsys.readouterr().out.splitlines()
+
+    status_line = next(line for line in lines if line.startswith("  server status"))
+    continuation_index = lines.index(status_line) + 1
+    continuation = lines[continuation_index]
+    description_column = status_line.index("Show")
+
+    assert len(status_line) <= 58
+    assert continuation.startswith(" " * description_column)
+    assert continuation.strip()
+    assert len(continuation) <= 58
 
 
 def test_dispatcher_uses_longest_command_path(tmp_path: Path) -> None:
