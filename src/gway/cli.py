@@ -23,9 +23,19 @@ from .registry import Registry, RegistryError
 from .repository import RepositoryError
 from .runner import RunnerError
 from .service import ServiceError, ServiceManager
+from .shell import (
+    ShellError,
+    install_shell,
+    integration_snippet,
+    launch_shell,
+    shell_status,
+    uninstall_shell,
+)
 from .upgrade import UpgradeError, Upgrader
 
-CORE_COMMANDS = frozenset({"list", "info", "path", "register", "install", "upgrade", "service"})
+CORE_COMMANDS = frozenset(
+    {"list", "info", "path", "register", "install", "upgrade", "service", "shell"}
+)
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
 _PERMISSION_ERRNOS = frozenset({errno.EACCES, errno.EPERM})
 _RESET = "\033[0m"
@@ -145,6 +155,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         default=True,
         help="Install without starting/restarting the service.",
+    )
+
+    shell = subparsers.add_parser(
+        "shell",
+        help="Start or install the GWAY '-' shell shorthand.",
+    )
+    shell.add_argument(
+        "action",
+        nargs="?",
+        choices=("install", "uninstall", "status", "print"),
+        help="Manage persistent shell integration; omit to start an ephemeral shell.",
+    )
+    shell.add_argument(
+        "--shell",
+        dest="shell_name",
+        choices=("bash", "zsh"),
+        help="Shell to use instead of auto-detecting $SHELL.",
     )
 
     return parser
@@ -485,6 +512,7 @@ def _known_cli_error(exc: BaseException) -> bool:
             RepositoryError,
             RunnerError,
             ServiceError,
+            ShellError,
             UpgradeError,
             OSError,
         ),
@@ -567,6 +595,18 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             result = _run_upgrade(namespace, registry, json_output=json_output)
         elif namespace.command == "service":
             result = _run_service(namespace, registry)
+        elif namespace.command == "shell":
+            if namespace.action is None:
+                return launch_shell(namespace.shell_name)
+            if namespace.action == "print":
+                print(integration_snippet(namespace.shell_name), end="")
+                return 0
+            if namespace.action == "install":
+                result = install_shell(namespace.shell_name)
+            elif namespace.action == "uninstall":
+                result = uninstall_shell(namespace.shell_name)
+            else:
+                result = shell_status(namespace.shell_name)
         else:
             parser.print_help()
             return 0
