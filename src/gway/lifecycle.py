@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from .adapters import AdapterRegistry
 from .project import Project
+from .runner import RunnerError
 
 
-class LifecycleError(RuntimeError):
+class LifecycleError(RunnerError):
     pass
 
 
