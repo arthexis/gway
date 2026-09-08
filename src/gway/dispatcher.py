@@ -55,6 +55,13 @@ def _read_prompt(prompt: str) -> str:
 
 
 def _prompt_value(parameter: Parameter) -> list[str]:
+    if parameter.positional:
+        while True:
+            value = _read_prompt(f"{parameter.name}: ")
+            if value:
+                return [value]
+            print("A value is required.", file=sys.stderr)
+
     option = _option_name(parameter)
     if parameter.annotation is bool:
         while True:
@@ -74,12 +81,54 @@ def _prompt_value(parameter: Parameter) -> list[str]:
         print("A value is required.", file=sys.stderr)
 
 
+def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
+    option_parameters: dict[str, Parameter] = {}
+    for parameter in command.parameters:
+        if parameter.positional:
+            continue
+        for option in _option_names(parameter):
+            option_parameters[option] = parameter
+            if parameter.annotation is bool and option.startswith("--"):
+                option_parameters[f"--no-{option[2:]}"] = parameter
+
+    count = 0
+    index = 0
+    literal = False
+    while index < len(argv):
+        token = argv[index]
+        if not literal and token == "--":
+            literal = True
+            index += 1
+            continue
+
+        if not literal:
+            option_name, separator, _ = token.partition("=")
+            parameter = option_parameters.get(option_name)
+            if parameter is not None:
+                index += 1
+                if not separator and parameter.annotation is not bool and index < len(argv):
+                    index += 1
+                continue
+
+        count += 1
+        index += 1
+    return count
+
+
 def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
     completed = list(argv)
+    provided_positionals = _provided_positional_count(command, completed)
     for parameter in command.parameters:
-        if not parameter.required or parameter.positional or _option_present(completed, parameter):
+        if not parameter.required:
             continue
-        completed.extend(_prompt_value(parameter))
+        if parameter.positional:
+            if provided_positionals:
+                provided_positionals -= 1
+                continue
+            completed.extend(_prompt_value(parameter))
+            continue
+        if not _option_present(completed, parameter):
+            completed.extend(_prompt_value(parameter))
     return completed
 
 
