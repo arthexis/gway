@@ -217,10 +217,10 @@ class _ServiceUnit:
         )
         return "\n".join(lines)
 
-    def write(self, *, user: str | None = None) -> Path:
+    def write(self, content: str) -> Path:
         self.unit_directory.mkdir(parents=True, exist_ok=True)
         temporary = self.unit_path.with_suffix(self.unit_path.suffix + ".tmp")
-        temporary.write_text(self.render(user=user), encoding="utf-8")
+        temporary.write_text(content, encoding="utf-8")
         os.replace(temporary, self.unit_path)
         return self.unit_path
 
@@ -323,7 +323,8 @@ class ServiceManager:
         enable: bool = True,
         start: bool = True,
     ) -> Path | list[Path]:
-        paths = [unit.write(user=user) for unit in self.units]
+        rendered = [(unit, unit.render(user=user)) for unit in self.units]
+        paths = [unit.write(content) for unit, content in rendered]
         _systemctl("daemon-reload")
         if enable:
             for unit in self.units:
