@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.1 — 2026-09-07
+
+- Added an optional adapter-provided lazy Sigil context hook.
+- Capture eager CLI Sigils before project/adapter context is requested.
+- Added protected collision handling so adapters cannot replace GWAY's reserved `cwd`, `home`, `gway`, `project`, or `command` roots.
+- Added Django `adapter.sigils = "module:function"` provider support after `django.setup()`.
+- Added a real Django management-command fixture validating provider resolution and `SafeNamespace` protection.
+- Raised the runtime dependency floor to `gway-sigils>=0.4.4,<0.5`.
+- Made the release smoke test version-aware for patch releases.
+
 ## 1.0.0 — 2026-09-07
 
 - Rebuilt GWAY around a GitHub-backed managed-project registry and universal command dispatcher.
