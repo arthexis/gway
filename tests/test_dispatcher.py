@@ -9,7 +9,7 @@ from gway.adapters import AdapterRegistry
 from gway.cli import main
 from gway.command import Command
 from gway.config import GwayPaths
-from gway.dispatcher import CommandNotFound, DispatchError, Dispatcher
+from gway.dispatcher import CommandNotFound, Dispatcher, DispatchError
 from gway.project import Project
 from gway.registry import Registry
 
