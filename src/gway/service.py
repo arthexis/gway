@@ -142,7 +142,10 @@ class _ServiceUnit:
             raise ServiceError(message)
         command = [_expand(argument, self.project) for argument in command]
 
-        default_description = f"GWAY {self.project.name} {self.key} service"
+        if self.legacy:
+            default_description = f"GWAY {self.project.name} service"
+        else:
+            default_description = f"GWAY {self.project.name} {self.key} service"
         description = self.config.get("description", default_description)
         if not isinstance(description, str) or not description.strip():
             raise ServiceError(f"[{section}].description must be a non-empty string")
@@ -313,16 +316,27 @@ class ServiceManager:
         if len(unit_names) != len(set(unit_names)):
             raise ServiceError("selected services resolve to duplicate systemd unit names")
 
-    def _require_selector_preserving_elevation(self) -> None:
+    def _require_selector_preserving_elevation(
+        self,
+        action: str,
+        *arguments: str,
+    ) -> None:
         if not self.environment_selectors or self.unit_directory != _SYSTEM_UNIT_DIRECTORY:
             return
         geteuid = getattr(os, "geteuid", None)
         if not callable(geteuid) or geteuid() == 0:
             return
         names = ",".join(self.environment_selectors)
-        raise ServiceError(
-            f"service selection uses environment variables; rerun with sudo --preserve-env={names}"
+        command = " ".join(
+            [
+                f"sudo --preserve-env={names}",
+                "gway service",
+                action,
+                self.project.name,
+                *arguments,
+            ]
         )
+        raise ServiceError(f"service selection uses environment variables; rerun with {command}")
 
     @property
     def unit_names(self) -> list[str]:
@@ -345,7 +359,14 @@ class ServiceManager:
         enable: bool = True,
         start: bool = True,
     ) -> Path | list[Path]:
-        self._require_selector_preserving_elevation()
+        retry_arguments: list[str] = []
+        if user is not None:
+            retry_arguments.extend(["--user", user])
+        if not enable:
+            retry_arguments.append("--no-enable")
+        if not start:
+            retry_arguments.append("--no-start")
+        self._require_selector_preserving_elevation("install", *retry_arguments)
         rendered = [(unit, unit.render(user=user)) for unit in self.units]
         paths = [unit.write(content) for unit, content in rendered]
         _systemctl("daemon-reload")
@@ -358,6 +379,7 @@ class ServiceManager:
         return paths[0] if len(paths) == 1 else paths
 
     def uninstall(self) -> bool | dict[str, bool]:
+        self._require_selector_preserving_elevation("uninstall")
         removed = {unit.key: unit.uninstall() for unit in reversed(self.units)}
         _systemctl("daemon-reload")
         return next(iter(removed.values())) if len(removed) == 1 else removed
