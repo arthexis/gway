@@ -21,9 +21,10 @@ from .project import ManifestError, Project
 from .registry import Registry, RegistryError
 from .repository import RepositoryError
 from .runner import RunnerError
+from .service import ServiceError, ServiceManager
 from .upgrade import UpgradeError, Upgrader
 
-CORE_COMMANDS = frozenset({"list", "info", "path", "register", "install", "upgrade"})
+CORE_COMMANDS = frozenset({"list", "info", "path", "register", "install", "upgrade", "service"})
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
 _PERMISSION_ERRNOS = frozenset({errno.EACCES, errno.EPERM})
 _RESET = "\033[0m"
@@ -103,6 +104,38 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    service = subparsers.add_parser(
+        "service",
+        help="Manage a project's system service declared in gway.toml.",
+    )
+    service.add_argument(
+        "action",
+        choices=("install", "uninstall", "start", "stop", "restart", "status"),
+    )
+    service.add_argument(
+        "--project",
+        required=True,
+        help="Registered project name or alias.",
+    )
+    service.add_argument(
+        "--user",
+        help="Service account override for installation.",
+    )
+    service.add_argument(
+        "--no-enable",
+        dest="enable",
+        action="store_false",
+        default=True,
+        help="Install without enabling the service at boot.",
+    )
+    service.add_argument(
+        "--no-start",
+        dest="start",
+        action="store_false",
+        default=True,
+        help="Install without starting/restarting the service.",
+    )
+
     return parser
 
 
@@ -118,6 +151,8 @@ def _project_record(project: Project) -> dict[str, object]:
         record["repository"] = project.repository
     if project.revision:
         record["revision"] = project.revision
+    if project.service_config is not None:
+        record["service"] = project.service_config
     return record
 
 
@@ -378,6 +413,27 @@ def _run_upgrade(
     return results if json_output else None
 
 
+def _run_service(namespace: argparse.Namespace, registry: Registry) -> object:
+    project = registry.require(namespace.project)
+    manager = ServiceManager(project)
+    if namespace.action == "install":
+        unit = manager.install(user=namespace.user, enable=namespace.enable, start=namespace.start)
+        return {"status": "installed", "project": project.name, "unit": unit}
+    if namespace.action == "uninstall":
+        removed = manager.uninstall()
+        return {"status": "uninstalled", "project": project.name, "removed": removed}
+    if namespace.action == "start":
+        manager.start()
+        return {"status": "started", "project": project.name, "unit": manager.unit_name}
+    if namespace.action == "stop":
+        manager.stop()
+        return {"status": "stopped", "project": project.name, "unit": manager.unit_name}
+    if namespace.action == "restart":
+        manager.restart()
+        return {"status": "restarted", "project": project.name, "unit": manager.unit_name}
+    return manager.status()
+
+
 def _known_cli_error(exc: BaseException) -> bool:
     return isinstance(
         exc,
@@ -389,6 +445,7 @@ def _known_cli_error(exc: BaseException) -> bool:
             RegistryError,
             RepositoryError,
             RunnerError,
+            ServiceError,
             UpgradeError,
             OSError,
         ),
@@ -444,6 +501,8 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 result = _managed_status("installed", project)
         elif namespace.command == "upgrade":
             result = _run_upgrade(namespace, registry, json_output=json_output)
+        elif namespace.command == "service":
+            result = _run_service(namespace, registry)
         else:
             parser.print_help()
             return 0
