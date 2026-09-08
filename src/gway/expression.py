@@ -133,9 +133,7 @@ def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
             branches.append(ManagedBranch(literal=branch[1:], operator=operator))
             break
         if branch.endswith(":"):
-            branches.append(
-                ManagedBranch(literal=branch[:-1].strip(), operator=operator)
-            )
+            branches.append(ManagedBranch(literal=branch[:-1].strip(), operator=operator))
             break
         branches.append(_command_branch(branch, operator=operator))
 
