@@ -134,10 +134,10 @@ def test_all_projects_skips_local_registrations(tmp_path: Path) -> None:
 
 
 def test_self_upgrade_uses_current_python_and_forces_reinstall(monkeypatch) -> None:
-    calls: list[tuple[list[str], bool]] = []
+    calls: list[tuple[list[str], bool, object]] = []
 
-    def fake_run(args, *, check):
-        calls.append(([str(value) for value in args], check))
+    def fake_run(args, *, check, stdout=None):
+        calls.append(([str(value) for value in args], check, stdout))
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr("gway.upgrade.subprocess.run", fake_run)
@@ -157,6 +157,7 @@ def test_self_upgrade_uses_current_python_and_forces_reinstall(monkeypatch) -> N
                 "git+https://example.invalid/gway.git@main",
             ],
             True,
+            sys.stderr,
         )
     ]
 

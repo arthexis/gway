@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import argparse
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from gway.adapters.django import DjangoAdapter
+from gway.adapters.django import DjangoAdapter, _parameter_from_action
 from gway.cli import main
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
@@ -47,6 +49,18 @@ def test_django_check_runs_through_native_management_command(
     assert "System check identified no issues" in capsys.readouterr().out
 
 
+def test_django_check_json_stdout_is_one_json_value(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+
+    assert main(["--json", "django-fixture", "check"], dispatcher=dispatcher) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert "System check identified no issues" in output
+
+
 def test_django_migrate_preserves_native_plan_option(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -56,6 +70,17 @@ def test_django_migrate_preserves_native_plan_option(
     assert main(["django-fixture", "migrate", "--plan"], dispatcher=dispatcher) == 0
 
     assert "Planned operations" in capsys.readouterr().out
+
+
+def test_django_parameter_metadata_preserves_declared_option_spellings() -> None:
+    parser = argparse.ArgumentParser()
+    action = parser.add_argument("-t", "--target", dest="device", required=True)
+
+    parameter = _parameter_from_action(action)
+
+    assert parameter is not None
+    assert parameter.name == "device"
+    assert parameter.options == ("-t", "--target")
 
 
 def test_django_helper_module_without_command_is_ignored() -> None:

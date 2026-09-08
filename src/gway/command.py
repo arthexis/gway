@@ -14,6 +14,7 @@ class Parameter:
     annotation: object | None = None
     default: Any = None
     help: str | None = None
+    options: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)

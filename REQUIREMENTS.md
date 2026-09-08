@@ -14,6 +14,34 @@ Requirements:
 - never automatically re-execute a failed command as root;
 - apply consistently to GWAY lifecycle commands and managed project commands that reach the common CLI error boundary.
 
+## CLI output
+
+GWAY owns final result rendering across core lifecycle commands and managed project commands.
+
+Requirements:
+
+- human-readable output is the default;
+- mappings render one field per line, with nested mappings and sequences indented consistently;
+- sequences render one item per line, with nested values indented consistently;
+- scalar values render plainly without Python container syntax;
+- interactive terminal output uses lightweight ANSI color to distinguish keys and scalar value types, while non-interactive output remains uncolored and `NO_COLOR` disables color explicitly;
+- machine-readable JSON is emitted only when the global `--json` flag is present;
+- `--json` is reserved by the GWAY CLI and applies consistently to core and managed-project results rather than being forwarded to adapters;
+- JSON output must remain valid, uncolored JSON suitable for piping to other tools.
+
+## Interactive prompting
+
+GWAY can opt in to prompting for missing required managed-command option values with the global `-i` / `--interactive` flag.
+
+Requirements:
+
+- prompting is disabled by default and never changes normal non-interactive parser behavior;
+- only missing required option values are prompted for; required positional arguments retain their adapter/parser behavior;
+- prompts and validation messages are written to stderr so result stdout remains clean, including when `--json` is combined with interactive mode;
+- `-i` and `--interactive` are reserved by the GWAY CLI, like `--json`, may appear anywhere in the invocation, and are not forwarded to managed adapters;
+- managed projects must not claim `-i`, `--interactive`, or `--json` as project-command option spellings;
+- adapter metadata should preserve declared option spellings so prompted values are replayed using a valid option accepted by the managed command.
+
 ## Optional root command export
 
 At lower priority, managed projects should be able to opt in through `gway.toml` to exporting project commands into GWAY's root command namespace. This must be adapter-neutral so Django projects such as Arthexis can expose an operator command as `gway ocpp` while retaining the qualified form `gway arthexis ocpp`.

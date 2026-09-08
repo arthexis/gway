@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
+import math
+import os
+import shlex
+import shutil
 import sys
-from collections.abc import Sequence
+import textwrap
+from collections.abc import Mapping, Sequence
 from importlib.metadata import version as distribution_version
 
 from . import __version__
@@ -11,7 +17,7 @@ from .adapters import AdapterError
 from .config import ConfigError
 from .dispatcher import Dispatcher, DispatchError
 from .install import Installer
-from .project import ManifestError
+from .project import ManifestError, Project
 from .registry import Registry, RegistryError
 from .repository import RepositoryError
 from .runner import RunnerError
@@ -19,6 +25,13 @@ from .upgrade import UpgradeError, Upgrader
 
 CORE_COMMANDS = frozenset({"list", "info", "path", "register", "install", "upgrade"})
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
+_PERMISSION_ERRNOS = frozenset({errno.EACCES, errno.EPERM})
+_RESET = "\033[0m"
+_KEY = "\033[36m"
+_STRING = "\033[32m"
+_NUMBER = "\033[33m"
+_BOOL = "\033[35m"
+_NULL = "\033[2m"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +43,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Render command results as JSON instead of human-readable output.",
+    )
+    parser.add_argument(
+        "-i",
+        "--interactive",
+        action="store_true",
+        help="Prompt for missing required managed-command option values.",
     )
 
     subparsers = parser.add_subparsers(dest="command")
@@ -82,17 +106,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_info(registry: Registry, name: str) -> None:
-    project = registry.require(name)
-    print(f"name: {project.name}")
-    print(f"path: {project.path}")
-    print(f"adapter: {project.adapter_type}")
+def _project_record(project: Project) -> dict[str, object]:
+    record: dict[str, object] = {
+        "name": project.name,
+        "path": project.path,
+        "adapter": project.adapter_type,
+    }
     if project.aliases:
-        print(f"aliases: {', '.join(project.aliases)}")
+        record["aliases"] = list(project.aliases)
     if project.repository:
-        print(f"repository: {project.repository}")
+        record["repository"] = project.repository
     if project.revision:
-        print(f"revision: {project.revision}")
+        record["revision"] = project.revision
+    return record
 
 
 def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
@@ -101,54 +127,285 @@ def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
     print(f"usage: gway {project.name} <command> [arguments]")
     print()
     print("commands:")
-    for command in commands:
-        name = " ".join(command.path)
-        if command.summary:
-            print(f"  {name:<24} {command.summary}")
-        else:
-            print(f"  {name}")
+
+    rows = [(" ".join(command.path), command.summary) for command in commands]
+    if not rows:
+        return
+
+    terminal_width = max(1, shutil.get_terminal_size(fallback=(100, 24)).columns)
+    left_indent = 2 if terminal_width >= 4 else 0
+    gap = 2
+    name_width = max(len(name) for name, _ in rows)
+    description_column = left_indent + name_width + gap
+    description_width = terminal_width - description_column
+
+    for name, summary in rows:
+        if not summary:
+            for line in textwrap.wrap(
+                name,
+                width=max(1, terminal_width - left_indent),
+                break_long_words=True,
+                break_on_hyphens=False,
+            ) or [""]:
+                print(f"{' ' * left_indent}{line}")
+            continue
+
+        if description_width < 20:
+            available = max(1, terminal_width - left_indent)
+            for line in textwrap.wrap(
+                name,
+                width=available,
+                break_long_words=True,
+                break_on_hyphens=False,
+            ) or [""]:
+                print(f"{' ' * left_indent}{line}")
+            detail_indent = min(left_indent * 2, max(0, terminal_width - 1))
+            detail_width = max(1, terminal_width - detail_indent)
+            for line in textwrap.wrap(summary, width=detail_width) or [""]:
+                print(f"{' ' * detail_indent}{line}")
+            continue
+
+        wrapped = textwrap.wrap(summary, width=description_width) or [""]
+        print(f"{' ' * left_indent}{name:<{name_width}}{' ' * gap}{wrapped[0]}")
+        continuation = " " * description_column
+        for line in wrapped[1:]:
+            print(f"{continuation}{line}")
 
 
-def _render_result(result: object, *, json_output: bool = False) -> None:
+def _paint(text: str, code: str, *, color: bool) -> str:
+    if not color:
+        return text
+    return f"{code}{text}{_RESET}"
+
+
+def _scalar_text(value: object, *, color: bool) -> str:
+    if value is None:
+        return _paint("null", _NULL, color=color)
+    if isinstance(value, bool):
+        return _paint("true" if value else "false", _BOOL, color=color)
+    if isinstance(value, (int, float)):
+        return _paint(str(value), _NUMBER, color=color)
+    if isinstance(value, str):
+        return _paint(value, _STRING, color=color)
+    return str(value)
+
+
+def _is_nested(value: object) -> bool:
+    return isinstance(value, Mapping) or (
+        isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+    )
+
+
+def _empty_collection_text(value: object) -> str | None:
+    if isinstance(value, Mapping) and not value:
+        return "{}"
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)) and not value:
+        return "[]"
+    return None
+
+
+def _pretty_lines(value: object, *, indent: int = 0, color: bool = False) -> list[str]:
+    prefix = "  " * indent
+    empty = _empty_collection_text(value)
+    if empty is not None:
+        return [f"{prefix}{empty}"]
+
+    if isinstance(value, Mapping):
+        lines: list[str] = []
+        for key, item in value.items():
+            label = _paint(str(key), _KEY, color=color)
+            item_empty = _empty_collection_text(item)
+            if item_empty is not None:
+                lines.append(f"{prefix}{label}: {item_empty}")
+            elif _is_nested(item):
+                lines.append(f"{prefix}{label}:")
+                lines.extend(_pretty_lines(item, indent=indent + 1, color=color))
+            else:
+                lines.append(f"{prefix}{label}: {_scalar_text(item, color=color)}")
+        return lines
+
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        lines = []
+        for item in value:
+            item_empty = _empty_collection_text(item)
+            if item_empty is not None:
+                lines.append(f"{prefix}- {item_empty}")
+            elif _is_nested(item):
+                lines.append(f"{prefix}-")
+                lines.extend(_pretty_lines(item, indent=indent + 1, color=color))
+            else:
+                lines.append(f"{prefix}- {_scalar_text(item, color=color)}")
+        return lines
+
+    return [f"{prefix}{_scalar_text(value, color=color)}"]
+
+
+def _json_safe(value: object) -> object:
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def _color_enabled() -> bool:
+    if "NO_COLOR" in os.environ or os.environ.get("TERM") == "dumb":
+        return False
+    return bool(getattr(sys.stdout, "isatty", lambda: False)())
+
+
+def _render_result(
+    result: object,
+    *,
+    json_output: bool = False,
+    color: bool | None = None,
+) -> None:
     if result is None:
         return
     if json_output:
-        print(json.dumps(result, indent=2, default=str))
-    else:
-        print(result)
+        print(json.dumps(_json_safe(result), indent=2, default=str, allow_nan=False))
+        return
+
+    use_color = _color_enabled() if color is None else color
+    for line in _pretty_lines(result, color=use_color):
+        print(line)
 
 
-def _install_runtime_component(name: str) -> bool:
+def _extract_global_flags(args: list[str]) -> tuple[list[str], bool, bool]:
+    json_output = "--json" in args
+    interactive = "-i" in args or "--interactive" in args
+    reserved = {"--json", "-i", "--interactive"}
+    return [arg for arg in args if arg not in reserved], json_output, interactive
+
+
+def _permission_failure(exc: BaseException) -> OSError | None:
+    pending: list[BaseException] = [exc]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, PermissionError):
+            return current
+        if isinstance(current, OSError) and current.errno in _PERMISSION_ERRNOS:
+            return current
+        for linked in (current.__cause__, current.__context__):
+            if linked is not None:
+                pending.append(linked)
+    return None
+
+
+def _can_suggest_sudo() -> bool:
+    if os.name != "posix" or shutil.which("sudo") is None:
+        return False
+    geteuid = getattr(os, "geteuid", None)
+    return not callable(geteuid) or geteuid() != 0
+
+
+def _report_error(exc: BaseException, args: Sequence[str]) -> None:
+    print(f"gway: {exc}", file=sys.stderr)
+    if _permission_failure(exc) is not None and _can_suggest_sudo():
+        command = shlex.join(["gway", *args])
+        print(f"hint: try running with sudo: sudo {command}", file=sys.stderr)
+
+
+def _runtime_component_record(name: str) -> dict[str, object] | None:
     distribution = RUNTIME_COMPONENTS.get(name)
     if distribution is None:
-        return False
-    print(f"installed {name}\t{distribution}@{distribution_version(distribution)}")
-    return True
+        return None
+    return {
+        "status": "installed",
+        "name": name,
+        "distribution": distribution,
+        "version": distribution_version(distribution),
+    }
 
 
-def _run_upgrade(namespace: argparse.Namespace, registry: Registry) -> None:
+def _managed_status(status: str, project: Project) -> dict[str, object]:
+    record: dict[str, object] = {
+        "status": status,
+        "name": project.name,
+        "path": project.path,
+    }
+    if project.repository:
+        record["repository"] = project.repository
+    if project.revision:
+        record["revision"] = project.revision
+    return record
+
+
+def _run_upgrade(
+    namespace: argparse.Namespace,
+    registry: Registry,
+    *,
+    json_output: bool,
+) -> object:
     if namespace.project and (namespace.all or namespace.upgrade_self):
         raise UpgradeError("PROJECT cannot be combined with --all or --self")
 
     upgrader = Upgrader(registry)
     if namespace.project:
         project = upgrader.project(namespace.project, force=namespace.force)
-        print(f"upgraded {project.name}\t{project.repository}@{project.revision}")
-        return
+        return _managed_status("upgraded", project)
+
+    results: list[dict[str, object]] = []
+
+    def completed(record: dict[str, object]) -> None:
+        if json_output:
+            results.append(record)
+        else:
+            _render_result(record)
 
     bare = not namespace.all and not namespace.upgrade_self
     if bare or namespace.upgrade_self:
         upgrader.upgrade_self()
-        print("upgraded gway\tarthexis/gway@main")
+        completed(
+            {
+                "status": "upgraded",
+                "name": "gway",
+                "repository": "arthexis/gway",
+                "revision": "main",
+            }
+        )
 
     if bare or namespace.all:
         for project in upgrader.all_projects(force=namespace.force):
-            print(f"upgraded {project.name}\t{project.repository}@{project.revision}")
+            completed(_managed_status("upgraded", project))
+
+    return results if json_output else None
+
+
+def _known_cli_error(exc: BaseException) -> bool:
+    return isinstance(
+        exc,
+        (
+            AdapterError,
+            ConfigError,
+            DispatchError,
+            ManifestError,
+            RegistryError,
+            RepositoryError,
+            RunnerError,
+            UpgradeError,
+            OSError,
+        ),
+    )
+
+
+def _handle_cli_exception(exc: Exception, args: Sequence[str]) -> int:
+    if not _known_cli_error(exc) and _permission_failure(exc) is None:
+        raise exc
+    _report_error(exc, args)
+    return 2
 
 
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
     parser = build_parser()
-    args = list(sys.argv[1:] if argv is None else argv)
+    original_args = list(sys.argv[1:] if argv is None else argv)
+    args, json_output, interactive = _extract_global_flags(original_args)
     if not args:
         parser.print_help()
         return 0
@@ -156,53 +413,42 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
     active_dispatcher = dispatcher or Dispatcher()
     if args[0] not in CORE_COMMANDS and not args[0].startswith("-"):
         project_args = list(args[1:])
-        json_output = False
-        if "--json" in project_args:
-            project_args.remove("--json")
-            json_output = True
         try:
             if project_args in (["--help"], ["-h"]):
                 _print_project_help(active_dispatcher, args[0])
                 return 0
-            result = active_dispatcher.run(args[0], project_args)
+            result = active_dispatcher.run(args[0], project_args, interactive=interactive)
             _render_result(result, json_output=json_output)
-        except (AdapterError, DispatchError, RegistryError) as exc:
-            print(f"gway: {exc}", file=sys.stderr)
-            return 2
+        except Exception as exc:
+            return _handle_cli_exception(exc, original_args)
         return 0
 
     namespace = parser.parse_args(args)
     registry = active_dispatcher.registry
 
     try:
+        result: object = None
         if namespace.command == "list":
-            for project in registry.list():
-                aliases = f" ({', '.join(project.aliases)})" if project.aliases else ""
-                print(f"{project.name}{aliases}\t{project.path}")
+            result = [_project_record(project) for project in registry.list()]
         elif namespace.command == "info":
-            _print_info(registry, namespace.project)
+            result = _project_record(registry.require(namespace.project))
         elif namespace.command == "path":
-            print(registry.require(namespace.project).path)
+            result = registry.require(namespace.project).path
         elif namespace.command == "register":
             project = registry.register_path(namespace.path)
-            print(f"registered {project.name}\t{project.path}")
+            result = _managed_status("registered", project)
         elif namespace.command == "install":
-            if not _install_runtime_component(namespace.project):
+            result = _runtime_component_record(namespace.project)
+            if result is None:
                 project = Installer(registry).install(namespace.project)
-                print(f"installed {project.name}\t{project.repository}@{project.revision}")
+                result = _managed_status("installed", project)
         elif namespace.command == "upgrade":
-            _run_upgrade(namespace, registry)
+            result = _run_upgrade(namespace, registry, json_output=json_output)
         else:
             parser.print_help()
-    except (
-        ConfigError,
-        ManifestError,
-        RegistryError,
-        RepositoryError,
-        RunnerError,
-        UpgradeError,
-    ) as exc:
-        print(f"gway: {exc}", file=sys.stderr)
-        return 2
+            return 0
+        _render_result(result, json_output=json_output)
+    except Exception as exc:
+        return _handle_cli_exception(exc, original_args)
 
     return 0

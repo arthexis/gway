@@ -83,6 +83,7 @@ class Upgrader:
                     source_spec,
                 ],
                 check=True,
+                stdout=sys.stderr,
             )
         except (OSError, subprocess.CalledProcessError) as exc:
             raise UpgradeError(f"cannot upgrade GWAY itself: {exc}") from exc
