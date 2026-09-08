@@ -76,6 +76,9 @@ def test_register_list_info_and_path(tmp_path: Path, monkeypatch, capsys) -> Non
     capsys.readouterr()
 
     assert main(["list"]) == 0
+    assert capsys.readouterr().out == "- wireguard\n"
+
+    assert main(["list", "--detail"]) == 0
     listing = capsys.readouterr().out
     assert "name: wireguard" in listing
     assert "- wg" in listing
