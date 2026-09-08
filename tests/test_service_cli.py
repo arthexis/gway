@@ -69,6 +69,23 @@ def test_service_status_keeps_legacy_project_flag(tmp_path: Path, monkeypatch, c
     assert "project: epaper" in capsys.readouterr().out
 
 
+def test_service_accepts_name_and_alias_for_same_project(tmp_path: Path, monkeypatch, capsys) -> None:
+    register_project(tmp_path, monkeypatch, capsys)
+
+    def fake_status(self):
+        return {
+            "project": self.project.name,
+            "unit": self.unit_name,
+            "active": True,
+            "enabled": True,
+        }
+
+    monkeypatch.setattr(cli.ServiceManager, "status", fake_status)
+
+    assert main(["service", "status", "epaper", "--project", "gway-epaper"]) == 0
+    assert "project: epaper" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     "argv",
     [
