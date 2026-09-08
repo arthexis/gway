@@ -47,6 +47,70 @@ def test_interactive_preserves_named_later_positional_binding(monkeypatch, capsy
     assert "text: " not in captured.err
 
 
+def test_structured_tokens_after_end_of_options_are_literal() -> None:
+    token = f"{STRUCTURED_KWARG_PREFIX}text=literal"
+    assert _decode_structured_argv(_issue_command(), ["--", token]) == ["--", token]
+
+
+def test_interactive_terminates_trailing_variadic_option(monkeypatch) -> None:
+    command = Command(
+        ("example",),
+        parameters=(
+            Parameter(
+                "labels",
+                options=("--labels",),
+                consumes_value=True,
+                option_arity="+",
+            ),
+            Parameter("project", required=True, positional=True, annotation=str),
+        ),
+    )
+    monkeypatch.setattr("builtins.input", lambda: "request")
+
+    assert _fill_required_options(command, ["--labels", "a", "b"]) == [
+        "--labels",
+        "a",
+        "b",
+        "--",
+        "request",
+    ]
+
+
+def test_interactive_prompts_for_remaining_fixed_positional_arity(monkeypatch) -> None:
+    command = Command(
+        ("example",),
+        parameters=(
+            Parameter(
+                "pair",
+                required=True,
+                positional=True,
+                annotation=str,
+                option_arity=2,
+            ),
+        ),
+    )
+    monkeypatch.setattr("builtins.input", lambda: "two")
+
+    assert _fill_required_options(command, ["one"]) == ["one", "two"]
+
+
+def test_attached_short_option_value_is_not_counted_as_positional(monkeypatch) -> None:
+    command = Command(
+        ("example",),
+        parameters=(
+            Parameter(
+                "target",
+                options=("-t", "--target"),
+                consumes_value=True,
+            ),
+            Parameter("project", required=True, positional=True, annotation=str),
+        ),
+    )
+    monkeypatch.setattr("builtins.input", lambda: "request")
+
+    assert _fill_required_options(command, ["-tfoo"]) == ["-tfoo", "request"]
+
+
 def test_global_flags_stop_at_end_of_options_marker() -> None:
     args, json_output, interactive = _extract_global_flags(
         ["service", "status", "--", "-i", "--json"]
