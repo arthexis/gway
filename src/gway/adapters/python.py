@@ -11,6 +11,7 @@ from types import ModuleType, UnionType
 from typing import Literal, Union, get_args, get_origin, get_type_hints
 
 from gway.command import Command, Parameter
+from gway.expression import STRUCTURED_TUPLE_PREFIX
 from gway.project import Project
 
 from . import AdapterError
@@ -51,6 +52,8 @@ def _converter(annotation: object):
         if value_type not in _SUPPORTED_SCALARS:
             raise AdapterError(f"unsupported Literal type: {value_type!r}")
         return value_type, values
+    if origin is tuple or annotation is tuple:
+        return str, None
     if annotation in _SUPPORTED_SCALARS:
         return annotation, None
     if annotation in (inspect.Signature.empty, None, object):
@@ -65,6 +68,23 @@ def _bool_value(value: str) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     raise argparse.ArgumentTypeError(f"expected boolean value, got {value!r}")
+
+
+def _argument_value(value: str, converter):
+    """Preserve structured tuple markers through argparse conversion."""
+    if value.startswith(STRUCTURED_TUPLE_PREFIX):
+        return value
+    return _bool_value(value) if converter is bool else converter(value)
+
+
+def _decode_structured_value(value: object) -> object:
+    """Convert an internally marked comma group to one Python tuple value."""
+    if isinstance(value, str) and value.startswith(STRUCTURED_TUPLE_PREFIX):
+        payload = value[len(STRUCTURED_TUPLE_PREFIX) :]
+        return tuple(payload.split(",")) if payload else ()
+    if isinstance(value, list):
+        return [_decode_structured_value(item) for item in value]
+    return value
 
 
 class _ArgumentParser(argparse.ArgumentParser):
@@ -239,12 +259,13 @@ class PythonAdapter:
             annotation = hints.get(parameter.name, parameter.annotation)
             converter, choices = _converter(annotation)
             option = f"--{_cli_name(parameter.name)}"
+            value_type = lambda value, converter=converter: _argument_value(value, converter)
 
             if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
                 parser.add_argument(
                     parameter.name,
                     nargs="*",
-                    type=_bool_value if converter is bool else converter,
+                    type=value_type,
                     choices=choices,
                 )
                 continue
@@ -261,7 +282,7 @@ class PythonAdapter:
             if required_positional:
                 parser.add_argument(
                     parameter.name,
-                    type=_bool_value if converter is bool else converter,
+                    type=value_type,
                     choices=choices,
                 )
                 continue
@@ -288,7 +309,7 @@ class PythonAdapter:
                 parser.add_argument(
                     option,
                     dest=parameter.name,
-                    type=converter,
+                    type=value_type,
                     choices=choices,
                     default=None
                     if parameter.default is inspect.Parameter.empty
@@ -309,7 +330,10 @@ class PythonAdapter:
             return None
 
         namespace = parser.parse_args(argv)
-        values = vars(namespace)
+        values = {
+            key: _decode_structured_value(value)
+            for key, value in vars(namespace).items()
+        }
         signature = inspect.signature(function)
         positional: list[object] = []
         keywords: dict[str, object] = {}
