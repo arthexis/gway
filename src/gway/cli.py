@@ -7,6 +7,7 @@ import os
 import shlex
 import shutil
 import sys
+import textwrap
 from collections.abc import Mapping, Sequence
 from importlib.metadata import version as distribution_version
 
@@ -119,12 +120,35 @@ def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
     print(f"usage: gway {project.name} <command> [arguments]")
     print()
     print("commands:")
-    for command in commands:
-        name = " ".join(command.path)
-        if command.summary:
-            print(f"  {name:<24} {command.summary}")
-        else:
-            print(f"  {name}")
+
+    rows = [(" ".join(command.path), command.summary) for command in commands]
+    if not rows:
+        return
+
+    terminal_width = max(40, shutil.get_terminal_size(fallback=(100, 24)).columns)
+    name_width = max(len(name) for name, _ in rows)
+    left_indent = 2
+    gap = 2
+    description_column = left_indent + name_width + gap
+    description_width = terminal_width - description_column
+
+    for name, summary in rows:
+        if not summary:
+            print(f"{' ' * left_indent}{name}")
+            continue
+
+        if description_width < 20:
+            print(f"{' ' * left_indent}{name}")
+            wrapped = textwrap.wrap(summary, width=max(20, terminal_width - left_indent * 2))
+            for line in wrapped:
+                print(f"{' ' * (left_indent * 2)}{line}")
+            continue
+
+        wrapped = textwrap.wrap(summary, width=description_width) or [""]
+        print(f"{' ' * left_indent}{name:<{name_width}}{' ' * gap}{wrapped[0]}")
+        continuation = " " * description_column
+        for line in wrapped[1:]:
+            print(f"{continuation}{line}")
 
 
 def _paint(text: str, code: str, *, color: bool) -> str:
