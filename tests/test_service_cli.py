@@ -7,7 +7,6 @@ import pytest
 import gway.cli as cli
 from gway.cli import main
 
-
 MANIFEST = """[project]
 name = "epaper"
 aliases = ["gway-epaper"]
