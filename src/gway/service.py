@@ -298,6 +298,9 @@ class ServiceManager:
             )
             for key, config in configs.items()
         ]
+        unit_names = self.unit_names
+        if len(unit_names) != len(set(unit_names)):
+            raise ServiceError("selected services resolve to duplicate systemd unit names")
 
     @property
     def unit_names(self) -> list[str]:
@@ -331,7 +334,7 @@ class ServiceManager:
         return paths[0] if len(paths) == 1 else paths
 
     def uninstall(self) -> bool | dict[str, bool]:
-        removed = {unit.key: unit.uninstall() for unit in self.units}
+        removed = {unit.key: unit.uninstall() for unit in reversed(self.units)}
         _systemctl("daemon-reload")
         return next(iter(removed.values())) if len(removed) == 1 else removed
 
