@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import gway.cli as cli
 import pytest
+
+import gway.cli as cli
 from gway.cli import main
 
 
