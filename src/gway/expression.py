@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 MANAGED_EXPRESSION_PROJECT = "\0gway-expression"
+STRUCTURED_KWARG_PREFIX = "\0gway-kw:"
 
 
 class ExpressionError(ValueError):
@@ -26,89 +27,128 @@ class ManagedBranch:
         return self.literal is not None
 
 
-def _split_compact(token: str) -> tuple[list[str], str | None]:
-    path_text, separator, argument = token.partition(":")
-    path = path_text.split(".")
-    if not path_text or any(not part for part in path):
+def _split_compact_path(token: str) -> list[str]:
+    path = token.split(".")
+    if not token or any(not part for part in path):
         raise ExpressionError(f"invalid managed command expression: {token!r}")
-    return path, argument if separator else None
+    return path
+
+
+def _normalize_tuple_text(value: str) -> str:
+    """Keep comma members grouped while ignoring surrounding whitespace."""
+    if "," not in value:
+        return value.strip()
+    return ",".join(item.strip() for item in value.split(","))
+
+
+def _structured_argument(segment: str) -> str:
+    """Encode one colon-delimited argument for later command-aware dispatch."""
+    segment = segment.strip()
+    if not segment:
+        raise ExpressionError("managed call argument is empty")
+
+    # :=value explicitly means positional, even when value itself contains '='.
+    if segment.startswith("="):
+        return _normalize_tuple_text(segment[1:].strip())
+
+    if "=" in segment:
+        name, value = segment.split("=", 1)
+        name = name.strip()
+        if not name.isidentifier():
+            raise ExpressionError(f"invalid managed keyword argument: {segment!r}")
+        value = _normalize_tuple_text(value)
+        return f"{STRUCTURED_KWARG_PREFIX}{name}={value}"
+
+    return _normalize_tuple_text(segment)
+
+
+def _target_words(text: str) -> list[str]:
+    try:
+        words = shlex.split(text)
+    except ValueError as exc:
+        raise ExpressionError(f"invalid managed command expression: {text!r}") from exc
+    if not words:
+        raise ExpressionError("managed command expression is empty")
+    return words
+
+
+def _target_branch(
+    target: str,
+    arguments: Sequence[str] = (),
+    *,
+    operator: str | None = None,
+) -> ManagedBranch:
+    words = _target_words(target.strip())
+    first = words[0]
+    remaining = list(words[1:])
+
+    if "." in first:
+        path = _split_compact_path(first)
+        project = path[0]
+        command_args = path[1:]
+        command_args.extend(remaining)
+    else:
+        project = first
+        if remaining and "." in remaining[0]:
+            path = _split_compact_path(remaining[0])
+            command_args = path
+            command_args.extend(remaining[1:])
+        else:
+            command_args = remaining
+
+    command_args.extend(_structured_argument(argument) for argument in arguments)
+    return ManagedBranch(project=project, args=tuple(command_args), operator=operator)
+
+
+def _command_branch(text: str, *, operator: str | None = None) -> ManagedBranch:
+    if ":" not in text:
+        return _target_branch(text, operator=operator)
+
+    parts = text.split(":")
+    target = parts[0].strip()
+    arguments = parts[1:]
+    if not target:
+        raise ExpressionError(f"invalid managed command expression: {text!r}")
+    return _target_branch(target, arguments, operator=operator)
 
 
 def normalize_managed_args(args: Sequence[str]) -> tuple[str, list[str]]:
-    """Normalize dotted/colon managed CLI syntax into dispatcher arguments."""
+    """Normalize managed CLI syntax into dispatcher arguments/expression mode."""
     if not args:
         raise ExpressionError("managed command expression is empty")
 
-    expression = " ".join(args)
-    if "|" in expression or expression.endswith(":"):
+    expression = " ".join(args).strip()
+    if "|" in expression or ":" in expression:
         return MANAGED_EXPRESSION_PROJECT, [expression]
 
     first = args[0]
     remaining = list(args[1:])
 
-    if "." in first or ":" in first:
-        path, argument = _split_compact(first)
-        project = path[0]
-        command_args = path[1:]
-        if argument:
-            command_args.append(argument)
-        command_args.extend(remaining)
-        return project, command_args
+    if "." in first:
+        path = _split_compact_path(first)
+        return path[0], [*path[1:], *remaining]
 
     project = first
     if not remaining:
         return project, []
 
     command_head = remaining[0]
-    if "." not in command_head and ":" not in command_head:
-        return project, remaining
+    if "." in command_head:
+        path = _split_compact_path(command_head)
+        return project, [*path, *remaining[1:]]
 
-    path, argument = _split_compact(command_head)
-    command_args = path
-    if argument:
-        command_args.append(argument)
-    command_args.extend(remaining[1:])
-    return project, command_args
-
-
-def _command_branch(text: str, *, operator: str | None = None) -> ManagedBranch:
-    try:
-        words = shlex.split(text)
-    except ValueError as exc:
-        raise ExpressionError(f"invalid managed command expression: {text!r}") from exc
-    if not words:
-        raise ExpressionError("managed fallback branch is empty")
-
-    first = words[0]
-    remaining = list(words[1:])
-    if "." in first or ":" in first:
-        path, argument = _split_compact(first)
-        project = path[0]
-        command_args = path[1:]
-        if argument:
-            command_args.append(argument)
-        command_args.extend(remaining)
-        return ManagedBranch(project=project, args=tuple(command_args), operator=operator)
-
-    project = first
-    if remaining and ("." in remaining[0] or ":" in remaining[0]):
-        path, argument = _split_compact(remaining[0])
-        command_args = path
-        if argument:
-            command_args.append(argument)
-        command_args.extend(remaining[1:])
-        return ManagedBranch(project=project, args=tuple(command_args), operator=operator)
-
-    return ManagedBranch(project=project, args=tuple(remaining), operator=operator)
+    return project, remaining
 
 
 def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
-    """Parse loose ``|`` and strict ``||`` fallback chains.
+    """Parse calls plus loose ``|`` and strict ``||`` fallback chains.
 
-    ``|`` advances on any falsey result. ``||`` advances only on a missing
-    command/project, ``None``, or an empty set/frozenset. ``|:literal`` and
-    ``||:literal`` are terminal literal fallbacks.
+    Colons separate call arguments, ``name=value`` marks keyword arguments,
+    ``:=value`` explicitly marks a positional argument, and commas remain
+    grouped inside one argument. ``|`` advances on any falsey result while
+    ``||`` advances only on missing/None/empty-set values.
     """
+    expression = expression.strip()
     if not expression:
         raise ExpressionError("managed command expression is empty")
 
@@ -130,7 +170,7 @@ def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
         if not branch:
             raise ExpressionError("managed fallback branch is empty")
         if branch.startswith(":"):
-            branches.append(ManagedBranch(literal=branch[1:], operator=operator))
+            branches.append(ManagedBranch(literal=branch[1:].strip(), operator=operator))
             break
         if branch.endswith(":"):
             branches.append(ManagedBranch(literal=branch[:-1].strip(), operator=operator))
@@ -144,6 +184,7 @@ __all__ = [
     "ExpressionError",
     "MANAGED_EXPRESSION_PROJECT",
     "ManagedBranch",
+    "STRUCTURED_KWARG_PREFIX",
     "normalize_managed_args",
     "parse_managed_branches",
 ]
