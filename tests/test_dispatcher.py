@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -89,13 +90,29 @@ def test_cli_interactive_prompts_for_missing_required_option(
 ) -> None:
     dispatcher = make_dispatcher(tmp_path)
     answers = iter(["gway-004"])
-    monkeypatch.setattr("builtins.input", lambda prompt: next(answers))
+    monkeypatch.setattr("builtins.input", lambda: next(answers))
 
     assert main(["-i", "fixture", "token", "create"], dispatcher=dispatcher) == 0
 
-    output = capsys.readouterr().out
-    assert "--device-name" in output
-    assert "gway-004" in output
+    captured = capsys.readouterr()
+    assert "device_name: " in captured.err
+    assert "--device-name" in captured.out
+    assert "gway-004" in captured.out
+
+
+def test_json_interactive_prompt_does_not_pollute_stdout(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda: "gway-004")
+
+    assert main(["--json", "-i", "fixture", "token", "create"], dispatcher=dispatcher) == 0
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["argv"] == ["--device-name", "gway-004"]
+    assert "device_name: " in captured.err
 
 
 def test_cli_renders_project_level_help(tmp_path: Path, capsys) -> None:
@@ -130,6 +147,19 @@ def test_cli_wraps_help_descriptions_in_right_column(tmp_path: Path, monkeypatch
     assert continuation.startswith(" " * description_column)
     assert continuation.strip()
     assert len(continuation) <= 58
+
+
+def test_cli_help_stays_within_narrow_terminal(tmp_path: Path, monkeypatch, capsys) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+    monkeypatch.setattr(
+        "gway.cli.shutil.get_terminal_size",
+        lambda fallback: os.terminal_size((32, 24)),
+    )
+
+    assert main(["fixture", "--help"], dispatcher=dispatcher) == 0
+    command_lines = capsys.readouterr().out.split("commands:\n", 1)[1].splitlines()
+    assert command_lines
+    assert all(len(line) <= 32 for line in command_lines)
 
 
 def test_dispatcher_uses_longest_command_path(tmp_path: Path) -> None:
