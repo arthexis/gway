@@ -161,18 +161,43 @@ command = []
     assert not (unit_directory / "gway-invalid-second.service").exists()
 
 
-def test_environment_selector_install_requires_preserving_sudo(tmp_path: Path, monkeypatch) -> None:
+def test_environment_selector_install_requires_complete_preserving_sudo(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     project = make_project(tmp_path)
     monkeypatch.delenv("GWAY_SERVICE", raising=False)
     monkeypatch.setenv("GWAY_SERVICE_PROFILE", "Control")
     monkeypatch.setattr(service.os, "geteuid", lambda: 1000)
     manager = service.ServiceManager(project)
 
-    with pytest.raises(
-        service.ServiceError,
-        match=r"sudo --preserve-env=GWAY_SERVICE_PROFILE",
-    ):
-        manager.install(user="arthexis")
+    with pytest.raises(service.ServiceError) as exc_info:
+        manager.install(user="arthexis", enable=False, start=False)
+
+    message = str(exc_info.value)
+    assert "sudo --preserve-env=GWAY_SERVICE_PROFILE" in message
+    assert "gway service install arthexis" in message
+    assert "--user arthexis" in message
+    assert "--no-enable" in message
+    assert "--no-start" in message
+
+
+def test_environment_selector_uninstall_requires_complete_preserving_sudo(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project = make_project(tmp_path)
+    monkeypatch.delenv("GWAY_SERVICE", raising=False)
+    monkeypatch.setenv("GWAY_SERVICE_PROFILE", "Control")
+    monkeypatch.setattr(service.os, "geteuid", lambda: 1000)
+    manager = service.ServiceManager(project)
+
+    with pytest.raises(service.ServiceError) as exc_info:
+        manager.uninstall()
+
+    message = str(exc_info.value)
+    assert "sudo --preserve-env=GWAY_SERVICE_PROFILE" in message
+    assert "gway service uninstall arthexis" in message
 
 
 def test_uninstall_stops_units_in_reverse_topology_order(tmp_path: Path, monkeypatch) -> None:
@@ -245,5 +270,8 @@ command = ["{python}", "-m", "legacy.service"]
     project = Project.from_path(root)
 
     manager = service.ServiceManager(project)
+    rendered = manager.render(user="arthexis")
 
     assert manager.unit_name == "gway-legacy.service"
+    assert "Description=GWAY legacy service\n" in rendered
+    assert "Description=GWAY legacy default service\n" not in rendered
