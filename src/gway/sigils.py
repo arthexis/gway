@@ -10,6 +10,7 @@ from .project import Project
 from .registry import Registry
 
 RESERVED_CONTEXT_KEYS = frozenset({"cwd", "home", "gway", "project", "command"})
+_SIGILS_SUPPORTS_PROVIDER_CALLS = hasattr(Sigil, "_provider_callable")
 
 
 def _freeze(value: object) -> object:
@@ -121,6 +122,15 @@ class _GwayNamespaceProvider:
 
         command = command_map.get(path)
         if command is not None:
+            if not _SIGILS_SUPPORTS_PROVIDER_CALLS:
+                if any(parameter.required for parameter in command.parameters):
+                    raise KeyError(key)
+                project = self.registry.require(self.project_name)
+                cache_key = (project.name, path, (), ())
+                if cache_key not in self.cache:
+                    self.cache[cache_key] = dispatcher.run(self.project_name, path)
+                return self.cache[cache_key]
+
             return _GwayCommandCall(
                 self.registry,
                 self.project_name,
