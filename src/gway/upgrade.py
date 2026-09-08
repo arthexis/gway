@@ -48,7 +48,7 @@ class Upgrader:
                 f"project is locally registered and cannot be upgraded by GWAY: {current.name}"
             )
 
-        previous_revision = self.repositories.revision(current.path)
+        previous_revision = current.revision or self.repositories.revision(current.path)
         revision = self.repositories.upgrade(
             current.path,
             current.repository,
