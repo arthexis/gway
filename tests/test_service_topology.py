@@ -131,7 +131,11 @@ def test_install_writes_all_units_before_reload_and_activation(
 
 def test_uninstall_stops_units_in_reverse_topology_order(tmp_path: Path, monkeypatch) -> None:
     project = make_project(tmp_path)
-    manager = service.ServiceManager(project, profile="Control", unit_directory=tmp_path / "systemd")
+    manager = service.ServiceManager(
+        project,
+        profile="Control",
+        unit_directory=tmp_path / "systemd",
+    )
     calls: list[tuple[str, ...]] = []
 
     def fake_systemctl(*args: str, check: bool = True):
