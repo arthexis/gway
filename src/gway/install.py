@@ -49,7 +49,8 @@ class Installer:
             prepared_environment = self.runner.prepare(project)
             if prepared_environment is not None:
                 project = replace(project, environment=prepared_environment)
-            self.runner.run_lifecycle(project, "install")
+            if project.lifecycle_hooks is not None:
+                self.runner.run_lifecycle(project, "install")
             return self.registry.register(project)
         except Exception:
             shutil.rmtree(checkout, ignore_errors=True)
