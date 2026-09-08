@@ -27,6 +27,7 @@ class Project:
     repository: str | None = None
     revision: str | None = None
     environment: Path | None = None
+    service_config: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         _validate_name(self.name)
@@ -46,10 +47,13 @@ class Project:
 
         project_data = data.get("project")
         adapter_data = data.get("adapter")
+        service_data = data.get("service")
         if not isinstance(project_data, dict):
             raise ManifestError("gway.toml requires [project]")
         if not isinstance(adapter_data, dict):
             raise ManifestError("gway.toml requires [adapter]")
+        if service_data is not None and not isinstance(service_data, dict):
+            raise ManifestError("[service] must be a table")
 
         name = project_data.get("name")
         adapter_type = adapter_data.get("type")
@@ -77,6 +81,7 @@ class Project:
             path=root,
             adapter_type=adapter_type,
             adapter_config=adapter_config,
+            service_config=dict(service_data) if service_data is not None else None,
         )
 
     def to_record(self) -> dict[str, Any]:
@@ -89,11 +94,13 @@ class Project:
             "repository": self.repository,
             "revision": self.revision,
             "environment": str(self.environment) if self.environment is not None else None,
+            "service_config": self.service_config,
         }
 
     @classmethod
     def from_record(cls, data: dict[str, Any]) -> Project:
         environment = data.get("environment")
+        service_config = data.get("service_config")
         return cls(
             name=data["name"],
             path=Path(data["path"]),
@@ -103,4 +110,5 @@ class Project:
             repository=data.get("repository"),
             revision=data.get("revision"),
             environment=Path(environment) if environment else None,
+            service_config=dict(service_config) if service_config is not None else None,
         )
