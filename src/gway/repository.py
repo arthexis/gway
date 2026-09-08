@@ -75,9 +75,16 @@ class RepositoryManager:
 
         raise RepositoryError(f"cannot resolve GitHub project: {value}")
 
-    def clone(self, repository: ResolvedRepository) -> Path:
+    def default_checkout(self, repository: ResolvedRepository) -> Path:
+        return self.paths.projects_dir / repository.owner / repository.name
+
+    def clone(
+        self,
+        repository: ResolvedRepository,
+        destination: Path | None = None,
+    ) -> Path:
         self._validate_owner(repository.owner)
-        destination = self.paths.projects_dir / repository.owner / repository.name
+        destination = destination or self.default_checkout(repository)
         if destination.exists():
             raise RepositoryError(f"managed checkout already exists: {destination}")
 
