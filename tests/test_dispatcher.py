@@ -93,7 +93,11 @@ def test_cli_dispatches_registered_project(tmp_path: Path, capsys) -> None:
     assert capsys.readouterr().out == "hello\n"
 
 
-def test_cli_interactive_prompts_for_missing_required_option(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_cli_interactive_prompts_for_missing_required_option(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     answers = iter(["gway-004"])
     monkeypatch.setattr("builtins.input", lambda: next(answers))
@@ -104,7 +108,11 @@ def test_cli_interactive_prompts_for_missing_required_option(tmp_path: Path, mon
     assert "gway-004" in captured.out
 
 
-def test_json_interactive_prompt_does_not_pollute_stdout(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_json_interactive_prompt_does_not_pollute_stdout(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     monkeypatch.setattr("builtins.input", lambda: "gway-004")
     assert main(["--json", "-i", "fixture", "token", "create"], dispatcher=dispatcher) == 0
@@ -171,7 +179,10 @@ def test_dispatcher_resolves_project_aware_sigils(tmp_path: Path) -> None:
     }
 
 
-def test_dispatcher_captures_eager_values_before_adapter_context(tmp_path: Path, monkeypatch) -> None:
+def test_dispatcher_captures_eager_values_before_adapter_context(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
     events: list[str] = []
     original_capture = dispatcher_module.capture_cli_values
