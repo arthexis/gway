@@ -24,7 +24,7 @@ dev = [
 ]
 
 [project.scripts]
-gway = "gway.cli:main"
+gway = "gway.bootstrap:main"
 
 [project.urls]
 Repository = "https://github.com/arthexis/gway"
