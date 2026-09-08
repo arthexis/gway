@@ -4,9 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 import gway.service as service
+import pytest
 from gway.project import Project
 
 
@@ -54,7 +53,11 @@ def test_render_uses_project_manifest_and_expands_placeholders(tmp_path: Path) -
     unit = manager.render(user="display")
 
     assert "Description=GWAY e-paper display service\n" in unit
-    assert f'ExecStart="{sys.executable}" "-m" "gway_epaper.service" "{project.path}/epaper.toml"' in unit
+    expected = (
+        f'ExecStart="{sys.executable}" "-m" "gway_epaper.service" '
+        f'"{project.path}/epaper.toml"'
+    )
+    assert expected in unit
     assert "User=display\n" in unit
     assert "Restart=on-failure\n" in unit
     assert "RestartSec=5s\n" in unit
