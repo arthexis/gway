@@ -57,7 +57,8 @@ class Upgrader:
         environment = self.runner.refresh(refreshed)
         if environment is not None:
             refreshed = replace(refreshed, environment=environment)
-        self.runner.run_lifecycle(refreshed, "upgrade")
+        if refreshed.lifecycle_hooks is not None:
+            self.runner.run_lifecycle(refreshed, "upgrade")
         return self.registry.register(refreshed)
 
     def all_projects(self, *, force: bool = False) -> list[Project]:
