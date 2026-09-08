@@ -21,7 +21,7 @@ class Runner:
         self.paths = paths or default_paths()
 
     def environment_path(self, project: Project) -> Path:
-        return self.paths.environments_dir / project.name
+        return project.managed_environment or (self.paths.environments_dir / project.name)
 
     @staticmethod
     def environment_python(environment: Path) -> Path:
