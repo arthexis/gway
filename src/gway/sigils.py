@@ -3,9 +3,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from sigils import Context, Sigil
+
 from .config import GwayPaths, default_paths
 from .project import Project
-from sigils import Context, Sigil
 
 
 RESERVED_CONTEXT_KEYS = frozenset({"cwd", "home", "gway", "project", "command"})
