@@ -58,8 +58,8 @@ jobs:
     timeout-minutes: 20
     env:
       PYTHONDONTWRITEBYTECODE: '1'
-      XDG_CONFIG_HOME: ${{ runner.temp }}/gway-config
-      XDG_DATA_HOME: ${{ runner.temp }}/gway-data
+      XDG_CONFIG_HOME: ${{ github.workspace }}/.gway-ci/config
+      XDG_DATA_HOME: ${{ github.workspace }}/.gway-ci/data
     steps:
       - uses: actions/checkout@v6
         with:
