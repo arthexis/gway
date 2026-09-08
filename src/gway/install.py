@@ -50,11 +50,19 @@ class Installer:
 
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
-            placed = Path(shutil.move(str(checkout), str(target)))
+            target.mkdir()
+        except FileExistsError as exc:
+            raise ValueError(f"managed checkout appeared during install: {target}") from exc
+
+        try:
+            for entry in checkout.iterdir():
+                shutil.move(str(entry), str(target / entry.name))
+            shutil.copystat(checkout, target, follow_symlinks=False)
+            checkout.rmdir()
         except Exception:
             shutil.rmtree(target, ignore_errors=True)
             raise
-        return placed, replace(project, path=placed), False
+        return target, replace(project, path=target), False
 
     def install(self, spec: str) -> Project:
         repository = self.repositories.resolve(spec)
