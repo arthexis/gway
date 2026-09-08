@@ -6,7 +6,12 @@ from collections.abc import Mapping, Sequence
 from .adapters import AdapterRegistry
 from .adapters.base import SigilContextAdapter
 from .command import Command, Parameter
-from .expression import MANAGED_EXPRESSION_PROJECT, parse_managed_branches
+from .expression import (
+    MANAGED_EXPRESSION_PROJECT,
+    STRUCTURED_ARG_PREFIX,
+    STRUCTURED_KWARG_PREFIX,
+    parse_managed_branches,
+)
 from .registry import Registry, RegistryError
 from .sigils import capture_cli_values, resolve_captured_cli_values
 
@@ -78,6 +83,68 @@ def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
     return completed
 
 
+def _structured_value_tokens(parameter: Parameter, value: str) -> list[str]:
+    """Translate one structured value to this command's normal CLI spelling."""
+    if parameter.positional:
+        return [value]
+
+    option = _option_name(parameter)
+    if parameter.annotation is bool:
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return [option]
+        if normalized in {"0", "false", "no", "off"}:
+            return [f"--no-{option[2:]}"] if option.startswith("--") else [option, "false"]
+    return [option, value]
+
+
+def _decode_structured_argv(command: Command, argv: Sequence[str]) -> list[str]:
+    """Bind colon-delimited positional/keyword values to command parameters."""
+    positional: list[str] = []
+    keywords: dict[str, str] = {}
+    ordinary: list[str] = []
+
+    for token in argv:
+        if token.startswith(STRUCTURED_ARG_PREFIX):
+            positional.append(token[len(STRUCTURED_ARG_PREFIX) :])
+            continue
+        if token.startswith(STRUCTURED_KWARG_PREFIX):
+            payload = token[len(STRUCTURED_KWARG_PREFIX) :]
+            name, separator, value = payload.partition("=")
+            if not separator:
+                raise DispatchError(f"invalid structured keyword argument: {payload!r}")
+            keywords[name] = value
+            continue
+        ordinary.append(token)
+
+    if not positional and not keywords:
+        return ordinary
+
+    result = list(ordinary)
+    values = iter(positional)
+    pending = next(values, None)
+    known_names = {parameter.name for parameter in command.parameters}
+    unknown = set(keywords).difference(known_names)
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise DispatchError(f"unknown structured keyword argument(s): {names}")
+
+    for parameter in command.parameters:
+        if parameter.name in keywords:
+            result.extend(_structured_value_tokens(parameter, keywords.pop(parameter.name)))
+            continue
+        if pending is None:
+            continue
+        result.extend(_structured_value_tokens(parameter, pending))
+        pending = next(values, None)
+
+    if pending is not None:
+        result.append(pending)
+        result.extend(values)
+
+    return result
+
+
 def _strict_fallback_missing(value: object) -> bool:
     """Return whether a resolved CLI result should advance across ``||``."""
     return value is None or (isinstance(value, (set, frozenset)) and not value)
@@ -121,7 +188,7 @@ class Dispatcher:
         return tuple(adapter.commands())
 
     def _run_expression(self, expression: str, *, interactive: bool) -> object:
-        """Evaluate loose ``|`` and strict ``||`` fallback expressions."""
+        """Evaluate calls plus loose ``|`` and strict ``||`` fallbacks."""
         branches = parse_managed_branches(expression)
         result: object = None
         resolved = False
@@ -175,6 +242,7 @@ class Dispatcher:
         adapter = self.adapters.create(project)
         commands = tuple(adapter.commands())
         command, argv = self._resolve_command(commands, tokens)
+        argv = _decode_structured_argv(command, argv)
         if interactive:
             argv = _fill_required_options(command, argv)
 
