@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -51,12 +52,15 @@ class RepositoryManager:
 
     @staticmethod
     def _exists(repository: ResolvedRepository) -> bool:
+        env = os.environ.copy()
+        env["GIT_TERMINAL_PROMPT"] = "0"
         try:
             result = subprocess.run(
                 ["git", "ls-remote", "--exit-code", repository.clone_url, "HEAD"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
+                env=env,
             )
         except OSError as exc:
             raise RepositoryError(f"cannot run git: {exc}") from exc
