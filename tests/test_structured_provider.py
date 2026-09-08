@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from gway import sigils as gway_sigils
 from gway.config import GwayPaths
 from gway.project import Project
 from gway.registry import Registry
-from gway import sigils as gway_sigils
 
 
 def _context(tmp_path: Path, monkeypatch):
@@ -65,11 +65,10 @@ def test_provider_preserves_tuple_arguments(tmp_path, monkeypatch) -> None:
 def test_parameterized_provider_calls_memoize_by_arguments(tmp_path, monkeypatch) -> None:
     context = _context(tmp_path, monkeypatch)
     command = context["network"].resolve("ip")
+    command.command.adapter_data.__globals__["calls"] = 0
 
     assert command("wlan0") == "ip:wlan0"
     assert command("wlan0") == "ip:wlan0"
     assert command("eth0") == "ip:eth0"
 
-    module = command.command.adapter_data.__module__
-    imported = __import__(module)
-    assert imported.calls == 2
+    assert command.command.adapter_data.__globals__["calls"] == 2
