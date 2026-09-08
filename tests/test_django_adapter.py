@@ -94,7 +94,8 @@ def test_django_interactive_preserves_positional_after_zero_arity_option(
         raise AssertionError("interactive mode should not prompt for an existing positional")
 
     monkeypatch.setattr("builtins.input", unexpected_input)
-    assert main(["django-fixture", "echo", "-i", "--traceback", "hello"], dispatcher=dispatcher) == 0
+    args = ["django-fixture", "echo", "-i", "--traceback", "hello"]
+    assert main(args, dispatcher=dispatcher) == 0
     assert capsys.readouterr().out == "hello\n"
 
 
