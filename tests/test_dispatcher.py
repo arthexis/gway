@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+import gway.dispatcher as dispatcher_module
 from gway.adapters import AdapterRegistry
 from gway.cli import main
 from gway.command import Command
 from gway.config import GwayPaths
-from gway.dispatcher import CommandNotFound, Dispatcher
+from gway.dispatcher import CommandNotFound, DispatchError, Dispatcher
 from gway.project import Project
 from gway.registry import Registry
 
@@ -27,6 +30,14 @@ class FixtureAdapter:
             if command.path == path:
                 return command
         raise CommandNotFound(f"unknown command: {' '.join(path)}")
+
+    def sigil_context(self, command_path: tuple[str, ...]):
+        return {
+            "MODEL": {
+                "name": "demo",
+                "command": " ".join(command_path),
+            }
+        }
 
     def run(self, path: tuple[str, ...], argv: list[str]) -> object:
         if path == ("hello",):
@@ -88,10 +99,75 @@ def test_dispatcher_resolves_project_aware_sigils(tmp_path: Path) -> None:
 
     result = dispatcher.run(
         "fx",
-        ["peer", "add", "[project.name]", "[project.path]", "[command.path]"],
+        [
+            "peer",
+            "add",
+            "[project.name]",
+            "[project.path]",
+            "[command.path]",
+            "[MODEL.name]",
+        ],
     )
 
     assert result == {
         "path": ("peer", "add"),
-        "argv": ["fixture", str((tmp_path / "fixture").resolve()), "peer add"],
+        "argv": [
+            "fixture",
+            str((tmp_path / "fixture").resolve()),
+            "peer add",
+            "demo",
+        ],
     }
+
+
+def test_dispatcher_captures_eager_values_before_adapter_context(
+    tmp_path: Path, monkeypatch
+) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+    events: list[str] = []
+    original_capture = dispatcher_module.capture_cli_values
+
+    def capture(values, *, paths=None):
+        events.append("capture")
+        return original_capture(values, paths=paths)
+
+    def context(self, command_path):
+        events.append("context")
+        return {"MODEL": {"name": "demo", "command": " ".join(command_path)}}
+
+    monkeypatch.setattr(dispatcher_module, "capture_cli_values", capture)
+    monkeypatch.setattr(FixtureAdapter, "sigil_context", context)
+
+    result = dispatcher.run("fx", ["peer", "add", "%[cwd]", "[MODEL.name]"])
+
+    assert events == ["capture", "context"]
+    assert result == {
+        "path": ("peer", "add"),
+        "argv": [str(Path.cwd()), "demo"],
+    }
+
+
+def test_dispatcher_rejects_reserved_adapter_context(tmp_path: Path, monkeypatch) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+
+    monkeypatch.setattr(
+        FixtureAdapter,
+        "sigil_context",
+        lambda self, command_path: {"project": {"name": "shadowed"}},
+    )
+
+    with pytest.raises(DispatchError, match="cannot replace reserved keys: project"):
+        dispatcher.run("fx", ["peer", "add", "[project.name]"])
+
+
+def test_dispatcher_rejects_non_mapping_adapter_context(tmp_path: Path, monkeypatch) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+
+    monkeypatch.setattr(
+        FixtureAdapter,
+        "sigil_context",
+        lambda self, command_path: ["not", "a", "mapping"],
+    )
+
+    with pytest.raises(DispatchError, match="must return a mapping"):
+        dispatcher.run("fx", ["peer", "add", "value"])
