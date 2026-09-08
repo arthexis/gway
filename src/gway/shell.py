@@ -139,7 +139,10 @@ def shell_status(
     env = os.environ if environ is None else environ
     name = detect_shell(shell, environ=env)
     path = rc_path(name, environ=env)
-    installed = path.exists() and _MANAGED_BLOCK.search(path.read_text(encoding="utf-8")) is not None
+    installed = (
+        path.exists()
+        and _MANAGED_BLOCK.search(path.read_text(encoding="utf-8")) is not None
+    )
     return {
         "status": "installed" if installed else "not-installed",
         "shell": name,
