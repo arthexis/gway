@@ -34,6 +34,18 @@ python -m pip install -e '.[dev]'
 pytest
 ```
 
+Before pushing, normalize Ruff lint and formatting with:
+
+```bash
+bash scripts/quality.sh --fix
+```
+
+To run the same non-mutating quality checks used by CI:
+
+```bash
+bash scripts/quality.sh --check
+```
+
 At minimum, changes to CLI/bootstrap behavior must keep both of these working:
 
 ```bash
