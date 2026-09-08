@@ -4,8 +4,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-import gway.service as service
 import pytest
+
+import gway.service as service
 from gway.project import Project
 
 
