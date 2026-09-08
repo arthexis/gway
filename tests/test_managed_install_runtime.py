@@ -134,10 +134,9 @@ def test_failed_checkout_move_removes_partial_managed_destination(
     )
 
     def fail_move(source: str, destination: str) -> None:
-        assert Path(source) == staging
+        assert Path(source).parent == staging
         partial = Path(destination)
-        partial.mkdir(parents=True)
-        (partial / "partial-copy").write_text("incomplete", encoding="utf-8")
+        partial.write_text("incomplete", encoding="utf-8")
         raise OSError("copy failed")
 
     monkeypatch.setattr("gway.install.shutil.move", fail_move)
@@ -146,6 +145,34 @@ def test_failed_checkout_move_removes_partial_managed_destination(
         installer.install("arthexis")
 
     assert not (target / "app").exists()
+    assert not staging.exists()
+
+
+def test_concurrent_checkout_creation_is_not_deleted(monkeypatch, tmp_path: Path) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    target = tmp_path / "opt" / "arthexis"
+    checkout_target = target / "app"
+    staging = paths.projects_dir / "arthexis" / "arthexis"
+    installer = Installer(
+        Registry(paths),
+        repositories=LayoutRepositories(staging, target),
+        runner=LayoutRunner(),
+    )
+    original_mkdir = Path.mkdir
+
+    def racing_mkdir(path: Path, *args, **kwargs) -> None:
+        if path == checkout_target:
+            original_mkdir(path)
+            (path / "other-process").write_text("owned elsewhere", encoding="utf-8")
+            raise FileExistsError(str(path))
+        original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", racing_mkdir)
+
+    with pytest.raises(ValueError, match="managed checkout appeared during install"):
+        installer.install("arthexis")
+
+    assert (checkout_target / "other-process").read_text(encoding="utf-8") == "owned elsewhere"
     assert not staging.exists()
 
 
