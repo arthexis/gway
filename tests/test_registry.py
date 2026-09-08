@@ -65,7 +65,7 @@ def test_manifest_rejects_escaping_managed_paths(tmp_path: Path) -> None:
     root = tmp_path / "bad"
     root.mkdir()
     (root / "gway.toml").write_text(
-        '''[project]
+        """[project]
 name = "bad"
 
 [adapter]
@@ -75,11 +75,32 @@ module = "bad.commands"
 [install]
 root = "/opt/bad"
 checkout = "../escape"
-''',
+""",
         encoding="utf-8",
     )
 
     with pytest.raises(ManifestError, match="safe relative path"):
+        Project.from_path(root)
+
+
+def test_manifest_rejects_relative_managed_root(tmp_path: Path) -> None:
+    root = tmp_path / "bad"
+    root.mkdir()
+    (root / "gway.toml").write_text(
+        """[project]
+name = "bad"
+
+[adapter]
+type = "python"
+module = "bad.commands"
+
+[install]
+root = "deployment"
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ManifestError, match="absolute path"):
         Project.from_path(root)
 
 
