@@ -80,6 +80,9 @@ def _register_live_project(tmp_path: Path) -> GwayPaths:
         "    _calls += 1\n"
         "    return _calls\n"
         "\n"
+        "def zero():\n"
+        "    return 0\n"
+        "\n"
         "def echo(value):\n"
         "    return value\n",
         encoding="utf-8",
@@ -111,3 +114,11 @@ def test_gway_sigil_values_do_not_supply_arguments(tmp_path: Path) -> None:
     paths = _register_live_project(tmp_path)
 
     assert Sigil("[health.echo]").solve(gway_context(paths)) == "[health.echo]"
+
+
+def test_gway_sigil_values_support_loose_and_strict_fallbacks(tmp_path: Path) -> None:
+    paths = _register_live_project(tmp_path)
+
+    assert Sigil("[health.zero|:offline]").solve(gway_context(paths)) == "offline"
+    assert Sigil("[health.zero||:offline]").solve(gway_context(paths)) == "0"
+    assert Sigil("[health.echo||health.tick||:offline]").solve(gway_context(paths)) == "1"
