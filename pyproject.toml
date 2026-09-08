@@ -13,7 +13,7 @@ authors = [
   { name = "Rafael J. Guillén-Osorio", email = "tecnologia@gelectriic.com" },
 ]
 dependencies = [
-  "gway-sigils>=0.4.4,<0.5",
+  "gway-sigils>=0.4.5,<0.5",
 ]
 
 [project.optional-dependencies]
@@ -31,7 +31,7 @@ Repository = "https://github.com/arthexis/gway"
 Legacy = "https://github.com/arthexis/gway-legacy"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
