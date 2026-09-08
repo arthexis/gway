@@ -42,12 +42,16 @@ jobs:
     timeout-minutes: 20
     env:
       PYTHONDONTWRITEBYTECODE: '1'
-      XDG_CONFIG_HOME: ${{ runner.temp }}/gway-config
-      XDG_DATA_HOME: ${{ runner.temp }}/gway-data
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           clean: true
+
+      - name: Isolate GWAY state
+        shell: bash
+        run: |
+          echo "XDG_CONFIG_HOME=$RUNNER_TEMP/gway-config" >> "$GITHUB_ENV"
+          echo "XDG_DATA_HOME=$RUNNER_TEMP/gway-data" >> "$GITHUB_ENV"
 
       - name: Clean workspace
         run: git clean -ffdx
