@@ -1,10 +1,25 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 from .project import ManifestError, Project
+
+_RESERVED_ARGUMENTS = frozenset(
+    {
+        "--",
+        "--all",
+        "--force",
+        "--help",
+        "--interactive",
+        "--json",
+        "--self",
+        "--version",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -40,8 +55,14 @@ class InstallExtraSelector:
         default = config.get("default")
         state_value = config.get("state")
         values = config.get("values")
-        if not isinstance(argument, str) or not argument.startswith("--"):
-            raise ManifestError("[install.extras].argument must be a long option")
+        if (
+            not isinstance(argument, str)
+            or not argument.startswith("--")
+            or argument in _RESERVED_ARGUMENTS
+        ):
+            raise ManifestError(
+                "[install.extras].argument must be a project-owned long option"
+            )
         if not isinstance(default, str) or not default.strip():
             raise ManifestError("[install.extras].default must be a non-empty string")
         if not isinstance(state_value, str) or not state_value.strip():
@@ -53,9 +74,16 @@ class InstallExtraSelector:
             raise ManifestError("[install.extras.values] must declare at least one value")
 
         normalized_values: dict[str, tuple[str, ...]] = {}
+        canonical_keys: set[str] = set()
         for key, extras in values.items():
             if not isinstance(key, str) or not key.strip():
                 raise ManifestError("[install.extras.values] keys must be non-empty strings")
+            canonical_key = key.casefold()
+            if canonical_key in canonical_keys:
+                raise ManifestError(
+                    "[install.extras.values] keys must be unique ignoring case"
+                )
+            canonical_keys.add(canonical_key)
             if not isinstance(extras, list) or not all(
                 isinstance(extra, str) and extra.strip() for extra in extras
             ):
@@ -130,7 +158,24 @@ class InstallExtraSelector:
     def persist(self, project: Project, value: str) -> None:
         path = self.state_path(project)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"{self._canonical(value)}\n", encoding="utf-8")
+        canonical = self._canonical(value)
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                delete=False,
+            ) as stream:
+                temp_path = Path(stream.name)
+                stream.write(f"{canonical}\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temp_path, path)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
 
     def snapshot(self, project: Project) -> str | None:
         return self.current(project)
