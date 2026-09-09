@@ -80,9 +80,7 @@ class Dispatcher:
             if branch.is_literal:
                 return branch.literal
             try:
-                result = self.run(
-                    branch.project or "", branch.args, interactive=interactive
-                )
+                result = self.run(branch.project or "", branch.args, interactive=interactive)
             except (CommandNotFound, RegistryError) as exc:
                 last_missing = exc
                 resolved = False
@@ -113,9 +111,7 @@ class Dispatcher:
         except CommandNotFound:
             if not project.default_command:
                 raise
-            command, argv = self._resolve_default_command(
-                commands, project.default_command, tokens
-            )
+            command, argv = self._resolve_default_command(commands, project.default_command, tokens)
         if interactive:
             argv = _fill_required_options(command, argv)
         argv = _decode_structured_argv(command, argv)
