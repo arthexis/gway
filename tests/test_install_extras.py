@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from gway.install_extras import InstallExtraSelector
 from gway.project import ManifestError, Project
 from gway.runner import Runner
@@ -40,12 +38,12 @@ environment = ".venv"
 """
 
 
-def _manifest(tmp_path: Path, template: str = MANIFEST) -> str:
+def _manifest(tmp_path, template: str = MANIFEST) -> str:
     root = tmp_path.parent / f"{tmp_path.name}-install-root"
     return template.format(root=root.as_posix())
 
 
-def _project(tmp_path: Path, *, environment: Path | None = None) -> Project:
+def _project(tmp_path, *, environment=None) -> Project:
     tmp_path.mkdir(parents=True, exist_ok=True)
     (tmp_path / "gway.toml").write_text(_manifest(tmp_path), encoding="utf-8")
     project = Project.from_path(tmp_path)
@@ -61,7 +59,7 @@ def _project(tmp_path: Path, *, environment: Path | None = None) -> Project:
     )
 
 
-def test_selector_defaults_to_terminal_and_persists_explicit_role(tmp_path: Path) -> None:
+def test_selector_defaults_to_terminal_and_persists_explicit_role(tmp_path) -> None:
     project = _project(tmp_path)
     selector = InstallExtraSelector.from_project(project)
     assert selector is not None
@@ -82,7 +80,7 @@ def test_selector_defaults_to_terminal_and_persists_explicit_role(tmp_path: Path
     assert not selector.state_path(project).is_relative_to(project.path)
 
 
-def test_selector_rejects_unknown_role(tmp_path: Path) -> None:
+def test_selector_rejects_unknown_role(tmp_path) -> None:
     project = _project(tmp_path)
     selector = InstallExtraSelector.from_project(project)
     assert selector is not None
@@ -95,7 +93,7 @@ def test_selector_rejects_unknown_role(tmp_path: Path) -> None:
         raise AssertionError("expected ManifestError")
 
 
-def test_selector_rejects_explicit_empty_role(tmp_path: Path) -> None:
+def test_selector_rejects_explicit_empty_role(tmp_path) -> None:
     project = _project(tmp_path)
     selector = InstallExtraSelector.from_project(project)
     assert selector is not None
@@ -111,7 +109,7 @@ def test_selector_rejects_explicit_empty_role(tmp_path: Path) -> None:
 
 
 def test_refresh_rebuilds_environment_when_role_changes_extra_set(
-    tmp_path: Path,
+    tmp_path,
     monkeypatch,
 ) -> None:
     environment = tmp_path / "venv"
@@ -140,7 +138,7 @@ def test_refresh_rebuilds_environment_when_role_changes_extra_set(
 
 
 def test_refresh_rebuilds_legacy_environment_without_extras_marker(
-    tmp_path: Path,
+    tmp_path,
     monkeypatch,
 ) -> None:
     environment = tmp_path / "venv"
@@ -167,7 +165,7 @@ def test_refresh_rebuilds_legacy_environment_without_extras_marker(
 
 
 def test_refresh_rebuilds_when_manifest_removes_extras_selector(
-    tmp_path: Path,
+    tmp_path,
     monkeypatch,
 ) -> None:
     environment = tmp_path / "venv"
@@ -206,7 +204,7 @@ def test_refresh_rebuilds_when_manifest_removes_extras_selector(
 
 
 def test_refresh_keeps_environment_when_roles_share_same_extra_set(
-    tmp_path: Path,
+    tmp_path,
     monkeypatch,
 ) -> None:
     environment = tmp_path / "venv"
