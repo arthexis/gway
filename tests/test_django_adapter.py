@@ -86,7 +86,6 @@ def test_django_parameter_metadata_marks_zero_arity_options() -> None:
 
 
 def test_django_parameter_metadata_preserves_multi_value_arity() -> None:
-    parser = argparse.ArgumentParser()
     pair_action = parser.add_argument("--pair", nargs=2)
     positional_action = parser.add_argument("value")
     pair = _parameter_from_action(pair_action)
@@ -180,4 +179,5 @@ def test_runner_prepares_django_project_environment(monkeypatch, tmp_path: Path)
     environment = Runner(paths).prepare(project)
     assert environment == paths.environments_dir / "django-fixture"
     assert calls[0][1:3] == ["-m", "venv"]
-    assert calls[1][-2:] == ["-e", str(FIXTURE_ROOT)]
+    assert calls[1][-1] == str(FIXTURE_ROOT)
+    assert "-e" not in calls[1]
