@@ -103,8 +103,10 @@ class ServiceManager:
     def _require_installed(self) -> None:
         missing = [unit.unit_name for unit in self.units if not unit.unit_path.is_file()]
         if missing:
+            units = ", ".join(missing)
+            install_command = self._sudo_command("install")
             raise ServiceError(
-                f"service unit is not installed: {', '.join(missing)}; run {self._sudo_command('install')}"
+                f"service unit is not installed: {units}; run {install_command}"
             )
 
     def _reconcile_unselected_units(self) -> None:
