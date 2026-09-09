@@ -61,6 +61,9 @@ class Upgrader:
             current.repository,
             force=force,
         )
+        selection_snapshot: str | None = None
+        selection_captured = False
+        refreshed: Project | None = None
         try:
             refreshed = Project.from_path(current.path)
             if refreshed.name != current.name:
@@ -75,7 +78,18 @@ class Upgrader:
                 revision=revision,
                 environment=current.environment,
             )
-            environment = self.runner.refresh(refreshed)
+            snapshot = getattr(self.runner, "snapshot_install_selection", None)
+            if callable(snapshot):
+                selection_snapshot = snapshot(refreshed)
+                selection_captured = True
+
+            if arguments:
+                environment = self.runner.refresh(
+                    refreshed,
+                    arguments=arguments,
+                )
+            else:
+                environment = self.runner.refresh(refreshed)
             if environment is not None:
                 refreshed = replace(refreshed, environment=environment)
             if refreshed.lifecycle_hooks is not None:
@@ -85,6 +99,10 @@ class Upgrader:
                     self.runner.run_lifecycle(refreshed, "upgrade")
         except Exception as exc:
             try:
+                if selection_captured and refreshed is not None:
+                    restore = getattr(self.runner, "restore_install_selection", None)
+                    if callable(restore):
+                        restore(refreshed, selection_snapshot)
                 self._restore_project(current, previous_revision)
             except Exception as rollback_exc:
                 raise UpgradeError(
@@ -93,6 +111,7 @@ class Upgrader:
                 ) from exc
             raise
 
+        assert refreshed is not None
         return self.registry.register(refreshed)
 
     def all_projects(self, *, force: bool = False) -> list[Project]:
