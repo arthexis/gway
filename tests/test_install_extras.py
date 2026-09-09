@@ -12,7 +12,7 @@ name = "arthexis"
 type = "django"
 
 [install]
-root = "/opt/arthexis"
+root = "{root}"
 checkout = "app"
 environment = ".venv"
 
@@ -28,10 +28,27 @@ Terminal = []
 Watchtower = ["celery"]
 """
 
+MANIFEST_WITHOUT_EXTRAS = """[project]
+name = "arthexis"
+
+[adapter]
+type = "django"
+
+[install]
+root = "{root}"
+checkout = "app"
+environment = ".venv"
+"""
+
+
+def _manifest(tmp_path: Path, template: str = MANIFEST) -> str:
+    root = tmp_path.parent / f"{tmp_path.name}-install-root"
+    return template.format(root=root.as_posix())
+
 
 def _project(tmp_path: Path, *, environment: Path | None = None) -> Project:
     tmp_path.mkdir(parents=True, exist_ok=True)
-    (tmp_path / "gway.toml").write_text(MANIFEST, encoding="utf-8")
+    (tmp_path / "gway.toml").write_text(_manifest(tmp_path), encoding="utf-8")
     project = Project.from_path(tmp_path)
     if environment is None:
         return project
@@ -62,6 +79,8 @@ def test_selector_defaults_to_terminal_and_persists_explicit_role(tmp_path: Path
     preserved = selector.resolve(project, ())
     assert preserved.value == "Control"
     assert preserved.extras == ("celery",)
+    assert selector.state_path(project).is_relative_to(project.install_layout.root)
+    assert not selector.state_path(project).is_relative_to(project.path)
 
 
 def test_selector_rejects_unknown_role(tmp_path: Path) -> None:
@@ -75,6 +94,21 @@ def test_selector_rejects_unknown_role(tmp_path: Path) -> None:
         assert "invalid --role value" in str(exc)
     else:
         raise AssertionError("expected ManifestError")
+
+
+def test_selector_rejects_explicit_empty_role(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    selector = InstallExtraSelector.from_project(project)
+    assert selector is not None
+    selector.persist(project, "Control")
+
+    for arguments in (("--role", ""), ("--role=",)):
+        try:
+            selector.resolve(project, arguments)
+        except ManifestError as exc:
+            assert "invalid --role value" in str(exc)
+        else:
+            raise AssertionError("expected ManifestError")
 
 
 def test_refresh_rebuilds_environment_when_role_changes_extra_set(
@@ -130,6 +164,45 @@ def test_refresh_rebuilds_legacy_environment_without_extras_marker(
     monkeypatch.setattr(runner, "prepare", fake_prepare)
 
     assert runner.refresh(project) == environment
+    assert rebuilt == [()]
+
+
+def test_refresh_rebuilds_when_manifest_removes_extras_selector(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    environment = tmp_path / "venv"
+    python = environment / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    project_path = tmp_path / "project"
+    project = _project(project_path, environment=environment)
+
+    runner = Runner()
+    runner._write_managed_extras(environment, ("celery",))
+    (project_path / "gway.toml").write_text(
+        _manifest(project_path, MANIFEST_WITHOUT_EXTRAS),
+        encoding="utf-8",
+    )
+    refreshed = Project.from_path(project_path)
+    refreshed = Project(
+        name=refreshed.name,
+        path=refreshed.path,
+        adapter_type=refreshed.adapter_type,
+        adapter_config=refreshed.adapter_config,
+        environment=environment,
+        install_layout=refreshed.install_layout,
+    )
+    rebuilt: list[tuple[str, ...]] = []
+
+    def fake_prepare(project_arg, *, arguments=()):
+        rebuilt.append(tuple(arguments))
+        environment.mkdir(parents=True, exist_ok=True)
+        return environment
+
+    monkeypatch.setattr(runner, "prepare", fake_prepare)
+
+    assert runner.refresh(refreshed) == environment
     assert rebuilt == [()]
 
 
