@@ -108,8 +108,9 @@ def build_parser() -> argparse.ArgumentParser:
     upgrade.add_argument(
         "--self",
         dest="upgrade_self",
-        action="store_true",
-        help="Upgrade GWAY itself in the current installation environment.",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Include or exclude GWAY itself from the upgrade.",
     )
     upgrade.add_argument(
         "--force",
@@ -463,8 +464,8 @@ def _run_upgrade(
     json_output: bool,
     arguments: Sequence[str] = (),
 ) -> object:
-    if namespace.project and (namespace.all or namespace.upgrade_self):
-        raise UpgradeError("PROJECT cannot be combined with --all or --self")
+    if namespace.project and (namespace.all or namespace.upgrade_self is not None):
+        raise UpgradeError("PROJECT cannot be combined with --all, --self, or --no-self")
     if arguments and not namespace.project:
         raise UpgradeError("installer arguments require a specific PROJECT")
 
@@ -490,8 +491,13 @@ def _run_upgrade(
         completed(record)
         return None
 
-    bare = not namespace.all and not namespace.upgrade_self
-    if bare or namespace.upgrade_self:
+    default_mode = not namespace.all and namespace.upgrade_self is None
+    include_self = namespace.upgrade_self is True or (
+        namespace.upgrade_self is None and (default_mode or namespace.all)
+    )
+    include_projects = namespace.all or default_mode or namespace.upgrade_self is False
+
+    if include_self:
         upgrader.upgrade_self()
         completed(
             {
@@ -502,7 +508,7 @@ def _run_upgrade(
             }
         )
 
-    if bare or namespace.all:
+    if include_projects:
         for result in upgrader.all_project_results(
             force=namespace.force,
             reload=namespace.reload,
