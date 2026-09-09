@@ -3,7 +3,6 @@ from pathlib import Path
 from gway.project import Project
 from gway.runner import Runner
 
-
 MANIFEST = """[project]
 name = "example"
 
