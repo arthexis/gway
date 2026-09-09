@@ -61,6 +61,8 @@ class Registry:
     def register(self, project: Project) -> Project:
         records = self._load_records()
         claimed = {project.name, *project.aliases}
+        if "%" in claimed:
+            raise RegistryError("project name or alias is reserved syntax: %")
         if len(claimed) != 1 + len(project.aliases):
             raise RegistryError(f"duplicate name or alias in project {project.name}")
 
