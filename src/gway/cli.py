@@ -31,10 +31,11 @@ from .shell import (
     shell_status,
     uninstall_shell,
 )
+from .solve import solve_values
 from .upgrade import UpgradeError, Upgrader
 
 CORE_COMMANDS = frozenset(
-    {"list", "info", "path", "register", "install", "upgrade", "service", "shell"}
+    {"list", "info", "path", "register", "install", "upgrade", "service", "shell", "solve"}
 )
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
 _PERMISSION_ERRNOS = frozenset({errno.EACCES, errno.EPERM})
@@ -82,6 +83,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     path = subparsers.add_parser("path", help="Print a project's local path.")
     path.add_argument("project")
+
+    solve = subparsers.add_parser(
+        "solve",
+        help="Resolve a Sigil template using GWAY's base context.",
+    )
+    solve.add_argument("value", nargs="+", help="Sigil template to resolve.")
 
     register = subparsers.add_parser(
         "register",
@@ -170,7 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     shell = subparsers.add_parser(
         "shell",
-        help="Start or install the GWAY '-' shell shorthand.",
+        help="Start or install the GWAY '-' and '%%' shell shorthands.",
     )
     shell.add_argument(
         "action",
@@ -626,6 +633,14 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             result = _project_record(registry.require(namespace.project))
         elif namespace.command == "path":
             result = registry.require(namespace.project).path
+        elif namespace.command == "solve":
+            result = solve_values(
+                namespace.value,
+                interactive=interactive,
+                prompt=_prompt_required_value,
+            )
+            if len(result) == 1:
+                result = result[0]
         elif namespace.command == "register":
             project = registry.register_path(namespace.path)
             result = _managed_status("registered", project)
