@@ -86,6 +86,7 @@ def test_django_parameter_metadata_marks_zero_arity_options() -> None:
 
 
 def test_django_parameter_metadata_preserves_multi_value_arity() -> None:
+    parser = argparse.ArgumentParser()
     pair_action = parser.add_argument("--pair", nargs=2)
     positional_action = parser.add_argument("value")
     pair = _parameter_from_action(pair_action)
