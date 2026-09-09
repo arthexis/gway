@@ -601,7 +601,9 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         elif namespace.command == "install":
             result = _runtime_component_record(namespace.project)
             if result is not None and passthrough:
-                raise RunnerError("built-in runtime component install does not accept project arguments")
+                raise RunnerError(
+                    "built-in runtime component install does not accept project arguments"
+                )
             if result is None:
                 installer = Installer(registry)
                 if passthrough:
