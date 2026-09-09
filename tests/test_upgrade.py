@@ -162,7 +162,10 @@ def test_self_upgrade_uses_current_python_and_forces_reinstall(monkeypatch) -> N
     ]
 
 
-def test_repository_upgrade_requires_clean_matching_checkout(monkeypatch, tmp_path: Path) -> None:
+def test_repository_upgrade_requires_clean_matching_checkout(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     calls: list[list[str]] = []
@@ -173,7 +176,11 @@ def test_repository_upgrade_requires_clean_matching_checkout(monkeypatch, tmp_pa
         if "status" in command:
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         if "get-url" in command:
-            return SimpleNamespace(returncode=0, stdout="https://github.com/arthexis/gway-wireguard.git\n", stderr="")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="https://github.com/arthexis/gway-wireguard.git\n",
+                stderr="",
+            )
         if "symbolic-ref" in command:
             return SimpleNamespace(returncode=0, stdout="main\n", stderr="")
         if "pull" in command:
@@ -201,7 +208,11 @@ def test_repository_upgrade_rejects_dirty_checkout(monkeypatch, tmp_path: Path) 
         if "status" in command:
             return SimpleNamespace(returncode=0, stdout=" M file.py\n", stderr="")
         if "get-url" in command:
-            return SimpleNamespace(returncode=0, stdout="https://github.com/arthexis/gway-wireguard.git\n", stderr="")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="https://github.com/arthexis/gway-wireguard.git\n",
+                stderr="",
+            )
         if "symbolic-ref" in command:
             return SimpleNamespace(returncode=0, stdout="main\n", stderr="")
         raise AssertionError(command)
@@ -214,7 +225,10 @@ def test_repository_upgrade_rejects_dirty_checkout(monkeypatch, tmp_path: Path) 
         manager.upgrade(checkout, "arthexis/gway-wireguard")
 
 
-def test_repository_force_resets_dirty_checkout_to_trusted_upstream(monkeypatch, tmp_path: Path) -> None:
+def test_repository_force_resets_dirty_checkout_to_trusted_upstream(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     calls: list[list[str]] = []
@@ -223,9 +237,17 @@ def test_repository_force_resets_dirty_checkout_to_trusted_upstream(monkeypatch,
         command = [str(value) for value in args]
         calls.append(command)
         if "status" in command:
-            return SimpleNamespace(returncode=0, stdout=" M file.py\n?? scratch/\n", stderr="")
+            return SimpleNamespace(
+                returncode=0,
+                stdout=" M file.py\n?? scratch/\n",
+                stderr="",
+            )
         if "get-url" in command:
-            return SimpleNamespace(returncode=0, stdout="https://github.com/arthexis/gway-wireguard.git\n", stderr="")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="https://github.com/arthexis/gway-wireguard.git\n",
+                stderr="",
+            )
         if "symbolic-ref" in command:
             return SimpleNamespace(returncode=0, stdout="main\n", stderr="")
         if any(value in command for value in ("fetch", "reset", "clean")):
@@ -247,7 +269,10 @@ def test_repository_force_resets_dirty_checkout_to_trusted_upstream(monkeypatch,
     assert not any("pull" in command for command in calls)
 
 
-def test_repository_force_validates_origin_before_mutation(monkeypatch, tmp_path: Path) -> None:
+def test_repository_force_validates_origin_before_mutation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     calls: list[list[str]] = []
@@ -258,7 +283,11 @@ def test_repository_force_validates_origin_before_mutation(monkeypatch, tmp_path
         if "status" in command:
             return SimpleNamespace(returncode=0, stdout=" M file.py\n", stderr="")
         if "get-url" in command:
-            return SimpleNamespace(returncode=0, stdout="https://github.com/example/other.git\n", stderr="")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="https://github.com/example/other.git\n",
+                stderr="",
+            )
         raise AssertionError(command)
 
     monkeypatch.setattr("gway.repository.subprocess.run", fake_run)
@@ -272,7 +301,10 @@ def test_repository_force_validates_origin_before_mutation(monkeypatch, tmp_path
     assert not any(any(value in command for value in mutating) for command in calls)
 
 
-def test_runner_refresh_reinstalls_project_without_editable_mode(monkeypatch, tmp_path: Path) -> None:
+def test_runner_refresh_reinstalls_project_without_editable_mode(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "project"
     root.mkdir()
     environment = tmp_path / "environment"
