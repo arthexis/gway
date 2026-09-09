@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -23,6 +24,7 @@ result = function(*sys.argv[2:])
 if result is not None:
     print(json.dumps(result, default=str))
 """
+_EXTRAS_MARKER = ".gway-install-extras.json"
 
 
 class Runner:
@@ -45,6 +47,28 @@ class Runner:
     @staticmethod
     def _selector(project: Project) -> InstallExtraSelector | None:
         return InstallExtraSelector.from_project(project)
+
+    @staticmethod
+    def _extras_marker(environment: Path) -> Path:
+        return environment / _EXTRAS_MARKER
+
+    @classmethod
+    def _read_managed_extras(cls, environment: Path) -> tuple[str, ...] | None:
+        marker = cls._extras_marker(environment)
+        try:
+            data = json.loads(marker.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return None
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RunnerError(f"cannot read managed extras marker {marker}: {exc}") from exc
+        if not isinstance(data, list) or not all(isinstance(value, str) for value in data):
+            raise RunnerError(f"invalid managed extras marker: {marker}")
+        return tuple(data)
+
+    @classmethod
+    def _write_managed_extras(cls, environment: Path, extras: tuple[str, ...]) -> None:
+        marker = cls._extras_marker(environment)
+        marker.write_text(json.dumps(list(extras)) + "\n", encoding="utf-8")
 
     def _selection(
         self,
@@ -132,6 +156,8 @@ class Runner:
                 stdout=sys.stderr,
             )
             self._install_project(project, environment, upgrade=False, extras=extras)
+            if selector is not None:
+                self._write_managed_extras(environment, extras)
             if selector is not None and selected_value is not None:
                 selector.persist(project, selected_value)
         except (OSError, subprocess.CalledProcessError) as exc:
@@ -151,16 +177,12 @@ class Runner:
             return None
 
         selector = self._selector(project)
-        previous_value = selector.current(project) if selector is not None else None
         selected_value: str | None = None
         extras: tuple[str, ...] = ()
-        previous_extras: tuple[str, ...] = ()
         if selector is not None:
             selection = selector.resolve(project, tuple(arguments))
             selected_value = selection.value
             extras = selection.extras
-            if previous_value is not None:
-                previous_extras = selector.values[previous_value]
 
         environment = project.environment or self.environment_path(project)
         if not environment.exists():
@@ -170,15 +192,15 @@ class Runner:
         if not python.is_file():
             raise RunnerError(f"managed environment is missing Python: {environment}")
 
-        rebuild = selector is not None and (
-            previous_value is None or previous_extras != extras
-        )
-        if rebuild:
+        managed_extras = self._read_managed_extras(environment) if selector is not None else ()
+        if selector is not None and managed_extras != extras:
             shutil.rmtree(environment)
             return self.prepare(project, arguments=arguments)
 
         try:
             self._install_project(project, environment, upgrade=True, extras=extras)
+            if selector is not None:
+                self._write_managed_extras(environment, extras)
             if selector is not None and selected_value is not None:
                 selector.persist(project, selected_value)
         except (OSError, subprocess.CalledProcessError) as exc:
