@@ -22,6 +22,16 @@ def _strict_fallback_missing(value: object) -> bool:
     return value is None or (isinstance(value, (set, frozenset)) and not value)
 
 
+def _command_key(value: str) -> str:
+    """Return the normalized lookup spelling for one command-path component."""
+    return value.replace("_", "-")
+
+
+def _command_path_key(path: Sequence[str]) -> tuple[str, ...]:
+    """Normalize command-path spelling while leaving argument values untouched."""
+    return tuple(_command_key(part) for part in path)
+
+
 class Dispatcher:
     """Resolve registered projects, adapters, managed commands, and CLI sigils."""
 
@@ -41,11 +51,12 @@ class Dispatcher:
     def _resolve_command(
         commands: Sequence[Command], tokens: Sequence[str]
     ) -> tuple[Command, list[str]]:
+        normalized_tokens = _command_path_key(tokens)
         matches = [
             command
             for command in commands
             if len(tokens) >= len(command.path)
-            and tuple(tokens[: len(command.path)]) == command.path
+            and normalized_tokens[: len(command.path)] == _command_path_key(command.path)
         ]
         if not matches:
             requested = " ".join(tokens) if tokens else "<command>"
@@ -59,8 +70,9 @@ class Dispatcher:
         default_path: tuple[str, ...],
         tokens: Sequence[str],
     ) -> tuple[Command, list[str]]:
+        normalized_default = _command_path_key(default_path)
         for command in commands:
-            if command.path == default_path:
+            if _command_path_key(command.path) == normalized_default:
                 return command, list(tokens)
         raise CommandNotFound(f"configured default command not found: {' '.join(default_path)}")
 
