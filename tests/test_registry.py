@@ -47,6 +47,16 @@ def test_malformed_manifest_raises_manifest_error(tmp_path: Path) -> None:
         Project.from_path(root)
 
 
+def test_manifest_reserves_bracket_leading_project_names(tmp_path: Path) -> None:
+    with pytest.raises(ManifestError, match="safe directory name"):
+        Project.from_path(make_project(tmp_path / "project", name="[reports]"))
+
+
+def test_manifest_reserves_bracket_leading_aliases(tmp_path: Path) -> None:
+    with pytest.raises(ManifestError, match="aliases must not start"):
+        Project.from_path(make_project(tmp_path / "project", aliases='["[reports]"]'))
+
+
 def test_registry_persists_and_resolves_aliases(tmp_path: Path) -> None:
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     registry = Registry(paths)

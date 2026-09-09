@@ -57,6 +57,18 @@ def test_solve_values_keeps_adjacent_escapes_literal(monkeypatch) -> None:
     assert solve_values(["[[]]"]) == "[]"
 
 
+def test_interactive_solve_does_not_prompt_for_escaped_sigil(monkeypatch) -> None:
+    monkeypatch.setattr(solve_module, "base_context", lambda paths=None: {})
+    prompts: list[str] = []
+
+    def prompt(name: str) -> str:
+        prompts.append(name)
+        return "unexpected"
+
+    assert solve_values(["[[missing]]"], interactive=True, prompt=prompt) == "[missing]"
+    assert prompts == []
+
+
 def test_solve_values_prompts_once_per_unresolved_expression(tmp_path: Path) -> None:
     answers = {"missing": "first", "other": "second"}
     prompts: list[str] = []

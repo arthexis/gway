@@ -60,10 +60,10 @@ def solve_values(
     expression is requested once and reused for repeated occurrences.
     """
     template = _protect_escapes(values)
-    rendered = _restore_escapes(_solve_template(template, base_context(paths)))
+    rendered = _solve_template(template, base_context(paths))
 
     if not interactive or not isinstance(rendered, str):
-        return rendered
+        return _restore_escapes(rendered)
     if prompt is None:
         raise ValueError("interactive Sigil solving requires a prompt callback")
 
@@ -75,7 +75,8 @@ def solve_values(
             answers[expression] = prompt(expression or "value")
         return answers[expression]
 
-    return _UNRESOLVED_SIGIL.sub(replace, rendered)
+    rendered = _UNRESOLVED_SIGIL.sub(replace, rendered)
+    return _restore_escapes(rendered)
 
 
 __all__ = ["solve_values"]
