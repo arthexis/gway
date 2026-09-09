@@ -10,6 +10,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from .install_extras import InstallExtraSelector
 from .project import Project
 from .runner import Runner
 
@@ -272,6 +273,7 @@ class ServiceManager:
         self.project = project
         self.unit_directory = Path(unit_directory)
         configs, legacy = _manifest_services(project)
+        all_configs = dict(configs)
         environment_service = os.environ.get("GWAY_SERVICE")
         environment_profile = os.environ.get("GWAY_SERVICE_PROFILE")
         self.environment_selectors = [
@@ -284,6 +286,22 @@ class ServiceManager:
         ]
         selected_service = service or environment_service
         active_profile = profile or environment_profile
+
+        if selected_service is None and active_profile is None and not legacy:
+            selector = InstallExtraSelector.from_project(project)
+            if selector is not None:
+                selection = selector.resolve(project, ())
+                declared_profiles = {
+                    profile_name
+                    for key, config in configs.items()
+                    for profile_name in _strings(
+                        config.get("profiles"),
+                        "profiles",
+                        f"services.{key}",
+                    )
+                }
+                if declared_profiles:
+                    active_profile = selection.value
 
         if selected_service is not None:
             if selected_service not in configs:
@@ -303,6 +321,8 @@ class ServiceManager:
                 f"project has no services applicable to profile {active_profile!r}: {project.name}"
             )
             raise ServiceError(message)
+        self.active_profile = active_profile
+        self._reconcile_topology = selected_service is None and active_profile is not None
         self.units = [
             _ServiceUnit(
                 project,
@@ -313,33 +333,43 @@ class ServiceManager:
             )
             for key, config in configs.items()
         ]
+        self._all_units = [
+            _ServiceUnit(
+                project,
+                key,
+                config,
+                legacy=legacy,
+                unit_directory=self.unit_directory,
+            )
+            for key, config in all_configs.items()
+        ]
         unit_names = self.unit_names
         if len(unit_names) != len(set(unit_names)):
             raise ServiceError("selected services resolve to duplicate systemd unit names")
 
-    def _require_selector_preserving_elevation(
-        self,
-        action: str,
-        *arguments: str,
-    ) -> None:
-        if not self.environment_selectors or self.unit_directory != _SYSTEM_UNIT_DIRECTORY:
+    def _sudo_command(self, action: str, *arguments: str) -> str:
+        command = ["sudo"]
+        if self.environment_selectors:
+            names = ",".join(self.environment_selectors)
+            command.append(f"--preserve-env={names}")
+        command.extend(["gway", "service", action, self.project.name, *arguments])
+        return shlex.join(command)
+
+    def _require_installed(self) -> None:
+        missing = [unit.unit_name for unit in self.units if not unit.unit_path.is_file()]
+        if not missing:
             return
-        geteuid = getattr(os, "geteuid", None)
-        if not callable(geteuid) or geteuid() == 0:
+        names = ", ".join(missing)
+        command = self._sudo_command("install")
+        raise ServiceError(f"service unit is not installed: {names}; run {command}")
+
+    def _reconcile_unselected_units(self) -> None:
+        if not self._reconcile_topology:
             return
-        names = ",".join(self.environment_selectors)
-        command = shlex.join(
-            [
-                "sudo",
-                f"--preserve-env={names}",
-                "gway",
-                "service",
-                action,
-                self.project.name,
-                *arguments,
-            ]
-        )
-        raise ServiceError(f"service selection uses environment variables; rerun with {command}")
+        selected_names = set(self.unit_names)
+        for unit in reversed(self._all_units):
+            if unit.unit_name not in selected_names and unit.unit_path.exists():
+                unit.uninstall()
 
     @property
     def unit_names(self) -> list[str]:
@@ -362,15 +392,8 @@ class ServiceManager:
         enable: bool = True,
         start: bool = True,
     ) -> Path | list[Path]:
-        retry_arguments: list[str] = []
-        if user is not None:
-            retry_arguments.extend(["--user", user])
-        if not enable:
-            retry_arguments.append("--no-enable")
-        if not start:
-            retry_arguments.append("--no-start")
-        self._require_selector_preserving_elevation("install", *retry_arguments)
         rendered = [(unit, unit.render(user=user)) for unit in self.units]
+        self._reconcile_unselected_units()
         paths = [unit.write(content) for unit, content in rendered]
         _systemctl("daemon-reload")
         if enable:
@@ -382,12 +405,12 @@ class ServiceManager:
         return paths[0] if len(paths) == 1 else paths
 
     def uninstall(self) -> bool | dict[str, bool]:
-        self._require_selector_preserving_elevation("uninstall")
         removed = {unit.key: unit.uninstall() for unit in reversed(self.units)}
         _systemctl("daemon-reload")
         return next(iter(removed.values())) if len(removed) == 1 else removed
 
     def start(self) -> None:
+        self._require_installed()
         for unit in self.units:
             unit.start()
 
@@ -396,6 +419,7 @@ class ServiceManager:
             unit.stop()
 
     def restart(self) -> None:
+        self._require_installed()
         for unit in self.units:
             unit.restart()
 

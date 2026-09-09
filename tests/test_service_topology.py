@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from gway import service
+from gway import cli, service
 from gway.project import InstallLayout, Project
 
 MULTI_MANIFEST = """[project]
@@ -161,43 +161,64 @@ command = []
     assert not (unit_directory / "gway-invalid-second.service").exists()
 
 
-def test_environment_selector_install_requires_complete_preserving_sudo(
+def test_environment_selector_install_reports_real_permission_failure(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ) -> None:
     project = make_project(tmp_path)
     monkeypatch.delenv("GWAY_SERVICE", raising=False)
     monkeypatch.setenv("GWAY_SERVICE_PROFILE", "Control")
-    monkeypatch.setattr(service.os, "geteuid", lambda: 1000)
-    manager = service.ServiceManager(project)
+    manager = service.ServiceManager(project, unit_directory=tmp_path / "systemd")
 
-    with pytest.raises(service.ServiceError) as exc_info:
+    def denied_write(self, content: str):
+        raise PermissionError("permission denied while writing service unit")
+
+    monkeypatch.setattr(service._ServiceUnit, "write", denied_write)
+    monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
+
+    with pytest.raises(PermissionError) as exc_info:
         manager.install(user="arthexis", enable=False, start=False)
 
-    message = str(exc_info.value)
-    assert "sudo --preserve-env=GWAY_SERVICE_PROFILE" in message
-    assert "gway service install arthexis" in message
-    assert "--user arthexis" in message
-    assert "--no-enable" in message
-    assert "--no-start" in message
+    args = [
+        "service",
+        "install",
+        "arthexis",
+        "--user",
+        "arthexis",
+        "--no-enable",
+        "--no-start",
+    ]
+    assert cli._handle_cli_exception(exc_info.value, args) == 2
+    message = capsys.readouterr().err
+    assert "permission denied while writing service unit" in message
+    assert "sudo gway service install arthexis --user arthexis --no-enable --no-start" in message
 
 
-def test_environment_selector_uninstall_requires_complete_preserving_sudo(
+def test_environment_selector_uninstall_reports_real_permission_failure(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ) -> None:
     project = make_project(tmp_path)
     monkeypatch.delenv("GWAY_SERVICE", raising=False)
     monkeypatch.setenv("GWAY_SERVICE_PROFILE", "Control")
-    monkeypatch.setattr(service.os, "geteuid", lambda: 1000)
-    manager = service.ServiceManager(project)
+    manager = service.ServiceManager(project, unit_directory=tmp_path / "systemd")
 
-    with pytest.raises(service.ServiceError) as exc_info:
+    def denied_systemctl(*args: str, check: bool = True):
+        raise PermissionError("permission denied while managing service")
+
+    monkeypatch.setattr(service, "_systemctl", denied_systemctl)
+    monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
+
+    with pytest.raises(PermissionError) as exc_info:
         manager.uninstall()
 
-    message = str(exc_info.value)
-    assert "sudo --preserve-env=GWAY_SERVICE_PROFILE" in message
-    assert "gway service uninstall arthexis" in message
+    args = ["service", "uninstall", "arthexis"]
+    assert cli._handle_cli_exception(exc_info.value, args) == 2
+    message = capsys.readouterr().err
+    assert "permission denied while managing service" in message
+    assert "sudo gway service uninstall arthexis" in message
 
 
 def test_uninstall_stops_units_in_reverse_topology_order(tmp_path: Path, monkeypatch) -> None:
