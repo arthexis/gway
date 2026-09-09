@@ -122,12 +122,20 @@ class Runner:
         python = self.environment_python(environment)
         if not python.is_file():
             raise RunnerError(f"managed environment is missing Python: {environment}")
+
+        process_environment = os.environ.copy()
+        selector = self._selector(project)
+        if selector is not None and selector.service_profile:
+            selection = selector.resolve(project, tuple(arguments))
+            process_environment["GWAY_SERVICE_PROFILE"] = selection.value
+
         try:
             subprocess.run(
                 [str(python), "-c", _HOOK_SCRIPT, reference, *arguments],
                 cwd=project.path,
                 check=True,
                 stdout=sys.stderr,
+                env=process_environment,
             )
         except (OSError, subprocess.CalledProcessError) as exc:
             raise RunnerError(

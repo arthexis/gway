@@ -34,6 +34,7 @@ class InstallExtraSelector:
     default: str
     state: Path
     values: dict[str, tuple[str, ...]]
+    service_profile: bool = False
 
     @classmethod
     def from_project(cls, project: Project) -> InstallExtraSelector | None:
@@ -42,32 +43,72 @@ class InstallExtraSelector:
             return None
         with manifest.open("rb") as stream:
             data = tomllib.load(stream)
+
         install = data.get("install")
+        extras_config = install.get("extras") if isinstance(install, dict) else None
+        profile_config = data.get("service_profile")
+        if extras_config is not None and profile_config is not None:
+            raise ManifestError(
+                "gway.toml may declare either [install.extras] or [service_profile], not both"
+            )
+
+        if profile_config is not None:
+            if not isinstance(install, dict):
+                raise ManifestError("[service_profile] requires [install]")
+            if not isinstance(profile_config, dict):
+                raise ManifestError("[service_profile] must be a table")
+            return cls._from_service_profile(profile_config)
+
         if not isinstance(install, dict):
             return None
-        config = install.get("extras")
-        if config is None:
+        if extras_config is None:
             return None
-        if not isinstance(config, dict):
+        if not isinstance(extras_config, dict):
             raise ManifestError("[install.extras] must be a table")
+        return cls._from_install_extras(extras_config)
 
+    @classmethod
+    def _from_service_profile(cls, config: dict) -> InstallExtraSelector:
+        argument = config.get("argument")
+        default = config.get("default")
+        state_value = config.get("state", ".gway/service-profile")
+        values = config.get("values")
+
+        cls._validate_selector_header(argument, default, state_value, "service_profile")
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(isinstance(value, str) and value.strip() for value in values)
+        ):
+            raise ManifestError("[service_profile].values must be a non-empty array of strings")
+
+        normalized_values: dict[str, tuple[str, ...]] = {}
+        canonical_keys: set[str] = set()
+        for value in values:
+            canonical_key = value.casefold()
+            if canonical_key in canonical_keys:
+                raise ManifestError("[service_profile].values must be unique ignoring case")
+            canonical_keys.add(canonical_key)
+            normalized_values[value] = ()
+
+        selector = cls(
+            argument=argument,
+            default=default,
+            state=Path(state_value),
+            values=normalized_values,
+            service_profile=True,
+        )
+        selector._canonical(default)
+        return selector
+
+    @classmethod
+    def _from_install_extras(cls, config: dict) -> InstallExtraSelector:
         argument = config.get("argument")
         default = config.get("default")
         state_value = config.get("state")
         values = config.get("values")
-        if (
-            not isinstance(argument, str)
-            or not argument.startswith("--")
-            or argument in _RESERVED_ARGUMENTS
-        ):
-            raise ManifestError("[install.extras].argument must be a project-owned long option")
-        if not isinstance(default, str) or not default.strip():
-            raise ManifestError("[install.extras].default must be a non-empty string")
-        if not isinstance(state_value, str) or not state_value.strip():
-            raise ManifestError("[install.extras].state must be a relative path")
-        state = Path(state_value)
-        if state.is_absolute() or ".." in state.parts:
-            raise ManifestError("[install.extras].state must stay within the install root")
+
+        cls._validate_selector_header(argument, default, state_value, "install.extras")
         if not isinstance(values, dict) or not values:
             raise ManifestError("[install.extras.values] must declare at least one value")
 
@@ -91,11 +132,32 @@ class InstallExtraSelector:
         selector = cls(
             argument=argument,
             default=default,
-            state=state,
+            state=Path(state_value),
             values=normalized_values,
         )
         selector._canonical(default)
         return selector
+
+    @staticmethod
+    def _validate_selector_header(
+        argument: object,
+        default: object,
+        state_value: object,
+        table: str,
+    ) -> None:
+        if (
+            not isinstance(argument, str)
+            or not argument.startswith("--")
+            or argument in _RESERVED_ARGUMENTS
+        ):
+            raise ManifestError(f"[{table}].argument must be a project-owned long option")
+        if not isinstance(default, str) or not default.strip():
+            raise ManifestError(f"[{table}].default must be a non-empty string")
+        if not isinstance(state_value, str) or not state_value.strip():
+            raise ManifestError(f"[{table}].state must be a relative path")
+        state = Path(state_value)
+        if state.is_absolute() or ".." in state.parts:
+            raise ManifestError(f"[{table}].state must stay within the install root")
 
     def _canonical(self, value: str) -> str:
         normalized = value.strip().casefold()
@@ -107,7 +169,8 @@ class InstallExtraSelector:
 
     def state_path(self, project: Project) -> Path:
         if project.install_layout is None:
-            raise ManifestError("[install.extras] requires a managed install layout")
+            table = "[service_profile]" if self.service_profile else "[install.extras]"
+            raise ManifestError(f"{table} requires a managed install layout")
         return project.install_layout.root / self.state
 
     def current(self, project: Project) -> str | None:
