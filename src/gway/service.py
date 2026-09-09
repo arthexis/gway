@@ -53,6 +53,15 @@ def _unit_arg(value: str | Path) -> str:
     return f'"{text}"'
 
 
+def _unit_path(value: str | Path, field: str) -> str:
+    text = str(value)
+    if "\n" in text or "\r" in text:
+        raise ServiceError(f"{field} must not contain newlines")
+    if not Path(text).is_absolute():
+        raise ServiceError(f"{field} must expand to an absolute path")
+    return text
+
+
 def _project_python(project: Project) -> str:
     environment = project.environment
     if environment is None and project.install_layout is not None:
@@ -205,7 +214,9 @@ class _ServiceUnit:
         )
         if working_directory:
             expanded = _expand(working_directory, self.project)
-            lines.append(f"WorkingDirectory={_unit_arg(expanded)}")
+            lines.append(
+                f"WorkingDirectory={_unit_path(expanded, f'[{section}].working_directory')}"
+            )
         for key, value in environment.items():
             lines.append(f"Environment={_unit_arg(f'{key}={value}')}")
         command_text = " ".join(_unit_arg(argument) for argument in command)
