@@ -34,6 +34,7 @@ Watchtower = ["celery"]
 
 
 def _project(tmp_path: Path, *, environment: Path | None = None) -> Project:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     (tmp_path / "gway.toml").write_text(MANIFEST, encoding="utf-8")
     project = Project.from_path(tmp_path)
     if environment is None:
