@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .config import GwayPaths, default_paths
+from .install_extras import InstallExtraSelector
 from .project import Project
 
 
@@ -41,7 +42,36 @@ class Runner:
             return environment / "Scripts" / "python.exe"
         return environment / "bin" / "python"
 
-    def _install_project(self, project: Project, environment: Path, *, upgrade: bool) -> None:
+    @staticmethod
+    def _selector(project: Project) -> InstallExtraSelector | None:
+        return InstallExtraSelector.from_project(project)
+
+    def _selection(
+        self,
+        project: Project,
+        arguments: Sequence[str],
+    ) -> tuple[InstallExtraSelector | None, str | None, tuple[str, ...]]:
+        selector = self._selector(project)
+        if selector is None:
+            return None, None, ()
+        selection = selector.resolve(project, tuple(arguments))
+        return selector, selection.value, selection.extras
+
+    @staticmethod
+    def _editable_spec(project: Project, extras: tuple[str, ...]) -> str:
+        path = str(project.path)
+        if not extras:
+            return path
+        return f"{path}[{','.join(extras)}]"
+
+    def _install_project(
+        self,
+        project: Project,
+        environment: Path,
+        *,
+        upgrade: bool,
+        extras: tuple[str, ...] = (),
+    ) -> None:
         command = [
             str(self.environment_python(environment)),
             "-m",
@@ -51,7 +81,7 @@ class Runner:
         ]
         if upgrade:
             command.append("--upgrade")
-        command.extend(["-e", str(project.path)])
+        command.extend(["-e", self._editable_spec(project, extras)])
         subprocess.run(command, check=True, stdout=sys.stderr)
 
     def run_lifecycle(
@@ -80,10 +110,16 @@ class Runner:
                 f"cannot run {action} lifecycle hook for {project.name}: {exc}"
             ) from exc
 
-    def prepare(self, project: Project) -> Path | None:
+    def prepare(
+        self,
+        project: Project,
+        *,
+        arguments: Sequence[str] = (),
+    ) -> Path | None:
         if project.adapter_type not in {"python", "django"}:
             return None
 
+        selector, selected_value, extras = self._selection(project, arguments)
         environment = self.environment_path(project)
         if environment.exists():
             raise RunnerError(f"managed environment already exists: {environment}")
@@ -95,29 +131,66 @@ class Runner:
                 check=True,
                 stdout=sys.stderr,
             )
-            self._install_project(project, environment, upgrade=False)
+            self._install_project(project, environment, upgrade=False, extras=extras)
+            if selector is not None and selected_value is not None:
+                selector.persist(project, selected_value)
         except (OSError, subprocess.CalledProcessError) as exc:
             shutil.rmtree(environment, ignore_errors=True)
             raise RunnerError(f"cannot prepare environment for {project.name}: {exc}") from exc
 
         return environment
 
-    def refresh(self, project: Project) -> Path | None:
+    def refresh(
+        self,
+        project: Project,
+        *,
+        arguments: Sequence[str] = (),
+    ) -> Path | None:
         """Refresh an existing managed environment after its checkout changes."""
         if project.adapter_type not in {"python", "django"}:
             return None
 
+        selector = self._selector(project)
+        previous_value = selector.current(project) if selector is not None else None
+        selected_value: str | None = None
+        extras: tuple[str, ...] = ()
+        previous_extras: tuple[str, ...] = ()
+        if selector is not None:
+            selection = selector.resolve(project, tuple(arguments))
+            selected_value = selection.value
+            extras = selection.extras
+            if previous_value is not None:
+                previous_extras = selector.values[previous_value]
+
         environment = project.environment or self.environment_path(project)
         if not environment.exists():
-            return self.prepare(project)
+            return self.prepare(project, arguments=arguments)
 
         python = self.environment_python(environment)
         if not python.is_file():
             raise RunnerError(f"managed environment is missing Python: {environment}")
 
+        rebuild = selector is not None and (
+            previous_value is None or previous_extras != extras
+        )
+        if rebuild:
+            shutil.rmtree(environment)
+            return self.prepare(project, arguments=arguments)
+
         try:
-            self._install_project(project, environment, upgrade=True)
+            self._install_project(project, environment, upgrade=True, extras=extras)
+            if selector is not None and selected_value is not None:
+                selector.persist(project, selected_value)
         except (OSError, subprocess.CalledProcessError) as exc:
             raise RunnerError(f"cannot refresh environment for {project.name}: {exc}") from exc
 
         return environment
+
+    def snapshot_install_selection(self, project: Project) -> str | None:
+        selector = self._selector(project)
+        return selector.snapshot(project) if selector is not None else None
+
+    def restore_install_selection(self, project: Project, value: str | None) -> None:
+        selector = self._selector(project)
+        if selector is not None:
+            selector.restore(project, value)
