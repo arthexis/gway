@@ -75,8 +75,10 @@ class InstallExtraSelector:
         values = config.get("values")
 
         cls._validate_selector_header(argument, default, state_value, "service_profile")
-        if not isinstance(values, list) or not values or not all(
-            isinstance(value, str) and value.strip() for value in values
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(isinstance(value, str) and value.strip() for value in values)
         ):
             raise ManifestError("[service_profile].values must be a non-empty array of strings")
 

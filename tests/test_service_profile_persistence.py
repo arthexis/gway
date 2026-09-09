@@ -64,9 +64,7 @@ def test_service_profile_selector_persists_without_package_extras(tmp_path: Path
 
     selector.persist(project, selection.value)
 
-    assert (tmp_path / ".gway" / "service-profile").read_text(encoding="utf-8") == (
-        "Watchtower\n"
-    )
+    assert (tmp_path / ".gway" / "service-profile").read_text(encoding="utf-8") == ("Watchtower\n")
     assert selector.resolve(project, ()).value == "Watchtower"
 
 
