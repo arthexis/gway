@@ -119,6 +119,16 @@ def build_parser() -> argparse.ArgumentParser:
             "upstream branches before upgrading."
         ),
     )
+    upgrade.add_argument(
+        "--reload",
+        action="store_true",
+        help="Refresh managed projects even when the tracked commit is unchanged.",
+    )
+    upgrade.add_argument(
+        "--detail",
+        action="store_true",
+        help="Show detailed upgrade metadata instead of one line per package.",
+    )
 
     service = subparsers.add_parser(
         "service",
@@ -437,6 +447,15 @@ def _managed_status(status: str, project: Project) -> dict[str, object]:
     return record
 
 
+def _render_upgrade_record(record: dict[str, object], *, detail: bool) -> None:
+    if detail:
+        _render_result(record)
+        return
+    revision = record.get("revision")
+    suffix = f" {str(revision)[:12]}" if revision else ""
+    print(f"{record['status']} {record['name']}{suffix}")
+
+
 def _run_upgrade(
     namespace: argparse.Namespace,
     registry: Registry,
@@ -450,24 +469,26 @@ def _run_upgrade(
         raise UpgradeError("installer arguments require a specific PROJECT")
 
     upgrader = Upgrader(registry)
-    if namespace.project:
-        if arguments:
-            project = upgrader.project(
-                namespace.project,
-                force=namespace.force,
-                arguments=arguments,
-            )
-        else:
-            project = upgrader.project(namespace.project, force=namespace.force)
-        return _managed_status("upgraded", project)
-
     results: list[dict[str, object]] = []
 
     def completed(record: dict[str, object]) -> None:
         if json_output:
             results.append(record)
         else:
-            _render_result(record)
+            _render_upgrade_record(record, detail=namespace.detail)
+
+    if namespace.project:
+        result = upgrader.project_result(
+            namespace.project,
+            force=namespace.force,
+            reload=namespace.reload,
+            arguments=arguments,
+        )
+        record = _managed_status("upgraded" if result.changed else "skipped", result.project)
+        if json_output:
+            return record
+        completed(record)
+        return None
 
     bare = not namespace.all and not namespace.upgrade_self
     if bare or namespace.upgrade_self:
@@ -482,8 +503,12 @@ def _run_upgrade(
         )
 
     if bare or namespace.all:
-        for project in upgrader.all_projects(force=namespace.force):
-            completed(_managed_status("upgraded", project))
+        for result in upgrader.all_project_results(
+            force=namespace.force,
+            reload=namespace.reload,
+        ):
+            status = "upgraded" if result.changed else "skipped"
+            completed(_managed_status(status, result.project))
 
     return results if json_output else None
 
