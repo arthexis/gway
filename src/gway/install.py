@@ -105,7 +105,10 @@ class Installer:
             if prepared_environment is not None:
                 project = replace(project, environment=prepared_environment)
             if project.lifecycle_hooks is not None:
-                self.runner.run_lifecycle(project, "install", arguments)
+                if arguments:
+                    self.runner.run_lifecycle(project, "install", arguments)
+                else:
+                    self.runner.run_lifecycle(project, "install")
             return self.registry.register(project)
         except Exception:
             if not adopted:
