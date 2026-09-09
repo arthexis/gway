@@ -34,6 +34,7 @@ class Upgrader:
         repositories: RepositoryManager | None = None,
         runner: Runner | None = None,
         remote_revision: Callable[[Path, str], str] | None = None,
+        checkout_clean: Callable[[Path], bool] | None = None,
     ) -> None:
         self.registry = registry or Registry()
         self.repositories = repositories or RepositoryManager(self.registry.paths)
@@ -44,6 +45,25 @@ class Upgrader:
             self.remote_revision = self._remote_revision
         else:
             self.remote_revision = None
+        if checkout_clean is not None:
+            self.checkout_clean = checkout_clean
+        elif repositories is None:
+            self.checkout_clean = self._checkout_clean
+        else:
+            self.checkout_clean = None
+
+    @staticmethod
+    def _checkout_clean(checkout: Path) -> bool:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(checkout), "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise RepositoryError(f"cannot inspect managed checkout {checkout}: {exc}") from exc
+        return not result.stdout.strip()
 
     def _remote_revision(self, checkout: Path, full_name: str) -> str:
         self.repositories.validate_checkout(checkout, full_name)
@@ -123,7 +143,10 @@ class Upgrader:
             )
 
         previous_revision = current.revision or self.repositories.revision(current.path)
-        if not reload and not arguments and self.remote_revision is not None:
+        can_skip = not reload and not arguments and self.remote_revision is not None
+        if can_skip and self.checkout_clean is not None:
+            can_skip = self.checkout_clean(current.path)
+        if can_skip:
             local_revision = self.repositories.revision(current.path)
             remote_revision = self.remote_revision(current.path, current.repository)
             if remote_revision == previous_revision == local_revision:
