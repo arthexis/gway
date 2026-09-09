@@ -222,7 +222,7 @@ class DjangoAdapter:
                 except SystemExit:
                     text = output.getvalue()
                     if text:
-                        print(text, end="", file=previous_stdout)
+                        previous_stdout.write(text, ending="")
                     raise
         finally:
             django_command.stdout = previous_stdout
