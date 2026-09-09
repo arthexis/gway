@@ -300,7 +300,7 @@ class ServiceManager:
                         f"services.{key}",
                     )
                 }
-                if selection.value in declared_profiles:
+                if declared_profiles:
                     active_profile = selection.value
 
         if selected_service is not None:
