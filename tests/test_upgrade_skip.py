@@ -1,5 +1,4 @@
 from pathlib import Path
-from types import SimpleNamespace
 
 from gway.config import GwayPaths
 from gway.project import Project
