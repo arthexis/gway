@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -82,7 +83,7 @@ class Installer:
             shutil.rmtree(lock, ignore_errors=True)
         return target, replace(project, path=target), False
 
-    def install(self, spec: str) -> Project:
+    def install(self, spec: str, *, arguments: Sequence[str] = ()) -> Project:
         repository = self.repositories.resolve(spec)
         checkout = self.repositories.clone(repository)
         prepared_environment: Path | None = None
@@ -104,7 +105,7 @@ class Installer:
             if prepared_environment is not None:
                 project = replace(project, environment=prepared_environment)
             if project.lifecycle_hooks is not None:
-                self.runner.run_lifecycle(project, "install")
+                self.runner.run_lifecycle(project, "install", arguments)
             return self.registry.register(project)
         except Exception:
             if not adopted:
