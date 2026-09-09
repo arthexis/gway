@@ -517,8 +517,8 @@ def _run_upgrade(
 
     if include_projects:
         for result in upgrader.all_project_results(
-            force=force,
-            reload=reload,
+            force=namespace.force,
+            reload=namespace.reload,
         ):
             status = "upgraded" if result.changed else "skipped"
             completed(_managed_status(status, result.project))
