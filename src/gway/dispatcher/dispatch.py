@@ -7,7 +7,7 @@ from ..adapters.base import SigilContextAdapter
 from ..command import Command
 from ..expression import MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..registry import Registry, RegistryError
-from ..sigils import capture_cli_values, resolve_captured_cli_values
+from . import capture_cli_values, resolve_captured_cli_values
 from .arguments import _decode_structured_argv
 from .errors import CommandNotFound, DispatchError
 from .prompt import _fill_required_options
