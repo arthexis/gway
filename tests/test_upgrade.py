@@ -390,7 +390,7 @@ def test_cli_upgrade_modes(monkeypatch, tmp_path: Path, capsys) -> None:
     capsys.readouterr()
 
     assert main(["upgrade", "--all", "--force"]) == 0
-    assert calls == ["all:force=True"]
+    assert calls == ["self", "all:force=True"]
     calls.clear()
     capsys.readouterr()
 

@@ -142,10 +142,16 @@ GWAY owns the lifecycle of projects installed through `gway install`. Upgrade on
 sudo gway upgrade wireguard
 ```
 
-Upgrade all managed projects while leaving GWAY itself unchanged:
+Upgrade GWAY itself first, then all managed projects:
 
 ```bash
 sudo gway upgrade --all
+```
+
+To upgrade all managed projects while leaving GWAY itself unchanged, explicitly disable the self-upgrade:
+
+```bash
+sudo gway upgrade --all --no-self
 ```
 
 Upgrade only GWAY in the Python environment that owns the current `gway` executable:
@@ -154,7 +160,7 @@ Upgrade only GWAY in the Python environment that owns the current `gway` executa
 sudo gway upgrade --self
 ```
 
-A bare upgrade performs both operations in order: GWAY itself first, then every managed project:
+A bare upgrade performs both operations in order as well: GWAY itself first, then every managed project:
 
 ```bash
 sudo gway upgrade

@@ -18,6 +18,7 @@ from . import AdapterError
 
 _NONE_TYPE = type(None)
 _SUPPORTED_SCALARS = {str, int, float, bool, Path}
+_EXPLICIT_NONE = object()
 
 
 def _cli_name(name: str) -> str:
@@ -175,6 +176,18 @@ class PythonAdapter:
             message = f"cannot resolve type hints for {function.__name__}: {exc}"
             raise AdapterError(message) from exc
 
+        positive_options = {
+            f"--{_cli_name(parameter.name)}"
+            for parameter in signature.parameters.values()
+            if parameter.kind
+            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            and not (
+                parameter.kind
+                in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+                and parameter.default is inspect.Parameter.empty
+            )
+        }
+
         parameters: list[Parameter] = []
         for parameter in signature.parameters.values():
             if parameter.kind is inspect.Parameter.VAR_KEYWORD:
@@ -194,6 +207,10 @@ class PythonAdapter:
                 )
                 and parameter.default is inspect.Parameter.empty
             )
+            negative_options: tuple[str, ...] | None = None
+            if not positional:
+                no_option = f"--no-{_cli_name(parameter.name)}"
+                negative_options = () if no_option in positive_options else (no_option,)
             parameters.append(
                 Parameter(
                     name=parameter.name,
@@ -203,6 +220,7 @@ class PythonAdapter:
                     default=None
                     if parameter.default is inspect.Parameter.empty
                     else parameter.default,
+                    negative_options=negative_options,
                 )
             )
         return tuple(parameters)
@@ -262,10 +280,13 @@ class PythonAdapter:
 
         signature = inspect.signature(function)
         hints = get_type_hints(function)
+        metadata = {parameter.name: parameter for parameter in command.parameters}
         for parameter in signature.parameters.values():
             annotation = hints.get(parameter.name, parameter.annotation)
             converter, choices = _converter(annotation)
             option = f"--{_cli_name(parameter.name)}"
+            negative_options = metadata[parameter.name].negative_options or ()
+            no_option = negative_options[0] if negative_options else None
             value_type = _argument_converter(converter)
 
             if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
@@ -294,35 +315,62 @@ class PythonAdapter:
                 )
                 continue
 
+            required = (
+                parameter.kind is inspect.Parameter.KEYWORD_ONLY
+                and parameter.default is inspect.Parameter.empty
+            )
+            default = None if parameter.default is inspect.Parameter.empty else parameter.default
+
             if converter is bool:
-                default = (
-                    None if parameter.default is inspect.Parameter.empty else parameter.default
-                )
-                required = (
-                    parameter.kind is inspect.Parameter.KEYWORD_ONLY
-                    and parameter.default is inspect.Parameter.empty
-                )
-                parser.add_argument(
+                if no_option is None:
+                    parser.add_argument(
+                        option,
+                        dest=parameter.name,
+                        action="store_true",
+                        default=default,
+                        required=required,
+                    )
+                    continue
+
+                group = parser.add_mutually_exclusive_group(required=required)
+                group.add_argument(
                     option,
-                    action=argparse.BooleanOptionalAction,
+                    dest=parameter.name,
+                    action="store_true",
                     default=default,
-                    required=required,
                 )
-            else:
-                required = (
-                    parameter.kind is inspect.Parameter.KEYWORD_ONLY
-                    and parameter.default is inspect.Parameter.empty
+                group.add_argument(
+                    no_option,
+                    dest=parameter.name,
+                    action="store_false",
                 )
+                continue
+
+            if no_option is None:
                 parser.add_argument(
                     option,
                     dest=parameter.name,
                     type=value_type,
                     choices=choices,
-                    default=None
-                    if parameter.default is inspect.Parameter.empty
-                    else parameter.default,
+                    default=default,
                     required=required,
                 )
+                continue
+
+            group = parser.add_mutually_exclusive_group(required=required)
+            group.add_argument(
+                option,
+                dest=parameter.name,
+                type=value_type,
+                choices=choices,
+                default=default,
+            )
+            group.add_argument(
+                no_option,
+                dest=parameter.name,
+                action="store_const",
+                const=_EXPLICIT_NONE,
+            )
         return parser
 
     def run(self, path: tuple[str, ...], argv: list[str]) -> object:
@@ -343,6 +391,9 @@ class PythonAdapter:
         keywords: dict[str, object] = {}
         for parameter in signature.parameters.values():
             value = values.get(parameter.name)
+            explicit_none = value is _EXPLICIT_NONE
+            if explicit_none:
+                value = None
             if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
                 positional.extend(value or [])
             elif parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
@@ -352,7 +403,7 @@ class PythonAdapter:
                 and parameter.default is inspect.Parameter.empty
             ):
                 positional.append(value)
-            elif value is not None:
+            elif value is not None or explicit_none:
                 keywords[parameter.name] = value
 
         with _project_import_path(self.project):

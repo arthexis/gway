@@ -30,6 +30,18 @@ def _option_names(parameter: Parameter) -> tuple[str, ...]:
     return (f"--{parameter.name.replace('_', '-')}",)
 
 
+def _negative_option_names(parameter: Parameter) -> tuple[str, ...]:
+    if parameter.negative_options is not None:
+        return parameter.negative_options
+    if parameter.annotation is bool:
+        return tuple(
+            f"--no-{option[2:]}"
+            for option in _option_names(parameter)
+            if option.startswith("--") and not option.startswith("--no-")
+        )
+    return ()
+
+
 def _option_name(parameter: Parameter) -> str:
     options = _option_names(parameter)
     long_options = [option for option in options if option.startswith("--")]
@@ -61,7 +73,6 @@ def _abbreviated_long_option(token: str, option: str) -> bool:
 
 def _option_present(argv: Sequence[str], parameter: Parameter) -> bool:
     for option in _option_names(parameter):
-        negative = f"--no-{option[2:]}" if option.startswith("--") else ""
         for token in argv:
             if token == option or token.startswith(f"{option}="):
                 return True
@@ -69,7 +80,10 @@ def _option_present(argv: Sequence[str], parameter: Parameter) -> bool:
                 return True
             if _attached_short_option(token, option, parameter):
                 return True
-            if negative and token == negative:
+
+    for option in _negative_option_names(parameter):
+        for token in argv:
+            if token == option or _abbreviated_long_option(token, option):
                 return True
     return False
 
@@ -100,8 +114,11 @@ def _prompt_value(parameter: Parameter) -> list[str]:
             if answer in {"y", "yes", "1", "true", "on"}:
                 return [option]
             if answer in {"n", "no", "0", "false", "off"}:
+                negative_options = _negative_option_names(parameter)
+                if negative_options:
+                    return [negative_options[0]]
                 if option.startswith("--"):
-                    return [f"--no-{option[2:]}"]
+                    raise DispatchError(f"{parameter.name} has no unambiguous negative option")
                 return [option, "false"]
             print("Please answer yes or no.", file=sys.stderr)
 
@@ -136,12 +153,34 @@ def _match_option(
     return None, False
 
 
+def _match_negative_option(
+    token: str,
+    option_parameters: Mapping[str, Parameter],
+) -> Parameter | None:
+    option_name, _, _ = token.partition("=")
+    parameter = option_parameters.get(option_name)
+    if parameter is not None:
+        return parameter
+
+    if option_name.startswith("--") and option_name != "--":
+        matches = [
+            candidate
+            for option, candidate in option_parameters.items()
+            if option.startswith("--") and option.startswith(option_name)
+        ]
+        if matches and all(candidate is matches[0] for candidate in matches):
+            return matches[0]
+    return None
+
+
 def _option_value_count(
     parameter: Parameter,
     argv: Sequence[str],
     start: int,
     option_parameters: Mapping[str, Parameter],
+    negative_option_parameters: Mapping[str, Parameter] | None = None,
 ) -> int:
+    negative_option_parameters = negative_option_parameters or {}
     arity = parameter.option_arity
     if isinstance(arity, int):
         return max(0, min(arity, len(argv) - start))
@@ -150,7 +189,8 @@ def _option_value_count(
         while start + count < len(argv):
             token = argv[start + count]
             matched, _ = _match_option(token, option_parameters)
-            if token == "--" or matched is not None:
+            negative = _match_negative_option(token, negative_option_parameters)
+            if token == "--" or matched is not None or negative is not None:
                 break
             count += 1
         return count
@@ -159,7 +199,8 @@ def _option_value_count(
             return 0
         token = argv[start]
         matched, _ = _match_option(token, option_parameters)
-        return 0 if token == "--" or matched is not None else 1
+        negative = _match_negative_option(token, negative_option_parameters)
+        return 0 if token == "--" or matched is not None or negative is not None else 1
     return 1 if _option_consumes_value(parameter) and start < len(argv) else 0
 
 
@@ -190,13 +231,25 @@ def _option_parameters(command: Command) -> dict[str, Parameter]:
             continue
         for option in _option_names(parameter):
             result[option] = parameter
-            if parameter.annotation is bool and option.startswith("--"):
-                result[f"--no-{option[2:]}"] = parameter
+        if parameter.annotation is bool:
+            for option in _negative_option_names(parameter):
+                result[option] = parameter
+    return result
+
+
+def _negative_option_parameters(command: Command) -> dict[str, Parameter]:
+    result: dict[str, Parameter] = {}
+    for parameter in command.parameters:
+        if parameter.positional or parameter.annotation is bool:
+            continue
+        for option in _negative_option_names(parameter):
+            result[option] = parameter
     return result
 
 
 def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
     option_parameters = _option_parameters(command)
+    negative_option_parameters = _negative_option_parameters(command)
     count = 0
     index = 0
     literal = False
@@ -215,11 +268,22 @@ def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
             continue
 
         if not literal:
+            negative = _match_negative_option(token, negative_option_parameters)
+            if negative is not None:
+                index += 1
+                continue
+
             parameter, attached = _match_option(token, option_parameters)
             if parameter is not None:
                 index += 1
                 if not attached:
-                    index += _option_value_count(parameter, argv, index, option_parameters)
+                    index += _option_value_count(
+                        parameter,
+                        argv,
+                        index,
+                        option_parameters,
+                        negative_option_parameters,
+                    )
                 continue
 
         count += 1
@@ -229,6 +293,7 @@ def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
 
 def _trailing_variadic_option(command: Command, argv: Sequence[str]) -> bool:
     option_parameters = _option_parameters(command)
+    negative_option_parameters = _negative_option_parameters(command)
     active = False
     index = 0
     literal = False
@@ -243,12 +308,25 @@ def _trailing_variadic_option(command: Command, argv: Sequence[str]) -> bool:
             active = False
             index += 1
             continue
+
+        negative = _match_negative_option(token, negative_option_parameters)
+        if negative is not None:
+            active = False
+            index += 1
+            continue
+
         parameter, attached = _match_option(token, option_parameters)
         if parameter is not None:
             active = parameter.option_arity in {"*", "+"}
             index += 1
             if not attached and not active:
-                index += _option_value_count(parameter, argv, index, option_parameters)
+                index += _option_value_count(
+                    parameter,
+                    argv,
+                    index,
+                    option_parameters,
+                    negative_option_parameters,
+                )
             continue
         index += 1
     return active
@@ -314,7 +392,10 @@ def _structured_value_tokens(parameter: Parameter, value: str) -> list[str]:
         if normalized in {"1", "true", "yes", "on"}:
             return [option]
         if normalized in {"0", "false", "no", "off"}:
-            return [f"--no-{option[2:]}"] if option.startswith("--") else [option, "false"]
+            negative_options = _negative_option_names(parameter)
+            if negative_options:
+                return [negative_options[0]]
+            return [option, "false"]
     return [option, value]
 
 
