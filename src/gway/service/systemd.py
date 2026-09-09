@@ -59,12 +59,7 @@ def _expand(value: str, project: Project) -> str:
 
 
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["systemctl", *arguments],
-        check=check,
-        text=True,
-        capture_output=True,
-    )
+    return subprocess.run(["systemctl", *arguments], check=check, text=True, capture_output=True)
 
 
 class _ServiceUnit:
@@ -76,12 +71,14 @@ class _ServiceUnit:
         *,
         legacy: bool,
         unit_directory: Path,
+        profile: str | None = None,
     ) -> None:
         self.project = project
         self.key = key
         self.config = config
         self.legacy = legacy
         self.unit_directory = unit_directory
+        self.profile = profile
         self.unit_name = self._unit_name()
         self.unit_path = unit_directory / self.unit_name
 
@@ -98,30 +95,20 @@ class _ServiceUnit:
         section = "service" if self.legacy else f"services.{self.key}"
         command = _strings(self.config.get("command"), "command", section)
         if not command:
-            message = f"[{section}].command must contain at least one argument"
-            raise ServiceError(message)
+            raise ServiceError(f"[{section}].command must contain at least one argument")
         command = [_expand(argument, self.project) for argument in command]
-
-        if self.legacy:
-            default_description = f"GWAY {self.project.name} service"
-        else:
-            default_description = f"GWAY {self.project.name} {self.key} service"
+        default_description = (
+            f"GWAY {self.project.name} service"
+            if self.legacy
+            else f"GWAY {self.project.name} {self.key} service"
+        )
         description = self.config.get("description", default_description)
         if not isinstance(description, str) or not description.strip():
             raise ServiceError(f"[{section}].description must be a non-empty string")
         if "\n" in description or "\r" in description:
             raise ServiceError(f"[{section}].description must not contain newlines")
-
-        wants = _strings(
-            self.config.get("wants", ["network-online.target"]),
-            "wants",
-            section,
-        )
-        after = _strings(
-            self.config.get("after", ["network-online.target"]),
-            "after",
-            section,
-        )
+        wants = _strings(self.config.get("wants", ["network-online.target"]), "wants", section)
+        after = _strings(self.config.get("after", ["network-online.target"]), "after", section)
         requires = _strings(self.config.get("requires"), "requires", section)
         restart = self.config.get("restart", "on-failure")
         restart_sec = self.config.get("restart_sec", 5)
@@ -132,20 +119,19 @@ class _ServiceUnit:
             raise ServiceError(f"[{section}].restart_sec must be a non-negative number")
         if not isinstance(timeout_stop_sec, (int, float)) or timeout_stop_sec < 0:
             raise ServiceError(f"[{section}].timeout_stop_sec must be a non-negative number")
-
-        environment = self.config.get("environment", {"PYTHONUNBUFFERED": "1"})
-        valid_environment = isinstance(environment, dict) and all(
+        configured_environment = self.config.get("environment", {"PYTHONUNBUFFERED": "1"})
+        valid_environment = isinstance(configured_environment, dict) and all(
             isinstance(key, str) and key and isinstance(value, (str, int, float, bool))
-            for key, value in environment.items()
+            for key, value in configured_environment.items()
         )
         if not valid_environment:
-            message = f"[{section}].environment must be a table of scalar values"
-            raise ServiceError(message)
-
+            raise ServiceError(f"[{section}].environment must be a table of scalar values")
+        environment = dict(configured_environment)
+        if self.profile is not None:
+            environment.setdefault("GWAY_SERVICE_PROFILE", self.profile)
         working_directory = self.config.get("working_directory")
         if working_directory is not None and not isinstance(working_directory, str):
             raise ServiceError(f"[{section}].working_directory must be a string")
-
         lines = ["[Unit]", f"Description={description}"]
         if wants:
             lines.append(f"Wants={' '.join(wants)}")
@@ -153,14 +139,7 @@ class _ServiceUnit:
             lines.append(f"Requires={' '.join(requires)}")
         if after:
             lines.append(f"After={' '.join(after)}")
-        lines.extend(
-            [
-                "",
-                "[Service]",
-                "Type=simple",
-                f"User={_service_user(self.config, user)}",
-            ]
-        )
+        lines.extend(["", "[Service]", "Type=simple", f"User={_service_user(self.config, user)}"])
         if working_directory:
             expanded = _expand(working_directory, self.project)
             lines.append(
@@ -168,8 +147,7 @@ class _ServiceUnit:
             )
         for key, value in environment.items():
             lines.append(f"Environment={_unit_arg(f'{key}={value}')}")
-        command_text = " ".join(_unit_arg(argument) for argument in command)
-        lines.append(f"ExecStart={command_text}")
+        lines.append(f"ExecStart={' '.join(_unit_arg(argument) for argument in command)}")
         lines.extend(
             [
                 f"Restart={restart}",
