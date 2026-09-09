@@ -99,11 +99,6 @@ class Upgrader:
                     self.runner.run_lifecycle(refreshed, "upgrade")
         except Exception as exc:
             rollback_errors: list[str] = []
-            try:
-                self._restore_project(current, previous_revision)
-            except Exception as rollback_exc:
-                rollback_errors.append(f"checkout rollback failed: {rollback_exc}")
-
             if selection_captured:
                 restore = getattr(self.runner, "restore_install_selection", None)
                 if callable(restore):
@@ -111,6 +106,11 @@ class Upgrader:
                         restore(current, selection_snapshot)
                     except Exception as state_exc:
                         rollback_errors.append(f"selector state restore failed: {state_exc}")
+
+            try:
+                self._restore_project(current, previous_revision)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"checkout rollback failed: {rollback_exc}")
 
             if rollback_errors:
                 details = "; ".join(rollback_errors)
