@@ -91,6 +91,7 @@ def test_refresh_rebuilds_environment_when_role_changes_extra_set(
     selector.persist(project, "Control")
 
     runner = Runner()
+    runner._write_managed_extras(environment, ("celery",))
     captured: dict[str, object] = {}
 
     def fake_prepare(project_arg, *, arguments=()):
@@ -103,6 +104,33 @@ def test_refresh_rebuilds_environment_when_role_changes_extra_set(
 
     assert runner.refresh(project, arguments=("--role", "Terminal")) == environment
     assert captured["arguments"] == ("--role", "Terminal")
+
+
+def test_refresh_rebuilds_legacy_environment_without_extras_marker(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    environment = tmp_path / "venv"
+    python = environment / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    project = _project(tmp_path / "project", environment=environment)
+    selector = InstallExtraSelector.from_project(project)
+    assert selector is not None
+    selector.persist(project, "Terminal")
+
+    runner = Runner()
+    rebuilt: list[tuple[str, ...]] = []
+
+    def fake_prepare(project_arg, *, arguments=()):
+        rebuilt.append(tuple(arguments))
+        environment.mkdir(parents=True, exist_ok=True)
+        return environment
+
+    monkeypatch.setattr(runner, "prepare", fake_prepare)
+
+    assert runner.refresh(project) == environment
+    assert rebuilt == [()]
 
 
 def test_refresh_keeps_environment_when_roles_share_same_extra_set(
@@ -119,6 +147,7 @@ def test_refresh_keeps_environment_when_roles_share_same_extra_set(
     selector.persist(project, "Control")
 
     runner = Runner()
+    runner._write_managed_extras(environment, ("celery",))
     captured: dict[str, object] = {}
 
     def fake_install(project_arg, environment_arg, *, upgrade, extras=()):
