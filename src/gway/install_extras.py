@@ -23,6 +23,8 @@ class InstallExtraSelector:
     @classmethod
     def from_project(cls, project: Project) -> InstallExtraSelector | None:
         manifest = project.path / "gway.toml"
+        if not manifest.is_file():
+            return None
         with manifest.open("rb") as stream:
             data = tomllib.load(stream)
         install = data.get("install")
