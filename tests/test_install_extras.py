@@ -4,7 +4,6 @@ from gway.install_extras import InstallExtraSelector
 from gway.project import ManifestError, Project
 from gway.runner import Runner
 
-
 MANIFEST = """[project]
 name = "arthexis"
 
@@ -176,7 +175,7 @@ def test_refresh_rebuilds_when_manifest_removes_extras_selector(
     python.parent.mkdir(parents=True)
     python.touch()
     project_path = tmp_path / "project"
-    project = _project(project_path, environment=environment)
+    _project(project_path, environment=environment)
 
     runner = Runner()
     runner._write_managed_extras(environment, ("celery",))
