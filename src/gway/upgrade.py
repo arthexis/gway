@@ -55,12 +55,20 @@ class Upgrader:
                 f"project is locally registered and cannot be upgraded by GWAY: {current.name}"
             )
 
+        selection_snapshot: str | None = None
+        selection_captured = False
+        snapshot = getattr(self.runner, "snapshot_install_selection", None)
+        if callable(snapshot):
+            selection_snapshot = snapshot(current)
+            selection_captured = True
+
         previous_revision = current.revision or self.repositories.revision(current.path)
         revision = self.repositories.upgrade(
             current.path,
             current.repository,
             force=force,
         )
+        refreshed: Project | None = None
         try:
             refreshed = Project.from_path(current.path)
             if refreshed.name != current.name:
@@ -75,7 +83,13 @@ class Upgrader:
                 revision=revision,
                 environment=current.environment,
             )
-            environment = self.runner.refresh(refreshed)
+            if arguments:
+                environment = self.runner.refresh(
+                    refreshed,
+                    arguments=arguments,
+                )
+            else:
+                environment = self.runner.refresh(refreshed)
             if environment is not None:
                 refreshed = replace(refreshed, environment=environment)
             if refreshed.lifecycle_hooks is not None:
@@ -84,15 +98,29 @@ class Upgrader:
                 else:
                     self.runner.run_lifecycle(refreshed, "upgrade")
         except Exception as exc:
+            rollback_errors: list[str] = []
+            if selection_captured:
+                restore = getattr(self.runner, "restore_install_selection", None)
+                if callable(restore):
+                    try:
+                        restore(current, selection_snapshot)
+                    except Exception as state_exc:
+                        rollback_errors.append(f"selector state restore failed: {state_exc}")
+
             try:
                 self._restore_project(current, previous_revision)
             except Exception as rollback_exc:
+                rollback_errors.append(f"checkout rollback failed: {rollback_exc}")
+
+            if rollback_errors:
+                details = "; ".join(rollback_errors)
                 raise UpgradeError(
                     f"upgrade failed for {current.name} and rollback to {previous_revision} "
-                    f"also failed: {rollback_exc}"
+                    f"was incomplete: {details}"
                 ) from exc
             raise
 
+        assert refreshed is not None
         return self.registry.register(refreshed)
 
     def all_projects(self, *, force: bool = False) -> list[Project]:
