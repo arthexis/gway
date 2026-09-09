@@ -37,7 +37,7 @@ def registered_project(tmp_path: Path, revision: str) -> tuple[Registry, Project
     checkout = tmp_path / "project"
     checkout.mkdir()
     (checkout / "gway.toml").write_text(
-        '''[project]\nname = "fixture"\n\n[adapter]\ntype = "python"\nmodule = "fixture.gway"\n''',
+        """[project]\nname = "fixture"\n\n[adapter]\ntype = "python"\nmodule = "fixture.gway"\n""",
         encoding="utf-8",
     )
     project = Project(
@@ -86,9 +86,7 @@ def test_reload_refreshes_unchanged_revision(tmp_path: Path) -> None:
     result = upgrader.project_result(project.name, reload=True)
 
     assert result.changed is True
-    assert repositories.upgrade_calls == [
-        (project.path, "arthexis/gway-fixture", False)
-    ]
+    assert repositories.upgrade_calls == [(project.path, "arthexis/gway-fixture", False)]
     assert len(runner.refresh_calls) == 1
 
 
