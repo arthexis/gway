@@ -162,7 +162,10 @@ def test_self_upgrade_uses_current_python_and_forces_reinstall(monkeypatch) -> N
     ]
 
 
-def test_repository_upgrade_requires_clean_matching_checkout(monkeypatch, tmp_path: Path) -> None:
+def test_repository_upgrade_requires_clean_matching_checkout(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     calls: list[list[str]] = []
@@ -234,7 +237,11 @@ def test_repository_force_resets_dirty_checkout_to_trusted_upstream(
         command = [str(value) for value in args]
         calls.append(command)
         if "status" in command:
-            return SimpleNamespace(returncode=0, stdout=" M file.py\n?? scratch/\n", stderr="")
+            return SimpleNamespace(
+                returncode=0,
+                stdout=" M file.py\n?? scratch/\n",
+                stderr="",
+            )
         if "get-url" in command:
             return SimpleNamespace(
                 returncode=0,
@@ -262,7 +269,10 @@ def test_repository_force_resets_dirty_checkout_to_trusted_upstream(
     assert not any("pull" in command for command in calls)
 
 
-def test_repository_force_validates_origin_before_mutation(monkeypatch, tmp_path: Path) -> None:
+def test_repository_force_validates_origin_before_mutation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     calls: list[list[str]] = []
@@ -291,7 +301,10 @@ def test_repository_force_validates_origin_before_mutation(monkeypatch, tmp_path
     assert not any(any(value in command for value in mutating) for command in calls)
 
 
-def test_runner_refresh_reinstalls_editable_project(monkeypatch, tmp_path: Path) -> None:
+def test_runner_refresh_reinstalls_project_without_editable_mode(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "project"
     root.mkdir()
     environment = tmp_path / "environment"
@@ -318,7 +331,8 @@ def test_runner_refresh_reinstalls_editable_project(monkeypatch, tmp_path: Path)
     assert refreshed == environment
     assert calls[0][0] == str(python)
     assert "--upgrade" in calls[0]
-    assert calls[0][-2:] == ["-e", str(root)]
+    assert "-e" not in calls[0]
+    assert calls[0][-1] == str(root)
 
 
 def test_cli_upgrade_modes(monkeypatch, tmp_path: Path, capsys) -> None:

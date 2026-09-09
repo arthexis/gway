@@ -82,7 +82,7 @@ class Runner:
         return selector, selection.value, selection.extras
 
     @staticmethod
-    def _editable_spec(project: Project, extras: tuple[str, ...]) -> str:
+    def _install_spec(project: Project, extras: tuple[str, ...]) -> str:
         path = str(project.path)
         if not extras:
             return path
@@ -105,7 +105,7 @@ class Runner:
         ]
         if upgrade:
             command.append("--upgrade")
-        command.extend(["-e", self._editable_spec(project, extras)])
+        command.append(self._install_spec(project, extras))
         subprocess.run(command, check=True, stdout=sys.stderr)
 
     def run_lifecycle(

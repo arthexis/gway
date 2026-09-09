@@ -180,4 +180,5 @@ def test_runner_prepares_django_project_environment(monkeypatch, tmp_path: Path)
     environment = Runner(paths).prepare(project)
     assert environment == paths.environments_dir / "django-fixture"
     assert calls[0][1:3] == ["-m", "venv"]
-    assert calls[1][-2:] == ["-e", str(FIXTURE_ROOT)]
+    assert calls[1][-1] == str(FIXTURE_ROOT)
+    assert "-e" not in calls[1]
