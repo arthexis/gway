@@ -204,7 +204,9 @@ def test_python_adapter_supports_typed_varargs(tmp_path: Path) -> None:
     assert result == ["numbers", 1, 2, 3]
 
 
-def test_python_adapter_decodes_escaped_argument_values_after_command_resolution(tmp_path: Path) -> None:
+def test_python_adapter_decodes_escaped_argument_values_after_command_resolution(
+    tmp_path: Path,
+) -> None:
     dispatcher = make_dispatcher(tmp_path)
 
     result = dispatcher.run("fixture", ["peer", "echo-values", "[-]"])
