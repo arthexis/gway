@@ -8,6 +8,7 @@ from ..adapters.base import SigilContextAdapter
 from ..command import Command
 from ..expression import MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..registry import Registry, RegistryError
+from ..stage import decode_stage_escapes
 from .arguments import _decode_structured_argv
 from .errors import CommandNotFound, DispatchError
 from .prompt import _fill_required_options
@@ -116,6 +117,7 @@ class Dispatcher:
             if not project.default_command:
                 raise
             command, argv = self._resolve_default_command(commands, project.default_command, tokens)
+        argv = list(decode_stage_escapes(argv))
         if interactive:
             argv = _fill_required_options(command, argv)
         argv = _decode_structured_argv(command, argv)
