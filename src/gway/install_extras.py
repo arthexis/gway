@@ -60,9 +60,7 @@ class InstallExtraSelector:
             or not argument.startswith("--")
             or argument in _RESERVED_ARGUMENTS
         ):
-            raise ManifestError(
-                "[install.extras].argument must be a project-owned long option"
-            )
+            raise ManifestError("[install.extras].argument must be a project-owned long option")
         if not isinstance(default, str) or not default.strip():
             raise ManifestError("[install.extras].default must be a non-empty string")
         if not isinstance(state_value, str) or not state_value.strip():
@@ -80,9 +78,7 @@ class InstallExtraSelector:
                 raise ManifestError("[install.extras.values] keys must be non-empty strings")
             canonical_key = key.casefold()
             if canonical_key in canonical_keys:
-                raise ManifestError(
-                    "[install.extras.values] keys must be unique ignoring case"
-                )
+                raise ManifestError("[install.extras.values] keys must be unique ignoring case")
             canonical_keys.add(canonical_key)
             if not isinstance(extras, list) or not all(
                 isinstance(extra, str) and extra.strip() for extra in extras
@@ -107,9 +103,7 @@ class InstallExtraSelector:
             if candidate.casefold() == normalized:
                 return candidate
         allowed = ", ".join(self.values)
-        raise ManifestError(
-            f"invalid {self.argument} value {value!r}; expected one of: {allowed}"
-        )
+        raise ManifestError(f"invalid {self.argument} value {value!r}; expected one of: {allowed}")
 
     def state_path(self, project: Project) -> Path:
         if project.install_layout is None:
