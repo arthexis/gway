@@ -48,7 +48,7 @@ class InstallExtraSelector:
             raise ManifestError("[install.extras].state must be a relative path")
         state = Path(state_value)
         if state.is_absolute() or ".." in state.parts:
-            raise ManifestError("[install.extras].state must stay within the project checkout")
+            raise ManifestError("[install.extras].state must stay within the install root")
         if not isinstance(values, dict) or not values:
             raise ManifestError("[install.extras.values] must declare at least one value")
 
@@ -84,7 +84,9 @@ class InstallExtraSelector:
         )
 
     def state_path(self, project: Project) -> Path:
-        return project.path / self.state
+        if project.install_layout is None:
+            raise ManifestError("[install.extras] requires a managed install layout")
+        return project.install_layout.root / self.state
 
     def current(self, project: Project) -> str | None:
         path = self.state_path(project)
@@ -119,7 +121,10 @@ class InstallExtraSelector:
                 selected = argument.split("=", maxsplit=1)[1]
             index += 1
 
-        value = self._canonical(selected or self.current(project) or self.default)
+        if selected is not None:
+            value = self._canonical(selected)
+        else:
+            value = self._canonical(self.current(project) or self.default)
         return InstallExtraSelection(value=value, extras=self.values[value])
 
     def persist(self, project: Project, value: str) -> None:
