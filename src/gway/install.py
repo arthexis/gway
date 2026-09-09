@@ -99,7 +99,18 @@ class Installer:
             )
             if adopted and project.install_layout is not None:
                 environment_preexisted = project.install_layout.environment.exists()
-                prepared_environment = self.runner.refresh(project)
+                if arguments:
+                    prepared_environment = self.runner.refresh(
+                        project,
+                        arguments=arguments,
+                    )
+                else:
+                    prepared_environment = self.runner.refresh(project)
+            elif arguments:
+                prepared_environment = self.runner.prepare(
+                    project,
+                    arguments=arguments,
+                )
             else:
                 prepared_environment = self.runner.prepare(project)
             if prepared_environment is not None:
