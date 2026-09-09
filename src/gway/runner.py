@@ -192,8 +192,10 @@ class Runner:
         if not python.is_file():
             raise RunnerError(f"managed environment is missing Python: {environment}")
 
-        managed_extras = self._read_managed_extras(environment) if selector is not None else ()
-        if selector is not None and managed_extras != extras:
+        managed_extras = self._read_managed_extras(environment)
+        if (selector is not None and managed_extras != extras) or (
+            selector is None and managed_extras is not None
+        ):
             shutil.rmtree(environment)
             return self.prepare(project, arguments=arguments)
 
