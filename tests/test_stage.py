@@ -39,6 +39,12 @@ def test_doubled_brackets_escape_literal_brackets() -> None:
     assert decode_bracket_escapes("[[-]]") == "[-]"
 
 
+def test_adjacent_bracket_escapes_do_not_overlap() -> None:
+    assert decode_bracket_escapes("[-]]]") == "-]"
+    assert decode_bracket_escapes("[[]]") == "[]"
+    assert decode_bracket_escapes("[[-]][-]]]") == "[-]-]"
+
+
 def test_leading_percent_is_explicit_solve_marker() -> None:
     stage = classify_stage(["%", "hello", "[name]"])
 

@@ -50,6 +50,13 @@ def test_solve_values_keeps_bracket_escapes_literal(monkeypatch) -> None:
     assert solve_values(["Hello", "[name]"]) == "Hello Rafa"
 
 
+def test_solve_values_keeps_adjacent_escapes_literal(monkeypatch) -> None:
+    monkeypatch.setattr(solve_module, "base_context", lambda paths=None: {})
+
+    assert solve_values(["[-]]]"]) == "-]"
+    assert solve_values(["[[]]"]) == "[]"
+
+
 def test_solve_values_prompts_once_per_unresolved_expression(tmp_path: Path) -> None:
     answers = {"missing": "first", "other": "second"}
     prompts: list[str] = []

@@ -7,6 +7,7 @@ from sigils import Sigil
 
 from .config import GwayPaths
 from .sigils import base_context
+from .stage import replace_bracket_escapes
 
 _UNRESOLVED_SIGIL = re.compile(r"%?\[(?P<expression>.*?)\]")
 _EXACT_SIGIL = re.compile(r"%?\[(?P<expression>.*?)\]\Z")
@@ -16,8 +17,14 @@ _RIGHT_ESCAPE = "\x00gway-right-bracket\x00"
 
 def _protect_escapes(values: Sequence[str]) -> str:
     """Join a template while shielding lexical bracket escapes from Sigils."""
-    template = " ".join(values)
-    return template.replace("[[", _LEFT_ESCAPE).replace("]]", _RIGHT_ESCAPE).replace("[-]", "-")
+    return " ".join(
+        replace_bracket_escapes(
+            value,
+            left=_LEFT_ESCAPE,
+            right=_RIGHT_ESCAPE,
+        )
+        for value in values
+    )
 
 
 def _restore_escapes(value: object) -> object:

@@ -57,17 +57,35 @@ def split_stage_tokens(argv: Sequence[str]) -> tuple[tuple[str, ...], ...]:
     return tuple(stages)
 
 
+def replace_bracket_escapes(
+    token: str,
+    *,
+    left: str = "[",
+    right: str = "]",
+    dash: str = "-",
+) -> str:
+    """Replace bracket escapes left-to-right without overlapping neighbors."""
+    rendered: list[str] = []
+    index = 0
+    while index < len(token):
+        if token.startswith("[-]", index):
+            rendered.append(dash)
+            index += 3
+        elif token.startswith("[[", index):
+            rendered.append(left)
+            index += 2
+        elif token.startswith("]]", index):
+            rendered.append(right)
+            index += 2
+        else:
+            rendered.append(token[index])
+            index += 1
+    return "".join(rendered)
+
+
 def decode_bracket_escapes(token: str) -> str:
     """Decode Gway's lexical bracket escapes in one token."""
-    left = "\x00gway-left-bracket\x00"
-    right = "\x00gway-right-bracket\x00"
-    return (
-        token.replace("[[", left)
-        .replace("]]", right)
-        .replace("[-]", "-")
-        .replace(left, "[")
-        .replace(right, "]")
-    )
+    return replace_bracket_escapes(token)
 
 
 def decode_stage_escapes(tokens: Sequence[str]) -> tuple[str, ...]:
@@ -124,5 +142,6 @@ __all__ = [
     "decode_bracket_escapes",
     "decode_stage_escapes",
     "parse_stages",
+    "replace_bracket_escapes",
     "split_stage_tokens",
 ]
