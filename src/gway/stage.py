@@ -21,6 +21,7 @@ class Stage:
     tokens: tuple[str, ...]
     kind: StageKind
     explicit_solve: bool = False
+    raw_tokens: tuple[str, ...] = ()
 
 
 def split_stage_tokens(argv: Sequence[str]) -> tuple[tuple[str, ...], ...]:
@@ -94,14 +95,20 @@ def classify_stage(tokens: Sequence[str]) -> Stage:
     if raw[0] == "%":
         if len(raw) == 1:
             raise StageSyntaxError("solve stage requires a template")
+        template = raw[1:]
         return Stage(
-            tokens=decode_stage_escapes(raw[1:]),
+            tokens=decode_stage_escapes(template),
+            raw_tokens=template,
             kind=StageKind.SOLVE,
             explicit_solve=True,
         )
 
     kind = StageKind.SOLVE if _is_implicit_solve_start(raw[0]) else StageKind.COMMAND
-    return Stage(tokens=decode_stage_escapes(raw), kind=kind)
+    return Stage(
+        tokens=decode_stage_escapes(raw),
+        raw_tokens=raw,
+        kind=kind,
+    )
 
 
 def parse_stages(argv: Sequence[str]) -> tuple[Stage, ...]:

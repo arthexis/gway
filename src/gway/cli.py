@@ -32,6 +32,7 @@ from .shell import (
     uninstall_shell,
 )
 from .solve import solve_values
+from .stage import StageKind, StageSyntaxError, parse_stages
 from .upgrade import UpgradeError, Upgrader
 
 CORE_COMMANDS = frozenset(
@@ -561,6 +562,7 @@ def _known_cli_error(exc: BaseException) -> bool:
             RunnerError,
             ServiceError,
             ShellError,
+            StageSyntaxError,
             UpgradeError,
             OSError,
         ),
@@ -583,6 +585,23 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         return 0
 
     active_dispatcher = dispatcher or Dispatcher()
+
+    try:
+        stages = parse_stages(args)
+    except StageSyntaxError as exc:
+        return _handle_cli_exception(exc, original_args)
+    if len(stages) == 1 and stages[0].kind is StageKind.SOLVE:
+        try:
+            result = solve_values(
+                stages[0].raw_tokens,
+                interactive=interactive,
+                prompt=_prompt_required_value,
+            )
+            _render_result(result, json_output=json_output)
+        except Exception as exc:
+            return _handle_cli_exception(exc, original_args)
+        return 0
+
     if args[0] not in CORE_COMMANDS and not args[0].startswith("-"):
         try:
             project_name, project_args = normalize_managed_args(args)
@@ -639,8 +658,6 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 interactive=interactive,
                 prompt=_prompt_required_value,
             )
-            if len(result) == 1:
-                result = result[0]
         elif namespace.command == "register":
             project = registry.register_path(namespace.path)
             result = _managed_status("registered", project)

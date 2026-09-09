@@ -20,9 +20,7 @@ def test_split_stage_tokens_uses_only_standalone_dash() -> None:
 
 
 def test_literal_boundary_preserves_subsequent_dash() -> None:
-    assert split_stage_tokens(["alpha", "--", "-", "beta"]) == (
-        ("alpha", "--", "-", "beta"),
-    )
+    assert split_stage_tokens(["alpha", "--", "-", "beta"]) == (("alpha", "--", "-", "beta"),)
 
 
 def test_bracket_dash_does_not_split_stage() -> None:
@@ -30,6 +28,7 @@ def test_bracket_dash_does_not_split_stage() -> None:
 
     assert stages[0].kind is StageKind.SOLVE
     assert stages[0].tokens == ("left", "-", "right")
+    assert stages[0].raw_tokens == ("left", "[-]", "right")
     assert stages[1].kind is StageKind.COMMAND
     assert stages[1].tokens == ("upper",)
 
@@ -46,6 +45,7 @@ def test_leading_percent_is_explicit_solve_marker() -> None:
     assert stage.kind is StageKind.SOLVE
     assert stage.explicit_solve is True
     assert stage.tokens == ("hello", "[name]")
+    assert stage.raw_tokens == ("hello", "[name]")
 
 
 def test_percent_after_first_token_is_literal() -> None:
@@ -76,6 +76,7 @@ def test_bracket_escape_does_not_trigger_implicit_solve() -> None:
 
     assert stage.kind is StageKind.COMMAND
     assert stage.tokens == ("[name]", "literal")
+    assert stage.raw_tokens == ("[[name]]", "literal")
 
 
 def test_bare_name_is_command_stage() -> None:
