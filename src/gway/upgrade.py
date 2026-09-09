@@ -79,7 +79,10 @@ class Upgrader:
             if environment is not None:
                 refreshed = replace(refreshed, environment=environment)
             if refreshed.lifecycle_hooks is not None:
-                self.runner.run_lifecycle(refreshed, "upgrade", arguments)
+                if arguments:
+                    self.runner.run_lifecycle(refreshed, "upgrade", arguments)
+                else:
+                    self.runner.run_lifecycle(refreshed, "upgrade")
         except Exception as exc:
             try:
                 self._restore_project(current, previous_revision)
