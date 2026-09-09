@@ -80,10 +80,10 @@ def test_systemctl_permission_words_preserve_called_process_error(monkeypatch) -
     def denied(*args, **kwargs):
         raise expected
 
-    monkeypatch.setattr(service.subprocess, "run", denied)
+    monkeypatch.setattr(service.systemd.subprocess, "run", denied)
 
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
-        service._systemctl("start", "gway-arthexis-web-local.service")
+        service.systemd._systemctl("start", "gway-arthexis-web-local.service")
 
     assert exc_info.value is expected
 
@@ -111,7 +111,7 @@ def test_stop_reaches_systemd_when_unit_files_are_missing(tmp_path: Path, monkey
         calls.append(args)
         return completed(*args)
 
-    monkeypatch.setattr(service, "_systemctl", fake_systemctl)
+    monkeypatch.setattr(service.systemd, "_systemctl", fake_systemctl)
 
     manager.stop()
 
@@ -137,7 +137,7 @@ def test_install_reconciles_units_excluded_by_persisted_role(
         calls.append(args)
         return completed(*args)
 
-    monkeypatch.setattr(service, "_systemctl", fake_systemctl)
+    monkeypatch.setattr(service.systemd, "_systemctl", fake_systemctl)
 
     manager.install(user="arthexis", enable=False, start=False)
 
@@ -167,7 +167,7 @@ def test_explicit_service_install_does_not_reconcile_siblings(
         calls.append(args)
         return completed(*args)
 
-    monkeypatch.setattr(service, "_systemctl", fake_systemctl)
+    monkeypatch.setattr(service.systemd, "_systemctl", fake_systemctl)
 
     manager.install(user="arthexis", enable=False, start=False)
 

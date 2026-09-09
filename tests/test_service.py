@@ -37,6 +37,13 @@ def completed(*args: str, returncode: int = 0, stdout: str = ""):
     return subprocess.CompletedProcess(args, returncode, stdout=stdout, stderr="")
 
 
+def test_service_package_exports_public_api() -> None:
+    from gway.service import ServiceError, ServiceManager
+
+    assert ServiceError is service.ServiceError
+    assert ServiceManager is service.ServiceManager
+
+
 def test_project_manifest_preserves_service_metadata(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     assert project.service_config is not None
@@ -94,7 +101,7 @@ def test_install_and_lifecycle_use_one_project_unit(tmp_path: Path, monkeypatch)
             return completed(*args, stdout="enabled\n")
         return completed(*args)
 
-    monkeypatch.setattr(service, "_systemctl", fake_systemctl)
+    monkeypatch.setattr(service.systemd, "_systemctl", fake_systemctl)
 
     installed = manager.install(user="display")
     assert installed == tmp_path / "systemd" / "gway-epaper.service"

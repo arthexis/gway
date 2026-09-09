@@ -7,6 +7,7 @@ import pytest
 
 from gway import cli, service
 from gway.project import InstallLayout, Project
+from gway.runner import Runner
 
 MULTI_MANIFEST = """[project]
 name = "arthexis"
@@ -63,7 +64,7 @@ def test_multi_service_units_use_project_environment_python(tmp_path: Path) -> N
 
     unit = manager.render(user="arthexis")
 
-    python = service.Runner.environment_python(project.environment)
+    python = Runner.environment_python(project.environment)
     assert manager.unit_name == "gway-arthexis-web.service"
     assert f'ExecStart="{python}" "manage.py" "runserver"' in unit
     assert f"WorkingDirectory={project.path}" in unit
@@ -139,7 +140,7 @@ def test_install_writes_all_units_before_reload_and_activation(
             assert (unit_directory / "gway-arthexis-health.service").is_file()
         return completed(*args)
 
-    monkeypatch.setattr(service, "_systemctl", fake_systemctl)
+    monkeypatch.setattr(service.systemd, "_systemctl", fake_systemctl)
 
     installed = manager.install(user="arthexis")
 
@@ -200,7 +201,7 @@ def test_environment_selector_install_reports_real_permission_failure(
     def denied_write(self, content: str):
         raise PermissionError("permission denied while writing service unit")
 
-    monkeypatch.setattr(service._ServiceUnit, "write", denied_write)
+    monkeypatch.setattr(service.systemd._ServiceUnit, "write", denied_write)
     monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
 
     with pytest.raises(PermissionError) as exc_info:
@@ -234,7 +235,7 @@ def test_environment_selector_uninstall_reports_real_permission_failure(
     def denied_systemctl(*args: str, check: bool = True):
         raise PermissionError("permission denied while managing service")
 
-    monkeypatch.setattr(service, "_systemctl", denied_systemctl)
+    monkeypatch.setattr(service.systemd, "_systemctl", denied_systemctl)
     monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
 
     with pytest.raises(PermissionError) as exc_info:
@@ -260,7 +261,7 @@ def test_uninstall_stops_units_in_reverse_topology_order(tmp_path: Path, monkeyp
         calls.append(args)
         return completed(*args)
 
-    monkeypatch.setattr(service, "_systemctl", fake_systemctl)
+    monkeypatch.setattr(service.systemd, "_systemctl", fake_systemctl)
 
     manager.uninstall()
 
