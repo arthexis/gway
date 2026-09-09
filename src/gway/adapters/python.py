@@ -319,9 +319,7 @@ class PythonAdapter:
                 parameter.kind is inspect.Parameter.KEYWORD_ONLY
                 and parameter.default is inspect.Parameter.empty
             )
-            default = (
-                None if parameter.default is inspect.Parameter.empty else parameter.default
-            )
+            default = None if parameter.default is inspect.Parameter.empty else parameter.default
 
             if converter is bool:
                 if no_option is None:
