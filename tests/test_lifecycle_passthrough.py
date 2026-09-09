@@ -35,10 +35,13 @@ def test_install_forwards_unconsumed_arguments(monkeypatch, tmp_path, capsys) ->
     dispatcher = SimpleNamespace(registry=registry)
     monkeypatch.setattr(cli, "Installer", FakeInstaller)
 
-    assert cli.main(
-        ["install", "arthexis", "--role", "Control"],
-        dispatcher=dispatcher,
-    ) == 0
+    assert (
+        cli.main(
+            ["install", "arthexis", "--role", "Control"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
     capsys.readouterr()
 
     assert captured == {
@@ -70,10 +73,13 @@ def test_upgrade_consumes_gway_flags_and_forwards_the_rest(
     dispatcher = SimpleNamespace(registry=registry)
     monkeypatch.setattr(cli, "Upgrader", FakeUpgrader)
 
-    assert cli.main(
-        ["upgrade", "arthexis", "--role", "Watchtower", "--force"],
-        dispatcher=dispatcher,
-    ) == 0
+    assert (
+        cli.main(
+            ["upgrade", "arthexis", "--role", "Watchtower", "--force"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
     capsys.readouterr()
 
     assert captured == {
