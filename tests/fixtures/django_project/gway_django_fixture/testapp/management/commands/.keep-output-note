@@ -1,1 +1,0 @@
-The fail command exercises Django stdout preservation when a command exits nonzero.
