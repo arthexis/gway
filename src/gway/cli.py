@@ -517,8 +517,8 @@ def _run_upgrade(
 
     if include_projects:
         for result in upgrader.all_project_results(
-            force=namespace.force,
-            reload=namespace.reload,
+            force=force,
+            reload=reload,
         ):
             status = "upgraded" if result.changed else "skipped"
             completed(_managed_status(status, result.project))
@@ -634,7 +634,11 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         elif namespace.command == "path":
             result = registry.require(namespace.project).path
         elif namespace.command == "solve":
-            result = solve_values(namespace.value, interactive=interactive)
+            result = solve_values(
+                namespace.value,
+                interactive=interactive,
+                prompt=_prompt_required_value,
+            )
             if len(result) == 1:
                 result = result[0]
         elif namespace.command == "register":
