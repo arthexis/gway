@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from gway.install_extras import InstallExtraSelector
 from gway.project import ManifestError, Project
 from gway.runner import Runner
@@ -71,8 +69,12 @@ def test_selector_rejects_unknown_role(tmp_path: Path) -> None:
     selector = InstallExtraSelector.from_project(project)
     assert selector is not None
 
-    with pytest.raises(ManifestError, match="invalid --role value"):
+    try:
         selector.resolve(project, ("--role", "Unknown"))
+    except ManifestError as exc:
+        assert "invalid --role value" in str(exc)
+    else:
+        raise AssertionError("expected ManifestError")
 
 
 def test_refresh_rebuilds_environment_when_role_changes_extra_set(
