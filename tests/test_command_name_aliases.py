@@ -15,8 +15,7 @@ def _registered_dispatcher(tmp_path: Path) -> tuple[Dispatcher, GwayPaths]:
     root = tmp_path / "demo"
     root.mkdir()
     (root / "commands.py").write_text(
-        "def node_role():\n"
-        "    return 'worker'\n",
+        "def node_role():\n    return 'worker'\n",
         encoding="utf-8",
     )
     (root / "gway.toml").write_text(
