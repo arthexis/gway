@@ -3,7 +3,6 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from .project import ManifestError, Project
 
@@ -78,7 +77,9 @@ class InstallExtraSelector:
             if candidate.casefold() == normalized:
                 return candidate
         allowed = ", ".join(self.values)
-        raise ManifestError(f"invalid {self.argument} value {value!r}; expected one of: {allowed}")
+        raise ManifestError(
+            f"invalid {self.argument} value {value!r}; expected one of: {allowed}"
+        )
 
     def state_path(self, project: Project) -> Path:
         return project.path / self.state
@@ -93,7 +94,11 @@ class InstallExtraSelector:
             raise ManifestError(f"cannot read install selector state {path}: {exc}") from exc
         return self._canonical(value) if value else None
 
-    def resolve(self, project: Project, arguments: tuple[str, ...]) -> InstallExtraSelection:
+    def resolve(
+        self,
+        project: Project,
+        arguments: tuple[str, ...],
+    ) -> InstallExtraSelection:
         selected: str | None = None
         index = 0
         while index < len(arguments):
