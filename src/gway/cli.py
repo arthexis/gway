@@ -451,11 +451,14 @@ def _run_upgrade(
 
     upgrader = Upgrader(registry)
     if namespace.project:
-        project = upgrader.project(
-            namespace.project,
-            force=namespace.force,
-            arguments=arguments,
-        )
+        if arguments:
+            project = upgrader.project(
+                namespace.project,
+                force=namespace.force,
+                arguments=arguments,
+            )
+        else:
+            project = upgrader.project(namespace.project, force=namespace.force)
         return _managed_status("upgraded", project)
 
     results: list[dict[str, object]] = []
@@ -600,10 +603,11 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             if result is not None and passthrough:
                 raise RunnerError("built-in runtime component install does not accept project arguments")
             if result is None:
-                project = Installer(registry).install(
-                    namespace.project,
-                    arguments=passthrough,
-                )
+                installer = Installer(registry)
+                if passthrough:
+                    project = installer.install(namespace.project, arguments=passthrough)
+                else:
+                    project = installer.install(namespace.project)
                 result = _managed_status("installed", project)
         elif namespace.command == "upgrade":
             result = _run_upgrade(
