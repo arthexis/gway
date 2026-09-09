@@ -90,7 +90,9 @@ working_directory = "var/app"
     )
     manager = service.ServiceManager(Project.from_path(root))
 
-    with pytest.raises(service.ServiceError, match="working_directory must expand to an absolute path"):
+    with pytest.raises(
+        service.ServiceError, match="working_directory must expand to an absolute path"
+    ):
         manager.render(user="arthexis")
 
 

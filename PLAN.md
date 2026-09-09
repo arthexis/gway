@@ -282,17 +282,16 @@ Convention should be sufficient for most projects, but lightweight decorators ma
 ```python
 from gway import command
 
+
 @command(name="check", aliases=["doctor"])
-def diagnostics():
-    ...
+def diagnostics(): ...
 ```
 
 or:
 
 ```python
 @command(hidden=True)
-def internal_repair():
-    ...
+def internal_repair(): ...
 ```
 
 Decorators should remain optional. Importing GWAY should not be required merely to expose ordinary public functions unless metadata is needed.
