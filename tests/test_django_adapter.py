@@ -56,6 +56,17 @@ def test_django_check_json_stdout_is_one_json_value(
     assert "System check identified no issues" in output
 
 
+def test_django_nonzero_exit_preserves_captured_stdout(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    dispatcher = make_dispatcher(tmp_path)
+    with pytest.raises(SystemExit) as exc_info:
+        main(["django-fixture", "fail"], dispatcher=dispatcher)
+    assert exc_info.value.code == 1
+    assert capsys.readouterr().out == "FAIL\n"
+
+
 def test_django_migrate_preserves_native_plan_option(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

@@ -217,7 +217,13 @@ class DjangoAdapter:
             with _project_context(self.project, self.settings):
                 _, base = self._bootstrap()
                 django_command.stdout = base.OutputWrapper(output)
-                django_command.run_from_argv([f"gway {self.project.name}", path[0], *argv])
+                try:
+                    django_command.run_from_argv([f"gway {self.project.name}", path[0], *argv])
+                except SystemExit:
+                    text = output.getvalue()
+                    if text:
+                        previous_stdout.write(text, ending="")
+                    raise
         finally:
             django_command.stdout = previous_stdout
 
