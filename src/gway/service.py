@@ -119,7 +119,9 @@ def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProce
     except subprocess.CalledProcessError as exc:
         message = f"{exc.stdout or ''}\n{exc.stderr or ''}".casefold()
         if any(marker in message for marker in _SYSTEMD_PERMISSION_MARKERS):
-            raise PermissionError(f"systemctl {' '.join(arguments)} requires authorization") from exc
+            raise PermissionError(
+                f"systemctl {' '.join(arguments)} requires authorization"
+            ) from exc
         raise
 
 
