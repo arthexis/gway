@@ -22,6 +22,14 @@ class ServiceError(ValueError):
 _UNIT_NAME = re.compile(r"^[A-Za-z0-9_.@-]+$")
 _SERVICE_KEY = re.compile(r"^[A-Za-z0-9_.-]+$")
 _SYSTEM_UNIT_DIRECTORY = Path("/etc/systemd/system")
+_SYSTEMD_PERMISSION_MARKERS = (
+    "authentication is required",
+    "authentication failed",
+    "access denied",
+    "interactive authentication required",
+    "not authorized",
+    "permission denied",
+)
 
 
 def _strings(value: object, field: str, section: str = "service") -> list[str]:
@@ -101,12 +109,18 @@ def _manifest_services(project: Project) -> tuple[dict[str, dict[str, Any]], boo
 
 
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["systemctl", *arguments],
-        check=check,
-        text=True,
-        capture_output=True,
-    )
+    try:
+        return subprocess.run(
+            ["systemctl", *arguments],
+            check=check,
+            text=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        message = f"{exc.stdout or ''}\n{exc.stderr or ''}".casefold()
+        if any(marker in message for marker in _SYSTEMD_PERMISSION_MARKERS):
+            raise PermissionError(f"systemctl {' '.join(arguments)} requires authorization") from exc
+        raise
 
 
 class _ServiceUnit:
@@ -273,6 +287,7 @@ class ServiceManager:
         self.project = project
         self.unit_directory = Path(unit_directory)
         configs, legacy = _manifest_services(project)
+        all_configs = dict(configs)
         environment_service = os.environ.get("GWAY_SERVICE")
         environment_profile = os.environ.get("GWAY_SERVICE_PROFILE")
         self.environment_selectors = [
@@ -331,6 +346,16 @@ class ServiceManager:
             )
             for key, config in configs.items()
         ]
+        self._all_units = [
+            _ServiceUnit(
+                project,
+                key,
+                config,
+                legacy=legacy,
+                unit_directory=self.unit_directory,
+            )
+            for key, config in all_configs.items()
+        ]
         unit_names = self.unit_names
         if len(unit_names) != len(set(unit_names)):
             raise ServiceError("selected services resolve to duplicate systemd unit names")
@@ -343,15 +368,6 @@ class ServiceManager:
         command.extend(["gway", "service", action, self.project.name, *arguments])
         return shlex.join(command)
 
-    def _require_elevation(self, action: str, *arguments: str) -> None:
-        if self.unit_directory != _SYSTEM_UNIT_DIRECTORY:
-            return
-        geteuid = getattr(os, "geteuid", None)
-        if not callable(geteuid) or geteuid() == 0:
-            return
-        command = self._sudo_command(action, *arguments)
-        raise ServiceError(f"service {action} requires elevated privileges; rerun with {command}")
-
     def _require_installed(self) -> None:
         missing = [unit.unit_name for unit in self.units if not unit.unit_path.is_file()]
         if not missing:
@@ -359,6 +375,12 @@ class ServiceManager:
         names = ", ".join(missing)
         command = self._sudo_command("install")
         raise ServiceError(f"service unit is not installed: {names}; run {command}")
+
+    def _reconcile_unselected_units(self) -> None:
+        selected_names = set(self.unit_names)
+        for unit in reversed(self._all_units):
+            if unit.unit_name not in selected_names and unit.unit_path.exists():
+                unit.uninstall()
 
     @property
     def unit_names(self) -> list[str]:
@@ -381,15 +403,8 @@ class ServiceManager:
         enable: bool = True,
         start: bool = True,
     ) -> Path | list[Path]:
-        retry_arguments: list[str] = []
-        if user is not None:
-            retry_arguments.extend(["--user", user])
-        if not enable:
-            retry_arguments.append("--no-enable")
-        if not start:
-            retry_arguments.append("--no-start")
-        self._require_elevation("install", *retry_arguments)
         rendered = [(unit, unit.render(user=user)) for unit in self.units]
+        self._reconcile_unselected_units()
         paths = [unit.write(content) for unit, content in rendered]
         _systemctl("daemon-reload")
         if enable:
@@ -401,25 +416,20 @@ class ServiceManager:
         return paths[0] if len(paths) == 1 else paths
 
     def uninstall(self) -> bool | dict[str, bool]:
-        self._require_elevation("uninstall")
         removed = {unit.key: unit.uninstall() for unit in reversed(self.units)}
         _systemctl("daemon-reload")
         return next(iter(removed.values())) if len(removed) == 1 else removed
 
     def start(self) -> None:
-        self._require_elevation("start")
         self._require_installed()
         for unit in self.units:
             unit.start()
 
     def stop(self) -> None:
-        self._require_elevation("stop")
-        self._require_installed()
         for unit in reversed(self.units):
             unit.stop()
 
     def restart(self) -> None:
-        self._require_elevation("restart")
         self._require_installed()
         for unit in self.units:
             unit.restart()
