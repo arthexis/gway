@@ -57,6 +57,22 @@ def test_manifest_reserves_bracket_leading_aliases(tmp_path: Path) -> None:
         Project.from_path(make_project(tmp_path / "project", aliases='["[reports]"]'))
 
 
+def test_registry_reserves_percent_project_name(tmp_path: Path) -> None:
+    registry = Registry(GwayPaths(tmp_path / "config", tmp_path / "data"))
+    project = Project.from_path(make_project(tmp_path / "project", name="%", aliases="[]"))
+
+    with pytest.raises(RegistryError, match="reserved syntax"):
+        registry.register(project)
+
+
+def test_registry_reserves_percent_project_alias(tmp_path: Path) -> None:
+    registry = Registry(GwayPaths(tmp_path / "config", tmp_path / "data"))
+    project = Project.from_path(make_project(tmp_path / "project", aliases='["%"]'))
+
+    with pytest.raises(RegistryError, match="reserved syntax"):
+        registry.register(project)
+
+
 def test_registry_persists_and_resolves_aliases(tmp_path: Path) -> None:
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     registry = Registry(paths)
