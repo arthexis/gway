@@ -61,7 +61,9 @@ def test_django_nonzero_exit_preserves_captured_stdout(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     dispatcher = make_dispatcher(tmp_path)
-    assert main(["django-fixture", "fail"], dispatcher=dispatcher) == 1
+    with pytest.raises(SystemExit) as exc_info:
+        main(["django-fixture", "fail"], dispatcher=dispatcher)
+    assert exc_info.value.code == 1
     assert capsys.readouterr().out == "FAIL\n"
 
 
