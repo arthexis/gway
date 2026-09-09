@@ -53,7 +53,9 @@ def _project_python(project: Project) -> str:
 
 
 def _expand(value: str, project: Project) -> str:
-    return value.replace("{python}", _project_python(project)).replace("{project}", str(project.path))
+    return value.replace("{python}", _project_python(project)).replace(
+        "{project}", str(project.path)
+    )
 
 
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -61,7 +63,16 @@ def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProce
 
 
 class _ServiceUnit:
-    def __init__(self, project: Project, key: str, config: dict[str, Any], *, legacy: bool, unit_directory: Path, profile: str | None = None) -> None:
+    def __init__(
+        self,
+        project: Project,
+        key: str,
+        config: dict[str, Any],
+        *,
+        legacy: bool,
+        unit_directory: Path,
+        profile: str | None = None,
+    ) -> None:
         self.project = project
         self.key = key
         self.config = config
@@ -86,7 +97,11 @@ class _ServiceUnit:
         if not command:
             raise ServiceError(f"[{section}].command must contain at least one argument")
         command = [_expand(argument, self.project) for argument in command]
-        default_description = f"GWAY {self.project.name} service" if self.legacy else f"GWAY {self.project.name} {self.key} service"
+        default_description = (
+            f"GWAY {self.project.name} service"
+            if self.legacy
+            else f"GWAY {self.project.name} {self.key} service"
+        )
         description = self.config.get("description", default_description)
         if not isinstance(description, str) or not description.strip():
             raise ServiceError(f"[{section}].description must be a non-empty string")
@@ -105,7 +120,10 @@ class _ServiceUnit:
         if not isinstance(timeout_stop_sec, (int, float)) or timeout_stop_sec < 0:
             raise ServiceError(f"[{section}].timeout_stop_sec must be a non-negative number")
         configured_environment = self.config.get("environment", {"PYTHONUNBUFFERED": "1"})
-        valid_environment = isinstance(configured_environment, dict) and all(isinstance(key, str) and key and isinstance(value, (str, int, float, bool)) for key, value in configured_environment.items())
+        valid_environment = isinstance(configured_environment, dict) and all(
+            isinstance(key, str) and key and isinstance(value, (str, int, float, bool))
+            for key, value in configured_environment.items()
+        )
         if not valid_environment:
             raise ServiceError(f"[{section}].environment must be a table of scalar values")
         environment = dict(configured_environment)
@@ -124,11 +142,23 @@ class _ServiceUnit:
         lines.extend(["", "[Service]", "Type=simple", f"User={_service_user(self.config, user)}"])
         if working_directory:
             expanded = _expand(working_directory, self.project)
-            lines.append(f"WorkingDirectory={_unit_path(expanded, f'[{section}].working_directory')}")
+            lines.append(
+                f"WorkingDirectory={_unit_path(expanded, f'[{section}].working_directory')}"
+            )
         for key, value in environment.items():
             lines.append(f"Environment={_unit_arg(f'{key}={value}')}")
         lines.append(f"ExecStart={' '.join(_unit_arg(argument) for argument in command)}")
-        lines.extend([f"Restart={restart}", f"RestartSec={restart_sec}s", f"TimeoutStopSec={timeout_stop_sec}s", "", "[Install]", "WantedBy=multi-user.target", ""])
+        lines.extend(
+            [
+                f"Restart={restart}",
+                f"RestartSec={restart_sec}s",
+                f"TimeoutStopSec={timeout_stop_sec}s",
+                "",
+                "[Install]",
+                "WantedBy=multi-user.target",
+                "",
+            ]
+        )
         return "\n".join(lines)
 
     def write(self, content: str) -> Path:
@@ -158,4 +188,12 @@ class _ServiceUnit:
     def status(self) -> dict[str, object]:
         active = _systemctl("is-active", self.unit_name, check=False)
         enabled = _systemctl("is-enabled", self.unit_name, check=False)
-        return {"project": self.project.name, "service": self.key, "unit": self.unit_name, "active": active.returncode == 0, "active_state": active.stdout.strip() or active.stderr.strip(), "enabled": enabled.returncode == 0, "enabled_state": enabled.stdout.strip() or enabled.stderr.strip()}
+        return {
+            "project": self.project.name,
+            "service": self.key,
+            "unit": self.unit_name,
+            "active": active.returncode == 0,
+            "active_state": active.stdout.strip() or active.stderr.strip(),
+            "enabled": enabled.returncode == 0,
+            "enabled_state": enabled.stdout.strip() or enabled.stderr.strip(),
+        }
