@@ -105,9 +105,7 @@ class ServiceManager:
         if missing:
             units = ", ".join(missing)
             install_command = self._sudo_command("install")
-            raise ServiceError(
-                f"service unit is not installed: {units}; run {install_command}"
-            )
+            raise ServiceError(f"service unit is not installed: {units}; run {install_command}")
 
     def _reconcile_unselected_units(self) -> None:
         if not self._reconcile_topology:
