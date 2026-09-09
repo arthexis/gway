@@ -16,6 +16,8 @@ def _validate_name(name: str) -> None:
         raise ValueError("project name must be a safe directory name")
     if "/" in name or "\\" in name or Path(name).is_absolute():
         raise ValueError("project name must be a safe directory name")
+    if name.startswith("["):
+        raise ValueError("project name must not start with '['")
 
 
 def _relative_install_path(value: object, field: str) -> Path:
@@ -118,6 +120,8 @@ class Project:
 
     def __post_init__(self) -> None:
         _validate_name(self.name)
+        if any(alias.startswith("[") for alias in self.aliases):
+            raise ValueError("project aliases must not start with '['")
 
     @classmethod
     def from_path(cls, path: str | Path) -> Project:
@@ -164,6 +168,8 @@ class Project:
             isinstance(alias, str) and alias for alias in aliases_data
         ):
             raise ManifestError("[project].aliases must be an array of strings")
+        if any(alias.startswith("[") for alias in aliases_data):
+            raise ManifestError("[project].aliases must not start with '['")
 
         default_data = project_data.get("default")
         if default_data is None:
