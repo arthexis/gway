@@ -7,6 +7,7 @@ import gway.cli as cli
 import gway.runner as runner_module
 from gway.project import LifecycleHooks, Project
 from gway.runner import Runner
+from gway.upgrade import UpgradeResult
 
 
 def _project(path: Path) -> Project:
@@ -63,11 +64,19 @@ def test_upgrade_consumes_gway_flags_and_forwards_the_rest(
         def __init__(self, registry) -> None:
             captured["registry"] = registry
 
-        def project(self, name: str, *, force: bool = False, arguments=()) -> Project:
+        def project_result(
+            self,
+            name: str,
+            *,
+            force: bool = False,
+            reload: bool = False,
+            arguments=(),
+        ) -> UpgradeResult:
             captured["name"] = name
             captured["force"] = force
+            captured["reload"] = reload
             captured["arguments"] = list(arguments)
-            return project
+            return UpgradeResult(project, changed=True)
 
     registry = object()
     dispatcher = SimpleNamespace(registry=registry)
@@ -86,6 +95,7 @@ def test_upgrade_consumes_gway_flags_and_forwards_the_rest(
         "registry": registry,
         "name": "arthexis",
         "force": True,
+        "reload": False,
         "arguments": ["--role", "Watchtower"],
     }
 

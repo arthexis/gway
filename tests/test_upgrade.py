@@ -351,6 +351,21 @@ def test_cli_upgrade_modes(monkeypatch, tmp_path: Path, capsys) -> None:
         def __init__(self, registry) -> None:
             pass
 
+        def project_result(
+            self,
+            name: str,
+            *,
+            force: bool = False,
+            reload: bool = False,
+            arguments=(),
+        ):
+            calls.append(f"project:{name}:force={force}")
+            return SimpleNamespace(project=project, changed=True)
+
+        def all_project_results(self, *, force: bool = False, reload: bool = False):
+            calls.append(f"all:force={force}")
+            return [SimpleNamespace(project=project, changed=True)]
+
         def project(self, name: str, *, force: bool = False) -> Project:
             calls.append(f"project:{name}:force={force}")
             return project
