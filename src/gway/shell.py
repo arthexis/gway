@@ -13,6 +13,7 @@ SUPPORTED_SHELLS = ("bash", "zsh")
 BEGIN_MARKER = "# >>> gway shell integration >>>"
 END_MARKER = "# <<< gway shell integration <<<"
 ALIAS_LINE = "alias -- -='gway'"
+SOLVE_ALIAS_LINE = "alias -- %='gway solve'"
 _MANAGED_BLOCK = re.compile(rf"(?ms)^{re.escape(BEGIN_MARKER)}\n.*?^{re.escape(END_MARKER)}\n?")
 
 
@@ -47,7 +48,7 @@ def detect_shell(
 
 def integration_snippet(shell: str | None = None) -> str:
     detect_shell(shell)
-    return f"{BEGIN_MARKER}\n{ALIAS_LINE}\n{END_MARKER}\n"
+    return f"{BEGIN_MARKER}\n{ALIAS_LINE}\n{SOLVE_ALIAS_LINE}\n{END_MARKER}\n"
 
 
 def rc_path(
@@ -201,7 +202,7 @@ def _startup_contents(
             lines.append(f"export ZDOTDIR={shlex.quote(original_zdotdir)}")
     if original_rc.exists():
         lines.append(f". {shlex.quote(str(original_rc))}")
-    lines.extend((ALIAS_LINE, "export GWAY_SHELL=1"))
+    lines.extend((ALIAS_LINE, SOLVE_ALIAS_LINE, "export GWAY_SHELL=1"))
     return "\n".join(lines) + "\n"
 
 
