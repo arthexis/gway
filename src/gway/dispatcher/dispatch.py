@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Mapping, Sequence
 
 from ..adapters import AdapterRegistry
@@ -7,10 +8,13 @@ from ..adapters.base import SigilContextAdapter
 from ..command import Command
 from ..expression import MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..registry import Registry, RegistryError
-from . import capture_cli_values, resolve_captured_cli_values
 from .arguments import _decode_structured_argv
 from .errors import CommandNotFound, DispatchError
 from .prompt import _fill_required_options
+
+
+def _dispatcher_package():
+    return sys.modules[__package__]
 
 
 def _strict_fallback_missing(value: object) -> bool:
@@ -115,7 +119,8 @@ class Dispatcher:
         if interactive:
             argv = _fill_required_options(command, argv)
         argv = _decode_structured_argv(command, argv)
-        templates = capture_cli_values(argv, paths=self.registry.paths)
+        dispatcher_package = _dispatcher_package()
+        templates = dispatcher_package.capture_cli_values(argv, paths=self.registry.paths)
         extra_context: dict[str, object] | None = None
         if isinstance(adapter, SigilContextAdapter):
             provided_context = adapter.sigil_context(command.path)
@@ -123,7 +128,7 @@ class Dispatcher:
                 raise DispatchError("adapter sigil_context() must return a mapping")
             extra_context = dict(provided_context)
         try:
-            resolved_argv = resolve_captured_cli_values(
+            resolved_argv = dispatcher_package.resolve_captured_cli_values(
                 templates,
                 project,
                 command.path,
