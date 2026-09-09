@@ -31,7 +31,9 @@ def _project_context(project: Project, settings: str | None):
     if project.environment is not None:
         site_packages = _environment_site_packages(project.environment)
         if site_packages.is_dir():
-            candidates.insert(0, site_packages)
+            # Project code must win over installed top-level packages with the
+            # same name (for example a dependency that also provides `config`).
+            candidates.append(site_packages)
 
     inserted: list[str] = []
     previous_settings = os.environ.get("DJANGO_SETTINGS_MODULE")
