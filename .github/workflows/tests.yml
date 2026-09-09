@@ -20,6 +20,9 @@ concurrency:
 
 jobs:
   python:
+    permissions:
+      actions: write
+      contents: write
     uses: arthexis/ci-base/.github/workflows/python-ci.yml@v1
     with:
       install-command: python -m pip install -e '.[dev]'
