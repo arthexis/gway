@@ -36,7 +36,6 @@ class ServiceManager:
         ]
         selected_service = service or environment_service
         active_profile = profile or environment_profile
-
         if selected_service is None and active_profile is None and not legacy:
             selector = InstallExtraSelector.from_project(project)
             if selector is not None:
@@ -45,18 +44,16 @@ class ServiceManager:
                     profile_name
                     for key, config in configs.items()
                     for profile_name in _strings(
-                        config.get("profiles"),
-                        "profiles",
-                        f"services.{key}",
+                        config.get("profiles"), "profiles", f"services.{key}"
                     )
                 }
                 if declared_profiles:
                     active_profile = selection.value
-
         if selected_service is not None:
             if selected_service not in configs:
-                message = f"project does not declare service {selected_service!r}: {project.name}"
-                raise ServiceError(message)
+                raise ServiceError(
+                    f"project does not declare service {selected_service!r}: {project.name}"
+                )
             configs = {selected_service: configs[selected_service]}
         elif active_profile:
             selected: dict[str, dict[str, Any]] = {}
@@ -65,12 +62,10 @@ class ServiceManager:
                 if not profiles or active_profile in profiles:
                     selected[key] = config
             configs = selected
-
         if not configs:
-            message = (
+            raise ServiceError(
                 f"project has no services applicable to profile {active_profile!r}: {project.name}"
             )
-            raise ServiceError(message)
         self.active_profile = active_profile
         self._reconcile_topology = selected_service is None and active_profile is not None
         self.units = [
@@ -80,6 +75,7 @@ class ServiceManager:
                 config,
                 legacy=legacy,
                 unit_directory=self.unit_directory,
+                profile=active_profile,
             )
             for key, config in configs.items()
         ]
@@ -90,28 +86,26 @@ class ServiceManager:
                 config,
                 legacy=legacy,
                 unit_directory=self.unit_directory,
+                profile=active_profile,
             )
             for key, config in all_configs.items()
         ]
-        unit_names = self.unit_names
-        if len(unit_names) != len(set(unit_names)):
+        if len(self.unit_names) != len(set(self.unit_names)):
             raise ServiceError("selected services resolve to duplicate systemd unit names")
 
     def _sudo_command(self, action: str, *arguments: str) -> str:
         command = ["sudo"]
         if self.environment_selectors:
-            names = ",".join(self.environment_selectors)
-            command.append(f"--preserve-env={names}")
+            command.append(f"--preserve-env={','.join(self.environment_selectors)}")
         command.extend(["gway", "service", action, self.project.name, *arguments])
         return shlex.join(command)
 
     def _require_installed(self) -> None:
         missing = [unit.unit_name for unit in self.units if not unit.unit_path.is_file()]
-        if not missing:
-            return
-        names = ", ".join(missing)
-        command = self._sudo_command("install")
-        raise ServiceError(f"service unit is not installed: {names}; run {command}")
+        if missing:
+            units = ", ".join(missing)
+            install_command = self._sudo_command("install")
+            raise ServiceError(f"service unit is not installed: {units}; run {install_command}")
 
     def _reconcile_unselected_units(self) -> None:
         if not self._reconcile_topology:
@@ -136,11 +130,7 @@ class ServiceManager:
         return self.units[0].render(user=user)
 
     def install(
-        self,
-        *,
-        user: str | None = None,
-        enable: bool = True,
-        start: bool = True,
+        self, *, user: str | None = None, enable: bool = True, start: bool = True
     ) -> Path | list[Path]:
         rendered = [(unit, unit.render(user=user)) for unit in self.units]
         self._reconcile_unselected_units()
