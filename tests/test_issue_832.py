@@ -11,7 +11,11 @@ from gway.project import Project
 from gway.registry import Registry
 
 
-def test_upgrade_all_includes_self_unless_explicitly_disabled(monkeypatch, tmp_path, capsys) -> None:
+def test_upgrade_all_includes_self_unless_explicitly_disabled(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
     calls: list[str] = []
     project = Project(
         name="fixture",
@@ -89,6 +93,14 @@ module = "fixture.gway"
 
 def required(*, value: str):
     return value
+
+
+def named(name: str, *, mode: str = \"safe\"):
+    return {\"name\": name, \"mode\": mode}
+
+
+def colliding(*, mode: str = \"safe\", no_mode: str = \"literal\"):
+    return {\"mode\": mode, \"no_mode\": no_mode}
 """,
         encoding="utf-8",
     )
@@ -127,3 +139,27 @@ def test_value_flag_help_lists_no_form(tmp_path: Path, capsys) -> None:
     assert "--no-retries" in output
     assert "--mode" in output
     assert "--no-mode" in output
+
+
+def test_interactive_dispatch_recognizes_value_negation(monkeypatch, tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda: "alice")
+
+    result = dispatcher.run(
+        "fixture",
+        ["named", "--no-mode"],
+        interactive=True,
+    )
+
+    assert result == {"name": "alice", "mode": None}
+
+
+def test_generated_negation_does_not_collide_with_no_parameter(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+
+    result = dispatcher.run(
+        "fixture",
+        ["colliding", "--no-mode", "explicit"],
+    )
+
+    assert result == {"mode": "safe", "no_mode": "explicit"}
