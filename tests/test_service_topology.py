@@ -66,8 +66,34 @@ def test_multi_service_units_use_project_environment_python(tmp_path: Path) -> N
     python = service.Runner.environment_python(project.environment)
     assert manager.unit_name == "gway-arthexis-web.service"
     assert f'ExecStart="{python}" "manage.py" "runserver"' in unit
-    assert f'WorkingDirectory="{project.path}"' in unit
+    assert f"WorkingDirectory={project.path}" in unit
+    assert f'WorkingDirectory="{project.path}"' not in unit
     assert "Requires=postgresql.service\n" in unit
+
+
+def test_working_directory_must_expand_to_absolute_path(tmp_path: Path) -> None:
+    root = tmp_path / "relative"
+    root.mkdir()
+    (root / "gway.toml").write_text(
+        """[project]
+name = "relative"
+
+[adapter]
+type = "python"
+module = "example.gway"
+
+[service]
+command = ["python", "-m", "example"]
+working_directory = "var/app"
+""",
+        encoding="utf-8",
+    )
+    manager = service.ServiceManager(Project.from_path(root))
+
+    with pytest.raises(
+        service.ServiceError, match="working_directory must expand to an absolute path"
+    ):
+        manager.render(user="arthexis")
 
 
 def test_profile_selects_matching_and_global_services(tmp_path: Path) -> None:
