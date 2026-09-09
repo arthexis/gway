@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import replace
 
 from .project import Project
@@ -41,7 +42,13 @@ class Upgrader:
         )
         self.runner.refresh(restored)
 
-    def project(self, name: str, *, force: bool = False) -> Project:
+    def project(
+        self,
+        name: str,
+        *,
+        force: bool = False,
+        arguments: Sequence[str] = (),
+    ) -> Project:
         current = self.registry.require(name)
         if not current.repository:
             raise UpgradeError(
@@ -72,7 +79,10 @@ class Upgrader:
             if environment is not None:
                 refreshed = replace(refreshed, environment=environment)
             if refreshed.lifecycle_hooks is not None:
-                self.runner.run_lifecycle(refreshed, "upgrade")
+                if arguments:
+                    self.runner.run_lifecycle(refreshed, "upgrade", arguments)
+                else:
+                    self.runner.run_lifecycle(refreshed, "upgrade")
         except Exception as exc:
             try:
                 self._restore_project(current, previous_revision)

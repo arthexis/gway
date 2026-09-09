@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from .config import GwayPaths, default_paths
@@ -17,7 +18,7 @@ class RunnerError(ValueError):
 _HOOK_SCRIPT = """import importlib, json, sys
 module_name, function_name = sys.argv[1].split(':', 1)
 function = getattr(importlib.import_module(module_name), function_name)
-result = function()
+result = function(*sys.argv[2:])
 if result is not None:
     print(json.dumps(result, default=str))
 """
@@ -53,7 +54,12 @@ class Runner:
         command.extend(["-e", str(project.path)])
         subprocess.run(command, check=True, stdout=sys.stderr)
 
-    def run_lifecycle(self, project: Project, action: str) -> None:
+    def run_lifecycle(
+        self,
+        project: Project,
+        action: str,
+        arguments: Sequence[str] = (),
+    ) -> None:
         hooks = project.lifecycle_hooks
         reference = getattr(hooks, action, None) if hooks is not None else None
         if reference is None:
@@ -64,7 +70,7 @@ class Runner:
             raise RunnerError(f"managed environment is missing Python: {environment}")
         try:
             subprocess.run(
-                [str(python), "-c", _HOOK_SCRIPT, reference],
+                [str(python), "-c", _HOOK_SCRIPT, reference, *arguments],
                 cwd=project.path,
                 check=True,
                 stdout=sys.stderr,
