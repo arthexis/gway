@@ -18,6 +18,7 @@ from . import AdapterError
 
 _NONE_TYPE = type(None)
 _SUPPORTED_SCALARS = {str, int, float, bool, Path}
+_EXPLICIT_NONE = object()
 
 
 def _cli_name(name: str) -> str:
@@ -266,6 +267,7 @@ class PythonAdapter:
             annotation = hints.get(parameter.name, parameter.annotation)
             converter, choices = _converter(annotation)
             option = f"--{_cli_name(parameter.name)}"
+            no_option = f"--no-{_cli_name(parameter.name)}"
             value_type = _argument_converter(converter)
 
             if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
@@ -313,7 +315,8 @@ class PythonAdapter:
                     parameter.kind is inspect.Parameter.KEYWORD_ONLY
                     and parameter.default is inspect.Parameter.empty
                 )
-                parser.add_argument(
+                group = parser.add_mutually_exclusive_group(required=required)
+                group.add_argument(
                     option,
                     dest=parameter.name,
                     type=value_type,
@@ -321,7 +324,12 @@ class PythonAdapter:
                     default=None
                     if parameter.default is inspect.Parameter.empty
                     else parameter.default,
-                    required=required,
+                )
+                group.add_argument(
+                    no_option,
+                    dest=parameter.name,
+                    action="store_const",
+                    const=_EXPLICIT_NONE,
                 )
         return parser
 
@@ -343,6 +351,9 @@ class PythonAdapter:
         keywords: dict[str, object] = {}
         for parameter in signature.parameters.values():
             value = values.get(parameter.name)
+            explicit_none = value is _EXPLICIT_NONE
+            if explicit_none:
+                value = None
             if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
                 positional.extend(value or [])
             elif parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
@@ -352,7 +363,7 @@ class PythonAdapter:
                 and parameter.default is inspect.Parameter.empty
             ):
                 positional.append(value)
-            elif value is not None:
+            elif value is not None or explicit_none:
                 keywords[parameter.name] = value
 
         with _project_import_path(self.project):
