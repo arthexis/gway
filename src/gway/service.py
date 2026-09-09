@@ -22,14 +22,6 @@ class ServiceError(ValueError):
 _UNIT_NAME = re.compile(r"^[A-Za-z0-9_.@-]+$")
 _SERVICE_KEY = re.compile(r"^[A-Za-z0-9_.-]+$")
 _SYSTEM_UNIT_DIRECTORY = Path("/etc/systemd/system")
-_SYSTEMD_PERMISSION_MARKERS = (
-    "authentication is required",
-    "authentication failed",
-    "access denied",
-    "interactive authentication required",
-    "not authorized",
-    "permission denied",
-)
 
 
 def _strings(value: object, field: str, section: str = "service") -> list[str]:
@@ -109,20 +101,12 @@ def _manifest_services(project: Project) -> tuple[dict[str, dict[str, Any]], boo
 
 
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    try:
-        return subprocess.run(
-            ["systemctl", *arguments],
-            check=check,
-            text=True,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        message = f"{exc.stdout or ''}\n{exc.stderr or ''}".casefold()
-        if any(marker in message for marker in _SYSTEMD_PERMISSION_MARKERS):
-            raise PermissionError(
-                f"systemctl {' '.join(arguments)} requires authorization"
-            ) from exc
-        raise
+    return subprocess.run(
+        ["systemctl", *arguments],
+        check=check,
+        text=True,
+        capture_output=True,
+    )
 
 
 class _ServiceUnit:
