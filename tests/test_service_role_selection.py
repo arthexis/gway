@@ -69,19 +69,23 @@ def test_persisted_install_selector_selects_matching_service_profile(tmp_path: P
     ]
 
 
-def test_systemctl_auth_failure_becomes_permission_error(monkeypatch) -> None:
+def test_systemctl_permission_words_preserve_called_process_error(monkeypatch) -> None:
+    expected = subprocess.CalledProcessError(
+        4,
+        ["systemctl", "start", "gway-arthexis-web-local.service"],
+        output="",
+        stderr="Authentication is required to manage system services.",
+    )
+
     def denied(*args, **kwargs):
-        raise subprocess.CalledProcessError(
-            4,
-            args[0],
-            output="",
-            stderr="Authentication is required to manage system services.",
-        )
+        raise expected
 
     monkeypatch.setattr(service.subprocess, "run", denied)
 
-    with pytest.raises(PermissionError, match="requires authorization"):
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
         service._systemctl("start", "gway-arthexis-web-local.service")
+
+    assert exc_info.value is expected
 
 
 def test_start_reports_missing_units_before_systemctl(tmp_path: Path) -> None:
@@ -141,3 +145,52 @@ def test_install_reconciles_units_excluded_by_persisted_role(
     assert ("disable", "--now", "gway-arthexis-web-edge.service") in calls
     assert ("reset-failed", "gway-arthexis-web-edge.service") in calls
     assert calls[-1] == ("daemon-reload",)
+
+
+def test_explicit_service_install_does_not_reconcile_siblings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project = make_role_project(tmp_path)
+    unit_directory = tmp_path / "systemd"
+    unit_directory.mkdir()
+    sibling = unit_directory / "gway-arthexis-web-edge.service"
+    sibling.write_text("existing sibling", encoding="utf-8")
+    manager = service.ServiceManager(
+        project,
+        service="web-local",
+        unit_directory=unit_directory,
+    )
+    calls: list[tuple[str, ...]] = []
+
+    def fake_systemctl(*args: str, check: bool = True):
+        calls.append(args)
+        return completed(*args)
+
+    monkeypatch.setattr(service, "_systemctl", fake_systemctl)
+
+    manager.install(user="arthexis", enable=False, start=False)
+
+    assert sibling.read_text(encoding="utf-8") == "existing sibling"
+    assert ("disable", "--now", "gway-arthexis-web-edge.service") not in calls
+
+
+def test_unmatched_persisted_role_keeps_only_global_services(tmp_path: Path) -> None:
+    project = make_role_project(tmp_path)
+    manifest_path = project.path / "gway.toml"
+    manifest = manifest_path.read_text(encoding="utf-8")
+    manifest = manifest.replace(
+        'profiles = ["Terminal", "Watchtower"]',
+        'profiles = ["Control"]',
+    ).replace(
+        'profiles = ["Control", "Watchtower"]',
+        'profiles = ["Control"]',
+    )
+    manifest += '\n[services.health]\ncommand = ["{python}", "-m", "example.health"]\n'
+    manifest_path.write_text(manifest, encoding="utf-8")
+    (tmp_path / ".locks" / "role.lck").write_text("Terminal\n", encoding="utf-8")
+
+    manager = service.ServiceManager(project, unit_directory=tmp_path / "systemd")
+
+    assert manager.active_profile == "Terminal"
+    assert manager.unit_names == ["gway-arthexis-health.service"]
