@@ -322,6 +322,7 @@ class ServiceManager:
             )
             raise ServiceError(message)
         self.active_profile = active_profile
+        self._reconcile_topology = selected_service is None and active_profile is not None
         self.units = [
             _ServiceUnit(
                 project,
@@ -363,6 +364,8 @@ class ServiceManager:
         raise ServiceError(f"service unit is not installed: {names}; run {command}")
 
     def _reconcile_unselected_units(self) -> None:
+        if not self._reconcile_topology:
+            return
         selected_names = set(self.unit_names)
         for unit in reversed(self._all_units):
             if unit.unit_name not in selected_names and unit.unit_path.exists():
