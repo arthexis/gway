@@ -51,7 +51,15 @@ class Upgrader:
         env["GIT_TERMINAL_PROMPT"] = "0"
         try:
             branch = subprocess.run(
-                ["git", "-C", str(checkout), "symbolic-ref", "--quiet", "--short", "HEAD"],
+                [
+                    "git",
+                    "-C",
+                    str(checkout),
+                    "symbolic-ref",
+                    "--quiet",
+                    "--short",
+                    "HEAD",
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -77,7 +85,9 @@ class Upgrader:
         except OSError as exc:
             raise RepositoryError(f"cannot run git: {exc}") from exc
         except subprocess.CalledProcessError as exc:
-            raise RepositoryError(f"cannot read branch for managed checkout {checkout}: {exc}") from exc
+            raise RepositoryError(
+                f"cannot read branch for managed checkout {checkout}: {exc}"
+            ) from exc
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or "git ls-remote failed"
             raise RepositoryError(f"cannot check remote revision for {full_name}: {detail}")
