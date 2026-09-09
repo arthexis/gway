@@ -177,7 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     shell = subparsers.add_parser(
         "shell",
-        help="Start or install the GWAY '-' and '%' shell shorthands.",
+        help="Start or install the GWAY '-' and '%%' shell shorthands.",
     )
     shell.add_argument(
         "action",
@@ -634,11 +634,9 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         elif namespace.command == "path":
             result = registry.require(namespace.project).path
         elif namespace.command == "solve":
-            result = solve_values(
-                namespace.value,
-                interactive=interactive,
-                prompt=_prompt_required_value if interactive else None,
-            )
+            result = solve_values(namespace.value, interactive=interactive)
+            if len(result) == 1:
+                result = result[0]
         elif namespace.command == "register":
             project = registry.register_path(namespace.path)
             result = _managed_status("registered", project)
