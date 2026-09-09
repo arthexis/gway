@@ -249,10 +249,7 @@ class Upgrader:
         return results
 
     def all_projects(self, *, force: bool = False, reload: bool = False) -> list[Project]:
-        return [
-            result.project
-            for result in self.all_project_results(force=force, reload=reload)
-        ]
+        return [result.project for result in self.all_project_results(force=force, reload=reload)]
 
     @staticmethod
     def upgrade_self(source_spec: str = SELF_SOURCE_SPEC) -> None:
