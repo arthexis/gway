@@ -442,13 +442,20 @@ def _run_upgrade(
     registry: Registry,
     *,
     json_output: bool,
+    arguments: Sequence[str] = (),
 ) -> object:
     if namespace.project and (namespace.all or namespace.upgrade_self):
         raise UpgradeError("PROJECT cannot be combined with --all or --self")
+    if arguments and not namespace.project:
+        raise UpgradeError("installer arguments require a specific PROJECT")
 
     upgrader = Upgrader(registry)
     if namespace.project:
-        project = upgrader.project(namespace.project, force=namespace.force)
+        project = upgrader.project(
+            namespace.project,
+            force=namespace.force,
+            arguments=arguments,
+        )
         return _managed_status("upgraded", project)
 
     results: list[dict[str, object]] = []
@@ -552,7 +559,9 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         return 0
 
     registry = active_dispatcher.registry
-    namespace = parser.parse_args(args)
+    namespace, passthrough = parser.parse_known_args(args)
+    if passthrough and namespace.command not in {"install", "upgrade"}:
+        parser.error(f"unrecognized arguments: {' '.join(passthrough)}")
     if namespace.command == "service":
         if namespace.project and namespace.project_option:
             try:
@@ -588,11 +597,21 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             result = _managed_status("registered", project)
         elif namespace.command == "install":
             result = _runtime_component_record(namespace.project)
+            if result is not None and passthrough:
+                raise RunnerError("built-in runtime component install does not accept project arguments")
             if result is None:
-                project = Installer(registry).install(namespace.project)
+                project = Installer(registry).install(
+                    namespace.project,
+                    arguments=passthrough,
+                )
                 result = _managed_status("installed", project)
         elif namespace.command == "upgrade":
-            result = _run_upgrade(namespace, registry, json_output=json_output)
+            result = _run_upgrade(
+                namespace,
+                registry,
+                json_output=json_output,
+                arguments=passthrough,
+            )
         elif namespace.command == "service":
             result = _run_service(namespace, registry)
         elif namespace.command == "shell":
