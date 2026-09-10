@@ -26,7 +26,6 @@ class _Transferred:
 
 
 def _transfer_values(result: object) -> list[object]:
-    """Normalize one stage result into the next stage's positional transfer values."""
     if result is None or isinstance(result, Mapping):
         return []
     if isinstance(result, Sequence) and not isinstance(result, (str, bytes, bytearray)):
@@ -35,7 +34,6 @@ def _transfer_values(result: object) -> list[object]:
 
 
 def _selector_index(token: str) -> int | None:
-    """Return the 1-based transfer index selected by an exact numeric selector."""
     match = _SELECTOR.fullmatch(token)
     return int(match.group("index")) if match is not None else None
 
@@ -46,7 +44,6 @@ def _route_transfer(
     *,
     selector_tokens: Sequence[str] | None = None,
 ) -> list[str | _Transferred]:
-    """Materialize explicit selectors or apply the implicit leading wildcard rule."""
     selectors = argv if selector_tokens is None else selector_tokens
     numeric = [_selector_index(token) for token in selectors]
     explicit = any(index is not None for index in numeric) or _WILDCARD in selectors
@@ -80,7 +77,6 @@ def _route_transfer(
 
 
 def _encode_transfer_value(value: object) -> str:
-    """Encode grammar-sensitive values opaquely and scalar typed values textually."""
     if isinstance(value, (str, bytes, bytearray)):
         return encode_transfer(value)
     if isinstance(value, (bool, int, float, Path)):
@@ -89,7 +85,6 @@ def _encode_transfer_value(value: object) -> str:
 
 
 def _encode_routed_values(values: Sequence[str | _Transferred]) -> list[str]:
-    """Convert routed values to safe dispatcher argv while preserving transfer identity."""
     return [
         _encode_transfer_value(value.value) if isinstance(value, _Transferred) else value
         for value in values
@@ -97,7 +92,6 @@ def _encode_routed_values(values: Sequence[str | _Transferred]) -> list[str]:
 
 
 def _literal_solve_transfer(value: object) -> str:
-    """Render transferred data literally when consumed by a solve/template stage."""
     if isinstance(value, bytes):
         text = value.decode(errors="replace")
     elif isinstance(value, bytearray):
@@ -114,7 +108,6 @@ def _run_command_stage(
     *,
     interactive: bool,
 ) -> object:
-    """Run one managed stage after applying implicit or explicit transfer routing."""
     project_name, project_args = normalize_managed_args(stage.tokens)
     _, raw_project_args = normalize_managed_args(stage.raw_tokens)
 
@@ -125,24 +118,20 @@ def _run_command_stage(
 
     project = dispatcher.registry.require(project_name)
     commands = dispatcher.commands(project_name)
+    used_default = False
     try:
         command, argv = dispatcher._resolve_command(commands, project_args)
     except CommandNotFound:
         if not project.default_command:
             raise
+        used_default = True
         command, argv = dispatcher._resolve_default_command(
             commands,
             project.default_command,
             project_args,
         )
 
-    if project.default_command and len(project_args) < len(command.path):
-        raw_argv = raw_project_args
-    else:
-        raw_argv = raw_project_args[len(command.path) :]
-    if len(raw_argv) != len(argv):
-        raw_argv = argv
-
+    raw_argv = raw_project_args if used_default else raw_project_args[len(command.path) :]
     routed = _route_transfer(argv, transfer, selector_tokens=raw_argv)
     encoded = _encode_routed_values(routed)
     return dispatcher.run(
@@ -159,7 +148,6 @@ def run_chain(
     interactive: bool = False,
     prompt: Callable[[str], str] | None = None,
 ) -> object:
-    """Execute parsed stages left-to-right with invocation-local result transfer."""
     stages = parse_stages(tokens)
     result: object = None
 
