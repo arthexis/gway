@@ -5,8 +5,9 @@ from collections.abc import Mapping, Sequence
 
 from ..adapters import AdapterRegistry
 from ..adapters.base import SigilContextAdapter
+from ..chain_context import current_chain_context
 from ..command import Command
-from ..expression import MANAGED_EXPRESSION_PROJECT, parse_managed_branches
+from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..registry import Registry, RegistryError
 from ..stage import decode_stage_escapes
 from .arguments import _decode_structured_argv
@@ -116,6 +117,10 @@ class Dispatcher:
         *,
         interactive: bool = False,
     ) -> object:
+        if project_name == MANAGED_CHAIN_PROJECT:
+            from ..chain import run_chain
+
+            return run_chain(self, tokens, interactive=interactive)
         if project_name == MANAGED_EXPRESSION_PROJECT:
             if len(tokens) != 1:
                 raise DispatchError("managed expression dispatch expects one expression")
@@ -135,19 +140,20 @@ class Dispatcher:
         argv = _decode_structured_argv(command, argv)
         dispatcher_package = _dispatcher_package()
         templates = dispatcher_package.capture_cli_values(argv, paths=self.registry.paths)
-        extra_context: dict[str, object] | None = None
+        extra_context: dict[str, object] = {}
         if isinstance(adapter, SigilContextAdapter):
             provided_context = adapter.sigil_context(command.path)
             if not isinstance(provided_context, Mapping):
                 raise DispatchError("adapter sigil_context() must return a mapping")
-            extra_context = dict(provided_context)
+            extra_context.update(provided_context)
+        extra_context.update(current_chain_context())
         try:
             resolved_argv = dispatcher_package.resolve_captured_cli_values(
                 templates,
                 project,
                 command.path,
                 paths=self.registry.paths,
-                extra_context=extra_context,
+                extra_context=extra_context or None,
             )
         except ValueError as exc:
             raise DispatchError(str(exc)) from exc

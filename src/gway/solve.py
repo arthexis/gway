@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence
 
 from sigils import Sigil
 
+from .chain_context import current_chain_context
 from .config import GwayPaths
 from .sigils import base_context
 from .stage import replace_bracket_escapes
@@ -60,7 +61,9 @@ def solve_values(
     expression is requested once and reused for repeated occurrences.
     """
     template = _protect_escapes(values)
-    rendered = _solve_template(template, base_context(paths))
+    context = base_context(paths)
+    context.update(current_chain_context())
+    rendered = _solve_template(template, context)
 
     if not interactive or not isinstance(rendered, str):
         return _restore_escapes(rendered)

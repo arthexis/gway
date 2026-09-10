@@ -5,7 +5,10 @@ import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from .stage import split_stage_tokens
+
 MANAGED_EXPRESSION_PROJECT = "\0gway-expression"
+MANAGED_CHAIN_PROJECT = "\0gway-chain"
 STRUCTURED_ARG_PREFIX = "\0gway-arg:"
 STRUCTURED_KWARG_PREFIX = "\0gway-kw:"
 STRUCTURED_TUPLE_PREFIX = "\0gway-tuple:"
@@ -51,7 +54,6 @@ def _structured_argument(segment: str) -> str:
     if not segment:
         raise ExpressionError("managed call argument is empty")
 
-    # :=value explicitly means positional, even when value itself contains '='.
     if segment.startswith("="):
         value = _normalize_argument_value(segment[1:].strip())
         return f"{STRUCTURED_ARG_PREFIX}{value}"
@@ -122,6 +124,9 @@ def normalize_managed_args(args: Sequence[str]) -> tuple[str, list[str]]:
     if not args:
         raise ExpressionError("managed command expression is empty")
 
+    if len(split_stage_tokens(args)) > 1:
+        return MANAGED_CHAIN_PROJECT, list(args)
+
     expression = " ".join(args).strip()
     if expression.startswith(":"):
         raise ExpressionError(f"invalid managed command expression: {expression!r}")
@@ -189,6 +194,7 @@ def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
 
 __all__ = [
     "ExpressionError",
+    "MANAGED_CHAIN_PROJECT",
     "MANAGED_EXPRESSION_PROJECT",
     "ManagedBranch",
     "STRUCTURED_ARG_PREFIX",
