@@ -102,6 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Install a trusted GitHub project or built-in runtime component.",
     )
     install.add_argument("project")
+    install.add_argument(
+        "--service",
+        action="store_true",
+        help="Install manifest-defined system services after installing the project.",
+    )
 
     upgrade = subparsers.add_parser(
         "upgrade",
@@ -456,6 +461,20 @@ def _managed_status(status: str, project: Project) -> dict[str, object]:
     return record
 
 
+def _install_project_service(project: Project) -> dict[str, object]:
+    try:
+        manager = ServiceManager(project)
+    except ServiceError as exc:
+        if "does not declare [service] or [services]" not in str(exc):
+            raise
+        return {
+            "status": "not-provided",
+            "message": f"{project.name} does not provide a service",
+        }
+    unit = manager.install()
+    return {"status": "installed", "unit": unit}
+
+
 def _render_upgrade_record(record: dict[str, object], *, detail: bool) -> None:
     if detail:
         _render_result(record)
@@ -667,6 +686,11 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 raise RunnerError(
                     "built-in runtime component install does not accept project arguments"
                 )
+            if result is not None and namespace.service:
+                result["service"] = {
+                    "status": "not-provided",
+                    "message": f"{namespace.project} does not provide a service",
+                }
             if result is None:
                 installer = Installer(registry)
                 if passthrough:
@@ -674,6 +698,8 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 else:
                     project = installer.install(namespace.project)
                 result = _managed_status("installed", project)
+                if namespace.service:
+                    result["service"] = _install_project_service(project)
         elif namespace.command == "upgrade":
             result = _run_upgrade(
                 namespace,
