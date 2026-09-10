@@ -20,13 +20,22 @@ def transfer_scope():
         _TRANSFER_VALUES.reset(token)
 
 
+def _normalize_transfer_value(value: object) -> object:
+    """Retain P1 byte-scalar behavior while keeping the value opaque to argv parsing."""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    if isinstance(value, bytearray):
+        return bytes(value).decode(errors="replace")
+    return value
+
+
 def encode_transfer(value: object) -> str:
     """Store one native value and return an argv-safe opaque token for it."""
     values = _TRANSFER_VALUES.get()
     if values is None:
         raise RuntimeError("transfer token created outside an active transfer scope")
     index = len(values)
-    values.append(value)
+    values.append(_normalize_transfer_value(value))
     return f"{TRANSFER_PREFIX}{index}"
 
 
