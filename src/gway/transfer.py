@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import secrets
 from contextlib import contextmanager
 from contextvars import ContextVar
 
 TRANSFER_PREFIX = "\0gway-transfer:"
-_TRANSFER_VALUES: ContextVar[list[object] | None] = ContextVar(
+_TRANSFER_VALUES: ContextVar[dict[str, object] | None] = ContextVar(
     "gway_transfer_values",
     default=None,
 )
@@ -13,7 +14,7 @@ _TRANSFER_VALUES: ContextVar[list[object] | None] = ContextVar(
 @contextmanager
 def transfer_scope():
     """Create invocation-local storage for opaque transferred values."""
-    token = _TRANSFER_VALUES.set([])
+    token = _TRANSFER_VALUES.set({})
     try:
         yield
     finally:
@@ -30,29 +31,38 @@ def _normalize_transfer_value(value: object) -> object:
 
 
 def encode_transfer(value: object) -> str:
-    """Store one native value and return an argv-safe opaque token for it."""
+    """Store one native value and return an argv-safe scope-specific token for it."""
     values = _TRANSFER_VALUES.get()
     if values is None:
         raise RuntimeError("transfer token created outside an active transfer scope")
-    index = len(values)
-    values.append(_normalize_transfer_value(value))
-    return f"{TRANSFER_PREFIX}{index}"
+    while True:
+        token = f"{TRANSFER_PREFIX}{secrets.token_urlsafe(18)}"
+        if token not in values:
+            break
+    values[token] = _normalize_transfer_value(value)
+    return token
 
 
 def decode_transfer(value: object) -> object:
-    """Restore one native value when ``value`` is an active transfer token."""
+    """Restore only values represented by tokens emitted in the active transfer scope."""
     if not isinstance(value, str) or not value.startswith(TRANSFER_PREFIX):
         return value
     values = _TRANSFER_VALUES.get()
     if values is None:
         return value
-    suffix = value[len(TRANSFER_PREFIX) :]
-    if not suffix.isdigit():
-        return value
-    index = int(suffix)
-    if index >= len(values):
-        return value
-    return values[index]
+    return values.get(value, value)
 
 
-__all__ = ["TRANSFER_PREFIX", "decode_transfer", "encode_transfer", "transfer_scope"]
+def render_transfer(value: object) -> str:
+    """Restore an opaque transfer and render it for a string-only adapter boundary."""
+    restored = decode_transfer(value)
+    return restored if isinstance(restored, str) else str(restored)
+
+
+__all__ = [
+    "TRANSFER_PREFIX",
+    "decode_transfer",
+    "encode_transfer",
+    "render_transfer",
+    "transfer_scope",
+]
