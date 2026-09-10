@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Callable
 
 from .chain_context import chain_context_scope, publish_chain_result
+from .dispatcher.errors import CommandNotFound, DispatchError
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .solve import solve_values
 from .stage import Stage, StageKind, parse_stages
@@ -22,6 +23,7 @@ def _transfer_values(result: object) -> list[object]:
 
 
 def _render_transfer(values: Sequence[object]) -> list[str]:
+    """Render transferred values into ordinary CLI positional tokens."""
     return [value.decode() if isinstance(value, bytes) else str(value) for value in values]
 
 
@@ -32,22 +34,21 @@ def _run_command_stage(
     *,
     interactive: bool,
 ) -> object:
+    """Run one managed command stage with implicit positionals inserted after its path."""
     project_name, project_args = normalize_managed_args(stage.tokens)
     rendered = _render_transfer(transfer)
 
     if project_name == MANAGED_EXPRESSION_PROJECT:
         if rendered:
-            raise ValueError("fallback expressions cannot receive implicit chain positionals")
+            raise DispatchError("fallback expressions cannot receive implicit chain positionals")
         return dispatcher.run(project_name, project_args, interactive=interactive)
 
     project = dispatcher.registry.require(project_name)
     commands = dispatcher.commands(project_name)
     try:
         command, argv = dispatcher._resolve_command(commands, project_args)
-    except Exception as exc:
-        from .dispatcher import CommandNotFound
-
-        if not isinstance(exc, CommandNotFound) or not project.default_command:
+    except CommandNotFound:
+        if not project.default_command:
             raise
         command, argv = dispatcher._resolve_default_command(
             commands,
@@ -72,6 +73,11 @@ def run_chain(
     """Execute parsed stages left-to-right with classic implicit result transfer."""
     stages = parse_stages(tokens)
     result: object = None
+
+    if interactive and prompt is None:
+        from .cli import _prompt_required_value
+
+        prompt = _prompt_required_value
 
     with chain_context_scope():
         for index, stage in enumerate(stages):
