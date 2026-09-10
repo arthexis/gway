@@ -5,6 +5,8 @@ import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from .stage import split_stage_tokens
+
 MANAGED_EXPRESSION_PROJECT = "\0gway-expression"
 MANAGED_CHAIN_PROJECT = "\0gway-chain"
 STRUCTURED_ARG_PREFIX = "\0gway-arg:"
@@ -122,7 +124,7 @@ def normalize_managed_args(args: Sequence[str]) -> tuple[str, list[str]]:
     if not args:
         raise ExpressionError("managed command expression is empty")
 
-    if "-" in args:
+    if len(split_stage_tokens(args)) > 1:
         return MANAGED_CHAIN_PROJECT, list(args)
 
     expression = " ".join(args).strip()
