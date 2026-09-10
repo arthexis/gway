@@ -112,7 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
         "upgrade",
         help="Upgrade GWAY itself and/or trusted managed projects.",
     )
-    upgrade.add_argument("project", nargs="?")
+    upgrade.add_argument("projects", nargs="*")
     upgrade.add_argument(
         "--all",
         action="store_true",
@@ -491,10 +491,14 @@ def _run_upgrade(
     json_output: bool,
     arguments: Sequence[str] = (),
 ) -> object:
-    if namespace.project and (namespace.all or namespace.upgrade_self is not None):
-        raise UpgradeError("PROJECT cannot be combined with --all, --self, or --no-self")
-    if arguments and not namespace.project:
-        raise UpgradeError("installer arguments require a specific PROJECT")
+    targets = list(dict.fromkeys(namespace.projects))
+    if targets and (namespace.all or namespace.upgrade_self is not None):
+        raise UpgradeError("PROJECTS cannot be combined with --all, --self, or --no-self")
+
+    include_self_target = "gway" in targets
+    managed_targets = [target for target in targets if target != "gway"]
+    if arguments and len(managed_targets) != 1:
+        raise UpgradeError("installer arguments require exactly one managed PROJECT")
 
     upgrader = Upgrader(registry)
     results: list[dict[str, object]] = []
@@ -505,18 +509,30 @@ def _run_upgrade(
         else:
             _render_upgrade_record(record, detail=namespace.detail)
 
-    if namespace.project:
-        result = upgrader.project_result(
-            namespace.project,
-            force=namespace.force,
-            reload=namespace.reload,
-            arguments=arguments,
-        )
-        record = _managed_status("upgraded" if result.changed else "skipped", result.project)
-        if json_output:
-            return record
-        completed(record)
-        return None
+    if targets:
+        if include_self_target:
+            upgrader.upgrade_self()
+            completed(
+                {
+                    "status": "upgraded",
+                    "name": "gway",
+                    "repository": "arthexis/gway",
+                    "revision": "main",
+                }
+            )
+
+        for target in managed_targets:
+            result = upgrader.project_result(
+                target,
+                force=namespace.force,
+                reload=namespace.reload,
+                arguments=arguments if len(managed_targets) == 1 else (),
+            )
+            completed(_managed_status("upgraded" if result.changed else "skipped", result.project))
+
+        if json_output and len(managed_targets) == 1 and not include_self_target:
+            return results[0]
+        return results if json_output else None
 
     default_mode = not namespace.all and namespace.upgrade_self is None
     include_self = namespace.upgrade_self is True or (
