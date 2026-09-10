@@ -78,6 +78,18 @@ def test_python_result_reaches_django_command_without_internal_token(tmp_path: P
     assert capsys.readouterr().out == "[cwd]\n"
 
 
+def test_django_result_reaches_python_command(tmp_path: Path, capsys) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    assert (
+        main(
+            ["django-fixture", "echo", "hello", "-", "p3", "echo"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == "hello\n"
+
+
 def test_predictable_old_token_shape_never_aliases_active_transfer() -> None:
     spoof = f"{TRANSFER_PREFIX}0"
     with transfer_scope():
