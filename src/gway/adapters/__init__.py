@@ -20,9 +20,9 @@ def _python_factory(project: Project) -> ProjectAdapter:
 
 
 def _django_factory(project: Project) -> ProjectAdapter:
-    from .django import DjangoAdapter
+    from .django_transfer import TransferDjangoAdapter
 
-    return DjangoAdapter(project)
+    return TransferDjangoAdapter(project)
 
 
 class AdapterRegistry:
