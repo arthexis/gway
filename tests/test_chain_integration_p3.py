@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 from gway.cli import main
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
@@ -30,6 +32,18 @@ def ready() -> str:
 
 def bracket_text() -> str:
     return "[cwd]"
+
+
+def option_help() -> str:
+    return "--help"
+
+
+def option_unknown() -> str:
+    return "--unknown"
+
+
+def option_separator() -> str:
+    return "--"
 
 
 def accept_int(value: int) -> int:
@@ -82,6 +96,52 @@ def test_python_result_reaches_django_command_without_internal_token(
     dispatcher = _dispatcher(tmp_path)
     assert main(["p3", "bracket-text", "-", "django-fixture", "echo"], dispatcher=dispatcher) == 0
     assert capsys.readouterr().out == "[cwd]\n"
+
+
+@pytest.mark.parametrize(
+    ("producer", "value"),
+    [
+        ("option-help", "--help"),
+        ("option-unknown", "--unknown"),
+        ("option-separator", "--"),
+    ],
+)
+def test_option_shaped_python_result_reaches_django_as_data(
+    tmp_path: Path, capsys, producer: str, value: str
+) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    assert (
+        main(
+            ["p3", producer, "-", "django-fixture", "echo"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == f"{value}\n"
+
+
+def test_transferred_value_uses_django_type_conversion(tmp_path: Path, capsys) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    assert (
+        main(
+            ["p3", "text-number", "-", "django-fixture", "typed-echo"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == "42\n"
+
+
+def test_transferred_value_uses_django_choice_validation(tmp_path: Path, capsys) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    assert (
+        main(
+            ["p3", "ready", "-", "django-fixture", "choice-echo"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == "ready\n"
 
 
 def test_django_result_reaches_python_command(tmp_path: Path, capsys) -> None:
