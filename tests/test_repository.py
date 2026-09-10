@@ -75,9 +75,6 @@ def test_checkouts_are_namespaced_by_owner(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_project_name_must_be_safe_directory_segment(tmp_path: Path) -> None:
-    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
-    manager = RepositoryManager(paths, GwayConfig(("arthexis",)))
-
     with pytest.raises(ValueError, match="safe directory name"):
         Project(
             name="../escape",
