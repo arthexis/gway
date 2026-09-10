@@ -120,6 +120,30 @@ def test_option_shaped_python_result_reaches_django_as_data(
     assert capsys.readouterr().out == f"{value}\n"
 
 
+def test_transferred_value_uses_django_type_conversion(tmp_path: Path, capsys) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    assert (
+        main(
+            ["p3", "text-number", "-", "django-fixture", "typed-echo"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == "42\n"
+
+
+def test_transferred_value_uses_django_choice_validation(tmp_path: Path, capsys) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    assert (
+        main(
+            ["p3", "ready", "-", "django-fixture", "choice-echo"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == "ready\n"
+
+
 def test_django_result_reaches_python_command(tmp_path: Path, capsys) -> None:
     dispatcher = _dispatcher(tmp_path)
     assert (
