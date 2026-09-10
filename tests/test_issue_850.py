@@ -5,7 +5,6 @@ from gway.project import Project
 from gway.registry import Registry
 from gway.upgrade import Upgrader
 
-
 MANIFEST = """[project]
 name = "fixture"
 
