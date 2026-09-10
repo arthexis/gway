@@ -102,11 +102,10 @@ class Runner:
             "pip",
             "install",
             "--disable-pip-version-check",
-            "-e",
         ]
         if upgrade:
             command.append("--upgrade")
-        command.append(self._install_spec(project, extras))
+        command.extend(["-e", self._install_spec(project, extras)])
         subprocess.run(command, check=True, stdout=sys.stderr)
 
     def run_lifecycle(
