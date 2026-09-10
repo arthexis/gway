@@ -34,9 +34,7 @@ class TransferDjangoAdapter(DjangoAdapter):
 
         def execute(*args: object, **options: Any) -> object:
             restored_args = tuple(_restore_parsed_value(value) for value in args)
-            restored_options = {
-                key: _restore_parsed_value(value) for key, value in options.items()
-            }
+            restored_options = {key: _restore_parsed_value(value) for key, value in options.items()}
             return original_execute(*restored_args, **restored_options)
 
         django_command.execute = execute
