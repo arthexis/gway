@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .chain_context import chain_context_scope, publish_chain_result
@@ -16,6 +18,11 @@ if TYPE_CHECKING:
 
 _SELECTOR = re.compile(r"\[(?P<index>[1-9]\d*)\]\Z")
 _WILDCARD = "[*]"
+
+
+@dataclass(frozen=True, slots=True)
+class _Transferred:
+    value: object
 
 
 def _transfer_values(result: object) -> list[object]:
@@ -33,12 +40,12 @@ def _selector_index(token: str) -> int | None:
     return int(match.group("index")) if match is not None else None
 
 
-def _route_transfer(argv: Sequence[str], transfer: Sequence[object]) -> list[str | object]:
+def _route_transfer(argv: Sequence[str], transfer: Sequence[object]) -> list[str | _Transferred]:
     """Materialize explicit selectors or apply the implicit leading wildcard rule."""
     numeric = [_selector_index(token) for token in argv]
     explicit = any(index is not None for index in numeric) or _WILDCARD in argv
     if not explicit:
-        return [*transfer, *argv]
+        return [*(_Transferred(value) for value in transfer), *argv]
 
     if argv.count(_WILDCARD) > 1:
         raise DispatchError("a chain stage may contain at most one [*] selector")
@@ -55,42 +62,43 @@ def _route_transfer(argv: Sequence[str], transfer: Sequence[object]) -> list[str
         for index, value in enumerate(transfer, start=1)
         if index not in selected
     ]
-    routed: list[str | object] = []
+    routed: list[str | _Transferred] = []
     for token, index in zip(argv, numeric, strict=True):
         if index is not None:
-            routed.append(transfer[index - 1])
+            routed.append(_Transferred(transfer[index - 1]))
         elif token == _WILDCARD:
-            routed.extend(remainder)
+            routed.extend(_Transferred(value) for value in remainder)
         else:
             routed.append(token)
     return routed
 
 
-def _encode_routed_values(values: Sequence[str | object], original_argv: Sequence[str]) -> list[str]:
-    """Encode transferred objects opaquely while leaving original CLI tokens untouched."""
-    original_ids: dict[int, int] = {}
-    for token in original_argv:
-        original_ids[id(token)] = original_ids.get(id(token), 0) + 1
+def _encode_transfer_value(value: object) -> str:
+    """Encode grammar-sensitive values opaquely and scalar typed values textually."""
+    if isinstance(value, (str, bytes, bytearray)):
+        return encode_transfer(value)
+    if isinstance(value, (bool, int, float, Path)):
+        return str(value)
+    return encode_transfer(value)
 
-    encoded: list[str] = []
-    for value in values:
-        if isinstance(value, str) and original_ids.get(id(value), 0):
-            original_ids[id(value)] -= 1
-            encoded.append(value)
-        else:
-            encoded.append(encode_transfer(value))
-    return encoded
+
+def _encode_routed_values(values: Sequence[str | _Transferred]) -> list[str]:
+    """Convert routed values to safe dispatcher argv while preserving transfer identity."""
+    return [
+        _encode_transfer_value(value.value) if isinstance(value, _Transferred) else value
+        for value in values
+    ]
 
 
 def _literal_solve_transfer(value: object) -> str:
-    """Render transferred data literally when it is consumed by a solve/template stage."""
+    """Render transferred data literally when consumed by a solve/template stage."""
     if isinstance(value, bytes):
         text = value.decode(errors="replace")
     elif isinstance(value, bytearray):
         text = bytes(value).decode(errors="replace")
     else:
         text = str(value)
-    return text.replace("[", "[[").replace("]", "]] ").replace("]] ", "]]")
+    return text.replace("[", "[[").replace("]", "]]")
 
 
 def _run_command_stage(
@@ -122,7 +130,7 @@ def _run_command_stage(
         )
 
     routed = _route_transfer(argv, transfer)
-    encoded = _encode_routed_values(routed, argv)
+    encoded = _encode_routed_values(routed)
     return dispatcher.run(
         project_name,
         [*command.path, *encoded],
