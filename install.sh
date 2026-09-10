@@ -18,6 +18,14 @@ CONFIG_HOME="${GWAY_SYSTEM_CONFIG_HOME:-/etc/gway}"
 DATA_HOME="${GWAY_SYSTEM_DATA_HOME:-/var/lib/gway}"
 SOURCE_SPEC="${GWAY_SOURCE_SPEC:-git+https://github.com/arthexis/gway.git@main}"
 PYTHON=""
+SCRIPT_DIR=""
+
+if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    candidate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P || true)"
+    if [[ -f "${candidate_dir}/pyproject.toml" && -d "${candidate_dir}/src/gway" ]]; then
+        SCRIPT_DIR="${candidate_dir}"
+    fi
+fi
 
 usage() {
     cat <<'EOF'
@@ -38,6 +46,7 @@ Environment overrides:
   GWAY_SYSTEM_CONFIG_HOME  System config directory (default: /etc/gway).
   GWAY_SYSTEM_DATA_HOME    System data directory (default: /var/lib/gway).
   GWAY_SOURCE_SPEC         pip source spec for GWAY.
+  GWAY_LOCAL_VENV          Checkout virtualenv path (default: <checkout>/.venv).
 EOF
 }
 
@@ -114,6 +123,32 @@ create_venv() {
     die "could not create virtual environment with ${PYTHON}"
 }
 
+run_as_checkout_user() {
+    if [[ "${EUID}" -eq 0 && -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+        sudo -u "${SUDO_USER}" -- "$@"
+    else
+        "$@"
+    fi
+}
+
+create_checkout_venv() {
+    local local_venv
+    [[ -n "${SCRIPT_DIR}" ]] || return 0
+
+    local_venv="${GWAY_LOCAL_VENV:-${SCRIPT_DIR}/.venv}"
+    if [[ ! -x "${local_venv}/bin/python" ]] \
+        || ! "${local_venv}/bin/python" -c \
+            'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+            >/dev/null 2>&1; then
+        rm -rf "${local_venv}"
+        run_as_checkout_user "${PYTHON}" -m venv "${local_venv}"
+    fi
+
+    run_as_checkout_user "${local_venv}/bin/python" -m pip install \
+        --disable-pip-version-check --upgrade "${SCRIPT_DIR}"
+    printf 'Checkout venv: %s\n' "${local_venv}"
+}
+
 is_managed_wrapper() {
     [[ -f "$1" ]] && grep -q '^# GWAY_SYSTEM_BOOTSTRAP_WRAPPER=1$' "$1" 2>/dev/null
 }
@@ -170,6 +205,9 @@ check_configuration() {
     printf 'Command:      %s\n' "${WRAPPER}"
     printf 'Config home:  %s\n' "${CONFIG_HOME}"
     printf 'Data home:    %s\n' "${DATA_HOME}"
+    if [[ -n "${SCRIPT_DIR}" ]]; then
+        printf 'Checkout venv: %s\n' "${GWAY_LOCAL_VENV:-${SCRIPT_DIR}/.venv}"
+    fi
     if [[ -e "${WRAPPER}" || -L "${WRAPPER}" ]]; then
         if is_managed_wrapper "${WRAPPER}"; then
             printf 'Existing GWAY: managed system wrapper (will upgrade in place)\n'
@@ -187,6 +225,7 @@ install_gway() {
     find_python
     ensure_git
     create_venv
+    create_checkout_venv
 
     export GIT_TERMINAL_PROMPT=0
     "${VENV}/bin/python" -m pip install --upgrade pip
