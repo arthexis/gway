@@ -56,3 +56,29 @@ def test_install_gway_reuses_self_upgrade_path(monkeypatch) -> None:
 
     assert bootstrap.main(["install", "gway"]) == 0
     assert calls == [["upgrade", "gway"]]
+
+
+def test_install_gway_preserves_leading_global_flags(monkeypatch) -> None:
+    calls: list[list[str] | None] = []
+
+    def fake_main(argv=None):
+        calls.append(argv)
+        return 0
+
+    monkeypatch.setattr("gway.cli.main", fake_main)
+
+    assert bootstrap.main(["--json", "install", "gway"]) == 0
+    assert calls == [["--json", "upgrade", "gway"]]
+
+
+def test_install_self_preserves_trailing_global_flags(monkeypatch) -> None:
+    calls: list[list[str] | None] = []
+
+    def fake_main(argv=None):
+        calls.append(argv)
+        return 0
+
+    monkeypatch.setattr("gway.cli.main", fake_main)
+
+    assert bootstrap.main(["install", "--self", "--json"]) == 0
+    assert calls == [["--json", "upgrade", "gway"]]
