@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -23,6 +24,28 @@ def _transfer_converter(converter: Callable[[str], object] | None) -> Callable[[
     return convert
 
 
+def _registered_converter(parser: argparse.ArgumentParser, converter: object) -> object:
+    """Resolve argparse type names through the owning parser registry."""
+    if not isinstance(converter, str):
+        return converter
+    return parser._registries.get("type", {}).get(converter, converter)
+
+
+def _wrap_parser_actions(parser: argparse.ArgumentParser) -> None:
+    """Wrap value-consuming actions recursively, including child subparsers."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                _wrap_parser_actions(child)
+            continue
+        if action.nargs == 0:
+            continue
+        converter = _registered_converter(parser, action.type)
+        if isinstance(converter, str):
+            continue
+        action.type = _transfer_converter(converter)
+
+
 class TransferDjangoAdapter(DjangoAdapter):
     """Django adapter variant that restores chain values at parser conversion time."""
 
@@ -40,8 +63,7 @@ class TransferDjangoAdapter(DjangoAdapter):
 
         def create_parser(*args: Any, **kwargs: Any):
             parser = original_create_parser(*args, **kwargs)
-            for action in parser._actions:
-                action.type = _transfer_converter(action.type)
+            _wrap_parser_actions(parser)
             return parser
 
         with self._transfer_lock:
