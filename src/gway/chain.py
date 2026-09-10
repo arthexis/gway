@@ -40,14 +40,20 @@ def _selector_index(token: str) -> int | None:
     return int(match.group("index")) if match is not None else None
 
 
-def _route_transfer(argv: Sequence[str], transfer: Sequence[object]) -> list[str | _Transferred]:
+def _route_transfer(
+    argv: Sequence[str],
+    transfer: Sequence[object],
+    *,
+    selector_tokens: Sequence[str] | None = None,
+) -> list[str | _Transferred]:
     """Materialize explicit selectors or apply the implicit leading wildcard rule."""
-    numeric = [_selector_index(token) for token in argv]
-    explicit = any(index is not None for index in numeric) or _WILDCARD in argv
+    selectors = argv if selector_tokens is None else selector_tokens
+    numeric = [_selector_index(token) for token in selectors]
+    explicit = any(index is not None for index in numeric) or _WILDCARD in selectors
     if not explicit:
         return [*(_Transferred(value) for value in transfer), *argv]
 
-    if argv.count(_WILDCARD) > 1:
+    if selectors.count(_WILDCARD) > 1:
         raise DispatchError("a chain stage may contain at most one [*] selector")
 
     selected = {index for index in numeric if index is not None}
@@ -63,10 +69,10 @@ def _route_transfer(argv: Sequence[str], transfer: Sequence[object]) -> list[str
         if index not in selected
     ]
     routed: list[str | _Transferred] = []
-    for token, index in zip(argv, numeric, strict=True):
+    for token, selector, index in zip(argv, selectors, numeric, strict=True):
         if index is not None:
             routed.append(_Transferred(transfer[index - 1]))
-        elif token == _WILDCARD:
+        elif selector == _WILDCARD:
             routed.extend(_Transferred(value) for value in remainder)
         else:
             routed.append(token)
@@ -110,6 +116,7 @@ def _run_command_stage(
 ) -> object:
     """Run one managed stage after applying implicit or explicit transfer routing."""
     project_name, project_args = normalize_managed_args(stage.tokens)
+    _, raw_project_args = normalize_managed_args(stage.raw_tokens)
 
     if project_name == MANAGED_EXPRESSION_PROJECT:
         if transfer:
@@ -129,7 +136,14 @@ def _run_command_stage(
             project_args,
         )
 
-    routed = _route_transfer(argv, transfer)
+    if project.default_command and len(project_args) < len(command.path):
+        raw_argv = raw_project_args
+    else:
+        raw_argv = raw_project_args[len(command.path) :]
+    if len(raw_argv) != len(argv):
+        raw_argv = argv
+
+    routed = _route_transfer(argv, transfer, selector_tokens=raw_argv)
     encoded = _encode_routed_values(routed)
     return dispatcher.run(
         project_name,
