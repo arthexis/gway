@@ -4,6 +4,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from gway.project import Project
 from gway.transfer import decode_transfer
 
 from .django import DjangoAdapter
@@ -25,7 +26,7 @@ def _transfer_converter(converter: Callable[[str], object] | None) -> Callable[[
 class TransferDjangoAdapter(DjangoAdapter):
     """Django adapter variant that restores chain values at parser conversion time."""
 
-    def __init__(self, project) -> None:
+    def __init__(self, project: Project) -> None:
         super().__init__(project)
         self._transfer_lock = threading.RLock()
 
