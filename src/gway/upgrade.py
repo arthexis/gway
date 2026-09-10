@@ -217,6 +217,8 @@ class Upgrader:
             raise
 
         assert refreshed is not None
+        final_revision = self.repositories.revision(current.path)
+        refreshed = replace(refreshed, revision=final_revision)
         registered = self.registry.register(refreshed)
         return UpgradeResult(registered, changed=True)
 
