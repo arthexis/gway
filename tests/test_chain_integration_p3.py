@@ -60,19 +60,25 @@ def echo(value: str) -> str:
     return Dispatcher(registry)
 
 
-def test_transferred_string_is_converted_before_python_int_validation(tmp_path: Path, capsys) -> None:
+def test_transferred_string_is_converted_before_python_int_validation(
+    tmp_path: Path, capsys
+) -> None:
     dispatcher = _dispatcher(tmp_path)
     assert main(["p3", "text-number", "-", "p3", "accept-int"], dispatcher=dispatcher) == 0
     assert capsys.readouterr().out == "42\n"
 
 
-def test_transferred_string_is_restored_before_literal_choice_validation(tmp_path: Path, capsys) -> None:
+def test_transferred_string_is_restored_before_literal_choice_validation(
+    tmp_path: Path, capsys
+) -> None:
     dispatcher = _dispatcher(tmp_path)
     assert main(["p3", "ready", "-", "p3", "accept-ready"], dispatcher=dispatcher) == 0
     assert capsys.readouterr().out == "ready\n"
 
 
-def test_python_result_reaches_django_command_without_internal_token(tmp_path: Path, capsys) -> None:
+def test_python_result_reaches_django_command_without_internal_token(
+    tmp_path: Path, capsys
+) -> None:
     dispatcher = _dispatcher(tmp_path)
     assert main(["p3", "bracket-text", "-", "django-fixture", "echo"], dispatcher=dispatcher) == 0
     assert capsys.readouterr().out == "[cwd]\n"
