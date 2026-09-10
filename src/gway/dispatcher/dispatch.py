@@ -7,7 +7,7 @@ from ..adapters import AdapterRegistry
 from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
 from ..command import Command
-from ..expression import MANAGED_EXPRESSION_PROJECT, parse_managed_branches
+from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..registry import Registry, RegistryError
 from ..stage import decode_stage_escapes
 from .arguments import _decode_structured_argv
@@ -117,6 +117,10 @@ class Dispatcher:
         *,
         interactive: bool = False,
     ) -> object:
+        if project_name == MANAGED_CHAIN_PROJECT:
+            from ..chain import run_chain
+
+            return run_chain(self, tokens, interactive=interactive)
         if project_name == MANAGED_EXPRESSION_PROJECT:
             if len(tokens) != 1:
                 raise DispatchError("managed expression dispatch expects one expression")
