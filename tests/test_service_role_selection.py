@@ -12,7 +12,7 @@ from gway.project import Project
 def make_role_project(tmp_path: Path) -> Project:
     root = tmp_path / "app"
     root.mkdir()
-    manifest = '''[project]
+    manifest = """[project]
 name = "arthexis"
 
 [adapter]
@@ -30,7 +30,7 @@ profiles = ["Control"]
 [services.worker]
 command = ["{python}", "-m", "example.worker"]
 profiles = ["Control", "Watchtower"]
-'''
+"""
     (root / "gway.toml").write_text(manifest, encoding="utf-8")
     return Project.from_path(root)
 
