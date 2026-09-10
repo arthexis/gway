@@ -60,11 +60,7 @@ def _route_transfer(
             f"chain transfer selector [{missing}] is out of range for {len(transfer)} value(s)"
         )
 
-    remainder = [
-        value
-        for index, value in enumerate(transfer, start=1)
-        if index not in selected
-    ]
+    remainder = [value for index, value in enumerate(transfer, start=1) if index not in selected]
     routed: list[str | _Transferred] = []
     for token, selector, index in zip(argv, selectors, numeric, strict=True):
         if index is not None:
@@ -160,7 +156,10 @@ def run_chain(
         for index, stage in enumerate(stages):
             transfer = [] if index == 0 else _transfer_values(result)
             if stage.kind is StageKind.SOLVE:
-                values = [*(_literal_solve_transfer(value) for value in transfer), *stage.raw_tokens]
+                values = [
+                    *(_literal_solve_transfer(value) for value in transfer),
+                    *stage.raw_tokens,
+                ]
                 result = solve_values(
                     values,
                     interactive=interactive,

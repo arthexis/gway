@@ -149,9 +149,7 @@ class Dispatcher:
             extra_context.update(provided_context)
         chain_context = current_chain_context()
         extra_context.update(
-            (key, value)
-            for key, value in chain_context.items()
-            if key not in RESERVED_CONTEXT_KEYS
+            (key, value) for key, value in chain_context.items() if key not in RESERVED_CONTEXT_KEYS
         )
         try:
             resolved_argv = dispatcher_package.resolve_captured_cli_values(

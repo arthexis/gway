@@ -8,7 +8,7 @@ import pytest
 from gway.chain import run_chain
 from gway.cli import main
 from gway.config import GwayPaths
-from gway.dispatcher import DispatchError, Dispatcher
+from gway.dispatcher import Dispatcher, DispatchError
 from gway.project import Project
 from gway.registry import Registry
 

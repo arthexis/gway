@@ -5,7 +5,7 @@ import inspect
 from gway.transfer import decode_transfer
 
 from . import AdapterError
-from .python import PythonAdapter, _EXPLICIT_NONE, _decode_structured_value, _project_import_path
+from .python import _EXPLICIT_NONE, PythonAdapter, _decode_structured_value, _project_import_path
 
 
 def _decode_value(value: object) -> object:
