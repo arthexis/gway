@@ -16,8 +16,31 @@ def _decode_value(value: object) -> object:
     return decode_transfer(value)
 
 
+def _transfer_aware_type(converter):
+    """Decode an opaque transfer before the receiving argparse type validates it."""
+    if converter is None:
+        return None
+
+    def convert(value):
+        restored = decode_transfer(value)
+        if restored is value:
+            return converter(value)
+        if isinstance(restored, str):
+            return converter(restored)
+        return restored
+
+    return convert
+
+
 class TransferPythonAdapter(PythonAdapter):
-    """Python adapter variant that restores opaque chain values after CLI parsing."""
+    """Python adapter variant that restores opaque chain values at parse boundaries."""
+
+    def _parser_for(self, command):
+        parser = super()._parser_for(command)
+        for action in parser._actions:
+            if action.type is not None:
+                action.type = _transfer_aware_type(action.type)
+        return parser
 
     def run(self, path: tuple[str, ...], argv: list[str]) -> object:
         command = self.describe(path)
