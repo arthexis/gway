@@ -9,6 +9,7 @@ from ..chain_context import current_chain_context
 from ..command import Command
 from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..registry import Registry, RegistryError
+from ..sigils import RESERVED_CONTEXT_KEYS
 from ..stage import decode_stage_escapes
 from .arguments import _decode_structured_argv
 from .errors import CommandNotFound, DispatchError
@@ -146,7 +147,10 @@ class Dispatcher:
             if not isinstance(provided_context, Mapping):
                 raise DispatchError("adapter sigil_context() must return a mapping")
             extra_context.update(provided_context)
-        extra_context.update(current_chain_context())
+        chain_context = current_chain_context()
+        extra_context.update(
+            (key, value) for key, value in chain_context.items() if key not in RESERVED_CONTEXT_KEYS
+        )
         try:
             resolved_argv = dispatcher_package.resolve_captured_cli_values(
                 templates,

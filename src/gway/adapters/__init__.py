@@ -14,9 +14,9 @@ class AdapterError(ValueError):
 
 
 def _python_factory(project: Project) -> ProjectAdapter:
-    from .python import PythonAdapter
+    from .python_transfer import TransferPythonAdapter
 
-    return PythonAdapter(project)
+    return TransferPythonAdapter(project)
 
 
 def _django_factory(project: Project) -> ProjectAdapter:
