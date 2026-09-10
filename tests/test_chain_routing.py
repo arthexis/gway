@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from gway.chain import run_chain
 from gway.cli import main
 from gway.config import GwayPaths
 from gway.dispatcher import DispatchError, Dispatcher
@@ -124,30 +125,40 @@ def test_ordinary_sigil_keeps_implicit_transfer(tmp_path: Path, capsys) -> None:
     assert output == "- A\n- B\n- C\n- D\n- CTX\n"
 
 
+def test_escaped_selector_text_is_not_routing(tmp_path: Path, capsys) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    output = _run(
+        dispatcher,
+        ["route", "values", "-", "route", "collect", "[[2]]"],
+        capsys,
+    )
+    assert output == "- A\n- B\n- C\n- D\n- [2]\n"
+
+
 def test_multiple_wildcards_are_rejected(tmp_path: Path) -> None:
     dispatcher = _dispatcher(tmp_path)
     with pytest.raises(DispatchError, match="at most one"):
-        main(
+        run_chain(
+            dispatcher,
             ["route", "values", "-", "route", "collect", "[*]", "[*]"],
-            dispatcher=dispatcher,
         )
 
 
 def test_out_of_range_selector_is_rejected(tmp_path: Path) -> None:
     dispatcher = _dispatcher(tmp_path)
     with pytest.raises(DispatchError, match=r"\[5\].*out of range"):
-        main(
+        run_chain(
+            dispatcher,
             ["route", "values", "-", "route", "collect", "[5]"],
-            dispatcher=dispatcher,
         )
 
 
 def test_mapping_result_has_no_numbered_transfer_values(tmp_path: Path) -> None:
     dispatcher = _dispatcher(tmp_path)
     with pytest.raises(DispatchError, match=r"\[1\].*out of range"):
-        main(
+        run_chain(
+            dispatcher,
             ["route", "mapping", "-", "route", "collect", "[1]"],
-            dispatcher=dispatcher,
         )
 
 
