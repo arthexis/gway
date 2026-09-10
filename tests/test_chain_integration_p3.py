@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 from gway.cli import main
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
@@ -30,6 +32,10 @@ def ready() -> str:
 
 def bracket_text() -> str:
     return "[cwd]"
+
+
+def option_text(value: str) -> str:
+    return value
 
 
 def accept_int(value: int) -> int:
@@ -82,6 +88,21 @@ def test_python_result_reaches_django_command_without_internal_token(
     dispatcher = _dispatcher(tmp_path)
     assert main(["p3", "bracket-text", "-", "django-fixture", "echo"], dispatcher=dispatcher) == 0
     assert capsys.readouterr().out == "[cwd]\n"
+
+
+@pytest.mark.parametrize("value", ["--help", "--unknown", "--"])
+def test_option_shaped_python_result_reaches_django_as_data(
+    tmp_path: Path, capsys, value: str
+) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    assert (
+        main(
+            ["p3", "option-text", value, "-", "django-fixture", "echo"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == f"{value}\n"
 
 
 def test_django_result_reaches_python_command(tmp_path: Path, capsys) -> None:
