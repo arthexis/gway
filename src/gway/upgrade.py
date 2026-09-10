@@ -217,6 +217,10 @@ class Upgrader:
             raise
 
         assert refreshed is not None
+        read_revision = getattr(self.repositories, "revision", None)
+        if callable(read_revision):
+            revision = read_revision(current.path)
+        refreshed = replace(refreshed, revision=revision)
         registered = self.registry.register(refreshed)
         return UpgradeResult(registered, changed=True)
 
