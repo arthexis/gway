@@ -102,6 +102,7 @@ class Runner:
             "pip",
             "install",
             "--disable-pip-version-check",
+            "-e",
         ]
         if upgrade:
             command.append("--upgrade")

@@ -12,7 +12,7 @@ module = "example"
 """
 
 
-def test_managed_project_install_is_not_editable(tmp_path: Path, monkeypatch) -> None:
+def test_managed_project_install_is_editable(tmp_path: Path, monkeypatch) -> None:
     project_path = tmp_path / "project"
     project_path.mkdir()
     (project_path / "gway.toml").write_text(MANIFEST, encoding="utf-8")
@@ -35,13 +35,13 @@ def test_managed_project_install_is_not_editable(tmp_path: Path, monkeypatch) ->
             "pip",
             "install",
             "--disable-pip-version-check",
+            "-e",
             str(project.path),
         ]
     ]
-    assert "-e" not in captured[0]
 
 
-def test_managed_project_install_keeps_extras_without_editable_mode(
+def test_managed_project_refresh_keeps_extras_in_editable_mode(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -62,5 +62,5 @@ def test_managed_project_install_keeps_extras_without_editable_mode(
 
     command = captured[0]
     assert "--upgrade" in command
-    assert "-e" not in command
+    assert "-e" in command
     assert command[-1] == f"{project.path}[celery]"
