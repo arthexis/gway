@@ -60,7 +60,15 @@ def test_managed_project_refresh_keeps_extras_in_editable_mode(
 
     Runner()._install_project(project, environment, upgrade=True, extras=("celery",))
 
-    command = captured[0]
-    assert "--upgrade" in command
-    assert "-e" in command
-    assert command[-1] == f"{project.path}[celery]"
+    assert captured == [
+        [
+            str(Runner.environment_python(environment)),
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--upgrade",
+            "-e",
+            f"{project.path}[celery]",
+        ]
+    ]
