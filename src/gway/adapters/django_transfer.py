@@ -3,13 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from gway.transfer import render_transfer
+from gway.transfer import decode_transfer
 
 from .django import DjangoAdapter
 
 
 def _restore_parsed_value(value: object) -> object:
-    """Restore opaque transfer values after Django has finished parsing argv."""
+    """Restore opaque transfer values without changing ordinary parsed values."""
     if isinstance(value, Mapping):
         return {key: _restore_parsed_value(item) for key, item in value.items()}
     if isinstance(value, tuple):
@@ -18,7 +18,7 @@ def _restore_parsed_value(value: object) -> object:
         return [_restore_parsed_value(item) for item in value]
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return type(value)(_restore_parsed_value(item) for item in value)
-    return render_transfer(value)
+    return decode_transfer(value)
 
 
 class TransferDjangoAdapter(DjangoAdapter):
