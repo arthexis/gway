@@ -5,7 +5,6 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-from ..install_extras import InstallExtraSelector
 from ..project import Project
 from . import systemd
 from .manifest import ServiceError, _manifest_services, _strings
@@ -36,19 +35,6 @@ class ServiceManager:
         ]
         selected_service = service or environment_service
         active_profile = profile or environment_profile
-        if selected_service is None and active_profile is None and not legacy:
-            selector = InstallExtraSelector.from_project(project)
-            if selector is not None:
-                selection = selector.resolve(project, ())
-                declared_profiles = {
-                    profile_name
-                    for key, config in configs.items()
-                    for profile_name in _strings(
-                        config.get("profiles"), "profiles", f"services.{key}"
-                    )
-                }
-                if declared_profiles:
-                    active_profile = selection.value
         if selected_service is not None:
             if selected_service not in configs:
                 raise ServiceError(
