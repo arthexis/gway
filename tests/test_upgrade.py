@@ -301,7 +301,7 @@ def test_repository_force_validates_origin_before_mutation(
     assert not any(any(value in command for value in mutating) for command in calls)
 
 
-def test_runner_refresh_reinstalls_project_without_editable_mode(
+def test_runner_refresh_reinstalls_project_in_editable_mode(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -331,7 +331,7 @@ def test_runner_refresh_reinstalls_project_without_editable_mode(
     assert refreshed == environment
     assert calls[0][0] == str(python)
     assert "--upgrade" in calls[0]
-    assert "-e" not in calls[0]
+    assert "-e" in calls[0]
     assert calls[0][-1] == str(root)
 
 
