@@ -32,9 +32,9 @@ def publish_chain_result(result: object) -> None:
     context = _CHAIN_CONTEXT.get()
     if context is None:
         return
-    context["result"] = result
     if isinstance(result, Mapping):
         context.update(result)
+    context["result"] = result
 
 
 __all__ = ["chain_context_scope", "current_chain_context", "publish_chain_result"]
