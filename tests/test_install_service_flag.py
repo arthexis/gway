@@ -28,7 +28,16 @@ def _project(tmp_path: Path, manifest: str) -> Project:
 def test_install_service_installs_manifest_service(tmp_path, monkeypatch, capsys) -> None:
     project = _project(
         tmp_path,
-        """[project]\nname = \"demo\"\n\n[adapter]\ntype = \"python\"\nmodule = \"demo\"\n\n[service]\ncommand = [\"demo\"]\n""",
+        """[project]
+name = "demo"
+
+[adapter]
+type = "python"
+module = "demo"
+
+[service]
+command = ["demo"]
+""",
     )
     _Installer.project = project
     monkeypatch.setattr(cli, "Installer", _Installer)
@@ -59,7 +68,13 @@ def test_install_service_explains_when_project_has_no_service(
 ) -> None:
     project = _project(
         tmp_path,
-        """[project]\nname = \"demo\"\n\n[adapter]\ntype = \"python\"\nmodule = \"demo\"\n""",
+        """[project]
+name = "demo"
+
+[adapter]
+type = "python"
+module = "demo"
+""",
     )
     _Installer.project = project
     monkeypatch.setattr(cli, "Installer", _Installer)
