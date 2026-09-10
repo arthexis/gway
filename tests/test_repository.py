@@ -75,6 +75,9 @@ def test_checkouts_are_namespaced_by_owner(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_project_name_must_be_safe_directory_segment(tmp_path: Path) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    manager = RepositoryManager(paths, GwayConfig(("arthexis",)))
+
     with pytest.raises(ValueError, match="safe directory name"):
         Project(
             name="../escape",
@@ -110,4 +113,4 @@ def test_runner_creates_python_environment_and_installs_project(
     assert environment == paths.environments_dir / "fixture"
     assert calls[0][1:3] == ["-m", "venv"]
     assert calls[1][-1] == str(root)
-    assert "-e" not in calls[1]
+    assert "-e" in calls[1]
