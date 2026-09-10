@@ -18,6 +18,7 @@ CONFIG_HOME="${GWAY_SYSTEM_CONFIG_HOME:-/etc/gway}"
 DATA_HOME="${GWAY_SYSTEM_DATA_HOME:-/var/lib/gway}"
 SOURCE_SPEC="${GWAY_SOURCE_SPEC:-git+https://github.com/arthexis/gway.git@main}"
 PYTHON=""
+CHECKOUT_ROOT=""
 
 usage() {
     cat <<'EOF'
@@ -114,6 +115,35 @@ create_venv() {
     die "could not create virtual environment with ${PYTHON}"
 }
 
+find_checkout_root() {
+    local script_dir
+    [[ -n "${BASH_SOURCE[0]:-}" && "${BASH_SOURCE[0]}" != "/dev/stdin" ]] || return
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "${script_dir}/pyproject.toml" && -d "${script_dir}/src/gway" ]]; then
+        CHECKOUT_ROOT="${script_dir}"
+    fi
+}
+
+run_as_checkout_owner() {
+    if [[ "${EUID}" -eq 0 && -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+        sudo -u "${SUDO_USER}" -H -- "$@"
+    else
+        "$@"
+    fi
+}
+
+prepare_checkout_venv() {
+    local checkout_venv
+    find_checkout_root
+    [[ -n "${CHECKOUT_ROOT}" ]] || return
+    checkout_venv="${CHECKOUT_ROOT}/.venv"
+
+    if [[ ! -x "${checkout_venv}/bin/python" ]]; then
+        run_as_checkout_owner "${PYTHON}" -m venv "${checkout_venv}"
+    fi
+    run_as_checkout_owner "${checkout_venv}/bin/python" -m pip install -e "${CHECKOUT_ROOT}"
+}
+
 is_managed_wrapper() {
     [[ -f "$1" ]] && grep -q '^# GWAY_SYSTEM_BOOTSTRAP_WRAPPER=1$' "$1" 2>/dev/null
 }
@@ -153,6 +183,7 @@ install_wrapper() {
     cat >"${WRAPPER}" <<EOF
 #!/bin/sh
 # GWAY_SYSTEM_BOOTSTRAP_WRAPPER=1
+export GWAY_SYSTEM_INSTALL=1
 export GWAY_CONFIG_HOME="\${GWAY_CONFIG_HOME:-${CONFIG_HOME}}"
 export GWAY_DATA_HOME="\${GWAY_DATA_HOME:-${DATA_HOME}}"
 export GIT_TERMINAL_PROMPT=0
@@ -187,6 +218,7 @@ install_gway() {
     find_python
     ensure_git
     create_venv
+    prepare_checkout_venv
 
     export GIT_TERMINAL_PROMPT=0
     "${VENV}/bin/python" -m pip install --upgrade pip
