@@ -160,17 +160,23 @@ def test_failure_aborts_later_stages(tmp_path: Path) -> None:
 def test_chain_context_is_restored_after_execution(tmp_path: Path) -> None:
     dispatcher = _dispatcher(tmp_path)
 
-    assert run_chain(
-        dispatcher,
-        ["demo", "mapping", "-", "%", "[name]"],
-    ) == "mapped"
+    assert (
+        run_chain(
+            dispatcher,
+            ["demo", "mapping", "-", "%", "[name]"],
+        )
+        == "mapped"
+    )
     assert solve_values(["[name]"], paths=dispatcher.registry.paths) == "[name]"
 
 
 def test_literal_dash_after_double_dash_is_not_a_chain(tmp_path: Path) -> None:
     dispatcher = _dispatcher(tmp_path)
 
-    assert run_chain(
-        dispatcher,
-        ["demo", "collect", "--", "-", "-", "%", "done"],
-    ) == "done"
+    assert (
+        run_chain(
+            dispatcher,
+            ["demo", "collect", "--", "-", "-", "%", "done"],
+        )
+        == "done"
+    )
