@@ -12,61 +12,31 @@ from gway.project import Project
 def make_role_project(tmp_path: Path) -> Project:
     root = tmp_path / "app"
     root.mkdir()
-    manifest = f'''[project]
+    manifest = '''[project]
 name = "arthexis"
 
 [adapter]
 type = "python"
 module = "example.gway"
 
-[install]
-root = "{tmp_path}"
-checkout = "app"
-environment = ".venv"
-
-[install.extras]
-argument = "--role"
-default = "Terminal"
-state = ".locks/role.lck"
-
-[install.extras.values]
-Control = []
-Terminal = []
-Watchtower = []
-
 [services.web-local]
-command = ["{{python}}", "manage.py", "runserver"]
+command = ["{python}", "manage.py", "runserver"]
 profiles = ["Terminal", "Watchtower"]
 
 [services.web-edge]
-command = ["{{python}}", "manage.py", "runserver"]
+command = ["{python}", "manage.py", "runserver"]
 profiles = ["Control"]
 
 [services.worker]
-command = ["{{python}}", "-m", "example.worker"]
+command = ["{python}", "-m", "example.worker"]
 profiles = ["Control", "Watchtower"]
 '''
     (root / "gway.toml").write_text(manifest, encoding="utf-8")
-    role_lock = tmp_path / ".locks" / "role.lck"
-    role_lock.parent.mkdir()
-    role_lock.write_text("Watchtower\n", encoding="utf-8")
     return Project.from_path(root)
 
 
 def completed(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-
-def test_persisted_install_selector_selects_matching_service_profile(tmp_path: Path) -> None:
-    project = make_role_project(tmp_path)
-
-    manager = service.ServiceManager(project, unit_directory=tmp_path / "systemd")
-
-    assert manager.active_profile == "Watchtower"
-    assert manager.unit_names == [
-        "gway-arthexis-web-local.service",
-        "gway-arthexis-worker.service",
-    ]
 
 
 def test_systemctl_permission_words_preserve_called_process_error(monkeypatch) -> None:
@@ -90,7 +60,11 @@ def test_systemctl_permission_words_preserve_called_process_error(monkeypatch) -
 
 def test_start_reports_missing_units_before_systemctl(tmp_path: Path) -> None:
     project = make_role_project(tmp_path)
-    manager = service.ServiceManager(project, unit_directory=tmp_path / "systemd")
+    manager = service.ServiceManager(
+        project,
+        profile="Watchtower",
+        unit_directory=tmp_path / "systemd",
+    )
 
     with pytest.raises(service.ServiceError) as exc_info:
         manager.start()
@@ -104,7 +78,11 @@ def test_start_reports_missing_units_before_systemctl(tmp_path: Path) -> None:
 
 def test_stop_reaches_systemd_when_unit_files_are_missing(tmp_path: Path, monkeypatch) -> None:
     project = make_role_project(tmp_path)
-    manager = service.ServiceManager(project, unit_directory=tmp_path / "systemd")
+    manager = service.ServiceManager(
+        project,
+        profile="Watchtower",
+        unit_directory=tmp_path / "systemd",
+    )
     calls: list[tuple[str, ...]] = []
 
     def fake_systemctl(*args: str, check: bool = True):
@@ -121,7 +99,7 @@ def test_stop_reaches_systemd_when_unit_files_are_missing(tmp_path: Path, monkey
     ]
 
 
-def test_install_reconciles_units_excluded_by_persisted_role(
+def test_install_reconciles_units_excluded_by_explicit_profile(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -130,7 +108,11 @@ def test_install_reconciles_units_excluded_by_persisted_role(
     unit_directory.mkdir()
     stale = unit_directory / "gway-arthexis-web-edge.service"
     stale.write_text("old Control unit", encoding="utf-8")
-    manager = service.ServiceManager(project, unit_directory=unit_directory)
+    manager = service.ServiceManager(
+        project,
+        profile="Watchtower",
+        unit_directory=unit_directory,
+    )
     calls: list[tuple[str, ...]] = []
 
     def fake_systemctl(*args: str, check: bool = True):
@@ -175,7 +157,7 @@ def test_explicit_service_install_does_not_reconcile_siblings(
     assert ("disable", "--now", "gway-arthexis-web-edge.service") not in calls
 
 
-def test_unmatched_persisted_role_keeps_only_global_services(tmp_path: Path) -> None:
+def test_unmatched_explicit_profile_keeps_only_global_services(tmp_path: Path) -> None:
     project = make_role_project(tmp_path)
     manifest_path = project.path / "gway.toml"
     manifest = manifest_path.read_text(encoding="utf-8")
@@ -188,9 +170,12 @@ def test_unmatched_persisted_role_keeps_only_global_services(tmp_path: Path) -> 
     )
     manifest += '\n[services.health]\ncommand = ["{python}", "-m", "example.health"]\n'
     manifest_path.write_text(manifest, encoding="utf-8")
-    (tmp_path / ".locks" / "role.lck").write_text("Terminal\n", encoding="utf-8")
 
-    manager = service.ServiceManager(project, unit_directory=tmp_path / "systemd")
+    manager = service.ServiceManager(
+        project,
+        profile="Terminal",
+        unit_directory=tmp_path / "systemd",
+    )
 
     assert manager.active_profile == "Terminal"
     assert manager.unit_names == ["gway-arthexis-health.service"]
