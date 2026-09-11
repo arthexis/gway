@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from .config import GwayPaths, default_paths
-from .project import Project
+from .project import ManifestError, Project
 
 
 class RegistryError(ValueError):
@@ -52,10 +52,38 @@ class Registry:
                 return Project.from_record(record)
         return None
 
+    def resolve_uninstall(self, name_or_alias: str) -> Project | None:
+        project = self.get(name_or_alias)
+        if project is not None:
+            return project
+
+        for record in self._load_records().values():
+            stored = Project.from_record(record)
+            try:
+                current = Project.from_path(stored.path)
+            except (OSError, ManifestError, ValueError):
+                continue
+            if name_or_alias == current.name or name_or_alias in current.aliases:
+                return stored
+        return None
+
     def require(self, name_or_alias: str) -> Project:
         project = self.get(name_or_alias)
         if project is None:
             raise RegistryError(f"project is not registered: {name_or_alias}")
+        return project
+
+    def require_uninstall(self, name_or_alias: str) -> Project:
+        project = self.resolve_uninstall(name_or_alias)
+        if project is None:
+            raise RegistryError(f"project is not registered: {name_or_alias}")
+        return project
+
+    def unregister(self, name_or_alias: str) -> Project:
+        project = self.require_uninstall(name_or_alias)
+        records = self._load_records()
+        records.pop(project.name, None)
+        self._save_records(records)
         return project
 
     def register(self, project: Project) -> Project:
