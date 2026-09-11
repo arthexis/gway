@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from ..adapters import AdapterRegistry
 from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
-from ..command import Command
+from ..command import Command, command_path_aliases
 from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..registry import Registry, RegistryError
 from ..sigils import RESERVED_CONTEXT_KEYS
@@ -60,6 +60,13 @@ class Dispatcher:
             if len(tokens) >= len(command.path)
             and normalized_tokens[: len(command.path)] == _command_path_key(command.path)
         ]
+        if not matches:
+            matches = [
+                command
+                for command in commands
+                if len(tokens) >= len(command.path)
+                and normalized_tokens[: len(command.path)] in command_path_aliases(command.path)[1:]
+            ]
         if not matches:
             requested = " ".join(tokens) if tokens else "<command>"
             raise CommandNotFound(f"unknown command: {requested}")

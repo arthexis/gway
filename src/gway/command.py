@@ -1,7 +1,25 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
+
+
+def command_path_aliases(path: Sequence[str]) -> tuple[tuple[str, ...], ...]:
+    """Return exact-normalized and reversible two-word command spellings."""
+    normalized = tuple(part.replace("_", "-") for part in path)
+    if not normalized:
+        return (normalized,)
+
+    words = normalized[-1].split("-")
+    if len(words) != 2 or not all(words):
+        return (normalized,)
+
+    reversed_name = f"{words[1]}-{words[0]}"
+    reversed_path = (*normalized[:-1], reversed_name)
+    if reversed_path == normalized:
+        return (normalized,)
+    return normalized, reversed_path
 
 
 @dataclass(frozen=True)

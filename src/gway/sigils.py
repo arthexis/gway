@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sigils import Context, SafeNamespace, Sigil
 
+from .command import command_path_aliases
 from .config import GwayPaths, default_paths
 from .project import Project
 from .registry import Registry
@@ -127,15 +128,23 @@ class _GwayNamespaceProvider:
         command_map = {command.path: command for command in commands}
 
         command = command_map.get(path)
+        resolved_path = path
+        if command is None:
+            for candidate, item in command_map.items():
+                aliases = command_path_aliases(candidate)[1:]
+                if path in aliases:
+                    command = item
+                    resolved_path = candidate
+                    break
         if command is not None:
             if not _SIGILS_SUPPORTS_PROVIDER_CALLS:
                 if any(parameter.required for parameter in command.parameters):
                     raise KeyError(key)
                 project = self.registry.require(self.project_name)
                 alias_arguments = (project.alias_arguments or {}).get(self.project_name, ())
-                cache_key = (project.name, alias_arguments, path, (), ())
+                cache_key = (project.name, alias_arguments, resolved_path, (), ())
                 if cache_key not in self.cache:
-                    self.cache[cache_key] = dispatcher.run(self.project_name, path)
+                    self.cache[cache_key] = dispatcher.run(self.project_name, resolved_path)
                 return self.cache[cache_key]
 
             return _GwayCommandCall(
