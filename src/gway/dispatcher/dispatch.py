@@ -135,7 +135,8 @@ class Dispatcher:
             if not project.default_command:
                 raise
             command, argv = self._resolve_default_command(commands, project.default_command, tokens)
-        argv = list(decode_stage_escapes(argv))
+        alias_arguments = (project.alias_arguments or {}).get(project_name, ())
+        argv = list(decode_stage_escapes((*alias_arguments, *argv)))
         if interactive:
             argv = _fill_required_options(command, argv)
         argv = _decode_structured_argv(command, argv)

@@ -128,10 +128,13 @@ def _run_command_stage(
         )
 
     raw_argv = raw_project_args if used_default else raw_project_args[len(command.path) :]
-    routed = _route_transfer(argv, transfer, selector_tokens=raw_argv)
+    alias_arguments = (project.alias_arguments or {}).get(project_name, ())
+    combined_argv = [*alias_arguments, *argv]
+    selector_tokens = [*("" for _ in alias_arguments), *raw_argv]
+    routed = _route_transfer(combined_argv, transfer, selector_tokens=selector_tokens)
     encoded = _encode_routed_values(routed)
     return dispatcher.run(
-        project_name,
+        project.name,
         [*command.path, *encoded],
         interactive=interactive,
     )

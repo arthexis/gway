@@ -110,6 +110,7 @@ class Project:
     adapter_type: str
     adapter_config: dict[str, Any]
     aliases: tuple[str, ...] = ()
+    alias_arguments: dict[str, tuple[str, ...]] | None = None
     default_command: tuple[str, ...] = ()
     repository: str | None = None
     revision: str | None = None
@@ -122,6 +123,8 @@ class Project:
         _validate_name(self.name)
         if any(alias.startswith("[") for alias in self.aliases):
             raise ValueError("project aliases must not start with '['")
+        if self.alias_arguments is None:
+            object.__setattr__(self, "alias_arguments", {})
 
     @classmethod
     def from_path(cls, path: str | Path) -> Project:
@@ -164,11 +167,27 @@ class Project:
             raise ManifestError("[adapter].type must be a non-empty string")
 
         aliases_data = project_data.get("aliases", [])
-        if not isinstance(aliases_data, list) or not all(
-            isinstance(alias, str) and alias for alias in aliases_data
-        ):
-            raise ManifestError("[project].aliases must be an array of strings")
-        if any(alias.startswith("[") for alias in aliases_data):
+        alias_arguments: dict[str, tuple[str, ...]] = {}
+        if isinstance(aliases_data, list):
+            if not all(isinstance(alias, str) and alias for alias in aliases_data):
+                raise ManifestError("[project].aliases must contain non-empty alias names")
+            aliases = tuple(aliases_data)
+        elif isinstance(aliases_data, dict):
+            if not all(isinstance(alias, str) and alias for alias in aliases_data):
+                raise ManifestError("[project].aliases must contain non-empty alias names")
+            if not all(
+                isinstance(arguments, list)
+                and all(isinstance(argument, str) and argument for argument in arguments)
+                for arguments in aliases_data.values()
+            ):
+                raise ManifestError(
+                    "[project].aliases values must be arrays of non-empty argument strings"
+                )
+            aliases = tuple(aliases_data)
+            alias_arguments = {alias: tuple(arguments) for alias, arguments in aliases_data.items()}
+        else:
+            raise ManifestError("[project].aliases must be an array or alias-to-arguments table")
+        if any(alias.startswith("[") for alias in aliases):
             raise ManifestError("[project].aliases must not start with '['")
 
         default_data = project_data.get("default")
@@ -190,7 +209,8 @@ class Project:
 
         return cls(
             name=name,
-            aliases=tuple(aliases_data),
+            aliases=aliases,
+            alias_arguments=alias_arguments,
             default_command=default_command,
             path=root,
             adapter_type=adapter_type,
@@ -207,6 +227,9 @@ class Project:
             "adapter_type": self.adapter_type,
             "adapter_config": self.adapter_config,
             "aliases": list(self.aliases),
+            "alias_arguments": {
+                alias: list(arguments) for alias, arguments in (self.alias_arguments or {}).items()
+            },
             "default_command": list(self.default_command),
             "repository": self.repository,
             "revision": self.revision,
@@ -232,6 +255,10 @@ class Project:
             adapter_type=data["adapter_type"],
             adapter_config=dict(data.get("adapter_config", {})),
             aliases=tuple(data.get("aliases", [])),
+            alias_arguments={
+                alias: tuple(arguments)
+                for alias, arguments in data.get("alias_arguments", {}).items()
+            },
             default_command=tuple(data.get("default_command", [])),
             repository=data.get("repository"),
             revision=data.get("revision"),

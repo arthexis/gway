@@ -44,15 +44,21 @@ class _GwayCommandCall:
         self.project_name = project_name
         self.command = command
         self.cache = cache
-        self.__sigils_requires_args__ = any(parameter.required for parameter in command.parameters)
+        project = registry.require(project_name)
+        alias_arguments = (project.alias_arguments or {}).get(project_name, ())
+        self.__sigils_requires_args__ = not alias_arguments and any(
+            parameter.required for parameter in command.parameters
+        )
 
     def __call__(self, *args: object, **kwargs: object) -> object:
         if self.__sigils_requires_args__ and not args and not kwargs:
             return None
 
         project = self.registry.require(self.project_name)
+        alias_arguments = (project.alias_arguments or {}).get(self.project_name, ())
         cache_key = (
             project.name,
+            alias_arguments,
             self.command.path,
             _freeze(args),
             _freeze(kwargs),
@@ -61,12 +67,11 @@ class _GwayCommandCall:
             return self.cache[cache_key]
 
         function = self.command.adapter_data
-        if callable(function):
+        if callable(function) and not alias_arguments:
             result = function(*args, **kwargs)
         else:
-            # Non-Python adapters still use the ordinary dispatcher boundary.
-            # Structured values are kept grouped; tuples become one comma-delimited
-            # argument and named values use their normal long-option spelling.
+            # Alias-bound Python calls and non-Python adapters both cross the
+            # dispatcher boundary so configured alias arguments use CLI semantics.
             from .dispatcher import Dispatcher
 
             argv: list[str] = []
@@ -127,7 +132,8 @@ class _GwayNamespaceProvider:
                 if any(parameter.required for parameter in command.parameters):
                     raise KeyError(key)
                 project = self.registry.require(self.project_name)
-                cache_key = (project.name, path, (), ())
+                alias_arguments = (project.alias_arguments or {}).get(self.project_name, ())
+                cache_key = (project.name, alias_arguments, path, (), ())
                 if cache_key not in self.cache:
                     self.cache[cache_key] = dispatcher.run(self.project_name, path)
                 return self.cache[cache_key]
@@ -169,16 +175,16 @@ def gway_context(
     context: dict[str, object] = {}
 
     for project in active_registry.list():
-        provider = SafeNamespace(
-            _GwayNamespaceProvider(
-                active_registry,
-                project.name,
-                cache=cache,
-            )
-        )
         for name in (project.name, *project.aliases):
-            if name not in RESERVED_CONTEXT_KEYS:
-                context[name] = provider
+            if name in RESERVED_CONTEXT_KEYS:
+                continue
+            context[name] = SafeNamespace(
+                _GwayNamespaceProvider(
+                    active_registry,
+                    name,
+                    cache=cache,
+                )
+            )
 
     return context
 
