@@ -25,6 +25,34 @@ The pre-1.0 implementation is preserved in `arthexis/gway-legacy`. Do not reintr
 
 Use a `src/` layout. Core responsibilities should stay separated as the implementation grows: project metadata, registry/config, repository management, adapters, dispatch, CLI value resolution, and execution.
 
+## Python Style
+
+`pyproject.toml` is the canonical Ruff configuration for this repository. Do not duplicate or override Ruff rule selection in workflows, scripts, or agent instructions.
+
+Current expectations are:
+
+- Python target: 3.11.
+- Maximum line length: 100.
+- Ruff lint families: `E`, `F`, `I`, `UP`, and `B`.
+- Imports must satisfy Ruff's `I` rules rather than being hand-sorted ad hoc.
+- Prefer modern Python syntax covered by Ruff's `UP` rules.
+- Avoid bug-prone patterns covered by Ruff's `B` rules.
+- New or edited Python must pass both Ruff lint and Ruff format before the change is considered complete.
+
+Use the repository configuration explicitly when checking code:
+
+```bash
+python -m ruff check --config pyproject.toml src tests
+python -m ruff format --check --config pyproject.toml src tests
+```
+
+When fixing style locally, prefer Ruff itself rather than manually approximating its output:
+
+```bash
+python -m ruff check --fix --config pyproject.toml src tests
+python -m ruff format --config pyproject.toml src tests
+```
+
 ## Testing
 
 Install in editable mode and run pytest:
@@ -34,17 +62,7 @@ python -m pip install -e '.[dev]'
 pytest
 ```
 
-Before pushing, normalize Ruff lint and formatting with the `ci-base` quality helper:
-
-```bash
-bash .ci/quality.sh --fix src tests
-```
-
-To run the same non-mutating Ruff checks used by CI:
-
-```bash
-bash .ci/quality.sh --check src tests
-```
+Quality checks run before package, compatibility, and clean-install checks. If Ruff fails, the more expensive checks should remain skipped until style is corrected.
 
 At minimum, changes to CLI/bootstrap behavior must keep both of these working:
 
