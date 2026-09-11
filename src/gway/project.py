@@ -184,13 +184,9 @@ class Project:
                     "[project].aliases values must be arrays of non-empty argument strings"
                 )
             aliases = tuple(aliases_data)
-            alias_arguments = {
-                alias: tuple(arguments) for alias, arguments in aliases_data.items()
-            }
+            alias_arguments = {alias: tuple(arguments) for alias, arguments in aliases_data.items()}
         else:
-            raise ManifestError(
-                "[project].aliases must be an array or alias-to-arguments table"
-            )
+            raise ManifestError("[project].aliases must be an array or alias-to-arguments table")
         if any(alias.startswith("[") for alias in aliases):
             raise ManifestError("[project].aliases must not start with '['")
 
