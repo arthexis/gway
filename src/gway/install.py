@@ -127,3 +127,13 @@ class Installer:
             if prepared_environment is not None and (not adopted or not environment_preexisted):
                 shutil.rmtree(prepared_environment, ignore_errors=True)
             raise
+
+    def uninstall(self, name_or_alias: str) -> Project:
+        project = self.registry.require_uninstall(name_or_alias)
+
+        if project.repository is not None:
+            environment = project.environment or self.runner.environment_path(project)
+            shutil.rmtree(environment, ignore_errors=True)
+            shutil.rmtree(project.path, ignore_errors=True)
+
+        return self.registry.unregister(project.name)
