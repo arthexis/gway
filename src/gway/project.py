@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import re
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from ._toml import tomllib
 
 
 class ManifestError(ValueError):
