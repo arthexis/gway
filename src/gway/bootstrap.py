@@ -145,12 +145,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     exit_code=result,
                 )
             return result
+        except SystemExit:
+            raise
         except BaseException as exc:
             record(
                 "execution.failure",
                 "command raised an exception",
                 exception=type(exc).__name__,
-                message=str(exc),
+                error=str(exc),
             )
             raise
         finally:
