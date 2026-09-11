@@ -34,6 +34,11 @@ class GwayPaths:
         return self.data_dir / "environments"
 
 
+@dataclass(frozen=True)
+class GwayConfig:
+    trusted_owners: tuple[str, ...] = ("arthexis",)
+
+
 def default_paths(
     env: Mapping[str, str] | None = None,
     home: Path | None = None,
