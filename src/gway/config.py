@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
-import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from ._toml import tomllib
 
 
 class ConfigError(ValueError):
@@ -31,11 +32,6 @@ class GwayPaths:
     @property
     def environments_dir(self) -> Path:
         return self.data_dir / "environments"
-
-
-@dataclass(frozen=True)
-class GwayConfig:
-    trusted_owners: tuple[str, ...] = ("arthexis",)
 
 
 def default_paths(
