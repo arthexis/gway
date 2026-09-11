@@ -94,7 +94,7 @@ def _literal_solve_transfer(value: object) -> str:
         text = bytes(value).decode(errors="replace")
     else:
         text = str(value)
-    return text.replace("[", "[[").replace("]", "]]" )
+    return text.replace("[", "[[").replace("]", "]]")
 
 
 def _run_command_stage(
