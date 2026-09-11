@@ -12,6 +12,7 @@ from gway.dispatcher import Dispatcher
 from gway.project import Project
 from gway.registry import Registry
 from gway.sigils import gway_context
+from gway.transfer import decode_transfer
 
 
 class WireAdapter:
@@ -27,7 +28,7 @@ class WireAdapter:
     def run(self, path: tuple[str, ...], argv: list[str]) -> object:
         if path == ("produce",):
             return "upstream"
-        return {"path": path, "argv": argv}
+        return {"path": path, "argv": [decode_transfer(value) for value in argv]}
 
 
 def make_wire_dispatcher(tmp_path: Path) -> tuple[Dispatcher, Registry]:
