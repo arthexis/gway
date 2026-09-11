@@ -86,13 +86,7 @@ C B D A
 
 The presence of any `[N]` or `[*]` switches that receiving command stage into explicit-transfer mode. The automatic leading transfer is disabled.
 
-Numeric selectors may be repeated intentionally:
-
-```text
-producer - consumer [2] [2]
-```
-
-Multiple `[*]` selectors in one stage are invalid. An out-of-range `[N]` is an error. A mapping result provides context but no numbered transfer values, so `[1]` after a mapping result is out of range.
+Numeric selectors may be repeated intentionally. Multiple `[*]` selectors in one stage are invalid. An out-of-range `[N]` is an error. A mapping result provides context but no numbered transfer values.
 
 Ordinary Sigils are not routing selectors:
 

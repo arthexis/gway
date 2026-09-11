@@ -9,8 +9,8 @@ from .registry import Registry
 class Gway:
     """Stable Python facade for managed GWAY projects.
 
-    The facade and CLI share the same registry. Managed command namespaces will
-    be attached to this object by the dispatcher/adapters in later chunks.
+    The facade and CLI share the same registry. Managed command namespaces are
+    part of the public API contract but are not yet dispatched by this facade.
     """
 
     @property
@@ -30,7 +30,7 @@ class Gway:
         if project is not None:
             raise AttributeError(
                 f"managed command dispatch for project {project.name!r} is not "
-                "implemented yet; see PLAN.md Chunk 12"
+                "implemented yet; see docs/PYTHON_API.md"
             )
         raise AttributeError(f"project is not registered: {name}")
 
