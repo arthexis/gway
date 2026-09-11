@@ -36,11 +36,11 @@ def make_wire_dispatcher(tmp_path: Path) -> tuple[Dispatcher, Registry]:
     (root / "gway.toml").write_text(
         """[project]
 name = "wire"
-aliases = {
-    wg = ["--protocol", "wg"],
-    wireguard = ["--protocol", "wg"],
-    literal = ["[-]"],
-}
+
+[project.aliases]
+wg = ["--protocol", "wg"]
+wireguard = ["--protocol", "wg"]
+literal = ["[-]"]
 
 [adapter]
 type = "wire-test"
