@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from .chain_context import chain_context_scope, publish_chain_result
 from .dispatcher.errors import CommandNotFound, DispatchError
+from .explain import record
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .solve import solve_values
 from .stage import Stage, StageKind, parse_stages
@@ -133,6 +134,15 @@ def _run_command_stage(
     selector_tokens = [*("" for _ in alias_arguments), *raw_argv]
     routed = _route_transfer(combined_argv, transfer, selector_tokens=selector_tokens)
     encoded = _encode_routed_values(routed)
+    record(
+        "transfer.route",
+        "routed chain values into command arguments",
+        project=project.name,
+        command=list(command.path),
+        incoming=list(transfer),
+        selectors=list(selector_tokens),
+        outgoing=list(encoded),
+    )
     return dispatcher.run(
         project.name,
         [*command.path, *encoded],
@@ -149,6 +159,7 @@ def run_chain(
 ) -> object:
     stages = parse_stages(tokens)
     result: object = None
+    record("chain.start", "executing command chain", stages=len(stages), tokens=list(tokens))
 
     if interactive and prompt is None:
         from .cli import _prompt_required_value
@@ -158,11 +169,26 @@ def run_chain(
     with chain_context_scope(), transfer_scope():
         for index, stage in enumerate(stages):
             transfer = [] if index == 0 else _transfer_values(result)
+            record(
+                "chain.stage.start",
+                "executing chain stage",
+                stage=index + 1,
+                kind=stage.kind.value,
+                tokens=list(stage.raw_tokens),
+                transfer=list(transfer),
+            )
             if stage.kind is StageKind.SOLVE:
                 values = [
                     *(_literal_solve_transfer(value) for value in transfer),
                     *stage.raw_tokens,
                 ]
+                record(
+                    "transfer.route",
+                    "routed chain values into solve stage",
+                    stage=index + 1,
+                    incoming=list(transfer),
+                    outgoing=list(values),
+                )
                 result = solve_values(
                     values,
                     interactive=interactive,
@@ -177,7 +203,14 @@ def run_chain(
                     interactive=interactive,
                 )
             publish_chain_result(result)
+            record(
+                "chain.stage.result",
+                "published chain stage result",
+                stage=index + 1,
+                result=result,
+            )
 
+    record("chain.result", "command chain completed", result=result)
     return result
 
 

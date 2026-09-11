@@ -180,19 +180,67 @@ class Dispatcher:
             if not project.default_command:
                 raise
             command, argv = self._resolve_default_command(commands, project.default_command, tokens)
+
         alias_arguments = (project.alias_arguments or {}).get(project_name, ())
+        if alias_arguments:
+            record(
+                "arguments.alias",
+                "prepended alias-bound arguments",
+                project=project.name,
+                arguments=list(alias_arguments),
+            )
+
         argv = list(decode_stage_escapes((*alias_arguments, *argv)))
+        record(
+            "arguments.raw",
+            "collected command arguments",
+            project=project.name,
+            command=list(command.path),
+            argv=list(argv),
+        )
         if interactive:
             argv = _fill_required_options(command, argv)
-        argv = _decode_structured_argv(command, argv)
+            record(
+                "arguments.interactive",
+                "filled interactive command arguments",
+                project=project.name,
+                command=list(command.path),
+                argv=list(argv),
+            )
+
+        decoded_argv = _decode_structured_argv(command, argv)
+        record(
+            "arguments.decode",
+            "decoded structured command arguments",
+            project=project.name,
+            command=list(command.path),
+            before=list(argv),
+            after=list(decoded_argv),
+        )
+        argv = decoded_argv
+
         dispatcher_package = _dispatcher_package()
         templates = dispatcher_package.capture_cli_values(argv, paths=self.registry.paths)
+        record(
+            "sigil.capture",
+            "captured command argument templates",
+            project=project.name,
+            command=list(command.path),
+            argv=list(argv),
+        )
         extra_context: dict[str, object] = {}
         if isinstance(adapter, SigilContextAdapter):
             provided_context = adapter.sigil_context(command.path)
             if not isinstance(provided_context, Mapping):
                 raise DispatchError("adapter sigil_context() must return a mapping")
             extra_context.update(provided_context)
+            record(
+                "sigil.context",
+                "added adapter-provided Sigil context",
+                project=project.name,
+                command=list(command.path),
+                keys=sorted(str(key) for key in provided_context),
+            )
         chain_context = current_chain_context()
         extra_context.update(
             (key, value) for key, value in chain_context.items() if key not in RESERVED_CONTEXT_KEYS
@@ -206,7 +254,29 @@ class Dispatcher:
                 extra_context=extra_context or None,
             )
         except ValueError as exc:
+            record(
+                "sigil.resolve",
+                "Sigil resolution failed",
+                project=project.name,
+                command=list(command.path),
+                error=str(exc),
+            )
             raise DispatchError(str(exc)) from exc
+        record(
+            "sigil.resolve",
+            "resolved command argument templates",
+            project=project.name,
+            command=list(command.path),
+            before=list(argv),
+            after=list(resolved_argv),
+        )
+        record(
+            "command.bind",
+            "bound resolved CLI arguments to adapter command",
+            project=project.name,
+            command=list(command.path),
+            argv=list(resolved_argv),
+        )
         record(
             "command.call",
             "invoking adapter command",
