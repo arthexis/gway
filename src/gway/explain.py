@@ -57,9 +57,7 @@ def render_trace(steps: Sequence[ExplainStep]) -> str:
     for step in steps:
         detail = f"  {step.kind}: {step.message}"
         if step.data:
-            fields = ", ".join(
-                f"{key}={_format_value(value)}" for key, value in step.data.items()
-            )
+            fields = ", ".join(f"{key}={_format_value(value)}" for key, value in step.data.items())
             detail = f"{detail} ({fields})"
         lines.append(detail)
     return "\n".join(lines)
