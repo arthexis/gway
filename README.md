@@ -30,7 +30,7 @@ gway path wireguard
 gway remove wireguard
 ```
 
-Installed projects become namespaces:
+Installed projects become CLI namespaces:
 
 ```bash
 gway wireguard status
@@ -39,18 +39,18 @@ gway arthexis check
 
 ## Python API
 
-GWAY also provides a first-class Python API:
+GWAY provides a first-class importable facade:
 
 ```python
 from gway import gway as gw
 
-gw.wireguard.status()
-gw.arthexis.check()
+gw.projects()
+gw.project("wireguard")
 ```
 
-`from gway import gw` remains available as a compatibility alias. The Python facade uses the same registry, adapters, dispatcher, and runner as the CLI rather than bypassing managed project isolation.
+`from gway import gw` remains available as a compatibility alias. Dynamic managed-command calls such as `gw.wireguard.status()` are part of the intended API contract but are not implemented by the facade yet.
 
-See [`docs/PYTHON_API.md`](docs/PYTHON_API.md) for the API contract.
+See [`docs/PYTHON_API.md`](docs/PYTHON_API.md) for the current surface and required command-dispatch contract.
 
 ## Sigils and composition
 
