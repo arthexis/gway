@@ -5,6 +5,7 @@ import sys
 from collections.abc import Sequence
 
 _GLOBAL_FLAGS = frozenset({"--json", "-i", "--interactive"})
+_EXPLAIN_FLAGS = frozenset({"-e", "--explain"})
 
 
 def _partition_args(args: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -82,19 +83,78 @@ def _run_uninstall(args: Sequence[str]) -> int | None:
     return 0
 
 
+def _extract_explain_flag(argv: Sequence[str]) -> tuple[list[str], bool]:
+    filtered: list[str] = []
+    explain = False
+    literal = False
+
+    for arg in argv:
+        if literal:
+            filtered.append(arg)
+            continue
+        if arg == "--":
+            literal = True
+            filtered.append(arg)
+            continue
+        if arg in _EXPLAIN_FLAGS:
+            explain = True
+            continue
+        filtered.append(arg)
+
+    return filtered, explain
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the GWAY CLI with a noninteractive Git environment."""
     os.environ["GIT_TERMINAL_PROMPT"] = "0"
 
-    args = list(sys.argv[1:] if argv is None else argv)
-    uninstall_result = _run_uninstall(args)
-    if uninstall_result is not None:
-        return uninstall_result
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    args, explain = _extract_explain_flag(raw_args)
 
-    normalized, early_result = _normalize_install_args(args)
-    if early_result is not None:
-        return early_result
+    from .explain import explain_scope, record, render_trace
 
-    from .cli import main as cli_main
+    with explain_scope(enabled=explain) as trace:
+        try:
+            uninstall_result = _run_uninstall(args)
+            if uninstall_result is not None:
+                if uninstall_result:
+                    record(
+                        "execution.failure",
+                        "command exited during uninstall",
+                        exit_code=uninstall_result,
+                    )
+                return uninstall_result
 
-    return cli_main(normalized)
+            normalized, early_result = _normalize_install_args(args)
+            if early_result is not None:
+                if early_result:
+                    record(
+                        "execution.failure",
+                        "command exited before dispatch",
+                        exit_code=early_result,
+                    )
+                return early_result
+
+            from .cli import main as cli_main
+
+            result = cli_main(normalized)
+            if result:
+                record(
+                    "execution.failure",
+                    "command exited with non-zero status",
+                    exit_code=result,
+                )
+            return result
+        except SystemExit:
+            raise
+        except BaseException as exc:
+            record(
+                "execution.failure",
+                "command raised an exception",
+                exception=type(exc).__name__,
+                error=str(exc),
+            )
+            raise
+        finally:
+            if explain:
+                print(render_trace(trace), file=sys.stderr)

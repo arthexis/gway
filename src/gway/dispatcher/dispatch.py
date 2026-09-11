@@ -7,6 +7,7 @@ from ..adapters import AdapterRegistry
 from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
 from ..command import Command, command_path_aliases
+from ..explain import record
 from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..registry import Registry, RegistryError
 from ..sigils import RESERVED_CONTEXT_KEYS
@@ -47,7 +48,14 @@ class Dispatcher:
 
     def _adapter(self, project_name: str):
         project = self.registry.require(project_name)
-        return self.adapters.create(project)
+        adapter = self.adapters.create(project)
+        record(
+            "adapter.select",
+            "selected project adapter",
+            project=project.name,
+            adapter=project.adapter_type,
+        )
+        return adapter
 
     @staticmethod
     def _resolve_command(
@@ -60,6 +68,7 @@ class Dispatcher:
             if len(tokens) >= len(command.path)
             and normalized_tokens[: len(command.path)] == _command_path_key(command.path)
         ]
+        resolution = "exact"
         if not matches:
             matches = [
                 command
@@ -67,10 +76,19 @@ class Dispatcher:
                 if len(tokens) >= len(command.path)
                 and normalized_tokens[: len(command.path)] in command_path_aliases(command.path)[1:]
             ]
+            resolution = "alias"
         if not matches:
             requested = " ".join(tokens) if tokens else "<command>"
+            record("command.resolve", "command resolution failed", requested=requested)
             raise CommandNotFound(f"unknown command: {requested}")
         command = max(matches, key=lambda item: len(item.path))
+        record(
+            "command.resolve",
+            "resolved managed command",
+            requested=list(tokens),
+            selected=list(command.path),
+            resolution=resolution,
+        )
         return command, list(tokens[len(command.path) :])
 
     @staticmethod
@@ -82,7 +100,20 @@ class Dispatcher:
         normalized_default = _command_path_key(default_path)
         for command in commands:
             if _command_path_key(command.path) == normalized_default:
+                record(
+                    "command.resolve",
+                    "resolved configured default command",
+                    requested=list(tokens),
+                    selected=list(command.path),
+                    resolution="default",
+                )
                 return command, list(tokens)
+        record(
+            "command.resolve",
+            "configured default command was not found",
+            selected=list(default_path),
+            resolution="default",
+        )
         raise CommandNotFound(f"configured default command not found: {' '.join(default_path)}")
 
     def commands(self, project_name: str) -> tuple[Command, ...]:
@@ -125,6 +156,7 @@ class Dispatcher:
         *,
         interactive: bool = False,
     ) -> object:
+        record("dispatch.start", "dispatching project", project=project_name, tokens=list(tokens))
         if project_name == MANAGED_CHAIN_PROJECT:
             from ..chain import run_chain
 
@@ -135,6 +167,12 @@ class Dispatcher:
             return self._run_expression(tokens[0], interactive=interactive)
         project = self.registry.require(project_name)
         adapter = self.adapters.create(project)
+        record(
+            "adapter.select",
+            "selected project adapter",
+            project=project.name,
+            adapter=project.adapter_type,
+        )
         commands = tuple(adapter.commands())
         try:
             command, argv = self._resolve_command(commands, tokens)
@@ -142,19 +180,67 @@ class Dispatcher:
             if not project.default_command:
                 raise
             command, argv = self._resolve_default_command(commands, project.default_command, tokens)
+
         alias_arguments = (project.alias_arguments or {}).get(project_name, ())
+        if alias_arguments:
+            record(
+                "arguments.alias",
+                "prepended alias-bound arguments",
+                project=project.name,
+                arguments=list(alias_arguments),
+            )
+
         argv = list(decode_stage_escapes((*alias_arguments, *argv)))
+        record(
+            "arguments.raw",
+            "collected command arguments",
+            project=project.name,
+            command=list(command.path),
+            argv=list(argv),
+        )
         if interactive:
             argv = _fill_required_options(command, argv)
-        argv = _decode_structured_argv(command, argv)
+            record(
+                "arguments.interactive",
+                "filled interactive command arguments",
+                project=project.name,
+                command=list(command.path),
+                argv=list(argv),
+            )
+
+        decoded_argv = _decode_structured_argv(command, argv)
+        record(
+            "arguments.decode",
+            "decoded structured command arguments",
+            project=project.name,
+            command=list(command.path),
+            before=list(argv),
+            after=list(decoded_argv),
+        )
+        argv = decoded_argv
+
         dispatcher_package = _dispatcher_package()
         templates = dispatcher_package.capture_cli_values(argv, paths=self.registry.paths)
+        record(
+            "sigil.capture",
+            "captured command argument templates",
+            project=project.name,
+            command=list(command.path),
+            argv=list(argv),
+        )
         extra_context: dict[str, object] = {}
         if isinstance(adapter, SigilContextAdapter):
             provided_context = adapter.sigil_context(command.path)
             if not isinstance(provided_context, Mapping):
                 raise DispatchError("adapter sigil_context() must return a mapping")
             extra_context.update(provided_context)
+            record(
+                "sigil.context",
+                "added adapter-provided Sigil context",
+                project=project.name,
+                command=list(command.path),
+                keys=sorted(str(key) for key in provided_context),
+            )
         chain_context = current_chain_context()
         extra_context.update(
             (key, value) for key, value in chain_context.items() if key not in RESERVED_CONTEXT_KEYS
@@ -168,8 +254,45 @@ class Dispatcher:
                 extra_context=extra_context or None,
             )
         except ValueError as exc:
+            record(
+                "sigil.resolve",
+                "Sigil resolution failed",
+                project=project.name,
+                command=list(command.path),
+                error=str(exc),
+            )
             raise DispatchError(str(exc)) from exc
-        return adapter.run(command.path, resolved_argv)
+        record(
+            "sigil.resolve",
+            "resolved command argument templates",
+            project=project.name,
+            command=list(command.path),
+            before=list(argv),
+            after=list(resolved_argv),
+        )
+        record(
+            "command.bind",
+            "bound resolved CLI arguments to adapter command",
+            project=project.name,
+            command=list(command.path),
+            argv=list(resolved_argv),
+        )
+        record(
+            "command.call",
+            "invoking adapter command",
+            project=project.name,
+            command=list(command.path),
+            argv=list(resolved_argv),
+        )
+        result = adapter.run(command.path, resolved_argv)
+        record(
+            "command.result",
+            "adapter command completed",
+            project=project.name,
+            command=list(command.path),
+            result=result,
+        )
+        return result
 
     def describe(self, project_name: str, path: tuple[str, ...]) -> Command:
         adapter = self._adapter(project_name)
