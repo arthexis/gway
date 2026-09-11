@@ -47,6 +47,5 @@ def test_render_trace_is_stable_plain_text() -> None:
     ]
 
     assert render_trace(steps) == (
-        "Explain:\n"
-        "  adapter.select: selected project adapter (project=demo, adapter=python)"
+        "Explain:\n  adapter.select: selected project adapter (project=demo, adapter=python)"
     )
