@@ -52,7 +52,7 @@ jobs:
   compatibility:
     name: Python compatibility
     needs: tests
-    if: always()
+    if: always() && needs.tests.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
       - name: Require all Python versions
