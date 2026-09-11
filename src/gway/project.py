@@ -189,7 +189,7 @@ class Project:
             }
         else:
             raise ManifestError(
-                "[project].aliases must be an array of strings or a table mapping aliases to arguments"
+                "[project].aliases must be an array or alias-to-arguments table"
             )
         if any(alias.startswith("[") for alias in aliases):
             raise ManifestError("[project].aliases must not start with '['")
