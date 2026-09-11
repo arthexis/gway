@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from gway import bootstrap, cli
 from gway.explain import record
 
@@ -28,6 +30,21 @@ def test_bootstrap_explain_renders_trace_and_failure(capsys, monkeypatch) -> Non
     assert "Explain:" in captured.err
     assert "test.step: ran fake command" in captured.err
     assert "execution.failure: command exited with non-zero status" in captured.err
+
+
+def test_bootstrap_explain_does_not_count_system_exit_as_failure(capsys, monkeypatch) -> None:
+    def fake_main(argv):
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "main", fake_main)
+
+    with pytest.raises(SystemExit) as exc_info:
+        bootstrap.main(["--explain", "--help"])
+
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "Explain:" in captured.err
+    assert "execution.failure" not in captured.err
 
 
 def test_bootstrap_without_explain_does_not_render_trace(capsys, monkeypatch) -> None:
