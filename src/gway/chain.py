@@ -173,7 +173,7 @@ def run_chain(
                 "chain.stage.start",
                 "executing chain stage",
                 stage=index + 1,
-                kind=stage.kind.value,
+                stage_kind=stage.kind.value,
                 tokens=list(stage.raw_tokens),
                 transfer=list(transfer),
             )
