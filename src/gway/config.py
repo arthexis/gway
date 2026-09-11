@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
-import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from ._toml import tomllib
 
 
 class ConfigError(ValueError):

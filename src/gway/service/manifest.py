@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import re
-import tomllib
 from typing import Any
 
+from .._toml import tomllib
 from ..project import Project
 
 

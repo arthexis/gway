@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 
 
 class StageSyntaxError(ValueError):
     """Raised when argv cannot be split into valid Gway stages."""
 
 
-class StageKind(StrEnum):
+class StageKind(str, Enum):
     COMMAND = "command"
     SOLVE = "solve"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 @dataclass(frozen=True, slots=True)
