@@ -14,16 +14,29 @@ A compatibility alias remains available:
 from gway import gw
 ```
 
-Managed projects mirror the CLI namespace:
+## Current surface
+
+The facade currently shares GWAY's registry and exposes registered-project metadata:
+
+```python
+gw.projects()
+gw.project("wireguard")
+```
+
+Managed command dispatch through dynamic namespaces is **not implemented yet** in the Python facade.
+
+## Required command-dispatch contract
+
+When Python managed-command dispatch is implemented, it should mirror CLI namespaces:
 
 ```python
 gw.wireguard.status()
 gw.arthexis.check()
 ```
 
-The Python facade delegates through the same registry, adapter, dispatcher, and runner used by the CLI. It must not bypass managed project environments by importing every project directly into the caller's interpreter.
+The facade must delegate through the same registry, adapter, dispatcher, and runner used by the CLI. It must not bypass managed project environments by importing every project directly into the caller's interpreter.
 
-This means the CLI and Python API are two front ends over the same command model:
+The intended invariant is that:
 
 ```text
 gway wireguard status
