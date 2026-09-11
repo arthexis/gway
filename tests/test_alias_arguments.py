@@ -121,8 +121,7 @@ def test_sigil_alias_applies_alias_arguments(tmp_path: Path) -> None:
     root = tmp_path / "wire-python"
     root.mkdir()
     (root / "wire_values.py").write_text(
-        "def status(protocol='none'):\n"
-        "    return protocol\n",
+        "def status(protocol='none'):\n    return protocol\n",
         encoding="utf-8",
     )
     (root / "gway.toml").write_text(
