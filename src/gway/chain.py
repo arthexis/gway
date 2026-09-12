@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
-from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -169,8 +168,7 @@ def run_statement(
 
         prompt = _prompt_required_value
 
-    context_scope = chain_context_scope(context) if context is not None else chain_context_scope()
-    with context_scope, transfer_scope():
+    with chain_context_scope(context), transfer_scope():
         for index, stage in enumerate(stages):
             transfer = [] if index == 0 else _transfer_values(result)
             record(
