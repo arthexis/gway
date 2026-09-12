@@ -83,6 +83,35 @@ def _run_uninstall(args: Sequence[str]) -> int | None:
     return 0
 
 
+def _run_recipe(args: Sequence[str]) -> int | None:
+    global_flags, command_args = _partition_args(args)
+    if not command_args or command_args[0] != "recipe":
+        return None
+
+    if command_args in (["recipe", "-h"], ["recipe", "--help"]):
+        print("usage: gway recipe [-i] [file.rx]")
+        print()
+        print("Run a GWAY .rx recipe, or start the recipe REPL with -i.")
+        return 0
+
+    interactive = "-i" in global_flags or "--interactive" in global_flags
+    json_output = "--json" in global_flags
+    from .recipe import RecipeError, run_recipe_file, run_recipe_repl
+
+    try:
+        if interactive:
+            if len(command_args) != 1:
+                raise RecipeError("recipe -i starts the REPL and does not accept a file")
+            return run_recipe_repl(json_output=json_output)
+        if len(command_args) != 2 or command_args[1] == "--":
+            raise RecipeError("recipe requires one .rx file (or -i for the REPL)")
+        run_recipe_file(command_args[1], json_output=json_output)
+        return 0
+    except RecipeError as exc:
+        print(f"gway: {exc}", file=sys.stderr)
+        return 2
+
+
 def _extract_explain_flag(argv: Sequence[str]) -> tuple[list[str], bool]:
     filtered: list[str] = []
     explain = False
@@ -115,6 +144,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     with explain_scope(enabled=explain) as trace:
         try:
+            recipe_result = _run_recipe(args)
+            if recipe_result is not None:
+                if recipe_result:
+                    record(
+                        "execution.failure",
+                        "command exited during recipe execution",
+                        exit_code=recipe_result,
+                    )
+                return recipe_result
+
             uninstall_result = _run_uninstall(args)
             if uninstall_result is not None:
                 if uninstall_result:
