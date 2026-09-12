@@ -86,6 +86,12 @@ class Registry:
         self._save_records(records)
         return project
 
+    @staticmethod
+    def _same_managed_project(existing: Project, project: Project) -> bool:
+        if existing.repository and project.repository:
+            return existing.repository == project.repository
+        return existing.path.resolve() == project.path.resolve()
+
     def register(self, project: Project) -> Project:
         records = self._load_records()
         claimed = {project.name, *project.aliases}
@@ -94,15 +100,23 @@ class Registry:
         if len(claimed) != 1 + len(project.aliases):
             raise RegistryError(f"duplicate name or alias in project {project.name}")
 
+        replaced: set[str] = set()
         for existing_name, record in records.items():
             if existing_name == project.name:
                 continue
             existing_claims = {existing_name, *record.get("aliases", [])}
             overlap = claimed & existing_claims
-            if overlap:
-                value = sorted(overlap)[0]
-                raise RegistryError(f"project name or alias already registered: {value}")
+            if not overlap:
+                continue
+            existing = Project.from_record(record)
+            if self._same_managed_project(existing, project):
+                replaced.add(existing_name)
+                continue
+            value = sorted(overlap)[0]
+            raise RegistryError(f"project name or alias already registered: {value}")
 
+        for existing_name in replaced:
+            records.pop(existing_name, None)
         records[project.name] = project.to_record()
         self._save_records(records)
         return project
