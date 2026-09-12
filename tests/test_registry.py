@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -98,3 +99,52 @@ def test_registry_rejects_alias_collisions(tmp_path: Path) -> None:
     registry.register_path(make_project(tmp_path / "one", name="one", aliases='["shared"]'))
     with pytest.raises(RegistryError, match="already registered: shared"):
         registry.register_path(make_project(tmp_path / "two", name="two", aliases='["shared"]'))
+
+
+def test_registry_reclaims_aliases_when_managed_project_is_renamed(tmp_path: Path) -> None:
+    registry = Registry(GwayPaths(tmp_path / "config", tmp_path / "data"))
+    old_path = make_project(tmp_path / "old", name="wireguard", aliases='["wg"]')
+    old_project = replace(
+        Project.from_path(old_path),
+        repository="arthexis/gway-wire",
+    )
+    registry.register(old_project)
+
+    new_path = make_project(
+        tmp_path / "new",
+        name="wire",
+        aliases='["wireguard", "wg"]',
+    )
+    new_project = replace(
+        Project.from_path(new_path),
+        repository="arthexis/gway-wire",
+    )
+
+    registered = registry.register(new_project)
+
+    assert registered == new_project
+    assert registry.require("wire") == new_project
+    assert registry.require("wireguard") == new_project
+    assert registry.require("wg") == new_project
+    assert registry.list() == [new_project]
+
+
+def test_registry_does_not_reclaim_aliases_from_unrelated_repository(tmp_path: Path) -> None:
+    registry = Registry(GwayPaths(tmp_path / "config", tmp_path / "data"))
+    old_project = replace(
+        Project.from_path(
+            make_project(tmp_path / "old", name="wireguard", aliases='["wg"]')
+        ),
+        repository="arthexis/gway-wireguard",
+    )
+    registry.register(old_project)
+
+    new_project = replace(
+        Project.from_path(
+            make_project(tmp_path / "new", name="wire", aliases='["wireguard", "wg"]')
+        ),
+        repository="other/gway-wire",
+    )
+
+    with pytest.raises(RegistryError, match="already registered"):
+        registry.register(new_project)
