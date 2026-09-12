@@ -36,7 +36,37 @@ def test_recipe_cli_runs_file_and_renders_each_result(
     assert capsys.readouterr().out == "first: value\ndone\n"
 
 
-def test_recipe_cli_reserves_interactive_for_repl(capsys) -> None:
-    assert bootstrap.main(["recipe", "-i"]) == 2
-    error = capsys.readouterr().err
-    assert "reserved for recipe REPL mode" in error
+def test_recipe_cli_forwards_interactive_flag(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    recipe = tmp_path / "sample.rx"
+    recipe.write_text("ignored by stub\n", encoding="utf-8")
+    seen: list[bool] = []
+
+    def fake_run_recipe(path, dispatcher, *, interactive=False, on_result=None):
+        seen.append(interactive)
+        return None
+
+    monkeypatch.setattr("gway.recipe.run_recipe", fake_run_recipe)
+
+    assert bootstrap.main(["recipe", "-i", str(recipe)]) == 0
+    assert seen == [True]
+
+
+def test_recipe_cli_accepts_interactive_before_command(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    recipe = tmp_path / "sample.rx"
+    recipe.write_text("ignored by stub\n", encoding="utf-8")
+    seen: list[bool] = []
+
+    def fake_run_recipe(path, dispatcher, *, interactive=False, on_result=None):
+        seen.append(interactive)
+        return None
+
+    monkeypatch.setattr("gway.recipe.run_recipe", fake_run_recipe)
+
+    assert bootstrap.main(["-i", "recipe", str(recipe)]) == 0
+    assert seen == [True]
