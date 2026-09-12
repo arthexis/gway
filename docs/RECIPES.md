@@ -1,7 +1,32 @@
 # GWAY Recipes
 
-GWAY recipes are tracked in issue #883 and will use the `.rx` extension.
+GWAY recipes use the `.rx` extension and contain one GWAY statement per line.
 
-The first implementation step introduces a reusable statement executor without adding the recipe CLI yet. A statement uses the existing GWAY stage grammar, including `-` for explicit previous-result transfer.
+Run a recipe with:
 
-`run_statement()` may receive a caller-owned context mapping. Results are published into that mapping while the statement runs, but the active context remains invocation-local and is restored afterward. This is the foundation for later recipe lines sharing named context without changing existing chain behavior.
+```text
+gway recipe path/to/recipe.rx
+```
+
+Blank lines and lines whose first non-whitespace character is `#` are ignored. Arguments may be quoted so a single GWAY argument can contain spaces.
+
+Each recipe runs in one persistent named context. Mapping values published by earlier statements may auto-populate later named options, while a newline never feeds the previous scalar result positionally.
+
+Use `-` inside a statement when the previous stage result should be transferred positionally:
+
+```text
+demo scalar - demo echo
+```
+
+Compare that with separate statements:
+
+```text
+demo publish
+demo consume
+```
+
+The second form shares named context only. Explicit arguments always take precedence over values found in recipe context.
+
+Recipes fail fast. Errors include the recipe path and line number where practical.
+
+`gway recipe -i` is reserved for the recipe REPL tracked as the next chunk of issue #883; this chunk intentionally does not implement the REPL yet.
