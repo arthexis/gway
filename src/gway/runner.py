@@ -104,7 +104,11 @@ class Runner:
             "--disable-pip-version-check",
         ]
         if upgrade:
-            command.append("--upgrade")
+            # Managed checkouts may depend on mutable VCS refs such as @main while
+            # keeping the same package version. Force reinstall so refreshing a
+            # project also refreshes those dependencies instead of leaving an old
+            # resolved commit in the project's environment.
+            command.extend(["--upgrade", "--force-reinstall"])
         command.extend(["-e", self._install_spec(project, extras)])
         subprocess.run(command, check=True, stdout=sys.stderr)
 

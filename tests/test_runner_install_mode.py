@@ -41,7 +41,7 @@ def test_managed_project_install_is_editable(tmp_path: Path, monkeypatch) -> Non
     ]
 
 
-def test_managed_project_refresh_keeps_extras_in_editable_mode(
+def test_managed_project_refresh_reinstalls_dependencies_and_keeps_extras(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -68,6 +68,7 @@ def test_managed_project_refresh_keeps_extras_in_editable_mode(
             "install",
             "--disable-pip-version-check",
             "--upgrade",
+            "--force-reinstall",
             "-e",
             f"{project.path}[celery]",
         ]
