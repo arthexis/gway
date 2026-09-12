@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -95,7 +96,7 @@ def _literal_solve_transfer(value: object) -> str:
         text = bytes(value).decode(errors="replace")
     else:
         text = str(value)
-    return text.replace("[", "[[").replace("]", "]]")
+    return text.replace("[", "[[").replace("]", "]]" )
 
 
 def _run_command_stage(
@@ -150,13 +151,15 @@ def _run_command_stage(
     )
 
 
-def run_chain(
+def run_statement(
     dispatcher: Dispatcher,
     tokens: Sequence[str],
     *,
     interactive: bool = False,
     prompt: Callable[[str], str] | None = None,
+    context: MutableMapping[str, object] | None = None,
 ) -> object:
+    """Execute one GWAY statement, optionally inside a caller-owned context."""
     stages = parse_stages(tokens)
     result: object = None
     record("chain.start", "executing command chain", stages=len(stages), tokens=list(tokens))
@@ -166,7 +169,8 @@ def run_chain(
 
         prompt = _prompt_required_value
 
-    with chain_context_scope(), transfer_scope():
+    context_scope = chain_context_scope(context) if context is not None else chain_context_scope()
+    with context_scope, transfer_scope():
         for index, stage in enumerate(stages):
             transfer = [] if index == 0 else _transfer_values(result)
             record(
@@ -214,4 +218,20 @@ def run_chain(
     return result
 
 
-__all__ = ["run_chain"]
+def run_chain(
+    dispatcher: Dispatcher,
+    tokens: Sequence[str],
+    *,
+    interactive: bool = False,
+    prompt: Callable[[str], str] | None = None,
+) -> object:
+    """Execute one standalone GWAY chain using invocation-local context."""
+    return run_statement(
+        dispatcher,
+        tokens,
+        interactive=interactive,
+        prompt=prompt,
+    )
+
+
+__all__ = ["run_chain", "run_statement"]
