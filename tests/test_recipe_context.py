@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from gway.adapters import AdapterError
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.project import Project
@@ -62,7 +63,7 @@ def test_new_statement_does_not_feed_scalar_result_positionally(tmp_path: Path) 
     session = RecipeSession(_dispatcher(tmp_path))
 
     assert session.run(["demo", "scalar"]) == "scalar-token"
-    with pytest.raises(SystemExit):
+    with pytest.raises(AdapterError):
         session.run(["demo", "echo"])
 
 
