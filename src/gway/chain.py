@@ -157,6 +157,7 @@ def run_chain(
     interactive: bool = False,
     prompt: Callable[[str], str] | None = None,
     context: dict[str, object] | None = None,
+    initial_result: object = None,
 ) -> object:
     stages = parse_stages(tokens)
     result: object = None
@@ -169,7 +170,7 @@ def run_chain(
 
     with chain_context_scope(context), transfer_scope():
         for index, stage in enumerate(stages):
-            transfer = [] if index == 0 else _transfer_values(result)
+            transfer = _transfer_values(initial_result) if index == 0 else _transfer_values(result)
             record(
                 "chain.stage.start",
                 "executing chain stage",
