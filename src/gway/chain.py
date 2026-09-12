@@ -95,7 +95,7 @@ def _literal_solve_transfer(value: object) -> str:
         text = bytes(value).decode(errors="replace")
     else:
         text = str(value)
-    return text.replace("[", "[[").replace("]", "]]")
+    return text.replace("[", "[[").replace("]", "]]" )
 
 
 def _run_command_stage(
@@ -156,6 +156,7 @@ def run_chain(
     *,
     interactive: bool = False,
     prompt: Callable[[str], str] | None = None,
+    context: dict[str, object] | None = None,
 ) -> object:
     stages = parse_stages(tokens)
     result: object = None
@@ -166,7 +167,7 @@ def run_chain(
 
         prompt = _prompt_required_value
 
-    with chain_context_scope(), transfer_scope():
+    with chain_context_scope(context), transfer_scope():
         for index, stage in enumerate(stages):
             transfer = [] if index == 0 else _transfer_values(result)
             record(
