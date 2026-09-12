@@ -17,12 +17,16 @@ def current_chain_context() -> dict[str, object]:
 
 
 @contextmanager
-def chain_context_scope():
-    """Create and reliably restore one invocation-local chain context."""
-    context: dict[str, object] = {}
-    token = _CHAIN_CONTEXT.set(context)
+def chain_context_scope(context: dict[str, object] | None = None):
+    """Create and reliably restore one invocation-local chain context.
+
+    A caller may provide the backing mapping when several independent GWAY
+    statements must share named context without implying positional chaining.
+    """
+    active = {} if context is None else context
+    token = _CHAIN_CONTEXT.set(active)
     try:
-        yield context
+        yield active
     finally:
         _CHAIN_CONTEXT.reset(token)
 
