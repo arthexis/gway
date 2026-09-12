@@ -1,0 +1,3 @@
+Issue #883 chunk 1: reusable statement execution foundation.
+
+This branch intentionally adds no `gway recipe` CLI and no `.rx` parser yet.
