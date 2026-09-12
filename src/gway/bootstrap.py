@@ -89,21 +89,14 @@ def _run_recipe(args: Sequence[str]) -> int | None:
         return None
 
     if command_args in (["recipe", "-h"], ["recipe", "--help"]):
-        print("usage: gway recipe [-h] FILE.rx")
+        print("usage: gway recipe [-h] [-i] FILE.rx")
         print()
         print("Execute a GWAY recipe file with shared named context between statements.")
+        print("  -i, --interactive  prompt for missing required values")
         return 0
 
-    if any(flag in {"-i", "--interactive"} for flag in global_flags):
-        print("usage: gway recipe [-h] FILE.rx", file=sys.stderr)
-        print(
-            "gway recipe: error: -i/--interactive is reserved for recipe REPL mode",
-            file=sys.stderr,
-        )
-        return 2
-
     if len(command_args) != 2 or command_args[1] == "--":
-        print("usage: gway recipe [-h] FILE.rx", file=sys.stderr)
+        print("usage: gway recipe [-h] [-i] FILE.rx", file=sys.stderr)
         print(
             "gway recipe: error: the following arguments are required: FILE.rx"
             if len(command_args) == 1
@@ -120,6 +113,7 @@ def _run_recipe(args: Sequence[str]) -> int | None:
         run_recipe(
             command_args[1],
             Dispatcher(),
+            interactive=any(flag in {"-i", "--interactive"} for flag in global_flags),
             on_result=lambda result: _render_result(
                 result,
                 json_output="--json" in global_flags,
