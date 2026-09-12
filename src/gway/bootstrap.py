@@ -83,6 +83,50 @@ def _run_uninstall(args: Sequence[str]) -> int | None:
     return 0
 
 
+def _run_recipe(args: Sequence[str]) -> int | None:
+    global_flags, command_args = _partition_args(args)
+    if not command_args or command_args[0] != "recipe":
+        return None
+
+    if command_args in (["recipe", "-h"], ["recipe", "--help"]):
+        print("usage: gway recipe [-h] [-i] FILE.rx")
+        print()
+        print("Execute a GWAY recipe file with shared named context between statements.")
+        print("  -i, --interactive  prompt for missing required values")
+        return 0
+
+    if len(command_args) != 2 or command_args[1] == "--":
+        print("usage: gway recipe [-h] [-i] FILE.rx", file=sys.stderr)
+        print(
+            "gway recipe: error: the following arguments are required: FILE.rx"
+            if len(command_args) == 1
+            else "gway recipe: error: expected exactly one recipe file",
+            file=sys.stderr,
+        )
+        return 2
+
+    from .cli import _handle_cli_exception, _render_result
+    from .dispatcher import Dispatcher
+    from .recipe import RecipeError, run_recipe
+
+    try:
+        run_recipe(
+            command_args[1],
+            Dispatcher(),
+            interactive=any(flag in {"-i", "--interactive"} for flag in global_flags),
+            on_result=lambda result: _render_result(
+                result,
+                json_output="--json" in global_flags,
+            ),
+        )
+    except RecipeError as exc:
+        print(f"gway: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        return _handle_cli_exception(exc, list(args))
+    return 0
+
+
 def _extract_explain_flag(argv: Sequence[str]) -> tuple[list[str], bool]:
     filtered: list[str] = []
     explain = False
@@ -124,6 +168,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         exit_code=uninstall_result,
                     )
                 return uninstall_result
+
+            recipe_result = _run_recipe(args)
+            if recipe_result is not None:
+                if recipe_result:
+                    record(
+                        "execution.failure",
+                        "command exited during recipe execution",
+                        exit_code=recipe_result,
+                    )
+                return recipe_result
 
             normalized, early_result = _normalize_install_args(args)
             if early_result is not None:
