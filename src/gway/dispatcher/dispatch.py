@@ -6,9 +6,15 @@ from collections.abc import Mapping, Sequence
 from ..adapters import AdapterRegistry
 from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
-from ..command import Command, command_path_aliases
+from ..command import Command, Parameter, command_path_aliases
 from ..explain import record
-from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
+from ..expression import (
+    MANAGED_CHAIN_PROJECT,
+    MANAGED_EXPRESSION_PROJECT,
+    STRUCTURED_KWARG_PREFIX,
+    STRUCTURED_TUPLE_PREFIX,
+    parse_managed_branches,
+)
 from ..registry import Registry, RegistryError
 from ..sigils import RESERVED_CONTEXT_KEYS
 from ..stage import decode_stage_escapes
@@ -33,6 +39,70 @@ def _command_key(value: str) -> str:
 def _command_path_key(path: Sequence[str]) -> tuple[str, ...]:
     """Normalize command-path spelling while leaving argument values untouched."""
     return tuple(_command_key(part) for part in path)
+
+
+def _parameter_options(parameter: Parameter) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    positive = parameter.options or (f"--{_command_key(parameter.name)}",)
+    negative = parameter.negative_options or ()
+    return positive, negative
+
+
+def _context_value_token(value: object) -> str:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return f"{STRUCTURED_TUPLE_PREFIX}{','.join(str(item) for item in value)}"
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    if isinstance(value, bytearray):
+        return bytes(value).decode(errors="replace")
+    return str(value)
+
+
+def _fill_context_options(
+    command: Command,
+    argv: Sequence[str],
+    context: Mapping[str, object],
+) -> list[str]:
+    """Fill omitted named options from active chain/recipe context.
+
+    Positional parameters are deliberately ignored. Explicit CLI arguments always
+    win, including compact structured keyword arguments.
+    """
+    filled = list(argv)
+    injected: dict[str, object] = {}
+
+    for parameter in command.parameters:
+        if parameter.positional or parameter.name not in context:
+            continue
+        value = context[parameter.name]
+        if value is None:
+            continue
+
+        positive, negative = _parameter_options(parameter)
+        explicit = any(token in {*positive, *negative} for token in filled)
+        structured_prefix = f"{STRUCTURED_KWARG_PREFIX}{parameter.name}="
+        explicit = explicit or any(token.startswith(structured_prefix) for token in filled)
+        if explicit:
+            continue
+
+        if isinstance(value, bool) and parameter.consumes_value is not True:
+            if value:
+                filled.append(positive[0])
+            elif negative:
+                filled.append(negative[0])
+            else:
+                continue
+        else:
+            filled.extend((positive[0], _context_value_token(value)))
+        injected[parameter.name] = value
+
+    if injected:
+        record(
+            "arguments.context",
+            "filled omitted named arguments from active context",
+            command=list(command.path),
+            names=sorted(injected),
+        )
+    return filled
 
 
 class Dispatcher:
@@ -191,6 +261,7 @@ class Dispatcher:
             )
 
         argv = list(decode_stage_escapes((*alias_arguments, *argv)))
+        argv = _fill_context_options(command, argv, current_chain_context())
         record(
             "arguments.raw",
             "collected command arguments",
