@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 from ..command import Command, Parameter
 from ..expression import STRUCTURED_ARG_PREFIX, STRUCTURED_KWARG_PREFIX
+from ..transfer import encode_transfer
 from .errors import DispatchError
 from .options import (
     _match_negative_option,
@@ -125,6 +127,66 @@ def _structured_value_tokens(parameter: Parameter, value: str) -> list[str]:
                 return [negative_options[0]]
             return [option, "false"]
     return [option, value]
+
+
+def _context_value_text(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (bool, int, float, Path)):
+        return str(value)
+    return encode_transfer(value)
+
+
+def _provided_named_parameters(command: Command, argv: Sequence[str]) -> set[str]:
+    """Return named parameters explicitly supplied by the caller."""
+    option_parameters = _option_parameters(command)
+    negative_option_parameters = _negative_option_parameters(command)
+    provided = set(_structured_keyword_counts(argv))
+    index = 0
+    literal = False
+    while index < len(argv):
+        token = argv[index]
+        if not literal and token == "--":
+            literal = True
+            index += 1
+            continue
+        if literal:
+            index += 1
+            continue
+        negative = _match_negative_option(token, negative_option_parameters)
+        if negative is not None:
+            provided.add(negative.name)
+            index += 1
+            continue
+        parameter, attached = _match_option(token, option_parameters)
+        if parameter is not None:
+            provided.add(parameter.name)
+            index += 1
+            if not attached:
+                index += _option_value_count(
+                    parameter, argv, index, option_parameters, negative_option_parameters
+                )
+            continue
+        index += 1
+    return provided
+
+
+def _fill_context_options(
+    command: Command,
+    argv: Sequence[str],
+    context: Mapping[str, object],
+) -> tuple[list[str], dict[str, object]]:
+    """Fill omitted named options from context without touching positionals."""
+    result = list(argv)
+    provided = _provided_named_parameters(command, argv)
+    filled: dict[str, object] = {}
+    for parameter in command.parameters:
+        if parameter.positional or parameter.name in provided or parameter.name not in context:
+            continue
+        value = context[parameter.name]
+        result.extend(_structured_value_tokens(parameter, _context_value_text(value)))
+        filled[parameter.name] = value
+    return result, filled
 
 
 def _decode_structured_argv(command: Command, argv: Sequence[str]) -> list[str]:
