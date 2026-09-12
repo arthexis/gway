@@ -1,32 +1,39 @@
 # GWAY Recipes
 
-GWAY recipes use the `.rx` extension and contain one GWAY statement per line.
+GWAY recipes use the `.rx` extension and execute one GWAY statement per logical line.
 
 Run a recipe with:
 
 ```text
-gway recipe path/to/recipe.rx
+gway recipe path/to/file.rx
 ```
 
-Blank lines and lines whose first non-whitespace character is `#` are ignored. Arguments may be quoted so a single GWAY argument can contain spaces.
+Blank lines and full-line `#` comments are ignored. Each statement is tokenized as GWAY input rather than executed by a shell.
 
-Each recipe runs in one persistent named context. Mapping values published by earlier statements may auto-populate later named options, while a newline never feeds the previous scalar result positionally.
+Recipe statements share named context. Mapping results publish their keys into the accumulated recipe context, so later commands may resolve omitted named parameters from earlier results. Newlines do not transfer scalar results positionally.
 
-Use `-` inside a statement when the previous stage result should be transferred positionally:
+Use `-` inside a statement when the previous result should feed the next stage positionally:
 
 ```text
-demo scalar - demo echo
+producer - consumer
 ```
 
-Compare that with separate statements:
+This differs from:
 
 ```text
-demo publish
-demo consume
+producer
+consumer
 ```
 
-The second form shares named context only. Explicit arguments always take precedence over values found in recipe context.
+where `consumer` can see accumulated named context but does not receive the previous scalar result as a positional argument.
 
-Recipes fail fast. Errors include the recipe path and line number where practical.
+`-i` / `--interactive` keeps its normal GWAY meaning for recipes: prompt for required values that remain missing after explicit arguments and accumulated recipe context are considered.
 
-`gway recipe -i` is reserved for the recipe REPL tracked as the next chunk of issue #883; this chunk intentionally does not implement the REPL yet.
+Both placements work:
+
+```text
+gway -i recipe deploy.rx
+gway recipe -i deploy.rx
+```
+
+Recipes stop on the first failed statement and report the recipe path and line number.
