@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shlex
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -70,6 +70,7 @@ def run_recipe(
     dispatcher: Dispatcher,
     *,
     interactive: bool = False,
+    on_result: Callable[[object], None] | None = None,
 ) -> object:
     """Execute a recipe from top to bottom in one persistent named context."""
     session = RecipeSession(dispatcher)
@@ -96,6 +97,8 @@ def run_recipe(
                 error=str(exc),
             )
             raise RecipeError(f"{statement.path}:{statement.line}: {exc}") from exc
+        if on_result is not None:
+            on_result(result)
         record(
             "recipe.statement.result",
             "recipe statement completed",
