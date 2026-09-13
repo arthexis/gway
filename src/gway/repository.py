@@ -27,6 +27,15 @@ class ResolvedRepository:
         return f"https://github.com/{self.full_name}.git"
 
 
+@dataclass(frozen=True)
+class WorkingTreeEntry:
+    """One path reported by ``git status --porcelain=v1 -z``."""
+
+    status: str
+    path: str
+    original_path: str | None = None
+
+
 class RepositoryManager:
     """Resolve trusted GitHub repositories and manage local checkouts."""
 
@@ -131,6 +140,47 @@ class RepositoryManager:
     def _git_failure(result: subprocess.CompletedProcess[str], fallback: str) -> str:
         return result.stderr.strip() or result.stdout.strip() or fallback
 
+    @staticmethod
+    def status(checkout: Path) -> tuple[WorkingTreeEntry, ...]:
+        """Return structured working-tree status without reading file contents."""
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(checkout), "status", "--porcelain=v1", "-z"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise RepositoryError(f"cannot inspect managed checkout {checkout}: {exc}") from exc
+
+        fields = result.stdout.split("\0")
+        if fields and fields[-1] == "":
+            fields.pop()
+
+        entries: list[WorkingTreeEntry] = []
+        index = 0
+        while index < len(fields):
+            field = fields[index]
+            if len(field) < 3 or field[2] != " ":
+                raise RepositoryError(f"invalid git status output for managed checkout {checkout}")
+            status = field[:2]
+            path = field[3:]
+            original_path: str | None = None
+            if "R" in status or "C" in status:
+                index += 1
+                if index >= len(fields):
+                    raise RepositoryError(f"invalid git status rename for managed checkout {checkout}")
+                original_path = fields[index]
+            entries.append(
+                WorkingTreeEntry(
+                    status=status,
+                    path=path,
+                    original_path=original_path,
+                )
+            )
+            index += 1
+        return tuple(entries)
+
     def validate_checkout(self, checkout: Path, full_name: str) -> None:
         repository = self._managed_repository(full_name)
         if not checkout.is_dir():
@@ -171,14 +221,8 @@ class RepositoryManager:
         if not checkout.is_dir():
             raise RepositoryError(f"managed checkout does not exist: {checkout}")
 
+        status = self.status(checkout)
         try:
-            status = subprocess.run(
-                ["git", "-C", str(checkout), "status", "--porcelain"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-
             origin = subprocess.run(
                 ["git", "-C", str(checkout), "remote", "get-url", "origin"],
                 check=True,
@@ -230,7 +274,7 @@ class RepositoryManager:
                     detail = self._git_failure(clean, "git clean -fd failed")
                     raise RepositoryError(f"cannot clean {full_name}: {detail}")
             else:
-                if status.stdout.strip():
+                if status:
                     raise RepositoryError(
                         f"managed checkout has local changes; refusing upgrade: {checkout}"
                     )
