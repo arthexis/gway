@@ -35,7 +35,7 @@ from .shell import (
 )
 from .solve import solve_values
 from .stage import StageKind, StageSyntaxError, parse_stages
-from .upgrade import UpgradeError, Upgrader
+from .upgrade import UpgradeError, UpgradeResult, Upgrader
 
 CORE_COMMANDS = frozenset(
     {"list", "info", "path", "register", "install", "upgrade", "service", "shell", "solve", "recipe"}
@@ -133,12 +133,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Include or exclude GWAY itself from the upgrade.",
     )
-    upgrade.add_argument(
+    force_mode = upgrade.add_mutually_exclusive_group()
+    force_mode.add_argument(
         "--force",
         action="store_true",
         help=(
             "Discard local managed-checkout changes and reset projects to their trusted "
             "upstream branches before upgrading."
+        ),
+    )
+    force_mode.add_argument(
+        "--try-force",
+        action="store_true",
+        help=(
+            "Try a normal managed-project upgrade first, then retry once with --force "
+            "only if the repository upgrade fails."
         ),
     )
     upgrade.add_argument(
@@ -469,6 +478,32 @@ def _managed_status(status: str, project: Project) -> dict[str, object]:
     return record
 
 
+def _upgrade_status(status: str, result: UpgradeResult) -> dict[str, object]:
+    record = _managed_status(status, result.project)
+    record["force_used"] = bool(getattr(result, "force_used", False))
+    force_error_type = getattr(result, "force_error_type", None)
+    force_error = getattr(result, "force_error", None)
+    dirty_files = getattr(result, "dirty_files", ())
+    if force_error_type is not None:
+        record["force_error_type"] = force_error_type
+    if force_error is not None:
+        record["force_error"] = force_error
+    if dirty_files:
+        record["dirty_files"] = [
+            {
+                "status": entry.status,
+                "path": entry.path,
+                **(
+                    {"original_path": entry.original_path}
+                    if entry.original_path is not None
+                    else {}
+                ),
+            }
+            for entry in dirty_files
+        ]
+    return record
+
+
 def _install_project_service(project: Project) -> dict[str, object]:
     try:
         manager = ServiceManager(project)
@@ -533,10 +568,11 @@ def _run_upgrade(
             result = upgrader.project_result(
                 target,
                 force=namespace.force,
+                try_force=namespace.try_force,
                 reload=namespace.reload,
                 arguments=arguments if len(managed_targets) == 1 else (),
             )
-            completed(_managed_status("upgraded" if result.changed else "skipped", result.project))
+            completed(_upgrade_status("upgraded" if result.changed else "skipped", result))
 
         if json_output and len(managed_targets) == 1 and not include_self_target:
             return results[0]
@@ -562,10 +598,11 @@ def _run_upgrade(
     if include_projects:
         for result in upgrader.all_project_results(
             force=namespace.force,
+            try_force=namespace.try_force,
             reload=namespace.reload,
         ):
             status = "upgraded" if result.changed else "skipped"
-            completed(_managed_status(status, result.project))
+            completed(_upgrade_status(status, result))
 
     return results if json_output else None
 
