@@ -6,6 +6,26 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
+class ContinuationPoint:
+    """Portable recipe run pointer describing current and pending work."""
+
+    recipe_path: str
+    statement_index: int
+    line: int
+    next_statement_index: int | None
+    next_line: int | None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "recipe_path": self.recipe_path,
+            "statement_index": self.statement_index,
+            "line": self.line,
+            "next_statement_index": self.next_statement_index,
+            "next_line": self.next_line,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ExecutionFrame:
     """Structural identity for one nested unit of GWAY execution."""
 
@@ -46,11 +66,12 @@ class ValueProvenance:
 
 
 class ExecutionFrameStack:
-    """Runtime-owned execution frame stack with deterministic local IDs."""
+    """Runtime-owned execution frame and recipe-continuation stack."""
 
     def __init__(self) -> None:
         self._frames: list[ExecutionFrame] = []
         self._history: dict[str, ExecutionFrame] = {}
+        self._continuations: list[ContinuationPoint] = []
         self._next_id = 1
         self._last_completed: ExecutionFrame | None = None
 
@@ -65,6 +86,14 @@ class ExecutionFrameStack:
     @property
     def last_completed(self) -> ExecutionFrame | None:
         return self._last_completed
+
+    @property
+    def current_continuation(self) -> ContinuationPoint | None:
+        return self._continuations[-1] if self._continuations else None
+
+    @property
+    def continuations(self) -> tuple[ContinuationPoint, ...]:
+        return tuple(self._continuations)
 
     def get(self, frame_id: str) -> ExecutionFrame | None:
         return self._history.get(frame_id)
@@ -93,6 +122,17 @@ class ExecutionFrameStack:
             recipe_path=recipe_path,
             recipe_line=recipe_line,
         )
+
+    @contextmanager
+    def continuation_scope(self, point: ContinuationPoint) -> Iterator[ContinuationPoint]:
+        """Push one active recipe pointer and reliably restore its parent pointer."""
+        self._continuations.append(point)
+        try:
+            yield point
+        finally:
+            popped = self._continuations.pop()
+            if popped is not point:
+                raise RuntimeError("recipe continuation stack was corrupted")
 
     @contextmanager
     def scope(
@@ -133,6 +173,7 @@ def serialize_provenance(
 
 
 __all__ = [
+    "ContinuationPoint",
     "ExecutionFrame",
     "ExecutionFrameStack",
     "ValueProvenance",

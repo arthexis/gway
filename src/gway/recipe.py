@@ -8,7 +8,7 @@ from pathlib import Path
 from .chain_context import current_chain_provenance
 from .dispatcher import Dispatcher
 from .explain import record
-from .provenance import ValueProvenance
+from .provenance import ContinuationPoint, ValueProvenance
 from .runtime import GwayRuntime
 
 
@@ -38,6 +38,15 @@ class RecipeContext(dict[str, object]):
     ) -> None:
         super().__init__(values or {})
         self.provenance: dict[str, ValueProvenance] = dict(provenance or {})
+
+
+def _recipe_statement_lines(path: Path) -> tuple[int, ...]:
+    """Return physical lines that begin logical recipe statements without parsing them."""
+    return tuple(
+        line_number
+        for line_number, source in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if source.strip() and not source.strip().startswith("#")
+    )
 
 
 def recipe_statements(path: str | Path) -> Iterator[RecipeStatement]:
@@ -122,42 +131,61 @@ def run_recipe(
     else:
         recipe_context = RecipeContext(context)
     session = RecipeSession(dispatcher, context=recipe_context, runtime=runtime)
+    assert session.runtime is not None
     result: object = None
     recipe_path = Path(path)
+    statement_lines = _recipe_statement_lines(recipe_path)
     record("recipe.start", "executing recipe", path=str(recipe_path))
-    for statement in recipe_statements(recipe_path):
-        record(
-            "recipe.statement.start",
-            "executing recipe statement",
-            path=str(statement.path),
+    for statement_index, statement in enumerate(recipe_statements(recipe_path), start=1):
+        next_statement_index = statement_index + 1 if statement_index < len(statement_lines) else None
+        next_line = statement_lines[statement_index] if statement_index < len(statement_lines) else None
+        continuation = ContinuationPoint(
+            recipe_path=str(statement.path),
+            statement_index=statement_index,
             line=statement.line,
-            tokens=list(statement.tokens),
+            next_statement_index=next_statement_index,
+            next_line=next_line,
         )
-        try:
-            result = session.run(
-                statement.tokens,
-                interactive=interactive,
-                prompt=prompt,
-                recipe_path=statement.path,
-                recipe_line=statement.line,
-            )
-        except RecipeError:
-            raise
-        except SystemExit as exc:
-            raise RecipeError(
-                statement.path,
-                f"statement exited with status {exc.code}",
+        with session.runtime.frames.continuation_scope(continuation):
+            continuation_stack = [
+                point.as_dict() for point in session.runtime.frames.continuations
+            ]
+            record(
+                "recipe.statement.start",
+                "executing recipe statement",
+                path=str(statement.path),
                 line=statement.line,
-            ) from exc
-        except Exception as exc:
-            raise RecipeError(statement.path, str(exc), line=statement.line) from exc
-        record(
-            "recipe.statement.result",
-            "completed recipe statement",
-            path=str(statement.path),
-            line=statement.line,
-            result=result,
-        )
+                tokens=list(statement.tokens),
+                continuation=continuation.as_dict(),
+                continuation_stack=continuation_stack,
+            )
+            try:
+                result = session.run(
+                    statement.tokens,
+                    interactive=interactive,
+                    prompt=prompt,
+                    recipe_path=statement.path,
+                    recipe_line=statement.line,
+                )
+            except RecipeError:
+                raise
+            except SystemExit as exc:
+                raise RecipeError(
+                    statement.path,
+                    f"statement exited with status {exc.code}",
+                    line=statement.line,
+                ) from exc
+            except Exception as exc:
+                raise RecipeError(statement.path, str(exc), line=statement.line) from exc
+            record(
+                "recipe.statement.result",
+                "completed recipe statement",
+                path=str(statement.path),
+                line=statement.line,
+                result=result,
+                continuation=continuation.as_dict(),
+                continuation_stack=continuation_stack,
+            )
     record("recipe.result", "recipe completed", path=str(recipe_path), result=result)
     return result
 

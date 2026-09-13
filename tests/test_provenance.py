@@ -7,7 +7,7 @@ from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.explain import explain_scope
 from gway.project import Project
-from gway.provenance import ExecutionFrameStack
+from gway.provenance import ContinuationPoint, ExecutionFrameStack
 from gway.registry import Registry
 from gway.runtime import GwayRuntime
 
@@ -61,6 +61,24 @@ def test_execution_frame_stack_tracks_parent_identity() -> None:
     assert frames.last_completed is statement
 
 
+def test_continuation_stack_restores_parent_recipe_pointer() -> None:
+    frames = ExecutionFrameStack()
+    parent = ContinuationPoint("parent.rx", 1, 4, 2, 8)
+    child = ContinuationPoint("child.rx", 1, 2, None, None)
+
+    with frames.continuation_scope(parent):
+        assert frames.current_continuation is parent
+        assert frames.continuations == (parent,)
+        with frames.continuation_scope(child):
+            assert frames.current_continuation is child
+            assert frames.continuations == (parent, child)
+        assert frames.current_continuation is parent
+        assert frames.continuations == (parent,)
+
+    assert frames.current_continuation is None
+    assert frames.continuations == ()
+
+
 def test_runtime_explain_links_statement_and_operation_frames(tmp_path: Path) -> None:
     runtime = GwayRuntime(_dispatcher(tmp_path))
 
@@ -95,6 +113,58 @@ def test_recipe_statement_frame_carries_source_location(tmp_path: Path) -> None:
     assert statement.data["recipe_path"] == str(recipe)
     assert statement.data["parent_frame_id"] == recipe_frame.data["frame_id"]
     assert runtime.current_frame is None
+
+
+def test_recipe_trace_records_current_and_next_statement_pointer(tmp_path: Path) -> None:
+    runtime = GwayRuntime(_dispatcher(tmp_path))
+    recipe = tmp_path / "pointer.rx"
+    recipe.write_text("# header\n\ndemo status\n\ndemo status\n", encoding="utf-8")
+
+    with explain_scope() as trace:
+        assert runtime.execute(["recipe", str(recipe)]) == {"status": "ok"}
+
+    starts = [step for step in trace if step.kind == "recipe.statement.start"]
+    assert starts[0].data["continuation"] == {
+        "recipe_path": str(recipe),
+        "statement_index": 1,
+        "line": 3,
+        "next_statement_index": 2,
+        "next_line": 5,
+    }
+    assert starts[1].data["continuation"] == {
+        "recipe_path": str(recipe),
+        "statement_index": 2,
+        "line": 5,
+        "next_statement_index": None,
+        "next_line": None,
+    }
+
+
+def test_nested_recipe_trace_carries_continuation_stack(tmp_path: Path) -> None:
+    runtime = GwayRuntime(_dispatcher(tmp_path))
+    child = tmp_path / "child.rx"
+    parent = tmp_path / "parent.rx"
+    child.write_text("demo status\n", encoding="utf-8")
+    parent.write_text(f"recipe {child}\ndemo status\n", encoding="utf-8")
+
+    with explain_scope() as trace:
+        assert runtime.execute(["recipe", str(parent)]) == {"status": "ok"}
+
+    starts = [step for step in trace if step.kind == "recipe.statement.start"]
+    parent_first, child_only, parent_second = starts
+
+    assert [item["recipe_path"] for item in parent_first.data["continuation_stack"]] == [
+        str(parent)
+    ]
+    assert [item["recipe_path"] for item in child_only.data["continuation_stack"]] == [
+        str(parent),
+        str(child),
+    ]
+    assert [item["recipe_path"] for item in parent_second.data["continuation_stack"]] == [
+        str(parent)
+    ]
+    assert runtime.frames.current_continuation is None
+    assert runtime.frames.continuations == ()
 
 
 def test_recipe_context_resolution_reports_value_producer(tmp_path: Path) -> None:
