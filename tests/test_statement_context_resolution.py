@@ -139,6 +139,67 @@ def test_zero_arity_context_flag_uses_consumption_metadata() -> None:
     assert disabled_filled == {"traceback": "false"}
 
 
+def test_multi_value_context_expands_fixed_option_arity() -> None:
+    command = Command(
+        path=("consume",),
+        parameters=(
+            Parameter(
+                name="pair",
+                options=("--pair",),
+                consumes_value=True,
+                option_arity=2,
+            ),
+        ),
+    )
+
+    with transfer_scope():
+        argv, filled = _fill_context_options(command, [], {"pair": ["a", "b"]})
+
+    assert argv == ["--pair", "a", "b"]
+    assert filled == {"pair": ["a", "b"]}
+
+
+def test_multi_value_context_expands_variadic_option_arity() -> None:
+    command = Command(
+        path=("consume",),
+        parameters=(
+            Parameter(
+                name="items",
+                options=("--items",),
+                consumes_value=True,
+                option_arity="+",
+            ),
+        ),
+    )
+
+    with transfer_scope():
+        argv, filled = _fill_context_options(command, [], {"items": ("a", "b", "c")})
+
+    assert argv == ["--items", "a", "b", "c"]
+    assert filled == {"items": ("a", "b", "c")}
+
+
+def test_unknown_zero_arity_action_is_not_implicitly_filled() -> None:
+    command = Command(
+        path=("consume",),
+        parameters=(
+            Parameter(
+                name="verbosity",
+                options=("--verbose",),
+                consumes_value=False,
+                option_arity=0,
+                default=None,
+            ),
+        ),
+    )
+
+    with transfer_scope():
+        argv, filled = _fill_context_options(command, [], {"verbosity": 2})
+
+    assert argv == []
+    assert filled == {}
+
+
 def test_result_is_reserved_from_implicit_argument_fill(tmp_path: Path) -> None:
     dispatcher = _dispatcher(tmp_path)
     context: dict[str, object] = {}
