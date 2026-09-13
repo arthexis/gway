@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from ..adapters import AdapterRegistry
 from ..adapters.base import SigilContextAdapter
@@ -120,7 +120,13 @@ class Dispatcher:
         adapter = self._adapter(project_name)
         return tuple(adapter.commands())
 
-    def _run_expression(self, expression: str, *, interactive: bool) -> object:
+    def _run_expression(
+        self,
+        expression: str,
+        *,
+        interactive: bool,
+        prompt: Callable[[str], str] | None = None,
+    ) -> object:
         branches = parse_managed_branches(expression)
         result: object = None
         resolved = False
@@ -137,7 +143,12 @@ class Dispatcher:
             if branch.is_literal:
                 return branch.literal
             try:
-                result = self.run(branch.project or "", branch.args, interactive=interactive)
+                result = self.run(
+                    branch.project or "",
+                    branch.args,
+                    interactive=interactive,
+                    prompt=prompt,
+                )
             except (CommandNotFound, RegistryError) as exc:
                 last_missing = exc
                 resolved = False
@@ -155,16 +166,17 @@ class Dispatcher:
         tokens: Sequence[str],
         *,
         interactive: bool = False,
+        prompt: Callable[[str], str] | None = None,
     ) -> object:
         record("dispatch.start", "dispatching project", project=project_name, tokens=list(tokens))
         if project_name == MANAGED_CHAIN_PROJECT:
             from ..chain import run_chain
 
-            return run_chain(self, tokens, interactive=interactive)
+            return run_chain(self, tokens, interactive=interactive, prompt=prompt)
         if project_name == MANAGED_EXPRESSION_PROJECT:
             if len(tokens) != 1:
                 raise DispatchError("managed expression dispatch expects one expression")
-            return self._run_expression(tokens[0], interactive=interactive)
+            return self._run_expression(tokens[0], interactive=interactive, prompt=prompt)
         project = self.registry.require(project_name)
         adapter = self.adapters.create(project)
         record(
@@ -217,7 +229,7 @@ class Dispatcher:
             )
 
         if interactive:
-            argv = _fill_required_options(command, argv)
+            argv = _fill_required_options(command, argv, prompt=prompt)
             record(
                 "arguments.interactive",
                 "filled interactive command arguments",
