@@ -12,7 +12,7 @@ from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, pars
 from ..registry import Registry, RegistryError
 from ..sigils import RESERVED_CONTEXT_KEYS
 from ..stage import decode_stage_escapes
-from .arguments import _decode_structured_argv
+from .arguments import _decode_structured_argv, _fill_context_options
 from .errors import CommandNotFound, DispatchError
 from .prompt import _fill_required_options
 
@@ -198,6 +198,24 @@ class Dispatcher:
             command=list(command.path),
             argv=list(argv),
         )
+
+        chain_context = current_chain_context()
+        argument_context = {
+            key: value
+            for key, value in chain_context.items()
+            if key not in RESERVED_CONTEXT_KEYS and key != "result"
+        }
+        argv, context_values = _fill_context_options(command, argv, argument_context)
+        if context_values:
+            record(
+                "arguments.context",
+                "filled command arguments from active context",
+                project=project.name,
+                command=list(command.path),
+                values=context_values,
+                argv=list(argv),
+            )
+
         if interactive:
             argv = _fill_required_options(command, argv)
             record(
@@ -241,7 +259,6 @@ class Dispatcher:
                 command=list(command.path),
                 keys=sorted(str(key) for key in provided_context),
             )
-        chain_context = current_chain_context()
         extra_context.update(
             (key, value) for key, value in chain_context.items() if key not in RESERVED_CONTEXT_KEYS
         )
