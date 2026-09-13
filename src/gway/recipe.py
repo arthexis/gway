@@ -61,6 +61,8 @@ class RecipeSession:
         *,
         interactive: bool = False,
         prompt: Callable[[str], str] | None = None,
+        recipe_path: str | Path | None = None,
+        recipe_line: int | None = None,
     ) -> object:
         assert self.runtime is not None
         return self.runtime.execute(
@@ -68,6 +70,8 @@ class RecipeSession:
             interactive=interactive,
             prompt=prompt,
             context=self.context,
+            recipe_path=str(recipe_path) if recipe_path is not None else None,
+            recipe_line=recipe_line,
         )
 
 
@@ -113,6 +117,8 @@ def run_recipe(
                 statement.tokens,
                 interactive=interactive,
                 prompt=prompt,
+                recipe_path=statement.path,
+                recipe_line=statement.line,
             )
         except RecipeError:
             raise
