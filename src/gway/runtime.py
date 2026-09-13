@@ -100,12 +100,15 @@ def _managed_status(status: str, project: Project) -> dict[str, object]:
 
 def _upgrade_status(status: str, result: UpgradeResult) -> dict[str, object]:
     item = _managed_status(status, result.project)
-    item["force_used"] = result.force_used
-    if result.force_error_type is not None:
-        item["force_error_type"] = result.force_error_type
-    if result.force_error is not None:
-        item["force_error"] = result.force_error
-    if result.dirty_files:
+    item["force_used"] = bool(getattr(result, "force_used", False))
+    force_error_type = getattr(result, "force_error_type", None)
+    force_error = getattr(result, "force_error", None)
+    dirty_files = getattr(result, "dirty_files", ())
+    if force_error_type is not None:
+        item["force_error_type"] = force_error_type
+    if force_error is not None:
+        item["force_error"] = force_error
+    if dirty_files:
         item["dirty_files"] = [
             {
                 "status": entry.status,
@@ -116,7 +119,7 @@ def _upgrade_status(status: str, result: UpgradeResult) -> dict[str, object]:
                     else {}
                 ),
             }
-            for entry in result.dirty_files
+            for entry in dirty_files
         ]
     return item
 
@@ -465,12 +468,13 @@ class GwayRuntime:
                 results.append(result)
                 self._publish_progress(result)
             for target in managed_targets:
+                upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
                 changed = upgrader.project_result(
                     target,
                     force=namespace.force,
-                    try_force=namespace.try_force,
                     reload=namespace.reload,
                     arguments=passthrough if len(managed_targets) == 1 else (),
+                    **upgrade_kwargs,
                 )
                 status = "upgraded" if changed.changed else "skipped"
                 result = _upgrade_status(status, changed)
@@ -495,10 +499,11 @@ class GwayRuntime:
             results.append(result)
             self._publish_progress(result)
         if include_projects:
+            upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
             for changed in upgrader.all_project_results(
                 force=namespace.force,
-                try_force=namespace.try_force,
                 reload=namespace.reload,
+                **upgrade_kwargs,
             ):
                 status = "upgraded" if changed.changed else "skipped"
                 result = _upgrade_status(status, changed)
