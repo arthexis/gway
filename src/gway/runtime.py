@@ -145,6 +145,7 @@ class GwayRuntime:
                 previous_result=previous_result,
                 has_previous_result=has_previous_result,
                 interactive=interactive,
+                prompt=prompt,
             )
         elif operation in _CORE_OPERATIONS:
             if transfer:
@@ -155,7 +156,15 @@ class GwayRuntime:
         record("runtime.operation.result", "completed GWAY operation", operation=operation, result=result)
         return result
 
-    def _run_recipe_stage(self, argv: Sequence[str], *, previous_result: object, has_previous_result: bool, interactive: bool) -> object:
+    def _run_recipe_stage(
+        self,
+        argv: Sequence[str],
+        *,
+        previous_result: object,
+        has_previous_result: bool,
+        interactive: bool,
+        prompt: Callable[[str], str] | None = None,
+    ) -> object:
         from .recipe import child_recipe_context, run_recipe
 
         if not argv:
@@ -181,6 +190,7 @@ class GwayRuntime:
                 path,
                 self.dispatcher,
                 interactive=interactive,
+                prompt=prompt,
                 context=child_context,
                 runtime=self,
             )
