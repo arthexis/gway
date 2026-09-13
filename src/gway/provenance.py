@@ -51,10 +51,7 @@ class ValueProvenance:
     recipe_line: int | None = None
 
     def as_dict(self) -> dict[str, object]:
-        data: dict[str, object] = {
-            "frame_id": self.frame_id,
-            "frame_kind": self.frame_kind,
-        }
+        data: dict[str, object] = {"frame_id": self.frame_id, "frame_kind": self.frame_kind}
         if self.operation is not None:
             data["operation"] = self.operation
         if self.tokens:
@@ -76,6 +73,20 @@ class ActiveContinuation:
     provenance: MutableMapping[str, ValueProvenance]
 
 
+@dataclass(slots=True)
+class ActiveChainContinuation:
+    """Live evaluator state for one active recipe statement chain."""
+
+    frame_id: str
+    recipe_path: str
+    recipe_line: int
+    statement_tokens: tuple[str, ...]
+    active_stage_index: int = 1
+    has_previous_result: bool = False
+    previous_result: object = None
+    previous_result_provenance: ValueProvenance | None = None
+
+
 class ExecutionFrameStack:
     """Runtime-owned execution frame and recipe-continuation stack."""
 
@@ -84,6 +95,7 @@ class ExecutionFrameStack:
         self._history: dict[str, ExecutionFrame] = {}
         self._continuations: list[ContinuationPoint] = []
         self._active_continuations: list[ActiveContinuation] = []
+        self._active_chains: list[ActiveChainContinuation] = []
         self._next_id = 1
         self._last_completed: ExecutionFrame | None = None
 
@@ -112,6 +124,11 @@ class ExecutionFrameStack:
         """Return live continuation state from outermost to innermost recipe."""
         return tuple(self._active_continuations)
 
+    @property
+    def active_chains(self) -> tuple[ActiveChainContinuation, ...]:
+        """Return active recipe statement chains from outermost to innermost."""
+        return tuple(self._active_chains)
+
     def get(self, frame_id: str) -> ExecutionFrame | None:
         return self._history.get(frame_id)
 
@@ -139,6 +156,36 @@ class ExecutionFrameStack:
             recipe_path=recipe_path,
             recipe_line=recipe_line,
         )
+
+    @contextmanager
+    def chain_continuation_scope(
+        self,
+        *,
+        statement_tokens: Sequence[str],
+        recipe_path: str | None,
+        recipe_line: int | None,
+    ) -> Iterator[ActiveChainContinuation | None]:
+        """Expose live chain state only for statements owned by an active recipe."""
+        if recipe_path is None or recipe_line is None:
+            yield None
+            return
+        recipe_frame = next((frame for frame in reversed(self._frames) if frame.kind == "recipe"), None)
+        if recipe_frame is None:
+            yield None
+            return
+        state = ActiveChainContinuation(
+            frame_id=recipe_frame.id,
+            recipe_path=recipe_path,
+            recipe_line=recipe_line,
+            statement_tokens=tuple(statement_tokens),
+        )
+        self._active_chains.append(state)
+        try:
+            yield state
+        finally:
+            popped = self._active_chains.pop()
+            if popped is not state:
+                raise RuntimeError("active chain continuation stack was corrupted")
 
     @contextmanager
     def continuation_scope(
@@ -253,6 +300,7 @@ def serialize_provenance(
 
 
 __all__ = [
+    "ActiveChainContinuation",
     "ActiveContinuation",
     "ContinuationPoint",
     "ExecutionFrame",

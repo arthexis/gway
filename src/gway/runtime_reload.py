@@ -7,6 +7,11 @@ from pathlib import Path
 
 from .chain_context import current_chain_context, current_chain_provenance
 from .checkpoint import CheckpointFlags, ResumeCheckpoint, recipe_identity
+from .checkpoint_chain import (
+    ChainContinuationCheckpoint,
+    PendingChainCheckpoint,
+    PendingStageCheckpoint,
+)
 from .checkpoint_stack import ContinuationFrameCheckpoint, ContinuationStackCheckpoint
 from .checkpoint_store import write_checkpoint_atomic
 from .explain import enabled as explain_enabled, record
@@ -28,8 +33,35 @@ def _checkpoint_flags(runtime, *, interactive: bool) -> CheckpointFlags:
     )
 
 
+def capture_pending_chains(runtime) -> tuple[PendingChainCheckpoint, ...]:
+    """Convert live evaluator chain state into portable checkpoint state."""
+    pending: list[PendingChainCheckpoint] = []
+    for state in runtime.frames.active_chains:
+        stages = parse_stages(state.statement_tokens)
+        remaining = stages[state.active_stage_index :]
+        if not remaining:
+            continue
+        pending.append(
+            PendingChainCheckpoint(
+                frame_id=state.frame_id,
+                recipe_path=state.recipe_path,
+                recipe_line=state.recipe_line,
+                statement_tokens=state.statement_tokens,
+                active_stage_index=state.active_stage_index,
+                remaining_stages=tuple(
+                    PendingStageCheckpoint.from_stage(stage) for stage in remaining
+                ),
+                has_previous_result=state.has_previous_result,
+                previous_result=(state.previous_result if state.has_previous_result else None),  # type: ignore[arg-type]
+                previous_result_provenance=(
+                    state.previous_result_provenance if state.has_previous_result else None
+                ),
+            )
+        )
+    return tuple(pending)
+
+
 def _validate_nested_parent_statement(parent, child) -> None:
-    """Reject ancestor statements whose remaining chain state belongs to Chunk 7.3."""
     try:
         statement = next(
             recipe_statements(
@@ -43,25 +75,17 @@ def _validate_nested_parent_statement(parent, child) -> None:
             f"cannot validate nested recipe continuation {parent.point.recipe_path}: {exc}"
         ) from exc
 
-    if (
-        len(stages) != 1
-        or stages[0].kind is StageKind.SOLVE
-        or not stages[0].tokens
-        or stages[0].tokens[0] != "recipe"
-        or len(stages[0].tokens) != 2
-    ):
-        raise ReloadError(
-            "nested reload currently requires each parent recipe invocation to be a "
-            "single-stage 'recipe PATH' statement; pending chain-stage restoration "
-            "is reserved for Chunk 7.3"
-        )
-
-    expected_child = Path(stages[0].tokens[1]).resolve()
-    actual_child = Path(child.point.recipe_path).resolve()
-    if expected_child != actual_child:
-        raise ReloadError(
-            "nested continuation child does not match the parent recipe invocation"
-        )
+    recipe_stages = [
+        stage
+        for stage in stages
+        if stage.kind is not StageKind.SOLVE
+        and stage.tokens
+        and stage.tokens[0] == "recipe"
+        and len(stage.tokens) == 2
+        and Path(stage.tokens[1]).resolve() == Path(child.point.recipe_path).resolve()
+    ]
+    if len(recipe_stages) != 1:
+        raise ReloadError("nested continuation child does not match exactly one parent recipe stage")
 
 
 def _create_single_checkpoint(runtime, *, interactive: bool) -> ResumeCheckpoint:
@@ -71,18 +95,14 @@ def _create_single_checkpoint(runtime, *, interactive: bool) -> ResumeCheckpoint
     has_previous_result = "result" in context
     previous_result = context.get("result")
     previous_provenance = provenance.get("result")
-
-    identity = recipe_identity(Path(point.recipe_path))
     return ResumeCheckpoint(
-        recipe=identity,
+        recipe=recipe_identity(Path(point.recipe_path)),
         continuation=point,
         context=context,  # type: ignore[arg-type]
         context_provenance=provenance,
         has_previous_result=has_previous_result,
         previous_result=previous_result if has_previous_result else None,  # type: ignore[arg-type]
-        previous_result_provenance=(
-            previous_provenance if has_previous_result else None
-        ),
+        previous_result_provenance=previous_provenance if has_previous_result else None,
         flags=_checkpoint_flags(runtime, interactive=interactive),
     )
 
@@ -92,7 +112,6 @@ def _create_stack_checkpoint(runtime, *, interactive: bool) -> ContinuationStack
     continuations = runtime.frames.continuations
     if len(active) != len(continuations):
         raise ReloadError("nested recipe continuation state is incomplete")
-
     for parent, child in zip(active, active[1:]):
         _validate_nested_parent_statement(parent, child)
 
@@ -114,16 +133,12 @@ def _create_stack_checkpoint(runtime, *, interactive: bool) -> ContinuationStack
                 context_provenance=provenance,
                 has_previous_result=has_previous_result,
                 previous_result=previous_result if has_previous_result else None,  # type: ignore[arg-type]
-                previous_result_provenance=(
-                    previous_provenance if has_previous_result else None
-                ),
+                previous_result_provenance=previous_provenance if has_previous_result else None,
             )
         )
         parent_frame_id = state.frame_id
-
     return ContinuationStackCheckpoint(
-        frames=tuple(frames),
-        flags=_checkpoint_flags(runtime, interactive=interactive),
+        frames=tuple(frames), flags=_checkpoint_flags(runtime, interactive=interactive)
     )
 
 
@@ -131,13 +146,21 @@ def create_reload_checkpoint(
     runtime,
     *,
     interactive: bool,
-) -> ResumeCheckpoint | ContinuationStackCheckpoint:
-    """Capture one or more active recipe continuations for process replacement."""
+) -> ResumeCheckpoint | ContinuationStackCheckpoint | ChainContinuationCheckpoint:
+    """Capture active recipe and pending-chain continuations for process replacement."""
     continuations = runtime.frames.continuations
     if not continuations:
         raise ReloadError("reload is only supported while a recipe statement is active")
 
     try:
+        pending = capture_pending_chains(runtime)
+        if pending:
+            stack = _create_stack_checkpoint(runtime, interactive=interactive)
+            return ChainContinuationCheckpoint(
+                frames=stack.frames,
+                pending_chains=pending,
+                flags=stack.flags,
+            )
         if len(continuations) == 1:
             return _create_single_checkpoint(runtime, interactive=interactive)
         return _create_stack_checkpoint(runtime, interactive=interactive)
@@ -162,10 +185,13 @@ def reload_runtime(runtime, *, interactive: bool) -> None:
     try:
         os.execv(sys.executable, argv)
     except OSError as exc:
-        # The checkpoint deliberately remains on disk so the failed handoff can
-        # be inspected or resumed manually.
         raise ReloadError(f"cannot replace GWAY process; checkpoint preserved at {path}: {exc}") from exc
     raise ReloadError("process replacement unexpectedly returned")
 
 
-__all__ = ["ReloadError", "create_reload_checkpoint", "reload_runtime"]
+__all__ = [
+    "ReloadError",
+    "capture_pending_chains",
+    "create_reload_checkpoint",
+    "reload_runtime",
+]

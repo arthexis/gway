@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 from .checkpoint import CheckpointError, ResumeCheckpoint
+from .checkpoint_chain import CHAIN_CONTINUATION_VERSION, ChainContinuationCheckpoint
 from .checkpoint_stack import CONTINUATION_STACK_VERSION, ContinuationStackCheckpoint
 
 _UNSUPPORTED_DIR_FSYNC_ERRNOS = {
@@ -20,7 +21,7 @@ _UNSUPPORTED_DIR_FSYNC_ERRNOS = {
     if value is not None
 }
 
-CheckpointDocument = ResumeCheckpoint | ContinuationStackCheckpoint
+CheckpointDocument = ResumeCheckpoint | ContinuationStackCheckpoint | ChainContinuationCheckpoint
 
 
 def checkpoint_directory(data_dir: Path) -> Path:
@@ -162,7 +163,7 @@ def restore_checkpoint(claimed: str | Path, original: str | Path) -> None:
 
 
 def read_checkpoint(path: str | Path) -> CheckpointDocument:
-    """Read and validate one persisted v1 or v2 checkpoint without consuming it."""
+    """Read and validate one persisted v1, v2, or v3 checkpoint without consuming it."""
     checkpoint_path = Path(path)
     try:
         payload = checkpoint_path.read_text(encoding="utf-8")
@@ -173,8 +174,12 @@ def read_checkpoint(path: str | Path) -> CheckpointDocument:
         decoded = json.loads(payload)
     except json.JSONDecodeError:
         return ResumeCheckpoint.from_json(payload)
-    if isinstance(decoded, dict) and decoded.get("version") == CONTINUATION_STACK_VERSION:
-        return ContinuationStackCheckpoint.from_json(payload)
+    if isinstance(decoded, dict):
+        version = decoded.get("version")
+        if version == CHAIN_CONTINUATION_VERSION:
+            return ChainContinuationCheckpoint.from_json(payload)
+        if version == CONTINUATION_STACK_VERSION:
+            return ContinuationStackCheckpoint.from_json(payload)
     return ResumeCheckpoint.from_json(payload)
 
 
