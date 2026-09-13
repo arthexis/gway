@@ -116,11 +116,25 @@ def test_store_resolves_sigils_against_existing_context(tmp_path: Path) -> None:
     assert session.context["selected"] == "cust-1"
 
 
-def test_store_rejects_reserved_result_key(tmp_path: Path) -> None:
+def test_store_prompts_for_unresolved_sigils_in_interactive_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _session(tmp_path)
+    answers = iter(["prompted-value"])
+    monkeypatch.setattr("builtins.input", lambda: next(answers))
+
+    assert session.run(["store", "--selected", "[missing]"], interactive=True) == {
+        "selected": "prompted-value",
+    }
+
+
+@pytest.mark.parametrize("key", ["result", "cwd", "home", "gway", "project", "command"])
+def test_store_rejects_reserved_context_keys(tmp_path: Path, key: str) -> None:
     session = _session(tmp_path)
 
-    with pytest.raises(DispatchError, match="reserved context key: result"):
-        session.run(["store", "--result", "shadow"])
+    with pytest.raises(DispatchError, match=rf"reserved context key: {key}"):
+        session.run(["store", f"--{key}", "shadow"])
 
 
 def test_store_rejects_positional_values(tmp_path: Path) -> None:
