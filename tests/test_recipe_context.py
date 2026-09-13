@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from gway.adapters import AdapterError
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.dispatcher.errors import DispatchError
@@ -62,7 +63,7 @@ def test_scalar_result_does_not_feed_positional_across_statements(tmp_path: Path
     session = _session(tmp_path)
 
     assert session.run(["demo", "scalar"]) == "alpha"
-    with pytest.raises(SystemExit):
+    with pytest.raises(AdapterError, match="required: value"):
         session.run(["demo", "echo"])
 
 
