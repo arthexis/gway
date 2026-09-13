@@ -175,6 +175,7 @@ class Dispatcher:
         *,
         interactive: bool = False,
         prompt: Callable[[str], str] | None = None,
+        preserve_outcome: bool = False,
     ) -> object:
         record("dispatch.start", "dispatching project", project=project_name, tokens=list(tokens))
         if project_name == MANAGED_CHAIN_PROJECT:
@@ -332,13 +333,16 @@ class Dispatcher:
                 result=raw_result.value,
                 outcome_message=raw_result.message,
             )
-        result = resolve_outcome(raw_result)
+            display_result = raw_result.value
+        else:
+            display_result = raw_result
+        result = raw_result if preserve_outcome else resolve_outcome(raw_result)
         record(
             "command.result",
             "adapter command completed",
             project=project.name,
             command=list(command.path),
-            result=result,
+            result=display_result,
         )
         return result
 
