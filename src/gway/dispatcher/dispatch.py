@@ -143,12 +143,19 @@ class Dispatcher:
             if branch.is_literal:
                 return branch.literal
             try:
-                result = self.run(
-                    branch.project or "",
-                    branch.args,
-                    interactive=interactive,
-                    prompt=prompt,
-                )
+                if prompt is None:
+                    result = self.run(
+                        branch.project or "",
+                        branch.args,
+                        interactive=interactive,
+                    )
+                else:
+                    result = self.run(
+                        branch.project or "",
+                        branch.args,
+                        interactive=interactive,
+                        prompt=prompt,
+                    )
             except (CommandNotFound, RegistryError) as exc:
                 last_missing = exc
                 resolved = False
