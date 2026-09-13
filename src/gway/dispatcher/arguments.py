@@ -12,11 +12,15 @@ from .options import (
     _match_option,
     _negative_option_names,
     _negative_option_parameters,
+    _option_consumes_value,
     _option_name,
     _option_parameters,
     _option_present,
     _option_value_count,
 )
+
+_TRUE_CONTEXT_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_CONTEXT_VALUES = frozenset({"0", "false", "no", "off"})
 
 
 def _structured_keyword_counts(argv: Sequence[str]) -> dict[str, int]:
@@ -36,11 +40,23 @@ def _structured_keyword_counts(argv: Sequence[str]) -> dict[str, int]:
 
 
 def _context_value_text(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
     if isinstance(value, str):
         return value
-    if isinstance(value, (int, float, Path)) and not isinstance(value, bool):
+    if isinstance(value, (int, float, Path)):
         return str(value)
     return encode_transfer(value)
+
+
+def _context_flag_enabled(value: object) -> bool:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _TRUE_CONTEXT_VALUES:
+            return True
+        if normalized in _FALSE_CONTEXT_VALUES:
+            return False
+    return bool(value)
 
 
 def _fill_context_options(
@@ -64,18 +80,17 @@ def _fill_context_options(
         if value is None:
             continue
 
-        option = _option_name(parameter)
         if parameter.annotation is bool:
-            if bool(value):
-                additions.append(option)
-            else:
-                negative_options = _negative_option_names(parameter)
-                if negative_options:
-                    additions.append(negative_options[0])
-                else:
-                    additions.extend((option, "false"))
+            additions.extend(_structured_value_tokens(parameter, _context_value_text(value)))
+        elif not _option_consumes_value(parameter):
+            enabled = _context_flag_enabled(value)
+            if isinstance(parameter.default, bool):
+                if enabled != parameter.default:
+                    additions.append(_option_name(parameter))
+            elif enabled:
+                additions.append(_option_name(parameter))
         else:
-            additions.extend((option, _context_value_text(value)))
+            additions.extend((_option_name(parameter), _context_value_text(value)))
         filled[parameter.name] = value
 
     if not additions:
@@ -175,9 +190,9 @@ def _structured_value_tokens(parameter: Parameter, value: str) -> list[str]:
     option = _option_name(parameter)
     if parameter.annotation is bool:
         normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
+        if normalized in _TRUE_CONTEXT_VALUES:
             return [option]
-        if normalized in {"0", "false", "no", "off"}:
+        if normalized in _FALSE_CONTEXT_VALUES:
             negative_options = _negative_option_names(parameter)
             if negative_options:
                 return [negative_options[0]]
