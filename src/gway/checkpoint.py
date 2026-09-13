@@ -80,11 +80,28 @@ class ResumeCheckpoint:
         _validate_continuation(self.continuation)
         if self.continuation.recipe_path != self.recipe.path:
             raise CheckpointError("continuation recipe path does not match recipe identity")
+
+        if not isinstance(self.context, Mapping):
+            raise CheckpointError("context must be an object")
         _validate_json_mapping(self.context, "context")
-        orphaned = set(self.context_provenance) - set(self.context)
+        context_copy = {
+            _require_string_key(key, "context"): _copy_json_value(value)
+            for key, value in self.context.items()
+        }
+
+        if not isinstance(self.context_provenance, Mapping):
+            raise CheckpointError("context_provenance must be an object")
+        provenance_copy: dict[str, ValueProvenance] = {}
+        for key, provenance in self.context_provenance.items():
+            key = _require_string_key(key, "context_provenance")
+            _validate_provenance(provenance, f"context_provenance.{key}")
+            provenance_copy[key] = provenance
+
+        orphaned = set(provenance_copy) - set(context_copy)
         if orphaned:
             names = ", ".join(sorted(orphaned))
             raise CheckpointError(f"context provenance has no matching value: {names}")
+
         if not self.has_previous_result:
             if self.previous_result is not None:
                 raise CheckpointError("previous result must be null when has_previous_result is false")
@@ -92,8 +109,19 @@ class ResumeCheckpoint:
                 raise CheckpointError(
                     "previous result provenance requires has_previous_result to be true"
                 )
+            previous_result_copy: JSONValue = None
         else:
             _validate_json_value(self.previous_result, "previous_result")
+            previous_result_copy = _copy_json_value(self.previous_result)
+            if self.previous_result_provenance is not None:
+                _validate_provenance(
+                    self.previous_result_provenance,
+                    "previous_result_provenance",
+                )
+
+        object.__setattr__(self, "context", context_copy)
+        object.__setattr__(self, "context_provenance", provenance_copy)
+        object.__setattr__(self, "previous_result", previous_result_copy)
 
     def as_dict(self) -> dict[str, JSONValue]:
         """Return the canonical JSON object for checkpoint version 1."""
@@ -276,7 +304,27 @@ def _parse_continuation(raw: Mapping[str, object]) -> ContinuationPoint:
     return point
 
 
+def _validate_provenance(value: object, label: str) -> None:
+    if not isinstance(value, ValueProvenance):
+        raise CheckpointError(f"{label} must be ValueProvenance")
+    _require_str(value.frame_id, f"{label}.frame_id")
+    _require_str(value.frame_kind, f"{label}.frame_kind")
+    if value.operation is not None:
+        _require_str(value.operation, f"{label}.operation")
+    if not isinstance(value.tokens, tuple) or not all(
+        isinstance(token, str) for token in value.tokens
+    ):
+        raise CheckpointError(f"{label}.tokens must be a tuple of strings")
+    if value.recipe_path is not None:
+        _require_str(value.recipe_path, f"{label}.recipe_path")
+    if value.recipe_line is not None:
+        line = _require_int(value.recipe_line, f"{label}.recipe_line")
+        if line < 1:
+            raise CheckpointError(f"{label}.recipe_line must be positive")
+
+
 def _provenance_dict(value: ValueProvenance) -> dict[str, JSONValue]:
+    _validate_provenance(value, "provenance")
     return {
         "frame_id": value.frame_id,
         "frame_kind": value.frame_kind,
@@ -296,7 +344,7 @@ def _parse_provenance(raw: Mapping[str, object], label: str) -> ValueProvenance:
     tokens = raw["tokens"]
     if not isinstance(tokens, list) or not all(isinstance(token, str) for token in tokens):
         raise CheckpointError(f"{label}.tokens must be an array of strings")
-    return ValueProvenance(
+    value = ValueProvenance(
         frame_id=_require_str(raw["frame_id"], f"{label}.frame_id"),
         frame_kind=_require_str(raw["frame_kind"], f"{label}.frame_kind"),
         operation=_optional_str(raw["operation"], f"{label}.operation"),
@@ -304,6 +352,8 @@ def _parse_provenance(raw: Mapping[str, object], label: str) -> ValueProvenance:
         recipe_path=_optional_str(raw["recipe_path"], f"{label}.recipe_path"),
         recipe_line=_optional_int(raw["recipe_line"], f"{label}.recipe_line"),
     )
+    _validate_provenance(value, label)
+    return value
 
 
 def _parse_flags(raw: Mapping[str, object]) -> CheckpointFlags:

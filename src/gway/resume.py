@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from pathlib import Path
 
-from .checkpoint import CheckpointError, ResumeCheckpoint, recipe_identity
+from .checkpoint import CheckpointError, ResumeCheckpoint
 from .dispatcher import Dispatcher
 from .explain import record
-from .recipe import RecipeContext, RecipeSession, _recipe_statement_lines, _run_recipe_from
+from .recipe import (
+    RecipeContext,
+    RecipeSession,
+    _recipe_statement_lines_from_source,
+    _run_recipe_from,
+)
 from .runtime import GwayRuntime
 
 
@@ -14,16 +20,30 @@ class ResumeError(CheckpointError):
     """Raised when validated checkpoint state cannot be resumed against its recipe."""
 
 
-def _validate_recipe_source(checkpoint: ResumeCheckpoint, path: Path) -> tuple[int, ...]:
-    """Verify the recipe bytes and continuation pointer still match the checkpoint."""
+def _read_recipe_snapshot(path: Path) -> tuple[bytes, str]:
     try:
-        identity = recipe_identity(path)
+        payload = path.read_bytes()
     except OSError as exc:
         raise ResumeError(f"cannot read checkpoint recipe {path}: {exc}") from exc
-    if identity.sha256 != checkpoint.recipe.sha256:
+    try:
+        source = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ResumeError(f"checkpoint recipe is not valid UTF-8: {path}") from exc
+    return payload, source
+
+
+def _validate_recipe_source(
+    checkpoint: ResumeCheckpoint,
+    path: Path,
+    payload: bytes,
+    source: str,
+) -> tuple[int, ...]:
+    """Verify one immutable recipe snapshot and its continuation pointer."""
+    digest = hashlib.sha256(payload).hexdigest()
+    if digest != checkpoint.recipe.sha256:
         raise ResumeError(f"recipe changed since checkpoint was created: {path}")
 
-    lines = _recipe_statement_lines(path)
+    lines = _recipe_statement_lines_from_source(source)
     point = checkpoint.continuation
     if point.statement_index > len(lines) or lines[point.statement_index - 1] != point.line:
         raise ResumeError("checkpoint current statement does not match recipe source")
@@ -51,7 +71,8 @@ def resume_recipe(
 ) -> object:
     """Restore checkpoint state and continue at the recorded next recipe statement."""
     recipe_path = Path(checkpoint.recipe.path)
-    _validate_recipe_source(checkpoint, recipe_path)
+    payload, source = _read_recipe_snapshot(recipe_path)
+    _validate_recipe_source(checkpoint, recipe_path, payload, source)
 
     context = RecipeContext(
         dict(checkpoint.context),
@@ -91,6 +112,7 @@ def resume_recipe(
         start_statement_index=point.next_statement_index,
         initial_result=checkpoint.previous_result,
         has_initial_result=checkpoint.has_previous_result,
+        source=source,
     )
     record("resume.result", "resumed recipe completed", result=result)
     return result

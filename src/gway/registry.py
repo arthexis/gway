@@ -7,7 +7,7 @@ from .config import GwayPaths, default_paths
 from .project import ManifestError, Project
 
 _RESERVED_RUNTIME_PROJECT_NAMES = frozenset(
-    {"install", "recipe", "result", "store", "uninstall", "upgrade"}
+    {"install", "recipe", "reload", "result", "store", "uninstall", "upgrade"}
 )
 
 

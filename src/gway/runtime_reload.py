@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -8,6 +9,8 @@ from .chain_context import current_chain_context, current_chain_provenance
 from .checkpoint import CheckpointFlags, ResumeCheckpoint, recipe_identity
 from .checkpoint_store import write_checkpoint_atomic
 from .explain import enabled as explain_enabled, record
+
+_ORIGINAL_ARGV_ENV = "GWAY_RESUME_ORIGINAL_ARGV"
 
 
 class ReloadError(RuntimeError):
@@ -59,6 +62,7 @@ def reload_runtime(runtime, *, interactive: bool) -> None:
     checkpoint = create_reload_checkpoint(runtime, interactive=interactive)
     path = write_checkpoint_atomic(checkpoint, runtime.registry.paths.data_dir)
     argv = [sys.executable, "-m", "gway", "--resume", str(path)]
+    os.environ[_ORIGINAL_ARGV_ENV] = json.dumps(sys.argv[1:], ensure_ascii=False)
     record(
         "reload.exec",
         "replacing process from persisted recipe checkpoint",

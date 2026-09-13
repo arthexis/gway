@@ -110,37 +110,44 @@ class RecipeContext(MutableMapping[str, object]):
         return len(self._values)
 
 
-def _recipe_statement_lines(path: Path) -> tuple[int, ...]:
-    """Return physical lines that begin logical recipe statements without parsing them."""
+def _recipe_statement_lines_from_source(source: str) -> tuple[int, ...]:
+    """Return physical statement lines from an already-read recipe snapshot."""
     return tuple(
         line_number
-        for line_number, source in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
-        if source.strip() and not source.strip().startswith("#")
+        for line_number, text in enumerate(source.splitlines(), start=1)
+        if text.strip() and not text.strip().startswith("#")
     )
+
+
+def _recipe_statement_lines(path: Path) -> tuple[int, ...]:
+    """Return physical lines that begin logical recipe statements without parsing them."""
+    return _recipe_statement_lines_from_source(path.read_text(encoding="utf-8"))
 
 
 def recipe_statements(
     path: str | Path,
     *,
     start_statement_index: int = 1,
+    source: str | None = None,
 ) -> Iterator[RecipeStatement]:
-    """Yield tokenized statements lazily, optionally starting at a logical ordinal."""
-    recipe_path = Path(path)
+    """Yield tokenized statements lazily, optionally from an immutable source snapshot."""
+    recipe_path = Path(path).resolve()
     if recipe_path.suffix != ".rx":
         raise RecipeError(recipe_path, "recipe files must use the .rx extension")
     if start_statement_index < 1:
         raise RecipeError(recipe_path, "start statement index must be positive")
 
+    recipe_source = source if source is not None else recipe_path.read_text(encoding="utf-8")
     statement_index = 0
-    for line_number, source in enumerate(recipe_path.read_text(encoding="utf-8").splitlines(), start=1):
-        stripped = source.strip()
+    for line_number, text in enumerate(recipe_source.splitlines(), start=1):
+        stripped = text.strip()
         if not stripped or stripped.startswith("#"):
             continue
         statement_index += 1
         if statement_index < start_statement_index:
             continue
         try:
-            tokens = tuple(shlex.split(source, comments=False, posix=True))
+            tokens = tuple(shlex.split(text, comments=False, posix=True))
         except ValueError as exc:
             raise RecipeError(recipe_path, str(exc), line=line_number) from exc
         if tokens:
@@ -205,11 +212,16 @@ def _run_recipe_body(
     start_statement_index: int = 1,
     initial_result: object = None,
     has_initial_result: bool = False,
+    source: str | None = None,
 ) -> object:
     """Execute recipe statements within an already-established recipe frame."""
     assert session.runtime is not None
     result: object = initial_result if has_initial_result else None
-    statement_lines = _recipe_statement_lines(recipe_path)
+    statement_lines = (
+        _recipe_statement_lines_from_source(source)
+        if source is not None
+        else _recipe_statement_lines(recipe_path)
+    )
     record(
         "recipe.start",
         "executing recipe",
@@ -217,7 +229,11 @@ def _run_recipe_body(
         start_statement_index=start_statement_index,
     )
     for statement_index, statement in enumerate(
-        recipe_statements(recipe_path, start_statement_index=start_statement_index),
+        recipe_statements(
+            recipe_path,
+            start_statement_index=start_statement_index,
+            source=source,
+        ),
         start=start_statement_index,
     ):
         next_statement_index = statement_index + 1 if statement_index < len(statement_lines) else None
@@ -282,6 +298,7 @@ def _run_recipe_from(
     start_statement_index: int,
     initial_result: object = None,
     has_initial_result: bool = False,
+    source: str | None = None,
 ) -> object:
     """Run one recipe from a logical statement ordinal without duplicating recipe frames."""
     assert session.runtime is not None
@@ -295,6 +312,7 @@ def _run_recipe_from(
             start_statement_index=start_statement_index,
             initial_result=initial_result,
             has_initial_result=has_initial_result,
+            source=source,
         )
     with session.runtime.frame_scope("recipe", recipe_path=str(recipe_path)):
         return _run_recipe_body(
@@ -305,6 +323,7 @@ def _run_recipe_from(
             start_statement_index=start_statement_index,
             initial_result=initial_result,
             has_initial_result=has_initial_result,
+            source=source,
         )
 
 
