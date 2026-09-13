@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from typing import TYPE_CHECKING
 
 from .chain_context import chain_context_scope, publish_chain_result
+from .dispatcher.errors import DispatchError
 from .explain import record
 from .provenance import ValueProvenance
 from .solve import solve_values
@@ -31,6 +32,39 @@ def _literal_solve_transfer(value: object) -> str:
     else:
         text = str(value)
     return text.replace("[", "[[").replace("]", "]]" )
+
+
+def _run_reload_stage(
+    runtime: GwayRuntime,
+    stage_tokens: Sequence[str],
+    raw_tokens: Sequence[str],
+    transfer: Sequence[object],
+    *,
+    interactive: bool,
+) -> None:
+    """Checkpoint one active recipe and replace the current GWAY process."""
+    if transfer:
+        raise DispatchError("reload cannot receive chain positionals")
+    if len(stage_tokens) != 1:
+        raise DispatchError("reload does not accept arguments")
+
+    from .runtime_reload import reload_runtime
+
+    with runtime.frame_scope(
+        "operation",
+        operation="reload",
+        tokens=raw_tokens,
+    ) as frame:
+        record(
+            "runtime.operation.start",
+            "executing GWAY operation",
+            operation="reload",
+            tokens=list(raw_tokens),
+            frame_id=frame.id,
+            parent_frame_id=frame.parent_id,
+        )
+        reload_runtime(runtime, interactive=interactive)
+    raise RuntimeError("reload process replacement unexpectedly returned")
 
 
 def run_statement(
@@ -63,6 +97,13 @@ def run_statement(
         if isinstance(candidate, MutableMapping):
             provenance = candidate
     stages = parse_stages(tokens)
+    if len(stages) > 1 and any(
+        stage.kind is not StageKind.SOLVE and stage.tokens[0] == "reload"
+        for stage in stages
+    ):
+        raise DispatchError(
+            "reload cannot be used in a multi-stage statement; pending chain stages are not resumable"
+        )
     result: object = None
     record("chain.start", "executing command chain", stages=len(stages), tokens=list(tokens))
 
@@ -103,6 +144,15 @@ def run_statement(
                     paths=dispatcher.registry.paths,
                 )
                 producer = active_runtime.frames.value_provenance(active_runtime.current_frame)
+            elif stage.tokens[0] == "reload":
+                _run_reload_stage(
+                    active_runtime,
+                    stage.tokens,
+                    stage.raw_tokens,
+                    transfer,
+                    interactive=interactive,
+                )
+                raise RuntimeError("reload process replacement unexpectedly returned")
             else:
                 result = active_runtime.execute_stage(
                     stage,

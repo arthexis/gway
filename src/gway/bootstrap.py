@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from collections.abc import Mapping, Sequence
@@ -7,6 +8,7 @@ from collections.abc import Mapping, Sequence
 _GLOBAL_FLAGS = frozenset({"--json", "-i", "--interactive"})
 _EXPLAIN_FLAGS = frozenset({"-e", "--explain"})
 _RUNTIME_LIFECYCLE = frozenset({"install", "upgrade", "uninstall"})
+_ORIGINAL_ARGV_ENV = "GWAY_RESUME_ORIGINAL_ARGV"
 
 
 def _partition_args(args: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -66,6 +68,98 @@ def _render_upgrade_result(result: object, *, detail: bool) -> None:
     _render_result(result)
 
 
+def _resume_error_args(args: Sequence[str]) -> list[str]:
+    """Recover the user's original argv carried across process replacement."""
+    encoded = os.environ.pop(_ORIGINAL_ARGV_ENV, None)
+    if encoded is None:
+        return list(args)
+    try:
+        decoded = json.loads(encoded)
+    except json.JSONDecodeError:
+        return list(args)
+    if not isinstance(decoded, list) or not all(isinstance(arg, str) for arg in decoded):
+        return list(args)
+    return decoded
+
+
+def _run_internal_resume(args: Sequence[str]) -> int | None:
+    """Handle the process-replacement resume entry before ordinary CLI parsing."""
+    if not args or args[0] != "--resume":
+        return None
+    error_args = _resume_error_args(args)
+    if len(args) != 2:
+        print("usage: python -m gway --resume CHECKPOINT", file=sys.stderr)
+        print("gway: error: internal --resume requires exactly one checkpoint path", file=sys.stderr)
+        return 2
+
+    from .checkpoint import CheckpointError
+    from .checkpoint_store import (
+        claim_checkpoint,
+        read_checkpoint,
+        remove_checkpoint,
+        restore_checkpoint,
+    )
+    from .cli import _handle_cli_exception, _render_result, _report_error
+    from .explain import explain_scope, record, render_trace
+    from .resume import resume_recipe
+    from .runtime import GwayRuntime
+
+    def handle_resume_error(exc: Exception) -> int:
+        if isinstance(exc, CheckpointError):
+            _report_error(exc, error_args)
+            return 2
+        return _handle_cli_exception(exc, error_args)
+
+    def restore_claim(claimed_path: str, checkpoint_path: str) -> None:
+        try:
+            restore_checkpoint(claimed_path, checkpoint_path)
+        except Exception as restore_exc:
+            print(f"gway: additionally failed to restore checkpoint: {restore_exc}", file=sys.stderr)
+
+    checkpoint_path = args[1]
+    try:
+        claimed_path = claim_checkpoint(checkpoint_path)
+    except Exception as exc:
+        return handle_resume_error(exc)
+
+    try:
+        checkpoint = read_checkpoint(claimed_path)
+    except Exception as exc:
+        restore_claim(str(claimed_path), checkpoint_path)
+        return handle_resume_error(exc)
+    except BaseException:
+        restore_claim(str(claimed_path), checkpoint_path)
+        raise
+
+    with explain_scope(enabled=checkpoint.flags.explain) as trace:
+        try:
+            runtime = GwayRuntime()
+            runtime.output_mode = checkpoint.flags.output_mode
+            result = resume_recipe(checkpoint, runtime.dispatcher, runtime=runtime)
+            remove_checkpoint(claimed_path)
+            _render_result(
+                result,
+                json_output=checkpoint.flags.output_mode == "json",
+            )
+            return 0
+        except Exception as exc:
+            record(
+                "execution.failure",
+                "checkpoint resume failed",
+                exception=type(exc).__name__,
+                error=str(exc),
+                checkpoint=checkpoint_path,
+            )
+            restore_claim(str(claimed_path), checkpoint_path)
+            return handle_resume_error(exc)
+        except BaseException:
+            restore_claim(str(claimed_path), checkpoint_path)
+            raise
+        finally:
+            if checkpoint.flags.explain:
+                print(render_trace(trace), file=sys.stderr)
+
+
 def _run_runtime_recipe(
     args: Sequence[str],
     *,
@@ -86,7 +180,9 @@ def _run_runtime_recipe(
 
     interactive = any(flag in {"-i", "--interactive"} for flag in global_flags)
     try:
-        result = GwayRuntime().execute(command_args, interactive=interactive)
+        runtime = GwayRuntime()
+        runtime.output_mode = "json" if "--json" in global_flags else None
+        result = runtime.execute(command_args, interactive=interactive)
         _render_result(result, json_output="--json" in global_flags)
     except Exception as exc:
         return _handle_cli_exception(exc, list(error_args if error_args is not None else args))
@@ -138,9 +234,7 @@ def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
             command_args,
             interactive=interactive,
         )
-        if operation == "upgrade" and not json_output:
-            pass
-        else:
+        if operation != "upgrade" or json_output:
             _render_result(result, json_output=json_output)
     except Exception as exc:
         return _handle_cli_exception(exc, list(args))
@@ -173,6 +267,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     os.environ["GIT_TERMINAL_PROMPT"] = "0"
 
     raw_args = list(sys.argv[1:] if argv is None else argv)
+    resume_result = _run_internal_resume(raw_args)
+    if resume_result is not None:
+        return resume_result
+
     args, explain = _extract_explain_flag(raw_args)
 
     from .explain import explain_scope, record, render_trace
