@@ -127,3 +127,36 @@ def test_store_rejects_positional_values(tmp_path: Path) -> None:
 
     with pytest.raises(DispatchError, match="named options only"):
         session.run(["store", "value"])
+
+
+def test_result_replays_latest_captured_result(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+    expected = session.run(["demo", "named"])
+
+    assert session.run(["result"]) == expected
+    assert session.context["result"] == expected
+
+
+def test_result_can_extract_named_context_with_sigils(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+    session.run(["demo", "named"])
+
+    assert session.run(["result", "[customer]"]) == "cust-1"
+    assert session.context["result"] == "cust-1"
+
+
+def test_result_is_none_before_any_captured_value(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+
+    assert session.run(["result"]) is None
+    assert session.context["result"] is None
+
+
+def test_result_expression_can_feed_explicit_chain(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+    session.run(["demo", "named"])
+
+    assert (
+        session.run(["result", "[customer]", "-", "demo", "echo"])
+        == "cust-1"
+    )
