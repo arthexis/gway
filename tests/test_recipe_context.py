@@ -7,6 +7,7 @@ import pytest
 
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
+from gway.dispatcher.errors import DispatchError
 from gway.project import Project
 from gway.recipe import RecipeSession
 from gway.registry import Registry
@@ -81,3 +82,48 @@ def test_explicit_chain_still_transfers_scalar_positionally(tmp_path: Path) -> N
     session = _session(tmp_path)
 
     assert session.run(["demo", "scalar", "-", "demo", "echo"]) == "alpha"
+
+
+def test_store_publishes_named_values_for_later_statements(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+
+    result = session.run(["store", "--customer", "cust-9", "--charger=chg-9"])
+
+    assert result == {"customer": "cust-9", "charger": "chg-9"}
+    assert session.context["customer"] == "cust-9"
+    assert session.context["charger"] == "chg-9"
+    assert session.context["result"] == result
+    assert session.run(["demo", "use-named"]) == "cust-9:chg-9"
+
+
+def test_store_supports_boolean_style_options(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+
+    assert session.run(["store", "--enabled", "--no-dry-run"]) == {
+        "enabled": True,
+        "dry_run": False,
+    }
+
+
+def test_store_resolves_sigils_against_existing_context(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+    session.run(["demo", "named"])
+
+    assert session.run(["store", "--selected", "[customer]"]) == {
+        "selected": "cust-1",
+    }
+    assert session.context["selected"] == "cust-1"
+
+
+def test_store_rejects_reserved_result_key(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+
+    with pytest.raises(DispatchError, match="reserved context key: result"):
+        session.run(["store", "--result", "shadow"])
+
+
+def test_store_rejects_positional_values(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+
+    with pytest.raises(DispatchError, match="named options only"):
+        session.run(["store", "value"])

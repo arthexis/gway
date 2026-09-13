@@ -12,6 +12,7 @@ from .explain import record
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .solve import solve_values
 from .stage import Stage, StageKind, parse_stages
+from .store import run_store
 from .transfer import encode_transfer, transfer_scope
 
 if TYPE_CHECKING:
@@ -105,6 +106,11 @@ def _run_command_stage(
     *,
     interactive: bool,
 ) -> object:
+    if stage.tokens and stage.tokens[0] == "store":
+        if transfer:
+            raise DispatchError("store cannot receive chain positionals")
+        return run_store(stage.tokens[1:], paths=dispatcher.registry.paths)
+
     project_name, project_args = normalize_managed_args(stage.tokens)
     _, raw_project_args = normalize_managed_args(stage.raw_tokens)
 
