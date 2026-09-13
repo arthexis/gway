@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .chain_context import current_chain_context, current_chain_provenance
 from .checkpoint import CheckpointFlags, ResumeCheckpoint, recipe_identity
+from .checkpoint_chain import PendingChainCheckpoint, PendingStageCheckpoint
 from .checkpoint_stack import ContinuationFrameCheckpoint, ContinuationStackCheckpoint
 from .checkpoint_store import write_checkpoint_atomic
 from .explain import enabled as explain_enabled, record
@@ -26,6 +27,42 @@ def _checkpoint_flags(runtime, *, interactive: bool) -> CheckpointFlags:
         explain=explain_enabled(),
         output_mode=getattr(runtime, "output_mode", None),
     )
+
+
+def capture_pending_chains(runtime) -> tuple[PendingChainCheckpoint, ...]:
+    """Convert live evaluator chain state into the Chunk 7.3 checkpoint schema.
+
+    This is intentionally capture-only in 7.3.2. The reload writer continues to
+    emit the existing v1/v2 formats until 7.3.3 can consume version 3 safely.
+    """
+    pending: list[PendingChainCheckpoint] = []
+    for state in runtime.frames.active_chains:
+        stages = parse_stages(state.statement_tokens)
+        remaining = stages[state.active_stage_index :]
+        if not remaining:
+            continue
+        pending.append(
+            PendingChainCheckpoint(
+                frame_id=state.frame_id,
+                recipe_path=state.recipe_path,
+                recipe_line=state.recipe_line,
+                statement_tokens=state.statement_tokens,
+                active_stage_index=state.active_stage_index,
+                remaining_stages=tuple(
+                    PendingStageCheckpoint.from_stage(stage) for stage in remaining
+                ),
+                has_previous_result=state.has_previous_result,
+                previous_result=(
+                    state.previous_result if state.has_previous_result else None
+                ),  # type: ignore[arg-type]
+                previous_result_provenance=(
+                    state.previous_result_provenance
+                    if state.has_previous_result
+                    else None
+                ),
+            )
+        )
+    return tuple(pending)
 
 
 def _validate_nested_parent_statement(parent, child) -> None:
@@ -162,10 +199,13 @@ def reload_runtime(runtime, *, interactive: bool) -> None:
     try:
         os.execv(sys.executable, argv)
     except OSError as exc:
-        # The checkpoint deliberately remains on disk so the failed handoff can
-        # be inspected or resumed manually.
         raise ReloadError(f"cannot replace GWAY process; checkpoint preserved at {path}: {exc}") from exc
     raise ReloadError("process replacement unexpectedly returned")
 
 
-__all__ = ["ReloadError", "create_reload_checkpoint", "reload_runtime"]
+__all__ = [
+    "ReloadError",
+    "capture_pending_chains",
+    "create_reload_checkpoint",
+    "reload_runtime",
+]
