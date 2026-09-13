@@ -119,15 +119,25 @@ def _recipe_statement_lines(path: Path) -> tuple[int, ...]:
     )
 
 
-def recipe_statements(path: str | Path) -> Iterator[RecipeStatement]:
-    """Yield tokenized GWAY statements from one canonical .rx recipe file."""
+def recipe_statements(
+    path: str | Path,
+    *,
+    start_statement_index: int = 1,
+) -> Iterator[RecipeStatement]:
+    """Yield tokenized statements lazily, optionally starting at a logical ordinal."""
     recipe_path = Path(path)
     if recipe_path.suffix != ".rx":
         raise RecipeError(recipe_path, "recipe files must use the .rx extension")
+    if start_statement_index < 1:
+        raise RecipeError(recipe_path, "start statement index must be positive")
 
+    statement_index = 0
     for line_number, source in enumerate(recipe_path.read_text(encoding="utf-8").splitlines(), start=1):
         stripped = source.strip()
         if not stripped or stripped.startswith("#"):
+            continue
+        statement_index += 1
+        if statement_index < start_statement_index:
             continue
         try:
             tokens = tuple(shlex.split(source, comments=False, posix=True))
@@ -192,13 +202,24 @@ def _run_recipe_body(
     *,
     interactive: bool,
     prompt: Callable[[str], str] | None,
+    start_statement_index: int = 1,
+    initial_result: object = None,
+    has_initial_result: bool = False,
 ) -> object:
     """Execute recipe statements within an already-established recipe frame."""
     assert session.runtime is not None
-    result: object = None
+    result: object = initial_result if has_initial_result else None
     statement_lines = _recipe_statement_lines(recipe_path)
-    record("recipe.start", "executing recipe", path=str(recipe_path))
-    for statement_index, statement in enumerate(recipe_statements(recipe_path), start=1):
+    record(
+        "recipe.start",
+        "executing recipe",
+        path=str(recipe_path),
+        start_statement_index=start_statement_index,
+    )
+    for statement_index, statement in enumerate(
+        recipe_statements(recipe_path, start_statement_index=start_statement_index),
+        start=start_statement_index,
+    ):
         next_statement_index = statement_index + 1 if statement_index < len(statement_lines) else None
         next_line = statement_lines[statement_index] if statement_index < len(statement_lines) else None
         continuation = ContinuationPoint(
@@ -252,6 +273,41 @@ def _run_recipe_body(
     return result
 
 
+def _run_recipe_from(
+    recipe_path: Path,
+    session: RecipeSession,
+    *,
+    interactive: bool,
+    prompt: Callable[[str], str] | None,
+    start_statement_index: int,
+    initial_result: object = None,
+    has_initial_result: bool = False,
+) -> object:
+    """Run one recipe from a logical statement ordinal without duplicating recipe frames."""
+    assert session.runtime is not None
+    current = session.runtime.current_frame
+    if current is not None and current.kind == "recipe" and current.recipe_path == str(recipe_path):
+        return _run_recipe_body(
+            recipe_path,
+            session,
+            interactive=interactive,
+            prompt=prompt,
+            start_statement_index=start_statement_index,
+            initial_result=initial_result,
+            has_initial_result=has_initial_result,
+        )
+    with session.runtime.frame_scope("recipe", recipe_path=str(recipe_path)):
+        return _run_recipe_body(
+            recipe_path,
+            session,
+            interactive=interactive,
+            prompt=prompt,
+            start_statement_index=start_statement_index,
+            initial_result=initial_result,
+            has_initial_result=has_initial_result,
+        )
+
+
 def run_recipe(
     path: str | Path,
     dispatcher: Dispatcher,
@@ -267,23 +323,13 @@ def run_recipe(
     else:
         recipe_context = RecipeContext(dict(context or {}))
     session = RecipeSession(dispatcher, context=recipe_context, runtime=runtime)
-    assert session.runtime is not None
-    recipe_path = Path(path)
-    current = session.runtime.current_frame
-    if current is not None and current.kind == "recipe" and current.recipe_path == str(recipe_path):
-        return _run_recipe_body(
-            recipe_path,
-            session,
-            interactive=interactive,
-            prompt=prompt,
-        )
-    with session.runtime.frame_scope("recipe", recipe_path=str(recipe_path)):
-        return _run_recipe_body(
-            recipe_path,
-            session,
-            interactive=interactive,
-            prompt=prompt,
-        )
+    return _run_recipe_from(
+        Path(path),
+        session,
+        interactive=interactive,
+        prompt=prompt,
+        start_statement_index=1,
+    )
 
 
 __all__ = [
