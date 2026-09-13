@@ -131,8 +131,14 @@ def _install_project_service(project: Project) -> dict[str, object]:
 class GwayRuntime:
     """Execute complete GWAY statements through one reusable runtime boundary."""
 
-    def __init__(self, dispatcher: Dispatcher | None = None) -> None:
+    def __init__(
+        self,
+        dispatcher: Dispatcher | None = None,
+        *,
+        on_progress: Callable[[dict[str, object]], None] | None = None,
+    ) -> None:
         self.dispatcher = dispatcher or Dispatcher()
+        self.on_progress = on_progress
 
     @property
     def registry(self):
@@ -205,6 +211,10 @@ class GwayRuntime:
             result=result,
         )
         return result
+
+    def _publish_progress(self, result: dict[str, object]) -> None:
+        if self.on_progress is not None:
+            self.on_progress(result)
 
     def _run_core(self, tokens: Sequence[str]) -> object:
         operation = tokens[0]
@@ -292,14 +302,14 @@ class GwayRuntime:
         if targets:
             if include_self_target:
                 upgrader.upgrade_self()
-                results.append(
-                    {
-                        "status": "upgraded",
-                        "name": "gway",
-                        "repository": "arthexis/gway",
-                        "revision": "main",
-                    }
-                )
+                result = {
+                    "status": "upgraded",
+                    "name": "gway",
+                    "repository": "arthexis/gway",
+                    "revision": "main",
+                }
+                results.append(result)
+                self._publish_progress(result)
             for target in managed_targets:
                 changed = upgrader.project_result(
                     target,
@@ -308,8 +318,12 @@ class GwayRuntime:
                     arguments=passthrough if len(managed_targets) == 1 else (),
                 )
                 status = "upgraded" if changed.changed else "skipped"
-                results.append(_managed_status(status, changed.project))
-            return results[0] if len(results) == 1 else results
+                result = _managed_status(status, changed.project)
+                results.append(result)
+                self._publish_progress(result)
+            if len(managed_targets) == 1 and not include_self_target:
+                return results[0]
+            return results
 
         default_mode = not namespace.all and namespace.upgrade_self is None
         include_self = namespace.upgrade_self is True or (
@@ -319,21 +333,23 @@ class GwayRuntime:
 
         if include_self:
             upgrader.upgrade_self()
-            results.append(
-                {
-                    "status": "upgraded",
-                    "name": "gway",
-                    "repository": "arthexis/gway",
-                    "revision": "main",
-                }
-            )
+            result = {
+                "status": "upgraded",
+                "name": "gway",
+                "repository": "arthexis/gway",
+                "revision": "main",
+            }
+            results.append(result)
+            self._publish_progress(result)
         if include_projects:
             for changed in upgrader.all_project_results(
                 force=namespace.force,
                 reload=namespace.reload,
             ):
                 status = "upgraded" if changed.changed else "skipped"
-                results.append(_managed_status(status, changed.project))
+                result = _managed_status(status, changed.project)
+                results.append(result)
+                self._publish_progress(result)
         return results
 
     def _run_managed(
