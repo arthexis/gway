@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-_CHAIN_CONTEXT: ContextVar[dict[str, object] | None] = ContextVar(
+_CHAIN_CONTEXT: ContextVar[MutableMapping[str, object] | None] = ContextVar(
     "gway_chain_context",
     default=None,
 )
@@ -17,12 +17,12 @@ def current_chain_context() -> dict[str, object]:
 
 
 @contextmanager
-def chain_context_scope():
-    """Create and reliably restore one invocation-local chain context."""
-    context: dict[str, object] = {}
-    token = _CHAIN_CONTEXT.set(context)
+def chain_context_scope(context: MutableMapping[str, object] | None = None):
+    """Activate and reliably restore one invocation-local chain context."""
+    active: MutableMapping[str, object] = {} if context is None else context
+    token = _CHAIN_CONTEXT.set(active)
     try:
-        yield context
+        yield active
     finally:
         _CHAIN_CONTEXT.reset(token)
 
