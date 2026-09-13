@@ -188,6 +188,7 @@ def _resume_frame(
         expected_parent_id=frame.parent_frame_id,
         recipe_path=str(recipe_path),
     ):
+        runtime.frames.mark_restored_continuation(frame.frame_id, point)
         if index + 1 < len(stack.frames):
             with runtime.frames.continuation_scope(
                 point,
@@ -330,6 +331,7 @@ def _resume_v3_frame(
         expected_parent_id=frame.parent_frame_id,
         recipe_path=str(recipe_path),
     ):
+        runtime.frames.mark_restored_continuation(frame.frame_id, point)
         if index + 1 < len(checkpoint.frames):
             with runtime.frames.continuation_scope(
                 point,
