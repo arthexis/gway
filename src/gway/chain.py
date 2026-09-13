@@ -100,6 +100,22 @@ def run_statement(
         raise DispatchError("restored chain stage index is out of range")
     result: object = initial_result if has_initial_result else None
     result_provenance = initial_result_provenance if has_initial_result else None
+    if start_stage_index:
+        record(
+            "resume.chain.restore",
+            "restored pending chain at saved evaluator boundary",
+            statement_tokens=list(tokens),
+            completed_stages=start_stage_index,
+            next_stage_index=start_stage_index + 1,
+            total_stages=len(stages),
+            has_previous_result=has_initial_result,
+            previous_result=initial_result if has_initial_result else None,
+            previous_result_provenance=(
+                initial_result_provenance.as_dict()
+                if initial_result_provenance is not None
+                else None
+            ),
+        )
     record("chain.start", "executing command chain", stages=len(stages), tokens=list(tokens))
 
     if interactive and prompt is None:
@@ -183,6 +199,13 @@ def run_statement(
                 )
 
     record("chain.result", "command chain completed", result=result)
+    if start_stage_index:
+        record(
+            "resume.chain.result",
+            "completed restored pending chain",
+            result=result,
+            provenance=result_provenance.as_dict() if result_provenance is not None else None,
+        )
     return result
 
 
