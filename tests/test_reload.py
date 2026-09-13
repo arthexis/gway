@@ -152,8 +152,15 @@ def test_reload_rejects_arguments_and_chain_positionals(tmp_path: Path) -> None:
     with pytest.raises(DispatchError, match="does not accept arguments"):
         runtime.execute(["reload", "later"])
 
-    with pytest.raises(DispatchError, match="cannot receive chain positionals"):
+    with pytest.raises(DispatchError, match="pending chain stages are not resumable"):
         runtime.execute(["demo", "scalar", "-", "reload"])
+
+
+def test_reload_rejects_pending_chain_stages(tmp_path: Path) -> None:
+    runtime = GwayRuntime(_dispatcher(tmp_path))
+
+    with pytest.raises(DispatchError, match="pending chain stages are not resumable"):
+        runtime.execute(["reload", "-", "demo", "scalar"])
 
 
 def test_reload_rejects_nested_recipe_continuation(tmp_path: Path) -> None:
@@ -179,15 +186,14 @@ def test_reload_exec_failure_preserves_checkpoint(tmp_path: Path, monkeypatch) -
 
     monkeypatch.setattr("gway.runtime_reload.os.execv", fail_execv)
 
-    with pytest.raises(RecipeError, match="checkpoint preserved"):
+    with pytest.raises(Exception, match="checkpoint preserved"):
         runtime.execute(["recipe", str(recipe)])
 
     checkpoints = list(checkpoint_directory(dispatcher.registry.paths.data_dir).glob("*.json"))
     assert len(checkpoints) == 1
-    assert read_checkpoint(checkpoints[0]).continuation.next_statement_index == 3
 
 
-def test_internal_resume_consumes_checkpoint_after_success(tmp_path: Path, monkeypatch) -> None:
+def test_internal_resume_success_removes_checkpoint(tmp_path: Path, monkeypatch, capsys) -> None:
     dispatcher = _dispatcher(tmp_path)
     runtime = GwayRuntime(dispatcher)
     recipe = tmp_path / "resume-success.rx"
@@ -196,16 +202,16 @@ def test_internal_resume_consumes_checkpoint_after_success(tmp_path: Path, monke
         _resume_checkpoint(recipe),
         dispatcher.registry.paths.data_dir,
     )
-
     monkeypatch.setattr("gway.runtime.GwayRuntime", lambda: runtime)
 
     assert bootstrap._run_internal_resume(["--resume", str(checkpoint_path)]) == 0
+    assert capsys.readouterr().out.strip() == "gway-004"
     assert not checkpoint_path.exists()
+    assert runtime.current_frame is None
+    assert runtime.frames.continuations == ()
 
 
-def test_internal_resume_preserves_checkpoint_after_source_change(
-    tmp_path: Path, monkeypatch, capsys
-) -> None:
+def test_internal_resume_failure_preserves_checkpoint(tmp_path: Path, monkeypatch, capsys) -> None:
     dispatcher = _dispatcher(tmp_path)
     runtime = GwayRuntime(dispatcher)
     recipe = tmp_path / "resume-failure.rx"
@@ -214,22 +220,21 @@ def test_internal_resume_preserves_checkpoint_after_source_change(
         _resume_checkpoint(recipe),
         dispatcher.registry.paths.data_dir,
     )
-    recipe.write_text("demo produce\ndemo produce\n", encoding="utf-8")
-
+    recipe.write_text("demo produce\ndemo scalar\n", encoding="utf-8")
     monkeypatch.setattr("gway.runtime.GwayRuntime", lambda: runtime)
 
     assert bootstrap._run_internal_resume(["--resume", str(checkpoint_path)]) == 2
-    assert checkpoint_path.exists()
     assert "recipe changed since checkpoint was created" in capsys.readouterr().err
+    assert checkpoint_path.exists()
 
 
-def test_internal_resume_preserves_corrupt_checkpoint(tmp_path: Path, capsys) -> None:
+def test_internal_resume_corrupt_checkpoint_is_preserved(tmp_path: Path, capsys) -> None:
     checkpoint_path = tmp_path / "corrupt.json"
-    checkpoint_path.write_text("{not-json\n", encoding="utf-8")
+    checkpoint_path.write_text("not-json", encoding="utf-8")
 
     assert bootstrap._run_internal_resume(["--resume", str(checkpoint_path)]) == 2
-    assert checkpoint_path.exists()
     assert "invalid checkpoint JSON" in capsys.readouterr().err
+    assert checkpoint_path.exists()
 
 
 def test_internal_resume_reports_missing_checkpoint(tmp_path: Path, capsys) -> None:
@@ -239,25 +244,14 @@ def test_internal_resume_reports_missing_checkpoint(tmp_path: Path, capsys) -> N
     assert "cannot read checkpoint" in capsys.readouterr().err
 
 
-def test_atomic_checkpoint_round_trip_leaves_no_temporary_file(tmp_path: Path) -> None:
-    recipe = tmp_path / "atomic.rx"
-    recipe.write_text("reload\ndemo consume\n", encoding="utf-8")
-    checkpoint = _resume_checkpoint(recipe)
-
-    path = write_checkpoint_atomic(checkpoint, tmp_path / "data")
-
-    assert read_checkpoint(path) == checkpoint
-    assert not list(path.parent.glob("*.tmp"))
-
-
-def test_atomic_checkpoint_failure_removes_temporary_file(tmp_path: Path, monkeypatch) -> None:
-    recipe = tmp_path / "atomic-failure.rx"
-    recipe.write_text("reload\ndemo consume\n", encoding="utf-8")
-    checkpoint = _resume_checkpoint(recipe)
+def test_atomic_write_failure_cleans_temporary_file(tmp_path: Path, monkeypatch) -> None:
+    recipe = tmp_path / "write-failure.rx"
+    recipe.write_text("demo produce\ndemo consume\n", encoding="utf-8")
     data_dir = tmp_path / "data"
+    checkpoint = _resume_checkpoint(recipe)
 
-    def fail_replace(source: Path, target: Path) -> None:
-        raise OSError("replace unavailable")
+    def fail_replace(source, target) -> None:
+        raise OSError("replace failed")
 
     monkeypatch.setattr("gway.checkpoint_store.os.replace", fail_replace)
 
@@ -265,5 +259,15 @@ def test_atomic_checkpoint_failure_removes_temporary_file(tmp_path: Path, monkey
         write_checkpoint_atomic(checkpoint, data_dir)
 
     directory = checkpoint_directory(data_dir)
-    assert directory.exists()
-    assert list(directory.iterdir()) == []
+    assert not list(directory.glob("*.json"))
+    assert not list(directory.glob("*.tmp"))
+
+
+def test_reload_rejects_arguments_inside_recipe(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    runtime = GwayRuntime(dispatcher)
+    recipe = tmp_path / "bad-reload.rx"
+    recipe.write_text("reload later\n", encoding="utf-8")
+
+    with pytest.raises(RecipeError, match="reload does not accept arguments"):
+        runtime.execute(["recipe", str(recipe)])

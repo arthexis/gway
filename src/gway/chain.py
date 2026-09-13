@@ -97,6 +97,13 @@ def run_statement(
         if isinstance(candidate, MutableMapping):
             provenance = candidate
     stages = parse_stages(tokens)
+    if len(stages) > 1 and any(
+        stage.kind is not StageKind.SOLVE and stage.tokens[0] == "reload"
+        for stage in stages
+    ):
+        raise DispatchError(
+            "reload cannot be used in a multi-stage statement; pending chain stages are not resumable"
+        )
     result: object = None
     record("chain.start", "executing command chain", stages=len(stages), tokens=list(tokens))
 

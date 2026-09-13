@@ -19,6 +19,7 @@ from gway.checkpoint_store import (
     _sync_directory,
     checkpoint_directory,
     claim_checkpoint,
+    read_checkpoint,
     restore_checkpoint,
     write_checkpoint_atomic,
 )
@@ -232,3 +233,29 @@ def test_resume_executes_the_same_recipe_snapshot_it_validates(
         runtime=object(),  # type: ignore[arg-type]
     ) == "resumed"
     assert captured["source"] == original_source
+
+
+def test_invalid_utf8_checkpoint_is_reported_as_checkpoint_error(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.json"
+    path.write_bytes(b"\xff\xfe")
+
+    with pytest.raises(CheckpointError, match="cannot read checkpoint"):
+        read_checkpoint(path)
+
+
+def test_checkpoint_surrogate_encoding_failure_leaves_no_temp_file(tmp_path: Path) -> None:
+    recipe = tmp_path / "surrogate.rx"
+    recipe.write_text("reload\n", encoding="utf-8")
+    data_dir = tmp_path / "data"
+    checkpoint = ResumeCheckpoint(
+        recipe=recipe_identity(recipe),
+        continuation=ContinuationPoint(str(recipe), 1, 1, None, None),
+        context={"bad": "\udcff"},
+    )
+
+    with pytest.raises(CheckpointError, match="cannot be encoded as UTF-8"):
+        write_checkpoint_atomic(checkpoint, data_dir)
+
+    directory = checkpoint_directory(data_dir)
+    assert not list(directory.glob("*.tmp"))
+    assert not list(directory.glob("*.json"))

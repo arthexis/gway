@@ -70,12 +70,15 @@ def write_checkpoint_atomic(checkpoint: ResumeCheckpoint, data_dir: Path) -> Pat
     checkpoint_id = uuid.uuid4().hex
     target = directory / f"{checkpoint_id}.json"
     temporary = directory / f".{checkpoint_id}.tmp"
-    payload = checkpoint.to_json() + "\n"
+    try:
+        payload = (checkpoint.to_json() + "\n").encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise CheckpointError(f"checkpoint contains text that cannot be encoded as UTF-8: {exc}") from exc
 
     descriptor: int | None = None
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+        with os.fdopen(descriptor, "wb") as stream:
             descriptor = None
             stream.write(payload)
             stream.flush()
@@ -147,7 +150,7 @@ def read_checkpoint(path: str | Path) -> ResumeCheckpoint:
     checkpoint_path = Path(path)
     try:
         payload = checkpoint_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise CheckpointError(f"cannot read checkpoint {checkpoint_path}: {exc}") from exc
     return ResumeCheckpoint.from_json(payload)
 
