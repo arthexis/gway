@@ -93,6 +93,7 @@ class ExecutionFrameStack:
     def __init__(self) -> None:
         self._frames: list[ExecutionFrame] = []
         self._history: dict[str, ExecutionFrame] = {}
+        self._restored_frame_ids: set[str] = set()
         self._continuations: list[ContinuationPoint] = []
         self._active_continuations: list[ActiveContinuation] = []
         self._active_chains: list[ActiveChainContinuation] = []
@@ -131,6 +132,10 @@ class ExecutionFrameStack:
 
     def get(self, frame_id: str) -> ExecutionFrame | None:
         return self._history.get(frame_id)
+
+    def is_restored(self, frame_id: str) -> bool:
+        """Return whether a frame identity was restored from a checkpoint."""
+        return frame_id in self._restored_frame_ids
 
     def value_provenance(self, frame: ExecutionFrame | None) -> ValueProvenance | None:
         if frame is None:
@@ -209,6 +214,21 @@ class ExecutionFrameStack:
                 provenance={} if provenance is None else provenance,
             )
             self._active_continuations.append(active)
+            if self.is_restored(frame.id):
+                from .explain import record
+
+                record(
+                    "resume.continuation.restore",
+                    "restored saved recipe continuation",
+                    frame_id=frame.id,
+                    parent_frame_id=frame.parent_id,
+                    recipe_path=point.recipe_path,
+                    statement_index=point.statement_index,
+                    line=point.line,
+                    next_statement_index=point.next_statement_index,
+                    next_line=point.next_line,
+                    context_provenance=serialize_provenance(active.provenance),
+                )
         try:
             yield point
         finally:
@@ -250,9 +270,23 @@ class ExecutionFrameStack:
         )
         self._frames.append(frame)
         self._history[frame.id] = frame
+        self._restored_frame_ids.add(frame.id)
         match = re.fullmatch(r"frame-(\d+)", frame.id)
         if match is not None:
             self._next_id = max(self._next_id, int(match.group(1)) + 1)
+        from .explain import record
+
+        record(
+            "resume.frame.restore",
+            "restored execution frame identity",
+            frame_id=frame.id,
+            frame_kind=frame.kind,
+            parent_frame_id=frame.parent_id,
+            operation=frame.operation,
+            tokens=list(frame.tokens),
+            recipe_path=frame.recipe_path,
+            recipe_line=frame.recipe_line,
+        )
         try:
             yield frame
         finally:
