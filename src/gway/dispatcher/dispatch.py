@@ -9,6 +9,7 @@ from ..chain_context import current_chain_context
 from ..command import Command, command_path_aliases
 from ..explain import record
 from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
+from ..outcome import CommandOutcome, resolve_outcome
 from ..registry import Registry, RegistryError
 from ..sigils import RESERVED_CONTEXT_KEYS
 from ..stage import decode_stage_escapes
@@ -320,7 +321,18 @@ class Dispatcher:
             command=list(command.path),
             argv=list(resolved_argv),
         )
-        result = adapter.run(command.path, resolved_argv)
+        raw_result = adapter.run(command.path, resolved_argv)
+        if isinstance(raw_result, CommandOutcome):
+            record(
+                "command.outcome",
+                "managed command returned explicit semantic outcome",
+                project=project.name,
+                command=list(command.path),
+                success=raw_result.success,
+                result=raw_result.value,
+                outcome_message=raw_result.message,
+            )
+        result = resolve_outcome(raw_result)
         record(
             "command.result",
             "adapter command completed",

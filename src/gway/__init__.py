@@ -12,8 +12,19 @@ if Path(sys.argv[0]).name.lower() in {"gway", "gway.exe"}:
     os.environ["GIT_TERMINAL_PROMPT"] = "0"
 
 from .api import Gway, gw, gway  # noqa: E402
+from .outcome import CommandOutcome, SemanticFailure, failure, success  # noqa: E402
 from .sigils import gway_context  # noqa: E402
 
-__all__ = ["Gway", "gway", "gw", "gway_context", "__version__"]
+__all__ = [
+    "CommandOutcome",
+    "Gway",
+    "SemanticFailure",
+    "failure",
+    "gway",
+    "gw",
+    "gway_context",
+    "success",
+    "__version__",
+]
 
 __version__ = "1.0.1"
