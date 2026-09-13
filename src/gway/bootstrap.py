@@ -70,13 +70,11 @@ def _run_uninstall(args: Sequence[str]) -> int | None:
         )
         return 2
 
-    from .cli import _handle_cli_exception, _managed_status, _render_result
-    from .install import Installer
-    from .registry import Registry
+    from .cli import _handle_cli_exception, _render_result
+    from .runtime import GwayRuntime
 
     try:
-        project = Installer(Registry()).uninstall(command_args[1])
-        result = _managed_status("uninstalled", project)
+        result = GwayRuntime().execute(command_args)
         _render_result(result, json_output="--json" in global_flags)
     except Exception as exc:
         return _handle_cli_exception(exc, list(args))
