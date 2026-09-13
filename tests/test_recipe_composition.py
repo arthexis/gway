@@ -90,9 +90,7 @@ def test_child_local_context_does_not_leak_to_parent(tmp_path: Path) -> None:
     recipe.write_text("store --temporary secret\ndemo echo done\n", encoding="utf-8")
     context: dict[str, object] = {"parent": "kept"}
 
-    result = GwayRuntime(_dispatcher(tmp_path)).execute(
-        ["recipe", str(recipe)], context=context
-    )
+    result = GwayRuntime(_dispatcher(tmp_path)).execute(["recipe", str(recipe)], context=context)
 
     assert result == "done"
     assert context["parent"] == "kept"
@@ -105,9 +103,7 @@ def test_child_final_mapping_publishes_back_normally(tmp_path: Path) -> None:
     recipe.write_text("store --published yes\n", encoding="utf-8")
     context: dict[str, object] = {}
 
-    result = GwayRuntime(_dispatcher(tmp_path)).execute(
-        ["recipe", str(recipe)], context=context
-    )
+    result = GwayRuntime(_dispatcher(tmp_path)).execute(["recipe", str(recipe)], context=context)
 
     assert result == {"published": "yes"}
     assert context["published"] == "yes"
