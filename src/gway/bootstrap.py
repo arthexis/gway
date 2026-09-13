@@ -70,7 +70,11 @@ def _run_runtime_recipe(args: Sequence[str]) -> int | None:
     global_flags, command_args = _partition_args(args)
     if not command_args or command_args[0] != "recipe":
         return None
-    if any(arg in {"-h", "--help"} for arg in command_args[1:]):
+
+    recipe_stage = command_args[1:]
+    if "-" in recipe_stage:
+        recipe_stage = recipe_stage[: recipe_stage.index("-")]
+    if any(arg in {"-h", "--help"} for arg in recipe_stage):
         return None
 
     from .cli import _handle_cli_exception, _render_result
