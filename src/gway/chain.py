@@ -10,6 +10,7 @@ from .chain_context import chain_context_scope, publish_chain_result
 from .dispatcher.errors import CommandNotFound, DispatchError
 from .explain import record
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
+from .result import run_result
 from .solve import solve_values
 from .stage import Stage, StageKind, parse_stages
 from .store import run_store
@@ -105,11 +106,20 @@ def _run_command_stage(
     transfer: Sequence[object],
     *,
     interactive: bool,
+    prompt: Callable[[str], str] | None = None,
 ) -> object:
     if stage.tokens and stage.tokens[0] == "store":
         if transfer:
             raise DispatchError("store cannot receive chain positionals")
         return run_store(stage.tokens[1:], paths=dispatcher.registry.paths)
+
+    if stage.tokens and stage.tokens[0] == "result":
+        return run_result(
+            stage.tokens[1:],
+            interactive=interactive,
+            prompt=prompt,
+            paths=dispatcher.registry.paths,
+        )
 
     project_name, project_args = normalize_managed_args(stage.tokens)
     _, raw_project_args = normalize_managed_args(stage.raw_tokens)
@@ -209,6 +219,7 @@ def run_statement(
                     stage,
                     transfer,
                     interactive=interactive,
+                    prompt=prompt,
                 )
             publish_chain_result(result)
             record(
