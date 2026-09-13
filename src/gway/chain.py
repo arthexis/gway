@@ -118,7 +118,7 @@ def run_statement(
             for index in range(start_stage_index, len(stages)):
                 stage: Stage = stages[index]
                 previous_result = result
-                has_previous = index > 0 or has_initial_result
+                has_previous = index > start_stage_index or has_initial_result
                 if chain_state is not None:
                     chain_state.active_stage_index = index + 1
                     chain_state.has_previous_result = has_previous
