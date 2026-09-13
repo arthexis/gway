@@ -24,7 +24,7 @@ def _dispatcher(tmp_path: Path) -> Dispatcher:
     root = tmp_path / "chunk75-project"
     root.mkdir()
     (root / "chunk75_commands.py").write_text(
-        '''def produce() -> str:
+        """def produce() -> str:
     return "seed"
 
 
@@ -34,7 +34,7 @@ def tag(value: str) -> str:
 
 def fail(value: str) -> str:
     raise RuntimeError("resumed parent tail failed: " + value)
-''',
+""",
         encoding="utf-8",
     )
     sys.modules.pop("chunk75_commands", None)
@@ -50,7 +50,11 @@ def fail(value: str) -> str:
     return Dispatcher(registry)
 
 
-def _nested_recipes(tmp_path: Path, *, failing_root: bool = False) -> tuple[Path, Path, Path]:
+def _nested_recipes(
+    tmp_path: Path,
+    *,
+    failing_root: bool = False,
+) -> tuple[Path, Path, Path]:
     leaf = tmp_path / "leaf.rx"
     middle = tmp_path / "middle.rx"
     root = tmp_path / "root.rx"
@@ -90,7 +94,10 @@ def _capture_checkpoint(
     return checkpoint
 
 
-def test_three_level_resume_unwinds_each_pending_parent_tail(tmp_path: Path, monkeypatch) -> None:
+def test_three_level_resume_unwinds_each_pending_parent_tail(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     dispatcher = _dispatcher(tmp_path)
     root, _, _ = _nested_recipes(tmp_path)
     checkpoint = _capture_checkpoint(dispatcher, root, monkeypatch)
@@ -143,6 +150,22 @@ def test_three_level_resume_explains_restored_stack_and_chain_unwind(
         "seed:tag",
     ]
 
+    chain_results = [step for step in trace if step.kind == "resume.chain.result"]
+    assert [step.data["result"] for step in chain_results] == [
+        "seed:tag",
+        "seed:tag:tag",
+    ]
+    assert chain_results[-1].data["provenance"]["operation"] == "demo"
+    final_chain_index = max(
+        index for index, step in enumerate(trace) if step.kind == "resume.chain.result"
+    )
+    assert final_chain_index > max(
+        index for index, step in enumerate(trace) if step.kind == "resume.frame.restore"
+    )
+    assert final_chain_index > max(
+        index for index, step in enumerate(trace) if step.kind == "resume.chain.restore"
+    )
+
 
 @pytest.mark.parametrize("changed_level", ["root", "middle", "leaf"])
 def test_nested_resume_validates_every_recipe_before_execution(
@@ -155,7 +178,10 @@ def test_nested_resume_validates_every_recipe_before_execution(
     checkpoint = _capture_checkpoint(dispatcher, root, monkeypatch)
     paths = {"root": root, "middle": middle, "leaf": leaf}
     changed = paths[changed_level]
-    changed.write_text(changed.read_text(encoding="utf-8") + "# changed\n", encoding="utf-8")
+    changed.write_text(
+        changed.read_text(encoding="utf-8") + "# changed\n",
+        encoding="utf-8",
+    )
 
     runtime = GwayRuntime(dispatcher)
     with pytest.raises(ResumeError, match="recipe changed since checkpoint was created"):
@@ -185,7 +211,10 @@ def test_restored_frame_ids_advance_fresh_allocation_without_collision() -> None
     assert runtime.frames.get("frame-42") is not None
 
 
-def test_resumed_parent_tail_failure_cleans_all_runtime_stacks(tmp_path: Path, monkeypatch) -> None:
+def test_resumed_parent_tail_failure_cleans_all_runtime_stacks(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     dispatcher = _dispatcher(tmp_path)
     root, _, _ = _nested_recipes(tmp_path, failing_root=True)
     checkpoint = _capture_checkpoint(dispatcher, root, monkeypatch)
