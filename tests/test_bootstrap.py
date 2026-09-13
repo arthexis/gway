@@ -36,6 +36,9 @@ def _capture_runtime(monkeypatch):
     calls: list[tuple[list[str], bool]] = []
 
     class FakeRuntime:
+        def __init__(self, **kwargs) -> None:
+            pass
+
         def execute(self, tokens, *, interactive=False, **kwargs):
             calls.append((list(tokens), interactive))
             return {
