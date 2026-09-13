@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 
 from ..command import Command, Parameter
 from ..expression import STRUCTURED_KWARG_PREFIX
@@ -19,17 +20,31 @@ def _read_prompt(prompt: str) -> str:
     return input()
 
 
-def _prompt_value(parameter: Parameter) -> list[str]:
+def _prompt_answer(
+    label: str,
+    *,
+    prompt: Callable[[str], str] | None,
+) -> str:
+    if prompt is not None:
+        return prompt(label)
+    return _read_prompt(f"{label}: ")
+
+
+def _prompt_value(
+    parameter: Parameter,
+    *,
+    prompt: Callable[[str], str] | None = None,
+) -> list[str]:
     if parameter.positional:
         while True:
-            value = _read_prompt(f"{parameter.name}: ")
+            value = _prompt_answer(parameter.name, prompt=prompt)
             if value:
                 return [value]
             print("A value is required.", file=sys.stderr)
     option = _option_name(parameter)
     if parameter.annotation is bool:
         while True:
-            answer = _read_prompt(f"{parameter.name} [y/n]: ").strip().lower()
+            answer = _prompt_answer(f"{parameter.name} [y/n]", prompt=prompt).strip().lower()
             if answer in {"y", "yes", "1", "true", "on"}:
                 return [option]
             if answer in {"n", "no", "0", "false", "off"}:
@@ -41,13 +56,18 @@ def _prompt_value(parameter: Parameter) -> list[str]:
                 return [option, "false"]
             print("Please answer yes or no.", file=sys.stderr)
     while True:
-        value = _read_prompt(f"{parameter.name}: ")
+        value = _prompt_answer(parameter.name, prompt=prompt)
         if value:
             return [option, value]
         print("A value is required.", file=sys.stderr)
 
 
-def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
+def _fill_required_options(
+    command: Command,
+    argv: list[str],
+    *,
+    prompt: Callable[[str], str] | None = None,
+) -> list[str]:
     completed = list(argv)
     structured_counts = _structured_keyword_counts(completed)
     structured_names = set(structured_counts)
@@ -71,7 +91,7 @@ def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
                 inserted_literal_separator = True
                 trailing_variadic = False
             for _ in range(missing):
-                prompted = _prompt_value(parameter)[0]
+                prompted = _prompt_value(parameter, prompt=prompt)[0]
                 if structured_names and not inserted_literal_separator:
                     completed.append(f"{STRUCTURED_KWARG_PREFIX}{parameter.name}={prompted}")
                     structured_names.add(parameter.name)
@@ -82,5 +102,5 @@ def _fill_required_options(command: Command, argv: list[str]) -> list[str]:
         if parameter.name in structured_names:
             continue
         if not _option_present(completed, parameter):
-            completed.extend(_prompt_value(parameter))
+            completed.extend(_prompt_value(parameter, prompt=prompt))
     return completed
