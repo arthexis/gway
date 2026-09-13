@@ -56,7 +56,8 @@ def run_statement(
 
     with chain_context_scope(context), transfer_scope():
         for index, stage in enumerate(stages):
-            transfer = [] if index == 0 else _transfer_values(result)
+            previous_result = result
+            transfer = [] if index == 0 else _transfer_values(previous_result)
             record(
                 "chain.stage.start",
                 "executing chain stage",
@@ -89,6 +90,8 @@ def run_statement(
                     transfer,
                     interactive=interactive,
                     prompt=prompt,
+                    previous_result=previous_result if index else None,
+                    has_previous_result=index > 0,
                 )
             publish_chain_result(result)
             record(
