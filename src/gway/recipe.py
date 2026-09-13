@@ -5,9 +5,9 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .chain import run_statement
 from .dispatcher import Dispatcher
 from .explain import record
+from .runtime import GwayRuntime
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +49,10 @@ class RecipeSession:
 
     dispatcher: Dispatcher
     context: dict[str, object] = field(default_factory=dict)
+    runtime: GwayRuntime = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.runtime = GwayRuntime(self.dispatcher)
 
     def run(
         self,
@@ -56,8 +60,7 @@ class RecipeSession:
         *,
         interactive: bool = False,
     ) -> object:
-        return run_statement(
-            self.dispatcher,
+        return self.runtime.execute(
             tokens,
             interactive=interactive,
             context=self.context,
