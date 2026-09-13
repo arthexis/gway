@@ -110,6 +110,12 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
             return 2
         return _handle_cli_exception(exc, error_args)
 
+    def restore_claim(claimed_path: str, checkpoint_path: str) -> None:
+        try:
+            restore_checkpoint(claimed_path, checkpoint_path)
+        except Exception as restore_exc:
+            print(f"gway: additionally failed to restore checkpoint: {restore_exc}", file=sys.stderr)
+
     checkpoint_path = args[1]
     try:
         claimed_path = claim_checkpoint(checkpoint_path)
@@ -119,11 +125,11 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
     try:
         checkpoint = read_checkpoint(claimed_path)
     except Exception as exc:
-        try:
-            restore_checkpoint(claimed_path, checkpoint_path)
-        except Exception as restore_exc:
-            print(f"gway: additionally failed to restore checkpoint: {restore_exc}", file=sys.stderr)
+        restore_claim(str(claimed_path), checkpoint_path)
         return handle_resume_error(exc)
+    except BaseException:
+        restore_claim(str(claimed_path), checkpoint_path)
+        raise
 
     with explain_scope(enabled=checkpoint.flags.explain) as trace:
         try:
@@ -144,11 +150,11 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
                 error=str(exc),
                 checkpoint=checkpoint_path,
             )
-            try:
-                restore_checkpoint(claimed_path, checkpoint_path)
-            except Exception as restore_exc:
-                print(f"gway: additionally failed to restore checkpoint: {restore_exc}", file=sys.stderr)
+            restore_claim(str(claimed_path), checkpoint_path)
             return handle_resume_error(exc)
+        except BaseException:
+            restore_claim(str(claimed_path), checkpoint_path)
+            raise
         finally:
             if checkpoint.flags.explain:
                 print(render_trace(trace), file=sys.stderr)

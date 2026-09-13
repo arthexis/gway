@@ -76,6 +76,7 @@ def write_checkpoint_atomic(checkpoint: ResumeCheckpoint, data_dir: Path) -> Pat
         raise CheckpointError(f"checkpoint contains text that cannot be encoded as UTF-8: {exc}") from exc
 
     descriptor: int | None = None
+    replaced = False
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "wb") as stream:
@@ -84,14 +85,25 @@ def write_checkpoint_atomic(checkpoint: ResumeCheckpoint, data_dir: Path) -> Pat
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, target)
+        replaced = True
         if os.name != "nt":
             os.chmod(target, 0o600)
         _sync_directory(directory)
-    except OSError as exc:
+    except (OSError, CheckpointError) as exc:
         try:
             temporary.unlink(missing_ok=True)
         except OSError:
             pass
+        if replaced:
+            try:
+                target.unlink(missing_ok=True)
+            except OSError as cleanup_exc:
+                raise CheckpointError(
+                    f"cannot persist checkpoint in {directory}: {exc}; "
+                    f"failed checkpoint may remain at {target}: {cleanup_exc}"
+                ) from exc
+        if isinstance(exc, CheckpointError):
+            raise
         raise CheckpointError(f"cannot persist checkpoint in {directory}: {exc}") from exc
     finally:
         if descriptor is not None:
