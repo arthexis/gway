@@ -74,6 +74,23 @@ def test_registry_reserves_percent_project_alias(tmp_path: Path) -> None:
         registry.register(project)
 
 
+@pytest.mark.parametrize("name", ["recipe", "result", "store"])
+def test_registry_reserves_runtime_operation_project_names(tmp_path: Path, name: str) -> None:
+    registry = Registry(GwayPaths(tmp_path / "config", tmp_path / "data"))
+    project = Project.from_path(make_project(tmp_path / name, name=name, aliases="[]"))
+
+    with pytest.raises(RegistryError, match=rf"reserved GWAY operation: {name}"):
+        registry.register(project)
+
+
+def test_registry_reserves_runtime_operation_aliases(tmp_path: Path) -> None:
+    registry = Registry(GwayPaths(tmp_path / "config", tmp_path / "data"))
+    project = Project.from_path(make_project(tmp_path / "project", aliases='["store"]'))
+
+    with pytest.raises(RegistryError, match="reserved GWAY operation: store"):
+        registry.register(project)
+
+
 def test_registry_persists_and_resolves_aliases(tmp_path: Path) -> None:
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     registry = Registry(paths)

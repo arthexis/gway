@@ -195,6 +195,7 @@ class PythonAdapter:
                     f"unsupported **{parameter.name} parameter in {function.__name__}"
                 )
             annotation = hints.get(parameter.name, parameter.annotation)
+            normalized_annotation = _optional_inner(annotation)
             required = parameter.default is inspect.Parameter.empty and parameter.kind not in (
                 inspect.Parameter.VAR_POSITIONAL,
             )
@@ -211,16 +212,19 @@ class PythonAdapter:
             if not positional:
                 no_option = f"--no-{_cli_name(parameter.name)}"
                 negative_options = () if no_option in positive_options else (no_option,)
+            is_boolean_option = not positional and normalized_annotation is bool
             parameters.append(
                 Parameter(
                     name=parameter.name,
                     required=required,
                     positional=positional,
-                    annotation=annotation,
+                    annotation=normalized_annotation,
                     default=None
                     if parameter.default is inspect.Parameter.empty
                     else parameter.default,
                     negative_options=negative_options,
+                    consumes_value=False if is_boolean_option else None,
+                    option_arity=0 if is_boolean_option else None,
                 )
             )
         return tuple(parameters)

@@ -1,19 +1,26 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 from ..command import Command, Parameter
 from ..expression import STRUCTURED_ARG_PREFIX, STRUCTURED_KWARG_PREFIX
+from ..transfer import encode_transfer
 from .errors import DispatchError
 from .options import (
     _match_negative_option,
     _match_option,
     _negative_option_names,
     _negative_option_parameters,
+    _option_consumes_value,
     _option_name,
     _option_parameters,
+    _option_present,
     _option_value_count,
 )
+
+_TRUE_CONTEXT_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_CONTEXT_VALUES = frozenset({"0", "false", "no", "off"})
 
 
 def _structured_keyword_counts(argv: Sequence[str]) -> dict[str, int]:
@@ -30,6 +37,101 @@ def _structured_keyword_counts(argv: Sequence[str]) -> dict[str, int]:
         if separator:
             counts[name] = counts.get(name, 0) + 1
     return counts
+
+
+def _context_value_text(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, Path)):
+        return str(value)
+    return encode_transfer(value)
+
+
+def _context_flag_enabled(value: object) -> bool:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _TRUE_CONTEXT_VALUES:
+            return True
+        if normalized in _FALSE_CONTEXT_VALUES:
+            return False
+    return bool(value)
+
+
+def _context_option_tokens(parameter: Parameter, value: object) -> list[str] | None:
+    if parameter.annotation is bool:
+        return _structured_value_tokens(parameter, _context_value_text(value))
+
+    if not _option_consumes_value(parameter):
+        if not isinstance(parameter.default, bool):
+            return None
+        enabled = _context_flag_enabled(value)
+        if enabled == parameter.default:
+            return []
+        return [_option_name(parameter)]
+
+    option = _option_name(parameter)
+    arity = parameter.option_arity
+    is_sequence = isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+    if isinstance(arity, int) and arity > 1:
+        if not is_sequence:
+            raise DispatchError(
+                f"context value for {parameter.name!r} must provide {arity} values"
+            )
+        values = list(value)
+        if len(values) != arity:
+            raise DispatchError(
+                f"context value for {parameter.name!r} must provide {arity} values"
+            )
+        return [option, *(_context_value_text(item) for item in values)]
+    if arity in {"*", "+"} and is_sequence:
+        values = list(value)
+        if arity == "+" and not values:
+            raise DispatchError(
+                f"context value for {parameter.name!r} must provide at least one value"
+            )
+        return [option, *(_context_value_text(item) for item in values)]
+    return [option, _context_value_text(value)]
+
+
+def _fill_context_options(
+    command: Command,
+    argv: Sequence[str],
+    context: Mapping[str, object],
+) -> tuple[list[str], dict[str, object]]:
+    """Fill missing named command options from active GWAY context."""
+    result = list(argv)
+    structured_keywords = _structured_keyword_counts(result)
+    filled: dict[str, object] = {}
+    additions: list[str] = []
+
+    for parameter in command.parameters:
+        if parameter.positional or parameter.name not in context:
+            continue
+        if structured_keywords.get(parameter.name) or _option_present(result, parameter):
+            continue
+
+        value = context[parameter.name]
+        if value is None:
+            continue
+
+        tokens = _context_option_tokens(parameter, value)
+        if tokens is None:
+            continue
+        additions.extend(tokens)
+        filled[parameter.name] = value
+
+    if not additions:
+        return result, filled
+
+    try:
+        literal_index = result.index("--")
+    except ValueError:
+        result.extend(additions)
+    else:
+        result[literal_index:literal_index] = additions
+    return result, filled
 
 
 def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
@@ -117,9 +219,9 @@ def _structured_value_tokens(parameter: Parameter, value: str) -> list[str]:
     option = _option_name(parameter)
     if parameter.annotation is bool:
         normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
+        if normalized in _TRUE_CONTEXT_VALUES:
             return [option]
-        if normalized in {"0", "false", "no", "off"}:
+        if normalized in _FALSE_CONTEXT_VALUES:
             negative_options = _negative_option_names(parameter)
             if negative_options:
                 return [negative_options[0]]
