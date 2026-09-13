@@ -20,7 +20,7 @@ from .service import ServiceError, ServiceManager
 from .stage import Stage
 from .store import run_store
 from .transfer import encode_transfer
-from .upgrade import UpgradeError, Upgrader
+from .upgrade import UpgradeError, UpgradeResult, Upgrader
 
 _SELECTOR = re.compile(r"\[(?P<index>[1-9]\d*)\]\Z")
 _WILDCARD = "[*]"
@@ -95,6 +95,29 @@ def _managed_status(status: str, project: Project) -> dict[str, object]:
         item["repository"] = project.repository
     if project.revision:
         item["revision"] = project.revision
+    return item
+
+
+def _upgrade_status(status: str, result: UpgradeResult) -> dict[str, object]:
+    item = _managed_status(status, result.project)
+    item["force_used"] = result.force_used
+    if result.force_error_type is not None:
+        item["force_error_type"] = result.force_error_type
+    if result.force_error is not None:
+        item["force_error"] = result.force_error
+    if result.dirty_files:
+        item["dirty_files"] = [
+            {
+                "status": entry.status,
+                "path": entry.path,
+                **(
+                    {"original_path": entry.original_path}
+                    if entry.original_path is not None
+                    else {}
+                ),
+            }
+            for entry in result.dirty_files
+        ]
     return item
 
 
@@ -415,7 +438,9 @@ class GwayRuntime:
             action=argparse.BooleanOptionalAction,
             default=None,
         )
-        parser.add_argument("--force", action="store_true")
+        force_mode = parser.add_mutually_exclusive_group()
+        force_mode.add_argument("--force", action="store_true")
+        force_mode.add_argument("--try-force", action="store_true")
         parser.add_argument("--reload", action="store_true")
         parser.add_argument("--detail", action="store_true")
         namespace, passthrough = parser.parse_known_args(list(argv))
@@ -443,11 +468,12 @@ class GwayRuntime:
                 changed = upgrader.project_result(
                     target,
                     force=namespace.force,
+                    try_force=namespace.try_force,
                     reload=namespace.reload,
                     arguments=passthrough if len(managed_targets) == 1 else (),
                 )
                 status = "upgraded" if changed.changed else "skipped"
-                result = _managed_status(status, changed.project)
+                result = _upgrade_status(status, changed)
                 results.append(result)
                 self._publish_progress(result)
             if len(managed_targets) == 1 and not include_self_target:
@@ -471,10 +497,11 @@ class GwayRuntime:
         if include_projects:
             for changed in upgrader.all_project_results(
                 force=namespace.force,
+                try_force=namespace.try_force,
                 reload=namespace.reload,
             ):
                 status = "upgraded" if changed.changed else "skipped"
-                result = _managed_status(status, changed.project)
+                result = _upgrade_status(status, changed)
                 results.append(result)
                 self._publish_progress(result)
         return results
