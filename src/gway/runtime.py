@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import argparse
 import re
-from collections.abc import Callable, Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
+from contextlib import contextmanager
 from importlib.metadata import version as distribution_version
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from .explain import record
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .install import Installer
 from .project import Project
+from .provenance import ExecutionFrame, ExecutionFrameStack
 from .result import run_result
 from .service import ServiceError, ServiceManager
 from .stage import Stage
@@ -133,10 +135,51 @@ class GwayRuntime:
     ) -> None:
         self.dispatcher = dispatcher or Dispatcher()
         self.on_progress = on_progress
+        self.frames = ExecutionFrameStack()
 
     @property
     def registry(self):
         return self.dispatcher.registry
+
+    @property
+    def current_frame(self) -> ExecutionFrame | None:
+        return self.frames.current
+
+    @contextmanager
+    def frame_scope(
+        self,
+        kind: str,
+        *,
+        operation: str | None = None,
+        tokens: Sequence[str] = (),
+        recipe_path: str | None = None,
+        recipe_line: int | None = None,
+    ) -> Iterator[ExecutionFrame]:
+        with self.frames.scope(
+            kind,
+            operation=operation,
+            tokens=tokens,
+            recipe_path=recipe_path,
+            recipe_line=recipe_line,
+        ) as frame:
+            data: dict[str, object] = {
+                "frame_id": frame.id,
+                "frame_kind": frame.kind,
+                "parent_frame_id": frame.parent_id,
+            }
+            if frame.operation is not None:
+                data["operation"] = frame.operation
+            if frame.tokens:
+                data["tokens"] = list(frame.tokens)
+            if frame.recipe_path is not None:
+                data["recipe_path"] = frame.recipe_path
+            if frame.recipe_line is not None:
+                data["recipe_line"] = frame.recipe_line
+            record("runtime.frame.enter", "entering execution frame", **data)
+            try:
+                yield frame
+            finally:
+                record("runtime.frame.exit", "leaving execution frame", **data)
 
     def execute(
         self,
@@ -145,17 +188,25 @@ class GwayRuntime:
         context: MutableMapping[str, object] | None = None,
         interactive: bool = False,
         prompt: Callable[[str], str] | None = None,
+        recipe_path: str | None = None,
+        recipe_line: int | None = None,
     ) -> object:
         from .chain import run_statement
 
-        return run_statement(
-            self.dispatcher,
-            tokens,
-            interactive=interactive,
-            prompt=prompt,
-            context=context,
-            runtime=self,
-        )
+        with self.frame_scope(
+            "statement",
+            tokens=tokens,
+            recipe_path=recipe_path,
+            recipe_line=recipe_line,
+        ):
+            return run_statement(
+                self.dispatcher,
+                tokens,
+                interactive=interactive,
+                prompt=prompt,
+                context=context,
+                runtime=self,
+            )
 
     def execute_stage(
         self,
@@ -170,54 +221,63 @@ class GwayRuntime:
         if not stage.tokens:
             raise DispatchError("empty GWAY operation")
         operation = stage.tokens[0]
-        record(
-            "runtime.operation.start",
-            "executing GWAY operation",
+        with self.frame_scope(
+            "operation",
             operation=operation,
-            tokens=list(stage.raw_tokens),
-        )
-        if operation == "store":
-            if transfer:
-                raise DispatchError("store cannot receive chain positionals")
-            result = run_store(
-                stage.tokens[1:],
-                interactive=interactive,
-                prompt=prompt,
-                paths=self.registry.paths,
+            tokens=stage.raw_tokens,
+        ) as frame:
+            record(
+                "runtime.operation.start",
+                "executing GWAY operation",
+                operation=operation,
+                tokens=list(stage.raw_tokens),
+                frame_id=frame.id,
+                parent_frame_id=frame.parent_id,
             )
-        elif operation == "result":
-            result = run_result(
-                stage.tokens[1:],
-                interactive=interactive,
-                prompt=prompt,
-                paths=self.registry.paths,
+            if operation == "store":
+                if transfer:
+                    raise DispatchError("store cannot receive chain positionals")
+                result = run_store(
+                    stage.tokens[1:],
+                    interactive=interactive,
+                    prompt=prompt,
+                    paths=self.registry.paths,
+                )
+            elif operation == "result":
+                result = run_result(
+                    stage.tokens[1:],
+                    interactive=interactive,
+                    prompt=prompt,
+                    paths=self.registry.paths,
+                )
+            elif operation == "recipe":
+                result = self._run_recipe_stage(
+                    stage.tokens[1:],
+                    previous_result=previous_result,
+                    has_previous_result=has_previous_result,
+                    interactive=interactive,
+                    prompt=prompt,
+                )
+            elif operation in _CORE_OPERATIONS:
+                if transfer:
+                    raise DispatchError(f"{operation} cannot receive chain positionals")
+                result = self._run_core(stage.tokens)
+            else:
+                result = self._run_managed(
+                    stage,
+                    transfer,
+                    interactive=interactive,
+                    prompt=prompt,
+                )
+            record(
+                "runtime.operation.result",
+                "completed GWAY operation",
+                operation=operation,
+                result=result,
+                frame_id=frame.id,
+                parent_frame_id=frame.parent_id,
             )
-        elif operation == "recipe":
-            result = self._run_recipe_stage(
-                stage.tokens[1:],
-                previous_result=previous_result,
-                has_previous_result=has_previous_result,
-                interactive=interactive,
-                prompt=prompt,
-            )
-        elif operation in _CORE_OPERATIONS:
-            if transfer:
-                raise DispatchError(f"{operation} cannot receive chain positionals")
-            result = self._run_core(stage.tokens)
-        else:
-            result = self._run_managed(
-                stage,
-                transfer,
-                interactive=interactive,
-                prompt=prompt,
-            )
-        record(
-            "runtime.operation.result",
-            "completed GWAY operation",
-            operation=operation,
-            result=result,
-        )
-        return result
+            return result
 
     def _run_recipe_stage(
         self,
@@ -241,38 +301,50 @@ class GwayRuntime:
                 "are reserved for a future chunk"
             )
         path = operands[0]
-        child_context = child_recipe_context(
-            current_chain_context(),
-            incoming=previous_result,
-            has_incoming=has_previous_result,
-        )
-        record(
-            "recipe.frame.enter",
-            "entering child recipe frame",
-            path=path,
-            inherited_keys=sorted(key for key in child_context if key != "result"),
-            incoming=previous_result if has_previous_result else None,
-            has_incoming=has_previous_result,
-        )
-        try:
-            result = run_recipe(
-                path,
-                self.dispatcher,
-                interactive=interactive,
-                prompt=prompt,
-                context=child_context,
-                runtime=self,
+        with self.frame_scope("recipe", recipe_path=path) as frame:
+            child_context = child_recipe_context(
+                current_chain_context(),
+                incoming=previous_result,
+                has_incoming=has_previous_result,
             )
-        except Exception as exc:
             record(
-                "recipe.frame.failure",
-                "child recipe frame failed",
+                "recipe.frame.enter",
+                "entering child recipe frame",
                 path=path,
-                error=str(exc),
+                inherited_keys=sorted(key for key in child_context if key != "result"),
+                incoming=previous_result if has_previous_result else None,
+                has_incoming=has_previous_result,
+                frame_id=frame.id,
+                parent_frame_id=frame.parent_id,
             )
-            raise
-        record("recipe.frame.exit", "leaving child recipe frame", path=path, result=result)
-        return result
+            try:
+                result = run_recipe(
+                    path,
+                    self.dispatcher,
+                    interactive=interactive,
+                    prompt=prompt,
+                    context=child_context,
+                    runtime=self,
+                )
+            except Exception as exc:
+                record(
+                    "recipe.frame.failure",
+                    "child recipe frame failed",
+                    path=path,
+                    error=str(exc),
+                    frame_id=frame.id,
+                    parent_frame_id=frame.parent_id,
+                )
+                raise
+            record(
+                "recipe.frame.exit",
+                "leaving child recipe frame",
+                path=path,
+                result=result,
+                frame_id=frame.id,
+                parent_frame_id=frame.parent_id,
+            )
+            return result
 
     def _publish_progress(self, result: dict[str, object]) -> None:
         if self.on_progress is not None:
