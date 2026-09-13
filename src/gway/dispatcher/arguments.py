@@ -59,6 +59,42 @@ def _context_flag_enabled(value: object) -> bool:
     return bool(value)
 
 
+def _context_option_tokens(parameter: Parameter, value: object) -> list[str] | None:
+    if parameter.annotation is bool:
+        return _structured_value_tokens(parameter, _context_value_text(value))
+
+    if not _option_consumes_value(parameter):
+        if not isinstance(parameter.default, bool):
+            return None
+        enabled = _context_flag_enabled(value)
+        if enabled == parameter.default:
+            return []
+        return [_option_name(parameter)]
+
+    option = _option_name(parameter)
+    arity = parameter.option_arity
+    is_sequence = isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+    if isinstance(arity, int) and arity > 1:
+        if not is_sequence:
+            raise DispatchError(
+                f"context value for {parameter.name!r} must provide {arity} values"
+            )
+        values = list(value)
+        if len(values) != arity:
+            raise DispatchError(
+                f"context value for {parameter.name!r} must provide {arity} values"
+            )
+        return [option, *(_context_value_text(item) for item in values)]
+    if arity in {"*", "+"} and is_sequence:
+        values = list(value)
+        if arity == "+" and not values:
+            raise DispatchError(
+                f"context value for {parameter.name!r} must provide at least one value"
+            )
+        return [option, *(_context_value_text(item) for item in values)]
+    return [option, _context_value_text(value)]
+
+
 def _fill_context_options(
     command: Command,
     argv: Sequence[str],
@@ -80,17 +116,10 @@ def _fill_context_options(
         if value is None:
             continue
 
-        if parameter.annotation is bool:
-            additions.extend(_structured_value_tokens(parameter, _context_value_text(value)))
-        elif not _option_consumes_value(parameter):
-            enabled = _context_flag_enabled(value)
-            if isinstance(parameter.default, bool):
-                if enabled != parameter.default:
-                    additions.append(_option_name(parameter))
-            elif enabled:
-                additions.append(_option_name(parameter))
-        else:
-            additions.extend((_option_name(parameter), _context_value_text(value)))
+        tokens = _context_option_tokens(parameter, value)
+        if tokens is None:
+            continue
+        additions.extend(tokens)
         filled[parameter.name] = value
 
     if not additions:
