@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from .chain_context import chain_context_scope, publish_chain_result
 from .dispatcher.errors import DispatchError
 from .explain import record
+from .outcome import CommandOutcome, SemanticFailure, resolve_outcome
 from .provenance import ValueProvenance
 from .solve import solve_values
 from .stage import Stage, StageKind, parse_stages
@@ -45,6 +46,7 @@ def _run_reload_stage(
     if len(stage_tokens) != 1:
         raise DispatchError("reload does not accept arguments")
     from .runtime_reload import reload_runtime
+
     with runtime.frame_scope("operation", operation="reload", tokens=raw_tokens) as frame:
         record(
             "runtime.operation.start",
@@ -56,6 +58,66 @@ def _run_reload_stage(
         )
         reload_runtime(runtime, interactive=interactive)
     raise RuntimeError("reload process replacement unexpectedly returned")
+
+
+def _record_semantic_failure(
+    failure: SemanticFailure,
+    stage: Stage,
+    *,
+    producer: ValueProvenance | None,
+) -> None:
+    """Record semantic failure at the evaluator boundary with producer provenance."""
+    provenance = producer.as_dict() if producer is not None else None
+    record(
+        "runtime.operation.outcome",
+        "evaluated explicit GWAY command outcome",
+        operation=stage.tokens[0],
+        success=False,
+        result=failure.outcome.value,
+        outcome_message=failure.outcome.message,
+        provenance=provenance,
+    )
+    record(
+        "chain.stage.failure",
+        "chain stage reported semantic failure",
+        operation=stage.tokens[0],
+        result=failure.outcome.value,
+        outcome_message=failure.outcome.message,
+        provenance=provenance,
+    )
+
+
+def _resolve_stage_outcome(
+    result: object,
+    stage: Stage,
+    *,
+    producer: ValueProvenance | None,
+) -> object:
+    """Resolve an explicit semantic outcome before publishing a stage result."""
+    if not isinstance(result, CommandOutcome):
+        return result
+    provenance = producer.as_dict() if producer is not None else None
+    record(
+        "runtime.operation.outcome",
+        "evaluated explicit GWAY command outcome",
+        operation=stage.tokens[0],
+        success=result.success,
+        result=result.value,
+        outcome_message=result.message,
+        provenance=provenance,
+    )
+    try:
+        return resolve_outcome(result)
+    except SemanticFailure as exc:
+        record(
+            "chain.stage.failure",
+            "chain stage reported semantic failure",
+            operation=stage.tokens[0],
+            result=exc.outcome.value,
+            outcome_message=exc.outcome.message,
+            provenance=provenance,
+        )
+        raise
 
 
 def run_statement(
@@ -120,6 +182,7 @@ def run_statement(
 
     if interactive and prompt is None:
         from .cli import _prompt_required_value
+
         prompt = _prompt_required_value
 
     statement_frame = active_runtime.current_frame
@@ -179,15 +242,23 @@ def run_statement(
                     )
                     raise RuntimeError("reload process replacement unexpectedly returned")
                 else:
-                    result = active_runtime.execute_stage(
-                        stage,
-                        transfer,
-                        interactive=interactive,
-                        prompt=prompt,
-                        previous_result=previous_result if has_previous else None,
-                        has_previous_result=has_previous,
-                    )
+                    try:
+                        result = active_runtime.execute_stage(
+                            stage,
+                            transfer,
+                            interactive=interactive,
+                            prompt=prompt,
+                            previous_result=previous_result if has_previous else None,
+                            has_previous_result=has_previous,
+                        )
+                    except SemanticFailure as exc:
+                        producer = active_runtime.frames.value_provenance(
+                            active_runtime.frames.last_completed
+                        )
+                        _record_semantic_failure(exc, stage, producer=producer)
+                        raise
                     producer = active_runtime.frames.value_provenance(active_runtime.frames.last_completed)
+                    result = _resolve_stage_outcome(result, stage, producer=producer)
                 result_provenance = producer
                 publish_chain_result(result, provenance=producer)
                 record(

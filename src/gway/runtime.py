@@ -289,29 +289,32 @@ class GwayRuntime:
         prompt: Callable[[str], str] | None = None,
     ) -> object:
         from .recipe import child_recipe_context, run_recipe
+        from .recipe_params import parse_recipe_invocation, seed_recipe_parameters
 
-        operands = list(argv)
-        if operands[:1] == ["--"]:
-            operands = operands[1:]
-        if not operands:
-            raise DispatchError("recipe requires a .rx path")
-        if len(operands) != 1:
-            raise DispatchError(
-                "recipe currently accepts exactly one .rx path; explicit recipe parameters "
-                "are reserved for a future chunk"
-            )
-        path = operands[0]
+        invocation = parse_recipe_invocation(argv)
+        path = invocation.path
         with self.frame_scope("recipe", recipe_path=path) as frame:
             child_context = child_recipe_context(
                 current_chain_context(),
                 incoming=previous_result,
                 has_incoming=has_previous_result,
             )
+            parameter_provenance = self.frames.value_provenance(frame)
+            seed_recipe_parameters(
+                child_context,
+                invocation.parameters,
+                provenance=parameter_provenance,
+            )
             record(
                 "recipe.frame.enter",
                 "entering child recipe frame",
                 path=path,
-                inherited_keys=sorted(key for key in child_context if key != "result"),
+                inherited_keys=sorted(
+                    key
+                    for key in child_context
+                    if key != "result" and key not in invocation.parameters
+                ),
+                parameter_keys=sorted(invocation.parameters),
                 incoming=previous_result if has_previous_result else None,
                 has_incoming=has_previous_result,
                 frame_id=frame.id,
@@ -536,12 +539,14 @@ class GwayRuntime:
                 project.name,
                 dispatched,
                 interactive=interactive,
+                preserve_outcome=True,
             )
         return self.dispatcher.run(
             project.name,
             dispatched,
             interactive=interactive,
             prompt=prompt,
+            preserve_outcome=True,
         )
 
 

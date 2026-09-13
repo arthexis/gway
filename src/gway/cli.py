@@ -19,10 +19,11 @@ from .dispatcher import Dispatcher, DispatchError
 from .expression import ExpressionError, normalize_managed_args
 from .install import Installer
 from .project import ManifestError, Project
-from .recipe import RecipeError, run_recipe
+from .recipe import RecipeError
 from .registry import Registry, RegistryError
 from .repository import RepositoryError
 from .runner import RunnerError
+from .runtime import GwayRuntime
 from .service import ServiceError, ServiceManager
 from .shell import (
     ShellError,
@@ -663,7 +664,7 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
 
     registry = active_dispatcher.registry
     namespace, passthrough = parser.parse_known_args(args)
-    if passthrough and namespace.command not in {"install", "upgrade"}:
+    if passthrough and namespace.command not in {"install", "upgrade", "recipe"}:
         parser.error(f"unrecognized arguments: {' '.join(passthrough)}")
     if namespace.command == "service":
         if namespace.project and namespace.project_option:
@@ -702,10 +703,14 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 prompt=_prompt_required_value,
             )
         elif namespace.command == "recipe":
-            result = run_recipe(
-                namespace.path,
-                active_dispatcher,
+            recipe_tokens = ["recipe"]
+            if namespace.path.startswith("-"):
+                recipe_tokens.append("--")
+            recipe_tokens.extend([namespace.path, *passthrough])
+            result = GwayRuntime(active_dispatcher).execute(
+                recipe_tokens,
                 interactive=interactive,
+                prompt=_prompt_required_value if interactive else None,
             )
         elif namespace.command == "register":
             project = registry.register_path(namespace.path)

@@ -69,7 +69,9 @@ class _GwayCommandCall:
 
         function = self.command.adapter_data
         if callable(function) and not alias_arguments:
-            result = function(*args, **kwargs)
+            from .outcome import resolve_outcome
+
+            result = resolve_outcome(function(*args, **kwargs))
         else:
             # Alias-bound Python calls and non-Python adapters both cross the
             # dispatcher boundary so configured alias arguments use CLI semantics.
