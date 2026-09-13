@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 _GLOBAL_FLAGS = frozenset({"--json", "-i", "--interactive"})
 _EXPLAIN_FLAGS = frozenset({"-e", "--explain"})
+_RUNTIME_LIFECYCLE = frozenset({"install", "upgrade", "uninstall"})
 
 
 def _partition_args(args: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -49,33 +50,55 @@ def _normalize_install_args(argv: Sequence[str] | None) -> tuple[list[str] | Non
     return args, None
 
 
-def _run_uninstall(args: Sequence[str]) -> int | None:
+def _render_upgrade_result(result: object, *, detail: bool) -> None:
+    from .cli import _render_upgrade_record, _render_result
+
+    if isinstance(result, Mapping):
+        _render_upgrade_record(dict(result), detail=detail)
+        return
+    if isinstance(result, Sequence) and not isinstance(result, (str, bytes, bytearray)):
+        for record in result:
+            if isinstance(record, Mapping):
+                _render_upgrade_record(dict(record), detail=detail)
+            else:
+                _render_result(record)
+        return
+    _render_result(result)
+
+
+def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
     global_flags, command_args = _partition_args(args)
-    if not command_args or command_args[0] != "uninstall":
+    if not command_args or command_args[0] not in _RUNTIME_LIFECYCLE:
         return None
 
-    if command_args in (["uninstall", "-h"], ["uninstall", "--help"]):
-        print("usage: gway uninstall [-h] project")
-        print()
-        print("Uninstall a registered project and its GWAY-managed artifacts.")
-        return 0
-
-    if len(command_args) != 2 or command_args[1] == "--":
-        print("usage: gway uninstall [-h] project", file=sys.stderr)
-        print(
-            "gway uninstall: error: the following arguments are required: project"
-            if len(command_args) == 1
-            else "gway uninstall: error: expected exactly one project",
-            file=sys.stderr,
-        )
-        return 2
+    operation = command_args[0]
+    if operation == "uninstall":
+        if command_args in (["uninstall", "-h"], ["uninstall", "--help"]):
+            print("usage: gway uninstall [-h] project")
+            print()
+            print("Uninstall a registered project and its GWAY-managed artifacts.")
+            return 0
+        if len(command_args) != 2 or command_args[1] == "--":
+            print("usage: gway uninstall [-h] project", file=sys.stderr)
+            print(
+                "gway uninstall: error: the following arguments are required: project"
+                if len(command_args) == 1
+                else "gway uninstall: error: expected exactly one project",
+                file=sys.stderr,
+            )
+            return 2
 
     from .cli import _handle_cli_exception, _render_result
     from .runtime import GwayRuntime
 
+    interactive = any(flag in {"-i", "--interactive"} for flag in global_flags)
+    json_output = "--json" in global_flags
     try:
-        result = GwayRuntime().execute(command_args)
-        _render_result(result, json_output="--json" in global_flags)
+        result = GwayRuntime().execute(command_args, interactive=interactive)
+        if operation == "upgrade" and not json_output:
+            _render_upgrade_result(result, detail="--detail" in command_args)
+        else:
+            _render_result(result, json_output=json_output)
     except Exception as exc:
         return _handle_cli_exception(exc, list(args))
     return 0
@@ -113,16 +136,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     with explain_scope(enabled=explain) as trace:
         try:
-            uninstall_result = _run_uninstall(args)
-            if uninstall_result is not None:
-                if uninstall_result:
-                    record(
-                        "execution.failure",
-                        "command exited during uninstall",
-                        exit_code=uninstall_result,
-                    )
-                return uninstall_result
-
             normalized, early_result = _normalize_install_args(args)
             if early_result is not None:
                 if early_result:
@@ -132,6 +145,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         exit_code=early_result,
                     )
                 return early_result
+
+            lifecycle_result = _run_runtime_lifecycle(normalized or [])
+            if lifecycle_result is not None:
+                if lifecycle_result:
+                    record(
+                        "execution.failure",
+                        "lifecycle command exited with non-zero status",
+                        exit_code=lifecycle_result,
+                    )
+                return lifecycle_result
 
             from .cli import main as cli_main
 
