@@ -72,11 +72,16 @@ def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
         return None
 
     operation = command_args[0]
-    if operation != "uninstall" and any(arg in {"-h", "--help"} for arg in command_args[1:]):
+    option_args = command_args[1:]
+    if "--" in option_args:
+        option_args = option_args[: option_args.index("--")]
+    help_requested = any(arg in {"-h", "--help"} for arg in option_args)
+
+    if operation != "uninstall" and help_requested:
         return None
 
     if operation == "uninstall":
-        if command_args in (["uninstall", "-h"], ["uninstall", "--help"]):
+        if help_requested:
             print("usage: gway uninstall [-h] project")
             print()
             print("Uninstall a registered project and its GWAY-managed artifacts.")
@@ -96,10 +101,18 @@ def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
 
     interactive = any(flag in {"-i", "--interactive"} for flag in global_flags)
     json_output = "--json" in global_flags
+    detail = "--detail" in option_args
+    on_progress = None
+    if operation == "upgrade" and not json_output:
+        on_progress = lambda result: _render_upgrade_result(result, detail=detail)
+
     try:
-        result = GwayRuntime().execute(command_args, interactive=interactive)
+        result = GwayRuntime(on_progress=on_progress).execute(
+            command_args,
+            interactive=interactive,
+        )
         if operation == "upgrade" and not json_output:
-            _render_upgrade_result(result, detail="--detail" in command_args)
+            pass
         else:
             _render_result(result, json_output=json_output)
     except Exception as exc:
