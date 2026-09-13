@@ -105,6 +105,36 @@ def test_bootstrap_downstream_help_remains_in_recipe_chain(
     assert calls == [args]
 
 
+def test_bootstrap_recipe_errors_keep_original_explain_args(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handled: list[list[str]] = []
+
+    class FakeRuntime:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def execute(self, tokens, **kwargs):
+            raise PermissionError("denied")
+
+    def fake_handle(exc: Exception, args: list[str]) -> int:
+        assert isinstance(exc, PermissionError)
+        handled.append(args)
+        return 2
+
+    monkeypatch.setattr("gway.runtime.GwayRuntime", FakeRuntime)
+    monkeypatch.setattr("gway.cli._handle_cli_exception", fake_handle)
+
+    assert (
+        bootstrap._run_runtime_recipe(
+            ["recipe", "setup.rx"],
+            error_args=["--explain", "recipe", "setup.rx"],
+        )
+        == 2
+    )
+    assert handled == [["--explain", "recipe", "setup.rx"]]
+
+
 def test_bootstrap_delegates_upgrade_execution_to_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[list[str], bool]] = []
 
