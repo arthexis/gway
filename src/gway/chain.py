@@ -8,7 +8,7 @@ from .dispatcher.errors import DispatchError
 from .explain import record
 from .provenance import ValueProvenance
 from .solve import solve_values
-from .stage import StageKind, parse_stages
+from .stage import Stage, StageKind, parse_stages
 from .transfer import transfer_scope
 
 if TYPE_CHECKING:
@@ -42,14 +42,9 @@ def _run_reload_stage(
     *,
     interactive: bool,
 ) -> None:
-    """Checkpoint one active recipe and replace the current GWAY process."""
-    if transfer:
-        raise DispatchError("reload cannot receive chain positionals")
     if len(stage_tokens) != 1:
         raise DispatchError("reload does not accept arguments")
-
     from .runtime_reload import reload_runtime
-
     with runtime.frame_scope("operation", operation="reload", tokens=raw_tokens) as frame:
         record(
             "runtime.operation.start",
@@ -72,8 +67,12 @@ def run_statement(
     context: MutableMapping[str, object] | None = None,
     provenance: MutableMapping[str, ValueProvenance] | None = None,
     runtime: GwayRuntime | None = None,
+    start_stage_index: int = 0,
+    initial_result: object = None,
+    has_initial_result: bool = False,
+    initial_result_provenance: ValueProvenance | None = None,
 ) -> object:
-    """Execute one complete GWAY statement in an optional caller-owned context."""
+    """Execute one complete GWAY statement, optionally from a restored stage boundary."""
     from .runtime import GwayRuntime
 
     active_runtime = runtime or GwayRuntime(dispatcher)
@@ -87,26 +86,24 @@ def run_statement(
                 context=context,
                 provenance=provenance,
                 runtime=active_runtime,
+                start_stage_index=start_stage_index,
+                initial_result=initial_result,
+                has_initial_result=has_initial_result,
+                initial_result_provenance=initial_result_provenance,
             )
     if provenance is None and context is not None:
         candidate = getattr(context, "provenance", None)
         if isinstance(candidate, MutableMapping):
             provenance = candidate
     stages = parse_stages(tokens)
-    if len(stages) > 1 and any(
-        stage.kind is not StageKind.SOLVE and stage.tokens[0] == "reload"
-        for stage in stages
-    ):
-        raise DispatchError(
-            "reload cannot be used in a multi-stage statement; pending chain stages are not resumable"
-        )
-    result: object = None
-    result_provenance: ValueProvenance | None = None
+    if start_stage_index < 0 or start_stage_index > len(stages):
+        raise DispatchError("restored chain stage index is out of range")
+    result: object = initial_result if has_initial_result else None
+    result_provenance = initial_result_provenance if has_initial_result else None
     record("chain.start", "executing command chain", stages=len(stages), tokens=list(tokens))
 
     if interactive and prompt is None:
         from .cli import _prompt_required_value
-
         prompt = _prompt_required_value
 
     statement_frame = active_runtime.current_frame
@@ -118,16 +115,16 @@ def run_statement(
         recipe_line=recipe_line,
     ) as chain_state:
         with chain_context_scope(context, provenance), transfer_scope():
-            for index, stage in enumerate(stages):
+            for index in range(start_stage_index, len(stages)):
+                stage: Stage = stages[index]
                 previous_result = result
+                has_previous = index > 0 or has_initial_result
                 if chain_state is not None:
                     chain_state.active_stage_index = index + 1
-                    chain_state.has_previous_result = index > 0
-                    chain_state.previous_result = previous_result if index > 0 else None
-                    chain_state.previous_result_provenance = (
-                        result_provenance if index > 0 else None
-                    )
-                transfer = [] if index == 0 else _transfer_values(previous_result)
+                    chain_state.has_previous_result = has_previous
+                    chain_state.previous_result = previous_result if has_previous else None
+                    chain_state.previous_result_provenance = result_provenance if has_previous else None
+                transfer = _transfer_values(previous_result) if has_previous else []
                 record(
                     "chain.stage.start",
                     "executing chain stage",
@@ -171,12 +168,10 @@ def run_statement(
                         transfer,
                         interactive=interactive,
                         prompt=prompt,
-                        previous_result=previous_result if index else None,
-                        has_previous_result=index > 0,
+                        previous_result=previous_result if has_previous else None,
+                        has_previous_result=has_previous,
                     )
-                    producer = active_runtime.frames.value_provenance(
-                        active_runtime.frames.last_completed
-                    )
+                    producer = active_runtime.frames.value_provenance(active_runtime.frames.last_completed)
                 result_provenance = producer
                 publish_chain_result(result, provenance=producer)
                 record(
@@ -198,7 +193,6 @@ def run_chain(
     interactive: bool = False,
     prompt: Callable[[str], str] | None = None,
 ) -> object:
-    """Execute a command chain with a fresh invocation-local context."""
     return run_statement(dispatcher, tokens, interactive=interactive, prompt=prompt)
 
 
