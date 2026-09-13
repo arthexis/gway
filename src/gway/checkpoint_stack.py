@@ -29,6 +29,12 @@ def _optional_non_empty_string(value: object, label: str) -> str | None:
     return _non_empty_string(value, label)
 
 
+def _require_bool(value: object, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise CheckpointError(f"{label} must be a boolean")
+    return value
+
+
 def _expect_keys(raw: Mapping[str, object], expected: set[str], label: str) -> None:
     actual = set(raw)
     missing = sorted(expected - actual)
@@ -260,10 +266,18 @@ class ContinuationStackCheckpoint:
             for index, frame in enumerate(frames_raw)
         )
         flags_raw = _require_mapping(raw["flags"], "flags")
+        _expect_keys(flags_raw, {"interactive", "explain", "output_mode"}, "flags")
+        flags = CheckpointFlags(
+            interactive=_require_bool(flags_raw["interactive"], "flags.interactive"),
+            explain=_require_bool(flags_raw["explain"], "flags.explain"),
+            output_mode=flags_raw["output_mode"],  # validated below by ResumeCheckpoint
+        )
         flags_checkpoint = ResumeCheckpoint.from_dict(
             {
                 "version": CHECKPOINT_VERSION,
-                "recipe": frames[0].recipe.as_dict() if frames else {"path": "x", "sha256": "0" * 64},
+                "recipe": frames[0].recipe.as_dict()
+                if frames
+                else {"path": "x", "sha256": "0" * 64},
                 "continuation": frames[0].continuation.as_dict()
                 if frames
                 else {
@@ -278,7 +292,7 @@ class ContinuationStackCheckpoint:
                 "has_previous_result": False,
                 "previous_result": None,
                 "previous_result_provenance": None,
-                "flags": flags_raw,
+                "flags": flags.as_dict(),
             }
         )
         return cls(frames=frames, flags=flags_checkpoint.flags, version=version)
