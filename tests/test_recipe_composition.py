@@ -125,6 +125,25 @@ def test_explicit_child_argument_wins_over_inherited_context(tmp_path: Path) -> 
     assert result == "explicit"
 
 
+def test_recipe_forwards_custom_prompt_to_nested_statement(tmp_path: Path) -> None:
+    recipe = tmp_path / "interactive.rx"
+    recipe.write_text("demo use_customer\n", encoding="utf-8")
+    prompts: list[str] = []
+
+    def prompt(name: str) -> str:
+        prompts.append(name)
+        return "prompted-customer"
+
+    result = GwayRuntime(_dispatcher(tmp_path)).execute(
+        ["recipe", str(recipe)],
+        interactive=True,
+        prompt=prompt,
+    )
+
+    assert result == "prompted-customer"
+    assert prompts
+
+
 def test_recipe_chain_emits_frame_provenance(tmp_path: Path) -> None:
     recipe = tmp_path / "trace.rx"
     recipe.write_text("result\n", encoding="utf-8")
