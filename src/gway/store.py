@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from .config import GwayPaths
 from .dispatcher.errors import DispatchError
 from .explain import record
+from .sigils import RESERVED_CONTEXT_KEYS
 from .solve import solve_values
 
-_RESERVED_STORE_KEYS = frozenset({"result"})
+_RESERVED_STORE_KEYS = RESERVED_CONTEXT_KEYS | frozenset({"result"})
 
 
 def _store_name(option: str) -> str:
@@ -22,6 +23,8 @@ def _store_name(option: str) -> str:
 def run_store(
     tokens: Sequence[str],
     *,
+    interactive: bool = False,
+    prompt: Callable[[str], str] | None = None,
     paths: GwayPaths | None = None,
 ) -> dict[str, object]:
     """Return arbitrary named values for publication into the active GWAY context."""
@@ -50,7 +53,12 @@ def run_store(
             index += 1
             continue
 
-        stored[name] = solve_values([raw_value], paths=paths)
+        stored[name] = solve_values(
+            [raw_value],
+            interactive=interactive,
+            prompt=prompt,
+            paths=paths,
+        )
         index += 1
 
     record(
