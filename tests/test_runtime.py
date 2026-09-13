@@ -88,10 +88,33 @@ def test_runtime_install_publishes_core_result(tmp_path: Path, monkeypatch: pyte
 
     assert result["status"] == "installed"
     assert result["name"] == "installed"
-    assert calls == [("fixture", ("--", "--mode", "safe"))]
+    assert calls == [("fixture", ("--mode", "safe"))]
     assert context["status"] == "installed"
     assert context["name"] == "installed"
     assert context["result"] == result
+
+
+def test_recipe_session_can_execute_core_install(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    project = _managed_project(tmp_path, "recipe-installed")
+
+    class FakeInstaller:
+        def __init__(self, registry) -> None:
+            assert registry is dispatcher.registry
+
+        def install(self, spec: str, *, arguments=()):
+            assert spec == "fixture"
+            assert tuple(arguments) == ()
+            return project
+
+    monkeypatch.setattr("gway.runtime.Installer", FakeInstaller)
+    session = RecipeSession(dispatcher)
+
+    result = session.run(["install", "fixture"])
+
+    assert result["status"] == "installed"
+    assert result["name"] == "recipe-installed"
+    assert session.context["result"] == result
 
 
 def test_runtime_uninstall_uses_installer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
