@@ -66,6 +66,33 @@ def _render_upgrade_result(result: object, *, detail: bool) -> None:
     _render_result(result)
 
 
+def _run_runtime_recipe(
+    args: Sequence[str],
+    *,
+    error_args: Sequence[str] | None = None,
+) -> int | None:
+    global_flags, command_args = _partition_args(args)
+    if not command_args or command_args[0] != "recipe":
+        return None
+
+    recipe_stage = command_args[1:]
+    if "-" in recipe_stage:
+        recipe_stage = recipe_stage[: recipe_stage.index("-")]
+    if any(arg in {"-h", "--help"} for arg in recipe_stage):
+        return None
+
+    from .cli import _handle_cli_exception, _render_result
+    from .runtime import GwayRuntime
+
+    interactive = any(flag in {"-i", "--interactive"} for flag in global_flags)
+    try:
+        result = GwayRuntime().execute(command_args, interactive=interactive)
+        _render_result(result, json_output="--json" in global_flags)
+    except Exception as exc:
+        return _handle_cli_exception(exc, list(error_args if error_args is not None else args))
+    return 0
+
+
 def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
     global_flags, command_args = _partition_args(args)
     if not command_args or command_args[0] not in _RUNTIME_LIFECYCLE:
@@ -161,6 +188,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                         exit_code=early_result,
                     )
                 return early_result
+
+            recipe_result = _run_runtime_recipe(
+                normalized or [],
+                error_args=raw_args,
+            )
+            if recipe_result is not None:
+                if recipe_result:
+                    record(
+                        "execution.failure",
+                        "recipe command exited with non-zero status",
+                        exit_code=recipe_result,
+                    )
+                return recipe_result
 
             lifecycle_result = _run_runtime_lifecycle(normalized or [])
             if lifecycle_result is not None:

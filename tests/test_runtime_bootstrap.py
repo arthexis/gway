@@ -68,6 +68,73 @@ def test_bootstrap_uninstall_help_is_detected_before_literal_boundary(
     assert "Uninstall a registered project" in capsys.readouterr().out
 
 
+def test_bootstrap_recipe_help_stays_at_cli_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    class FakeRuntime:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def execute(self, tokens, **kwargs):
+            calls.append(list(tokens))
+            return None
+
+    monkeypatch.setattr("gway.runtime.GwayRuntime", FakeRuntime)
+
+    assert bootstrap._run_runtime_recipe(["recipe", "--help"]) is None
+    assert calls == []
+
+
+def test_bootstrap_downstream_help_remains_in_recipe_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    class FakeRuntime:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def execute(self, tokens, **kwargs):
+            calls.append(list(tokens))
+            return None
+
+    monkeypatch.setattr("gway.runtime.GwayRuntime", FakeRuntime)
+
+    args = ["recipe", "setup.rx", "-", "demo", "command", "--help"]
+    assert bootstrap._run_runtime_recipe(args) == 0
+    assert calls == [args]
+
+
+def test_bootstrap_recipe_errors_keep_original_explain_args(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handled: list[list[str]] = []
+
+    class FakeRuntime:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def execute(self, tokens, **kwargs):
+            raise PermissionError("denied")
+
+    def fake_handle(exc: Exception, args: list[str]) -> int:
+        assert isinstance(exc, PermissionError)
+        handled.append(args)
+        return 2
+
+    monkeypatch.setattr("gway.runtime.GwayRuntime", FakeRuntime)
+    monkeypatch.setattr("gway.cli._handle_cli_exception", fake_handle)
+
+    assert (
+        bootstrap._run_runtime_recipe(
+            ["recipe", "setup.rx"],
+            error_args=["--explain", "recipe", "setup.rx"],
+        )
+        == 2
+    )
+    assert handled == [["--explain", "recipe", "setup.rx"]]
+
+
 def test_bootstrap_delegates_upgrade_execution_to_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[list[str], bool]] = []
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shlex
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,22 +49,41 @@ class RecipeSession:
 
     dispatcher: Dispatcher
     context: dict[str, object] = field(default_factory=dict)
-    runtime: GwayRuntime = field(init=False)
+    runtime: GwayRuntime | None = None
 
     def __post_init__(self) -> None:
-        self.runtime = GwayRuntime(self.dispatcher)
+        if self.runtime is None:
+            self.runtime = GwayRuntime(self.dispatcher)
 
     def run(
         self,
         tokens: Sequence[str],
         *,
         interactive: bool = False,
+        prompt: Callable[[str], str] | None = None,
     ) -> object:
+        assert self.runtime is not None
         return self.runtime.execute(
             tokens,
             interactive=interactive,
+            prompt=prompt,
             context=self.context,
         )
+
+
+def child_recipe_context(
+    parent: Mapping[str, object] | None = None,
+    *,
+    incoming: object = None,
+    has_incoming: bool = False,
+) -> dict[str, object]:
+    """Create an isolated child frame and explicitly publish chained input into it."""
+    context = dict(parent or {})
+    if has_incoming:
+        if isinstance(incoming, Mapping):
+            context.update(incoming)
+        context["result"] = incoming
+    return context
 
 
 def run_recipe(
@@ -72,9 +91,12 @@ def run_recipe(
     dispatcher: Dispatcher,
     *,
     interactive: bool = False,
+    prompt: Callable[[str], str] | None = None,
+    context: MutableMapping[str, object] | None = None,
+    runtime: GwayRuntime | None = None,
 ) -> object:
     """Execute one .rx recipe with persistent named context and fail-fast semantics."""
-    session = RecipeSession(dispatcher)
+    session = RecipeSession(dispatcher, context=dict(context or {}), runtime=runtime)
     result: object = None
     recipe_path = Path(path)
     record("recipe.start", "executing recipe", path=str(recipe_path))
@@ -87,7 +109,11 @@ def run_recipe(
             tokens=list(statement.tokens),
         )
         try:
-            result = session.run(statement.tokens, interactive=interactive)
+            result = session.run(
+                statement.tokens,
+                interactive=interactive,
+                prompt=prompt,
+            )
         except RecipeError:
             raise
         except SystemExit as exc:
@@ -113,6 +139,7 @@ __all__ = [
     "RecipeError",
     "RecipeSession",
     "RecipeStatement",
+    "child_recipe_context",
     "recipe_statements",
     "run_recipe",
 ]
