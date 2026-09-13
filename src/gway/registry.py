@@ -6,7 +6,9 @@ from pathlib import Path
 from .config import GwayPaths, default_paths
 from .project import ManifestError, Project
 
-_RESERVED_RUNTIME_PROJECT_NAMES = frozenset({"recipe", "result", "store"})
+_RESERVED_RUNTIME_PROJECT_NAMES = frozenset(
+    {"install", "recipe", "result", "store", "uninstall", "upgrade"}
+)
 
 
 class RegistryError(ValueError):
