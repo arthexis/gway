@@ -144,6 +144,19 @@ def test_recipe_forwards_custom_prompt_to_nested_statement(tmp_path: Path) -> No
     assert prompts
 
 
+def test_recipe_accepts_literal_separator_before_dash_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    recipe = tmp_path / "-deploy.rx"
+    recipe.write_text("demo echo alpha\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    result = GwayRuntime(_dispatcher(tmp_path)).execute(["recipe", "--", "-deploy.rx"])
+
+    assert result == "alpha"
+
+
 def test_recipe_chain_emits_frame_provenance(tmp_path: Path) -> None:
     recipe = tmp_path / "trace.rx"
     recipe.write_text("result\n", encoding="utf-8")
