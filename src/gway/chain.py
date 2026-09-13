@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from .chain_context import chain_context_scope, publish_chain_result
 from .explain import record
+from .provenance import ValueProvenance
 from .solve import solve_values
 from .stage import StageKind, parse_stages
 from .transfer import transfer_scope
@@ -39,12 +40,17 @@ def run_statement(
     interactive: bool = False,
     prompt: Callable[[str], str] | None = None,
     context: MutableMapping[str, object] | None = None,
+    provenance: MutableMapping[str, ValueProvenance] | None = None,
     runtime: GwayRuntime | None = None,
 ) -> object:
     """Execute one complete GWAY statement in an optional caller-owned context."""
     from .runtime import GwayRuntime
 
     active_runtime = runtime or GwayRuntime(dispatcher)
+    if provenance is None and context is not None:
+        candidate = getattr(context, "provenance", None)
+        if isinstance(candidate, MutableMapping):
+            provenance = candidate
     stages = parse_stages(tokens)
     result: object = None
     record("chain.start", "executing command chain", stages=len(stages), tokens=list(tokens))
@@ -54,7 +60,7 @@ def run_statement(
 
         prompt = _prompt_required_value
 
-    with chain_context_scope(context), transfer_scope():
+    with chain_context_scope(context, provenance), transfer_scope():
         for index, stage in enumerate(stages):
             previous_result = result
             transfer = [] if index == 0 else _transfer_values(previous_result)
@@ -66,6 +72,7 @@ def run_statement(
                 tokens=list(stage.raw_tokens),
                 transfer=list(transfer),
             )
+            producer: ValueProvenance | None
             if stage.kind is StageKind.SOLVE:
                 values = [
                     *(_literal_solve_transfer(value) for value in transfer),
@@ -84,6 +91,7 @@ def run_statement(
                     prompt=prompt,
                     paths=dispatcher.registry.paths,
                 )
+                producer = active_runtime.frames.value_provenance(active_runtime.current_frame)
             else:
                 result = active_runtime.execute_stage(
                     stage,
@@ -93,12 +101,16 @@ def run_statement(
                     previous_result=previous_result if index else None,
                     has_previous_result=index > 0,
                 )
-            publish_chain_result(result)
+                producer = active_runtime.frames.value_provenance(
+                    active_runtime.frames.last_completed
+                )
+            publish_chain_result(result, provenance=producer)
             record(
                 "chain.stage.result",
                 "published chain stage result",
                 stage=index + 1,
                 result=result,
+                provenance=producer.as_dict() if producer is not None else None,
             )
 
     record("chain.result", "command chain completed", result=result)

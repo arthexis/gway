@@ -20,11 +20,31 @@ def enabled() -> bool:
     return _trace.get() is not None
 
 
+def _attach_context_provenance(kind: str, data: dict[str, object]) -> None:
+    if kind != "arguments.context":
+        return
+    values = data.get("values")
+    if not isinstance(values, Mapping):
+        return
+    from .chain_context import current_chain_provenance
+
+    provenance = current_chain_provenance()
+    resolved = {
+        str(key): provenance[key].as_dict()
+        for key in values
+        if key in provenance
+    }
+    if resolved:
+        data["provenance"] = resolved
+
+
 def record(kind: str, message: str, **data: object) -> None:
     trace = _trace.get()
     if trace is None:
         return
-    trace.append(ExplainStep(kind=kind, message=message, data=dict(data)))
+    payload = dict(data)
+    _attach_context_provenance(kind, payload)
+    trace.append(ExplainStep(kind=kind, message=message, data=payload))
 
 
 @contextmanager

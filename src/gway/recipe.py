@@ -5,8 +5,10 @@ from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequenc
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .chain_context import current_chain_provenance
 from .dispatcher import Dispatcher
 from .explain import record
+from .provenance import ValueProvenance
 from .runtime import GwayRuntime
 
 
@@ -23,6 +25,19 @@ class RecipeError(RuntimeError):
         self.line = line
         location = f"{path}:{line}" if line is not None else str(path)
         super().__init__(f"{location}: {message}")
+
+
+class RecipeContext(dict[str, object]):
+    """Named recipe values with non-key provenance metadata."""
+
+    def __init__(
+        self,
+        values: Mapping[str, object] | None = None,
+        *,
+        provenance: Mapping[str, ValueProvenance] | None = None,
+    ) -> None:
+        super().__init__(values or {})
+        self.provenance: dict[str, ValueProvenance] = dict(provenance or {})
 
 
 def recipe_statements(path: str | Path) -> Iterator[RecipeStatement]:
@@ -48,10 +63,12 @@ class RecipeSession:
     """Execute multiple GWAY statements against one persistent named context."""
 
     dispatcher: Dispatcher
-    context: dict[str, object] = field(default_factory=dict)
+    context: dict[str, object] = field(default_factory=RecipeContext)
     runtime: GwayRuntime | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.context, RecipeContext):
+            self.context = RecipeContext(self.context)
         if self.runtime is None:
             self.runtime = GwayRuntime(self.dispatcher)
 
@@ -80,9 +97,9 @@ def child_recipe_context(
     *,
     incoming: object = None,
     has_incoming: bool = False,
-) -> dict[str, object]:
+) -> RecipeContext:
     """Create an isolated child frame and explicitly publish chained input into it."""
-    context = dict(parent or {})
+    context = RecipeContext(parent, provenance=current_chain_provenance())
     if has_incoming:
         if isinstance(incoming, Mapping):
             context.update(incoming)
@@ -100,7 +117,11 @@ def run_recipe(
     runtime: GwayRuntime | None = None,
 ) -> object:
     """Execute one .rx recipe with persistent named context and fail-fast semantics."""
-    session = RecipeSession(dispatcher, context=dict(context or {}), runtime=runtime)
+    if isinstance(context, RecipeContext):
+        recipe_context = RecipeContext(context, provenance=context.provenance)
+    else:
+        recipe_context = RecipeContext(context)
+    session = RecipeSession(dispatcher, context=recipe_context, runtime=runtime)
     result: object = None
     recipe_path = Path(path)
     record("recipe.start", "executing recipe", path=str(recipe_path))
@@ -142,6 +163,7 @@ def run_recipe(
 
 
 __all__ = [
+    "RecipeContext",
     "RecipeError",
     "RecipeSession",
     "RecipeStatement",
