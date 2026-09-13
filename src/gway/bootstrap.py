@@ -75,17 +75,24 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
         print("gway: error: internal --resume requires exactly one checkpoint path", file=sys.stderr)
         return 2
 
+    from .checkpoint import CheckpointError
     from .checkpoint_store import read_checkpoint, remove_checkpoint
     from .cli import _handle_cli_exception, _render_result
     from .explain import explain_scope, record, render_trace
     from .resume import resume_recipe
     from .runtime import GwayRuntime
 
+    def handle_resume_error(exc: Exception) -> int:
+        if isinstance(exc, CheckpointError):
+            print(f"gway: {exc}", file=sys.stderr)
+            return 2
+        return _handle_cli_exception(exc, list(args))
+
     checkpoint_path = args[1]
     try:
         checkpoint = read_checkpoint(checkpoint_path)
     except Exception as exc:
-        return _handle_cli_exception(exc, list(args))
+        return handle_resume_error(exc)
 
     with explain_scope(enabled=checkpoint.flags.explain) as trace:
         try:
@@ -106,7 +113,7 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
                 error=str(exc),
                 checkpoint=checkpoint_path,
             )
-            return _handle_cli_exception(exc, list(args))
+            return handle_resume_error(exc)
         finally:
             if checkpoint.flags.explain:
                 print(render_trace(trace), file=sys.stderr)
