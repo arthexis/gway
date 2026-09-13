@@ -14,6 +14,7 @@ from gway.project import Project
 from gway.recipe import RecipeSession
 from gway.registry import Registry
 from gway.runtime import GwayRuntime
+from gway.upgrade import UpgradeError
 
 
 def _dispatcher(tmp_path: Path) -> Dispatcher:
@@ -157,6 +158,59 @@ def test_runtime_upgrade_specific_project(tmp_path: Path, monkeypatch: pytest.Mo
     assert result["status"] == "upgraded"
     assert result["name"] == "upgraded"
     assert calls == [("fixture", True, False, ())]
+
+
+def test_runtime_explicit_gway_upgrade_preserves_list_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dispatcher = _dispatcher(tmp_path)
+
+    class FakeUpgrader:
+        def __init__(self, registry) -> None:
+            assert registry is dispatcher.registry
+
+        def upgrade_self(self) -> None:
+            pass
+
+    monkeypatch.setattr("gway.runtime.Upgrader", FakeUpgrader)
+
+    result = GwayRuntime(dispatcher).execute(["upgrade", "gway"])
+
+    assert result == [
+        {
+            "status": "upgraded",
+            "name": "gway",
+            "repository": "arthexis/gway",
+            "revision": "main",
+        }
+    ]
+
+
+def test_runtime_reports_completed_upgrade_before_later_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    first = _managed_project(tmp_path, "first")
+    progress: list[dict[str, object]] = []
+
+    class FakeUpgrader:
+        def __init__(self, registry) -> None:
+            assert registry is dispatcher.registry
+
+        def project_result(self, name, *, force=False, reload=False, arguments=()):
+            if name == "first":
+                return SimpleNamespace(changed=True, project=first)
+            raise UpgradeError("second failed")
+
+    monkeypatch.setattr("gway.runtime.Upgrader", FakeUpgrader)
+    runtime = GwayRuntime(dispatcher, on_progress=progress.append)
+
+    with pytest.raises(UpgradeError, match="second failed"):
+        runtime.execute(["upgrade", "first", "second"])
+
+    assert [record["name"] for record in progress] == ["first"]
 
 
 def test_core_operation_rejects_incoming_chain_value(tmp_path: Path) -> None:
