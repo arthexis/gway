@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -11,6 +12,7 @@ from .project import Project
 from .registry import Registry
 from .repository import RepositoryError, RepositoryManager, WorkingTreeEntry
 from .runner import Runner
+from .upgrade_history import UpgradeHistoryRecord, append_upgrade_history
 
 SELF_SOURCE_SPEC = "git+https://github.com/arthexis/gway.git@main"
 
@@ -141,11 +143,45 @@ class Upgrader:
         )
         self.runner.refresh(restored)
 
+    def _record_force_attempt(
+        self,
+        *,
+        project_name: str,
+        repository: str,
+        checkout: Path,
+        previous_revision: str | None,
+        resulting_revision: str | None,
+        first_error: RepositoryError,
+        succeeded: bool,
+        dirty_files: tuple[WorkingTreeEntry, ...],
+    ) -> None:
+        record = UpgradeHistoryRecord.create(
+            project=project_name,
+            repository=repository,
+            checkout=checkout,
+            previous_revision=previous_revision,
+            resulting_revision=resulting_revision,
+            force_error_type=type(first_error).__name__,
+            force_error=str(first_error),
+            forced_retry_succeeded=succeeded,
+            dirty_files=dirty_files,
+        )
+        try:
+            append_upgrade_history(self.registry.paths, record)
+        except Exception as exc:
+            warnings.warn(
+                f"cannot append forced-upgrade history: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
     def _upgrade_repository(
         self,
         checkout: Path,
         full_name: str,
         *,
+        project_name: str,
+        previous_revision: str | None,
         force: bool,
         try_force: bool,
     ) -> RepositoryUpgradeAttempt:
@@ -162,7 +198,30 @@ class Upgrader:
             if not try_force:
                 raise
             dirty_files = self.repositories.status(checkout)
-            revision = self.repositories.upgrade(checkout, full_name, force=True)
+            try:
+                revision = self.repositories.upgrade(checkout, full_name, force=True)
+            except RepositoryError as forced_exc:
+                self._record_force_attempt(
+                    project_name=project_name,
+                    repository=full_name,
+                    checkout=checkout,
+                    previous_revision=previous_revision,
+                    resulting_revision=None,
+                    first_error=exc,
+                    succeeded=False,
+                    dirty_files=dirty_files,
+                )
+                raise forced_exc from exc
+            self._record_force_attempt(
+                project_name=project_name,
+                repository=full_name,
+                checkout=checkout,
+                previous_revision=previous_revision,
+                resulting_revision=revision,
+                first_error=exc,
+                succeeded=True,
+                dirty_files=dirty_files,
+            )
             return RepositoryUpgradeAttempt(
                 revision=revision,
                 force_used=True,
@@ -210,6 +269,8 @@ class Upgrader:
         attempt = self._upgrade_repository(
             current.path,
             current.repository,
+            project_name=current.name,
+            previous_revision=previous_revision,
             force=force,
             try_force=try_force,
         )
