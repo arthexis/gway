@@ -9,7 +9,7 @@ from gway.dispatcher import Dispatcher
 from gway.explain import explain_scope
 from gway.project import Project
 from gway.provenance import ContinuationPoint, ExecutionFrameStack
-from gway.recipe import RecipeSession
+from gway.recipe import RecipeSession, run_recipe
 from gway.registry import Registry
 from gway.runtime import GwayRuntime
 
@@ -123,6 +123,45 @@ def test_recipe_session_keeps_caller_mapping_live(tmp_path: Path) -> None:
     assert shared["result"] == {"device": "gway-004"}
 
 
+def test_recipe_session_invalidates_stale_external_provenance(tmp_path: Path) -> None:
+    shared: dict[str, object] = {}
+    session = RecipeSession(_dispatcher(tmp_path), context=shared)
+
+    with explain_scope():
+        assert session.run(["demo", "produce"]) == {"device": "gway-004"}
+
+    shared["device"] = "manual"
+    with explain_scope() as trace:
+        assert session.run(["demo", "consume"]) == "manual"
+
+    context_step = next(
+        step
+        for step in trace
+        if step.kind == "arguments.context" and step.data["command"] == ["consume"]
+    )
+    assert context_step.data["values"] == {"device": "manual"}
+    assert "device" not in context_step.data.get("provenance", {})
+
+
+def test_direct_run_recipe_has_single_recipe_frame(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    runtime = GwayRuntime(dispatcher)
+    recipe = tmp_path / "direct.rx"
+    recipe.write_text("demo status\n", encoding="utf-8")
+
+    with explain_scope() as trace:
+        assert run_recipe(recipe, dispatcher, runtime=runtime) == {"status": "ok"}
+
+    enters = [step for step in trace if step.kind == "runtime.frame.enter"]
+    recipe_frames = [step for step in enters if step.data["frame_kind"] == "recipe"]
+    statement = next(step for step in enters if step.data["frame_kind"] == "statement")
+
+    assert len(recipe_frames) == 1
+    assert recipe_frames[0].data["recipe_path"] == str(recipe)
+    assert statement.data["parent_frame_id"] == recipe_frames[0].data["frame_id"]
+    assert runtime.current_frame is None
+
+
 def test_recipe_statement_frame_carries_source_location(tmp_path: Path) -> None:
     runtime = GwayRuntime(_dispatcher(tmp_path))
     recipe = tmp_path / "location.rx"
@@ -181,6 +220,11 @@ def test_nested_recipe_trace_carries_continuation_stack(tmp_path: Path) -> None:
 
     starts = [step for step in trace if step.kind == "recipe.statement.start"]
     parent_first, child_only, parent_second = starts
+    recipe_enters = [
+        step
+        for step in trace
+        if step.kind == "runtime.frame.enter" and step.data["frame_kind"] == "recipe"
+    ]
 
     assert [item["recipe_path"] for item in parent_first.data["continuation_stack"]] == [
         str(parent)
@@ -192,6 +236,7 @@ def test_nested_recipe_trace_carries_continuation_stack(tmp_path: Path) -> None:
     assert [item["recipe_path"] for item in parent_second.data["continuation_stack"]] == [
         str(parent)
     ]
+    assert [step.data["recipe_path"] for step in recipe_enters] == [str(parent), str(child)]
     assert runtime.frames.current_continuation is None
     assert runtime.frames.continuations == ()
 

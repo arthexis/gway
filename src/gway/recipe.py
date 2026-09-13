@@ -27,6 +27,56 @@ class RecipeError(RuntimeError):
         super().__init__(f"{location}: {message}")
 
 
+class _LiveProvenance(MutableMapping[str, ValueProvenance]):
+    """Sidecar provenance that invalidates entries when backing values change."""
+
+    def __init__(
+        self,
+        values: MutableMapping[str, object],
+        initial: Mapping[str, ValueProvenance] | None = None,
+    ) -> None:
+        self._values = values
+        self._records: dict[str, tuple[ValueProvenance, object]] = {}
+        for key, provenance in (initial or {}).items():
+            if key in values:
+                self._records[key] = (provenance, values[key])
+
+    def _valid(self, key: str) -> bool:
+        record = self._records.get(key)
+        if record is None or key not in self._values:
+            return False
+        _, snapshot = record
+        try:
+            return self._values[key] == snapshot
+        except Exception:
+            return self._values[key] is snapshot
+
+    def __getitem__(self, key: str) -> ValueProvenance:
+        if not self._valid(key):
+            self._records.pop(key, None)
+            raise KeyError(key)
+        return self._records[key][0]
+
+    def __setitem__(self, key: str, value: ValueProvenance) -> None:
+        if key not in self._values:
+            self._records.pop(key, None)
+            return
+        self._records[key] = (value, self._values[key])
+
+    def __delitem__(self, key: str) -> None:
+        del self._records[key]
+
+    def __iter__(self) -> Iterator[str]:
+        for key in tuple(self._records):
+            if self._valid(key):
+                yield key
+            else:
+                self._records.pop(key, None)
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self)
+
+
 class RecipeContext(MutableMapping[str, object]):
     """Named recipe values backed by a live mapping with sidecar provenance."""
 
@@ -37,16 +87,21 @@ class RecipeContext(MutableMapping[str, object]):
         provenance: Mapping[str, ValueProvenance] | None = None,
     ) -> None:
         self._values: MutableMapping[str, object] = {} if values is None else values
-        self.provenance: dict[str, ValueProvenance] = dict(provenance or {})
+        self.provenance: MutableMapping[str, ValueProvenance] = _LiveProvenance(
+            self._values,
+            provenance,
+        )
 
     def __getitem__(self, key: str) -> object:
         return self._values[key]
 
     def __setitem__(self, key: str, value: object) -> None:
         self._values[key] = value
+        self.provenance.pop(key, None)
 
     def __delitem__(self, key: str) -> None:
         del self._values[key]
+        self.provenance.pop(key, None)
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._values)
@@ -131,24 +186,16 @@ def child_recipe_context(
     return context
 
 
-def run_recipe(
-    path: str | Path,
-    dispatcher: Dispatcher,
+def _run_recipe_body(
+    recipe_path: Path,
+    session: RecipeSession,
     *,
-    interactive: bool = False,
-    prompt: Callable[[str], str] | None = None,
-    context: MutableMapping[str, object] | None = None,
-    runtime: GwayRuntime | None = None,
+    interactive: bool,
+    prompt: Callable[[str], str] | None,
 ) -> object:
-    """Execute one .rx recipe with persistent named context and fail-fast semantics."""
-    if isinstance(context, RecipeContext):
-        recipe_context = RecipeContext(dict(context), provenance=context.provenance)
-    else:
-        recipe_context = RecipeContext(dict(context or {}))
-    session = RecipeSession(dispatcher, context=recipe_context, runtime=runtime)
+    """Execute recipe statements within an already-established recipe frame."""
     assert session.runtime is not None
     result: object = None
-    recipe_path = Path(path)
     statement_lines = _recipe_statement_lines(recipe_path)
     record("recipe.start", "executing recipe", path=str(recipe_path))
     for statement_index, statement in enumerate(recipe_statements(recipe_path), start=1):
@@ -203,6 +250,40 @@ def run_recipe(
             )
     record("recipe.result", "recipe completed", path=str(recipe_path), result=result)
     return result
+
+
+def run_recipe(
+    path: str | Path,
+    dispatcher: Dispatcher,
+    *,
+    interactive: bool = False,
+    prompt: Callable[[str], str] | None = None,
+    context: MutableMapping[str, object] | None = None,
+    runtime: GwayRuntime | None = None,
+) -> object:
+    """Execute one .rx recipe with persistent named context and fail-fast semantics."""
+    if isinstance(context, RecipeContext):
+        recipe_context = RecipeContext(dict(context), provenance=context.provenance)
+    else:
+        recipe_context = RecipeContext(dict(context or {}))
+    session = RecipeSession(dispatcher, context=recipe_context, runtime=runtime)
+    assert session.runtime is not None
+    recipe_path = Path(path)
+    current = session.runtime.current_frame
+    if current is not None and current.kind == "recipe" and current.recipe_path == str(recipe_path):
+        return _run_recipe_body(
+            recipe_path,
+            session,
+            interactive=interactive,
+            prompt=prompt,
+        )
+    with session.runtime.frame_scope("recipe", recipe_path=str(recipe_path)):
+        return _run_recipe_body(
+            recipe_path,
+            session,
+            interactive=interactive,
+            prompt=prompt,
+        )
 
 
 __all__ = [
