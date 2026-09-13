@@ -152,7 +152,12 @@ class GwayRuntime:
                 raise DispatchError(f"{operation} cannot receive chain positionals")
             result = self._run_core(stage.tokens)
         else:
-            result = self._run_managed(stage, transfer, interactive=interactive)
+            result = self._run_managed(
+                stage,
+                transfer,
+                interactive=interactive,
+                prompt=prompt,
+            )
         record("runtime.operation.result", "completed GWAY operation", operation=operation, result=result)
         return result
 
@@ -302,13 +307,25 @@ class GwayRuntime:
                 self._publish_progress(result)
         return results
 
-    def _run_managed(self, stage: Stage, transfer: Sequence[object], *, interactive: bool) -> object:
+    def _run_managed(
+        self,
+        stage: Stage,
+        transfer: Sequence[object],
+        *,
+        interactive: bool,
+        prompt: Callable[[str], str] | None = None,
+    ) -> object:
         project_name, project_args = normalize_managed_args(stage.tokens)
         _, raw_project_args = normalize_managed_args(stage.raw_tokens)
         if project_name == MANAGED_EXPRESSION_PROJECT:
             if transfer:
                 raise DispatchError("fallback expressions cannot receive chain positionals")
-            return self.dispatcher.run(project_name, project_args, interactive=interactive)
+            return self.dispatcher.run(
+                project_name,
+                project_args,
+                interactive=interactive,
+                prompt=prompt,
+            )
         project = self.registry.require(project_name)
         commands = self.dispatcher.commands(project_name)
         used_default = False
@@ -326,7 +343,12 @@ class GwayRuntime:
         routed = _route_transfer(combined_argv, transfer, selector_tokens=selector_tokens)
         encoded = _encode_routed_values(routed)
         record("transfer.route", "routed chain values into command arguments", project=project.name, command=list(command.path), incoming=list(transfer), selectors=list(selector_tokens), outgoing=list(encoded))
-        return self.dispatcher.run(project.name, [*command.path, *encoded], interactive=interactive)
+        return self.dispatcher.run(
+            project.name,
+            [*command.path, *encoded],
+            interactive=interactive,
+            prompt=prompt,
+        )
 
 
 __all__ = ["GwayRuntime"]
