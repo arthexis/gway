@@ -111,7 +111,12 @@ def _run_command_stage(
     if stage.tokens and stage.tokens[0] == "store":
         if transfer:
             raise DispatchError("store cannot receive chain positionals")
-        return run_store(stage.tokens[1:], paths=dispatcher.registry.paths)
+        return run_store(
+            stage.tokens[1:],
+            interactive=interactive,
+            prompt=prompt,
+            paths=dispatcher.registry.paths,
+        )
 
     if stage.tokens and stage.tokens[0] == "result":
         return run_result(
