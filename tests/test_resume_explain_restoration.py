@@ -39,6 +39,7 @@ def test_restored_frame_and_continuation_are_explicit_explain_events() -> None:
             recipe_path="root.rx",
         ) as frame:
             assert frames.is_restored(frame.id)
+            frames.mark_restored_continuation(frame.id, point)
             with frames.continuation_scope(
                 point,
                 context={"device": "gway-004"},
@@ -59,9 +60,35 @@ def test_restored_frame_and_continuation_are_explicit_explain_events() -> None:
     assert continuation.data["line"] == 7
     assert continuation.data["next_statement_index"] == 5
     assert continuation.data["next_line"] == 9
-    assert continuation.data["context_provenance"]["device"]["frame_id"] == (
-        "frame-before-reload"
+    assert (
+        continuation.data["context_provenance"]["device"]["frame_id"]
+        == "frame-before-reload"
     )
+
+
+def test_restored_frame_does_not_mark_later_continuation_as_restored() -> None:
+    frames = ExecutionFrameStack()
+    restored = ContinuationPoint("root.rx", 1, 1, 2, 2)
+    later = ContinuationPoint("root.rx", 2, 2, None, None)
+
+    with explain_scope() as trace:
+        with frames.restored_scope(
+            "frame-8",
+            "recipe",
+            expected_parent_id=None,
+            recipe_path="root.rx",
+        ) as frame:
+            frames.mark_restored_continuation(frame.id, restored)
+            with frames.continuation_scope(restored, context={}, provenance={}):
+                pass
+            with frames.continuation_scope(later, context={}, provenance={}):
+                pass
+
+    continuations = [
+        step for step in trace if step.kind == "resume.continuation.restore"
+    ]
+    assert len(continuations) == 1
+    assert continuations[0].data["statement_index"] == 1
 
 
 def test_fresh_frames_are_not_reported_as_restored() -> None:
@@ -113,7 +140,10 @@ def test_restored_chain_boundary_explains_saved_result_and_producer() -> None:
     assert restored.data["total_stages"] == 2
     assert restored.data["has_previous_result"] is True
     assert restored.data["previous_result"] == "saved"
-    assert restored.data["previous_result_provenance"]["frame_id"] == "frame-before-reload"
+    assert (
+        restored.data["previous_result_provenance"]["frame_id"]
+        == "frame-before-reload"
+    )
 
     completed = next(step for step in trace if step.kind == "resume.chain.result")
     assert completed.data["result"] == "saved"
