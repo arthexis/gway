@@ -87,6 +87,12 @@ def run_recipe(
             result = session.run(statement.tokens, interactive=interactive)
         except RecipeError:
             raise
+        except SystemExit as exc:
+            raise RecipeError(
+                statement.path,
+                f"statement exited with status {exc.code}",
+                line=statement.line,
+            ) from exc
         except Exception as exc:
             raise RecipeError(statement.path, str(exc), line=statement.line) from exc
         record(
