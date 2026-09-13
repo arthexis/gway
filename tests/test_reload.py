@@ -7,6 +7,7 @@ import pytest
 
 from gway import bootstrap
 from gway.checkpoint import CheckpointError, CheckpointFlags, ResumeCheckpoint, recipe_identity
+from gway.checkpoint_stack import ContinuationStackCheckpoint
 from gway.checkpoint_store import (
     checkpoint_directory,
     read_checkpoint,
@@ -96,6 +97,7 @@ def test_reload_operation_persists_state_before_exec(tmp_path: Path, monkeypatch
     assert not list(checkpoint_path.parent.glob("*.tmp"))
 
     checkpoint = read_checkpoint(checkpoint_path)
+    assert isinstance(checkpoint, ResumeCheckpoint)
     assert checkpoint.continuation == ContinuationPoint(str(recipe), 2, 2, 3, 3)
     assert checkpoint.context["device"] == "gway-004"
     assert checkpoint.context["result"] == {"device": "gway-004"}
@@ -163,15 +165,51 @@ def test_reload_rejects_pending_chain_stages(tmp_path: Path) -> None:
         runtime.execute(["reload", "-", "demo", "scalar"])
 
 
-def test_reload_rejects_nested_recipe_continuation(tmp_path: Path) -> None:
+def test_nested_reload_persists_stack_and_resumes_parent(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
     dispatcher = _dispatcher(tmp_path)
-    runtime = GwayRuntime(dispatcher)
+    first_runtime = GwayRuntime(dispatcher)
+    resumed_runtime = GwayRuntime(dispatcher)
     child = tmp_path / "child.rx"
     parent = tmp_path / "parent.rx"
-    child.write_text("reload\n", encoding="utf-8")
-    parent.write_text(f"recipe {child}\n", encoding="utf-8")
+    child.write_text("reload\ndemo produce\n", encoding="utf-8")
+    parent.write_text(f"recipe {child}\ndemo consume\n", encoding="utf-8")
+    captured: dict[str, object] = {}
 
-    with pytest.raises(Exception, match="nested recipe resume is reserved for Chunk 7"):
+    def fake_execv(executable: str, argv: list[str]) -> None:
+        captured["argv"] = list(argv)
+        raise _ExecIntercept()
+
+    monkeypatch.setattr("gway.runtime_reload.os.execv", fake_execv)
+    with pytest.raises(_ExecIntercept):
+        first_runtime.execute(["recipe", str(parent)])
+
+    argv = captured["argv"]
+    assert isinstance(argv, list)
+    checkpoint_path = Path(argv[4])
+    checkpoint = read_checkpoint(checkpoint_path)
+    assert isinstance(checkpoint, ContinuationStackCheckpoint)
+    assert [frame.recipe.path for frame in checkpoint.frames] == [str(parent), str(child)]
+    assert checkpoint.frames[1].parent_frame_id == checkpoint.frames[0].frame_id
+
+    monkeypatch.setattr("gway.runtime.GwayRuntime", lambda: resumed_runtime)
+    assert bootstrap._run_internal_resume(["--resume", str(checkpoint_path)]) == 0
+    assert capsys.readouterr().out.strip() == "gway-004"
+    assert not checkpoint_path.exists()
+    assert resumed_runtime.current_frame is None
+    assert resumed_runtime.frames.continuations == ()
+
+
+def test_nested_reload_rejects_parent_pending_chain_stages(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    runtime = GwayRuntime(dispatcher)
+    child = tmp_path / "child-chain.rx"
+    parent = tmp_path / "parent-chain.rx"
+    child.write_text("reload\n", encoding="utf-8")
+    parent.write_text(f"recipe {child} - demo scalar\n", encoding="utf-8")
+
+    with pytest.raises(Exception, match="reserved for Chunk 7.3"):
         runtime.execute(["recipe", str(parent)])
 
 

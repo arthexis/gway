@@ -245,7 +245,12 @@ def _run_recipe_body(
             next_statement_index=next_statement_index,
             next_line=next_line,
         )
-        with session.runtime.frames.continuation_scope(continuation):
+        context_provenance = getattr(session.context, "provenance", None)
+        with session.runtime.frames.continuation_scope(
+            continuation,
+            context=session.context,
+            provenance=context_provenance,
+        ):
             continuation_stack = [
                 point.as_dict() for point in session.runtime.frames.continuations
             ]

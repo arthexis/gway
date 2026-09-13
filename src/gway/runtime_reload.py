@@ -7,8 +7,11 @@ from pathlib import Path
 
 from .chain_context import current_chain_context, current_chain_provenance
 from .checkpoint import CheckpointFlags, ResumeCheckpoint, recipe_identity
+from .checkpoint_stack import ContinuationFrameCheckpoint, ContinuationStackCheckpoint
 from .checkpoint_store import write_checkpoint_atomic
 from .explain import enabled as explain_enabled, record
+from .recipe import recipe_statements
+from .stage import StageKind, parse_stages
 
 _ORIGINAL_ARGV_ENV = "GWAY_RESUME_ORIGINAL_ARGV"
 
@@ -17,48 +20,134 @@ class ReloadError(RuntimeError):
     """Raised when the current runtime cannot be safely checkpointed and replaced."""
 
 
-def create_reload_checkpoint(runtime, *, interactive: bool) -> ResumeCheckpoint:
-    """Capture the single active recipe continuation into checkpoint version 1."""
-    continuations = runtime.frames.continuations
-    if len(continuations) != 1:
-        if not continuations:
-            raise ReloadError("reload is only supported while a recipe statement is active")
+def _checkpoint_flags(runtime, *, interactive: bool) -> CheckpointFlags:
+    return CheckpointFlags(
+        interactive=interactive,
+        explain=explain_enabled(),
+        output_mode=getattr(runtime, "output_mode", None),
+    )
+
+
+def _validate_nested_parent_statement(parent, child) -> None:
+    """Reject ancestor statements whose remaining chain state belongs to Chunk 7.3."""
+    try:
+        statement = next(
+            recipe_statements(
+                parent.point.recipe_path,
+                start_statement_index=parent.point.statement_index,
+            )
+        )
+        stages = parse_stages(statement.tokens)
+    except Exception as exc:
         raise ReloadError(
-            "reload currently supports exactly one active recipe continuation; "
-            "nested recipe resume is reserved for Chunk 7"
+            f"cannot validate nested recipe continuation {parent.point.recipe_path}: {exc}"
+        ) from exc
+
+    if (
+        len(stages) != 1
+        or stages[0].kind is StageKind.SOLVE
+        or not stages[0].tokens
+        or stages[0].tokens[0] != "recipe"
+        or len(stages[0].tokens) != 2
+    ):
+        raise ReloadError(
+            "nested reload currently requires each parent recipe invocation to be a "
+            "single-stage 'recipe PATH' statement; pending chain-stage restoration "
+            "is reserved for Chunk 7.3"
         )
 
-    point = continuations[0]
+    expected_child = Path(stages[0].tokens[1]).resolve()
+    actual_child = Path(child.point.recipe_path).resolve()
+    if expected_child != actual_child:
+        raise ReloadError(
+            "nested continuation child does not match the parent recipe invocation"
+        )
+
+
+def _create_single_checkpoint(runtime, *, interactive: bool) -> ResumeCheckpoint:
+    point = runtime.frames.continuations[0]
     context = current_chain_context()
     provenance = current_chain_provenance()
     has_previous_result = "result" in context
     previous_result = context.get("result")
     previous_provenance = provenance.get("result")
 
-    try:
-        identity = recipe_identity(Path(point.recipe_path))
-        return ResumeCheckpoint(
-            recipe=identity,
-            continuation=point,
-            context=context,  # type: ignore[arg-type]
-            context_provenance=provenance,
-            has_previous_result=has_previous_result,
-            previous_result=previous_result if has_previous_result else None,  # type: ignore[arg-type]
-            previous_result_provenance=(
-                previous_provenance if has_previous_result else None
-            ),
-            flags=CheckpointFlags(
-                interactive=interactive,
-                explain=explain_enabled(),
-                output_mode=getattr(runtime, "output_mode", None),
-            ),
+    identity = recipe_identity(Path(point.recipe_path))
+    return ResumeCheckpoint(
+        recipe=identity,
+        continuation=point,
+        context=context,  # type: ignore[arg-type]
+        context_provenance=provenance,
+        has_previous_result=has_previous_result,
+        previous_result=previous_result if has_previous_result else None,  # type: ignore[arg-type]
+        previous_result_provenance=(
+            previous_provenance if has_previous_result else None
+        ),
+        flags=_checkpoint_flags(runtime, interactive=interactive),
+    )
+
+
+def _create_stack_checkpoint(runtime, *, interactive: bool) -> ContinuationStackCheckpoint:
+    active = runtime.frames.active_continuations
+    continuations = runtime.frames.continuations
+    if len(active) != len(continuations):
+        raise ReloadError("nested recipe continuation state is incomplete")
+
+    for parent, child in zip(active, active[1:]):
+        _validate_nested_parent_statement(parent, child)
+
+    frames: list[ContinuationFrameCheckpoint] = []
+    parent_frame_id: str | None = None
+    for state in active:
+        context = dict(state.context)
+        provenance = dict(state.provenance)
+        has_previous_result = "result" in context
+        previous_result = context.get("result")
+        previous_provenance = provenance.get("result")
+        frames.append(
+            ContinuationFrameCheckpoint(
+                frame_id=state.frame_id,
+                parent_frame_id=parent_frame_id,
+                recipe=recipe_identity(Path(state.point.recipe_path)),
+                continuation=state.point,
+                context=context,  # type: ignore[arg-type]
+                context_provenance=provenance,
+                has_previous_result=has_previous_result,
+                previous_result=previous_result if has_previous_result else None,  # type: ignore[arg-type]
+                previous_result_provenance=(
+                    previous_provenance if has_previous_result else None
+                ),
+            )
         )
+        parent_frame_id = state.frame_id
+
+    return ContinuationStackCheckpoint(
+        frames=tuple(frames),
+        flags=_checkpoint_flags(runtime, interactive=interactive),
+    )
+
+
+def create_reload_checkpoint(
+    runtime,
+    *,
+    interactive: bool,
+) -> ResumeCheckpoint | ContinuationStackCheckpoint:
+    """Capture one or more active recipe continuations for process replacement."""
+    continuations = runtime.frames.continuations
+    if not continuations:
+        raise ReloadError("reload is only supported while a recipe statement is active")
+
+    try:
+        if len(continuations) == 1:
+            return _create_single_checkpoint(runtime, interactive=interactive)
+        return _create_stack_checkpoint(runtime, interactive=interactive)
     except OSError as exc:
+        point = continuations[-1]
         raise ReloadError(f"cannot checkpoint active recipe {point.recipe_path}: {exc}") from exc
 
 
 def reload_runtime(runtime, *, interactive: bool) -> None:
-    """Atomically checkpoint the active recipe and replace this process with fresh GWAY."""
+    """Atomically checkpoint active recipes and replace this process with fresh GWAY."""
     checkpoint = create_reload_checkpoint(runtime, interactive=interactive)
     path = write_checkpoint_atomic(checkpoint, runtime.registry.paths.data_dir)
     argv = [sys.executable, "-m", "gway", "--resume", str(path)]

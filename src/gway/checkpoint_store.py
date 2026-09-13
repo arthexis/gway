@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import errno
+import json
 import os
 import stat
 import uuid
 from pathlib import Path
 
 from .checkpoint import CheckpointError, ResumeCheckpoint
+from .checkpoint_stack import CONTINUATION_STACK_VERSION, ContinuationStackCheckpoint
 
 _UNSUPPORTED_DIR_FSYNC_ERRNOS = {
     value
@@ -17,6 +19,8 @@ _UNSUPPORTED_DIR_FSYNC_ERRNOS = {
     )
     if value is not None
 }
+
+CheckpointDocument = ResumeCheckpoint | ContinuationStackCheckpoint
 
 
 def checkpoint_directory(data_dir: Path) -> Path:
@@ -62,7 +66,7 @@ def _ensure_private_directory(directory: Path) -> None:
         )
 
 
-def write_checkpoint_atomic(checkpoint: ResumeCheckpoint, data_dir: Path) -> Path:
+def write_checkpoint_atomic(checkpoint: CheckpointDocument, data_dir: Path) -> Path:
     """Persist one checkpoint atomically and return its final path."""
     directory = checkpoint_directory(data_dir)
     _ensure_private_directory(directory)
@@ -157,13 +161,20 @@ def restore_checkpoint(claimed: str | Path, original: str | Path) -> None:
     _sync_directory(original_path.parent)
 
 
-def read_checkpoint(path: str | Path) -> ResumeCheckpoint:
-    """Read and validate one persisted checkpoint without consuming it."""
+def read_checkpoint(path: str | Path) -> CheckpointDocument:
+    """Read and validate one persisted v1 or v2 checkpoint without consuming it."""
     checkpoint_path = Path(path)
     try:
         payload = checkpoint_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise CheckpointError(f"cannot read checkpoint {checkpoint_path}: {exc}") from exc
+
+    try:
+        decoded = json.loads(payload)
+    except json.JSONDecodeError:
+        return ResumeCheckpoint.from_json(payload)
+    if isinstance(decoded, dict) and decoded.get("version") == CONTINUATION_STACK_VERSION:
+        return ContinuationStackCheckpoint.from_json(payload)
     return ResumeCheckpoint.from_json(payload)
 
 
@@ -198,6 +209,7 @@ def _sync_directory(directory: Path) -> None:
 
 
 __all__ = [
+    "CheckpointDocument",
     "checkpoint_directory",
     "claim_checkpoint",
     "read_checkpoint",
