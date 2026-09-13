@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -95,7 +95,7 @@ def _literal_solve_transfer(value: object) -> str:
         text = bytes(value).decode(errors="replace")
     else:
         text = str(value)
-    return text.replace("[", "[[").replace("]", "]]")
+    return text.replace("[", "[[").replace("]", "]]" )
 
 
 def _run_command_stage(
@@ -150,13 +150,15 @@ def _run_command_stage(
     )
 
 
-def run_chain(
+def run_statement(
     dispatcher: Dispatcher,
     tokens: Sequence[str],
     *,
     interactive: bool = False,
     prompt: Callable[[str], str] | None = None,
+    context: MutableMapping[str, object] | None = None,
 ) -> object:
+    """Execute one complete GWAY statement in an optional caller-owned context."""
     stages = parse_stages(tokens)
     result: object = None
     record("chain.start", "executing command chain", stages=len(stages), tokens=list(tokens))
@@ -166,7 +168,7 @@ def run_chain(
 
         prompt = _prompt_required_value
 
-    with chain_context_scope(), transfer_scope():
+    with chain_context_scope(context), transfer_scope():
         for index, stage in enumerate(stages):
             transfer = [] if index == 0 else _transfer_values(result)
             record(
@@ -214,4 +216,20 @@ def run_chain(
     return result
 
 
-__all__ = ["run_chain"]
+def run_chain(
+    dispatcher: Dispatcher,
+    tokens: Sequence[str],
+    *,
+    interactive: bool = False,
+    prompt: Callable[[str], str] | None = None,
+) -> object:
+    """Execute a command chain with a fresh invocation-local context."""
+    return run_statement(
+        dispatcher,
+        tokens,
+        interactive=interactive,
+        prompt=prompt,
+    )
+
+
+__all__ = ["run_chain", "run_statement"]
