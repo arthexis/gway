@@ -94,6 +94,7 @@ class ExecutionFrameStack:
         self._frames: list[ExecutionFrame] = []
         self._history: dict[str, ExecutionFrame] = {}
         self._restored_frame_ids: set[str] = set()
+        self._restored_continuations: dict[str, ContinuationPoint] = {}
         self._continuations: list[ContinuationPoint] = []
         self._active_continuations: list[ActiveContinuation] = []
         self._active_chains: list[ActiveChainContinuation] = []
@@ -136,6 +137,16 @@ class ExecutionFrameStack:
     def is_restored(self, frame_id: str) -> bool:
         """Return whether a frame identity was restored from a checkpoint."""
         return frame_id in self._restored_frame_ids
+
+    def mark_restored_continuation(
+        self,
+        frame_id: str,
+        point: ContinuationPoint,
+    ) -> None:
+        """Mark the exact saved continuation that may emit restoration diagnostics."""
+        if not self.is_restored(frame_id):
+            raise RuntimeError(f"cannot mark continuation for non-restored frame: {frame_id}")
+        self._restored_continuations[frame_id] = point
 
     def value_provenance(self, frame: ExecutionFrame | None) -> ValueProvenance | None:
         if frame is None:
@@ -214,9 +225,10 @@ class ExecutionFrameStack:
                 provenance={} if provenance is None else provenance,
             )
             self._active_continuations.append(active)
-            if self.is_restored(frame.id):
+            if self._restored_continuations.get(frame.id) == point:
                 from .explain import record
 
+                self._restored_continuations.pop(frame.id, None)
                 record(
                     "resume.continuation.restore",
                     "restored saved recipe continuation",
@@ -293,6 +305,7 @@ class ExecutionFrameStack:
             popped = self._frames.pop()
             if popped is not frame:
                 raise RuntimeError("execution frame stack was corrupted")
+            self._restored_continuations.pop(frame.id, None)
             self._last_completed = frame
 
     @contextmanager
