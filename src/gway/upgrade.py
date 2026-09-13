@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .project import Project
 from .registry import Registry
-from .repository import RepositoryError, RepositoryManager
+from .repository import RepositoryError, RepositoryManager, WorkingTreeEntry
 from .runner import Runner
 
 SELF_SOURCE_SPEC = "git+https://github.com/arthexis/gway.git@main"
@@ -23,6 +23,10 @@ class UpgradeError(ValueError):
 class UpgradeResult:
     project: Project
     changed: bool
+    force_used: bool = False
+    force_error_type: str | None = None
+    force_error: str | None = None
+    dirty_files: tuple[WorkingTreeEntry, ...] = ()
 
 
 class Upgrader:
