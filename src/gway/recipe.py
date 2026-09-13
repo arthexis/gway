@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shlex
-from collections.abc import Iterator, Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -55,9 +55,20 @@ class RecipeSession:
         if self.runtime is None:
             self.runtime = GwayRuntime(self.dispatcher)
 
-    def run(self, tokens: Sequence[str], *, interactive: bool = False) -> object:
+    def run(
+        self,
+        tokens: Sequence[str],
+        *,
+        interactive: bool = False,
+        prompt: Callable[[str], str] | None = None,
+    ) -> object:
         assert self.runtime is not None
-        return self.runtime.execute(tokens, interactive=interactive, context=self.context)
+        return self.runtime.execute(
+            tokens,
+            interactive=interactive,
+            prompt=prompt,
+            context=self.context,
+        )
 
 
 def child_recipe_context(
@@ -80,6 +91,7 @@ def run_recipe(
     dispatcher: Dispatcher,
     *,
     interactive: bool = False,
+    prompt: Callable[[str], str] | None = None,
     context: MutableMapping[str, object] | None = None,
     runtime: GwayRuntime | None = None,
 ) -> object:
@@ -97,7 +109,11 @@ def run_recipe(
             tokens=list(statement.tokens),
         )
         try:
-            result = session.run(statement.tokens, interactive=interactive)
+            result = session.run(
+                statement.tokens,
+                interactive=interactive,
+                prompt=prompt,
+            )
         except RecipeError:
             raise
         except SystemExit as exc:
