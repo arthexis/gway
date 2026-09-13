@@ -68,6 +68,8 @@ explicit recipe parameters
 
 `result` is reserved for GWAY result flow and cannot be supplied as an explicit recipe parameter. Recipes intentionally do not define a separate declaration/type/default language; syntactically valid non-reserved parameters are context seeds and may be consumed by any statement that resolves the matching name.
 
+At the top-level CLI, exact global option tokens are consumed before recipe-parameter parsing. If a recipe intentionally needs context keys named `json`, `interactive`, or `explain`, use the equals spelling so the token is unambiguously a recipe parameter, for example `--json=payload`, `--interactive=value`, or `--explain=value`. Bare `--json`, `--interactive`/`-i`, and `--explain`/`-e` retain their global GWAY meanings.
+
 ## `store` and `result`
 
 Use `store` to publish named values explicitly into recipe context:
