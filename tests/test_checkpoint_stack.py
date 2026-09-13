@@ -195,6 +195,23 @@ def test_stack_rejects_unknown_frame_fields() -> None:
         ContinuationStackCheckpoint.from_dict(raw)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("interactive", "false"),
+        ("interactive", 1),
+        ("explain", "true"),
+        ("explain", 0),
+    ],
+)
+def test_stack_rejects_non_boolean_flags(field: str, value: object) -> None:
+    raw = json.loads(_stack().to_json())
+    raw["flags"][field] = value
+
+    with pytest.raises(CheckpointError, match=rf"flags\.{field} must be a boolean"):
+        ContinuationStackCheckpoint.from_dict(raw)
+
+
 def test_stack_rejects_non_standard_json_numbers() -> None:
     payload = _stack().to_json().replace('"nested":[1,true,null]', '"nested":[NaN,true,null]', 1)
 
