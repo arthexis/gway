@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 from ..command import Command, Parameter
 from ..expression import STRUCTURED_ARG_PREFIX, STRUCTURED_KWARG_PREFIX
+from ..transfer import encode_transfer
 from .errors import DispatchError
 from .options import (
     _match_negative_option,
@@ -12,6 +14,7 @@ from .options import (
     _negative_option_parameters,
     _option_name,
     _option_parameters,
+    _option_present,
     _option_value_count,
 )
 
@@ -30,6 +33,61 @@ def _structured_keyword_counts(argv: Sequence[str]) -> dict[str, int]:
         if separator:
             counts[name] = counts.get(name, 0) + 1
     return counts
+
+
+def _context_value_text(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, Path)) and not isinstance(value, bool):
+        return str(value)
+    return encode_transfer(value)
+
+
+def _fill_context_options(
+    command: Command,
+    argv: Sequence[str],
+    context: Mapping[str, object],
+) -> tuple[list[str], dict[str, object]]:
+    """Fill missing named command options from active GWAY context."""
+    result = list(argv)
+    structured_keywords = _structured_keyword_counts(result)
+    filled: dict[str, object] = {}
+    additions: list[str] = []
+
+    for parameter in command.parameters:
+        if parameter.positional or parameter.name not in context:
+            continue
+        if structured_keywords.get(parameter.name) or _option_present(result, parameter):
+            continue
+
+        value = context[parameter.name]
+        if value is None:
+            continue
+
+        option = _option_name(parameter)
+        if parameter.annotation is bool:
+            if bool(value):
+                additions.append(option)
+            else:
+                negative_options = _negative_option_names(parameter)
+                if negative_options:
+                    additions.append(negative_options[0])
+                else:
+                    additions.extend((option, "false"))
+        else:
+            additions.extend((option, _context_value_text(value)))
+        filled[parameter.name] = value
+
+    if not additions:
+        return result, filled
+
+    try:
+        literal_index = result.index("--")
+    except ValueError:
+        result.extend(additions)
+    else:
+        result[literal_index:literal_index] = additions
+    return result, filled
 
 
 def _provided_positional_count(command: Command, argv: Sequence[str]) -> int:
