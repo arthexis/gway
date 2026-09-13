@@ -94,6 +94,51 @@ def test_false_boolean_context_uses_negative_option(tmp_path: Path) -> None:
     assert run_statement(dispatcher, ["demo", "enabled"], context=context) is False
 
 
+def test_textual_false_boolean_context_is_normalized() -> None:
+    command = Command(
+        path=("consume",),
+        parameters=(Parameter(name="enabled", annotation=bool, options=("--enabled",)),),
+    )
+
+    with transfer_scope():
+        argv, filled = _fill_context_options(command, [], {"enabled": "false"})
+
+    assert argv == ["--no-enabled"]
+    assert filled == {"enabled": "false"}
+
+
+def test_zero_arity_context_flag_uses_consumption_metadata() -> None:
+    command = Command(
+        path=("consume",),
+        parameters=(
+            Parameter(
+                name="traceback",
+                options=("--traceback",),
+                consumes_value=False,
+                option_arity=0,
+                default=False,
+            ),
+        ),
+    )
+
+    with transfer_scope():
+        enabled_argv, enabled_filled = _fill_context_options(
+            command,
+            [],
+            {"traceback": "true"},
+        )
+        disabled_argv, disabled_filled = _fill_context_options(
+            command,
+            [],
+            {"traceback": "false"},
+        )
+
+    assert enabled_argv == ["--traceback"]
+    assert enabled_filled == {"traceback": "true"}
+    assert disabled_argv == []
+    assert disabled_filled == {"traceback": "false"}
+
+
 def test_result_is_reserved_from_implicit_argument_fill(tmp_path: Path) -> None:
     dispatcher = _dispatcher(tmp_path)
     context: dict[str, object] = {}
