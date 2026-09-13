@@ -47,6 +47,17 @@ def run_statement(
     from .runtime import GwayRuntime
 
     active_runtime = runtime or GwayRuntime(dispatcher)
+    if active_runtime.current_frame is None:
+        with active_runtime.frame_scope("statement", tokens=tokens):
+            return run_statement(
+                dispatcher,
+                tokens,
+                interactive=interactive,
+                prompt=prompt,
+                context=context,
+                provenance=provenance,
+                runtime=active_runtime,
+            )
     if provenance is None and context is not None:
         candidate = getattr(context, "provenance", None)
         if isinstance(candidate, MutableMapping):

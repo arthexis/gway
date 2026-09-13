@@ -3,11 +3,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from gway.chain import run_statement
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.explain import explain_scope
 from gway.project import Project
 from gway.provenance import ContinuationPoint, ExecutionFrameStack
+from gway.recipe import RecipeSession
 from gway.registry import Registry
 from gway.runtime import GwayRuntime
 
@@ -92,6 +94,33 @@ def test_runtime_explain_links_statement_and_operation_frames(tmp_path: Path) ->
     assert statement.data["parent_frame_id"] is None
     assert operation.data["parent_frame_id"] == statement.data["frame_id"]
     assert runtime.current_frame is None
+
+
+def test_standalone_statement_solve_has_statement_provenance(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+
+    with explain_scope() as trace:
+        assert run_statement(dispatcher, ["%", "hello"]) == "hello"
+
+    enters = [step for step in trace if step.kind == "runtime.frame.enter"]
+    statements = [step for step in enters if step.data["frame_kind"] == "statement"]
+    publication = next(step for step in trace if step.kind == "chain.stage.result")
+
+    assert len(statements) == 1
+    assert publication.data["provenance"]["frame_kind"] == "statement"
+    assert publication.data["provenance"]["frame_id"] == statements[0].data["frame_id"]
+
+
+def test_recipe_session_keeps_caller_mapping_live(tmp_path: Path) -> None:
+    shared = {"device": "before"}
+    session = RecipeSession(_dispatcher(tmp_path), context=shared)
+
+    shared["device"] = "after"
+    assert session.run(["demo", "consume"]) == "after"
+    assert session.run(["demo", "produce"]) == {"device": "gway-004"}
+
+    assert shared["device"] == "gway-004"
+    assert shared["result"] == {"device": "gway-004"}
 
 
 def test_recipe_statement_frame_carries_source_location(tmp_path: Path) -> None:

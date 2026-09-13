@@ -27,17 +27,32 @@ class RecipeError(RuntimeError):
         super().__init__(f"{location}: {message}")
 
 
-class RecipeContext(dict[str, object]):
-    """Named recipe values with non-key provenance metadata."""
+class RecipeContext(MutableMapping[str, object]):
+    """Named recipe values backed by a live mapping with sidecar provenance."""
 
     def __init__(
         self,
-        values: Mapping[str, object] | None = None,
+        values: MutableMapping[str, object] | None = None,
         *,
         provenance: Mapping[str, ValueProvenance] | None = None,
     ) -> None:
-        super().__init__(values or {})
+        self._values: MutableMapping[str, object] = {} if values is None else values
         self.provenance: dict[str, ValueProvenance] = dict(provenance or {})
+
+    def __getitem__(self, key: str) -> object:
+        return self._values[key]
+
+    def __setitem__(self, key: str, value: object) -> None:
+        self._values[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self._values[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
 
 
 def _recipe_statement_lines(path: Path) -> tuple[int, ...]:
@@ -72,7 +87,7 @@ class RecipeSession:
     """Execute multiple GWAY statements against one persistent named context."""
 
     dispatcher: Dispatcher
-    context: dict[str, object] = field(default_factory=RecipeContext)
+    context: MutableMapping[str, object] = field(default_factory=dict)
     runtime: GwayRuntime | None = None
 
     def __post_init__(self) -> None:
@@ -108,7 +123,7 @@ def child_recipe_context(
     has_incoming: bool = False,
 ) -> RecipeContext:
     """Create an isolated child frame and explicitly publish chained input into it."""
-    context = RecipeContext(parent, provenance=current_chain_provenance())
+    context = RecipeContext(dict(parent or {}), provenance=current_chain_provenance())
     if has_incoming:
         if isinstance(incoming, Mapping):
             context.update(incoming)
@@ -127,9 +142,9 @@ def run_recipe(
 ) -> object:
     """Execute one .rx recipe with persistent named context and fail-fast semantics."""
     if isinstance(context, RecipeContext):
-        recipe_context = RecipeContext(context, provenance=context.provenance)
+        recipe_context = RecipeContext(dict(context), provenance=context.provenance)
     else:
-        recipe_context = RecipeContext(context)
+        recipe_context = RecipeContext(dict(context or {}))
     session = RecipeSession(dispatcher, context=recipe_context, runtime=runtime)
     assert session.runtime is not None
     result: object = None
