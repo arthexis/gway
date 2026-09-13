@@ -6,6 +6,8 @@ from pathlib import Path
 from .config import GwayPaths, default_paths
 from .project import ManifestError, Project
 
+_RESERVED_RUNTIME_PROJECT_NAMES = frozenset({"recipe", "result", "store"})
+
 
 class RegistryError(ValueError):
     pass
@@ -97,6 +99,9 @@ class Registry:
         claimed = {project.name, *project.aliases}
         if "%" in claimed:
             raise RegistryError("project name or alias is reserved syntax: %")
+        reserved = sorted(claimed & _RESERVED_RUNTIME_PROJECT_NAMES)
+        if reserved:
+            raise RegistryError(f"project name or alias is reserved GWAY operation: {reserved[0]}")
         if len(claimed) != 1 + len(project.aliases):
             raise RegistryError(f"duplicate name or alias in project {project.name}")
 
