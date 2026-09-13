@@ -72,6 +72,9 @@ def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
         return None
 
     operation = command_args[0]
+    if operation != "uninstall" and any(arg in {"-h", "--help"} for arg in command_args[1:]):
+        return None
+
     if operation == "uninstall":
         if command_args in (["uninstall", "-h"], ["uninstall", "--help"]):
             print("usage: gway uninstall [-h] project")
