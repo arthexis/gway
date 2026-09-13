@@ -19,6 +19,7 @@ from .dispatcher import Dispatcher, DispatchError
 from .expression import ExpressionError, normalize_managed_args
 from .install import Installer
 from .project import ManifestError, Project
+from .recipe import RecipeError, run_recipe
 from .registry import Registry, RegistryError
 from .repository import RepositoryError
 from .runner import RunnerError
@@ -36,7 +37,7 @@ from .stage import StageKind, StageSyntaxError, parse_stages
 from .upgrade import UpgradeError, Upgrader
 
 CORE_COMMANDS = frozenset(
-    {"list", "info", "path", "register", "install", "upgrade", "service", "shell", "solve"}
+    {"list", "info", "path", "register", "install", "upgrade", "service", "shell", "solve", "recipe"}
 )
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
 _PERMISSION_ERRNOS = frozenset({errno.EACCES, errno.EPERM})
@@ -90,6 +91,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Resolve a Sigil template using GWAY's base context.",
     )
     solve.add_argument("value", nargs="+", help="Sigil template to resolve.")
+
+    recipe = subparsers.add_parser(
+        "recipe",
+        help="Execute a .rx recipe file.",
+    )
+    recipe.add_argument("path", help="Path to the .rx recipe file.")
 
     register = subparsers.add_parser(
         "register",
@@ -592,6 +599,7 @@ def _known_cli_error(exc: BaseException) -> bool:
             DispatchError,
             ExpressionError,
             ManifestError,
+            RecipeError,
             RegistryError,
             RepositoryError,
             RunnerError,
@@ -692,6 +700,12 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 namespace.value,
                 interactive=interactive,
                 prompt=_prompt_required_value,
+            )
+        elif namespace.command == "recipe":
+            result = run_recipe(
+                namespace.path,
+                active_dispatcher,
+                interactive=interactive,
             )
         elif namespace.command == "register":
             project = registry.register_path(namespace.path)
