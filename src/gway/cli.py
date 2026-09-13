@@ -565,12 +565,13 @@ def _run_upgrade(
             )
 
         for target in managed_targets:
+            upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
             result = upgrader.project_result(
                 target,
                 force=namespace.force,
-                try_force=namespace.try_force,
                 reload=namespace.reload,
                 arguments=arguments if len(managed_targets) == 1 else (),
+                **upgrade_kwargs,
             )
             completed(_upgrade_status("upgraded" if result.changed else "skipped", result))
 
@@ -596,10 +597,11 @@ def _run_upgrade(
         )
 
     if include_projects:
+        upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
         for result in upgrader.all_project_results(
             force=namespace.force,
-            try_force=namespace.try_force,
             reload=namespace.reload,
+            **upgrade_kwargs,
         ):
             status = "upgraded" if result.changed else "skipped"
             completed(_upgrade_status(status, result))
