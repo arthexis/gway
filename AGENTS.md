@@ -17,7 +17,7 @@ The pre-1.0 implementation is preserved in `arthexis/gway-legacy`. Do not reintr
 - Prefer Python standard-library dependencies in core when practical.
 - Preserve `gway <project> <command>` as the canonical qualified command shape even when shorthand is added.
 - For genuine local OS permission failures (`PermissionError`, `EACCES`, `EPERM`) at the common CLI boundary, preserve the failure and print a concise `sudo gway ...` hint using the user's original argument vector. Apply this consistently to core lifecycle commands and managed project commands; never rerun automatically as root and do not infer permission failures from message text alone.
-- Do not add bundled `projects/`, recipes, a second sigil implementation, shared mutable global result/context state, Arthexis-specific imports, or legacy helper collections.
+- Do not add bundled `projects/`, bundled recipe catalogs, a second sigil implementation, shared mutable global result/context state, Arthexis-specific imports, or legacy helper collections. First-class `.rx` recipe execution is explicitly tracked by issue #883 and is part of the current architecture.
 - Track active implementation sequencing in GitHub issues. Do not create permanent numbered-chunk planning documents for completed work.
 
 ## Package Layout
@@ -32,7 +32,7 @@ Keep checkout-critical files such as `README.md`, `AGENTS.md`, `CHANGELOG.md`, a
 
 Current expectations are:
 
-- Python target: 3.11.
+- Python target: 3.10.
 - Maximum line length: 100.
 - Ruff configuration comes from `pyproject.toml`.
 - Prefer modern Python syntax covered by the configured Ruff rules.
