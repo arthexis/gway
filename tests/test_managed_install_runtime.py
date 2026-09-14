@@ -48,6 +48,11 @@ upgrade = "example.lifecycle:upgrade"
     def validate_checkout(self, checkout: Path, full_name: str) -> None:
         self.validated.append((checkout, full_name))
 
+    def upgrade(self, checkout: Path, full_name: str) -> str:
+        assert checkout == self.target_root / "app"
+        assert full_name == "arthexis/arthexis"
+        return "managed-revision"
+
     def revision(self, checkout: Path) -> str:
         assert checkout == self.target_root / "app"
         return "managed-revision"

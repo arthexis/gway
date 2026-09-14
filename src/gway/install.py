@@ -176,15 +176,44 @@ class Installer:
                 revision=project.revision,
             )
 
+    def _restore_adopted_checkout(
+        self,
+        project: Project,
+        repository: ResolvedRepository,
+        revision: str,
+    ) -> None:
+        self.repositories.reset(project.path, repository.full_name, revision)
+        restored = Project.from_path(project.path)
+        restored = replace(
+            restored,
+            repository=repository.full_name,
+            revision=revision,
+            environment=project.environment,
+        )
+        self.runner.refresh(restored)
+
     def install(self, spec: str, *, arguments: Sequence[str] = ()) -> Project:
         repository = self.repositories.resolve(spec)
         checkout = self.repositories.clone(repository)
         prepared_environment: Path | None = None
         adopted = False
         environment_preexisted = False
+        previous_project: Project | None = None
+        previous_revision: str | None = None
+        checkout_refreshed = False
         try:
             project = Project.from_path(checkout)
             checkout, project, adopted = self._place_checkout(checkout, project, repository)
+            if adopted:
+                # Re-running install is an idempotent convergence operation. Refresh
+                # the already-managed source before touching its environment or
+                # invoking lifecycle hooks so deleted/renamed code cannot survive.
+                previous_project = project
+                previous_revision = self.repositories.revision(checkout)
+                Runner.configure_managed_checkout(checkout)
+                self.repositories.upgrade(checkout, repository.full_name)
+                checkout_refreshed = True
+                project = Project.from_path(checkout)
             project = replace(
                 project,
                 repository=repository.full_name,
@@ -214,11 +243,28 @@ class Installer:
                 else:
                     self.runner.run_lifecycle(project, "install")
             return self.registry.register(project)
-        except Exception:
+        except Exception as exc:
             if not adopted:
                 shutil.rmtree(checkout, ignore_errors=True)
             if prepared_environment is not None and (not adopted or not environment_preexisted):
                 shutil.rmtree(prepared_environment, ignore_errors=True)
+            if (
+                adopted
+                and checkout_refreshed
+                and previous_project is not None
+                and previous_revision is not None
+            ):
+                try:
+                    self._restore_adopted_checkout(
+                        previous_project,
+                        repository,
+                        previous_revision,
+                    )
+                except Exception as rollback_exc:
+                    raise RuntimeError(
+                        f"reinstall failed and rollback to {previous_revision} was incomplete: "
+                        f"{rollback_exc}"
+                    ) from exc
             raise
 
     @staticmethod
