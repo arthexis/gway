@@ -36,10 +36,12 @@ def test_publish_posts_ndjson_with_bearer_token(monkeypatch) -> None:
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    destination = f"http://127.0.0.1:{server.server_port}"
     monkeypatch.setenv("GWAY_LOG_TOKEN", "secret-token")
+    monkeypatch.setenv("GWAY_LOG_DESTINATION", destination)
     data = b'{"run_id":"run-1","kind":"test"}\n'
     try:
-        assert publish(f"http://127.0.0.1:{server.server_port}", "run-1", data) is True
+        assert publish(destination, "run-1", data) is True
     finally:
         server.shutdown()
         server.server_close()
@@ -51,6 +53,20 @@ def test_publish_posts_ndjson_with_bearer_token(monkeypatch) -> None:
         "content_type": "application/x-ndjson",
         "body": data,
     }
+
+
+def test_environment_bearer_is_not_sent_to_another_destination(monkeypatch) -> None:
+    monkeypatch.setenv("GWAY_LOG_TOKEN", "secret-token")
+    monkeypatch.setenv("GWAY_LOG_DESTINATION", "https://logs.example")
+
+    assert (
+        publish(
+            "https://other.example",
+            "run-1",
+            b'{"run_id":"run-1"}\n',
+        )
+        is False
+    )
 
 
 def test_publish_rejects_redirect_without_forwarding_bearer(monkeypatch) -> None:
@@ -89,11 +105,13 @@ def test_publish_rejects_redirect_without_forwarding_bearer(monkeypatch) -> None
     source = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
     source_thread = threading.Thread(target=source.serve_forever, daemon=True)
     source_thread.start()
+    source_destination = f"http://127.0.0.1:{source.server_port}"
     monkeypatch.setenv("GWAY_LOG_TOKEN", "secret-token")
+    monkeypatch.setenv("GWAY_LOG_DESTINATION", source_destination)
     try:
         assert (
             publish(
-                f"http://127.0.0.1:{source.server_port}",
+                source_destination,
                 "run-1",
                 b'{"run_id":"run-1"}\n',
             )

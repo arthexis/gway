@@ -389,7 +389,12 @@ class GwayRuntime:
         if operation == "uninstall":
             return self._run_uninstall(tokens[1:])
         if operation == "log":
-            return run_log(tokens[1:])
+            return run_log(
+                tokens[1:],
+                dispatch=self.dispatcher.run,
+                paths=self.registry.paths,
+                resolve_consumer=self.registry.get,
+            )
         raise DispatchError(f"unknown GWAY core operation: {operation}")
 
     def _run_install(self, argv: Sequence[str]) -> object:

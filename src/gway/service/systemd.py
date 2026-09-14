@@ -15,6 +15,7 @@ try:
 except ImportError:  # pragma: no cover - unavailable on Windows
     pwd = None  # type: ignore[assignment]
 
+from ..log_consumers import consumer_environment_file
 from ..project import Project
 from ..runner import Runner
 from .manifest import ServiceError, _strings
@@ -57,6 +58,12 @@ def _unit_path(value: str | Path, field: str) -> str:
     if not Path(text).is_absolute():
         raise ServiceError(f"{field} must expand to an absolute path")
     return text
+
+
+def _unit_reference(value: str, field: str) -> str:
+    if not value or any(character.isspace() for character in value):
+        raise ServiceError(f"{field} must contain systemd unit names without whitespace")
+    return value
 
 
 def _project_python(project: Project) -> str:
@@ -141,8 +148,64 @@ def _chown_tree_fd(directory_fd: int, uid: int, gid: int) -> None:
             raise ServiceError(f"cannot assign managed writable path entry: {name}") from exc
 
 
+def _service_gids(plan: _WritablePathPlan) -> set[int]:
+    gids = {plan.gid}
+    getgrouplist = getattr(os, "getgrouplist", None)
+    if getgrouplist is None:
+        return gids
+    try:
+        gids.update(getgrouplist(plan.account, plan.gid))
+    except OSError:
+        pass
+    return gids
+
+
+def _mode_allows(metadata: os.stat_result, uid: int, gids: set[int], required: int) -> bool:
+    if uid == 0:
+        return True
+    mode = stat.S_IMODE(metadata.st_mode)
+    if metadata.st_uid == uid:
+        granted = (mode >> 6) & 0o7
+    elif metadata.st_gid in gids:
+        granted = (mode >> 3) & 0o7
+    else:
+        granted = mode & 0o7
+    return granted & required == required
+
+
+def _validate_writable_path_access(plan: _WritablePathPlan) -> None:
+    """Confirm the configured service account can traverse and write its runtime path."""
+    try:
+        relative = plan.path.relative_to(plan.root)
+    except ValueError as exc:
+        raise ServiceError(f"writable path escapes managed root: {plan.path}") from exc
+    gids = _service_gids(plan)
+    root_fd = _open_directory(plan.root)
+    current_fd = root_fd
+    try:
+        if not _mode_allows(os.fstat(root_fd), plan.uid, gids, 0o1):
+            raise ServiceError(
+                f"service user {plan.account!r} cannot traverse managed root {plan.root}"
+            )
+        for index, component in enumerate(relative.parts):
+            child_fd = _open_directory(component, dir_fd=current_fd)
+            if current_fd != root_fd:
+                os.close(current_fd)
+            current_fd = child_fd
+            required = 0o3 if index == len(relative.parts) - 1 else 0o1
+            if not _mode_allows(os.fstat(current_fd), plan.uid, gids, required):
+                action = "write" if required == 0o3 else "traverse"
+                raise ServiceError(
+                    f"service user {plan.account!r} cannot {action} managed runtime path {plan.path}"
+                )
+    finally:
+        if current_fd != root_fd:
+            os.close(current_fd)
+        os.close(root_fd)
+
+
 def _prepare_writable_path(plan: _WritablePathPlan) -> None:
-    """Create and own one managed path using no-follow descriptor traversal."""
+    """Create, own, and validate one managed path using no-follow descriptor traversal."""
     try:
         relative = plan.path.relative_to(plan.root)
     except ValueError as exc:  # defensive; manifests are validated earlier
@@ -180,11 +243,16 @@ def _prepare_writable_path(plan: _WritablePathPlan) -> None:
                 os.close(current_fd)
             current_fd = child_fd
 
+        # Existing lock/state/log/cache/run trees may have been created by an
+        # earlier privileged invocation. Re-home the full runtime tree before
+        # the service starts so new locks are subsequently created by its user.
         _chown_tree_fd(current_fd, plan.uid, plan.gid)
     finally:
         if current_fd != root_fd:
             os.close(current_fd)
         os.close(root_fd)
+
+    _validate_writable_path_access(plan)
 
 
 def _paths_overlap(left: Path, right: Path) -> bool:
@@ -212,6 +280,13 @@ def _validate_writable_plans(plans: list[_WritablePathPlan]) -> list[_WritablePa
 
 
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    if arguments and arguments[0] in {"start", "restart"} and len(arguments) > 1:
+        subprocess.run(
+            ["systemctl", "reset-failed", *arguments[1:]],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
     return subprocess.run(["systemctl", *arguments], check=check, text=True, capture_output=True)
 
 
@@ -298,15 +373,35 @@ class _ServiceUnit:
         wants = _strings(self.config.get("wants", ["network-online.target"]), "wants", section)
         after = _strings(self.config.get("after", ["network-online.target"]), "after", section)
         requires = _strings(self.config.get("requires"), "requires", section)
+        on_failure = [
+            _unit_reference(value, f"[{section}].on_failure")
+            for value in _strings(self.config.get("on_failure"), "on_failure", section)
+        ]
         restart = self.config.get("restart", "on-failure")
         restart_sec = self.config.get("restart_sec", 5)
         timeout_stop_sec = self.config.get("timeout_stop_sec", 20)
+        start_limit_interval_sec = self.config.get("start_limit_interval_sec", "15min")
+        start_limit_burst = self.config.get("start_limit_burst", 3)
         if not isinstance(restart, str) or not restart:
             raise ServiceError(f"[{section}].restart must be a non-empty string")
         if not isinstance(restart_sec, (int, float)) or restart_sec < 0:
             raise ServiceError(f"[{section}].restart_sec must be a non-negative number")
         if not isinstance(timeout_stop_sec, (int, float)) or timeout_stop_sec < 0:
             raise ServiceError(f"[{section}].timeout_stop_sec must be a non-negative number")
+        if (
+            isinstance(start_limit_interval_sec, bool)
+            or not isinstance(start_limit_interval_sec, (str, int, float))
+            or not str(start_limit_interval_sec).strip()
+        ):
+            raise ServiceError(
+                f"[{section}].start_limit_interval_sec must be a non-empty systemd time span"
+            )
+        if (
+            isinstance(start_limit_burst, bool)
+            or not isinstance(start_limit_burst, int)
+            or start_limit_burst < 1
+        ):
+            raise ServiceError(f"[{section}].start_limit_burst must be a positive integer")
         configured_environment = self.config.get("environment", {"PYTHONUNBUFFERED": "1"})
         valid_environment = isinstance(configured_environment, dict) and all(
             isinstance(key, str) and key and isinstance(value, (str, int, float, bool))
@@ -327,7 +422,21 @@ class _ServiceUnit:
             lines.append(f"Requires={' '.join(requires)}")
         if after:
             lines.append(f"After={' '.join(after)}")
-        lines.extend(["", "[Service]", "Type=simple", f"User={_service_user(self.config, user)}"])
+        if on_failure:
+            lines.append(f"OnFailure={' '.join(on_failure)}")
+        lines.extend(
+            [
+                f"StartLimitIntervalSec={start_limit_interval_sec}",
+                f"StartLimitBurst={start_limit_burst}",
+                "",
+                "[Service]",
+                "Type=simple",
+                f"User={_service_user(self.config, user)}",
+            ]
+        )
+        log_environment = consumer_environment_file(self.project)
+        if log_environment is not None:
+            lines.append(f"EnvironmentFile={_unit_arg(log_environment)}")
         if working_directory:
             expanded = _expand(working_directory, self.project)
             lines.append(

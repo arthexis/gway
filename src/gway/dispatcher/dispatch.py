@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from ..adapters import AdapterRegistry
 from ..adapters.base import SigilContextAdapter
@@ -17,9 +19,28 @@ from .arguments import _decode_structured_argv, _fill_context_options
 from .errors import CommandNotFound, DispatchError
 from .prompt import _fill_required_options
 
+_REDACTED_RESULT = "<redacted>"
+_redact_command_result: ContextVar[bool] = ContextVar(
+    "gway_redact_command_result", default=False
+)
+
 
 def _dispatcher_package():
     return sys.modules[__package__]
+
+
+@contextmanager
+def redact_command_results() -> Iterator[None]:
+    """Keep a command result available to its caller while hiding it from event logs."""
+    token = _redact_command_result.set(True)
+    try:
+        yield
+    finally:
+        _redact_command_result.reset(token)
+
+
+def _logged_result(value: object) -> object:
+    return _REDACTED_RESULT if _redact_command_result.get() else value
 
 
 def _strict_fallback_missing(value: object) -> bool:
@@ -375,7 +396,7 @@ class Dispatcher:
                 project=project.name,
                 command=list(command.path),
                 success=raw_result.success,
-                result=raw_result.value,
+                result=_logged_result(raw_result.value),
                 outcome_message=raw_result.message,
             )
             display_result = raw_result.value
@@ -387,7 +408,7 @@ class Dispatcher:
             "adapter command completed",
             project=project.name,
             command=list(command.path),
-            result=display_result,
+            result=_logged_result(display_result),
         )
         return result
 
