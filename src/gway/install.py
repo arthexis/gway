@@ -132,22 +132,42 @@ class Installer:
     @staticmethod
     def _uninstall_services(project: Project) -> None:
         try:
-            ServiceManager(project).uninstall()
+            ServiceManager(project, all_services=True).uninstall()
         except ServiceError as exc:
-            if "does not declare [service] or [services]" not in str(exc):
+            message = str(exc)
+            stale_manifest = "cannot read service manifest" in message
+            no_services = "does not declare [service] or [services]" in message
+            if not (stale_manifest or no_services):
                 raise
+
+    def _can_run_uninstall_hook(self, project: Project, environment: Path) -> bool:
+        if not project.path.is_dir() or not environment.is_dir():
+            return False
+        environment_python = getattr(self.runner, "environment_python", None)
+        if callable(environment_python):
+            return Path(environment_python(environment)).is_file()
+        return True
 
     def uninstall(self, name_or_alias: str) -> Project:
         project = self.registry.require_uninstall(name_or_alias)
 
         if project.repository is not None:
-            # Services must stop before the application hook runs so they cannot
-            # recreate disposable runtime state while uninstall is in progress.
+            environment = project.environment or self.runner.environment_path(project)
+
+            # Project removal owns the complete service topology, regardless of
+            # per-service/profile selectors inherited from the environment.
             self._uninstall_services(project)
-            if project.lifecycle_hooks is not None:
+
+            # A stale registration may point at an already-partially-removed
+            # checkout/environment. In that case there is no runnable lifecycle
+            # hook left, but GWAY must still be able to clear the remaining
+            # managed resources and registry record.
+            if (
+                project.lifecycle_hooks is not None
+                and self._can_run_uninstall_hook(project, environment)
+            ):
                 self.runner.run_lifecycle(project, "uninstall")
 
-            environment = project.environment or self.runner.environment_path(project)
             shutil.rmtree(environment, ignore_errors=True)
             shutil.rmtree(project.path, ignore_errors=True)
 
