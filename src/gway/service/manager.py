@@ -125,7 +125,19 @@ class ServiceManager:
     def install(
         self, *, user: str | None = None, enable: bool = True, start: bool = True
     ) -> Path | list[Path]:
+        # Fully validate service rendering, account identities, ownership conflicts,
+        # and writable path preparation before replacing/removing any unit files.
         rendered = [(unit, unit.render(user=user)) for unit in self.units]
+        plans = systemd._validate_writable_plans(
+            [
+                plan
+                for unit in self.units
+                for plan in unit.writable_path_plans(user=user)
+            ]
+        )
+        for plan in plans:
+            systemd._prepare_writable_path(plan)
+
         self._reconcile_unselected_units()
         paths = [unit.write(content) for unit, content in rendered]
         systemd._systemctl("daemon-reload")
