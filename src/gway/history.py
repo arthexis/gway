@@ -39,7 +39,7 @@ def _read_events(path: Path) -> tuple[dict[str, object], ...]:
     events: list[dict[str, object]] = []
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
+    except (OSError, UnicodeError):
         return ()
     for line in lines:
         try:
@@ -61,7 +61,6 @@ def _command(events: tuple[dict[str, object], ...]) -> tuple[str, ...]:
         ("execution.start", "argv"),
         ("chain.start", "tokens"),
         ("runtime.frame.enter", "tokens"),
-        ("dispatch.start", "tokens"),
     ):
         for event in events:
             if event.get("kind") != kind:
@@ -69,6 +68,18 @@ def _command(events: tuple[dict[str, object], ...]) -> tuple[str, ...]:
             value = _event_data(event).get(field)
             if isinstance(value, list):
                 return tuple(str(item) for item in value)
+
+    for event in events:
+        if event.get("kind") != "dispatch.start":
+            continue
+        data = _event_data(event)
+        value = data.get("tokens")
+        project = data.get("project")
+        if isinstance(value, list):
+            tokens = tuple(str(item) for item in value)
+            if isinstance(project, str):
+                return (project, *tokens)
+            return tokens
     return ()
 
 
@@ -85,7 +96,7 @@ def _record(run_id: str, events: tuple[dict[str, object], ...]) -> RunRecord | N
             projects.append(project)
 
     failures = [event for event in events if event.get("kind") == "execution.failure"]
-    success_kinds = {"execution.success", "chain.result", "recipe.result"}
+    success_kinds = {"execution.success", "chain.result", "recipe.result", "command.result"}
     successes = [event for event in events if event.get("kind") in success_kinds]
     status = "failed" if failures else "succeeded" if successes else "incomplete"
 
