@@ -128,6 +128,8 @@ class ServiceManager:
         rendered = [(unit, unit.render(user=user)) for unit in self.units]
         self._reconcile_unselected_units()
         paths = [unit.write(content) for unit, content in rendered]
+        for unit in self.units:
+            unit.prepare_writable_paths(user=user)
         systemd._systemctl("daemon-reload")
         if enable:
             for unit in self.units:
