@@ -14,6 +14,7 @@ from .log_http import publish as publish_http
 _RUN_ID_ENV = "GWAY_RUN_ID"
 _LOG_DIR_ENV = "GWAY_LOG_DIR"
 _LOG_CONTEXT_ENV = "GWAY_LOG_CONTEXT"
+_LOG_DESTINATION_ENV = "GWAY_LOG_DESTINATION"
 
 _run_id: ContextVar[str | None] = ContextVar("gway_log_run_id", default=None)
 _tags: ContextVar[tuple[str, ...]] = ContextVar("gway_log_tags", default=())
@@ -37,6 +38,11 @@ def _default_root() -> Path:
     return Path.home() / ".local" / "state" / "gway" / "runs"
 
 
+def _default_destinations() -> tuple[str, ...]:
+    value = os.environ.get(_LOG_DESTINATION_ENV, "").strip()
+    return (value,) if value else ()
+
+
 def _safe_run_id(value: str) -> bool:
     if not value or value in {".", ".."}:
         return False
@@ -46,7 +52,7 @@ def _safe_run_id(value: str) -> bool:
 
 def _reset_run_context() -> None:
     _tags.set(())
-    _destinations.set(())
+    _destinations.set(_default_destinations())
     _failed_remote_destinations.set(frozenset())
 
 
@@ -73,7 +79,7 @@ def _restore_run_context(run_id: str) -> None:
     if isinstance(tags, list) and all(isinstance(value, str) for value in tags):
         _tags.set(tuple(dict.fromkeys(tags)))
     if isinstance(destinations, list) and all(isinstance(value, str) for value in destinations):
-        _destinations.set(tuple(dict.fromkeys(destinations)))
+        _destinations.set(tuple(dict.fromkeys((*_destinations.get(), *destinations))))
 
 
 def current_run_id() -> str:
