@@ -10,6 +10,9 @@ _EXPLAIN_FLAGS = frozenset({"-e", "--explain"})
 _RUNTIME_LIFECYCLE = frozenset({"install", "upgrade", "uninstall", "log"})
 _ORIGINAL_ARGV_ENV = "GWAY_RESUME_ORIGINAL_ARGV"
 
+_SERVICE_VALUE_OPTIONS = frozenset({"--project", "--user"})
+_SHELL_VALUE_OPTIONS = frozenset({"--shell"})
+
 
 def _partition_args(args: Sequence[str]) -> tuple[list[str], list[str]]:
     global_flags: list[str] = []
@@ -40,16 +43,36 @@ def _normalize_command_identifiers(args: Sequence[str]) -> list[str]:
         if literal or arg.startswith("-"):
             continue
         command_index = index
+        if arg.startswith("[") or ":" in arg or "|" in arg:
+            return normalized
         normalized[index] = arg.casefold()
         break
 
     if command_index is None:
         return normalized
 
-    if normalized[command_index] in {"service", "shell"}:
-        action_index = command_index + 1
-        if action_index < len(normalized) and not normalized[action_index].startswith("-"):
-            normalized[action_index] = normalized[action_index].casefold()
+    command = normalized[command_index]
+    if command not in {"service", "shell"}:
+        return normalized
+
+    value_options = _SERVICE_VALUE_OPTIONS if command == "service" else _SHELL_VALUE_OPTIONS
+    skip_value = False
+    for action_index in range(command_index + 1, len(normalized)):
+        action = normalized[action_index]
+        if skip_value:
+            skip_value = False
+            continue
+        if action in _GLOBAL_FLAGS:
+            continue
+        if action in value_options:
+            skip_value = True
+            continue
+        if action == "--":
+            break
+        if action.startswith("-"):
+            continue
+        normalized[action_index] = action.casefold()
+        break
     return normalized
 
 
