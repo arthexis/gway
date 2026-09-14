@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,10 +21,14 @@ def _paths(tmp_path: Path) -> GwayPaths:
 
 @pytest.fixture(autouse=True)
 def _isolate_consumer_logging_environment(monkeypatch):
-    # Consumer activation intentionally updates os.environ so reload/exec inherits
-    # the credential. Make that process-level behavior test-local.
+    # Consumer activation intentionally updates os.environ itself so reload/exec
+    # inherits the credential. Direct process mutations are not tracked by
+    # monkeypatch, so explicitly remove them after every test as well.
     monkeypatch.delenv("GWAY_LOG_DESTINATION", raising=False)
     monkeypatch.delenv("GWAY_LOG_TOKEN", raising=False)
+    yield
+    os.environ.pop("GWAY_LOG_DESTINATION", None)
+    os.environ.pop("GWAY_LOG_TOKEN", None)
 
 
 class FakeWeb:
