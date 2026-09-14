@@ -115,6 +115,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Install manifest-defined system services after installing the project.",
     )
+    install.add_argument(
+        "--adopt",
+        action="store_true",
+        help="Adopt state from an existing unmanaged project installation.",
+    )
+    install.add_argument(
+        "--from",
+        dest="adopt_from",
+        metavar="PATH",
+        help="Explicit unmanaged source checkout to inspect for --adopt.",
+    )
+    install.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Inspect and plan --adopt without creating managed resources.",
+    )
 
     upgrade = subparsers.add_parser(
         "upgrade",
@@ -755,7 +771,22 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
             project = registry.register_path(namespace.path)
             result = _managed_status("registered", project)
         elif namespace.command == "install":
+            if namespace.adopt_from and not namespace.adopt:
+                raise RunnerError("--from requires --adopt")
+            if namespace.dry_run and not namespace.adopt:
+                raise RunnerError("--dry-run requires --adopt")
+            if namespace.adopt and not namespace.adopt_from:
+                raise RunnerError("--adopt requires --from PATH")
+            if namespace.adopt and not namespace.dry_run:
+                raise RunnerError(
+                    "managed adoption execution is not available yet; rerun with --dry-run"
+                )
+            if namespace.adopt and namespace.service:
+                raise RunnerError("--service cannot be combined with --adopt --dry-run")
+
             result = _runtime_component_record(namespace.project)
+            if result is not None and namespace.adopt:
+                raise RunnerError("built-in runtime components cannot be adopted")
             if result is not None and passthrough:
                 raise RunnerError(
                     "built-in runtime component install does not accept project arguments"
@@ -767,13 +798,36 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 }
             if result is None:
                 installer = Installer(registry)
-                if passthrough:
-                    project = installer.install(namespace.project, arguments=passthrough)
+                if namespace.adopt:
+                    lifecycle_arguments = (
+                        "--adopt",
+                        "--from",
+                        namespace.adopt_from,
+                        "--dry-run",
+                        *passthrough,
+                    )
+                    preview = installer.preview_adoption(
+                        namespace.project,
+                        namespace.adopt_from,
+                        arguments=lifecycle_arguments,
+                    )
+                    result = {
+                        "status": "preflight",
+                        "name": preview.name,
+                        "source": preview.source,
+                        "target": preview.target,
+                        "revision": preview.revision,
+                        "adopt": True,
+                        "dry_run": True,
+                    }
                 else:
-                    project = installer.install(namespace.project)
-                result = _managed_status("installed", project)
-                if namespace.service:
-                    result["service"] = _install_project_service(project)
+                    if passthrough:
+                        project = installer.install(namespace.project, arguments=passthrough)
+                    else:
+                        project = installer.install(namespace.project)
+                    result = _managed_status("installed", project)
+                    if namespace.service:
+                        result["service"] = _install_project_service(project)
         elif namespace.command == "upgrade":
             result = _run_upgrade(
                 namespace,
