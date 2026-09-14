@@ -56,6 +56,13 @@ def _event_data(event: dict[str, object]) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
+def _public_project(event: dict[str, object]) -> str | None:
+    project = _event_data(event).get("project")
+    if not isinstance(project, str) or project.startswith("\0"):
+        return None
+    return project
+
+
 def _command(events: tuple[dict[str, object], ...]) -> tuple[str, ...]:
     for kind, field in (
         ("execution.start", "argv"),
@@ -72,15 +79,33 @@ def _command(events: tuple[dict[str, object], ...]) -> tuple[str, ...]:
     for event in events:
         if event.get("kind") != "dispatch.start":
             continue
-        data = _event_data(event)
-        value = data.get("tokens")
-        project = data.get("project")
+        project = _public_project(event)
+        if project is None:
+            continue
+        value = _event_data(event).get("tokens")
         if isinstance(value, list):
-            tokens = tuple(str(item) for item in value)
-            if isinstance(project, str):
-                return (project, *tokens)
-            return tokens
+            return (project, *(str(item) for item in value))
     return ()
+
+
+def _successful_terminals(
+    events: tuple[dict[str, object], ...],
+) -> list[dict[str, object]]:
+    recipe_starts = sum(event.get("kind") == "recipe.start" for event in events)
+    if recipe_starts:
+        results = [event for event in events if event.get("kind") == "recipe.result"]
+        return results if len(results) >= recipe_starts else []
+
+    chain_starts = sum(event.get("kind") == "chain.start" for event in events)
+    if chain_starts:
+        results = [event for event in events if event.get("kind") == "chain.result"]
+        return results if len(results) >= chain_starts else []
+
+    return [
+        event
+        for event in events
+        if event.get("kind") in {"execution.success", "command.result"}
+    ]
 
 
 def _record(run_id: str, events: tuple[dict[str, object], ...]) -> RunRecord | None:
@@ -91,13 +116,12 @@ def _record(run_id: str, events: tuple[dict[str, object], ...]) -> RunRecord | N
     for event in events:
         if event.get("kind") != "dispatch.start":
             continue
-        project = _event_data(event).get("project")
-        if isinstance(project, str) and project not in projects:
+        project = _public_project(event)
+        if project is not None and project not in projects:
             projects.append(project)
 
     failures = [event for event in events if event.get("kind") == "execution.failure"]
-    success_kinds = {"execution.success", "chain.result", "recipe.result", "command.result"}
-    successes = [event for event in events if event.get("kind") in success_kinds]
+    successes = _successful_terminals(events)
     status = "failed" if failures else "succeeded" if successes else "incomplete"
 
     terminal = failures[-1] if failures else successes[-1] if successes else None
