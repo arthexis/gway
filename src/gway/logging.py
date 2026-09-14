@@ -203,6 +203,15 @@ def _backfill(destination: str) -> None:
     _publish_remote(destination, data)
 
 
+def retry_remote_destination(destination: str) -> None:
+    """Retry a sink that previously failed after its credential becomes available."""
+    failed = _failed_remote_destinations.get()
+    if destination not in failed:
+        return
+    _failed_remote_destinations.set(failed - {destination})
+    _backfill(destination)
+
+
 def configure(*, tags: tuple[str, ...] = (), to: tuple[str, ...] = ()) -> dict[str, object]:
     """Add metadata and synchronization destinations to the current run."""
     run_id = current_run_id()
