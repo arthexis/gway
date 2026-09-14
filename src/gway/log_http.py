@@ -3,10 +3,20 @@ from __future__ import annotations
 import os
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse, urlunparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 _TOKEN_ENV = "GWAY_LOG_TOKEN"
 _TIMEOUT_SECONDS = 2.0
+
+
+class _RejectRedirects(HTTPRedirectHandler):
+    """Reject redirects so bearer credentials and POST bodies never move origins."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
+_OPENER = build_opener(_RejectRedirects())
 
 
 def ingest_url(destination: str, run_id: str) -> str | None:
@@ -38,7 +48,7 @@ def publish(destination: str, run_id: str, data: bytes) -> bool:
         },
     )
     try:
-        with urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
+        with _OPENER.open(request, timeout=_TIMEOUT_SECONDS) as response:
             response.read(1)
             return 200 <= response.status < 300
     except (HTTPError, URLError, OSError, ValueError):
