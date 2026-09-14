@@ -185,6 +185,12 @@ class Installer:
         try:
             project = Project.from_path(checkout)
             checkout, project, adopted = self._place_checkout(checkout, project, repository)
+            if adopted:
+                # Re-running install is an idempotent convergence operation. Refresh
+                # the already-managed source before touching its environment or
+                # invoking lifecycle hooks so deleted/renamed code cannot survive.
+                self.repositories.upgrade(checkout, repository.full_name)
+                project = Project.from_path(checkout)
             project = replace(
                 project,
                 repository=repository.full_name,
