@@ -119,11 +119,14 @@ def _canonical_consumers(
 
 
 def _remote_destination(destinations: Sequence[str]) -> str:
-    remote = [
-        destination
-        for destination in destinations
-        if urlparse(destination).scheme.casefold() in {"http", "https"}
-    ]
+    remote: list[str] = []
+    for destination in destinations:
+        parsed = urlparse(destination)
+        if parsed.scheme.casefold() not in {"http", "https"}:
+            continue
+        if not parsed.netloc:
+            raise DispatchError("log consumer HTTP(S) destination requires an authority")
+        remote.append(destination)
     if len(remote) != 1:
         raise DispatchError("log consumers require exactly one HTTP(S) --to destination")
     return remote[0]
@@ -249,11 +252,13 @@ def activate_publisher_tokens(
 ) -> None:
     """Load private consumer credentials into process-local HTTP publisher state."""
     from .log_http import set_token
+    from .logging import retry_remote_destination
 
     for destination in destinations:
         token = publisher_token(destination, paths=paths)
         if token is not None:
             set_token(destination, token)
+            retry_remote_destination(destination)
 
 
 def configure_consumers(
