@@ -6,12 +6,18 @@ from pathlib import Path
 
 import pytest
 
+import gway.logging as logging_module
+import gway.runtime as runtime_module
 from gway.config import GwayPaths
+from gway.dispatcher import Dispatcher
 from gway.dispatcher.errors import DispatchError
 from gway.log_command import run_log
 from gway.log_consumers import configure_consumers, consumer_environment_file
+from gway.log_http import clear_tokens
 from gway.logging import current_context
 from gway.project import Project
+from gway.registry import Registry
+from gway.runtime import GwayRuntime
 from gway.service import ServiceManager
 
 
@@ -21,14 +27,29 @@ def _paths(tmp_path: Path) -> GwayPaths:
 
 @pytest.fixture(autouse=True)
 def _isolate_consumer_logging_environment(monkeypatch):
-    # Consumer activation intentionally updates os.environ itself so reload/exec
-    # inherits the credential. Direct process mutations are not tracked by
-    # monkeypatch, so explicitly remove them after every test as well.
-    monkeypatch.delenv("GWAY_LOG_DESTINATION", raising=False)
-    monkeypatch.delenv("GWAY_LOG_TOKEN", raising=False)
+    # Consumer activation deliberately preserves a non-secret state-file pointer
+    # for reload/exec. Keep all process/context logging state test-local.
+    for name in (
+        "GWAY_LOG_DESTINATION",
+        "GWAY_LOG_TOKEN",
+        "GWAY_LOG_CONSUMER_STATE",
+        "GWAY_LOG_CONTEXT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    clear_tokens()
     yield
-    os.environ.pop("GWAY_LOG_DESTINATION", None)
-    os.environ.pop("GWAY_LOG_TOKEN", None)
+    for name in (
+        "GWAY_LOG_DESTINATION",
+        "GWAY_LOG_TOKEN",
+        "GWAY_LOG_CONSUMER_STATE",
+        "GWAY_LOG_CONTEXT",
+    ):
+        os.environ.pop(name, None)
+    clear_tokens()
+    logging_module._run_id.set(None)
+    logging_module._tags.set(())
+    logging_module._destinations.set(())
+    logging_module._failed_remote_destinations.set(frozenset())
 
 
 class FakeWeb:
@@ -37,17 +58,19 @@ class FakeWeb:
         self.token_id = "local-ingest"
         self.token = "gweb_v1_local-ingest_secret"
         self.revoked = False
+        self.naive_expiry = False
 
     def dispatch(self, project: str, tokens) -> object:
         assert project == "web"
         assert tokens[0] == "token"
         if "--list" in tokens:
+            expiry = datetime.now(timezone.utc) + timedelta(days=30)
+            if self.naive_expiry:
+                expiry = expiry.replace(tzinfo=None)
             return [
                 {
                     "token_id": self.token_id,
-                    "expires_at": (
-                        datetime.now(timezone.utc) + timedelta(days=30)
-                    ).isoformat(),
+                    "expires_at": expiry.isoformat(),
                     "revoked_at": datetime.now(timezone.utc).isoformat()
                     if self.revoked
                     else None,
@@ -56,6 +79,16 @@ class FakeWeb:
         self.issued += 1
         assert tokens[tokens.index("--scope") + 1] == "logs:ingest"
         return {"token_id": self.token_id, "token": self.token}
+
+
+def _wire_project(tmp_path: Path) -> Project:
+    return Project(
+        name="wire",
+        path=tmp_path / "wire",
+        adapter_type="python",
+        adapter_config={"module": "wire"},
+        aliases=("gway-wire",),
+    )
 
 
 def test_log_plural_consumers_accepts_csv_and_singular_accepts_one(
@@ -77,6 +110,7 @@ def test_log_plural_consumers_accepts_csv_and_singular_accepts_one(
         ],
         dispatch=web.dispatch,
         paths=paths,
+        resolve_consumer=lambda _name: None,
     )
 
     assert state["consumers"] == ["wire", "arthexis", "epaper"]
@@ -124,6 +158,28 @@ def test_consumer_binding_reuses_live_local_token(tmp_path: Path) -> None:
     assert web.issued == 1
 
 
+def test_consumer_binding_accepts_naive_future_expiry(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+    web = FakeWeb()
+    configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+    )
+    web.naive_expiry = True
+
+    result = configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+    )
+
+    assert result["token_id"] == web.token_id
+    assert web.issued == 1
+
+
 def test_consumer_binding_rotates_revoked_token(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     web = FakeWeb()
@@ -148,6 +204,55 @@ def test_consumer_binding_rotates_revoked_token(tmp_path: Path) -> None:
     assert web.issued == 2
 
 
+def test_consumer_credential_is_not_exported_to_shared_process_environment(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+    web = FakeWeb()
+
+    configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+    )
+
+    assert "GWAY_LOG_TOKEN" not in os.environ
+    assert "GWAY_LOG_DESTINATION" not in os.environ
+    assert os.environ["GWAY_LOG_CONSUMER_STATE"] == str(paths.data_dir / "log-consumers.json")
+
+
+def test_alias_reconfiguration_collapses_to_canonical_consumer(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+    web = FakeWeb()
+    project = _wire_project(tmp_path)
+
+    # Simulate wiring an alias before its project has been registered.
+    configure_consumers(
+        ["gway-wire"],
+        ["https://old.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+        resolve_consumer=lambda _name: None,
+    )
+
+    def resolve(name: str) -> Project | None:
+        return project if name.casefold() in {"wire", "gway-wire"} else None
+
+    configure_consumers(
+        ["wire"],
+        ["https://new.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+        resolve_consumer=resolve,
+    )
+
+    environment = consumer_environment_file(project, paths=paths)
+    assert environment == paths.data_dir / "log-consumers" / "wire.env"
+    assert 'GWAY_LOG_DESTINATION="https://new.example.test"' in environment.read_text(
+        encoding="utf-8"
+    )
+    assert not (paths.data_dir / "log-consumers" / "gway-wire.env").exists()
+
+
 def test_consumer_environment_matches_project_alias(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     web = FakeWeb()
@@ -157,17 +262,33 @@ def test_consumer_environment_matches_project_alias(tmp_path: Path) -> None:
         dispatch=web.dispatch,
         paths=paths,
     )
-    project = Project(
-        name="wire",
-        path=tmp_path / "wire",
-        adapter_type="python",
-        adapter_config={"module": "wire"},
-        aliases=("gway-wire",),
-    )
+    project = _wire_project(tmp_path)
 
     environment = consumer_environment_file(project, paths=paths)
 
     assert environment == paths.data_dir / "log-consumers" / "gway-wire.env"
+
+
+def test_runtime_routes_log_consumers_through_active_registry(tmp_path: Path, monkeypatch) -> None:
+    paths = _paths(tmp_path)
+    registry = Registry(paths=paths)
+    dispatcher = Dispatcher(registry=registry)
+    runtime = GwayRuntime(dispatcher)
+    captured: dict[str, object] = {}
+
+    def fake_run_log(argv, **kwargs):
+        captured["argv"] = list(argv)
+        captured.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(runtime_module, "run_log", fake_run_log)
+
+    result = runtime._run_core(["log", "--consumers", "wire"])
+
+    assert result == {"ok": True}
+    assert captured["paths"] is paths
+    assert getattr(captured["dispatch"], "__self__", None) is dispatcher
+    assert getattr(captured["resolve_consumer"], "__self__", None) is registry
 
 
 def test_service_render_injects_private_consumer_environment(
