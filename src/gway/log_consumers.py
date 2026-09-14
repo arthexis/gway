@@ -16,6 +16,8 @@ _STATE_VERSION = 1
 _CONSUMER_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 _LOG_TOKEN_ENV = "GWAY_LOG_TOKEN"
 _LOG_DESTINATION_ENV = "GWAY_LOG_DESTINATION"
+_STATE_PATH_ENV = "GWAY_LOG_CONSUMER_STATE"
+ConsumerResolver = Callable[[str], Project | None]
 
 
 def _state_path(paths: GwayPaths) -> Path:
@@ -31,8 +33,7 @@ def _private_directory(path: Path) -> None:
     path.chmod(0o700)
 
 
-def _read_state(paths: GwayPaths) -> dict[str, object]:
-    path = _state_path(paths)
+def _read_state_path(path: Path) -> dict[str, object]:
     if not path.exists():
         return {"version": _STATE_VERSION, "bindings": {}}
     try:
@@ -45,6 +46,10 @@ def _read_state(paths: GwayPaths) -> dict[str, object]:
     if not isinstance(bindings, dict):
         raise DispatchError(f"unsupported log consumer state in {path}")
     return data
+
+
+def _read_state(paths: GwayPaths) -> dict[str, object]:
+    return _read_state_path(_state_path(paths))
 
 
 def _write_state(paths: GwayPaths, data: dict[str, object]) -> None:
@@ -85,6 +90,34 @@ def normalize_consumers(values: Sequence[str]) -> tuple[str, ...]:
     return tuple(consumers)
 
 
+def _consumer_identity(
+    value: str,
+    resolve_consumer: ConsumerResolver | None,
+) -> tuple[str, set[str]]:
+    project = resolve_consumer(value) if resolve_consumer is not None else None
+    if project is None:
+        return value, {value.casefold()}
+    identities = {item.casefold() for item in (project.name, *project.aliases)}
+    return project.name, identities
+
+
+def _canonical_consumers(
+    values: Sequence[str],
+    resolve_consumer: ConsumerResolver | None,
+) -> tuple[tuple[str, ...], set[str]]:
+    canonical: list[str] = []
+    identities: set[str] = set()
+    seen: set[str] = set()
+    for value in normalize_consumers(values):
+        name, aliases = _consumer_identity(value, resolve_consumer)
+        identities.update(aliases)
+        key = name.casefold()
+        if key not in seen:
+            seen.add(key)
+            canonical.append(name)
+    return tuple(canonical), identities
+
+
 def _remote_destination(destinations: Sequence[str]) -> str:
     remote = [
         destination
@@ -92,9 +125,7 @@ def _remote_destination(destinations: Sequence[str]) -> str:
         if urlparse(destination).scheme.casefold() in {"http", "https"}
     ]
     if len(remote) != 1:
-        raise DispatchError(
-            "log consumers require exactly one HTTP(S) --to destination"
-        )
+        raise DispatchError("log consumers require exactly one HTTP(S) --to destination")
     return remote[0]
 
 
@@ -119,12 +150,18 @@ def _token_valid(record: dict[str, object], listed: object) -> bool:
     if not isinstance(expires_at, str):
         return False
     try:
-        return datetime.fromisoformat(expires_at) > datetime.now(timezone.utc)
-    except ValueError:
+        expiry = datetime.fromisoformat(expires_at)
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        return expiry > datetime.now(timezone.utc)
+    except (TypeError, ValueError):
         return False
 
 
-def _issue_token(dispatch: Callable[[str, Sequence[str]], object], destination: str) -> dict[str, object]:
+def _issue_token(
+    dispatch: Callable[[str, Sequence[str]], object],
+    destination: str,
+) -> dict[str, object]:
     result = dispatch(
         "web",
         [
@@ -157,10 +194,14 @@ def _environment_contents(destination: str, token: str) -> str:
     )
 
 
+def _environment_path(paths: GwayPaths, consumer: str) -> Path:
+    return _environment_dir(paths) / f"{consumer.casefold()}.env"
+
+
 def _write_environment(paths: GwayPaths, consumer: str, destination: str, token: str) -> Path:
     directory = _environment_dir(paths)
     _private_directory(directory)
-    path = directory / f"{consumer.casefold()}.env"
+    path = _environment_path(paths, consumer)
     temporary = path.with_suffix(".tmp")
     temporary.write_text(_environment_contents(destination, token), encoding="utf-8")
     temporary.chmod(0o600)
@@ -169,15 +210,62 @@ def _write_environment(paths: GwayPaths, consumer: str, destination: str, token:
     return path
 
 
+def _remove_environment(paths: GwayPaths, consumer: str) -> None:
+    try:
+        _environment_path(paths, consumer).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _binding_state_path(paths: GwayPaths | None = None) -> Path:
+    if paths is not None:
+        return _state_path(paths)
+    inherited = os.environ.get(_STATE_PATH_ENV)
+    if inherited:
+        return Path(inherited).expanduser()
+    return _state_path(default_paths())
+
+
+def publisher_token(destination: str, *, paths: GwayPaths | None = None) -> str | None:
+    """Read one private same-host publisher token without exporting it globally."""
+    try:
+        state = _read_state_path(_binding_state_path(paths))
+    except DispatchError:
+        return None
+    bindings = state.get("bindings", {})
+    if not isinstance(bindings, dict):
+        return None
+    record = bindings.get(destination)
+    if not isinstance(record, dict):
+        return None
+    token = record.get("token")
+    return token if isinstance(token, str) and token else None
+
+
+def activate_publisher_tokens(
+    destinations: Sequence[str],
+    *,
+    paths: GwayPaths | None = None,
+) -> None:
+    """Load private consumer credentials into process-local HTTP publisher state."""
+    from .log_http import set_token
+
+    for destination in destinations:
+        token = publisher_token(destination, paths=paths)
+        if token is not None:
+            set_token(destination, token)
+
+
 def configure_consumers(
     consumers: Sequence[str],
     destinations: Sequence[str],
     *,
     dispatch: Callable[[str, Sequence[str]], object],
     paths: GwayPaths | None = None,
+    resolve_consumer: ConsumerResolver | None = None,
 ) -> dict[str, object]:
     """Bind same-host consumers to one remotely exposed GWAY log service."""
-    selected = normalize_consumers(consumers)
+    selected, selected_identities = _canonical_consumers(consumers, resolve_consumer)
     if not selected:
         raise DispatchError("--consumer/--consumers requires at least one consumer")
     destination = _remote_destination(destinations)
@@ -210,37 +298,45 @@ def configure_consumers(
     assert isinstance(token, str)
     assert isinstance(token_id, str)
 
-    # A consumer has one active local logging destination. Moving it to another
-    # destination removes it from the old binding rather than leaving ambiguous
-    # service credentials behind.
-    selected_keys = {value.casefold() for value in selected}
+    # A project identity (canonical name or alias) has one active local logging
+    # destination. Resolve stored aliases where possible before moving it.
     for other_destination, other in list(bindings.items()):
         if other_destination == destination or not isinstance(other, dict):
             continue
         values = other.get("consumers", [])
         if not isinstance(values, list):
             continue
-        remaining = [
-            value
-            for value in values
-            if isinstance(value, str) and value.casefold() not in selected_keys
-        ]
+        remaining: list[str] = []
+        removed: list[str] = []
+        for value in values:
+            if not isinstance(value, str):
+                continue
+            _, identities = _consumer_identity(value, resolve_consumer)
+            if identities & selected_identities:
+                removed.append(value)
+            else:
+                remaining.append(value)
+        for value in removed:
+            _remove_environment(active_paths, value)
         if remaining:
             other["consumers"] = remaining
         else:
             bindings.pop(other_destination, None)
 
     prior = record.get("consumers", [])
-    combined = normalize_consumers(
-        [*(value for value in prior if isinstance(value, str)), *selected]
-        if isinstance(prior, list)
-        else selected
-    )
+    prior_values = [value for value in prior if isinstance(value, str)] if isinstance(prior, list) else []
+    combined, _ = _canonical_consumers([*prior_values, *selected], resolve_consumer)
+    combined_keys = {value.casefold() for value in combined}
+    for previous in prior_values:
+        if previous.casefold() not in combined_keys:
+            _remove_environment(active_paths, previous)
+
     record.update(
         {
             "provider": "web",
             "destination": destination,
             "consumers": list(combined),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     )
     bindings[destination] = record
@@ -248,10 +344,11 @@ def configure_consumers(
     for consumer in combined:
         _write_environment(active_paths, consumer, destination, token)
 
-    # Make the credential immediately available to this process so the same
-    # `log` operation can backfill and continue publishing the active run.
-    os.environ[_LOG_TOKEN_ENV] = token
-    os.environ[_LOG_DESTINATION_ENV] = destination
+    # Only a non-secret state-file path is exported for reload/exec continuity.
+    # The bearer credential itself stays in private state and process-local HTTP
+    # publisher context, so unrelated managed commands/subprocesses do not inherit it.
+    os.environ[_STATE_PATH_ENV] = str(_state_path(active_paths))
+    activate_publisher_tokens((destination,), paths=active_paths)
     return {
         "destination": destination,
         "consumers": list(combined),
@@ -274,21 +371,41 @@ def consumer_environment_file(
     if not isinstance(bindings, dict):
         return None
     identities = {value.casefold() for value in (project.name, *project.aliases)}
-    for record in bindings.values():
+    matches: list[str] = []
+    for destination, record in bindings.items():
         if not isinstance(record, dict):
             continue
         consumers = record.get("consumers", [])
         if not isinstance(consumers, list):
             continue
-        for consumer in consumers:
-            if isinstance(consumer, str) and consumer.casefold() in identities:
-                path = _environment_dir(active_paths) / f"{consumer.casefold()}.env"
-                return path if path.is_file() else None
-    return None
+        if any(
+            isinstance(consumer, str) and consumer.casefold() in identities
+            for consumer in consumers
+        ):
+            matches.append(destination)
+    if len(matches) > 1:
+        raise DispatchError(
+            f"log consumer {project.name!r} matches multiple destinations: {', '.join(sorted(matches))}"
+        )
+    if not matches:
+        return None
+    record = bindings[matches[0]]
+    assert isinstance(record, dict)
+    consumers = record.get("consumers", [])
+    assert isinstance(consumers, list)
+    consumer = next(
+        value
+        for value in consumers
+        if isinstance(value, str) and value.casefold() in identities
+    )
+    path = _environment_path(active_paths, consumer)
+    return path if path.is_file() else None
 
 
 __all__ = [
+    "activate_publisher_tokens",
     "configure_consumers",
     "consumer_environment_file",
     "normalize_consumers",
+    "publisher_token",
 ]
