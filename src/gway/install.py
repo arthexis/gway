@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .config import GwayPaths
-from .project import Project
+from .project import InstallLayout, Project
 from .registry import Registry
 from .repository import RepositoryManager, ResolvedRepository
 from .runner import Runner
@@ -95,6 +95,28 @@ class Installer:
             shutil.rmtree(lock, ignore_errors=True)
         return target, replace(project, path=target), False
 
+    @staticmethod
+    def _normalized_adoption_arguments(
+        arguments: Sequence[str], source: Path
+    ) -> tuple[str, ...]:
+        normalized: list[str] = []
+        index = 0
+        while index < len(arguments):
+            argument = arguments[index]
+            if argument == "--from":
+                if index + 1 >= len(arguments):
+                    raise ValueError("--from requires PATH")
+                normalized.extend(("--from", str(source)))
+                index += 2
+                continue
+            if argument.startswith("--from="):
+                normalized.append(f"--from={source}")
+                index += 1
+                continue
+            normalized.append(argument)
+            index += 1
+        return tuple(normalized)
+
     def preview_adoption(
         self,
         spec: str,
@@ -106,13 +128,15 @@ class Installer:
         source_path = Path(source).expanduser().resolve()
         if not source_path.is_dir():
             raise ValueError(f"adoption source is not a directory: {source_path}")
+        hook_arguments = self._normalized_adoption_arguments(arguments, source_path)
 
         repository = self.repositories.resolve(spec)
         with tempfile.TemporaryDirectory(prefix="gway-adopt-") as temporary:
             temporary_root = Path(temporary)
+            preview_root = temporary_root / "managed"
             checkout = self.repositories.clone(
                 repository,
-                destination=temporary_root / "checkout",
+                destination=preview_root / "app",
             )
             project = Project.from_path(checkout)
             project = replace(
@@ -122,19 +146,28 @@ class Installer:
             )
             target = project.install_layout.checkout if project.install_layout is not None else None
 
-            # Preflight needs current trusted project code but must not create the
-            # canonical managed environment declared by the project manifest.
-            preview_project = replace(project, install_layout=None)
+            # Keep the manifest's install semantics available to selectors while
+            # remapping every managed path beneath the temporary preview root.
+            preview_layout = (
+                InstallLayout(
+                    root=preview_root,
+                    checkout=checkout,
+                    environment=preview_root / ".venv",
+                )
+                if project.install_layout is not None
+                else None
+            )
+            preview_project = replace(project, install_layout=preview_layout)
             preview_runner = Runner(
                 GwayPaths(
                     config_dir=temporary_root / "config",
                     data_dir=temporary_root / "data",
                 )
             )
-            environment = preview_runner.prepare(preview_project, arguments=arguments)
+            environment = preview_runner.prepare(preview_project, arguments=hook_arguments)
             if environment is not None:
                 preview_project = replace(preview_project, environment=environment)
-            preview_runner.run_lifecycle(preview_project, "install", arguments)
+            preview_runner.run_lifecycle(preview_project, "install", hook_arguments)
 
             return AdoptionPreview(
                 name=project.name,
