@@ -7,6 +7,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import unquote, urlparse
 
 _RUN_ID_ENV = "GWAY_RUN_ID"
 _LOG_DIR_ENV = "GWAY_LOG_DIR"
@@ -51,12 +52,56 @@ def run_directory() -> Path:
     return path
 
 
+def _destination_root(destination: str) -> Path | None:
+    parsed = urlparse(destination)
+    if parsed.scheme == "file":
+        if parsed.netloc not in {"", "localhost"}:
+            return None
+        return Path(unquote(parsed.path)).expanduser()
+    if parsed.scheme:
+        return None
+    return Path(destination).expanduser()
+
+
+def _destination_log(destination: str) -> Path | None:
+    root = _destination_root(destination)
+    if root is None:
+        return None
+    return root / current_run_id() / "events.jsonl"
+
+
+def _append(path: Path, line: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(line)
+        stream.flush()
+
+
+def _backfill(destination: str) -> None:
+    target = _destination_log(destination)
+    source = run_directory() / "events.jsonl"
+    if target is None or not source.exists():
+        return
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
+    except OSError:
+        return
+
+
 def configure(*, tags: tuple[str, ...] = (), to: tuple[str, ...] = ()) -> dict[str, object]:
-    """Add metadata and future sync destinations to the current run."""
+    """Add metadata and synchronization destinations to the current run.
+
+    Filesystem paths and file:// URLs are synchronized immediately. Other URI
+    schemes are retained as metadata for transport plugins to implement later.
+    """
     if tags:
         _tags.set(tuple(dict.fromkeys((*_tags.get(), *tags))))
     if to:
+        additions = tuple(value for value in to if value not in _destinations.get())
         _destinations.set(tuple(dict.fromkeys((*_destinations.get(), *to))))
+        for destination in additions:
+            _backfill(destination)
     state = current_context()
     write_event("log.configure", "updated logging context", state)
     return state
@@ -72,7 +117,7 @@ def current_context() -> dict[str, object]:
 
 
 def write_event(kind: str, message: str, data: Mapping[str, object] | None = None) -> None:
-    """Append one crash-tolerant JSON Lines event to the current run."""
+    """Append one crash-tolerant JSON Lines event locally and to configured sinks."""
     payload = {
         "timestamp": _now(),
         "run_id": current_run_id(),
@@ -82,12 +127,19 @@ def write_event(kind: str, message: str, data: Mapping[str, object] | None = Non
         "to": list(_destinations.get()),
         "data": dict(data or {}),
     }
-    path = run_directory() / "events.jsonl"
+    line = json.dumps(payload, default=str, ensure_ascii=False) + "\n"
     try:
-        with path.open("a", encoding="utf-8") as stream:
-            json.dump(payload, stream, default=str, ensure_ascii=False)
-            stream.write("\n")
-            stream.flush()
+        _append(run_directory() / "events.jsonl", line)
     except OSError:
         # Logging must never make an otherwise valid GWAY command fail.
         return
+
+    for destination in _destinations.get():
+        target = _destination_log(destination)
+        if target is None:
+            continue
+        try:
+            _append(target, line)
+        except OSError:
+            # A failed mirror must not affect the command or canonical log.
+            continue
