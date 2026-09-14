@@ -49,7 +49,12 @@ def _fill_python_string_defaults(
         option = next((name for name in parameter.options if name.startswith("--")), None)
         if option is None:
             option = f"--{parameter.name.replace('_', '-')}"
-        if option in result or any(token.startswith(f"{option}=") for token in result):
+        negative_options = parameter.negative_options or ()
+        if (
+            option in result
+            or any(token.startswith(f"{option}=") for token in result)
+            or any(negative in result for negative in negative_options)
+        ):
             continue
         result.append(f"{option}={parameter.default}")
         filled[parameter.name] = parameter.default
