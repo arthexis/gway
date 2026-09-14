@@ -324,6 +324,7 @@ class PythonAdapter:
                 and parameter.default is inspect.Parameter.empty
             )
             default = None if parameter.default is inspect.Parameter.empty else parameter.default
+            help_text = f"default: {default}" if isinstance(default, str) else None
 
             if converter is bool:
                 if no_option is None:
@@ -333,6 +334,7 @@ class PythonAdapter:
                         action="store_true",
                         default=default,
                         required=required,
+                        help=help_text,
                     )
                     continue
 
@@ -342,6 +344,7 @@ class PythonAdapter:
                     dest=parameter.name,
                     action="store_true",
                     default=default,
+                    help=help_text,
                 )
                 group.add_argument(
                     no_option,
@@ -358,6 +361,7 @@ class PythonAdapter:
                     choices=choices,
                     default=default,
                     required=required,
+                    help=help_text,
                 )
                 continue
 
@@ -368,6 +372,7 @@ class PythonAdapter:
                 type=value_type,
                 choices=choices,
                 default=default,
+                help=help_text,
             )
             group.add_argument(
                 no_option,

@@ -36,6 +36,31 @@ def _command_path_key(path: Sequence[str]) -> tuple[str, ...]:
     return tuple(_command_key(part) for part in path)
 
 
+def _fill_python_string_defaults(
+    command: Command,
+    argv: Sequence[str],
+) -> tuple[list[str], dict[str, str]]:
+    """Inject omitted Python string defaults as attached option values."""
+    result = list(argv)
+    filled: dict[str, str] = {}
+    for parameter in command.parameters:
+        if not isinstance(parameter.default, str):
+            continue
+        option = next((name for name in parameter.options if name.startswith("--")), None)
+        if option is None:
+            option = f"--{parameter.name.replace('_', '-')}"
+        negative_options = parameter.negative_options or ()
+        if (
+            option in result
+            or any(token.startswith(f"{option}=") for token in result)
+            or any(negative in result for negative in negative_options)
+        ):
+            continue
+        result.append(f"{option}={parameter.default}")
+        filled[parameter.name] = parameter.default
+    return result, filled
+
+
 class Dispatcher:
     """Resolve registered projects, adapters, managed commands, and CLI sigils."""
 
@@ -236,6 +261,18 @@ class Dispatcher:
                 values=context_values,
                 argv=list(argv),
             )
+
+        if project.adapter_type == "python":
+            argv, default_values = _fill_python_string_defaults(command, argv)
+            if default_values:
+                record(
+                    "arguments.defaults",
+                    "filled omitted string arguments from function defaults",
+                    project=project.name,
+                    command=list(command.path),
+                    values=default_values,
+                    argv=list(argv),
+                )
 
         if interactive:
             argv = _fill_required_options(command, argv, prompt=prompt)
