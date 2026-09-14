@@ -107,7 +107,8 @@ def classify_stage(tokens: Sequence[str]) -> Stage:
 
     ``%`` is structural only as the exact first token. A bracket-leading first
     token denotes implicit solve unless it starts with a lexical bracket escape.
-    All other occurrences of ``%`` are ordinary literal tokens.
+    All other occurrences of ``%`` are ordinary literal tokens. Command-stage
+    identifiers are case-insensitive; argument tokens retain their original case.
     """
     raw = tuple(tokens)
     if not raw:
@@ -125,8 +126,11 @@ def classify_stage(tokens: Sequence[str]) -> Stage:
         )
 
     kind = StageKind.SOLVE if _is_implicit_solve_start(raw[0]) else StageKind.COMMAND
+    decoded = decode_stage_escapes(raw)
+    if kind is StageKind.COMMAND:
+        decoded = (decoded[0].casefold(), *decoded[1:])
     return Stage(
-        tokens=decode_stage_escapes(raw),
+        tokens=decoded,
         raw_tokens=raw,
         kind=kind,
     )

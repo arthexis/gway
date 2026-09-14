@@ -135,6 +135,12 @@ class Project:
             raise ValueError("project aliases must not start with '['")
         if self.alias_arguments is None:
             object.__setattr__(self, "alias_arguments", {})
+        else:
+            object.__setattr__(
+                self,
+                "alias_arguments",
+                {alias.casefold(): arguments for alias, arguments in self.alias_arguments.items()},
+            )
         if self.variables is None:
             object.__setattr__(self, "variables", {})
 

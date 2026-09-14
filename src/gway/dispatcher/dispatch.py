@@ -27,8 +27,8 @@ def _strict_fallback_missing(value: object) -> bool:
 
 
 def _command_key(value: str) -> str:
-    """Return the normalized lookup spelling for one command-path component."""
-    return value.replace("_", "-")
+    """Return the canonical lookup spelling for one command-path component."""
+    return value.replace("_", "-").casefold()
 
 
 def _command_path_key(path: Sequence[str]) -> tuple[str, ...]:
@@ -100,7 +100,8 @@ class Dispatcher:
                 command
                 for command in commands
                 if len(tokens) >= len(command.path)
-                and normalized_tokens[: len(command.path)] in command_path_aliases(command.path)[1:]
+                and normalized_tokens[: len(command.path)]
+                in tuple(_command_path_key(alias) for alias in command_path_aliases(command.path)[1:])
             ]
             resolution = "alias"
         if not matches:
@@ -227,7 +228,14 @@ class Dispatcher:
                 raise
             command, argv = self._resolve_default_command(commands, project.default_command, tokens)
 
-        alias_arguments = (project.alias_arguments or {}).get(project_name, ())
+        alias_arguments = next(
+            (
+                arguments
+                for alias, arguments in (project.alias_arguments or {}).items()
+                if alias.casefold() == project_name.casefold()
+            ),
+            (),
+        )
         if alias_arguments:
             record(
                 "arguments.alias",
