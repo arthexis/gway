@@ -14,7 +14,7 @@ from gway.dispatcher.errors import DispatchError
 from gway.log_command import run_log
 from gway.log_consumers import configure_consumers, consumer_environment_file
 from gway.log_http import clear_tokens
-from gway.logging import current_context
+from gway.logging import configure, current_context, write_event
 from gway.project import Project
 from gway.registry import Registry
 from gway.runtime import GwayRuntime
@@ -346,3 +346,77 @@ def test_consumer_names_are_safe_for_environment_paths(tmp_path: Path) -> None:
             dispatch=FakeWeb().dispatch,
             paths=_paths(tmp_path),
         )
+
+
+def test_consumer_destination_requires_http_authority(tmp_path: Path) -> None:
+    with pytest.raises(DispatchError, match="requires an authority"):
+        configure_consumers(
+            ["wire"],
+            ["https:///logs.example.test"],
+            dispatch=FakeWeb().dispatch,
+            paths=_paths(tmp_path),
+        )
+
+
+def test_explicit_destination_moves_consumer_from_existing_sink(
+    tmp_path: Path, monkeypatch
+) -> None:
+    paths = _paths(tmp_path)
+    web = FakeWeb()
+    monkeypatch.setenv("GWAY_LOG_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("GWAY_RUN_ID", "test-move-consumer")
+    monkeypatch.setattr(logging_module, "publish_http", lambda *_args: True)
+
+    run_log(
+        ["--to", "https://old.example.test", "--consumer", "wire"],
+        dispatch=web.dispatch,
+        paths=paths,
+        resolve_consumer=lambda _name: None,
+    )
+    result = run_log(
+        ["--to", "https://new.example.test", "--consumer", "wire"],
+        dispatch=web.dispatch,
+        paths=paths,
+        resolve_consumer=lambda _name: None,
+    )
+
+    assert result["consumer_destination"] == "https://new.example.test"
+    environment = paths.data_dir / "log-consumers" / "wire.env"
+    assert 'GWAY_LOG_DESTINATION="https://new.example.test"' in environment.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_consumer_activation_retries_previously_failed_sink(
+    tmp_path: Path, monkeypatch
+) -> None:
+    paths = _paths(tmp_path)
+    destination = "https://logs.example.test"
+    calls: list[bytes] = []
+    accepting = False
+
+    def publish(_destination: str, _run_id: str, data: bytes) -> bool:
+        calls.append(data)
+        return accepting
+
+    monkeypatch.setenv("GWAY_LOG_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("GWAY_RUN_ID", "test-retry-consumer")
+    monkeypatch.setattr(logging_module, "publish_http", publish)
+
+    configure(to=(destination,))
+    assert destination in logging_module._failed_remote_destinations.get()
+    initial_calls = len(calls)
+
+    accepting = True
+    configure_consumers(
+        ["wire"],
+        [destination],
+        dispatch=FakeWeb().dispatch,
+        paths=paths,
+    )
+
+    assert destination not in logging_module._failed_remote_destinations.get()
+    assert len(calls) > initial_calls
+    after_activation = len(calls)
+    write_event("test.after-token", "publisher recovered")
+    assert len(calls) == after_activation + 1
