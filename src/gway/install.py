@@ -3,14 +3,25 @@ from __future__ import annotations
 import shutil
 import tempfile
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-from .project import Project
+from .config import GwayPaths
+from .project import InstallLayout, Project
 from .registry import Registry
 from .repository import RepositoryManager, ResolvedRepository
 from .runner import Runner
 from .service import ServiceError, ServiceManager
+
+
+@dataclass(frozen=True)
+class AdoptionPreview:
+    """Metadata for a non-destructive managed-install adoption preflight."""
+
+    name: str
+    source: Path
+    target: Path | None
+    revision: str | None
 
 
 class Installer:
@@ -83,6 +94,87 @@ class Installer:
                 shutil.rmtree(temporary, ignore_errors=True)
             shutil.rmtree(lock, ignore_errors=True)
         return target, replace(project, path=target), False
+
+    @staticmethod
+    def _normalized_adoption_arguments(
+        arguments: Sequence[str], source: Path
+    ) -> tuple[str, ...]:
+        normalized: list[str] = []
+        index = 0
+        while index < len(arguments):
+            argument = arguments[index]
+            if argument == "--from":
+                if index + 1 >= len(arguments):
+                    raise ValueError("--from requires PATH")
+                normalized.extend(("--from", str(source)))
+                index += 2
+                continue
+            if argument.startswith("--from="):
+                normalized.append(f"--from={source}")
+                index += 1
+                continue
+            normalized.append(argument)
+            index += 1
+        return tuple(normalized)
+
+    def preview_adoption(
+        self,
+        spec: str,
+        source: str | Path,
+        *,
+        arguments: Sequence[str] = (),
+    ) -> AdoptionPreview:
+        """Run a project's adoption preflight without creating managed resources."""
+        source_path = Path(source).expanduser().resolve()
+        if not source_path.is_dir():
+            raise ValueError(f"adoption source is not a directory: {source_path}")
+        hook_arguments = self._normalized_adoption_arguments(arguments, source_path)
+
+        repository = self.repositories.resolve(spec)
+        with tempfile.TemporaryDirectory(prefix="gway-adopt-") as temporary:
+            temporary_root = Path(temporary)
+            preview_root = temporary_root / "managed"
+            checkout = self.repositories.clone(
+                repository,
+                destination=preview_root / "app",
+            )
+            project = Project.from_path(checkout)
+            project = replace(
+                project,
+                repository=repository.full_name,
+                revision=self.repositories.revision(checkout),
+            )
+            target = project.install_layout.checkout if project.install_layout is not None else None
+
+            # Keep the manifest's install semantics available to selectors while
+            # remapping every managed path beneath the temporary preview root.
+            preview_layout = (
+                InstallLayout(
+                    root=preview_root,
+                    checkout=checkout,
+                    environment=preview_root / ".venv",
+                )
+                if project.install_layout is not None
+                else None
+            )
+            preview_project = replace(project, install_layout=preview_layout)
+            preview_runner = Runner(
+                GwayPaths(
+                    config_dir=temporary_root / "config",
+                    data_dir=temporary_root / "data",
+                )
+            )
+            environment = preview_runner.prepare(preview_project, arguments=hook_arguments)
+            if environment is not None:
+                preview_project = replace(preview_project, environment=environment)
+            preview_runner.run_lifecycle(preview_project, "install", hook_arguments)
+
+            return AdoptionPreview(
+                name=project.name,
+                source=source_path,
+                target=target,
+                revision=project.revision,
+            )
 
     def install(self, spec: str, *, arguments: Sequence[str] = ()) -> Project:
         repository = self.repositories.resolve(spec)
