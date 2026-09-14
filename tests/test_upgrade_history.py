@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,7 @@ class HistoryRepositories:
     def __init__(self, *, fail_force: bool = False) -> None:
         self.fail_force = fail_force
         self.calls: list[bool] = []
+        self.current_revision = "working-revision"
         self.entries = (
             WorkingTreeEntry(status=" M", path="src/example.py"),
             WorkingTreeEntry(status="??", path="scratch file.txt"),
@@ -51,13 +53,14 @@ class HistoryRepositories:
             raise RepositoryError("managed checkout has local changes")
         if self.fail_force:
             raise RepositoryError("forced fetch failed")
-        return "new-revision"
+        self.current_revision = "new-revision"
+        return self.current_revision
 
     def status(self, checkout: Path) -> tuple[WorkingTreeEntry, ...]:
         return self.entries
 
     def revision(self, checkout: Path) -> str:
-        return "new-revision"
+        return self.current_revision
 
     def reset(self, checkout: Path, full_name: str, revision: str) -> None:
         return None
@@ -66,7 +69,8 @@ class HistoryRepositories:
 class CleanRepositories(HistoryRepositories):
     def upgrade(self, checkout: Path, full_name: str, *, force: bool = False) -> str:
         self.calls.append(force)
-        return "new-revision"
+        self.current_revision = "new-revision"
+        return self.current_revision
 
 
 class FixtureRunner:
@@ -135,7 +139,7 @@ def test_try_force_success_records_pre_force_state(tmp_path: Path) -> None:
     record = records[0]
     assert record["project"] == "wireguard"
     assert record["repository"] == "arthexis/gway-wireguard"
-    assert record["previous_revision"] == "old-revision"
+    assert record["previous_revision"] == "working-revision"
     assert record["resulting_revision"] == "new-revision"
     assert record["force_used"] is True
     assert record["force_error_type"] == "RepositoryError"
@@ -158,6 +162,7 @@ def test_try_force_failure_records_first_error_and_no_result_revision(tmp_path: 
     assert isinstance(exc_info.value.__cause__, RepositoryError)
     assert str(exc_info.value.__cause__) == "managed checkout has local changes"
     record = read_history(paths)[0]
+    assert record["previous_revision"] == "working-revision"
     assert record["resulting_revision"] is None
     assert record["forced_retry_succeeded"] is False
     assert record["force_error"] == "managed checkout has local changes"
@@ -173,7 +178,11 @@ def test_safe_try_force_upgrade_does_not_create_history(tmp_path: Path) -> None:
     assert not (paths.data_dir / "upgrade-history.jsonl").exists()
 
 
-def test_history_write_failure_does_not_hide_success(monkeypatch, tmp_path: Path) -> None:
+def test_history_write_failure_does_not_hide_success(
+    monkeypatch,
+    tmp_path: Path,
+    caplog,
+) -> None:
     repositories = HistoryRepositories()
     upgrader, _ = make_upgrader(tmp_path, repositories)
 
@@ -182,8 +191,22 @@ def test_history_write_failure_does_not_hide_success(monkeypatch, tmp_path: Path
 
     monkeypatch.setattr("gway.upgrade.append_upgrade_history", fail_history)
 
-    with pytest.warns(RuntimeWarning, match="cannot append forced-upgrade history"):
+    with caplog.at_level(logging.WARNING, logger="gway.upgrade"):
         result = upgrader.project_result("wireguard", try_force=True)
 
+    assert "cannot append forced-upgrade history" in caplog.text
     assert result.force_used is True
     assert result.project.revision == "new-revision"
+
+
+def test_history_permission_failure_is_preserved(monkeypatch, tmp_path: Path) -> None:
+    repositories = HistoryRepositories()
+    upgrader, _ = make_upgrader(tmp_path, repositories)
+
+    def fail_history(*args, **kwargs):
+        raise PermissionError("history denied")
+
+    monkeypatch.setattr("gway.upgrade.append_upgrade_history", fail_history)
+
+    with pytest.raises(PermissionError, match="history denied"):
+        upgrader.project_result("wireguard", try_force=True)
