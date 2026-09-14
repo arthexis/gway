@@ -55,6 +55,19 @@ def test_registry_rejects_case_only_collisions_between_projects(tmp_path: Path) 
         )
 
 
+def test_alias_argument_keys_are_normalized_case_insensitively() -> None:
+    project = Project(
+        name="energy",
+        path=Path("."),
+        adapter_type="python",
+        adapter_config={},
+        aliases=("OCPP",),
+        alias_arguments={"OCPP": ("--mode", "Energy")},
+    )
+
+    assert project.alias_arguments == {"ocpp": ("--mode", "Energy")}
+
+
 def test_managed_command_resolution_is_case_insensitive_without_changing_arguments() -> None:
     command = Command(("authorize-tag",))
 
@@ -81,3 +94,22 @@ def test_cli_boundary_normalizes_core_actions_without_changing_values() -> None:
     assert _normalize_command_identifiers(
         ("OCPP", "AUTHORIZE", "Tag-With-Mixed-Case")
     ) == ["ocpp", "AUTHORIZE", "Tag-With-Mixed-Case"]
+
+
+def test_cli_boundary_preserves_solve_and_expression_payload_case() -> None:
+    assert _normalize_command_identifiers(("[UserName]",)) == ["[UserName]"]
+    assert _normalize_command_identifiers(("Demo.Echo:=MixedCase",)) == [
+        "Demo.Echo:=MixedCase"
+    ]
+
+
+def test_cli_boundary_finds_service_and_shell_actions_after_options() -> None:
+    assert _normalize_command_identifiers(
+        ("SERVICE", "--project", "OCPP", "START")
+    ) == ["service", "--project", "OCPP", "start"]
+    assert _normalize_command_identifiers(
+        ("SHELL", "--shell", "zsh", "INSTALL")
+    ) == ["shell", "--shell", "zsh", "install"]
+    assert _normalize_command_identifiers(
+        ("SERVICE", "--json", "START", "OCPP")
+    ) == ["service", "--json", "start", "OCPP"]
