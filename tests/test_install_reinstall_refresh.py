@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from gway.config import GwayPaths
 from gway.install import Installer
 from gway.registry import Registry
@@ -29,9 +31,7 @@ class ReinstallRepositories:
         self.repository = ResolvedRepository("arthexis", "gway-fixture")
         self.target = root / "managed" / "app"
         self.target.mkdir(parents=True)
-        (self.target / "gway.toml").write_text(
-            _manifest(root / "managed", "old"), encoding="utf-8"
-        )
+        (self.target / "gway.toml").write_text(_manifest(root / "managed", "old"), encoding="utf-8")
         stale = self.target / "removed-command.py"
         stale.write_text("obsolete\n", encoding="utf-8")
 
@@ -64,19 +64,36 @@ class ReinstallRepositories:
         )
         return "new-revision"
 
+    def reset(self, checkout: Path, full_name: str, revision: str) -> None:
+        self.events.append("reset")
+        assert checkout == self.target
+        assert full_name == self.repository.full_name
+        assert revision == "old-revision"
+        (checkout / "gway.toml").write_text(
+            _manifest(self.root / "managed", "old"), encoding="utf-8"
+        )
+        (checkout / "removed-command.py").write_text("obsolete\n", encoding="utf-8")
+
     def revision(self, checkout: Path) -> str:
         return "new-revision" if "new" in (checkout / "gway.toml").read_text() else "old-revision"
 
 
 class ReinstallRunner:
-    def __init__(self, root: Path, events: list[str]) -> None:
+    def __init__(self, root: Path, events: list[str], *, fail_refresh: bool = False) -> None:
         self.root = root
         self.events = events
+        self.fail_refresh = fail_refresh
 
     def refresh(self, project, arguments=()):
-        self.events.append("refresh")
-        assert not (project.path / "removed-command.py").exists()
-        assert project.aliases == ("new",)
+        if project.aliases == ("old",):
+            self.events.append("rollback-refresh")
+            assert (project.path / "removed-command.py").exists()
+        else:
+            self.events.append("refresh")
+            assert not (project.path / "removed-command.py").exists()
+            assert project.aliases == ("new",)
+            if self.fail_refresh:
+                raise RuntimeError("refresh failed")
         environment = self.root / "managed" / ".venv"
         environment.mkdir(parents=True, exist_ok=True)
         return environment
@@ -88,7 +105,9 @@ class ReinstallRunner:
         self.events.append(f"lifecycle:{operation}")
 
 
-def test_reinstall_refreshes_existing_checkout_before_environment_and_lifecycle(tmp_path: Path) -> None:
+def test_reinstall_refreshes_existing_checkout_before_environment_and_lifecycle(
+    tmp_path: Path,
+) -> None:
     events: list[str] = []
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     repositories = ReinstallRepositories(tmp_path, events)
@@ -102,3 +121,18 @@ def test_reinstall_refreshes_existing_checkout_before_environment_and_lifecycle(
     assert project.revision == "new-revision"
     assert project.aliases == ("new",)
     assert not (repositories.target / "removed-command.py").exists()
+
+
+def test_reinstall_rolls_back_checkout_and_environment_when_refresh_fails(tmp_path: Path) -> None:
+    events: list[str] = []
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    repositories = ReinstallRepositories(tmp_path, events)
+    runner = ReinstallRunner(tmp_path, events, fail_refresh=True)
+    installer = Installer(Registry(paths), repositories=repositories, runner=runner)
+
+    with pytest.raises(RuntimeError, match="refresh failed"):
+        installer.install("fixture")
+
+    assert events == ["upgrade", "refresh", "reset", "rollback-refresh"]
+    assert repositories.revision(repositories.target) == "old-revision"
+    assert (repositories.target / "removed-command.py").exists()
