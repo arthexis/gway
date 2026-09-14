@@ -108,7 +108,10 @@ def run_log(
             if isinstance(existing, list)
             else ()
         )
-        effective_destinations = tuple(dict.fromkeys((*existing_destinations, *destinations)))
+        # An explicit --to declaration moves/configures the consumer against
+        # that destination even when this run is already publishing elsewhere.
+        # Existing run sinks are only a fallback when --to is omitted.
+        effective_destinations = destinations or existing_destinations
         binding = configure_consumers(
             consumers,
             effective_destinations,
