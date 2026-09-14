@@ -10,6 +10,7 @@ from .project import Project
 from .registry import Registry
 from .repository import RepositoryManager, ResolvedRepository
 from .runner import Runner
+from .service import ServiceError, ServiceManager
 
 
 class Installer:
@@ -128,10 +129,24 @@ class Installer:
                 shutil.rmtree(prepared_environment, ignore_errors=True)
             raise
 
+    @staticmethod
+    def _uninstall_services(project: Project) -> None:
+        try:
+            ServiceManager(project).uninstall()
+        except ServiceError as exc:
+            if "does not declare [service] or [services]" not in str(exc):
+                raise
+
     def uninstall(self, name_or_alias: str) -> Project:
         project = self.registry.require_uninstall(name_or_alias)
 
         if project.repository is not None:
+            # Services must stop before the application hook runs so they cannot
+            # recreate disposable runtime state while uninstall is in progress.
+            self._uninstall_services(project)
+            if project.lifecycle_hooks is not None:
+                self.runner.run_lifecycle(project, "uninstall")
+
             environment = project.environment or self.runner.environment_path(project)
             shutil.rmtree(environment, ignore_errors=True)
             shutil.rmtree(project.path, ignore_errors=True)
