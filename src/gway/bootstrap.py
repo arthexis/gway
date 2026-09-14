@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 
 _GLOBAL_FLAGS = frozenset({"--json", "-i", "--interactive"})
 _EXPLAIN_FLAGS = frozenset({"-e", "--explain"})
-_RUNTIME_LIFECYCLE = frozenset({"install", "upgrade", "uninstall"})
+_RUNTIME_LIFECYCLE = frozenset({"install", "upgrade", "uninstall", "log"})
 _ORIGINAL_ARGV_ENV = "GWAY_RESUME_ORIGINAL_ARGV"
 
 
@@ -200,7 +200,13 @@ def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
         option_args = option_args[: option_args.index("--")]
     help_requested = any(arg in {"-h", "--help"} for arg in option_args)
 
-    if operation != "uninstall" and help_requested:
+    if operation == "log" and help_requested:
+        print("usage: gway log [--tags TAG[,TAG...]] [--to DESTINATION]")
+        print()
+        print("Inspect or add metadata and synchronization destinations to the current log run.")
+        return 0
+
+    if operation not in {"uninstall", "log"} and help_requested:
         return None
 
     if operation == "uninstall":
