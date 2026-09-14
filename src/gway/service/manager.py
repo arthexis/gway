@@ -17,24 +17,29 @@ class ServiceManager:
         *,
         service: str | None = None,
         profile: str | None = None,
+        all_services: bool = False,
         unit_directory: str | Path = "/etc/systemd/system",
     ) -> None:
         self.project = project
         self.unit_directory = Path(unit_directory)
         configs, legacy = _manifest_services(project)
         all_configs = dict(configs)
-        environment_service = os.environ.get("GWAY_SERVICE")
-        environment_profile = os.environ.get("GWAY_SERVICE_PROFILE")
-        self.environment_selectors = [
-            name
-            for name, explicit, value in (
-                ("GWAY_SERVICE", service, environment_service),
-                ("GWAY_SERVICE_PROFILE", profile, environment_profile),
-            )
-            if explicit is None and value
-        ]
-        selected_service = service or environment_service
-        active_profile = profile or environment_profile
+        environment_service = None if all_services else os.environ.get("GWAY_SERVICE")
+        environment_profile = None if all_services else os.environ.get("GWAY_SERVICE_PROFILE")
+        self.environment_selectors = (
+            []
+            if all_services
+            else [
+                name
+                for name, explicit, value in (
+                    ("GWAY_SERVICE", service, environment_service),
+                    ("GWAY_SERVICE_PROFILE", profile, environment_profile),
+                )
+                if explicit is None and value
+            ]
+        )
+        selected_service = None if all_services else service or environment_service
+        active_profile = None if all_services else profile or environment_profile
         if selected_service is not None:
             if selected_service not in configs:
                 raise ServiceError(
@@ -53,7 +58,9 @@ class ServiceManager:
                 f"project has no services applicable to profile {active_profile!r}: {project.name}"
             )
         self.active_profile = active_profile
-        self._reconcile_topology = selected_service is None and active_profile is not None
+        self._reconcile_topology = (
+            not all_services and selected_service is None and active_profile is not None
+        )
         self.units = [
             systemd._ServiceUnit(
                 project,

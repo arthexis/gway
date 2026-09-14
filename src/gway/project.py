@@ -85,23 +85,30 @@ class InstallLayout:
 class LifecycleHooks:
     install: str | None = None
     upgrade: str | None = None
+    uninstall: str | None = None
 
     @classmethod
     def from_manifest(cls, data: dict[str, Any]) -> LifecycleHooks:
         install = _lifecycle_hook(data.get("install"), "install")
         upgrade = _lifecycle_hook(data.get("upgrade"), "upgrade")
-        if install is None and upgrade is None:
-            raise ManifestError("[lifecycle] must declare install and/or upgrade")
-        return cls(install=install, upgrade=upgrade)
+        uninstall = _lifecycle_hook(data.get("uninstall"), "uninstall")
+        if install is None and upgrade is None and uninstall is None:
+            raise ManifestError("[lifecycle] must declare install, upgrade, and/or uninstall")
+        return cls(install=install, upgrade=upgrade, uninstall=uninstall)
 
     def to_record(self) -> dict[str, str | None]:
-        return {"install": self.install, "upgrade": self.upgrade}
+        return {
+            "install": self.install,
+            "upgrade": self.upgrade,
+            "uninstall": self.uninstall,
+        }
 
     @classmethod
     def from_record(cls, data: dict[str, Any]) -> LifecycleHooks:
         return cls(
             install=data.get("install"),
             upgrade=data.get("upgrade"),
+            uninstall=data.get("uninstall"),
         )
 
 

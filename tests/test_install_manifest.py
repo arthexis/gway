@@ -31,6 +31,7 @@ environment = ".venv"
 [lifecycle]
 install = "apps.core.system.lifecycle:install"
 upgrade = "apps.core.system.lifecycle:upgrade"
+uninstall = "apps.core.system.lifecycle:uninstall"
 """
 
 
@@ -45,6 +46,7 @@ def test_install_layout_and_lifecycle_hooks_are_loaded(tmp_path: Path) -> None:
     assert project.lifecycle_hooks == LifecycleHooks(
         install="apps.core.system.lifecycle:install",
         upgrade="apps.core.system.lifecycle:upgrade",
+        uninstall="apps.core.system.lifecycle:uninstall",
     )
 
 
@@ -70,6 +72,7 @@ def test_registry_round_trips_install_contract(tmp_path: Path) -> None:
     assert reloaded.install_layout.checkout == Path("/opt/arthexis/app")
     assert reloaded.lifecycle_hooks is not None
     assert reloaded.lifecycle_hooks.upgrade == "apps.core.system.lifecycle:upgrade"
+    assert reloaded.lifecycle_hooks.uninstall == "apps.core.system.lifecycle:uninstall"
 
 
 def test_install_root_must_be_absolute(tmp_path: Path) -> None:
@@ -145,16 +148,16 @@ def test_lifecycle_may_declare_only_one_hook(tmp_path: Path) -> None:
             tmp_path / "project",
             """
 [lifecycle]
-upgrade = "example.lifecycle:upgrade"
+uninstall = "example.lifecycle:uninstall"
 """,
         )
     )
 
-    assert project.lifecycle_hooks == LifecycleHooks(upgrade="example.lifecycle:upgrade")
+    assert project.lifecycle_hooks == LifecycleHooks(uninstall="example.lifecycle:uninstall")
 
 
 def test_empty_lifecycle_table_is_rejected(tmp_path: Path) -> None:
     root = write_manifest(tmp_path / "project", "\n[lifecycle]\n")
 
-    with pytest.raises(ManifestError, match="install and/or upgrade"):
+    with pytest.raises(ManifestError, match="install, upgrade, and/or uninstall"):
         Project.from_path(root)
