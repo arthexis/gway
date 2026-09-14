@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 
+import gway.logging as logging_module
 from gway.explain import explain_scope, record
 from gway.logging import configure, current_context, current_run_id, write_event
 
@@ -55,6 +56,21 @@ def test_run_id_change_resets_logging_context(tmp_path, monkeypatch) -> None:
     assert state["run_id"] == "second-run"
     assert state["tags"] == ["second"]
     assert state["to"] == []
+
+
+def test_logging_context_restores_after_process_replacement(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("GWAY_LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("GWAY_RUN_ID", "reload-run")
+    configure(tags=("watchtower",), to=("https://example.invalid/logs",))
+
+    logging_module._run_id.set(None)
+    logging_module._tags.set(())
+    logging_module._destinations.set(())
+
+    state = current_context()
+    assert state["run_id"] == "reload-run"
+    assert state["tags"] == ["watchtower"]
+    assert state["to"] == ["https://example.invalid/logs"]
 
 
 def test_invalid_inherited_run_id_cannot_escape_log_root(tmp_path, monkeypatch) -> None:
