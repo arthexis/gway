@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ..log_consumers import consumer_environment_file
 from ..project import Project
 from ..runner import Runner
 from .manifest import ServiceError, _strings
@@ -140,6 +141,9 @@ class _ServiceUnit:
         if after:
             lines.append(f"After={' '.join(after)}")
         lines.extend(["", "[Service]", "Type=simple", f"User={_service_user(self.config, user)}"])
+        log_environment = consumer_environment_file(self.project)
+        if log_environment is not None:
+            lines.append(f"EnvironmentFile={_unit_arg(log_environment)}")
         if working_directory:
             expanded = _expand(working_directory, self.project)
             lines.append(
