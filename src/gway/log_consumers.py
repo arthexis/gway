@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
-from collections.abc import Callable, Sequence
+import tempfile
+import time
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -56,23 +60,80 @@ def _read_state(paths: GwayPaths) -> dict[str, object]:
     return _read_state_path(_state_path(paths))
 
 
-def _write_state(paths: GwayPaths, data: dict[str, object]) -> None:
-    path = _state_path(paths)
+def _atomic_private_write(path: Path, payload: bytes) -> None:
     _private_directory(path.parent)
-    temporary = path.with_suffix(".tmp")
-    payload = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    descriptor = os.open(temporary, flags, 0o600)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    temporary = Path(temporary_name)
     try:
-        os.fchmod(descriptor, 0o600)
-        os.write(descriptor, payload)
+        if hasattr(os, "fchmod"):
+            os.fchmod(descriptor, 0o600)
+        view = memoryview(payload)
+        while view:
+            written = os.write(descriptor, view)
+            view = view[written:]
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    os.replace(temporary, path)
-    path.chmod(0o600)
+    try:
+        os.replace(temporary, path)
+        path.chmod(0o600)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _write_state(paths: GwayPaths, data: dict[str, object]) -> None:
+    path = _state_path(paths)
+    payload = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    _atomic_private_write(path, payload)
+
+
+@contextmanager
+def _state_lock(paths: GwayPaths) -> Iterator[None]:
+    """Serialize consumer-state transactions across GWAY processes."""
+    path = _state_path(paths).with_suffix(".lock")
+    _private_directory(path.parent)
+    flags = os.O_RDWR | os.O_CREAT
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        if hasattr(os, "fchmod"):
+            os.fchmod(descriptor, 0o600)
+        if os.name == "nt":
+            import msvcrt
+
+            if os.fstat(descriptor).st_size == 0:
+                os.write(descriptor, b"\0")
+                os.fsync(descriptor)
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            while True:
+                try:
+                    msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
 
 
 def normalize_consumers(values: Sequence[str]) -> tuple[str, ...]:
@@ -122,14 +183,29 @@ def _canonical_consumers(
     return tuple(canonical), identities
 
 
+def _loopback_host(host: str | None) -> bool:
+    if host is None:
+        return False
+    normalized = host.rstrip(".").casefold()
+    if normalized == "localhost" or normalized.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
 def _remote_destination(destinations: Sequence[str]) -> str:
     remote: list[str] = []
     for destination in destinations:
         parsed = urlparse(destination)
-        if parsed.scheme.casefold() not in {"http", "https"}:
+        scheme = parsed.scheme.casefold()
+        if scheme not in {"http", "https"}:
             continue
         if not parsed.netloc:
             raise DispatchError("log consumer HTTP(S) destination requires an authority")
+        if scheme == "http" and not _loopback_host(parsed.hostname):
+            raise DispatchError("log consumer HTTP destinations must use HTTPS unless loopback")
         remote.append(destination)
     if len(remote) != 1:
         raise DispatchError("log consumers require exactly one HTTP(S) --to destination")
@@ -210,23 +286,30 @@ def _environment_path(paths: GwayPaths, consumer: str) -> Path:
     return _environment_dir(paths) / f"{consumer.casefold()}.env"
 
 
-def _write_environment(paths: GwayPaths, consumer: str, destination: str, token: str) -> Path:
-    directory = _environment_dir(paths)
-    _private_directory(directory)
+def _write_environment(
+    paths: GwayPaths,
+    consumer: str,
+    destination: str,
+    token: str,
+) -> tuple[Path, bool]:
     path = _environment_path(paths, consumer)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(_environment_contents(destination, token), encoding="utf-8")
-    temporary.chmod(0o600)
-    os.replace(temporary, path)
-    path.chmod(0o600)
-    return path
+    contents = _environment_contents(destination, token)
+    try:
+        unchanged = path.read_text(encoding="utf-8") == contents
+    except (FileNotFoundError, OSError):
+        unchanged = False
+    if unchanged:
+        return path, False
+    _atomic_private_write(path, contents.encode("utf-8"))
+    return path, True
 
 
-def _remove_environment(paths: GwayPaths, consumer: str) -> None:
+def _remove_environment(paths: GwayPaths, consumer: str) -> bool:
     try:
         _environment_path(paths, consumer).unlink()
+        return True
     except FileNotFoundError:
-        pass
+        return False
 
 
 def _binding_state_path(paths: GwayPaths | None = None) -> Path:
@@ -274,7 +357,7 @@ def _refresh_running_consumer_services(
     consumers: Sequence[str],
     resolve_consumer: ConsumerResolver | None,
 ) -> list[str]:
-    """Restart installed consumer units after their persisted bearer token rotates."""
+    """Restart installed consumer units after their persisted logging environment changes."""
     if resolve_consumer is None:
         return []
     from .service import ServiceError, ServiceManager
@@ -298,7 +381,7 @@ def _refresh_running_consumer_services(
                 unit.restart()
             except Exception as exc:
                 raise DispatchError(
-                    f"rotated log credential but could not restart consumer service {unit.unit_name}"
+                    f"updated log consumer environment but could not restart service {unit.unit_name}"
                 ) from exc
             refreshed.append(unit.unit_name)
     return refreshed
@@ -318,88 +401,92 @@ def configure_consumers(
         raise DispatchError("--consumer/--consumers requires at least one consumer")
     destination = _remote_destination(destinations)
     active_paths = paths or default_paths()
-    state = _read_state(active_paths)
-    bindings = state["bindings"]
-    assert isinstance(bindings, dict)
+    changed_consumers: set[str] = set()
 
-    existing = bindings.get(destination)
-    record = dict(existing) if isinstance(existing, dict) else {}
-    previous_token = record.get("token")
-    rotated = False
-    listed: object = None
-    if record:
-        try:
-            listed = dispatch("web", ["token", "--list"])
-        except Exception:
-            listed = None
-    if not _token_valid(record, listed):
-        try:
-            credential = _issue_token(dispatch, destination)
-        except Exception as exc:
-            if isinstance(exc, DispatchError):
-                raise
-            raise DispatchError(
-                "cannot issue local log consumer credential through the registered web project"
-            ) from exc
-        new_token = credential.get("token")
-        rotated = (
-            isinstance(previous_token, str)
-            and bool(previous_token)
-            and isinstance(new_token, str)
-            and new_token != previous_token
-        )
-        record.update(credential)
+    # Keep the full read-modify-write transaction serialized so independent GWAY
+    # processes cannot lose each other's bindings or race on EnvironmentFiles.
+    with _state_lock(active_paths):
+        state = _read_state(active_paths)
+        bindings = state["bindings"]
+        assert isinstance(bindings, dict)
 
-    token = record.get("token")
-    token_id = record.get("token_id")
-    assert isinstance(token, str)
-    assert isinstance(token_id, str)
+        existing = bindings.get(destination)
+        record = dict(existing) if isinstance(existing, dict) else {}
+        listed: object = None
+        if record:
+            try:
+                listed = dispatch("web", ["token", "--list"])
+            except Exception:
+                listed = None
+        if not _token_valid(record, listed):
+            try:
+                credential = _issue_token(dispatch, destination)
+            except Exception as exc:
+                if isinstance(exc, DispatchError):
+                    raise
+                raise DispatchError(
+                    "cannot issue local log consumer credential through the registered web project"
+                ) from exc
+            record.update(credential)
 
-    # A project identity (canonical name or alias) has one active local logging
-    # destination. Resolve stored aliases where possible before moving it.
-    for other_destination, other in list(bindings.items()):
-        if other_destination == destination or not isinstance(other, dict):
-            continue
-        values = other.get("consumers", [])
-        if not isinstance(values, list):
-            continue
-        remaining: list[str] = []
-        removed: list[str] = []
-        for value in values:
-            if not isinstance(value, str):
+        token = record.get("token")
+        token_id = record.get("token_id")
+        assert isinstance(token, str)
+        assert isinstance(token_id, str)
+
+        # A project identity (canonical name or alias) has one active local logging
+        # destination. Resolve stored aliases where possible before moving it.
+        for other_destination, other in list(bindings.items()):
+            if other_destination == destination or not isinstance(other, dict):
                 continue
-            _, identities = _consumer_identity(value, resolve_consumer)
-            if identities & selected_identities:
-                removed.append(value)
+            values = other.get("consumers", [])
+            if not isinstance(values, list):
+                continue
+            remaining: list[str] = []
+            removed: list[str] = []
+            for value in values:
+                if not isinstance(value, str):
+                    continue
+                _, identities = _consumer_identity(value, resolve_consumer)
+                if identities & selected_identities:
+                    removed.append(value)
+                else:
+                    remaining.append(value)
+            for value in removed:
+                if _remove_environment(active_paths, value):
+                    changed_consumers.add(value)
+            if remaining:
+                other["consumers"] = remaining
             else:
-                remaining.append(value)
-        for value in removed:
-            _remove_environment(active_paths, value)
-        if remaining:
-            other["consumers"] = remaining
-        else:
-            bindings.pop(other_destination, None)
+                bindings.pop(other_destination, None)
 
-    prior = record.get("consumers", [])
-    prior_values = [value for value in prior if isinstance(value, str)] if isinstance(prior, list) else []
-    combined, _ = _canonical_consumers([*prior_values, *selected], resolve_consumer)
-    combined_keys = {value.casefold() for value in combined}
-    for previous in prior_values:
-        if previous.casefold() not in combined_keys:
-            _remove_environment(active_paths, previous)
+        prior = record.get("consumers", [])
+        prior_values = (
+            [value for value in prior if isinstance(value, str)]
+            if isinstance(prior, list)
+            else []
+        )
+        combined, _ = _canonical_consumers([*prior_values, *selected], resolve_consumer)
+        combined_keys = {value.casefold() for value in combined}
+        for previous in prior_values:
+            if previous.casefold() not in combined_keys:
+                if _remove_environment(active_paths, previous):
+                    changed_consumers.add(previous)
 
-    record.update(
-        {
-            "provider": "web",
-            "destination": destination,
-            "consumers": list(combined),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-    )
-    bindings[destination] = record
-    _write_state(active_paths, state)
-    for consumer in combined:
-        _write_environment(active_paths, consumer, destination, token)
+        record.update(
+            {
+                "provider": "web",
+                "destination": destination,
+                "consumers": list(combined),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        bindings[destination] = record
+        _write_state(active_paths, state)
+        for consumer in combined:
+            _, changed = _write_environment(active_paths, consumer, destination, token)
+            if changed:
+                changed_consumers.add(consumer)
 
     # Only a non-secret state-file path is exported for reload/exec continuity.
     # The bearer credential itself stays in private state and process-local HTTP
@@ -407,7 +494,9 @@ def configure_consumers(
     os.environ[_STATE_PATH_ENV] = str(_state_path(active_paths))
     activate_publisher_tokens((destination,), paths=active_paths)
     refreshed_services = (
-        _refresh_running_consumer_services(combined, resolve_consumer) if rotated else []
+        _refresh_running_consumer_services(sorted(changed_consumers), resolve_consumer)
+        if changed_consumers
+        else []
     )
     result: dict[str, object] = {
         "destination": destination,
