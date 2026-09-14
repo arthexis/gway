@@ -3,7 +3,14 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
+from .dispatcher.errors import DispatchError
 from .logging import configure, current_context
+from .solve import solve_values
+
+
+def _resolve_argument(value: str) -> str:
+    resolved = solve_values([value])
+    return resolved if isinstance(resolved, str) else str(resolved)
 
 
 def run_log(argv: Sequence[str]) -> dict[str, object]:
@@ -11,9 +18,9 @@ def run_log(argv: Sequence[str]) -> dict[str, object]:
     parser = argparse.ArgumentParser(prog="gway log", add_help=False)
     parser.add_argument("--tags", action="append", default=[])
     parser.add_argument("--to", action="append", default=[])
-    namespace, unknown = parser.parse_known_args(list(argv))
+    namespace, unknown = parser.parse_known_args([_resolve_argument(value) for value in argv])
     if unknown:
-        raise ValueError(f"unrecognized log arguments: {' '.join(unknown)}")
+        raise DispatchError(f"unrecognized log arguments: {' '.join(unknown)}")
 
     tags = tuple(
         tag.strip()
