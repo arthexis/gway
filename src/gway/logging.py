@@ -31,15 +31,15 @@ def _default_root() -> Path:
 
 
 def current_run_id() -> str:
+    inherited = os.environ.get(_RUN_ID_ENV)
     run_id = _run_id.get()
+    if inherited and inherited != run_id:
+        run_id = inherited
+        _run_id.set(run_id)
     if run_id is not None:
         return run_id
-    inherited = os.environ.get(_RUN_ID_ENV)
-    if inherited:
-        run_id = inherited
-    else:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        run_id = f"{stamp}-{secrets.token_hex(3)}"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_id = f"{stamp}-{secrets.token_hex(3)}"
     _run_id.set(run_id)
     os.environ[_RUN_ID_ENV] = run_id
     return run_id
