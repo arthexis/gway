@@ -3,12 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .commands import RUNTIME_COMMAND_NAMES
 from .config import GwayPaths, default_paths
 from .project import ManifestError, Project
-
-_RESERVED_RUNTIME_PROJECT_NAMES = frozenset(
-    {"install", "recipe", "reload", "result", "store", "uninstall", "upgrade"}
-)
 
 
 class RegistryError(ValueError):
@@ -107,7 +104,7 @@ class Registry:
             if not self._same_managed_project(existing, project):
                 continue
             claims = {existing_name, *record.get("aliases", [])}
-            allowed.update(claims & _RESERVED_RUNTIME_PROJECT_NAMES)
+            allowed.update(claims & RUNTIME_COMMAND_NAMES)
         return allowed
 
     def register(self, project: Project) -> Project:
@@ -116,7 +113,7 @@ class Registry:
         if "%" in claimed:
             raise RegistryError("project name or alias is reserved syntax: %")
         legacy_reserved = self._legacy_reserved_claims(records, project)
-        reserved = sorted((claimed & _RESERVED_RUNTIME_PROJECT_NAMES) - legacy_reserved)
+        reserved = sorted((claimed & RUNTIME_COMMAND_NAMES) - legacy_reserved)
         if reserved:
             raise RegistryError(f"project name or alias is reserved GWAY operation: {reserved[0]}")
         if len(claimed) != 1 + len(project.aliases):
