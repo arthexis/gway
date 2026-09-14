@@ -30,6 +30,10 @@ def _freeze(value: object) -> object:
     return value
 
 
+def _alias_arguments(project: Project, project_name: str) -> tuple[str, ...]:
+    return (project.alias_arguments or {}).get(project_name.casefold(), ())
+
+
 class _GwayCommandCall:
     """Provider-approved callable wrapper around one registered GWAY command."""
 
@@ -47,7 +51,7 @@ class _GwayCommandCall:
         self.command = command
         self.cache = cache
         project = registry.require(project_name)
-        alias_arguments = (project.alias_arguments or {}).get(project_name, ())
+        alias_arguments = _alias_arguments(project, project_name)
         self.__sigils_requires_args__ = not alias_arguments and any(
             parameter.required for parameter in command.parameters
         )
@@ -57,7 +61,7 @@ class _GwayCommandCall:
             return None
 
         project = self.registry.require(self.project_name)
-        alias_arguments = (project.alias_arguments or {}).get(self.project_name, ())
+        alias_arguments = _alias_arguments(project, self.project_name)
         cache_key = (
             project.name,
             alias_arguments,
@@ -142,7 +146,7 @@ class _GwayNamespaceProvider:
                 if any(parameter.required for parameter in command.parameters):
                     raise KeyError(key)
                 project = self.registry.require(self.project_name)
-                alias_arguments = (project.alias_arguments or {}).get(self.project_name, ())
+                alias_arguments = _alias_arguments(project, self.project_name)
                 cache_key = (project.name, alias_arguments, resolved_path, (), ())
                 if cache_key not in self.cache:
                     self.cache[cache_key] = dispatcher.run(self.project_name, resolved_path)
@@ -188,13 +192,15 @@ def gway_context(
         for name in (project.name, *project.aliases):
             if name in RESERVED_CONTEXT_KEYS:
                 continue
-            context[name] = SafeNamespace(
+            namespace = SafeNamespace(
                 _GwayNamespaceProvider(
                     active_registry,
                     name,
                     cache=cache,
                 )
             )
+            context[name] = namespace
+            context.setdefault(name.casefold(), namespace)
 
     return context
 

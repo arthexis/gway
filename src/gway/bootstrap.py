@@ -10,6 +10,9 @@ _EXPLAIN_FLAGS = frozenset({"-e", "--explain"})
 _RUNTIME_LIFECYCLE = frozenset({"install", "upgrade", "uninstall", "log"})
 _ORIGINAL_ARGV_ENV = "GWAY_RESUME_ORIGINAL_ARGV"
 
+_SERVICE_VALUE_OPTIONS = frozenset({"--project", "--user"})
+_SHELL_VALUE_OPTIONS = frozenset({"--shell"})
+
 
 def _partition_args(args: Sequence[str]) -> tuple[list[str], list[str]]:
     global_flags: list[str] = []
@@ -24,6 +27,53 @@ def _partition_args(args: Sequence[str]) -> tuple[list[str], list[str]]:
         else:
             command_args.append(arg)
     return global_flags, command_args
+
+
+def _normalize_command_identifiers(args: Sequence[str]) -> list[str]:
+    """Case-fold command identifiers without changing argument values."""
+    normalized = list(args)
+    literal = False
+    command_index: int | None = None
+    for index, arg in enumerate(normalized):
+        if not literal and arg == "--":
+            literal = True
+            continue
+        if not literal and arg in _GLOBAL_FLAGS:
+            continue
+        if literal or arg.startswith("-"):
+            continue
+        command_index = index
+        if arg.startswith("[") or ":" in arg or "|" in arg:
+            return normalized
+        normalized[index] = arg.casefold()
+        break
+
+    if command_index is None:
+        return normalized
+
+    command = normalized[command_index]
+    if command not in {"service", "shell"}:
+        return normalized
+
+    value_options = _SERVICE_VALUE_OPTIONS if command == "service" else _SHELL_VALUE_OPTIONS
+    skip_value = False
+    for action_index in range(command_index + 1, len(normalized)):
+        action = normalized[action_index]
+        if skip_value:
+            skip_value = False
+            continue
+        if action in _GLOBAL_FLAGS:
+            continue
+        if action in value_options:
+            skip_value = True
+            continue
+        if action == "--":
+            break
+        if action.startswith("-"):
+            continue
+        normalized[action_index] = action.casefold()
+        break
+    return normalized
 
 
 def _normalize_install_args(argv: Sequence[str] | None) -> tuple[list[str] | None, int | None]:
@@ -46,7 +96,11 @@ def _normalize_install_args(argv: Sequence[str] | None) -> tuple[list[str] | Non
         )
         return None, 2
 
-    if command_args in (["install", "--self"], ["install", "gway"]):
+    if command_args == ["install", "--self"] or (
+        len(command_args) == 2
+        and command_args[0] == "install"
+        and command_args[1].casefold() == "gway"
+    ):
         return [*global_flags, "upgrade", "gway"], None
 
     return args, None
@@ -278,6 +332,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return resume_result
 
     args, explain = _extract_explain_flag(raw_args)
+    args = _normalize_command_identifiers(args)
 
     from .explain import explain_scope, record, render_trace
 
