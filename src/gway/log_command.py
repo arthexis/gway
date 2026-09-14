@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from .config import GwayPaths
 from .dispatcher.errors import DispatchError
 from .history import last_run
-from .log_consumers import configure_consumers, normalize_consumers
+from .log_consumers import ConsumerResolver, configure_consumers, normalize_consumers
 from .logging import configure, current_context
 from .solve import solve_values
 
@@ -16,12 +16,21 @@ def _resolve_argument(value: str) -> str:
     return resolved if isinstance(resolved, str) else str(resolved)
 
 
-def _default_dispatch(project: str, tokens: Sequence[str]) -> object:
-    # Import lazily so the core log parser does not create a dispatcher unless a
-    # consumer binding actually needs a managed provider capability.
+def _default_access(
+    paths: GwayPaths | None,
+) -> tuple[Callable[[str, Sequence[str]], object], ConsumerResolver]:
+    # Import lazily so ordinary log inspection does not construct a dispatcher.
     from .dispatcher import Dispatcher
+    from .registry import Registry
 
-    return Dispatcher().run(project, tokens)
+    registry = Registry(paths=paths)
+    dispatcher = Dispatcher(registry=registry)
+    return dispatcher.run, registry.get
+
+
+def _bound_registry(dispatch: Callable[[str, Sequence[str]], object] | None):
+    owner = getattr(dispatch, "__self__", None)
+    return getattr(owner, "registry", None)
 
 
 def run_log(
@@ -29,6 +38,7 @@ def run_log(
     *,
     dispatch: Callable[[str, Sequence[str]], object] | None = None,
     paths: GwayPaths | None = None,
+    resolve_consumer: ConsumerResolver | None = None,
 ) -> dict[str, object]:
     """Inspect logging context, configure consumers, or query command history."""
     parser = argparse.ArgumentParser(prog="gway log", add_help=False)
@@ -78,18 +88,33 @@ def run_log(
     consumers = normalize_consumers(consumer_values)
     binding: dict[str, object] | None = None
     if consumers:
+        active_dispatch = dispatch
+        active_resolver = resolve_consumer
+        active_paths = paths
+        registry = _bound_registry(active_dispatch)
+        if registry is not None:
+            if active_paths is None:
+                active_paths = registry.paths
+            if active_resolver is None:
+                active_resolver = registry.get
+        if active_dispatch is None or active_resolver is None:
+            default_dispatch, default_resolver = _default_access(active_paths)
+            active_dispatch = active_dispatch or default_dispatch
+            active_resolver = active_resolver or default_resolver
+
         existing = current_context().get("to", [])
-        existing_destinations = tuple(
-            value for value in existing if isinstance(value, str)
-        ) if isinstance(existing, list) else ()
-        effective_destinations = tuple(
-            dict.fromkeys((*existing_destinations, *destinations))
+        existing_destinations = (
+            tuple(value for value in existing if isinstance(value, str))
+            if isinstance(existing, list)
+            else ()
         )
+        effective_destinations = tuple(dict.fromkeys((*existing_destinations, *destinations)))
         binding = configure_consumers(
             consumers,
             effective_destinations,
-            dispatch=dispatch or _default_dispatch,
-            paths=paths,
+            dispatch=active_dispatch,
+            paths=active_paths,
+            resolve_consumer=active_resolver,
         )
 
     if tags or destinations or consumers:
