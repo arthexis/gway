@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from gway.commands import RUNTIME_COMMAND_NAMES
 from gway.config import GwayPaths
 from gway.project import ManifestError, Project
 from gway.registry import Registry, RegistryError
@@ -74,7 +75,7 @@ def test_registry_reserves_percent_project_alias(tmp_path: Path) -> None:
         registry.register(project)
 
 
-@pytest.mark.parametrize("name", ["recipe", "result", "store"])
+@pytest.mark.parametrize("name", sorted(RUNTIME_COMMAND_NAMES))
 def test_registry_reserves_runtime_operation_project_names(tmp_path: Path, name: str) -> None:
     registry = Registry(GwayPaths(tmp_path / "config", tmp_path / "data"))
     project = Project.from_path(make_project(tmp_path / name, name=name, aliases="[]"))
