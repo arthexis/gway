@@ -227,18 +227,19 @@ def project_context(
 
     Project ``[variables]`` values provide defaults for Sigil names. A process
     environment variable with the same name overrides the manifest value.
-    Other environment values remain available as the lowest-priority Sigil
-    fallback without replacing GWAY's built-in context.
+    Manifest and environment values never replace framework-owned or managed
+    project namespaces.
     """
     context = base_context(paths)
 
-    project_variables = dict(project.variables or {})
-    for key in tuple(project_variables):
-        if key in os.environ:
-            project_variables[key] = os.environ[key]
-    context.update(project_variables)
+    protected_names = set(context) | RESERVED_CONTEXT_KEYS
+    for key, value in (project.variables or {}).items():
+        if key in protected_names:
+            continue
+        context[key] = os.environ.get(key, value)
     for key, value in os.environ.items():
-        context.setdefault(key, value)
+        if key not in protected_names:
+            context.setdefault(key, value)
 
     context.update(
         {
