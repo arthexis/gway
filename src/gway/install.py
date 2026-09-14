@@ -3,14 +3,25 @@ from __future__ import annotations
 import shutil
 import tempfile
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+from .config import GwayPaths
 from .project import Project
 from .registry import Registry
 from .repository import RepositoryManager, ResolvedRepository
 from .runner import Runner
 from .service import ServiceError, ServiceManager
+
+
+@dataclass(frozen=True)
+class AdoptionPreview:
+    """Metadata for a non-destructive managed-install adoption preflight."""
+
+    name: str
+    source: Path
+    target: Path | None
+    revision: str | None
 
 
 class Installer:
@@ -83,6 +94,54 @@ class Installer:
                 shutil.rmtree(temporary, ignore_errors=True)
             shutil.rmtree(lock, ignore_errors=True)
         return target, replace(project, path=target), False
+
+    def preview_adoption(
+        self,
+        spec: str,
+        source: str | Path,
+        *,
+        arguments: Sequence[str] = (),
+    ) -> AdoptionPreview:
+        """Run a project's adoption preflight without creating managed resources."""
+        source_path = Path(source).expanduser().resolve()
+        if not source_path.is_dir():
+            raise ValueError(f"adoption source is not a directory: {source_path}")
+
+        repository = self.repositories.resolve(spec)
+        with tempfile.TemporaryDirectory(prefix="gway-adopt-") as temporary:
+            temporary_root = Path(temporary)
+            checkout = self.repositories.clone(
+                repository,
+                destination=temporary_root / "checkout",
+            )
+            project = Project.from_path(checkout)
+            project = replace(
+                project,
+                repository=repository.full_name,
+                revision=self.repositories.revision(checkout),
+            )
+            target = project.install_layout.checkout if project.install_layout is not None else None
+
+            # Preflight needs current trusted project code but must not create the
+            # canonical managed environment declared by the project manifest.
+            preview_project = replace(project, install_layout=None)
+            preview_runner = Runner(
+                GwayPaths(
+                    config_dir=temporary_root / "config",
+                    data_dir=temporary_root / "data",
+                )
+            )
+            environment = preview_runner.prepare(preview_project, arguments=arguments)
+            if environment is not None:
+                preview_project = replace(preview_project, environment=environment)
+            preview_runner.run_lifecycle(preview_project, "install", arguments)
+
+            return AdoptionPreview(
+                name=project.name,
+                source=source_path,
+                target=target,
+                revision=project.revision,
+            )
 
     def install(self, spec: str, *, arguments: Sequence[str] = ()) -> Project:
         repository = self.repositories.resolve(spec)
