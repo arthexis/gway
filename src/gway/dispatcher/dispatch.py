@@ -237,6 +237,22 @@ class Dispatcher:
                 argv=list(argv),
             )
 
+        string_defaults = {
+            parameter.name: parameter.default
+            for parameter in command.parameters
+            if isinstance(parameter.default, str)
+        }
+        argv, default_values = _fill_context_options(command, argv, string_defaults)
+        if default_values:
+            record(
+                "arguments.defaults",
+                "filled omitted string arguments from function defaults",
+                project=project.name,
+                command=list(command.path),
+                values=default_values,
+                argv=list(argv),
+            )
+
         if interactive:
             argv = _fill_required_options(command, argv, prompt=prompt)
             record(
