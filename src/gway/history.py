@@ -5,8 +5,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import logging as logging_module
 from .logging import current_run_id
-import gway.logging as logging_module
 
 
 @dataclass(frozen=True)
@@ -56,14 +56,25 @@ def _event_data(event: dict[str, object]) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
+def _command(events: tuple[dict[str, object], ...]) -> tuple[str, ...]:
+    for kind, field in (
+        ("execution.start", "argv"),
+        ("chain.start", "tokens"),
+        ("runtime.frame.enter", "tokens"),
+        ("dispatch.start", "tokens"),
+    ):
+        for event in events:
+            if event.get("kind") != kind:
+                continue
+            value = _event_data(event).get(field)
+            if isinstance(value, list):
+                return tuple(str(item) for item in value)
+    return ()
+
+
 def _record(run_id: str, events: tuple[dict[str, object], ...]) -> RunRecord | None:
     if not events:
         return None
-
-    start = next((event for event in events if event.get("kind") == "execution.start"), None)
-    start_data = _event_data(start) if start is not None else {}
-    argv = start_data.get("argv", [])
-    command = tuple(str(value) for value in argv) if isinstance(argv, list) else ()
 
     projects: list[str] = []
     for event in events:
@@ -74,20 +85,21 @@ def _record(run_id: str, events: tuple[dict[str, object], ...]) -> RunRecord | N
             projects.append(project)
 
     failures = [event for event in events if event.get("kind") == "execution.failure"]
-    successes = [event for event in events if event.get("kind") == "execution.success"]
+    success_kinds = {"execution.success", "chain.result", "recipe.result"}
+    successes = [event for event in events if event.get("kind") in success_kinds]
     status = "failed" if failures else "succeeded" if successes else "incomplete"
 
     terminal = failures[-1] if failures else successes[-1] if successes else None
     terminal_data = _event_data(terminal) if terminal is not None else {}
     raw_exit_code = terminal_data.get("exit_code")
-    exit_code = raw_exit_code if isinstance(raw_exit_code, int) else None
+    exit_code = raw_exit_code if isinstance(raw_exit_code, int) else (0 if successes else None)
 
     error: dict[str, object] | None = None
     if failures:
         detail = next(
             (
                 _event_data(event)
-                for event in reversed(failures)
+                for event in reversed(events)
                 if any(key in _event_data(event) for key in ("error", "exception", "traceback"))
             ),
             terminal_data,
@@ -102,13 +114,21 @@ def _record(run_id: str, events: tuple[dict[str, object], ...]) -> RunRecord | N
     return RunRecord(
         run_id=run_id,
         timestamp=timestamp if isinstance(timestamp, str) else None,
-        command=command,
+        command=_command(events),
         projects=tuple(projects),
         status=status,
         exit_code=exit_code,
         error=error,
         events=events,
     )
+
+
+def _directory_order(path: Path) -> tuple[float, str]:
+    try:
+        modified = path.stat().st_mtime
+    except OSError:
+        modified = 0.0
+    return modified, path.name
 
 
 def iter_runs(*, exclude_current: bool = True) -> Iterator[RunRecord]:
@@ -120,7 +140,7 @@ def iter_runs(*, exclude_current: bool = True) -> Iterator[RunRecord]:
     try:
         directories = sorted(
             (path for path in root.iterdir() if path.is_dir()),
-            key=lambda path: path.name,
+            key=_directory_order,
             reverse=True,
         )
     except OSError:
