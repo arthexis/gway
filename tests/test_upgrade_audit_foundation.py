@@ -21,11 +21,13 @@ def test_repository_status_returns_structured_entries(monkeypatch, tmp_path: Pat
             str(checkout),
             "status",
             "--porcelain=v1",
+            "--untracked-files=all",
             "-z",
         ]
         assert kwargs["check"] is True
         assert kwargs["capture_output"] is True
         assert kwargs["text"] is True
+        assert kwargs["errors"] == "surrogateescape"
         return SimpleNamespace(
             returncode=0,
             stdout=" M src/example.py\0?? notes with spaces.txt\0",
@@ -113,6 +115,7 @@ class TryForceRepositories:
         self.fail_force = fail_force
         self.calls: list[bool] = []
         self.status_calls = 0
+        self.current_revision = "working-revision"
         self.entries = (
             WorkingTreeEntry(status=" M", path="src/example.py"),
             WorkingTreeEntry(status="??", path="scratch.txt"),
@@ -124,14 +127,15 @@ class TryForceRepositories:
             raise RepositoryError("managed checkout has local changes")
         if force and self.fail_force:
             raise RepositoryError("forced fetch failed")
-        return "new-revision"
+        self.current_revision = "new-revision"
+        return self.current_revision
 
     def status(self, checkout: Path) -> tuple[WorkingTreeEntry, ...]:
         self.status_calls += 1
         return self.entries
 
     def revision(self, checkout: Path) -> str:
-        return "new-revision"
+        return self.current_revision
 
     def reset(self, checkout: Path, full_name: str, revision: str) -> None:
         return None
