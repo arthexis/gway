@@ -115,14 +115,18 @@ class _Runner:
         self.paths = paths
 
     def prepare(self, project, *, arguments=()):
-        assert project.install_layout is None
-        environment = self.paths.environments_dir / project.name
+        assert project.install_layout is not None
+        temporary_root = self.paths.config_dir.parent
+        assert project.install_layout.root.is_relative_to(temporary_root)
+        assert project.install_layout.checkout.is_relative_to(temporary_root)
+        assert project.install_layout.environment.is_relative_to(temporary_root)
+        environment = project.install_layout.environment
         environment.mkdir(parents=True)
         self.calls.append(("prepare", tuple(arguments)))
         return environment
 
     def run_lifecycle(self, project, action: str, arguments=()):
-        assert project.install_layout is None
+        assert project.install_layout is not None
         assert project.environment is not None and project.environment.exists()
         self.calls.append(("hook", action, tuple(arguments)))
 
@@ -140,13 +144,15 @@ def test_preview_adoption_does_not_touch_source_target_or_registry(
     repositories = _Repositories(target)
     _Runner.calls = []
     monkeypatch.setattr(install_module, "Runner", _Runner)
+    monkeypatch.chdir(tmp_path)
 
     preview = Installer(registry, repositories=repositories).preview_adoption(
         "demo",
-        source,
-        arguments=("--adopt", "--from", str(source), "--dry-run"),
+        Path("source"),
+        arguments=("--adopt", "--from", "source", "--dry-run"),
     )
 
+    normalized_source = str(source.resolve())
     assert preview.source == source.resolve()
     assert preview.target == target / "app"
     assert preview.revision == "0123456789abcdef"
@@ -156,6 +162,6 @@ def test_preview_adoption_does_not_touch_source_target_or_registry(
     assert repositories.clone_destination is not None
     assert not repositories.clone_destination.exists()
     assert _Runner.calls == [
-        ("prepare", ("--adopt", "--from", str(source), "--dry-run")),
-        ("hook", "install", ("--adopt", "--from", str(source), "--dry-run")),
+        ("prepare", ("--adopt", "--from", normalized_source, "--dry-run")),
+        ("hook", "install", ("--adopt", "--from", normalized_source, "--dry-run")),
     ]
