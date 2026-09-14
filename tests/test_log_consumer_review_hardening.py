@@ -4,8 +4,6 @@ import importlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import pytest
-
 import gway.log_consumers as consumers_module
 from gway.adapters import AdapterRegistry
 from gway.command import Command
@@ -120,12 +118,15 @@ def test_consumer_environment_uses_active_state_pointer(tmp_path: Path, monkeypa
     monkeypatch.delenv("GWAY_DATA_HOME", raising=False)
     monkeypatch.delenv("GWAY_LOG_CONSUMER_STATE", raising=False)
 
+    def resolve(name: str) -> Project | None:
+        return project if name.casefold() in {"wire", "gway-wire"} else None
+
     configure_consumers(
         ["wire"],
         ["https://logs.example.test"],
         dispatch=FakeWeb().dispatch,
         paths=paths,
-        resolve_consumer=lambda name: project if name.casefold() in {"wire", "gway-wire"} else None,
+        resolve_consumer=resolve,
     )
 
     rendered = ServiceManager(project, unit_directory=tmp_path / "systemd").render(user="root")
