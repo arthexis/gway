@@ -8,6 +8,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+try:
+    import pwd
+except ImportError:  # pragma: no cover - unavailable on Windows
+    pwd = None  # type: ignore[assignment]
+
 from ..project import Project
 from ..runner import Runner
 from .manifest import ServiceError, _strings
@@ -58,6 +63,41 @@ def _expand(value: str, project: Project) -> str:
     )
 
 
+def _managed_root(project: Project) -> Path:
+    if project.install_layout is not None:
+        return project.install_layout.root.resolve()
+    return project.path.resolve()
+
+
+def _writable_paths(config: dict[str, Any], project: Project, section: str) -> list[Path]:
+    values = _strings(config.get("writable_paths"), "writable_paths", section)
+    if not values:
+        return []
+    root = _managed_root(project)
+    paths: list[Path] = []
+    for value in values:
+        expanded = Path(_expand(value, project)).expanduser()
+        if not expanded.is_absolute():
+            raise ServiceError(f"[{section}].writable_paths entries must expand to absolute paths")
+        target = expanded.resolve(strict=False)
+        if target == root or root not in target.parents:
+            raise ServiceError(
+                f"[{section}].writable_paths entries must stay below managed root {root}"
+            )
+        paths.append(target)
+    return paths
+
+
+def _chown_tree(path: Path, uid: int, gid: int) -> None:
+    os.chown(path, uid, gid, follow_symlinks=False)
+    if not path.is_dir() or path.is_symlink():
+        return
+    for directory, names, filenames in os.walk(path, followlinks=False):
+        base = Path(directory)
+        for name in [*names, *filenames]:
+            os.chown(base / name, uid, gid, follow_symlinks=False)
+
+
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["systemctl", *arguments], check=check, text=True, capture_output=True)
 
@@ -82,6 +122,10 @@ class _ServiceUnit:
         self.unit_name = self._unit_name()
         self.unit_path = unit_directory / self.unit_name
 
+    @property
+    def section(self) -> str:
+        return "service" if self.legacy else f"services.{self.key}"
+
     def _unit_name(self) -> str:
         default = f"gway-{self.project.name}"
         if not self.legacy:
@@ -91,12 +135,31 @@ class _ServiceUnit:
             raise ServiceError("service name must be a safe systemd unit name")
         return value if value.endswith(".service") else f"{value}.service"
 
+    def writable_paths(self) -> list[Path]:
+        return _writable_paths(self.config, self.project, self.section)
+
+    def prepare_writable_paths(self, *, user: str | None = None) -> None:
+        paths = self.writable_paths()
+        if not paths:
+            return
+        account = _service_user(self.config, user)
+        if pwd is None:
+            raise ServiceError("managed writable paths require POSIX account lookup")
+        try:
+            identity = pwd.getpwnam(account)
+        except KeyError as exc:
+            raise ServiceError(f"service user does not exist: {account}") from exc
+        for path in paths:
+            path.mkdir(parents=True, exist_ok=True)
+            _chown_tree(path, identity.pw_uid, identity.pw_gid)
+
     def render(self, *, user: str | None = None) -> str:
-        section = "service" if self.legacy else f"services.{self.key}"
+        section = self.section
         command = _strings(self.config.get("command"), "command", section)
         if not command:
             raise ServiceError(f"[{section}].command must contain at least one argument")
         command = [_expand(argument, self.project) for argument in command]
+        self.writable_paths()
         default_description = (
             f"GWAY {self.project.name} service"
             if self.legacy
