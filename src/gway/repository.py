@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,15 @@ class ResolvedRepository:
     @property
     def clone_url(self) -> str:
         return f"https://github.com/{self.full_name}.git"
+
+
+@dataclass(frozen=True)
+class WorkingTreeEntry:
+    """One path reported by ``git status --porcelain=v1 -z``."""
+
+    status: str
+    path: str
+    original_path: str | None = None
 
 
 class RepositoryManager:
@@ -131,6 +141,60 @@ class RepositoryManager:
     def _git_failure(result: subprocess.CompletedProcess[str], fallback: str) -> str:
         return result.stderr.strip() or result.stdout.strip() or fallback
 
+    @staticmethod
+    def status(checkout: Path) -> tuple[WorkingTreeEntry, ...]:
+        """Return structured working-tree status without reading file contents."""
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(checkout),
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=all",
+                    "-z",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                errors="surrogateescape",
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise RepositoryError(f"cannot inspect managed checkout {checkout}: {exc}") from exc
+
+        fields = result.stdout.split("\0")
+        if fields and fields[-1] == "":
+            fields.pop()
+
+        entries: list[WorkingTreeEntry] = []
+        index = 0
+        while index < len(fields):
+            field = fields[index]
+            if len(field) < 3 or field[2] != " ":
+                raise RepositoryError(
+                    f"invalid git status output for managed checkout {checkout}"
+                )
+            status = field[:2]
+            path = field[3:]
+            original_path: str | None = None
+            if "R" in status or "C" in status:
+                index += 1
+                if index >= len(fields):
+                    raise RepositoryError(
+                        f"invalid git status rename for managed checkout {checkout}"
+                    )
+                original_path = fields[index]
+            entries.append(
+                WorkingTreeEntry(
+                    status=status,
+                    path=path,
+                    original_path=original_path,
+                )
+            )
+            index += 1
+        return tuple(entries)
+
     def validate_checkout(self, checkout: Path, full_name: str) -> None:
         repository = self._managed_repository(full_name)
         if not checkout.is_dir():
@@ -164,21 +228,22 @@ class RepositoryManager:
             detail = self._git_failure(result, "git reset --hard failed")
             raise RepositoryError(f"cannot restore {full_name} to {revision}: {detail}")
 
-    def upgrade(self, checkout: Path, full_name: str, *, force: bool = False) -> str:
+    def upgrade(
+        self,
+        checkout: Path,
+        full_name: str,
+        *,
+        force: bool = False,
+        _force_status: Callable[[tuple[WorkingTreeEntry, ...]], None] | None = None,
+    ) -> str:
         """Upgrade one trusted managed checkout and return its new revision."""
         repository = self._managed_repository(full_name)
 
         if not checkout.is_dir():
             raise RepositoryError(f"managed checkout does not exist: {checkout}")
 
+        status = self.status(checkout)
         try:
-            status = subprocess.run(
-                ["git", "-C", str(checkout), "status", "--porcelain"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-
             origin = subprocess.run(
                 ["git", "-C", str(checkout), "remote", "get-url", "origin"],
                 check=True,
@@ -210,6 +275,12 @@ class RepositoryManager:
                     detail = self._git_failure(fetch, "git fetch failed")
                     raise RepositoryError(f"cannot fetch {full_name}: {detail}")
 
+                # Capture as close as possible to the destructive commands. This is
+                # operation-scoped but cannot be atomic with external filesystem writes.
+                status = self.status(checkout)
+                if _force_status is not None:
+                    _force_status(status)
+
                 reset = subprocess.run(
                     ["git", "-C", str(checkout), "reset", "--hard", f"origin/{branch}"],
                     check=False,
@@ -230,7 +301,7 @@ class RepositoryManager:
                     detail = self._git_failure(clean, "git clean -fd failed")
                     raise RepositoryError(f"cannot clean {full_name}: {detail}")
             else:
-                if status.stdout.strip():
+                if status:
                     raise RepositoryError(
                         f"managed checkout has local changes; refusing upgrade: {checkout}"
                     )
@@ -250,3 +321,18 @@ class RepositoryManager:
             raise RepositoryError(f"cannot validate managed checkout {checkout}: {exc}") from exc
 
         return self.revision(checkout)
+
+    def upgrade_with_status(
+        self,
+        checkout: Path,
+        full_name: str,
+    ) -> tuple[str, tuple[WorkingTreeEntry, ...]]:
+        """Force-upgrade and return the operation-scoped pre-destructive status snapshot."""
+        captured: list[tuple[WorkingTreeEntry, ...]] = []
+        revision = self.upgrade(
+            checkout,
+            full_name,
+            force=True,
+            _force_status=captured.append,
+        )
+        return revision, captured[0] if captured else ()
