@@ -18,6 +18,9 @@ _LOG_CONTEXT_ENV = "GWAY_LOG_CONTEXT"
 _run_id: ContextVar[str | None] = ContextVar("gway_log_run_id", default=None)
 _tags: ContextVar[tuple[str, ...]] = ContextVar("gway_log_tags", default=())
 _destinations: ContextVar[tuple[str, ...]] = ContextVar("gway_log_destinations", default=())
+_failed_remote_destinations: ContextVar[frozenset[str]] = ContextVar(
+    "gway_log_failed_remote_destinations", default=frozenset()
+)
 
 
 def _now() -> str:
@@ -44,6 +47,7 @@ def _safe_run_id(value: str) -> bool:
 def _reset_run_context() -> None:
     _tags.set(())
     _destinations.set(())
+    _failed_remote_destinations.set(frozenset())
 
 
 def _persist_run_context(run_id: str) -> None:
@@ -152,6 +156,14 @@ def _replace(path: Path, data: bytes) -> None:
         os.close(descriptor)
 
 
+def _publish_remote(destination: str, data: bytes) -> None:
+    if destination in _failed_remote_destinations.get():
+        return
+    if publish_http(destination, current_run_id(), data):
+        return
+    _failed_remote_destinations.set(_failed_remote_destinations.get() | {destination})
+
+
 def _backfill(destination: str) -> None:
     source = run_directory() / "events.jsonl"
     if not source.exists():
@@ -167,7 +179,7 @@ def _backfill(destination: str) -> None:
         except OSError:
             pass
         return
-    publish_http(destination, current_run_id(), data)
+    _publish_remote(destination, data)
 
 
 def configure(*, tags: tuple[str, ...] = (), to: tuple[str, ...] = ()) -> dict[str, object]:
@@ -221,4 +233,4 @@ def write_event(kind: str, message: str, data: Mapping[str, object] | None = Non
             except OSError:
                 pass
             continue
-        publish_http(destination, current_run_id(), line)
+        _publish_remote(destination, line)
