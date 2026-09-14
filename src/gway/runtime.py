@@ -13,6 +13,7 @@ from .dispatcher.errors import CommandNotFound, DispatchError
 from .explain import record
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .install import Installer
+from .log_command import run_log
 from .project import Project
 from .provenance import ExecutionFrame, ExecutionFrameStack
 from .result import run_result
@@ -25,7 +26,7 @@ from .upgrade import UpgradeError, UpgradeResult, Upgrader
 _SELECTOR = re.compile(r"\[(?P<index>[1-9]\d*)\]\Z")
 _WILDCARD = "[*]"
 _RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
-_CORE_OPERATIONS = frozenset({"install", "upgrade", "uninstall"})
+_CORE_OPERATIONS = frozenset({"install", "upgrade", "uninstall", "log"})
 
 
 class _RuntimeParser(argparse.ArgumentParser):
@@ -387,6 +388,8 @@ class GwayRuntime:
             return self._run_upgrade(tokens[1:])
         if operation == "uninstall":
             return self._run_uninstall(tokens[1:])
+        if operation == "log":
+            return run_log(tokens[1:])
         raise DispatchError(f"unknown GWAY core operation: {operation}")
 
     def _run_install(self, argv: Sequence[str]) -> object:
