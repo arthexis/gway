@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from gway.chain_context import chain_context_scope
+from gway.dispatcher.errors import DispatchError
 from gway.log_command import run_log
 from gway.logging import write_event
 from gway.runtime import GwayRuntime
@@ -43,6 +47,24 @@ def test_log_destination_backfills_existing_run(tmp_path, monkeypatch) -> None:
     mirrored = _events(mirror / "test-log-backfill" / "events.jsonl")
     assert mirrored[0]["kind"] == "before.destination"
     assert mirrored[-1]["kind"] == "log.configure"
+
+
+def test_log_resolves_recipe_context_sigils(tmp_path, monkeypatch) -> None:
+    local = tmp_path / "local"
+    mirror = tmp_path / "mirror"
+    monkeypatch.setenv("GWAY_LOG_DIR", str(local))
+    monkeypatch.setenv("GWAY_RUN_ID", "test-log-sigil")
+
+    with chain_context_scope({"log_destination": str(mirror)}):
+        state = run_log(["--to", "[log_destination]"])
+
+    assert state["to"] == [str(mirror)]
+    assert (mirror / "test-log-sigil" / "events.jsonl").exists()
+
+
+def test_log_invalid_options_raise_dispatch_error() -> None:
+    with pytest.raises(DispatchError, match="unrecognized log arguments"):
+        run_log(["--bogus"])
 
 
 def test_runtime_exposes_log_as_core_operation(tmp_path, monkeypatch) -> None:
