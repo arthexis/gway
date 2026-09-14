@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import importlib
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 import gway.log_consumers as consumers_module
 from gway.adapters import AdapterRegistry
@@ -10,6 +14,7 @@ from gway.command import Command
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.dispatcher.dispatch import redact_command_results
+from gway.dispatcher.errors import DispatchError
 from gway.log_consumers import configure_consumers
 from gway.project import Project
 from gway.registry import Registry
@@ -134,6 +139,93 @@ def test_consumer_environment_uses_active_state_pointer(tmp_path: Path, monkeypa
     assert f'EnvironmentFile="{expected}"' in rendered
 
 
+def test_remote_consumer_destinations_require_transport_security() -> None:
+    assert consumers_module._remote_destination(["http://127.0.0.1:8040"]) == (
+        "http://127.0.0.1:8040"
+    )
+    assert consumers_module._remote_destination(["http://[::1]:8040"]) == "http://[::1]:8040"
+    assert consumers_module._remote_destination(["https://logs.example.test"]) == (
+        "https://logs.example.test"
+    )
+    with pytest.raises(DispatchError, match="must use HTTPS unless loopback"):
+        consumers_module._remote_destination(["http://logs.example.test"])
+
+
+def test_state_lock_serializes_writers(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+    active = 0
+    maximum_active = 0
+    guard = threading.Lock()
+    ready = threading.Barrier(2)
+
+    def worker() -> None:
+        nonlocal active, maximum_active
+        ready.wait()
+        with consumers_module._state_lock(paths):
+            with guard:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            time.sleep(0.05)
+            with guard:
+                active -= 1
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+
+    assert maximum_active == 1
+
+
+def test_environment_change_refreshes_registered_consumers(tmp_path: Path, monkeypatch) -> None:
+    paths = _paths(tmp_path)
+    project = _service_project(tmp_path)
+    web = FakeWeb()
+    refreshed: list[str] = []
+
+    def resolve(name: str) -> Project | None:
+        return project if name.casefold() in {"wire", "gway-wire"} else None
+
+    monkeypatch.setattr(
+        consumers_module,
+        "_refresh_running_consumer_services",
+        lambda consumers, resolver: refreshed.extend(consumers) or ["gway-wire.service"],
+    )
+
+    first = configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+        resolve_consumer=resolve,
+    )
+    assert refreshed == ["wire"]
+    assert first["refreshed_services"] == ["gway-wire.service"]
+
+    refreshed.clear()
+    unchanged = configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+        resolve_consumer=resolve,
+    )
+    assert refreshed == []
+    assert "refreshed_services" not in unchanged
+
+    moved = configure_consumers(
+        ["wire"],
+        ["https://other-logs.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+        resolve_consumer=resolve,
+    )
+    assert refreshed == ["wire"]
+    assert moved["refreshed_services"] == ["gway-wire.service"]
+
+
 def test_rotated_token_refreshes_registered_consumers(tmp_path: Path, monkeypatch) -> None:
     paths = _paths(tmp_path)
     project = _service_project(tmp_path)
@@ -156,7 +248,7 @@ def test_rotated_token_refreshes_registered_consumers(tmp_path: Path, monkeypatc
         paths=paths,
         resolve_consumer=resolve,
     )
-    assert refreshed == []
+    refreshed.clear()
 
     web.revoked = True
     web.token_id = "replacement"
