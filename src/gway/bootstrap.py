@@ -26,6 +26,33 @@ def _partition_args(args: Sequence[str]) -> tuple[list[str], list[str]]:
     return global_flags, command_args
 
 
+def _normalize_command_identifiers(args: Sequence[str]) -> list[str]:
+    """Case-fold command identifiers without changing argument values."""
+    normalized = list(args)
+    literal = False
+    command_index: int | None = None
+    for index, arg in enumerate(normalized):
+        if not literal and arg == "--":
+            literal = True
+            continue
+        if not literal and arg in _GLOBAL_FLAGS:
+            continue
+        if literal or arg.startswith("-"):
+            continue
+        command_index = index
+        normalized[index] = arg.casefold()
+        break
+
+    if command_index is None:
+        return normalized
+
+    if normalized[command_index] in {"service", "shell"}:
+        action_index = command_index + 1
+        if action_index < len(normalized) and not normalized[action_index].startswith("-"):
+            normalized[action_index] = normalized[action_index].casefold()
+    return normalized
+
+
 def _normalize_install_args(argv: Sequence[str] | None) -> tuple[list[str] | None, int | None]:
     if argv is None:
         args = list(sys.argv[1:])
@@ -46,7 +73,11 @@ def _normalize_install_args(argv: Sequence[str] | None) -> tuple[list[str] | Non
         )
         return None, 2
 
-    if command_args in (["install", "--self"], ["install", "gway"]):
+    if command_args == ["install", "--self"] or (
+        len(command_args) == 2
+        and command_args[0] == "install"
+        and command_args[1].casefold() == "gway"
+    ):
         return [*global_flags, "upgrade", "gway"], None
 
     return args, None
@@ -278,6 +309,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return resume_result
 
     args, explain = _extract_explain_flag(raw_args)
+    args = _normalize_command_identifiers(args)
 
     from .explain import explain_scope, record, render_trace
 
