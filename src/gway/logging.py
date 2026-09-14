@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Mapping
 from urllib.parse import unquote, urlparse
 
+from .log_http import publish as publish_http
+
 _RUN_ID_ENV = "GWAY_RUN_ID"
 _LOG_DIR_ENV = "GWAY_LOG_DIR"
 _LOG_CONTEXT_ENV = "GWAY_LOG_CONTEXT"
@@ -151,14 +153,21 @@ def _replace(path: Path, data: bytes) -> None:
 
 
 def _backfill(destination: str) -> None:
-    target = _destination_log(destination)
     source = run_directory() / "events.jsonl"
-    if target is None or not source.exists():
+    if not source.exists():
         return
     try:
-        _replace(target, source.read_bytes())
+        data = source.read_bytes()
     except OSError:
         return
+    target = _destination_log(destination)
+    if target is not None:
+        try:
+            _replace(target, data)
+        except OSError:
+            pass
+        return
+    publish_http(destination, current_run_id(), data)
 
 
 def configure(*, tags: tuple[str, ...] = (), to: tuple[str, ...] = ()) -> dict[str, object]:
@@ -206,9 +215,10 @@ def write_event(kind: str, message: str, data: Mapping[str, object] | None = Non
 
     for destination in _destinations.get():
         target = _destination_log(destination)
-        if target is None:
+        if target is not None:
+            try:
+                _append(target, line)
+            except OSError:
+                pass
             continue
-        try:
-            _append(target, line)
-        except OSError:
-            continue
+        publish_http(destination, current_run_id(), line)
