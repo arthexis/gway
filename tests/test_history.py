@@ -36,8 +36,16 @@ def test_last_failed_run_filters_by_project(tmp_path, monkeypatch) -> None:
         root,
         "older-epaper",
         [
-            _event("chain.start", {"tokens": ["epaper", "write", "hello"]}, "2026-09-14T10:00:00+00:00"),
-            _event("dispatch.start", {"project": "epaper", "tokens": ["write", "hello"]}, "2026-09-14T10:00:01+00:00"),
+            _event(
+                "chain.start",
+                {"tokens": ["epaper", "write", "hello"]},
+                "2026-09-14T10:00:00+00:00",
+            ),
+            _event(
+                "dispatch.start",
+                {"project": "epaper", "tokens": ["write", "hello"]},
+                "2026-09-14T10:00:01+00:00",
+            ),
             _event(
                 "execution.failure",
                 {"exit_code": 2, "exception": "ImportError", "error": "missing PIL"},
@@ -49,9 +57,21 @@ def test_last_failed_run_filters_by_project(tmp_path, monkeypatch) -> None:
         root,
         "newer-wire",
         [
-            _event("chain.start", {"tokens": ["wire", "status"]}, "2026-09-14T11:00:00+00:00"),
-            _event("dispatch.start", {"project": "wire", "tokens": ["status"]}, "2026-09-14T11:00:01+00:00"),
-            _event("execution.failure", {"exit_code": 2}, "2026-09-14T11:00:02+00:00"),
+            _event(
+                "chain.start",
+                {"tokens": ["wire", "status"]},
+                "2026-09-14T11:00:00+00:00",
+            ),
+            _event(
+                "dispatch.start",
+                {"project": "wire", "tokens": ["status"]},
+                "2026-09-14T11:00:01+00:00",
+            ),
+            _event(
+                "execution.failure",
+                {"exit_code": 2},
+                "2026-09-14T11:00:02+00:00",
+            ),
         ],
     )
 
@@ -75,8 +95,16 @@ def test_log_last_exposes_structured_history(tmp_path, monkeypatch) -> None:
         root,
         "failed-epaper",
         [
-            _event("dispatch.start", {"project": "epaper", "tokens": ["write"]}, "2026-09-14T12:00:00+00:00"),
-            _event("execution.failure", {"exit_code": 2}, "2026-09-14T12:00:01+00:00"),
+            _event(
+                "dispatch.start",
+                {"project": "epaper", "tokens": ["write"]},
+                "2026-09-14T12:00:00+00:00",
+            ),
+            _event(
+                "execution.failure",
+                {"exit_code": 2},
+                "2026-09-14T12:00:01+00:00",
+            ),
         ],
     )
 
@@ -95,9 +123,21 @@ def test_successful_run_is_available_without_failed_filter(tmp_path, monkeypatch
         root,
         "successful-run",
         [
-            _event("chain.start", {"tokens": ["epaper", "clear"]}, "2026-09-14T13:00:00+00:00"),
-            _event("dispatch.start", {"project": "epaper", "tokens": ["clear"]}, "2026-09-14T13:00:01+00:00"),
-            _event("chain.result", {"result": True}, "2026-09-14T13:00:02+00:00"),
+            _event(
+                "chain.start",
+                {"tokens": ["epaper", "clear"]},
+                "2026-09-14T13:00:00+00:00",
+            ),
+            _event(
+                "dispatch.start",
+                {"project": "epaper", "tokens": ["clear"]},
+                "2026-09-14T13:00:01+00:00",
+            ),
+            _event(
+                "chain.result",
+                {"result": True},
+                "2026-09-14T13:00:02+00:00",
+            ),
         ],
     )
 
@@ -106,3 +146,43 @@ def test_successful_run_is_available_without_failed_filter(tmp_path, monkeypatch
     assert result is not None
     assert result["status"] == "succeeded"
     assert result["exit_code"] == 0
+
+
+def test_direct_managed_command_reconstructs_project_and_succeeds(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "runs"
+    monkeypatch.setenv("GWAY_LOG_DIR", str(root))
+    monkeypatch.setenv("GWAY_RUN_ID", "query-run")
+    _write_run(
+        root,
+        "direct-run",
+        [
+            _event(
+                "dispatch.start",
+                {"project": "epaper", "tokens": ["write", "MixedCase"]},
+                "2026-09-14T14:00:00+00:00",
+            ),
+            _event(
+                "command.result",
+                {"project": "epaper", "command": ["write"], "result": True},
+                "2026-09-14T14:00:01+00:00",
+            ),
+        ],
+    )
+
+    result = last_run(project="epaper", failed=False)
+
+    assert result is not None
+    assert result["command"] == ["epaper", "write", "MixedCase"]
+    assert result["status"] == "succeeded"
+    assert result["exit_code"] == 0
+
+
+def test_invalid_utf8_history_is_skipped(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "runs"
+    monkeypatch.setenv("GWAY_LOG_DIR", str(root))
+    monkeypatch.setenv("GWAY_RUN_ID", "query-run")
+    broken = root / "broken-run"
+    broken.mkdir(parents=True)
+    (broken / "events.jsonl").write_bytes(b"\xff\xfe")
+
+    assert last_run() is None
