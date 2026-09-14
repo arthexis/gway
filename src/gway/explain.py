@@ -39,12 +39,19 @@ def _attach_context_provenance(kind: str, data: dict[str, object]) -> None:
 
 
 def record(kind: str, message: str, **data: object) -> None:
-    trace = _trace.get()
-    if trace is None:
-        return
     payload = dict(data)
     _attach_context_provenance(kind, payload)
-    trace.append(ExplainStep(kind=kind, message=message, data=payload))
+
+    # Persistent logging is independent from --explain. Existing execution,
+    # operation, and recipe instrumentation therefore becomes the canonical
+    # structured run log without requiring callers to opt in.
+    from .logging import write_event
+
+    write_event(kind, message, payload)
+
+    trace = _trace.get()
+    if trace is not None:
+        trace.append(ExplainStep(kind=kind, message=message, data=payload))
 
 
 @contextmanager
