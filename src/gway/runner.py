@@ -25,6 +25,8 @@ if result is not None:
     print(json.dumps(result, default=str))
 """
 _EXTRAS_MARKER = ".gway-install-extras.json"
+_MANAGED_GIT_EXCLUDE_HEADER = "# GWAY managed Python install artifacts"
+_MANAGED_GIT_EXCLUDES = ("*.egg-info/", "__pycache__/", "*.py[cod]")
 
 
 class Runner:
@@ -51,6 +53,49 @@ class Runner:
     @staticmethod
     def _extras_marker(environment: Path) -> Path:
         return environment / _EXTRAS_MARKER
+
+    @staticmethod
+    def _git_dir(checkout: Path) -> Path | None:
+        marker = checkout / ".git"
+        if marker.is_dir():
+            return marker
+        if not marker.is_file():
+            return None
+        try:
+            pointer = marker.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise RunnerError(f"cannot read managed checkout Git metadata {marker}: {exc}") from exc
+        prefix = "gitdir:"
+        if not pointer.lower().startswith(prefix):
+            raise RunnerError(f"invalid managed checkout Git metadata: {marker}")
+        git_dir = Path(pointer[len(prefix) :].strip())
+        if not git_dir.is_absolute():
+            git_dir = marker.parent / git_dir
+        return git_dir
+
+    @classmethod
+    def configure_managed_checkout(cls, checkout: Path) -> None:
+        """Locally ignore only artifacts produced by GWAY's Python install path."""
+        git_dir = cls._git_dir(checkout)
+        if git_dir is None:
+            return
+        exclude = git_dir / "info" / "exclude"
+        try:
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            current = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+            lines = set(current.splitlines())
+            missing = [pattern for pattern in _MANAGED_GIT_EXCLUDES if pattern not in lines]
+            if not missing:
+                return
+            additions: list[str] = []
+            if _MANAGED_GIT_EXCLUDE_HEADER not in lines:
+                additions.append(_MANAGED_GIT_EXCLUDE_HEADER)
+            additions.extend(missing)
+            prefix = "" if not current or current.endswith("\n") else "\n"
+            with exclude.open("a", encoding="utf-8") as stream:
+                stream.write(prefix + "\n".join(additions) + "\n")
+        except OSError as exc:
+            raise RunnerError(f"cannot configure managed checkout Git excludes {exclude}: {exc}") from exc
 
     @classmethod
     def _read_managed_extras(cls, environment: Path) -> tuple[str, ...] | None:
@@ -96,6 +141,7 @@ class Runner:
         upgrade: bool,
         extras: tuple[str, ...] = (),
     ) -> None:
+        self.configure_managed_checkout(project.path)
         command = [
             str(self.environment_python(environment)),
             "-m",
