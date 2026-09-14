@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -17,6 +16,14 @@ from gway.service import ServiceManager
 
 def _paths(tmp_path: Path) -> GwayPaths:
     return GwayPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_consumer_logging_environment(monkeypatch):
+    # Consumer activation intentionally updates os.environ so reload/exec inherits
+    # the credential. Make that process-level behavior test-local.
+    monkeypatch.delenv("GWAY_LOG_DESTINATION", raising=False)
+    monkeypatch.delenv("GWAY_LOG_TOKEN", raising=False)
 
 
 class FakeWeb:
@@ -170,13 +177,22 @@ def test_service_render_injects_private_consumer_environment(
         dispatch=web.dispatch,
         paths=paths,
     )
-    project = Project(
-        name="wire",
-        path=tmp_path / "wire",
-        adapter_type="python",
-        adapter_config={"module": "wire"},
-        service_config={"command": ["/bin/true"]},
+    project_path = tmp_path / "wire"
+    project_path.mkdir()
+    (project_path / "gway.toml").write_text(
+        """[project]
+name = "wire"
+
+[adapter]
+type = "python"
+module = "wire"
+
+[service]
+command = ["/bin/true"]
+""",
+        encoding="utf-8",
     )
+    project = Project.from_path(project_path)
 
     rendered = ServiceManager(project, unit_directory=tmp_path / "systemd").render(user="root")
 
