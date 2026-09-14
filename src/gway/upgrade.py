@@ -71,6 +71,7 @@ class Upgrader:
 
     @staticmethod
     def _checkout_clean(checkout: Path) -> bool:
+        Runner.configure_managed_checkout(checkout)
         try:
             result = subprocess.run(
                 ["git", "-C", str(checkout), "status", "--porcelain"],
