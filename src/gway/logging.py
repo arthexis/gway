@@ -30,12 +30,23 @@ def _default_root() -> Path:
     return Path.home() / ".local" / "state" / "gway" / "runs"
 
 
+def _safe_run_id(value: str) -> bool:
+    if not value or value in {".", ".."}:
+        return False
+    path = Path(value)
+    return not path.is_absolute() and path.name == value and "/" not in value and "\\" not in value
+
+
 def current_run_id() -> str:
     inherited = os.environ.get(_RUN_ID_ENV)
     run_id = _run_id.get()
     if inherited and inherited != run_id:
-        run_id = inherited
-        _run_id.set(run_id)
+        if _safe_run_id(inherited):
+            run_id = inherited
+            _run_id.set(run_id)
+        else:
+            os.environ.pop(_RUN_ID_ENV, None)
+            inherited = None
     if run_id is not None:
         return run_id
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -47,7 +58,12 @@ def current_run_id() -> str:
 
 def run_directory() -> Path:
     path = _default_root() / current_run_id()
-    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.chmod(0o700)
+    except OSError:
+        # Logging state is diagnostic only and must never abort command execution.
+        pass
     return path
 
 
@@ -73,21 +89,27 @@ def current_context() -> dict[str, object]:
 
 def write_event(kind: str, message: str, data: Mapping[str, object] | None = None) -> None:
     """Append one crash-tolerant JSON Lines event to the current run."""
-    payload = {
-        "timestamp": _now(),
-        "run_id": current_run_id(),
-        "kind": kind,
-        "message": message,
-        "tags": list(_tags.get()),
-        "to": list(_destinations.get()),
-        "data": dict(data or {}),
-    }
-    path = run_directory() / "events.jsonl"
     try:
-        with path.open("a", encoding="utf-8") as stream:
-            json.dump(payload, stream, default=str, ensure_ascii=False)
-            stream.write("\n")
-            stream.flush()
-    except OSError:
+        payload = {
+            "timestamp": _now(),
+            "run_id": current_run_id(),
+            "kind": kind,
+            "message": message,
+            "tags": list(_tags.get()),
+            "to": list(_destinations.get()),
+            "data": dict(data or {}),
+        }
+        line = (json.dumps(payload, default=str, ensure_ascii=False) + "\n").encode("utf-8")
+        path = run_directory() / "events.jsonl"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+        if hasattr(os, "O_CLOEXEC"):
+            flags |= os.O_CLOEXEC
+        descriptor = os.open(path, flags, 0o600)
+        try:
+            os.fchmod(descriptor, 0o600)
+            os.write(descriptor, line)
+        finally:
+            os.close(descriptor)
+    except (OSError, TypeError, ValueError):
         # Logging must never make an otherwise valid GWAY command fail.
         return
