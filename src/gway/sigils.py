@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -73,8 +74,6 @@ class _GwayCommandCall:
 
             result = resolve_outcome(function(*args, **kwargs))
         else:
-            # Alias-bound Python calls and non-Python adapters both cross the
-            # dispatcher boundary so configured alias arguments use CLI semantics.
             from .dispatcher import Dispatcher
 
             argv: list[str] = []
@@ -224,8 +223,23 @@ def project_context(
     paths: GwayPaths | None = None,
     extra_context: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    """Return the lazy-resolution context for one dispatched command."""
+    """Return the lazy-resolution context for one dispatched command.
+
+    Project ``[variables]`` values provide defaults for Sigil names. A process
+    environment variable with the same name overrides the manifest value.
+    Other environment values remain available as the lowest-priority Sigil
+    fallback without replacing GWAY's built-in context.
+    """
     context = base_context(paths)
+
+    project_variables = dict(project.variables or {})
+    for key in tuple(project_variables):
+        if key in os.environ:
+            project_variables[key] = os.environ[key]
+    context.update(project_variables)
+    for key, value in os.environ.items():
+        context.setdefault(key, value)
+
     context.update(
         {
             "project": {
