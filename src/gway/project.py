@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -159,6 +160,11 @@ class Project:
             isinstance(key, str) and key.strip() for key in variables_data
         ):
             raise ManifestError("[variables] keys must be non-empty strings")
+        if variables_data is not None:
+            try:
+                json.dumps(variables_data)
+            except (TypeError, ValueError) as exc:
+                raise ManifestError("[variables] values must be JSON-compatible") from exc
         if service_data is not None and not isinstance(service_data, dict):
             raise ManifestError("[service] must be a table")
         if install_data is not None and not isinstance(install_data, dict):
