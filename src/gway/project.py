@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -123,6 +124,7 @@ class Project:
     repository: str | None = None
     revision: str | None = None
     environment: Path | None = None
+    variables: dict[str, object] | None = None
     service_config: dict[str, Any] | None = None
     install_layout: InstallLayout | None = None
     lifecycle_hooks: LifecycleHooks | None = None
@@ -133,6 +135,8 @@ class Project:
             raise ValueError("project aliases must not start with '['")
         if self.alias_arguments is None:
             object.__setattr__(self, "alias_arguments", {})
+        if self.variables is None:
+            object.__setattr__(self, "variables", {})
 
     @classmethod
     def from_path(cls, path: str | Path) -> Project:
@@ -149,6 +153,7 @@ class Project:
 
         project_data = data.get("project")
         adapter_data = data.get("adapter")
+        variables_data = data.get("variables")
         service_data = data.get("service")
         install_data = data.get("install")
         lifecycle_data = data.get("lifecycle")
@@ -156,6 +161,17 @@ class Project:
             raise ManifestError("gway.toml requires [project]")
         if not isinstance(adapter_data, dict):
             raise ManifestError("gway.toml requires [adapter]")
+        if variables_data is not None and not isinstance(variables_data, dict):
+            raise ManifestError("[variables] must be a table")
+        if variables_data is not None and not all(
+            isinstance(key, str) and key.strip() for key in variables_data
+        ):
+            raise ManifestError("[variables] keys must be non-empty strings")
+        if variables_data is not None:
+            try:
+                json.dumps(variables_data)
+            except (TypeError, ValueError) as exc:
+                raise ManifestError("[variables] values must be JSON-compatible") from exc
         if service_data is not None and not isinstance(service_data, dict):
             raise ManifestError("[service] must be a table")
         if install_data is not None and not isinstance(install_data, dict):
@@ -223,6 +239,7 @@ class Project:
             path=root,
             adapter_type=adapter_type,
             adapter_config=adapter_config,
+            variables=dict(variables_data) if variables_data is not None else None,
             service_config=dict(service_data) if service_data is not None else None,
             install_layout=install_layout,
             lifecycle_hooks=lifecycle_hooks,
@@ -242,6 +259,7 @@ class Project:
             "repository": self.repository,
             "revision": self.revision,
             "environment": str(self.environment) if self.environment is not None else None,
+            "variables": self.variables,
             "service_config": self.service_config,
             "install_layout": (
                 self.install_layout.to_record() if self.install_layout is not None else None
@@ -271,6 +289,7 @@ class Project:
             repository=data.get("repository"),
             revision=data.get("revision"),
             environment=Path(environment) if environment else None,
+            variables=dict(data.get("variables", {})),
             service_config=dict(service_config) if service_config is not None else None,
             install_layout=(
                 InstallLayout.from_record(install_layout)
