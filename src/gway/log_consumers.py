@@ -28,6 +28,10 @@ def _environment_dir(paths: GwayPaths) -> Path:
     return paths.data_dir / "log-consumers"
 
 
+def _environment_dir_for_state(state_path: Path) -> Path:
+    return state_path.parent / "log-consumers"
+
+
 def _private_directory(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     path.chmod(0o700)
@@ -165,16 +169,21 @@ def _issue_token(
     dispatch: Callable[[str, Sequence[str]], object],
     destination: str,
 ) -> dict[str, object]:
-    result = dispatch(
-        "web",
-        [
-            "token",
-            "--name",
-            f"gway-consumers:{urlparse(destination).netloc or destination}",
-            "--scope",
-            "logs:ingest",
-        ],
-    )
+    # The provider must return the raw credential to this caller, but that result
+    # must never be serialized by Dispatcher instrumentation into events.jsonl.
+    from .dispatcher.dispatch import redact_command_results
+
+    with redact_command_results():
+        result = dispatch(
+            "web",
+            [
+                "token",
+                "--name",
+                f"gway-consumers:{urlparse(destination).netloc or destination}",
+                "--scope",
+                "logs:ingest",
+            ],
+        )
     if not isinstance(result, dict):
         raise DispatchError("web token command did not return token metadata")
     token = result.get("token")
@@ -261,6 +270,40 @@ def activate_publisher_tokens(
             retry_remote_destination(destination)
 
 
+def _refresh_running_consumer_services(
+    consumers: Sequence[str],
+    resolve_consumer: ConsumerResolver | None,
+) -> list[str]:
+    """Restart installed consumer units after their persisted bearer token rotates."""
+    if resolve_consumer is None:
+        return []
+    from .service import ServiceError, ServiceManager
+
+    projects: dict[str, Project] = {}
+    for consumer in consumers:
+        project = resolve_consumer(consumer)
+        if project is not None:
+            projects.setdefault(project.name.casefold(), project)
+
+    refreshed: list[str] = []
+    for project in projects.values():
+        try:
+            manager = ServiceManager(project, all_services=True)
+        except ServiceError:
+            continue
+        for unit in manager.units:
+            if not unit.unit_path.is_file():
+                continue
+            try:
+                unit.restart()
+            except Exception as exc:
+                raise DispatchError(
+                    f"rotated log credential but could not restart consumer service {unit.unit_name}"
+                ) from exc
+            refreshed.append(unit.unit_name)
+    return refreshed
+
+
 def configure_consumers(
     consumers: Sequence[str],
     destinations: Sequence[str],
@@ -281,6 +324,8 @@ def configure_consumers(
 
     existing = bindings.get(destination)
     record = dict(existing) if isinstance(existing, dict) else {}
+    previous_token = record.get("token")
+    rotated = False
     listed: object = None
     if record:
         try:
@@ -296,6 +341,13 @@ def configure_consumers(
             raise DispatchError(
                 "cannot issue local log consumer credential through the registered web project"
             ) from exc
+        new_token = credential.get("token")
+        rotated = (
+            isinstance(previous_token, str)
+            and bool(previous_token)
+            and isinstance(new_token, str)
+            and new_token != previous_token
+        )
         record.update(credential)
 
     token = record.get("token")
@@ -354,11 +406,17 @@ def configure_consumers(
     # publisher context, so unrelated managed commands/subprocesses do not inherit it.
     os.environ[_STATE_PATH_ENV] = str(_state_path(active_paths))
     activate_publisher_tokens((destination,), paths=active_paths)
-    return {
+    refreshed_services = (
+        _refresh_running_consumer_services(combined, resolve_consumer) if rotated else []
+    )
+    result: dict[str, object] = {
         "destination": destination,
         "consumers": list(combined),
         "token_id": token_id,
     }
+    if refreshed_services:
+        result["refreshed_services"] = refreshed_services
+    return result
 
 
 def consumer_environment_file(
@@ -367,9 +425,9 @@ def consumer_environment_file(
     paths: GwayPaths | None = None,
 ) -> Path | None:
     """Return the private logging EnvironmentFile configured for a project."""
-    active_paths = paths or default_paths()
+    state_path = _binding_state_path(paths)
     try:
-        state = _read_state(active_paths)
+        state = _read_state_path(state_path)
     except DispatchError:
         return None
     bindings = state.get("bindings", {})
@@ -403,7 +461,7 @@ def consumer_environment_file(
         for value in consumers
         if isinstance(value, str) and value.casefold() in identities
     )
-    path = _environment_path(active_paths, consumer)
+    path = _environment_dir_for_state(state_path) / f"{consumer.casefold()}.env"
     return path if path.is_file() else None
 
 
