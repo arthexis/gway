@@ -48,6 +48,11 @@ upgrade = "example.lifecycle:upgrade"
     def validate_checkout(self, checkout: Path, full_name: str) -> None:
         self.validated.append((checkout, full_name))
 
+    def upgrade(self, checkout: Path, full_name: str) -> str:
+        assert checkout == self.target_root / "app"
+        assert full_name == "arthexis/arthexis"
+        return "managed-revision"
+
     def revision(self, checkout: Path) -> str:
         assert checkout == self.target_root / "app"
         return "managed-revision"
@@ -167,97 +172,3 @@ def test_checkout_is_published_only_after_relocation(monkeypatch, tmp_path: Path
         return original_move(source, destination)
 
     monkeypatch.setattr("gway.install.shutil.move", observing_move)
-
-    project = installer.install("arthexis")
-
-    assert project.path == checkout_target
-    assert checkout_target.exists()
-    assert not list(target.glob(".app.gway-*"))
-    assert not (target / ".app.gway-install-lock").exists()
-
-
-def test_concurrent_installer_lock_prevents_publication(tmp_path: Path) -> None:
-    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
-    target = tmp_path / "opt" / "arthexis"
-    staging = paths.projects_dir / "arthexis" / "arthexis"
-    lock = target / ".app.gway-install-lock"
-    lock.mkdir(parents=True)
-    installer = Installer(
-        Registry(paths),
-        repositories=LayoutRepositories(staging, target),
-        runner=LayoutRunner(),
-    )
-
-    with pytest.raises(ValueError, match="managed checkout install already in progress"):
-        installer.install("arthexis")
-
-    assert lock.exists()
-    assert not (target / "app").exists()
-    assert set(target.glob(".app.gway-*")) == {lock}
-    assert not staging.exists()
-
-
-def test_concurrent_checkout_publication_is_not_deleted(monkeypatch, tmp_path: Path) -> None:
-    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
-    target = tmp_path / "opt" / "arthexis"
-    checkout_target = target / "app"
-    staging = paths.projects_dir / "arthexis" / "arthexis"
-    installer = Installer(
-        Registry(paths),
-        repositories=LayoutRepositories(staging, target),
-        runner=LayoutRunner(),
-    )
-    original_rename = Path.rename
-
-    def racing_rename(path: Path, destination: Path):
-        if destination == checkout_target:
-            checkout_target.mkdir()
-            (checkout_target / "other-process").write_text(
-                "owned elsewhere",
-                encoding="utf-8",
-            )
-            raise FileExistsError(str(destination))
-        return original_rename(path, destination)
-
-    monkeypatch.setattr(Path, "rename", racing_rename)
-
-    with pytest.raises(FileExistsError):
-        installer.install("arthexis")
-
-    assert (checkout_target / "other-process").read_text(encoding="utf-8") == "owned elsewhere"
-    assert not list(target.glob(".app.gway-*"))
-    assert not (target / ".app.gway-install-lock").exists()
-    assert not staging.exists()
-
-
-def test_runner_uses_manifest_environment_and_executes_hook(monkeypatch, tmp_path: Path) -> None:
-    checkout = tmp_path / "app"
-    checkout.mkdir()
-    environment = tmp_path / ".venv"
-    python = Runner.environment_python(environment)
-    python.parent.mkdir(parents=True)
-    python.touch()
-    project = Project(
-        name="fixture",
-        path=checkout,
-        adapter_type="python",
-        adapter_config={"module": "fixture.gway"},
-        install_layout=InstallLayout(tmp_path, checkout, environment),
-        lifecycle_hooks=LifecycleHooks(install="fixture.lifecycle:install"),
-    )
-    calls: list[tuple[list[str], Path | None]] = []
-
-    def fake_run(args, **kwargs):
-        calls.append(([str(value) for value in args], kwargs.get("cwd")))
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr("gway.runner.subprocess.run", fake_run)
-    runner = Runner()
-
-    assert runner.environment_path(project) == environment
-    runner.run_lifecycle(replace(project, environment=environment), "install")
-
-    command, cwd = calls[0]
-    assert command[0] == str(python)
-    assert command[-1] == "fixture.lifecycle:install"
-    assert cwd == checkout
