@@ -11,6 +11,7 @@ from urllib.parse import unquote, urlparse
 
 _RUN_ID_ENV = "GWAY_RUN_ID"
 _LOG_DIR_ENV = "GWAY_LOG_DIR"
+_LOG_CONTEXT_ENV = "GWAY_LOG_CONTEXT"
 
 _run_id: ContextVar[str | None] = ContextVar("gway_log_run_id", default=None)
 _tags: ContextVar[tuple[str, ...]] = ContextVar("gway_log_tags", default=())
@@ -43,6 +44,32 @@ def _reset_run_context() -> None:
     _destinations.set(())
 
 
+def _persist_run_context(run_id: str) -> None:
+    os.environ[_LOG_CONTEXT_ENV] = json.dumps(
+        {"run_id": run_id, "tags": list(_tags.get()), "to": list(_destinations.get())},
+        ensure_ascii=False,
+    )
+
+
+def _restore_run_context(run_id: str) -> None:
+    _reset_run_context()
+    raw = os.environ.get(_LOG_CONTEXT_ENV)
+    if not raw:
+        return
+    try:
+        state = json.loads(raw)
+    except (TypeError, ValueError):
+        return
+    if not isinstance(state, dict) or state.get("run_id") != run_id:
+        return
+    tags = state.get("tags", [])
+    destinations = state.get("to", [])
+    if isinstance(tags, list) and all(isinstance(value, str) for value in tags):
+        _tags.set(tuple(dict.fromkeys(tags)))
+    if isinstance(destinations, list) and all(isinstance(value, str) for value in destinations):
+        _destinations.set(tuple(dict.fromkeys(destinations)))
+
+
 def current_run_id() -> str:
     inherited = os.environ.get(_RUN_ID_ENV)
     run_id = _run_id.get()
@@ -50,7 +77,7 @@ def current_run_id() -> str:
         if _safe_run_id(inherited):
             run_id = inherited
             _run_id.set(run_id)
-            _reset_run_context()
+            _restore_run_context(run_id)
         else:
             os.environ.pop(_RUN_ID_ENV, None)
             inherited = None
@@ -61,6 +88,7 @@ def current_run_id() -> str:
     _run_id.set(run_id)
     _reset_run_context()
     os.environ[_RUN_ID_ENV] = run_id
+    _persist_run_context(run_id)
     return run_id
 
 
@@ -74,7 +102,6 @@ def run_directory() -> Path:
     try:
         _ensure_private_directory(path)
     except OSError:
-        # Logging state is diagnostic only and must never abort command execution.
         pass
     return path
 
@@ -135,12 +162,8 @@ def _backfill(destination: str) -> None:
 
 
 def configure(*, tags: tuple[str, ...] = (), to: tuple[str, ...] = ()) -> dict[str, object]:
-    """Add metadata and synchronization destinations to the current run.
-
-    Filesystem paths and file:// URLs are synchronized immediately. Other URI
-    schemes are retained as metadata for transport plugins to implement later.
-    """
-    current_run_id()
+    """Add metadata and synchronization destinations to the current run."""
+    run_id = current_run_id()
     if tags:
         _tags.set(tuple(dict.fromkeys((*_tags.get(), *tags))))
     if to:
@@ -148,6 +171,7 @@ def configure(*, tags: tuple[str, ...] = (), to: tuple[str, ...] = ()) -> dict[s
         _destinations.set(tuple(dict.fromkeys((*_destinations.get(), *to))))
         for destination in additions:
             _backfill(destination)
+    _persist_run_context(run_id)
     state = current_context()
     write_event("log.configure", "updated logging context", state)
     return state
@@ -178,7 +202,6 @@ def write_event(kind: str, message: str, data: Mapping[str, object] | None = Non
         line = (json.dumps(payload, default=str, ensure_ascii=False) + "\n").encode("utf-8")
         _append(run_directory() / "events.jsonl", line)
     except (OSError, TypeError, ValueError):
-        # Logging must never make an otherwise valid GWAY command fail.
         return
 
     for destination in _destinations.get():
@@ -188,5 +211,4 @@ def write_event(kind: str, message: str, data: Mapping[str, object] | None = Non
         try:
             _append(target, line)
         except OSError:
-            # A failed mirror must not affect the command or canonical log.
             continue
