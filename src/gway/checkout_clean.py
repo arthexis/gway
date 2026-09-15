@@ -33,17 +33,15 @@ def clean_managed_checkout(
     repositories: RepositoryManager,
 ) -> None:
     """Remove untracked, non-ignored files from a real managed Git checkout."""
+    if not (checkout / ".git").exists():
+        # Repository backends used by callers/tests may model source convergence
+        # without materializing a local Git checkout. Cleaning is a Git
+        # capability, not a requirement for those backends.
+        return
     validate_checkout = getattr(repositories, "validate_checkout", None)
     if not callable(validate_checkout):
-        # Repository backends used by callers/tests may model source convergence
-        # without exposing a local Git checkout. Cleaning is a Git capability,
-        # not a requirement for those backends.
         return
     validate_checkout(checkout, full_name)
-    if not (checkout / ".git").exists():
-        # A validating synthetic backend may not materialize Git metadata. Real
-        # RepositoryManager validation cannot succeed without a Git checkout.
-        return
     Runner.configure_managed_checkout(checkout)
     try:
         result = subprocess.run(
