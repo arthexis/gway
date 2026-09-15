@@ -46,6 +46,11 @@ class GwayRuntime(_base.GwayRuntime):
         parser.add_argument("project", nargs="?")
         parser.add_argument("--service", action="store_true")
         parser.add_argument("--self", dest="install_self", action="store_true")
+        parser.add_argument(
+            "--clean",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+        )
         namespace, passthrough = parser.parse_known_args(list(argv))
         if namespace.install_self:
             if namespace.project is not None:
@@ -76,7 +81,12 @@ class GwayRuntime(_base.GwayRuntime):
                 }
             return result
         installer = Installer(self.registry)
-        project = installer.install(namespace.project, arguments=passthrough)
+        install_kwargs = {"clean": False} if not namespace.clean else {}
+        project = installer.install(
+            namespace.project,
+            arguments=passthrough,
+            **install_kwargs,
+        )
         result = _base._managed_status("installed", project)
         if namespace.service:
             result["service"] = _base._install_project_service(project)
@@ -104,6 +114,11 @@ class GwayRuntime(_base.GwayRuntime):
         force_mode.add_argument("--try-force", action="store_true")
         parser.add_argument("--reload", action="store_true")
         parser.add_argument("--detail", action="store_true")
+        parser.add_argument(
+            "--clean",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+        )
         namespace, passthrough = parser.parse_known_args(list(argv))
         targets = list(dict.fromkeys(namespace.projects))
         if targets and (namespace.all or namespace.upgrade_self is not None):
@@ -131,6 +146,8 @@ class GwayRuntime(_base.GwayRuntime):
                 self._publish_progress(result)
             for target in managed_targets:
                 upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
+                if not namespace.clean:
+                    upgrade_kwargs["clean"] = False
                 changed = upgrader.project_result(
                     target,
                     force=namespace.force,
@@ -164,6 +181,8 @@ class GwayRuntime(_base.GwayRuntime):
             self._publish_progress(result)
         if include_projects:
             upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
+            if not namespace.clean:
+                upgrade_kwargs["clean"] = False
             for changed in upgrader.all_project_results(
                 force=namespace.force,
                 reload=namespace.reload,
