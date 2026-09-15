@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 RUNTIME_COMMAND_NAMES = frozenset(
-    {"install", "log", "recipe", "reload", "result", "store", "uninstall", "upgrade"}
+    {"event", "install", "log", "recipe", "reload", "result", "store", "uninstall", "upgrade"}
 )
-CORE_OPERATION_NAMES = frozenset({"install", "log", "uninstall", "upgrade"})
+CORE_OPERATION_NAMES = frozenset({"event", "install", "log", "uninstall", "upgrade"})
 CLI_COMMAND_NAMES = frozenset(
     {"list", "info", "path", "solve", "register", "service", "shell"}
 )
