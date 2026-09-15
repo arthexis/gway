@@ -30,13 +30,18 @@ def split_clean_arguments(
 
 def _remove_python_bytecode(checkout: Path) -> None:
     """Remove ignored Python caches that can preserve deleted importable modules."""
-    for cache in checkout.rglob("__pycache__"):
-        if cache.is_dir() and not cache.is_symlink():
-            shutil.rmtree(cache)
-    for suffix in ("*.pyc", "*.pyo"):
-        for bytecode in checkout.rglob(suffix):
-            if bytecode.is_file() and not bytecode.is_symlink():
-                bytecode.unlink()
+    try:
+        for cache in checkout.rglob("__pycache__"):
+            if cache.is_dir() and not cache.is_symlink():
+                shutil.rmtree(cache)
+        for suffix in ("*.pyc", "*.pyo"):
+            for bytecode in checkout.rglob(suffix):
+                if bytecode.is_file() and not bytecode.is_symlink():
+                    bytecode.unlink()
+    except OSError as exc:
+        raise RepositoryError(
+            f"cannot remove Python bytecode from managed checkout {checkout}: {exc}"
+        ) from exc
 
 
 def clean_managed_checkout(
