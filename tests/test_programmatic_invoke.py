@@ -8,7 +8,7 @@ from gway.adapters import AdapterRegistry
 from gway.chain_context import chain_context_scope
 from gway.command import Command, Parameter
 from gway.config import GwayPaths
-from gway.dispatcher import Dispatcher, DispatchError
+from gway.dispatcher import Dispatcher, DispatchError, InvocationArgumentError
 from gway.expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT
 from gway.project import Project
 from gway.registry import Registry
@@ -101,6 +101,10 @@ module = "api_fixture"
         "enabled": enabled,
         "template": template,
     }
+
+
+def fails():
+    raise ValueError("private application detail")
 """,
         encoding="utf-8",
     )
@@ -155,16 +159,16 @@ def test_invoke_does_not_fill_arguments_from_chain_context(tmp_path: Path) -> No
     dispatcher = _fixture_dispatcher(tmp_path)
 
     with chain_context_scope({"value": "from-context"}):
-        with pytest.raises(DispatchError, match="missing required arguments: value"):
+        with pytest.raises(InvocationArgumentError, match="missing required arguments: value"):
             dispatcher.invoke("fixture", ("echo",))
 
 
 def test_invoke_rejects_unknown_and_non_string_arguments(tmp_path: Path) -> None:
     dispatcher = _fixture_dispatcher(tmp_path)
 
-    with pytest.raises(DispatchError, match="unknown argument"):
+    with pytest.raises(InvocationArgumentError, match="unknown argument"):
         dispatcher.invoke("fixture", ("echo",), {"other": "value"})
-    with pytest.raises(DispatchError, match="must be a string"):
+    with pytest.raises(InvocationArgumentError, match="must be a string"):
         dispatcher.invoke("fixture", ("echo",), {"value": 3})  # type: ignore[dict-item]
 
 
@@ -198,3 +202,22 @@ def test_invoke_reuses_python_adapter_type_conversion_and_defaults(tmp_path: Pat
         "enabled": False,
         "template": "[project.name]",
     }
+
+
+def test_invoke_classifies_python_type_conversion_as_argument_error(tmp_path: Path) -> None:
+    dispatcher = _python_dispatcher(tmp_path)
+
+    with pytest.raises(InvocationArgumentError) as exc_info:
+        dispatcher.invoke("pyapi", ("typed",), {"number": "not-an-int"})
+
+    assert "number" in str(exc_info.value)
+
+
+def test_invoke_preserves_callable_value_errors(tmp_path: Path) -> None:
+    dispatcher = _python_dispatcher(tmp_path)
+
+    with pytest.raises(ValueError) as exc_info:
+        dispatcher.invoke("pyapi", ("fails",))
+
+    assert type(exc_info.value) is ValueError
+    assert str(exc_info.value) == "private application detail"

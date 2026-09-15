@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from ..adapters import AdapterRegistry
+from ..adapters import AdapterArgumentError, AdapterRegistry
 from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
 from ..command import Command, Parameter, command_path_aliases
@@ -16,7 +16,7 @@ from ..registry import Registry, RegistryError
 from ..sigils import RESERVED_CONTEXT_KEYS
 from ..stage import decode_stage_escapes
 from .arguments import _decode_structured_argv, _fill_context_options
-from .errors import CommandNotFound, DispatchError
+from .errors import CommandNotFound, DispatchError, InvocationArgumentError
 from .prompt import _fill_required_options
 
 _REDACTED_RESULT = "<redacted>"
@@ -68,7 +68,7 @@ def _programmatic_bool(value: str) -> bool:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    raise DispatchError(f"expected boolean value, got {value!r}")
+    raise InvocationArgumentError(f"expected boolean value, got {value!r}")
 
 
 def _parameter_option(parameter: Parameter) -> str:
@@ -95,16 +95,16 @@ def _named_arguments_to_argv(
     provided: dict[str, str] = {}
     for name, value in arguments.items():
         if not isinstance(name, str):
-            raise DispatchError("programmatic argument names must be strings")
+            raise InvocationArgumentError("programmatic argument names must be strings")
         if not isinstance(value, str):
-            raise DispatchError(f"programmatic argument {name!r} must be a string")
+            raise InvocationArgumentError(f"programmatic argument {name!r} must be a string")
         parameter = parameters.get(_argument_key(name))
         if parameter is None:
-            raise DispatchError(
+            raise InvocationArgumentError(
                 f"unknown argument for {' '.join(command.path)}: {name}"
             )
         if parameter.name in provided:
-            raise DispatchError(f"duplicate argument: {name}")
+            raise InvocationArgumentError(f"duplicate argument: {name}")
         provided[parameter.name] = value
 
     argv: list[str] = []
@@ -135,10 +135,10 @@ def _named_arguments_to_argv(
         if negative_options:
             argv.append(negative_options[0])
         elif parameter.default is not False:
-            raise DispatchError(f"argument {parameter.name!r} does not support false")
+            raise InvocationArgumentError(f"argument {parameter.name!r} does not support false")
 
     if missing:
-        raise DispatchError(f"missing required arguments: {', '.join(missing)}")
+        raise InvocationArgumentError(f"missing required arguments: {', '.join(missing)}")
     return argv
 
 
@@ -556,7 +556,10 @@ class Dispatcher:
             command=list(command.path),
             argv=list(argv),
         )
-        raw_result = adapter.run(command.path, argv)
+        try:
+            raw_result = adapter.run(command.path, argv)
+        except AdapterArgumentError as exc:
+            raise InvocationArgumentError(str(exc)) from exc
         if isinstance(raw_result, CommandOutcome):
             record(
                 "command.outcome",

@@ -14,10 +14,16 @@ from .dispatch import (
     CommandNotFound,
     Dispatcher,
     DispatchError,
+    InvocationArgumentError,
 )
 from .dispatch import (
     _strict_fallback_missing as _strict_fallback_missing,
 )
 from .prompt import _fill_required_options as _fill_required_options
 
-__all__ = ["CommandNotFound", "DispatchError", "Dispatcher"]
+__all__ = [
+    "CommandNotFound",
+    "DispatchError",
+    "Dispatcher",
+    "InvocationArgumentError",
+]

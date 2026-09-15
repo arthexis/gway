@@ -13,6 +13,10 @@ class AdapterError(ValueError):
     pass
 
 
+class AdapterArgumentError(AdapterError):
+    """Raised when adapter-facing arguments cannot be parsed or converted."""
+
+
 def _python_factory(project: Project) -> ProjectAdapter:
     from .python_transfer import TransferPythonAdapter
 
@@ -47,6 +51,7 @@ class AdapterRegistry:
 
 
 __all__ = [
+    "AdapterArgumentError",
     "AdapterError",
     "AdapterFactory",
     "AdapterRegistry",
