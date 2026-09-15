@@ -5,9 +5,27 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+from ..config import default_paths
 from ..project import Project
 from . import systemd
 from .manifest import ServiceError, _manifest_services, _strings
+
+
+def _with_runtime_paths(config: dict[str, Any]) -> dict[str, Any]:
+    """Pin managed services to the GWAY roots active during installation."""
+    configured_environment = config.get("environment")
+    if configured_environment is None:
+        environment: dict[str, Any] = {"PYTHONUNBUFFERED": "1"}
+    elif isinstance(configured_environment, dict):
+        environment = dict(configured_environment)
+    else:
+        # Preserve the existing validation path in _ServiceUnit.render().
+        return config
+
+    paths = default_paths()
+    environment.setdefault("GWAY_CONFIG_HOME", str(paths.config_dir))
+    environment.setdefault("GWAY_DATA_HOME", str(paths.data_dir))
+    return {**config, "environment": environment}
 
 
 class ServiceManager:
@@ -23,6 +41,7 @@ class ServiceManager:
         self.project = project
         self.unit_directory = Path(unit_directory)
         configs, legacy = _manifest_services(project)
+        configs = {key: _with_runtime_paths(config) for key, config in configs.items()}
         all_configs = dict(configs)
         environment_service = None if all_services else os.environ.get("GWAY_SERVICE")
         environment_profile = None if all_services else os.environ.get("GWAY_SERVICE_PROFILE")
