@@ -74,6 +74,32 @@ def test_clean_removes_untracked_tombstones_but_preserves_ignored_state(
     assert repositories.validated == [(checkout, "arthexis/example")]
 
 
+def test_clean_removes_ignored_python_bytecode_but_preserves_other_ignored_state(
+    tmp_path: Path,
+) -> None:
+    checkout = _repository(tmp_path)
+    exclude = checkout / ".git" / "info" / "exclude"
+    exclude.write_text("*.pyc\n__pycache__/\nruntime-state/\n", encoding="utf-8")
+
+    legacy = checkout / "apps" / "certs" / "management" / "commands"
+    legacy.mkdir(parents=True)
+    sourceless = legacy / "generate_certs.pyc"
+    sourceless.write_bytes(b"stale bytecode")
+    cache = legacy / "__pycache__"
+    cache.mkdir()
+    (cache / "generate_certs.cpython-310.pyc").write_bytes(b"stale cache")
+
+    runtime_state = checkout / "runtime-state"
+    runtime_state.mkdir()
+    (runtime_state / "state.json").write_text("{}\n", encoding="utf-8")
+
+    clean_managed_checkout(checkout, "arthexis/example", _Repositories())  # type: ignore[arg-type]
+
+    assert not sourceless.exists()
+    assert not cache.exists()
+    assert (runtime_state / "state.json").exists()
+
+
 def test_clean_does_not_reset_tracked_local_changes(tmp_path: Path) -> None:
     checkout = _repository(tmp_path)
     tracked = checkout / "tracked.txt"
