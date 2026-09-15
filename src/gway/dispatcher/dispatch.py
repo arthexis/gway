@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from ..adapters import AdapterRegistry
 from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
-from ..command import Command, command_path_aliases
+from ..command import Command, Parameter, command_path_aliases
 from ..explain import record
 from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..outcome import CommandOutcome, resolve_outcome
@@ -55,6 +55,91 @@ def _command_key(value: str) -> str:
 def _command_path_key(path: Sequence[str]) -> tuple[str, ...]:
     """Normalize command-path spelling while leaving argument values untouched."""
     return tuple(_command_key(part) for part in path)
+
+
+def _argument_key(value: str) -> str:
+    """Normalize a named argument independently from its external spelling."""
+    return value.replace("-", "_").casefold()
+
+
+def _programmatic_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise DispatchError(f"expected boolean value, got {value!r}")
+
+
+def _parameter_option(parameter: Parameter) -> str:
+    return next(
+        (name for name in parameter.options if name.startswith("--")),
+        f"--{parameter.name.replace('_', '-')}",
+    )
+
+
+def _named_arguments_to_argv(
+    command: Command,
+    arguments: Mapping[str, str],
+) -> list[str]:
+    """Translate one named string mapping into adapter-facing command argv."""
+    parameters: dict[str, Parameter] = {}
+    for parameter in command.parameters:
+        key = _argument_key(parameter.name)
+        if key in parameters:
+            raise DispatchError(
+                f"ambiguous parameter metadata for {' '.join(command.path)}: {parameter.name}"
+            )
+        parameters[key] = parameter
+
+    provided: dict[str, str] = {}
+    for name, value in arguments.items():
+        if not isinstance(name, str):
+            raise DispatchError("programmatic argument names must be strings")
+        if not isinstance(value, str):
+            raise DispatchError(f"programmatic argument {name!r} must be a string")
+        parameter = parameters.get(_argument_key(name))
+        if parameter is None:
+            raise DispatchError(
+                f"unknown argument for {' '.join(command.path)}: {name}"
+            )
+        if parameter.name in provided:
+            raise DispatchError(f"duplicate argument: {name}")
+        provided[parameter.name] = value
+
+    argv: list[str] = []
+    missing: list[str] = []
+    for parameter in command.parameters:
+        if parameter.name not in provided:
+            if parameter.required:
+                missing.append(parameter.name)
+            continue
+
+        value = provided[parameter.name]
+        if parameter.positional:
+            argv.append(value)
+            continue
+
+        option = _parameter_option(parameter)
+        is_boolean = parameter.annotation is bool or parameter.consumes_value is False
+        if not is_boolean:
+            argv.extend((option, value))
+            continue
+
+        enabled = _programmatic_bool(value)
+        if enabled:
+            argv.append(option)
+            continue
+
+        negative_options = parameter.negative_options or ()
+        if negative_options:
+            argv.append(negative_options[0])
+        elif parameter.default is not False:
+            raise DispatchError(f"argument {parameter.name!r} does not support false")
+
+    if missing:
+        raise DispatchError(f"missing required arguments: {', '.join(missing)}")
+    return argv
 
 
 def _fill_python_string_defaults(
@@ -403,6 +488,89 @@ class Dispatcher:
         else:
             display_result = raw_result
         result = raw_result if preserve_outcome else resolve_outcome(raw_result)
+        record(
+            "command.result",
+            "adapter command completed",
+            project=project.name,
+            command=list(command.path),
+            result=_logged_result(display_result),
+        )
+        return result
+
+    def invoke(
+        self,
+        project_name: str,
+        command_path: Sequence[str],
+        arguments: Mapping[str, str] | None = None,
+    ) -> object:
+        """Invoke exactly one managed command from literal named string arguments."""
+        if project_name in {MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT}:
+            raise DispatchError("programmatic invocation does not support managed programs")
+        if not command_path:
+            raise DispatchError("programmatic invocation requires a command path")
+
+        project = self.registry.require(project_name)
+        adapter = self.adapters.create(project)
+        record(
+            "invoke.start",
+            "invoking one managed command programmatically",
+            project=project.name,
+            requested_project=project_name,
+            command=list(command_path),
+        )
+        record(
+            "adapter.select",
+            "selected project adapter",
+            project=project.name,
+            adapter=project.adapter_type,
+        )
+
+        command, remainder = self._resolve_command(tuple(adapter.commands()), command_path)
+        if remainder:
+            requested = " ".join(command_path)
+            raise DispatchError(
+                f"programmatic command path must identify exactly one command: {requested}"
+            )
+
+        argv = _named_arguments_to_argv(command, arguments or {})
+        alias_arguments = (project.alias_arguments or {}).get(project_name.casefold(), ())
+        if alias_arguments:
+            record(
+                "arguments.alias",
+                "prepended alias-bound arguments",
+                project=project.name,
+                arguments=list(alias_arguments),
+            )
+        argv = [*alias_arguments, *argv]
+        record(
+            "arguments.literal",
+            "bound literal programmatic arguments",
+            project=project.name,
+            command=list(command.path),
+            argv=list(argv),
+        )
+        record(
+            "command.call",
+            "invoking adapter command",
+            project=project.name,
+            command=list(command.path),
+            argv=list(argv),
+        )
+        raw_result = adapter.run(command.path, argv)
+        if isinstance(raw_result, CommandOutcome):
+            record(
+                "command.outcome",
+                "managed command returned explicit semantic outcome",
+                project=project.name,
+                command=list(command.path),
+                success=raw_result.success,
+                result=_logged_result(raw_result.value),
+                outcome_message=raw_result.message,
+            )
+            display_result = raw_result.value
+        else:
+            display_result = raw_result
+        result = resolve_outcome(raw_result)
         record(
             "command.result",
             "adapter command completed",
