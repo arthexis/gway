@@ -4,6 +4,7 @@ from collections.abc import Mapping, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from .output_context import current_json_mode
 from .provenance import ValueProvenance
 
 _CHAIN_CONTEXT: ContextVar[MutableMapping[str, object] | None] = ContextVar(
@@ -16,10 +17,20 @@ _CHAIN_PROVENANCE: ContextVar[MutableMapping[str, ValueProvenance] | None] = Con
 )
 
 
+def _seed_json_context(context: MutableMapping[str, object]) -> None:
+    value = current_json_mode()
+    if value is not None:
+        context.setdefault("json", value)
+
+
 def current_chain_context() -> dict[str, object]:
     """Return a copy of the active invocation-local chain context."""
     context = _CHAIN_CONTEXT.get()
-    return dict(context) if context is not None else {}
+    if context is None:
+        value = current_json_mode()
+        return {} if value is None else {"json": value}
+    _seed_json_context(context)
+    return dict(context)
 
 
 def current_chain_provenance() -> dict[str, ValueProvenance]:
@@ -35,6 +46,7 @@ def chain_context_scope(
 ):
     """Activate and reliably restore one invocation-local chain context."""
     active: MutableMapping[str, object] = {} if context is None else context
+    _seed_json_context(active)
     active_provenance: MutableMapping[str, ValueProvenance] = (
         {} if provenance is None else provenance
     )

@@ -1,3 +1,3 @@
-from .bootstrap import main
+from .entrypoint import main
 
 raise SystemExit(main())
