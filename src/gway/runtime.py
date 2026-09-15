@@ -10,6 +10,7 @@ from pathlib import Path
 from .chain_context import current_chain_context
 from .dispatcher import Dispatcher
 from .dispatcher.errors import CommandNotFound, DispatchError
+from .event_command import run_event
 from .explain import record
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .install import Installer
@@ -23,10 +24,10 @@ from .store import run_store
 from .transfer import encode_transfer
 from .upgrade import UpgradeError, UpgradeResult, Upgrader
 
-_SELECTOR = re.compile(r"\[(?P<index>[1-9]\d*)\]\Z")
+_SELECTOR = re.compile(r"\[(?P<index>[1-9]\d*)\Z")
 _WILDCARD = "[*]"
 _RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
-_CORE_OPERATIONS = frozenset({"install", "upgrade", "uninstall", "log"})
+_CORE_OPERATIONS = frozenset({"install", "upgrade", "uninstall", "log", "event"})
 
 
 class _RuntimeParser(argparse.ArgumentParser):
@@ -395,6 +396,8 @@ class GwayRuntime:
                 paths=self.registry.paths,
                 resolve_consumer=self.registry.get,
             )
+        if operation == "event":
+            return run_event(tokens[1:])
         raise DispatchError(f"unknown GWAY core operation: {operation}")
 
     def _run_install(self, argv: Sequence[str]) -> object:
@@ -507,17 +510,20 @@ class GwayRuntime:
             results.append(result)
             self._publish_progress(result)
         if include_projects:
-            upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
-            for changed in upgrader.all_project_results(
-                force=namespace.force,
-                reload=namespace.reload,
-                **upgrade_kwargs,
-            ):
+            for project in self.registry.list():
+                changed = upgrader.project_result(
+                    project.name,
+                    force=namespace.force,
+                    reload=namespace.reload,
+                    **({"try_force": True} if namespace.try_force else {}),
+                )
                 status = "upgraded" if changed.changed else "skipped"
                 result = _upgrade_status(status, changed)
                 results.append(result)
                 self._publish_progress(result)
-        return results
+        if namespace.detail:
+            return results
+        return [item["name"] for item in results if item["status"] == "upgraded"]
 
     def _run_managed(
         self,
@@ -527,67 +533,18 @@ class GwayRuntime:
         interactive: bool,
         prompt: Callable[[str], str] | None = None,
     ) -> object:
-        project_name, project_args = normalize_managed_args(stage.tokens)
-        _, raw_project_args = normalize_managed_args(stage.raw_tokens)
-        if project_name == MANAGED_EXPRESSION_PROJECT:
-            if transfer:
-                raise DispatchError("fallback expressions cannot receive chain positionals")
-            if prompt is None:
-                return self.dispatcher.run(
-                    project_name,
-                    project_args,
-                    interactive=interactive,
-                )
-            return self.dispatcher.run(
-                project_name,
-                project_args,
-                interactive=interactive,
-                prompt=prompt,
-            )
-        project = self.registry.require(project_name)
-        commands = self.dispatcher.commands(project_name)
-        used_default = False
-        try:
-            command, argv = self.dispatcher._resolve_command(commands, project_args)
-        except CommandNotFound:
-            if not project.default_command:
-                raise
-            used_default = True
-            command, argv = self.dispatcher._resolve_default_command(
-                commands,
-                project.default_command,
-                project_args,
-            )
-        raw_argv = raw_project_args if used_default else raw_project_args[len(command.path) :]
-        alias_arguments = (project.alias_arguments or {}).get(project_name, ())
-        combined_argv = [*alias_arguments, *argv]
-        selector_tokens = [*("" for _ in alias_arguments), *raw_argv]
-        routed = _route_transfer(combined_argv, transfer, selector_tokens=selector_tokens)
-        encoded = _encode_routed_values(routed)
-        record(
-            "transfer.route",
-            "routed chain values into command arguments",
-            project=project.name,
-            command=list(command.path),
-            incoming=list(transfer),
-            selectors=list(selector_tokens),
-            outgoing=list(encoded),
-        )
-        dispatched = [*command.path, *encoded]
-        if prompt is None:
-            return self.dispatcher.run(
-                project.name,
-                dispatched,
-                interactive=interactive,
-                preserve_outcome=True,
-            )
+        tokens = list(stage.tokens)
+        if not tokens:
+            raise DispatchError("empty GWAY operation")
+        project_name = tokens[0]
+        project = self.registry.get(project_name)
+        if project is None:
+            raise CommandNotFound(project_name)
+        routed = _route_transfer(tokens[1:], transfer, selector_tokens=stage.raw_tokens[1:])
+        routed_tokens = _encode_routed_values(routed)
         return self.dispatcher.run(
-            project.name,
-            dispatched,
+            project_name,
+            routed_tokens,
             interactive=interactive,
             prompt=prompt,
-            preserve_outcome=True,
         )
-
-
-__all__ = ["GwayRuntime"]
