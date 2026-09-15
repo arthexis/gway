@@ -50,9 +50,10 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          if [[ "${{ matrix.python-version }}" == "3.10" ]]; then
-            python -m pip install "gway-sigils @ git+https://github.com/arthexis/sigils.git@4b4a22482627ac8039cc1c7e7fc94a793f55cfb8"
-          fi
+          # Validate this PR against the Sigils grammar change it depends on.
+          # Replace this source pin with the released >=0.4.8 dependency once
+          # arthexis/sigils#79 has landed and published.
+          python -m pip install "gway-sigils @ git+https://github.com/arthexis/sigils.git@a07cd6599c36dc129f469535e2f3038f0c183cbc"
           python -m pip install -e '.[dev]'
       - name: Tests
         run: python -m pytest

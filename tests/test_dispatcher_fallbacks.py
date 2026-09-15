@@ -63,10 +63,13 @@ def test_terminal_literal_fallback_stops_evaluation() -> None:
     assert dispatcher.calls == [("primary", "check")]
 
 
-def test_trailing_colon_returns_literal_without_dispatch() -> None:
-    result, dispatcher = evaluate("health.errors:", {})
-    assert result == "health.errors"
-    assert dispatcher.calls == []
+def test_trailing_colon_is_dispatched_as_command_data() -> None:
+    result, dispatcher = evaluate(
+        "health.errors:",
+        {("health", "errors:"): "ready"},
+    )
+    assert result == "ready"
+    assert dispatcher.calls == [("health", "errors:")]
 
 
 def test_last_resolved_falsey_value_is_returned() -> None:
