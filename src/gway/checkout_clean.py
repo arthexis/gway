@@ -33,8 +33,8 @@ def clean_managed_checkout(
     repositories: RepositoryManager,
 ) -> None:
     """Remove untracked, non-ignored files from a validated managed checkout."""
-    Runner.configure_managed_checkout(checkout)
     repositories.validate_checkout(checkout, full_name)
+    Runner.configure_managed_checkout(checkout)
     try:
         result = subprocess.run(
             ["git", "-C", str(checkout), "clean", "-fd"],
