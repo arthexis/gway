@@ -18,7 +18,7 @@ _CHAIN_PROVENANCE: ContextVar[MutableMapping[str, ValueProvenance] | None] = Con
 )
 
 
-def _json_mode_default() -> bool:
+def _json_mode_enabled() -> bool:
     return os.environ.get(_JSON_MODE_ENV) == "1"
 
 
@@ -26,8 +26,9 @@ def current_chain_context() -> dict[str, object]:
     """Return a copy of the active invocation-local chain context."""
     context = _CHAIN_CONTEXT.get()
     if context is None:
-        return {"json": _json_mode_default()}
-    context.setdefault("json", _json_mode_default())
+        return {"json": True} if _json_mode_enabled() else {}
+    if _json_mode_enabled():
+        context.setdefault("json", True)
     return dict(context)
 
 
@@ -44,7 +45,8 @@ def chain_context_scope(
 ):
     """Activate and reliably restore one invocation-local chain context."""
     active: MutableMapping[str, object] = {} if context is None else context
-    active.setdefault("json", _json_mode_default())
+    if _json_mode_enabled():
+        active.setdefault("json", True)
     active_provenance: MutableMapping[str, ValueProvenance] = (
         {} if provenance is None else provenance
     )
