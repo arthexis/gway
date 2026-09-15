@@ -14,7 +14,7 @@ from gway.command import Command, Parameter
 from gway.expression import STRUCTURED_TUPLE_PREFIX
 from gway.project import Project
 
-from . import AdapterError
+from . import AdapterArgumentError, AdapterError
 
 _NONE_TYPE = type(None)
 _SUPPORTED_SCALARS = {str, int, float, bool, Path}
@@ -97,7 +97,7 @@ def _decode_structured_value(value: object) -> object:
 
 class _ArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
-        raise AdapterError(message)
+        raise AdapterArgumentError(message)
 
 
 def _environment_site_packages(environment: Path) -> Path:
