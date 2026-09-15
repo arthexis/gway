@@ -3,7 +3,14 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from gway.checkout_clean import clean_managed_checkout, split_clean_arguments
+from gway.config import GwayPaths
+from gway.dispatcher import Dispatcher
+from gway.project import Project
+from gway.registry import Registry
+from gway.runtime import GwayRuntime
 
 
 class _Repositories:
@@ -85,3 +92,37 @@ def test_clean_does_not_reset_tracked_local_changes(tmp_path: Path) -> None:
         text=True,
     ).stdout
     assert "tracked.txt" in status
+
+
+def test_runtime_no_clean_is_control_flag_not_lifecycle_argument(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    dispatcher = Dispatcher(Registry(paths))
+    checkout = tmp_path / "installed"
+    checkout.mkdir()
+    project = Project(
+        name="installed",
+        path=checkout,
+        adapter_type="python",
+        adapter_config={"module": "unused"},
+    )
+    calls: list[tuple[str, bool, tuple[str, ...]]] = []
+
+    class FakeInstaller:
+        def __init__(self, registry) -> None:
+            assert registry is dispatcher.registry
+
+        def install(self, spec: str, *, arguments=(), clean=True):
+            calls.append((spec, clean, tuple(arguments)))
+            return project
+
+    monkeypatch.setattr("gway.runtime.Installer", FakeInstaller)
+
+    result = GwayRuntime(dispatcher).execute(
+        ["install", "fixture", "--no-clean", "--", "--role", "Satellite"]
+    )
+
+    assert result["status"] == "installed"
+    assert calls == [("fixture", False, ("--role", "Satellite"))]
