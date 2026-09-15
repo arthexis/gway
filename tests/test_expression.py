@@ -72,38 +72,47 @@ def test_urls_times_and_multiple_colons_remain_opaque_arguments() -> None:
 
 
 def test_fallback_expression_routes_to_dispatcher_expression_mode() -> None:
-    expression = "health.errors|backup.errors|:offline"
+    expression = "health.errors|backup.errors|offline.status"
     project, args = normalize_managed_args([expression])
     assert project == MANAGED_EXPRESSION_PROJECT
     assert args == [expression]
 
 
-def test_fallback_branches_preserve_commands_and_terminal_literal() -> None:
-    branches = parse_managed_branches("health.errors|backup status|:offline")
+def test_fallback_branches_are_all_commands() -> None:
+    branches = parse_managed_branches("health.errors|backup status|offline.status")
     assert branches[0].project == "health"
     assert branches[0].args == ("errors",)
     assert branches[1].project == "backup"
     assert branches[1].args == ("status",)
-    assert branches[2].is_literal
-    assert branches[2].literal == "offline"
+    assert branches[2].project == "offline"
+    assert branches[2].args == ("status",)
+
+
+def test_colon_prefixed_fallback_branch_is_ordinary_command_data() -> None:
+    branches = parse_managed_branches("health.errors|:offline|backup.status")
+    assert len(branches) == 3
+    assert branches[1].project == ":offline"
+    assert branches[1].args == ()
+    assert branches[2].project == "backup"
+    assert branches[2].args == ("status",)
 
 
 def test_fallback_command_arguments_keep_colons_as_data() -> None:
     branches = parse_managed_branches(
-        "web token --scope logs:read|backup status|:offline"
+        "web token --scope logs:read|backup status|offline.status"
     )
     assert branches[0].project == "web"
     assert branches[0].args == ("token", "--scope", "logs:read")
     assert branches[1].project == "backup"
     assert branches[1].args == ("status",)
-    assert branches[2].literal == "offline"
+    assert branches[2].project == "offline"
+    assert branches[2].args == ("status",)
 
 
 def test_trailing_colon_does_not_stop_fallback_chain() -> None:
     branches = parse_managed_branches("health.errors|standby:|ignored.value")
     assert len(branches) == 3
     assert branches[1].project == "standby:"
-    assert not branches[1].is_literal
     assert branches[2].project == "ignored"
     assert branches[2].args == ("value",)
 
