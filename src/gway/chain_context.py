@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 
 from .provenance import ValueProvenance
 
+_JSON_MODE_ENV = "_GWAY_JSON_MODE"
 _CHAIN_CONTEXT: ContextVar[MutableMapping[str, object] | None] = ContextVar(
     "gway_chain_context",
     default=None,
@@ -16,10 +18,17 @@ _CHAIN_PROVENANCE: ContextVar[MutableMapping[str, ValueProvenance] | None] = Con
 )
 
 
+def _json_mode_default() -> bool:
+    return os.environ.get(_JSON_MODE_ENV) == "1"
+
+
 def current_chain_context() -> dict[str, object]:
     """Return a copy of the active invocation-local chain context."""
     context = _CHAIN_CONTEXT.get()
-    return dict(context) if context is not None else {}
+    if context is None:
+        return {"json": _json_mode_default()}
+    context.setdefault("json", _json_mode_default())
+    return dict(context)
 
 
 def current_chain_provenance() -> dict[str, ValueProvenance]:
@@ -35,6 +44,7 @@ def chain_context_scope(
 ):
     """Activate and reliably restore one invocation-local chain context."""
     active: MutableMapping[str, object] = {} if context is None else context
+    active.setdefault("json", _json_mode_default())
     active_provenance: MutableMapping[str, ValueProvenance] = (
         {} if provenance is None else provenance
     )
