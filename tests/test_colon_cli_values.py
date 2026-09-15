@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
+from gway.cli import main
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.project import Project
@@ -18,11 +20,11 @@ name = "colon"
 
 [adapter]
 type = "python"
-module = "commands"
+module = "colon_commands"
 """,
         encoding="utf-8",
     )
-    (root / "commands.py").write_text(
+    (root / "colon_commands.py").write_text(
         """def token(
     *token_id: str,
     name: str | None = None,
@@ -32,7 +34,7 @@ module = "commands"
     revoke: bool = False,
 ):
     return {
-        "token_id": list(token_id),
+        "token_id": token_id,
         "name": name,
         "scope": scope,
         "ttl": ttl,
@@ -42,11 +44,11 @@ module = "commands"
 
 
 def echo(*values: str):
-    return list(values)
+    return values
 """,
         encoding="utf-8",
     )
-    sys.modules.pop("commands", None)
+    sys.modules.pop("colon_commands", None)
 
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     registry = Registry(paths)
@@ -54,10 +56,20 @@ def echo(*values: str):
     return Dispatcher(registry)
 
 
-def test_keyword_option_keeps_colon_value_out_of_varargs(tmp_path: Path) -> None:
+def test_cli_keyword_option_keeps_colon_value_out_of_varargs(
+    tmp_path: Path,
+    capsys,
+) -> None:
     dispatcher = _dispatcher(tmp_path)
 
-    result = dispatcher.run("colon", ["token", "--scope", "logs:read"])
+    assert (
+        main(
+            ["--json", "colon", "token", "--scope", "logs:read"],
+            dispatcher=dispatcher,
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
 
     assert result["token_id"] == []
     assert result["scope"] == "logs:read"
@@ -73,4 +85,4 @@ def test_colon_bearing_cli_values_are_opaque_data(tmp_path: Path) -> None:
         "foo:bar:baz",
     ]
 
-    assert dispatcher.run("colon", ["echo", *values]) == values
+    assert dispatcher.run("colon", ["echo", *values]) == tuple(values)
