@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 from gway.config import GwayPaths
@@ -6,10 +7,31 @@ from gway.registry import Registry
 from gway.upgrade import Upgrader
 
 
+def _commit_checkout(checkout: Path) -> None:
+    subprocess.run(["git", "-C", str(checkout), "init", "--quiet"], check=True)
+    subprocess.run(
+        ["git", "-C", str(checkout), "config", "user.email", "tests@example.invalid"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(checkout), "config", "user.name", "Gway Tests"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(checkout), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(checkout), "commit", "--quiet", "-m", "fixture"],
+        check=True,
+    )
+
+
 class Repositories:
     def __init__(self, revision: str) -> None:
         self.revision_value = revision
         self.upgrade_calls: list[tuple[Path, str, bool]] = []
+
+    def validate_checkout(self, checkout: Path, full_name: str) -> None:
+        assert (checkout / ".git").is_dir()
+        assert full_name == "arthexis/gway-fixture"
 
     def revision(self, checkout: Path) -> str:
         return self.revision_value
@@ -40,6 +62,7 @@ def registered_project(tmp_path: Path, revision: str) -> tuple[Registry, Project
         """[project]\nname = "fixture"\n\n[adapter]\ntype = "python"\nmodule = "fixture.gway"\n""",
         encoding="utf-8",
     )
+    _commit_checkout(checkout)
     project = Project(
         name="fixture",
         path=checkout,
