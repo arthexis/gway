@@ -5,7 +5,7 @@ import json
 import pytest
 
 from gway.dispatcher.errors import DispatchError
-from gway.event import FileEventBackend, pub, publish
+from gway.event import CallableEventBackend, FileEventBackend, pub, publish
 from gway.event_command import run_event
 from gway.runtime import GwayRuntime
 
@@ -57,6 +57,56 @@ def test_unknown_backend_is_dispatch_error() -> None:
         run_event(["pub", "demo.event", "--backend", "missing"])
 
 
+def test_callable_backend_dispatches_to_provider() -> None:
+    calls = []
+
+    def dispatch(project: str, argv: list[str]) -> object:
+        calls.append((project, argv))
+        return '{"type":"rfid.scanned","queue":"rfid.scanned","published":true}'
+
+    result = run_event(
+        ["pub", "rfid.scanned", "--provider", "arthexis:event", "--uid", "04A1"],
+        dispatch=dispatch,
+    )
+
+    assert result["published"] is True
+    assert calls == [
+        (
+            "arthexis",
+            ["event", "pub", "rfid.scanned", "--data", '{"uid":"04A1"}'],
+        )
+    ]
+
+
+def test_provider_environment_selects_callable_backend(monkeypatch) -> None:
+    monkeypatch.setenv("GWAY_EVENT_PROVIDER", "arthexis:event")
+    calls = []
+
+    def dispatch(project: str, argv: list[str]) -> object:
+        calls.append((project, argv))
+        return {"published": True}
+
+    result = run_event(["pub", "service.failed", "--retry", "false"], dispatch=dispatch)
+    assert result == {"published": True}
+    assert calls[0][0] == "arthexis"
+
+
+def test_provider_defaults_to_event_command() -> None:
+    calls = []
+
+    def dispatch(project: str, argv: list[str]) -> object:
+        calls.append((project, argv))
+        return {"published": True}
+
+    run_event(["pub", "demo.event", "--provider", "arthexis"], dispatch=dispatch)
+    assert calls[0][1][:3] == ["event", "pub", "demo.event"]
+
+
+def test_callable_backend_requires_dispatch() -> None:
+    with pytest.raises(DispatchError, match="requires Gway dispatch"):
+        run_event(["pub", "demo.event", "--provider", "arthexis:event"])
+
+
 def test_runtime_exposes_event_as_core_operation(tmp_path) -> None:
     target = tmp_path / "events.jsonl"
     result = GwayRuntime()._run_core(
@@ -70,3 +120,9 @@ def test_file_backend_can_be_constructed_explicitly(tmp_path) -> None:
     target = tmp_path / "events.jsonl"
     backend = FileEventBackend(target)
     assert backend.path == target
+
+
+def test_callable_backend_can_be_constructed_explicitly() -> None:
+    backend = CallableEventBackend("arthexis:event", lambda project, argv: None)
+    assert backend.project == "arthexis"
+    assert backend.command == "event"

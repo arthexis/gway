@@ -25,7 +25,7 @@ class GwayRuntime(_base.GwayRuntime):
     def _run_core(self, tokens: Sequence[str]) -> object:
         operation = tokens[0]
         if operation == "event":
-            return run_event(tokens[1:])
+            return run_event(tokens[1:], dispatch=self.dispatcher.run)
         if operation == "install":
             return self._run_install(tokens[1:])
         if operation == "upgrade":
