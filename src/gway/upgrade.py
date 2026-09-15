@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .checkout_clean import clean_managed_checkout, split_clean_arguments
+from .install import Installer
 from .project import Project
 from .registry import Registry
 from .repository import RepositoryError, RepositoryManager, WorkingTreeEntry
@@ -32,6 +33,7 @@ class UpgradeResult:
     force_error_type: str | None = None
     force_error: str | None = None
     dirty_files: tuple[WorkingTreeEntry, ...] = ()
+    installed: bool = False
 
 
 @dataclass(frozen=True)
@@ -257,14 +259,33 @@ class Upgrader:
         force: bool = False,
         try_force: bool = False,
         reload: bool = False,
+        install: bool = False,
         arguments: Sequence[str] = (),
         clean: bool = True,
     ) -> UpgradeResult:
         if force and try_force:
             raise UpgradeError("force and try_force are mutually exclusive")
 
+        install = install or "--install" in arguments
+        arguments = tuple(argument for argument in arguments if argument != "--install")
         clean, arguments = split_clean_arguments(arguments, default=clean)
-        current = self.registry.require(name)
+
+        current = self.registry.get(name)
+        if current is None:
+            if not install:
+                current = self.registry.require(name)
+            else:
+                project = Installer(
+                    self.registry,
+                    self.repositories,
+                    self.runner,
+                ).install(
+                    name,
+                    arguments=arguments,
+                    clean=clean,
+                )
+                return UpgradeResult(project, changed=True, installed=True)
+
         if not current.repository:
             raise UpgradeError(
                 f"project is locally registered and cannot be upgraded by GWAY: {current.name}"
@@ -373,6 +394,7 @@ class Upgrader:
         force: bool = False,
         try_force: bool = False,
         reload: bool = False,
+        install: bool = False,
         arguments: Sequence[str] = (),
         clean: bool = True,
     ) -> Project:
@@ -381,6 +403,7 @@ class Upgrader:
             force=force,
             try_force=try_force,
             reload=reload,
+            install=install,
             arguments=arguments,
             clean=clean,
         ).project

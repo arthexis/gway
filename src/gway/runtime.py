@@ -113,6 +113,8 @@ class GwayRuntime(_base.GwayRuntime):
         force_mode.add_argument("--force", action="store_true")
         force_mode.add_argument("--try-force", action="store_true")
         parser.add_argument("--reload", action="store_true")
+        parser.add_argument("--install", action="store_true")
+        parser.add_argument("--service", action="store_true")
         parser.add_argument("--detail", action="store_true")
         parser.add_argument(
             "--clean",
@@ -127,6 +129,10 @@ class GwayRuntime(_base.GwayRuntime):
             )
         include_self_target = "gway" in targets
         managed_targets = [target for target in targets if target != "gway"]
+        if namespace.install and not managed_targets:
+            raise _base.UpgradeError("--install requires an explicit managed PROJECT")
+        if namespace.service and not managed_targets:
+            raise _base.UpgradeError("--service requires an explicit managed PROJECT")
         if passthrough and len(managed_targets) != 1:
             raise _base.UpgradeError(
                 "installer arguments require exactly one managed PROJECT"
@@ -145,7 +151,11 @@ class GwayRuntime(_base.GwayRuntime):
                 results.append(result)
                 self._publish_progress(result)
             for target in managed_targets:
-                upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
+                upgrade_kwargs: dict[str, object] = {}
+                if namespace.try_force:
+                    upgrade_kwargs["try_force"] = True
+                if namespace.install:
+                    upgrade_kwargs["install"] = True
                 if not namespace.clean:
                     upgrade_kwargs["clean"] = False
                 changed = upgrader.project_result(
@@ -155,8 +165,13 @@ class GwayRuntime(_base.GwayRuntime):
                     arguments=passthrough if len(managed_targets) == 1 else (),
                     **upgrade_kwargs,
                 )
-                status = "upgraded" if changed.changed else "skipped"
+                if getattr(changed, "installed", False):
+                    status = "installed"
+                else:
+                    status = "upgraded" if changed.changed else "skipped"
                 result = _base._upgrade_status(status, changed)
+                if namespace.service:
+                    result["service"] = _base._install_project_service(changed.project)
                 results.append(result)
                 self._publish_progress(result)
             if len(managed_targets) == 1 and not include_self_target:
