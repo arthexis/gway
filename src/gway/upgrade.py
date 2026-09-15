@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from .checkout_clean import clean_managed_checkout, split_clean_arguments
 from .project import Project
 from .registry import Registry
 from .repository import RepositoryError, RepositoryManager, WorkingTreeEntry
@@ -257,10 +258,12 @@ class Upgrader:
         try_force: bool = False,
         reload: bool = False,
         arguments: Sequence[str] = (),
+        clean: bool = True,
     ) -> UpgradeResult:
         if force and try_force:
             raise UpgradeError("force and try_force are mutually exclusive")
 
+        clean, arguments = split_clean_arguments(arguments, default=clean)
         current = self.registry.require(name)
         if not current.repository:
             raise UpgradeError(
@@ -268,6 +271,9 @@ class Upgrader:
             )
 
         previous_revision = current.revision or self.repositories.revision(current.path)
+        if clean and not force:
+            clean_managed_checkout(current.path, current.repository, self.repositories)
+
         can_skip = not reload and not arguments and self.remote_revision is not None
         if can_skip and self.checkout_clean is not None:
             can_skip = self.checkout_clean(current.path)
@@ -368,6 +374,7 @@ class Upgrader:
         try_force: bool = False,
         reload: bool = False,
         arguments: Sequence[str] = (),
+        clean: bool = True,
     ) -> Project:
         return self.project_result(
             name,
@@ -375,6 +382,7 @@ class Upgrader:
             try_force=try_force,
             reload=reload,
             arguments=arguments,
+            clean=clean,
         ).project
 
     def all_project_results(
@@ -383,6 +391,7 @@ class Upgrader:
         force: bool = False,
         try_force: bool = False,
         reload: bool = False,
+        clean: bool = True,
     ) -> list[UpgradeResult]:
         if force and try_force:
             raise UpgradeError("force and try_force are mutually exclusive")
@@ -396,6 +405,7 @@ class Upgrader:
                     force=force,
                     try_force=try_force,
                     reload=reload,
+                    clean=clean,
                 )
             )
         return results
@@ -406,6 +416,7 @@ class Upgrader:
         force: bool = False,
         try_force: bool = False,
         reload: bool = False,
+        clean: bool = True,
     ) -> list[Project]:
         return [
             result.project
@@ -413,6 +424,7 @@ class Upgrader:
                 force=force,
                 try_force=try_force,
                 reload=reload,
+                clean=clean,
             )
         ]
 

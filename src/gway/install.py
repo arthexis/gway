@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from .checkout_clean import clean_managed_checkout, split_clean_arguments
 from .config import GwayPaths
 from .project import InstallLayout, Project
 from .registry import Registry
@@ -192,7 +193,14 @@ class Installer:
         )
         self.runner.refresh(restored)
 
-    def install(self, spec: str, *, arguments: Sequence[str] = ()) -> Project:
+    def install(
+        self,
+        spec: str,
+        *,
+        arguments: Sequence[str] = (),
+        clean: bool = True,
+    ) -> Project:
+        clean, arguments = split_clean_arguments(arguments, default=clean)
         repository = self.repositories.resolve(spec)
         checkout = self.repositories.clone(repository)
         prepared_environment: Path | None = None
@@ -211,6 +219,8 @@ class Installer:
                 previous_project = project
                 previous_revision = self.repositories.revision(checkout)
                 Runner.configure_managed_checkout(checkout)
+                if clean:
+                    clean_managed_checkout(checkout, repository.full_name, self.repositories)
                 self.repositories.upgrade(checkout, repository.full_name)
                 checkout_refreshed = True
                 project = Project.from_path(checkout)

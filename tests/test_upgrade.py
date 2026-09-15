@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,10 +16,31 @@ from gway.runner import Runner
 from gway.upgrade import UpgradeError, Upgrader
 
 
+def _commit_checkout(path: Path) -> None:
+    subprocess.run(["git", "-C", str(path), "init", "--quiet"], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.email", "tests@example.invalid"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.name", "Gway Tests"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(path), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "commit", "--quiet", "-m", "fixture"],
+        check=True,
+    )
+
+
 class FixtureRepositories:
     def __init__(self, revision: str = "new-revision") -> None:
         self.revision = revision
         self.calls: list[tuple[Path, str, bool]] = []
+
+    def validate_checkout(self, checkout: Path, full_name: str) -> None:
+        assert (checkout / ".git").is_dir()
+        assert full_name == "arthexis/gway-wireguard"
 
     def upgrade(self, checkout: Path, full_name: str, *, force: bool = False) -> str:
         self.calls.append((checkout, full_name, force))
@@ -45,6 +67,7 @@ type = "python"
 module = "example.gway"
 '''
     (path / "gway.toml").write_text(manifest, encoding="utf-8")
+    _commit_checkout(path)
 
 
 def managed_project(path: Path, environment: Path | None = None) -> Project:

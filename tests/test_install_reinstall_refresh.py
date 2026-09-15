@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,23 @@ environment = ".venv"
 '''
 
 
+def _commit_checkout(checkout: Path) -> None:
+    subprocess.run(["git", "-C", str(checkout), "init", "--quiet"], check=True)
+    subprocess.run(
+        ["git", "-C", str(checkout), "config", "user.email", "tests@example.invalid"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(checkout), "config", "user.name", "Gway Tests"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(checkout), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(checkout), "commit", "--quiet", "-m", "fixture"],
+        check=True,
+    )
+
+
 class ReinstallRepositories:
     def __init__(self, root: Path, events: list[str]) -> None:
         self.root = root
@@ -31,7 +49,10 @@ class ReinstallRepositories:
         self.repository = ResolvedRepository("arthexis", "gway-fixture")
         self.target = root / "managed" / "app"
         self.target.mkdir(parents=True)
-        (self.target / "gway.toml").write_text(_manifest(root / "managed", "old"), encoding="utf-8")
+        (self.target / "gway.toml").write_text(
+            _manifest(root / "managed", "old"), encoding="utf-8"
+        )
+        _commit_checkout(self.target)
         stale = self.target / "removed-command.py"
         stale.write_text("obsolete\n", encoding="utf-8")
 
@@ -53,12 +74,13 @@ class ReinstallRepositories:
     def validate_checkout(self, checkout: Path, full_name: str) -> None:
         assert checkout == self.target
         assert full_name == self.repository.full_name
+        assert (checkout / ".git").is_dir()
 
     def upgrade(self, checkout: Path, full_name: str) -> str:
         self.events.append("upgrade")
         assert checkout == self.target
         assert full_name == self.repository.full_name
-        (checkout / "removed-command.py").unlink()
+        assert not (checkout / "removed-command.py").exists()
         (checkout / "gway.toml").write_text(
             _manifest(self.root / "managed", "new"), encoding="utf-8"
         )
@@ -75,11 +97,21 @@ class ReinstallRepositories:
         (checkout / "removed-command.py").write_text("obsolete\n", encoding="utf-8")
 
     def revision(self, checkout: Path) -> str:
-        return "new-revision" if "new" in (checkout / "gway.toml").read_text() else "old-revision"
+        return (
+            "new-revision"
+            if "new" in (checkout / "gway.toml").read_text()
+            else "old-revision"
+        )
 
 
 class ReinstallRunner:
-    def __init__(self, root: Path, events: list[str], *, fail_refresh: bool = False) -> None:
+    def __init__(
+        self,
+        root: Path,
+        events: list[str],
+        *,
+        fail_refresh: bool = False,
+    ) -> None:
         self.root = root
         self.events = events
         self.fail_refresh = fail_refresh
@@ -123,7 +155,9 @@ def test_reinstall_refreshes_existing_checkout_before_environment_and_lifecycle(
     assert not (repositories.target / "removed-command.py").exists()
 
 
-def test_reinstall_rolls_back_checkout_and_environment_when_refresh_fails(tmp_path: Path) -> None:
+def test_reinstall_rolls_back_checkout_and_environment_when_refresh_fails(
+    tmp_path: Path,
+) -> None:
     events: list[str] = []
     paths = GwayPaths(tmp_path / "config", tmp_path / "data")
     repositories = ReinstallRepositories(tmp_path, events)
