@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.project import Project
 from gway.registry import Registry
+from gway.repository import RepositoryError
 from gway.runtime import GwayRuntime
 
 
@@ -98,6 +100,23 @@ def test_clean_removes_ignored_python_bytecode_but_preserves_other_ignored_state
     assert not sourceless.exists()
     assert not cache.exists()
     assert (runtime_state / "state.json").exists()
+
+
+def test_clean_normalizes_bytecode_removal_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = _repository(tmp_path)
+    cache = checkout / "__pycache__"
+    cache.mkdir()
+
+    def fail_remove(path: Path) -> None:
+        raise PermissionError(f"cannot remove {path}")
+
+    monkeypatch.setattr(shutil, "rmtree", fail_remove)
+
+    with pytest.raises(RepositoryError, match="cannot remove Python bytecode"):
+        clean_managed_checkout(checkout, "arthexis/example", _Repositories())  # type: ignore[arg-type]
 
 
 def test_clean_does_not_reset_tracked_local_changes(tmp_path: Path) -> None:
