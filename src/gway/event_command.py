@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+import os
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from .dispatcher.errors import DispatchError
-from .event import DEFAULT_BACKEND, publish
+from .event import DEFAULT_BACKEND, EVENT_PROVIDER_ENV, publish
 
 
 class _EventParser(argparse.ArgumentParser):
@@ -31,7 +32,11 @@ def _value(value: str) -> Any:
         return value
 
 
-def run_event(argv: Sequence[str]) -> dict[str, Any]:
+def run_event(
+    argv: Sequence[str],
+    *,
+    dispatch: Callable[[str, list[str]], object] | None = None,
+) -> dict[str, Any]:
     if not argv:
         raise DispatchError("event requires publish (or pub)")
     operation = argv[0]
@@ -40,7 +45,8 @@ def run_event(argv: Sequence[str]) -> dict[str, Any]:
 
     parser = _EventParser(prog=f"gway event {operation}", add_help=False)
     parser.add_argument("event_type")
-    parser.add_argument("--backend", default=DEFAULT_BACKEND)
+    parser.add_argument("--backend")
+    parser.add_argument("--provider")
     parser.add_argument("--path")
     namespace, fields = parser.parse_known_args(list(argv[1:]))
 
@@ -60,11 +66,15 @@ def run_event(argv: Sequence[str]) -> dict[str, Any]:
         data[key] = _value(fields[index])
         index += 1
 
+    provider = namespace.provider or os.environ.get(EVENT_PROVIDER_ENV)
+    backend_name = namespace.backend or ("callable" if provider else DEFAULT_BACKEND)
     try:
         return publish(
             namespace.event_type,
-            backend_name=namespace.backend,
+            backend_name=backend_name,
             path=namespace.path,
+            provider=provider,
+            dispatch=dispatch,
             **data,
         )
     except ValueError as exc:
