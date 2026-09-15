@@ -273,18 +273,16 @@ class Dispatcher:
                 )
                 if not should_fallback:
                     return result
-            if branch.is_literal:
-                return branch.literal
             try:
                 if prompt is None:
                     result = self.run(
-                        branch.project or "",
+                        branch.project,
                         branch.args,
                         interactive=interactive,
                     )
                 else:
                     result = self.run(
-                        branch.project or "",
+                        branch.project,
                         branch.args,
                         interactive=interactive,
                         prompt=prompt,

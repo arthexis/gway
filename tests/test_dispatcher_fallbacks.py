@@ -54,13 +54,17 @@ def test_missing_branch_falls_through_to_next_command() -> None:
     assert dispatcher.calls == [("missing", "check"), ("secondary", "check")]
 
 
-def test_terminal_literal_fallback_stops_evaluation() -> None:
+def test_colon_prefixed_fallback_is_dispatched_normally() -> None:
     result, dispatcher = evaluate(
         "primary.check|:offline|secondary.check",
-        {("primary", "check"): False, ("secondary", "check"): "ready"},
+        {
+            ("primary", "check"): False,
+            (":offline",): "ordinary",
+            ("secondary", "check"): "ready",
+        },
     )
-    assert result == "offline"
-    assert dispatcher.calls == [("primary", "check")]
+    assert result == "ordinary"
+    assert dispatcher.calls == [("primary", "check"), (":offline",)]
 
 
 def test_trailing_colon_is_dispatched_as_command_data() -> None:

@@ -121,7 +121,8 @@ def test_gway_sigil_values_do_not_supply_arguments(tmp_path: Path) -> None:
 
 def test_gway_sigil_values_support_loose_and_strict_fallbacks(tmp_path: Path) -> None:
     paths = _register_live_project(tmp_path)
+    context = {**gway_context(paths), "offline": "offline"}
 
-    assert Sigil("[health.zero|:offline]").solve(gway_context(paths)) == "offline"
-    assert Sigil("[health.zero||:offline]").solve(gway_context(paths)) == "0"
-    assert Sigil("[health.echo||health.one||:offline]").solve(gway_context(paths)) == "1"
+    assert Sigil("[health.zero|offline]").solve(context) == "offline"
+    assert Sigil("[health.zero||offline]").solve(context) == "0"
+    assert Sigil("[health.echo||health.one||offline]").solve(context) == "1"

@@ -20,16 +20,11 @@ class ExpressionError(ValueError):
 
 @dataclass(frozen=True)
 class ManagedBranch:
-    """One managed CLI fallback branch or terminal literal value."""
+    """One managed CLI fallback branch."""
 
-    project: str | None = None
+    project: str
     args: tuple[str, ...] = ()
-    literal: str | None = None
     operator: str | None = None
-
-    @property
-    def is_literal(self) -> bool:
-        return self.literal is not None
 
 
 def _split_compact_path(token: str) -> list[str]:
@@ -119,9 +114,8 @@ def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
     """Parse commands plus loose ``|`` and strict ``||`` fallback chains.
 
     ``|`` advances on any falsey result while ``||`` advances only on
-    missing/None/empty-set values. A fallback branch beginning with ``:`` is a
-    terminal literal for compatibility. Colons everywhere else are ordinary
-    command/argument data and never force a call.
+    missing/None/empty-set values. Every fallback branch is parsed as an
+    ordinary command expression; colons never have grammatical meaning.
     """
     expression = expression.strip()
     if not expression:
@@ -142,9 +136,6 @@ def parse_managed_branches(expression: str) -> tuple[ManagedBranch, ...]:
         branch = parts[index + 1].strip()
         if not branch:
             raise ExpressionError("managed fallback branch is empty")
-        if branch.startswith(":"):
-            branches.append(ManagedBranch(literal=branch[1:].strip(), operator=operator))
-            break
         branches.append(_command_branch(branch, operator=operator))
 
     return tuple(branches)
