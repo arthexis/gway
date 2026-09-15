@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -27,12 +28,23 @@ def split_clean_arguments(
     return clean, tuple(passthrough)
 
 
+def _remove_python_bytecode(checkout: Path) -> None:
+    """Remove ignored Python caches that can preserve deleted importable modules."""
+    for cache in checkout.rglob("__pycache__"):
+        if cache.is_dir() and not cache.is_symlink():
+            shutil.rmtree(cache)
+    for suffix in ("*.pyc", "*.pyo"):
+        for bytecode in checkout.rglob(suffix):
+            if bytecode.is_file() and not bytecode.is_symlink():
+                bytecode.unlink()
+
+
 def clean_managed_checkout(
     checkout: Path,
     full_name: str,
     repositories: RepositoryManager,
 ) -> None:
-    """Remove untracked, non-ignored files from a validated managed checkout."""
+    """Remove stale code while preserving ignored application/runtime state."""
     repositories.validate_checkout(checkout, full_name)
     Runner.configure_managed_checkout(checkout)
     try:
@@ -47,3 +59,9 @@ def clean_managed_checkout(
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "git clean -fd failed"
         raise RepositoryError(f"cannot clean managed checkout {checkout}: {detail}")
+
+    # git clean intentionally preserves ignored files. Python bytecode is ignored by
+    # most projects, but sourceless .pyc files can remain importable after their .py
+    # module was deleted upstream. Purge only Python caches; keep all other ignored
+    # state (databases, media, locks, local configuration, and similar data) intact.
+    _remove_python_bytecode(checkout)
