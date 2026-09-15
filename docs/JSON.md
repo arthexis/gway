@@ -13,6 +13,8 @@ With `gway --json project status`, GWAY supplies `json=True` when the caller did
 
 A function-level `--json` or `--no-json` is input to that call only. Passing it does not mutate shared context. Normal result publication still applies: if the function deliberately returns a mapping containing a `json` field, that field can become named context just like any other returned mapping field.
 
+At the top-level CLI, bare `--json` remains reserved as GWAY's global output flag. Call-local `--json` semantics apply when `--json` is already being dispatched as a managed-command option, such as within recipe or chain execution. This PR does not change that existing top-level flag grammar.
+
 The same inherited context flows through chains, nested recipes, and reload/resume boundaries. Functions that do not declare a `json` option are unaffected.
 
 Recipes can change the value explicitly for subsequent calls using the context operation whose job is to publish its parameters:
