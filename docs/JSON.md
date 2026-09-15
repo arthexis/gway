@@ -11,9 +11,11 @@ def status(*, json: bool = False):
 
 With `gway --json project status`, GWAY supplies `json=True` when the caller did not provide that option explicitly. Without the global flag it supplies `json=False`. An explicit managed-command option still wins, so `gway --json project status --no-json` keeps the outer GWAY result in JSON while passing `json=False` to `status()`.
 
-The same context flows through chains, nested recipes, and reload/resume boundaries. Functions that do not declare a `json` option are unaffected.
+A function-level `--json` or `--no-json` is input to that call only. Passing it does not mutate shared context. Normal result publication still applies: if the function deliberately returns a mapping containing a `json` field, that field can become named context just like any other returned mapping field.
 
-Recipes can change the value once for subsequent calls using normal context operations:
+The same inherited context flows through chains, nested recipes, and reload/resume boundaries. Functions that do not declare a `json` option are unaffected.
+
+Recipes can change the value explicitly for subsequent calls using the context operation whose job is to publish its parameters:
 
 ```text
 store --json
