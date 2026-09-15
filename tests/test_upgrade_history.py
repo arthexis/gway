@@ -1,5 +1,6 @@
 import json
 import logging
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,23 @@ from gway.registry import Registry
 from gway.repository import RepositoryError, WorkingTreeEntry
 from gway.upgrade import Upgrader
 from gway.upgrade_history import UpgradeHistoryRecord, append_upgrade_history
+
+
+def _commit_checkout(path: Path) -> None:
+    subprocess.run(["git", "-C", str(path), "init", "--quiet"], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.email", "tests@example.invalid"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.name", "Gway Tests"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(path), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "commit", "--quiet", "-m", "fixture"],
+        check=True,
+    )
 
 
 def write_manifest(path: Path) -> None:
@@ -24,6 +42,7 @@ module = "example.gway"
 ''',
         encoding="utf-8",
     )
+    _commit_checkout(path)
 
 
 def managed_project(path: Path) -> Project:
@@ -46,6 +65,10 @@ class HistoryRepositories:
             WorkingTreeEntry(status=" M", path="src/example.py"),
             WorkingTreeEntry(status="??", path="scratch file.txt"),
         )
+
+    def validate_checkout(self, checkout: Path, full_name: str) -> None:
+        assert (checkout / ".git").is_dir()
+        assert full_name == "arthexis/gway-wireguard"
 
     def upgrade(self, checkout: Path, full_name: str, *, force: bool = False) -> str:
         self.calls.append(force)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,23 @@ from gway.project import InstallLayout, LifecycleHooks, Project
 from gway.registry import Registry
 from gway.repository import ResolvedRepository
 from gway.runner import Runner
+
+
+def _commit_checkout(checkout: Path) -> None:
+    subprocess.run(["git", "-C", str(checkout), "init", "--quiet"], check=True)
+    subprocess.run(
+        ["git", "-C", str(checkout), "config", "user.email", "tests@example.invalid"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(checkout), "config", "user.name", "Gway Tests"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(checkout), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(checkout), "commit", "--quiet", "-m", "fixture"],
+        check=True,
+    )
 
 
 class LayoutRepositories:
@@ -43,9 +61,11 @@ install = "example.lifecycle:install"
 upgrade = "example.lifecycle:upgrade"
 """
         (self.staging / "gway.toml").write_text(manifest, encoding="utf-8")
+        _commit_checkout(self.staging)
         return self.staging
 
     def validate_checkout(self, checkout: Path, full_name: str) -> None:
+        assert (checkout / ".git").is_dir()
         self.validated.append((checkout, full_name))
 
     def upgrade(self, checkout: Path, full_name: str) -> str:
@@ -120,7 +140,10 @@ def test_second_install_adopts_matching_managed_checkout(tmp_path: Path) -> None
     assert second.path == first.path == target / "app"
     assert second.environment == first.environment == target / ".venv"
     assert not staging.exists()
-    assert repositories.validated == [(target / "app", "arthexis/arthexis")]
+    assert repositories.validated == [
+        (target / "app", "arthexis/arthexis"),
+        (target / "app", "arthexis/arthexis"),
+    ]
     assert runner.refreshed == [replace(second, environment=None)]
     assert registry.require("arthexis") == second
 

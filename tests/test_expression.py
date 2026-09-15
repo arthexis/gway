@@ -4,9 +4,6 @@ import pytest
 
 from gway.expression import (
     MANAGED_EXPRESSION_PROJECT,
-    STRUCTURED_ARG_PREFIX,
-    STRUCTURED_KWARG_PREFIX,
-    STRUCTURED_TUPLE_PREFIX,
     ExpressionError,
     normalize_managed_args,
     parse_managed_branches,
@@ -37,63 +34,41 @@ def test_dotted_command_after_separate_project() -> None:
     assert args == ["connector", "status"]
 
 
-def test_trailing_colon_routes_to_literal_expression() -> None:
+def test_trailing_colon_is_ordinary_command_data() -> None:
     project, args = normalize_managed_args(["health.errors:"])
-    assert project == MANAGED_EXPRESSION_PROJECT
-    assert args == ["health.errors:"]
-    branch = parse_managed_branches(args[0])[0]
-    assert branch.is_literal
-    assert branch.literal == "health.errors"
+    assert project == "health"
+    assert args == ["errors:"]
 
 
-def test_colon_argument_routes_through_expression_mode() -> None:
+def test_colon_inside_compact_command_is_not_call_syntax() -> None:
     project, args = normalize_managed_args(["charger.status:1"])
-    assert project == MANAGED_EXPRESSION_PROJECT
-    assert args == ["charger.status:1"]
-    branch = parse_managed_branches(args[0])[0]
-    assert branch.project == "charger"
-    assert branch.args == ("status", f"{STRUCTURED_ARG_PREFIX}1")
+    assert project == "charger"
+    assert args == ["status:1"]
 
 
-def test_spaced_colon_positional_argument() -> None:
+def test_spaced_colon_is_an_ordinary_argument() -> None:
     project, args = normalize_managed_args(["network", "ip", ":", "wlan0"])
-    assert project == MANAGED_EXPRESSION_PROJECT
-    branch = parse_managed_branches(args[0])[0]
-    assert branch.project == "network"
-    assert branch.args == ("ip", f"{STRUCTURED_ARG_PREFIX}wlan0")
+    assert project == "network"
+    assert args == ["ip", ":", "wlan0"]
 
 
-def test_keyword_argument_is_preserved_for_command_aware_binding() -> None:
-    branch = parse_managed_branches("network ip : interface = wlan0")[0]
-    assert branch.args == (
-        "ip",
-        f"{STRUCTURED_KWARG_PREFIX}interface=wlan0",
+def test_scope_value_with_colon_stays_out_of_expression_mode() -> None:
+    project, args = normalize_managed_args(
+        ["web", "token", "--scope", "logs:read"]
     )
+    assert project == "web"
+    assert args == ["token", "--scope", "logs:read"]
 
 
-def test_explicit_positional_colon_equals() -> None:
-    branch = parse_managed_branches("demo echo := left=right")[0]
-    assert branch.project == "demo"
-    assert branch.args == ("echo", f"{STRUCTURED_ARG_PREFIX}left=right")
-
-
-def test_multiple_colons_create_multiple_arguments() -> None:
-    branch = parse_managed_branches("demo combine : first : second : mode=fast")[0]
-    assert branch.args == (
-        "combine",
-        f"{STRUCTURED_ARG_PREFIX}first",
-        f"{STRUCTURED_ARG_PREFIX}second",
-        f"{STRUCTURED_KWARG_PREFIX}mode=fast",
-    )
-
-
-def test_commas_create_grouped_tuple_arguments() -> None:
-    branch = parse_managed_branches("demo shape : a , b , c : values = x , y")[0]
-    assert branch.args == (
-        "shape",
-        f"{STRUCTURED_ARG_PREFIX}{STRUCTURED_TUPLE_PREFIX}a,b,c",
-        f"{STRUCTURED_KWARG_PREFIX}values={STRUCTURED_TUPLE_PREFIX}x,y",
-    )
+def test_urls_times_and_multiple_colons_remain_opaque_arguments() -> None:
+    values = [
+        "https://logs.arthexis.com/api/logs/run/events",
+        "12:30",
+        "foo:bar:baz",
+    ]
+    project, args = normalize_managed_args(["demo", "echo", *values])
+    assert project == "demo"
+    assert args == ["echo", *values]
 
 
 def test_fallback_expression_routes_to_dispatcher_expression_mode() -> None:
@@ -113,13 +88,27 @@ def test_fallback_branches_preserve_commands_and_terminal_literal() -> None:
     assert branches[2].literal == "offline"
 
 
-def test_trailing_literal_stops_fallback_chain() -> None:
+def test_fallback_command_arguments_keep_colons_as_data() -> None:
+    branches = parse_managed_branches(
+        "web token --scope logs:read|backup status|:offline"
+    )
+    assert branches[0].project == "web"
+    assert branches[0].args == ("token", "--scope", "logs:read")
+    assert branches[1].project == "backup"
+    assert branches[1].args == ("status",)
+    assert branches[2].literal == "offline"
+
+
+def test_trailing_colon_does_not_stop_fallback_chain() -> None:
     branches = parse_managed_branches("health.errors|standby:|ignored.value")
-    assert len(branches) == 2
-    assert branches[1].literal == "standby"
+    assert len(branches) == 3
+    assert branches[1].project == "standby:"
+    assert not branches[1].is_literal
+    assert branches[2].project == "ignored"
+    assert branches[2].args == ("value",)
 
 
-@pytest.mark.parametrize("expression", [".health", "health.", "health..errors", ":arg"])
+@pytest.mark.parametrize("expression", [".health", "health.", "health..errors"])
 def test_invalid_compact_paths_are_rejected(expression: str) -> None:
     with pytest.raises(ExpressionError):
         normalize_managed_args([expression])

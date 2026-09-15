@@ -1,0 +1,173 @@
+from __future__ import annotations
+
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from gway.checkout_clean import clean_managed_checkout, split_clean_arguments
+from gway.config import GwayPaths
+from gway.dispatcher import Dispatcher
+from gway.project import Project
+from gway.registry import Registry
+from gway.repository import RepositoryError
+from gway.runtime import GwayRuntime
+
+
+class _Repositories:
+    def __init__(self) -> None:
+        self.validated: list[tuple[Path, str]] = []
+
+    def validate_checkout(self, checkout: Path, full_name: str) -> None:
+        self.validated.append((checkout, full_name))
+
+
+def _git(checkout: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(checkout), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _repository(tmp_path: Path) -> Path:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    _git(checkout, "init", "--quiet")
+    _git(checkout, "config", "user.email", "tests@example.invalid")
+    _git(checkout, "config", "user.name", "Gway Tests")
+    (checkout / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+    _git(checkout, "add", "tracked.txt")
+    _git(checkout, "commit", "--quiet", "-m", "initial")
+    return checkout
+
+
+def test_split_clean_arguments_defaults_to_clean_and_strips_override() -> None:
+    assert split_clean_arguments(("--mode", "safe")) == (
+        True,
+        ("--mode", "safe"),
+    )
+    assert split_clean_arguments(("--mode", "safe", "--no-clean")) == (
+        False,
+        ("--mode", "safe"),
+    )
+    assert split_clean_arguments(("--no-clean", "--clean")) == (True, ())
+
+
+def test_clean_removes_untracked_tombstones_but_preserves_ignored_state(
+    tmp_path: Path,
+) -> None:
+    checkout = _repository(tmp_path)
+    exclude = checkout / ".git" / "info" / "exclude"
+    exclude.write_text("runtime-state/\n", encoding="utf-8")
+    stale = checkout / "stale-command.py"
+    stale.write_text("old\n", encoding="utf-8")
+    runtime_state = checkout / "runtime-state"
+    runtime_state.mkdir()
+    (runtime_state / "state.json").write_text("{}\n", encoding="utf-8")
+
+    repositories = _Repositories()
+    clean_managed_checkout(checkout, "arthexis/example", repositories)  # type: ignore[arg-type]
+
+    assert not stale.exists()
+    assert (runtime_state / "state.json").exists()
+    assert repositories.validated == [(checkout, "arthexis/example")]
+
+
+def test_clean_removes_ignored_python_bytecode_but_preserves_other_ignored_state(
+    tmp_path: Path,
+) -> None:
+    checkout = _repository(tmp_path)
+    exclude = checkout / ".git" / "info" / "exclude"
+    exclude.write_text("*.pyc\n__pycache__/\nruntime-state/\n", encoding="utf-8")
+
+    legacy = checkout / "apps" / "certs" / "management" / "commands"
+    legacy.mkdir(parents=True)
+    sourceless = legacy / "generate_certs.pyc"
+    sourceless.write_bytes(b"stale bytecode")
+    cache = legacy / "__pycache__"
+    cache.mkdir()
+    (cache / "generate_certs.cpython-310.pyc").write_bytes(b"stale cache")
+
+    runtime_state = checkout / "runtime-state"
+    runtime_state.mkdir()
+    (runtime_state / "state.json").write_text("{}\n", encoding="utf-8")
+
+    clean_managed_checkout(checkout, "arthexis/example", _Repositories())  # type: ignore[arg-type]
+
+    assert not sourceless.exists()
+    assert not cache.exists()
+    assert (runtime_state / "state.json").exists()
+
+
+def test_clean_normalizes_bytecode_removal_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = _repository(tmp_path)
+    cache = checkout / "__pycache__"
+    cache.mkdir()
+
+    def fail_remove(path: Path) -> None:
+        raise PermissionError(f"cannot remove {path}")
+
+    monkeypatch.setattr(shutil, "rmtree", fail_remove)
+
+    with pytest.raises(RepositoryError, match="cannot remove Python bytecode"):
+        clean_managed_checkout(checkout, "arthexis/example", _Repositories())  # type: ignore[arg-type]
+
+
+def test_clean_does_not_reset_tracked_local_changes(tmp_path: Path) -> None:
+    checkout = _repository(tmp_path)
+    tracked = checkout / "tracked.txt"
+    tracked.write_text("locally modified\n", encoding="utf-8")
+    stale = checkout / "stale.txt"
+    stale.write_text("stale\n", encoding="utf-8")
+
+    clean_managed_checkout(checkout, "arthexis/example", _Repositories())  # type: ignore[arg-type]
+
+    assert tracked.read_text(encoding="utf-8") == "locally modified\n"
+    assert not stale.exists()
+    status = subprocess.run(
+        ["git", "-C", str(checkout), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "tracked.txt" in status
+
+
+def test_runtime_no_clean_is_control_flag_not_lifecycle_argument(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    dispatcher = Dispatcher(Registry(paths))
+    checkout = tmp_path / "installed"
+    checkout.mkdir()
+    project = Project(
+        name="installed",
+        path=checkout,
+        adapter_type="python",
+        adapter_config={"module": "unused"},
+    )
+    calls: list[tuple[str, bool, tuple[str, ...]]] = []
+
+    class FakeInstaller:
+        def __init__(self, registry) -> None:
+            assert registry is dispatcher.registry
+
+        def install(self, spec: str, *, arguments=(), clean=True):
+            calls.append((spec, clean, tuple(arguments)))
+            return project
+
+    monkeypatch.setattr("gway.runtime.Installer", FakeInstaller)
+
+    result = GwayRuntime(dispatcher).execute(
+        ["install", "fixture", "--no-clean", "--role", "Satellite"]
+    )
+
+    assert result["status"] == "installed"
+    assert calls == [("fixture", False, ("--role", "Satellite"))]

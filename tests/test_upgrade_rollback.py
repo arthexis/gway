@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,23 @@ from gway.config import GwayPaths
 from gway.project import Project
 from gway.registry import Registry
 from gway.upgrade import Upgrader
+
+
+def _commit_checkout(path: Path) -> None:
+    subprocess.run(["git", "-C", str(path), "init", "--quiet"], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.email", "tests@example.invalid"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.name", "Gway Tests"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(path), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "commit", "--quiet", "-m", "fixture"],
+        check=True,
+    )
 
 
 def write_manifest(path: Path, *, lifecycle: bool = False) -> None:
@@ -29,11 +47,16 @@ module = "example.gway"
 """,
         encoding="utf-8",
     )
+    _commit_checkout(path)
 
 
 class RollbackRepositories:
     def __init__(self) -> None:
         self.resets: list[tuple[Path, str, str]] = []
+
+    def validate_checkout(self, checkout: Path, full_name: str) -> None:
+        assert (checkout / ".git").is_dir()
+        assert full_name == "arthexis/gway-fixture"
 
     def upgrade(self, checkout: Path, full_name: str, *, force: bool = False) -> str:
         return "new-revision"
