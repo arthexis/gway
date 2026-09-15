@@ -121,7 +121,7 @@ def test_runtime_no_clean_is_control_flag_not_lifecycle_argument(
     monkeypatch.setattr("gway.runtime.Installer", FakeInstaller)
 
     result = GwayRuntime(dispatcher).execute(
-        ["install", "fixture", "--no-clean", "--", "--role", "Satellite"]
+        ["install", "fixture", "--no-clean", "--role", "Satellite"]
     )
 
     assert result["status"] == "installed"
