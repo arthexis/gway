@@ -17,6 +17,7 @@ class RecipeStatement:
     path: Path
     line: int
     tokens: tuple[str, ...]
+    end_line: int | None = None
 
 
 class RecipeError(RuntimeError):
@@ -110,18 +111,110 @@ class RecipeContext(MutableMapping[str, object]):
         return len(self._values)
 
 
-def _recipe_statement_lines_from_source(source: str) -> tuple[int, ...]:
-    """Return physical statement lines from an already-read recipe snapshot."""
-    return tuple(
-        line_number
-        for line_number, text in enumerate(source.splitlines(), start=1)
-        if text.strip() and not text.strip().startswith("#")
-    )
+def _indent_width(text: str) -> int:
+    """Return the number of leading whitespace characters in a physical recipe line."""
+    return len(text) - len(text.lstrip())
+
+
+def _tokenize_recipe_statement(path: Path, text: str, *, line: int) -> tuple[str, ...]:
+    try:
+        return tuple(shlex.split(text, comments=False, posix=True))
+    except ValueError as exc:
+        raise RecipeError(path, str(exc), line=line) from exc
+
+
+def _recipe_statements_from_source(path: Path, source: str) -> tuple[RecipeStatement, ...]:
+    """Parse physical recipe lines into logical statements.
+
+    A trailing ``:`` introduces a continuation whose following non-empty,
+    non-comment lines must be indented to one common level and must begin with
+    an option token. The continuation is normalized back into one ordinary
+    GWAY statement before tokenization so execution keeps a single grammar.
+    """
+    lines = source.splitlines()
+    statements: list[RecipeStatement] = []
+    index = 0
+
+    while index < len(lines):
+        text = lines[index]
+        line_number = index + 1
+        stripped = text.strip()
+        if not stripped or stripped.startswith("#"):
+            index += 1
+            continue
+
+        if not text.rstrip().endswith(":"):
+            tokens = _tokenize_recipe_statement(path, text, line=line_number)
+            if tokens:
+                statements.append(RecipeStatement(path, line_number, tokens, line_number))
+            index += 1
+            continue
+
+        header_indent = _indent_width(text)
+        header = text.rstrip()[:-1].rstrip()
+        if not header.strip():
+            raise RecipeError(path, "continuation header cannot be empty", line=line_number)
+
+        continuation_parts: list[str] = []
+        continuation_indent: int | None = None
+        end_line = line_number
+        cursor = index + 1
+
+        while cursor < len(lines):
+            continuation_text = lines[cursor]
+            continuation_line = cursor + 1
+            continuation_stripped = continuation_text.strip()
+
+            if not continuation_stripped or continuation_stripped.startswith("#"):
+                cursor += 1
+                continue
+
+            indent = _indent_width(continuation_text)
+            if indent <= header_indent:
+                break
+            if continuation_indent is None:
+                continuation_indent = indent
+            elif indent != continuation_indent:
+                raise RecipeError(
+                    path,
+                    "nested or inconsistent continuation indentation is not supported",
+                    line=continuation_line,
+                )
+            if not continuation_stripped.startswith("-"):
+                raise RecipeError(
+                    path,
+                    "continuation lines must contain arguments or modifiers beginning with '-'",
+                    line=continuation_line,
+                )
+
+            continuation_parts.append(continuation_stripped)
+            end_line = continuation_line
+            cursor += 1
+
+        if not continuation_parts:
+            raise RecipeError(path, "continuation requires indented arguments", line=line_number)
+
+        logical_text = " ".join((header, *continuation_parts))
+        tokens = _tokenize_recipe_statement(path, logical_text, line=line_number)
+        if tokens:
+            statements.append(RecipeStatement(path, line_number, tokens, end_line))
+        index = cursor
+
+    return tuple(statements)
+
+
+def _recipe_statement_lines_from_source(source: str, *, path: Path | None = None) -> tuple[int, ...]:
+    """Return starting physical lines for logical statements in a recipe snapshot."""
+    recipe_path = path if path is not None else Path("<recipe>")
+    return tuple(statement.line for statement in _recipe_statements_from_source(recipe_path, source))
 
 
 def _recipe_statement_lines(path: Path) -> tuple[int, ...]:
-    """Return physical lines that begin logical recipe statements without parsing them."""
-    return _recipe_statement_lines_from_source(path.read_text(encoding="utf-8"))
+    """Return starting physical lines for logical statements in a recipe."""
+    return _recipe_statement_lines_from_source(
+        path.read_text(encoding="utf-8"),
+        path=path,
+    )
 
 
 def recipe_statements(
@@ -130,7 +223,7 @@ def recipe_statements(
     start_statement_index: int = 1,
     source: str | None = None,
 ) -> Iterator[RecipeStatement]:
-    """Yield tokenized statements lazily, optionally from an immutable source snapshot."""
+    """Yield tokenized logical statements, optionally from an immutable source snapshot."""
     recipe_path = Path(path).resolve()
     if recipe_path.suffix != ".rx":
         raise RecipeError(recipe_path, "recipe files must use the .rx extension")
@@ -138,20 +231,8 @@ def recipe_statements(
         raise RecipeError(recipe_path, "start statement index must be positive")
 
     recipe_source = source if source is not None else recipe_path.read_text(encoding="utf-8")
-    statement_index = 0
-    for line_number, text in enumerate(recipe_source.splitlines(), start=1):
-        stripped = text.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        statement_index += 1
-        if statement_index < start_statement_index:
-            continue
-        try:
-            tokens = tuple(shlex.split(text, comments=False, posix=True))
-        except ValueError as exc:
-            raise RecipeError(recipe_path, str(exc), line=line_number) from exc
-        if tokens:
-            yield RecipeStatement(recipe_path, line_number, tokens)
+    statements = _recipe_statements_from_source(recipe_path, recipe_source)
+    yield from statements[start_statement_index - 1 :]
 
 
 @dataclass(slots=True)
@@ -218,7 +299,7 @@ def _run_recipe_body(
     assert session.runtime is not None
     result: object = initial_result if has_initial_result else None
     statement_lines = (
-        _recipe_statement_lines_from_source(source)
+        _recipe_statement_lines_from_source(source, path=recipe_path)
         if source is not None
         else _recipe_statement_lines(recipe_path)
     )
@@ -259,6 +340,7 @@ def _run_recipe_body(
                 "executing recipe statement",
                 path=str(statement.path),
                 line=statement.line,
+                end_line=statement.end_line,
                 tokens=list(statement.tokens),
                 continuation=continuation.as_dict(),
                 continuation_stack=continuation_stack,
@@ -286,6 +368,7 @@ def _run_recipe_body(
                 "completed recipe statement",
                 path=str(statement.path),
                 line=statement.line,
+                end_line=statement.end_line,
                 result=result,
                 continuation=continuation.as_dict(),
                 continuation_stack=continuation_stack,
