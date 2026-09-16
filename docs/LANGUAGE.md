@@ -172,6 +172,10 @@ charger recover --> available:
 
 Semantically, arguments may apply either to the operation or to execution policy. GWAY should resolve this from known signatures/interfaces and expose the result through explain output.
 
+Option ownership may be inferred only when exactly one participating consumer accepts the option. If the operation, fitness function, or execution policy expose the same option name, ownership is ambiguous and GWAY should fail rather than silently choose one consumer or broadcast the value to several consumers. A value intentionally shared by multiple operations belongs in semantic context or a prior store, where each consumer can resolve it independently; command-line flags remain specific inputs to one command.
+
+This rule keeps recipe meaning stable across implementation changes: adding a parameter to a compatible implementation may surface a new ambiguity, but must not silently change which consumer receives an existing flag.
+
 For example, an explanation might distinguish:
 
 ```text
@@ -274,5 +278,7 @@ some operation:
 ```
 
 The parser should normalize this into the same logical statement as the current one-line form before ordinary GWAY tokenization/resolution proceeds.
+
+A continued operation is one logical statement for statement indexing, checkpoints, resume validation, errors, and execution events. Its primary source line is the first physical line of the continued operation. Implementations should also preserve the full physical source span so diagnostics and explain output can point back to the continuation lines that supplied individual arguments without treating those lines as separate executable statements.
 
 `-->`, context-derived operations, semantic verb protocols, and `*` result-set application should remain documented goals until their individual semantics are specified and implemented deliberately.
