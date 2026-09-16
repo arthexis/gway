@@ -61,6 +61,78 @@ def test_recipe_statements_skip_blank_and_full_line_comments(tmp_path: Path) -> 
     assert statements[0].tokens == ("store", "--message", "hello world")
 
 
+def test_recipe_continuation_normalizes_to_one_logical_statement(tmp_path: Path) -> None:
+    path = tmp_path / "continued.rx"
+    path.write_text(
+        "store:\n"
+        "    --customer cust-9\n"
+        "    --charger chg-9\n"
+        "demo use-named\n",
+        encoding="utf-8",
+    )
+
+    statements = list(recipe_statements(path))
+
+    assert len(statements) == 2
+    assert statements[0].line == 1
+    assert statements[0].end_line == 3
+    assert statements[0].tokens == (
+        "store",
+        "--customer",
+        "cust-9",
+        "--charger",
+        "chg-9",
+    )
+    assert statements[1].line == 4
+
+
+def test_recipe_continuation_ignores_blank_lines_and_comments(tmp_path: Path) -> None:
+    path = tmp_path / "continued.rx"
+    path.write_text(
+        "store:\n"
+        "    --customer cust-9\n"
+        "\n"
+        "    # explanation\n"
+        "    --charger chg-9\n",
+        encoding="utf-8",
+    )
+
+    statements = list(recipe_statements(path))
+
+    assert len(statements) == 1
+    assert statements[0].end_line == 5
+    assert statements[0].tokens[-2:] == ("--charger", "chg-9")
+
+
+def test_recipe_continuation_requires_indented_arguments(tmp_path: Path) -> None:
+    path = tmp_path / "broken.rx"
+    path.write_text("store:\ndemo scalar\n", encoding="utf-8")
+
+    with pytest.raises(RecipeError, match=r"broken\.rx:1: continuation requires indented"):
+        list(recipe_statements(path))
+
+
+def test_recipe_continuation_rejects_nested_indentation(tmp_path: Path) -> None:
+    path = tmp_path / "broken.rx"
+    path.write_text(
+        "store:\n"
+        "    --customer cust-9\n"
+        "        --charger chg-9\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RecipeError, match=r"broken\.rx:3: nested or inconsistent"):
+        list(recipe_statements(path))
+
+
+def test_recipe_continuation_rejects_second_operation(tmp_path: Path) -> None:
+    path = tmp_path / "broken.rx"
+    path.write_text("store:\n    demo scalar\n", encoding="utf-8")
+
+    with pytest.raises(RecipeError, match=r"broken\.rx:2: continuation lines must contain"):
+        list(recipe_statements(path))
+
+
 def test_recipe_requires_rx_extension(tmp_path: Path) -> None:
     path = tmp_path / "sample.txt"
     path.write_text("store --name demo\n", encoding="utf-8")
@@ -82,6 +154,20 @@ def test_run_recipe_shares_context_and_returns_final_result(tmp_path: Path) -> N
     path = tmp_path / "shared.rx"
     path.write_text(
         "store --customer cust-9 --charger chg-9\ndemo use-named\n",
+        encoding="utf-8",
+    )
+
+    assert run_recipe(path, dispatcher) == "cust-9:chg-9"
+
+
+def test_run_recipe_executes_continuation_like_one_line_form(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "continued.rx"
+    path.write_text(
+        "store:\n"
+        "    --customer cust-9\n"
+        "    --charger chg-9\n"
+        "demo use-named\n",
         encoding="utf-8",
     )
 
