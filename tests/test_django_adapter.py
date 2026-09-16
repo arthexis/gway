@@ -53,7 +53,7 @@ def test_django_check_json_stdout_is_one_json_value(
     dispatcher = make_dispatcher(tmp_path)
     assert main(["--json", "django-fixture", "check"], dispatcher=dispatcher) == 0
     output = json.loads(capsys.readouterr().out)
-    assert "System check identified no issues" in output
+    assert "System check identified no issues" in output["check"]
 
 
 def test_django_nonzero_exit_preserves_captured_stdout(
