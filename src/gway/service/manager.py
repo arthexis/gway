@@ -8,7 +8,7 @@ from typing import Any
 from ..config import default_paths
 from ..project import Project
 from . import systemd
-from .manifest import ServiceError, _manifest_services, _strings
+from .manifest import ServiceError, _manifest_service_profile, _manifest_services, _strings
 
 
 def _with_runtime_paths(config: dict[str, Any]) -> dict[str, Any]:
@@ -45,6 +45,17 @@ class ServiceManager:
         all_configs = dict(configs)
         environment_service = None if all_services else os.environ.get("GWAY_SERVICE")
         environment_profile = None if all_services else os.environ.get("GWAY_SERVICE_PROFILE")
+        selected_service = None if all_services else service or environment_service
+        project_profile = (
+            None
+            if (
+                all_services
+                or selected_service is not None
+                or profile is not None
+                or environment_profile
+            )
+            else _manifest_service_profile(project)
+        )
         self.environment_selectors = (
             []
             if all_services
@@ -57,8 +68,9 @@ class ServiceManager:
                 if explicit is None and value
             ]
         )
-        selected_service = None if all_services else service or environment_service
-        active_profile = None if all_services else profile or environment_profile
+        active_profile = (
+            None if all_services else profile or environment_profile or project_profile
+        )
         if selected_service is not None:
             if selected_service not in configs:
                 raise ServiceError(

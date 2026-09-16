@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from .._toml import tomllib
@@ -24,14 +25,18 @@ def _strings(value: object, field: str, section: str = "service") -> list[str]:
     return list(value)
 
 
-def _manifest_services(project: Project) -> tuple[dict[str, dict[str, Any]], bool]:
+def _manifest_data(project: Project) -> dict[str, Any]:
     manifest = project.path / "gway.toml"
     try:
         with manifest.open("rb") as stream:
             data = tomllib.load(stream)
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise ServiceError(f"cannot read service manifest for {project.name}: {exc}") from exc
+    return data
 
+
+def _manifest_services(project: Project) -> tuple[dict[str, dict[str, Any]], bool]:
+    data = _manifest_data(project)
     legacy = data.get("service")
     services = data.get("services")
     if legacy is not None and services is not None:
@@ -54,3 +59,35 @@ def _manifest_services(project: Project) -> tuple[dict[str, dict[str, Any]], boo
             raise ServiceError(f"[services.{key}] must be a table")
         result[key] = dict(config)
     return result, False
+
+
+def _manifest_service_profile(project: Project) -> str | None:
+    """Resolve an optional internal service profile from project-owned state."""
+
+    data = _manifest_data(project)
+    project_data = data.get("project")
+    if not isinstance(project_data, dict):
+        return None
+
+    value = project_data.get("service_profile_file")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ServiceError("[project].service_profile_file must be a non-empty relative path")
+
+    relative = Path(value)
+    if relative.is_absolute() or any(part == ".." for part in relative.parts):
+        raise ServiceError("[project].service_profile_file must stay within the project")
+
+    target = project.path / relative
+    try:
+        profile = target.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError) as exc:
+        raise ServiceError(
+            f"cannot read configured service profile file for {project.name}: {target}"
+        ) from exc
+    if not profile or "\n" in profile or "\r" in profile:
+        raise ServiceError(
+            f"configured service profile file must contain one non-empty value: {target}"
+        )
+    return profile
