@@ -380,6 +380,15 @@ def _json_safe(value: object) -> object:
     return value
 
 
+def _json_result(result: object, *, result_name: str | None) -> object:
+    safe_result = _json_safe(result)
+    if isinstance(result, Mapping) or (
+        isinstance(result, Sequence) and not isinstance(result, (str, bytes, bytearray))
+    ):
+        return safe_result
+    return {result_name or "result": safe_result}
+
+
 def _color_enabled() -> bool:
     if "NO_COLOR" in os.environ or os.environ.get("TERM") == "dumb":
         return False
@@ -391,11 +400,19 @@ def _render_result(
     *,
     json_output: bool = False,
     color: bool | None = None,
+    result_name: str | None = None,
 ) -> None:
-    if result is None:
+    if result is None and not json_output:
         return
     if json_output:
-        print(json.dumps(_json_safe(result), indent=2, default=str, allow_nan=False))
+        print(
+            json.dumps(
+                _json_result(result, result_name=result_name),
+                indent=2,
+                default=str,
+                allow_nan=False,
+            )
+        )
         return
 
     use_color = _color_enabled() if color is None else color
@@ -675,6 +692,14 @@ def _handle_cli_exception(exc: Exception, args: Sequence[str]) -> int:
     return 2
 
 
+def _managed_result_name(project_name: str, project_args: Sequence[str]) -> str:
+    if project_args:
+        command_name = project_args[0]
+        if command_name and not command_name.startswith("-"):
+            return command_name.replace("-", "_")
+    return project_name.replace("-", "_")
+
+
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
     parser = build_parser()
     original_args = list(sys.argv[1:] if argv is None else argv)
@@ -696,7 +721,7 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 interactive=interactive,
                 prompt=_prompt_required_value,
             )
-            _render_result(result, json_output=json_output)
+            _render_result(result, json_output=json_output, result_name="solve")
         except Exception as exc:
             return _handle_cli_exception(exc, original_args)
         return 0
@@ -712,7 +737,11 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 project_args,
                 interactive=interactive,
             )
-            _render_result(result, json_output=json_output)
+            _render_result(
+                result,
+                json_output=json_output,
+                result_name=_managed_result_name(project_name, project_args),
+            )
         except Exception as exc:
             return _handle_cli_exception(exc, original_args)
         return 0
@@ -852,7 +881,11 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
         else:
             parser.print_help()
             return 0
-        _render_result(result, json_output=json_output)
+        _render_result(
+            result,
+            json_output=json_output,
+            result_name=namespace.command,
+        )
     except Exception as exc:
         return _handle_cli_exception(exc, original_args)
 
