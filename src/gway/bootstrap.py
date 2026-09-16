@@ -194,6 +194,7 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
             _render_result(
                 result,
                 json_output=checkpoint.flags.output_mode == "json",
+                result_name="recipe",
             )
             return 0
         except Exception as exc:
@@ -237,7 +238,11 @@ def _run_runtime_recipe(
         runtime = GwayRuntime()
         runtime.output_mode = "json" if "--json" in global_flags else None
         result = runtime.execute(command_args, interactive=interactive)
-        _render_result(result, json_output="--json" in global_flags)
+        _render_result(
+            result,
+            json_output="--json" in global_flags,
+            result_name="recipe",
+        )
     except Exception as exc:
         return _handle_cli_exception(exc, list(error_args if error_args is not None else args))
     return 0
@@ -295,7 +300,11 @@ def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
             interactive=interactive,
         )
         if operation != "upgrade" or json_output:
-            _render_result(result, json_output=json_output)
+            _render_result(
+                result,
+                json_output=json_output,
+                result_name=operation,
+            )
     except Exception as exc:
         return _handle_cli_exception(exc, list(args))
     return 0

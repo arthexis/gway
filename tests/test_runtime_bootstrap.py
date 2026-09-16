@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,25 @@ def test_bootstrap_downstream_help_remains_in_recipe_chain(
     args = ["recipe", "setup.rx", "-", "demo", "command", "--help"]
     assert bootstrap._run_runtime_recipe(args) == 0
     assert calls == [args]
+
+
+def test_bootstrap_json_recipe_wraps_scalar_result(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class FakeRuntime:
+        def __init__(self, **kwargs) -> None:
+            self.output_mode = None
+
+        def execute(self, tokens, **kwargs):
+            assert list(tokens) == ["recipe", "setup.rx"]
+            assert self.output_mode == "json"
+            return "watchtower ready"
+
+    monkeypatch.setattr("gway.runtime.GwayRuntime", FakeRuntime)
+
+    assert bootstrap._run_runtime_recipe(["--json", "recipe", "setup.rx"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"recipe": "watchtower ready"}
 
 
 def test_bootstrap_recipe_errors_keep_original_explain_args(

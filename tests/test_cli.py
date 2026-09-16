@@ -108,6 +108,19 @@ def test_global_json_applies_to_core_output(tmp_path: Path, monkeypatch, capsys)
     assert output["adapter"] == "python"
 
 
+def test_global_json_wraps_core_scalar_with_operation_name(tmp_path: Path, monkeypatch, capsys) -> None:
+    project = tmp_path / "wireguard"
+    project.mkdir()
+    (project / "gway.toml").write_text(MANIFEST, encoding="utf-8")
+    monkeypatch.setenv("GWAY_DATA_HOME", str(tmp_path / "state"))
+
+    assert main(["register", str(project)]) == 0
+    capsys.readouterr()
+
+    assert main(["--json", "path", "wireguard"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"path": str(project.resolve())}
+
+
 def test_pretty_output_indents_nested_values_and_supports_color(capsys) -> None:
     value = {
         "status": "ok",
@@ -137,6 +150,16 @@ def test_json_output_normalizes_non_finite_numbers(capsys) -> None:
     _render_result({"nan": float("nan"), "infinity": float("inf")}, json_output=True)
     output = json.loads(capsys.readouterr().out)
     assert output == {"nan": "nan", "infinity": "inf"}
+
+
+def test_json_output_wraps_scalar_without_parsing_json_text(capsys) -> None:
+    _render_result('{"active": true}', json_output=True, result_name="status")
+    assert json.loads(capsys.readouterr().out) == {"status": '{"active": true}'}
+
+
+def test_json_output_wraps_none_instead_of_suppressing_output(capsys) -> None:
+    _render_result(None, json_output=True, result_name="noop")
+    assert json.loads(capsys.readouterr().out) == {"noop": None}
 
 
 def test_core_permission_failure_suggests_original_command(
