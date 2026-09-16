@@ -45,9 +45,15 @@ class ServiceManager:
         all_configs = dict(configs)
         environment_service = None if all_services else os.environ.get("GWAY_SERVICE")
         environment_profile = None if all_services else os.environ.get("GWAY_SERVICE_PROFILE")
+        selected_service = None if all_services else service or environment_service
         project_profile = (
             None
-            if all_services or profile is not None or environment_profile
+            if (
+                all_services
+                or selected_service is not None
+                or profile is not None
+                or environment_profile
+            )
             else _manifest_service_profile(project)
         )
         self.environment_selectors = (
@@ -62,7 +68,6 @@ class ServiceManager:
                 if explicit is None and value
             ]
         )
-        selected_service = None if all_services else service or environment_service
         active_profile = (
             None if all_services else profile or environment_profile or project_profile
         )
