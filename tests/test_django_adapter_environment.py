@@ -10,18 +10,20 @@ from gway.adapters.django import _adapter_environment, _project_context
 from gway.project import InstallLayout, Project
 
 
-def _project(tmp_path: Path, environment: object) -> Project:
+def _project(tmp_path: Path, environment: object, *, managed: bool = True) -> Project:
     root = tmp_path / "managed"
     checkout = root / "app"
-    checkout.mkdir(parents=True)
+    checkout.mkdir(parents=True, exist_ok=True)
+    source = checkout if managed else tmp_path / "source"
+    source.mkdir(parents=True, exist_ok=True)
     return Project(
         name="demo",
-        path=checkout,
+        path=source,
         adapter_type="django",
         adapter_config={
             "manage": "manage.py",
             "settings": "demo.settings",
-            "environment": environment,
+            "managed_environment": environment,
         },
         install_layout=InstallLayout(
             root=root,
@@ -31,7 +33,7 @@ def _project(tmp_path: Path, environment: object) -> Project:
     )
 
 
-def test_django_adapter_environment_expands_managed_paths_and_restores_process(
+def test_django_managed_environment_expands_paths_and_restores_process(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -64,7 +66,17 @@ def test_django_adapter_environment_expands_managed_paths_and_restores_process(
     assert os.environ.get("DJANGO_SETTINGS_MODULE") != "demo.settings"
 
 
-def test_django_adapter_environment_rejects_non_scalar_values(tmp_path: Path) -> None:
+def test_django_managed_environment_is_not_applied_to_source_checkout(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path, {"ARTHEXIS_MODE": "installed"}, managed=False)
+    assert _adapter_environment(project) == {}
+
+
+def test_django_managed_environment_rejects_non_scalar_values(tmp_path: Path) -> None:
     project = _project(tmp_path, {"BROKEN": ["not", "scalar"]})
-    with pytest.raises(AdapterError, match="environment must be a table of scalar values"):
+    with pytest.raises(
+        AdapterError,
+        match="managed_environment must be a table of scalar values",
+    ):
         _adapter_environment(project)
