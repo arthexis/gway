@@ -20,6 +20,13 @@ class RecipeStatement:
     end_line: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _LogicalRecipeLine:
+    line: int
+    end_line: int
+    text: str
+
+
 class RecipeError(RuntimeError):
     def __init__(self, path: Path, message: str, *, line: int | None = None) -> None:
         self.path = path
@@ -123,16 +130,16 @@ def _tokenize_recipe_statement(path: Path, text: str, *, line: int) -> tuple[str
         raise RecipeError(path, str(exc), line=line) from exc
 
 
-def _recipe_statements_from_source(path: Path, source: str) -> tuple[RecipeStatement, ...]:
-    """Parse physical recipe lines into logical statements.
+def _logical_recipe_lines_from_source(path: Path, source: str) -> tuple[_LogicalRecipeLine, ...]:
+    """Group physical recipe lines without tokenizing statement contents.
 
     A trailing ``:`` introduces a continuation whose following non-empty,
     non-comment lines must be indented to one common level and must begin with
-    an option token. The continuation is normalized back into one ordinary
-    GWAY statement before tokenization so execution keeps a single grammar.
+    an option token. The resulting text is still tokenized later by the normal
+    GWAY statement path, preserving lazy tokenization and one execution model.
     """
     lines = source.splitlines()
-    statements: list[RecipeStatement] = []
+    logical_lines: list[_LogicalRecipeLine] = []
     index = 0
 
     while index < len(lines):
@@ -144,9 +151,7 @@ def _recipe_statements_from_source(path: Path, source: str) -> tuple[RecipeState
             continue
 
         if not text.rstrip().endswith(":"):
-            tokens = _tokenize_recipe_statement(path, text, line=line_number)
-            if tokens:
-                statements.append(RecipeStatement(path, line_number, tokens, line_number))
+            logical_lines.append(_LogicalRecipeLine(line_number, line_number, text))
             index += 1
             continue
 
@@ -194,19 +199,24 @@ def _recipe_statements_from_source(path: Path, source: str) -> tuple[RecipeState
         if not continuation_parts:
             raise RecipeError(path, "continuation requires indented arguments", line=line_number)
 
-        logical_text = " ".join((header, *continuation_parts))
-        tokens = _tokenize_recipe_statement(path, logical_text, line=line_number)
-        if tokens:
-            statements.append(RecipeStatement(path, line_number, tokens, end_line))
+        logical_lines.append(
+            _LogicalRecipeLine(
+                line_number,
+                end_line,
+                " ".join((header, *continuation_parts)),
+            )
+        )
         index = cursor
 
-    return tuple(statements)
+    return tuple(logical_lines)
 
 
 def _recipe_statement_lines_from_source(source: str, *, path: Path | None = None) -> tuple[int, ...]:
     """Return starting physical lines for logical statements in a recipe snapshot."""
     recipe_path = path if path is not None else Path("<recipe>")
-    return tuple(statement.line for statement in _recipe_statements_from_source(recipe_path, source))
+    return tuple(
+        logical.line for logical in _logical_recipe_lines_from_source(recipe_path, source)
+    )
 
 
 def _recipe_statement_lines(path: Path) -> tuple[int, ...]:
@@ -231,8 +241,18 @@ def recipe_statements(
         raise RecipeError(recipe_path, "start statement index must be positive")
 
     recipe_source = source if source is not None else recipe_path.read_text(encoding="utf-8")
-    statements = _recipe_statements_from_source(recipe_path, recipe_source)
-    yield from statements[start_statement_index - 1 :]
+    logical_lines = _logical_recipe_lines_from_source(recipe_path, recipe_source)
+    for statement_index, logical in enumerate(logical_lines, start=1):
+        if statement_index < start_statement_index:
+            continue
+        tokens = _tokenize_recipe_statement(recipe_path, logical.text, line=logical.line)
+        if tokens:
+            yield RecipeStatement(
+                recipe_path,
+                logical.line,
+                tokens,
+                logical.end_line,
+            )
 
 
 @dataclass(slots=True)
