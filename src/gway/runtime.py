@@ -134,13 +134,26 @@ class GwayRuntime(_base.GwayRuntime):
             if namespace.service:
                 result["service"] = _service_not_provided(namespace.project)
             return result
+
+        previous_project = self.registry.get(namespace.project)
+        active_services: tuple[str, ...] = ()
+        if namespace.service and previous_project is not None:
+            active_services = _quiesce_project_services(previous_project)
+
         installer = Installer(self.registry)
         install_kwargs = {"clean": False} if not namespace.clean else {}
-        project = installer.install(
-            namespace.project,
-            arguments=passthrough,
-            **install_kwargs,
-        )
+        try:
+            project = installer.install(
+                namespace.project,
+                arguments=passthrough,
+                **install_kwargs,
+            )
+        except Exception:
+            if previous_project is not None and active_services:
+                restored_project = self.registry.get(namespace.project) or previous_project
+                _restore_project_services(restored_project, active_services)
+            raise
+
         result = _base._managed_status("installed", project)
         if namespace.service:
             result["service"] = _install_project_service(
