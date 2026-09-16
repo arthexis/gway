@@ -22,6 +22,40 @@ def _environment_site_packages(environment: Path) -> Path:
     return environment / "lib" / version / "site-packages"
 
 
+def _adapter_environment(project: Project) -> dict[str, str]:
+    configured = project.adapter_config.get("environment")
+    if configured is None:
+        return {}
+    if not isinstance(configured, dict) or not all(
+        isinstance(key, str)
+        and key
+        and "=" not in key
+        and isinstance(value, (str, int, float, bool))
+        for key, value in configured.items()
+    ):
+        raise AdapterError(
+            "django adapter environment must be a table of scalar values"
+        )
+
+    root = project.install_layout.root if project.install_layout is not None else project.path
+    environment = project.environment
+    if environment is None and project.install_layout is not None:
+        environment = project.install_layout.environment
+    replacements = {
+        "{project}": str(project.path),
+        "{root}": str(root),
+        "{environment}": str(environment) if environment is not None else "",
+    }
+
+    resolved: dict[str, str] = {}
+    for key, value in configured.items():
+        text = str(value)
+        for marker, replacement in replacements.items():
+            text = text.replace(marker, replacement)
+        resolved[key] = text
+    return resolved
+
+
 @contextmanager
 def _project_context(project: Project, settings: str | None):
     candidates = [project.path]
@@ -35,14 +69,20 @@ def _project_context(project: Project, settings: str | None):
             # same name (for example a dependency that also provides `config`).
             candidates.append(site_packages)
 
+    runtime_environment = _adapter_environment(project)
     inserted: list[str] = []
     previous_settings = os.environ.get("DJANGO_SETTINGS_MODULE")
+    previous_environment = {
+        key: os.environ.get(key) for key in runtime_environment
+    }
     try:
         for candidate in reversed(candidates):
             value = str(candidate)
             if value not in sys.path:
                 sys.path.insert(0, value)
                 inserted.append(value)
+        for key, value in runtime_environment.items():
+            os.environ[key] = value
         if settings is not None:
             os.environ["DJANGO_SETTINGS_MODULE"] = settings
         yield
@@ -52,6 +92,11 @@ def _project_context(project: Project, settings: str | None):
                 os.environ.pop("DJANGO_SETTINGS_MODULE", None)
             else:
                 os.environ["DJANGO_SETTINGS_MODULE"] = previous_settings
+        for key, previous in previous_environment.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
         for value in inserted:
             try:
                 sys.path.remove(value)
@@ -95,6 +140,7 @@ class DjangoAdapter:
         if sigils is not None and (not isinstance(sigils, str) or not sigils.strip()):
             raise AdapterError("django adapter sigils must be a module:function reference")
         self.sigils = sigils
+        _adapter_environment(project)
         self._commands: dict[tuple[str, ...], Command] | None = None
 
     def _bootstrap(self):
