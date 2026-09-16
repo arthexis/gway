@@ -19,6 +19,60 @@ run_log = _base.run_log
 _base._CORE_OPERATIONS = frozenset((*_base._CORE_OPERATIONS, "event"))
 
 
+def _service_not_provided(project_name: str) -> dict[str, object]:
+    return {
+        "status": "not-provided",
+        "message": f"{project_name} does not provide a service",
+    }
+
+
+def _install_project_service(
+    project: _base.Project,
+    *,
+    profile: str | None = None,
+) -> dict[str, object]:
+    if profile is None:
+        return _base._install_project_service(project)
+    try:
+        manager = _base.ServiceManager(project, profile=profile)
+    except _base.ServiceError as exc:
+        if "does not declare [service] or [services]" not in str(exc):
+            raise
+        return _service_not_provided(project.name)
+    unit = manager.install()
+    return {"status": "installed", "unit": unit, "profile": profile}
+
+
+def _quiesce_project_services(project: _base.Project) -> tuple[str, ...]:
+    """Stop active installed units before mutating a managed project."""
+    try:
+        manager = _base.ServiceManager(project, all_services=True)
+    except _base.ServiceError as exc:
+        if "does not declare [service] or [services]" not in str(exc):
+            raise
+        return ()
+
+    statuses = manager.status()
+    if isinstance(statuses, dict):
+        records = [statuses]
+    else:
+        records = statuses
+    active = tuple(
+        str(record["service"])
+        for record in records
+        if record.get("active") is True and record.get("service")
+    )
+    for service in reversed(active):
+        _base.ServiceManager(project, service=service).stop()
+    return active
+
+
+def _restore_project_services(project: _base.Project, services: Sequence[str]) -> None:
+    """Restart the exact units that were active before a rolled-back upgrade."""
+    for service in services:
+        _base.ServiceManager(project, service=service).start()
+
+
 class GwayRuntime(_base.GwayRuntime):
     """Gway runtime with the core event operation enabled."""
 
@@ -45,6 +99,7 @@ class GwayRuntime(_base.GwayRuntime):
         parser = _base._RuntimeParser(prog="gway install", add_help=False)
         parser.add_argument("project", nargs="?")
         parser.add_argument("--service", action="store_true")
+        parser.add_argument("--service-profile")
         parser.add_argument("--self", dest="install_self", action="store_true")
         parser.add_argument(
             "--clean",
@@ -52,6 +107,8 @@ class GwayRuntime(_base.GwayRuntime):
             default=True,
         )
         namespace, passthrough = parser.parse_known_args(list(argv))
+        if namespace.service_profile is not None and not namespace.service:
+            raise _base.DispatchError("--service-profile requires --service")
         if namespace.install_self:
             if namespace.project is not None:
                 raise _base.DispatchError("--self cannot be combined with PROJECT")
@@ -75,10 +132,7 @@ class GwayRuntime(_base.GwayRuntime):
                     "built-in runtime component install does not accept arguments"
                 )
             if namespace.service:
-                result["service"] = {
-                    "status": "not-provided",
-                    "message": f"{namespace.project} does not provide a service",
-                }
+                result["service"] = _service_not_provided(namespace.project)
             return result
         installer = Installer(self.registry)
         install_kwargs = {"clean": False} if not namespace.clean else {}
@@ -89,7 +143,10 @@ class GwayRuntime(_base.GwayRuntime):
         )
         result = _base._managed_status("installed", project)
         if namespace.service:
-            result["service"] = _base._install_project_service(project)
+            result["service"] = _install_project_service(
+                project,
+                profile=namespace.service_profile,
+            )
         return result
 
     def _run_uninstall(self, argv: Sequence[str]) -> object:
@@ -115,6 +172,7 @@ class GwayRuntime(_base.GwayRuntime):
         parser.add_argument("--reload", action="store_true")
         parser.add_argument("--install", action="store_true")
         parser.add_argument("--service", action="store_true")
+        parser.add_argument("--service-profile")
         parser.add_argument("--detail", action="store_true")
         parser.add_argument(
             "--clean",
@@ -122,6 +180,8 @@ class GwayRuntime(_base.GwayRuntime):
             default=True,
         )
         namespace, passthrough = parser.parse_known_args(list(argv))
+        if namespace.service_profile is not None and not namespace.service:
+            raise _base.UpgradeError("--service-profile requires --service")
         targets = list(dict.fromkeys(namespace.projects))
         if targets and (namespace.all or namespace.upgrade_self is not None):
             raise _base.UpgradeError(
@@ -158,20 +218,35 @@ class GwayRuntime(_base.GwayRuntime):
                     upgrade_kwargs["install"] = True
                 if not namespace.clean:
                     upgrade_kwargs["clean"] = False
-                changed = upgrader.project_result(
-                    target,
-                    force=namespace.force,
-                    reload=namespace.reload,
-                    arguments=passthrough if len(managed_targets) == 1 else (),
-                    **upgrade_kwargs,
-                )
+
+                previous_project = self.registry.get(target)
+                active_services: tuple[str, ...] = ()
+                if namespace.service and previous_project is not None:
+                    active_services = _quiesce_project_services(previous_project)
+                try:
+                    changed = upgrader.project_result(
+                        target,
+                        force=namespace.force,
+                        reload=namespace.reload,
+                        arguments=passthrough if len(managed_targets) == 1 else (),
+                        **upgrade_kwargs,
+                    )
+                except Exception:
+                    if previous_project is not None and active_services:
+                        restored_project = self.registry.get(target) or previous_project
+                        _restore_project_services(restored_project, active_services)
+                    raise
+
                 if getattr(changed, "installed", False):
                     status = "installed"
                 else:
                     status = "upgraded" if changed.changed else "skipped"
                 result = _base._upgrade_status(status, changed)
                 if namespace.service:
-                    result["service"] = _base._install_project_service(changed.project)
+                    result["service"] = _install_project_service(
+                        changed.project,
+                        profile=namespace.service_profile,
+                    )
                 results.append(result)
                 self._publish_progress(result)
             if len(managed_targets) == 1 and not include_self_target:
