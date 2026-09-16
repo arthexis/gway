@@ -10,6 +10,29 @@ gway recipe path/to/file.rx
 
 Blank lines and full-line `#` comments are ignored. Each statement is tokenized as GWAY input rather than executed by a shell.
 
+## Multi-line continuations
+
+A recipe operation can end with `:` to continue its arguments on following indented lines:
+
+```text
+charger recover:
+    --mode safe
+    --timeout 2m
+    --retries 3
+```
+
+This is one logical GWAY statement and is equivalent to:
+
+```text
+charger recover --mode safe --timeout 2m --retries 3
+```
+
+Continuation lines must use one consistent indentation level and, for this initial grammar, must begin with an option/modifier token such as `--mode`. Blank lines and full-line comments may appear inside the continuation without ending it. The next non-empty, non-comment line at the header's indentation level (or less) starts the next logical statement.
+
+The colon is structural only when it is the final non-whitespace character of the operation line. Continuations do not introduce arbitrary blocks, loops, branches, or nested execution scope; after normalization, the ordinary GWAY tokenizer and evaluator execute the statement.
+
+Diagnostics and explain/provenance retain the starting line and the physical line range of the logical statement where available.
+
 ## Context and chaining
 
 Recipe statements share named context. Mapping results publish their keys into the accumulated recipe context, so later commands may resolve omitted named parameters from earlier results. The complete latest result is also available through the reserved `result` operation.
