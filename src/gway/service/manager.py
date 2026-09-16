@@ -127,6 +127,20 @@ class ServiceManager:
             if unit.unit_name not in selected_names and unit.unit_path.exists():
                 unit.uninstall()
 
+    def _reconcile_obsolete_default_units(self) -> None:
+        """Remove GWAY-owned default unit names no longer declared by the project."""
+
+        if not self.unit_directory.is_dir():
+            return
+        prefix = f"gway-{self.project.name}-"
+        declared_names = {unit.unit_name for unit in self._all_units}
+        for path in sorted(self.unit_directory.glob("*.service")):
+            if not path.name.startswith(prefix) or path.name in declared_names:
+                continue
+            systemd._systemctl("disable", "--now", path.name, check=False)
+            path.unlink(missing_ok=True)
+            systemd._systemctl("reset-failed", path.name, check=False)
+
     @property
     def unit_names(self) -> list[str]:
         return [unit.unit_name for unit in self.units]
@@ -159,6 +173,7 @@ class ServiceManager:
 
         self._reconcile_unselected_units()
         paths = [unit.write(content) for unit, content in rendered]
+        self._reconcile_obsolete_default_units()
         systemd._systemctl("daemon-reload")
         if enable:
             for unit in self.units:
