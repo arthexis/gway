@@ -6,6 +6,12 @@ from gway.project import Project
 from gway.service import ServiceError, ServiceManager
 
 
+@pytest.fixture(autouse=True)
+def _clear_service_selectors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GWAY_SERVICE", raising=False)
+    monkeypatch.delenv("GWAY_SERVICE_PROFILE", raising=False)
+
+
 def _project(tmp_path: Path, profile_file: str = ".locks/role.lck") -> Project:
     manifest = tmp_path / "gway.toml"
     manifest.write_text(
