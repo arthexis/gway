@@ -22,8 +22,8 @@ def _environment_site_packages(environment: Path) -> Path:
     return environment / "lib" / version / "site-packages"
 
 
-def _adapter_environment(project: Project) -> dict[str, str]:
-    configured = project.adapter_config.get("environment")
+def _environment_table(project: Project, field: str) -> dict[str, object]:
+    configured = project.adapter_config.get(field)
     if configured is None:
         return {}
     if not isinstance(configured, dict) or not all(
@@ -34,8 +34,26 @@ def _adapter_environment(project: Project) -> dict[str, str]:
         for key, value in configured.items()
     ):
         raise AdapterError(
-            "django adapter environment must be a table of scalar values"
+            f"django adapter {field} must be a table of scalar values"
         )
+    return dict(configured)
+
+
+def _is_managed_checkout(project: Project) -> bool:
+    layout = project.install_layout
+    if layout is None:
+        return False
+    return project.path.resolve() == layout.checkout.resolve()
+
+
+def _adapter_environment(project: Project) -> dict[str, str]:
+    configured = _environment_table(project, "environment")
+    if _is_managed_checkout(project):
+        configured.update(_environment_table(project, "managed_environment"))
+    else:
+        # Validate this table even in source checkouts so malformed manifests fail
+        # consistently before the checkout becomes managed.
+        _environment_table(project, "managed_environment")
 
     root = project.install_layout.root if project.install_layout is not None else project.path
     environment = project.environment
@@ -72,9 +90,7 @@ def _project_context(project: Project, settings: str | None):
     runtime_environment = _adapter_environment(project)
     inserted: list[str] = []
     previous_settings = os.environ.get("DJANGO_SETTINGS_MODULE")
-    previous_environment = {
-        key: os.environ.get(key) for key in runtime_environment
-    }
+    previous_environment = {key: os.environ.get(key) for key in runtime_environment}
     try:
         for candidate in reversed(candidates):
             value = str(candidate)
