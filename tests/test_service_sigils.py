@@ -95,8 +95,11 @@ name = "semantic-service"
 type = "python"
 module = "semantic_service.commands"
 
+[variables]
+default_logs_source = "/tmp/gway-runs"
+
 [services.logs]
-command = ["echo", "[logs.source|/tmp/gway-runs]"]
+command = ["echo", "[logs.source|default_logs_source]"]
 """,
     )
 
