@@ -9,6 +9,7 @@ from ..config import default_paths
 from ..project import Project
 from . import systemd
 from .manifest import ServiceError, _manifest_service_profile, _manifest_services, _strings
+from .resolution import resolve_service_config
 
 
 def _with_runtime_paths(config: dict[str, Any]) -> dict[str, Any]:
@@ -41,7 +42,14 @@ class ServiceManager:
         self.project = project
         self.unit_directory = Path(unit_directory)
         configs, legacy = _manifest_services(project)
-        configs = {key: _with_runtime_paths(config) for key, config in configs.items()}
+        configs = {
+            key: resolve_service_config(
+                _with_runtime_paths(config),
+                project,
+                key,
+            )
+            for key, config in configs.items()
+        }
         all_configs = dict(configs)
         environment_service = None if all_services else os.environ.get("GWAY_SERVICE")
         environment_profile = None if all_services else os.environ.get("GWAY_SERVICE_PROFILE")
