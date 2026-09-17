@@ -8,17 +8,15 @@ from contextvars import ContextVar
 from ..adapters import AdapterArgumentError, AdapterRegistry
 from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
-from ..command import Command, Parameter
+from ..command import Command
 from ..explain import record
 from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..outcome import CommandOutcome, resolve_outcome
 from ..registry import Registry, RegistryError
 from ..sigils import RESERVED_CONTEXT_KEYS
-from ..stage import decode_stage_escapes
-from .arguments import _decode_structured_argv, _fill_context_options
+from .binding import bind_command_arguments
 from .errors import CommandNotFound, DispatchError, InvocationArgumentError
 from .invocation import named_arguments_to_argv
-from .prompt import _fill_required_options
 from .resolution import resolve_command, resolve_default_command
 
 _REDACTED_RESULT = "<redacted>"
@@ -47,31 +45,6 @@ def _logged_result(value: object) -> object:
 
 def _strict_fallback_missing(value: object) -> bool:
     return value is None or (isinstance(value, (set, frozenset)) and not value)
-
-
-def _fill_python_string_defaults(
-    command: Command,
-    argv: Sequence[str],
-) -> tuple[list[str], dict[str, str]]:
-    """Inject omitted Python string defaults as attached option values."""
-    result = list(argv)
-    filled: dict[str, str] = {}
-    for parameter in command.parameters:
-        if not isinstance(parameter.default, str):
-            continue
-        option = next((name for name in parameter.options if name.startswith("--")), None)
-        if option is None:
-            option = f"--{parameter.name.replace('_', '-')}"
-        negative_options = parameter.negative_options or ()
-        if (
-            option in result
-            or any(token.startswith(f"{option}=") for token in result)
-            or any(negative in result for negative in negative_options)
-        ):
-            continue
-        result.append(f"{option}={parameter.default}")
-        filled[parameter.name] = parameter.default
-    return result, filled
 
 
 class Dispatcher:
@@ -179,80 +152,16 @@ class Dispatcher:
                 raise
             command, argv = resolve_default_command(commands, project.default_command, tokens)
 
-        alias_arguments = next(
-            (
-                arguments
-                for alias, arguments in (project.alias_arguments or {}).items()
-                if alias.casefold() == project_name.casefold()
-            ),
-            (),
-        )
-        if alias_arguments:
-            record(
-                "arguments.alias",
-                "prepended alias-bound arguments",
-                project=project.name,
-                arguments=list(alias_arguments),
-            )
-
-        argv = list(decode_stage_escapes((*alias_arguments, *argv)))
-        record(
-            "arguments.raw",
-            "collected command arguments",
-            project=project.name,
-            command=list(command.path),
-            argv=list(argv),
-        )
-
         chain_context = current_chain_context()
-        argument_context = {
-            key: value
-            for key, value in chain_context.items()
-            if key not in RESERVED_CONTEXT_KEYS and key != "result"
-        }
-        argv, context_values = _fill_context_options(command, argv, argument_context)
-        if context_values:
-            record(
-                "arguments.context",
-                "filled command arguments from active context",
-                project=project.name,
-                command=list(command.path),
-                values=context_values,
-                argv=list(argv),
-            )
-
-        if project.adapter_type == "python":
-            argv, default_values = _fill_python_string_defaults(command, argv)
-            if default_values:
-                record(
-                    "arguments.defaults",
-                    "filled omitted string arguments from function defaults",
-                    project=project.name,
-                    command=list(command.path),
-                    values=default_values,
-                    argv=list(argv),
-                )
-
-        if interactive:
-            argv = _fill_required_options(command, argv, prompt=prompt)
-            record(
-                "arguments.interactive",
-                "filled interactive command arguments",
-                project=project.name,
-                command=list(command.path),
-                argv=list(argv),
-            )
-
-        decoded_argv = _decode_structured_argv(command, argv)
-        record(
-            "arguments.decode",
-            "decoded structured command arguments",
-            project=project.name,
-            command=list(command.path),
-            before=list(argv),
-            after=list(decoded_argv),
+        argv = bind_command_arguments(
+            project=project,
+            requested_project_name=project_name,
+            command=command,
+            argv=argv,
+            chain_context=chain_context,
+            interactive=interactive,
+            prompt=prompt,
         )
-        argv = decoded_argv
 
         dispatcher_package = _dispatcher_package()
         templates = dispatcher_package.capture_cli_values(argv, paths=self.registry.paths)
