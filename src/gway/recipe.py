@@ -357,21 +357,27 @@ def _fitness_context(session: RecipeSession) -> RecipeContext:
 def _evaluate_fitness_once(
     session: RecipeSession,
     statement: RecipeStatement,
+    operation_result: object,
     *,
     interactive: bool,
     prompt: Callable[[str], str] | None,
 ) -> tuple[bool, object]:
-    """Evaluate one fitness predicate once and classify only literal bool values as fitness."""
+    """Evaluate fitness once using normal GWAY result-transfer and context resolution."""
+    from .chain import run_statement
+
     assert statement.fitness_tokens is not None
     assert session.runtime is not None
     fitness_context = _fitness_context(session)
-    fitness_result = session.runtime.execute(
+    fitness_result = run_statement(
+        session.dispatcher,
         statement.fitness_tokens,
         interactive=interactive,
         prompt=prompt,
         context=fitness_context,
-        recipe_path=str(statement.path),
-        recipe_line=statement.line,
+        provenance=fitness_context.provenance,
+        runtime=session.runtime,
+        initial_result=operation_result,
+        has_initial_result=True,
     )
     satisfied = isinstance(fitness_result, bool) and fitness_result
     record(
@@ -461,9 +467,11 @@ def _run_recipe_body(
                     recipe_line=statement.line,
                 )
                 if statement.fitness_tokens is not None:
+                    operation_result = result
                     satisfied, fitness_result = _evaluate_fitness_once(
                         session,
                         statement,
+                        operation_result,
                         interactive=interactive,
                         prompt=prompt,
                     )
@@ -476,6 +484,7 @@ def _run_recipe_body(
                                 f"{fitness_result!r}"
                             )
                         raise RecipeError(statement.path, detail, line=statement.line)
+                    result = operation_result
             except RecipeError:
                 raise
             except SystemExit as exc:
