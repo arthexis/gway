@@ -47,7 +47,14 @@ class Command:
     description: str | None = None
     parameters: tuple[Parameter, ...] = field(default_factory=tuple)
     adapter_data: object | None = None
+    accepts_positional_transfer: bool | None = None
 
     def __post_init__(self) -> None:
         if not self.path or any(not part for part in self.path):
             raise ValueError("command path must contain non-empty components")
+        if self.accepts_positional_transfer is None and callable(self.adapter_data):
+            object.__setattr__(
+                self,
+                "accepts_positional_transfer",
+                any(parameter.positional for parameter in self.parameters),
+            )
