@@ -6,7 +6,14 @@ import inspect
 from gway.transfer import decode_transfer
 
 from . import AdapterError
-from .python import _EXPLICIT_NONE, PythonAdapter, _decode_structured_value, _project_import_path
+from .python import (
+    _EXPLICIT_NONE,
+    PythonAdapter,
+    _argument_converter,
+    _converter,
+    _decode_structured_value,
+    _project_import_path,
+)
 
 
 def _decode_value(value: object) -> object:
@@ -46,10 +53,14 @@ class TransferPythonAdapter(PythonAdapter):
                     parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
                     and parameter.default is not inspect.Parameter.empty
                 ):
+                    converter, choices = _converter(parameter.annotation)
                     parser.add_argument(
                         parameter.name,
                         nargs="?",
+                        type=_argument_converter(converter),
+                        choices=choices,
                         default=argparse.SUPPRESS,
+                        help=argparse.SUPPRESS,
                     )
         for action in parser._actions:
             if action.type is not None:
