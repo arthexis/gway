@@ -20,7 +20,7 @@ def _arthexis_project(tmp_path: Path) -> Project:
         path=tmp_path,
         adapter_type="python",
         adapter_config={},
-        environment_prefix="arthexis",
+        env_prefix="arthexis",
         variables={
             "arthexis": {
                 "data": ".arthexis/data",
@@ -34,7 +34,7 @@ def _arthexis_project(tmp_path: Path) -> Project:
 def test_project_environment_name_strips_owner_namespace_once(tmp_path: Path) -> None:
     project = _arthexis_project(tmp_path)
 
-    assert project.environment_prefix == "ARTHEXIS"
+    assert project.env_prefix == "ARTHEXIS"
     assert project_environment_name(project, ("arthexis", "data")) == "ARTHEXIS_DATA"
     assert (
         project_environment_name(project, ("arthexis", "cache", "root"))
@@ -110,7 +110,7 @@ def test_alias_does_not_establish_native_namespace(tmp_path: Path, monkeypatch) 
         path=tmp_path,
         adapter_type="python",
         adapter_config={},
-        environment_prefix="ARTHEXIS",
+        env_prefix="ARTHEXIS",
         variables={"energy": {"data": "manifest"}},
     )
     monkeypatch.setenv("ARTHEXIS_DATA", "native")
@@ -139,13 +139,13 @@ def test_project_without_prefix_keeps_gway_only_behavior(tmp_path: Path, monkeyp
     assert Sigil("[arthexis.data]").solve(context) == "generic"
 
 
-def test_manifest_parses_and_round_trips_environment_prefix(tmp_path: Path) -> None:
+def test_manifest_parses_and_round_trips_env_prefix(tmp_path: Path) -> None:
     root = tmp_path / "project"
     root.mkdir()
     (root / "gway.toml").write_text(
         """[project]
 name = "arthexis"
-environment_prefix = "arthexis"
+env_prefix = "arthexis"
 
 [adapter]
 type = "python"
@@ -160,21 +160,21 @@ data = ".arthexis/data"
     project = Project.from_path(root)
     restored = Project.from_record(project.to_record())
 
-    assert project.environment_prefix == "ARTHEXIS"
-    assert restored.environment_prefix == "ARTHEXIS"
+    assert project.env_prefix == "ARTHEXIS"
+    assert restored.env_prefix == "ARTHEXIS"
 
 
 @pytest.mark.parametrize(
     "value",
     ["", " ", "_ARTHEXIS", "ARTHEXIS_", "ARTHEXIS-DATA", "9ARTHEXIS"],
 )
-def test_manifest_rejects_invalid_environment_prefix(tmp_path: Path, value: str) -> None:
+def test_manifest_rejects_invalid_env_prefix(tmp_path: Path, value: str) -> None:
     root = tmp_path / "project"
     root.mkdir()
     (root / "gway.toml").write_text(
         f"""[project]
 name = "arthexis"
-environment_prefix = {value!r}
+env_prefix = {value!r}
 
 [adapter]
 type = "python"
