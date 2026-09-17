@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
+import re
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from sigils import Context, SafeNamespace, Sigil
@@ -13,6 +14,27 @@ from .registry import Registry
 
 RESERVED_CONTEXT_KEYS = frozenset({"cwd", "home", "gway", "project", "command"})
 _SIGILS_SUPPORTS_PROVIDER_CALLS = hasattr(Sigil, "_provider_callable")
+_ENVIRONMENT_PREFIX = "GWAY_"
+_ENVIRONMENT_SEPARATOR = re.compile(r"[^A-Za-z0-9]+")
+
+
+def semantic_environment_name(name: str) -> str:
+    """Return the deterministic GWAY_* environment name for a semantic variable."""
+    normalized = _ENVIRONMENT_SEPARATOR.sub("_", name).strip("_").upper()
+    return f"{_ENVIRONMENT_PREFIX}{normalized}"
+
+
+def _resolve_semantic_value(value: object, path: tuple[str, ...]) -> object:
+    """Resolve one manifest variable tree using GWAY_* overrides at its leaves."""
+    if isinstance(value, Mapping):
+        return {
+            str(key): _resolve_semantic_value(item, (*path, str(key)))
+            for key, item in value.items()
+        }
+
+    semantic_name = ".".join(path)
+    environment_name = semantic_environment_name(semantic_name)
+    return os.environ.get(environment_name, value)
 
 
 def _freeze(value: object) -> object:
@@ -231,8 +253,9 @@ def project_context(
 ) -> dict[str, object]:
     """Return the lazy-resolution context for one dispatched command.
 
-    Project ``[variables]`` values provide defaults for Sigil names. A process
-    environment variable with the same name overrides the manifest value.
+    Project ``[variables]`` values define semantic Sigil variables. Each leaf
+    automatically derives a ``GWAY_*`` environment fallback from its full
+    semantic path. Runtime ``extra_context`` values have highest precedence.
     Manifest and environment values never replace framework-owned or managed
     project namespaces.
     """
@@ -242,10 +265,7 @@ def project_context(
     for key, value in (project.variables or {}).items():
         if key in protected_names:
             continue
-        context[key] = os.environ.get(key, value)
-    for key, value in os.environ.items():
-        if key not in protected_names:
-            context.setdefault(key, value)
+        context[key] = _resolve_semantic_value(value, (key,))
 
     context.update(
         {
@@ -331,4 +351,5 @@ __all__ = [
     "project_context",
     "resolve_captured_cli_values",
     "resolve_cli_values",
+    "semantic_environment_name",
 ]

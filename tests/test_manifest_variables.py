@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from sigils import Sigil
 
 from gway.adapters import AdapterRegistry
 from gway.command import Command, Parameter
@@ -11,7 +12,7 @@ from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.project import ManifestError, Project
 from gway.registry import Registry
-from gway.sigils import project_context
+from gway.sigils import project_context, semantic_environment_name
 
 
 def _project(tmp_path: Path) -> Project:
@@ -65,27 +66,38 @@ def test_string_default_sigil_uses_manifest_variable(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.delenv("TEST_ENDPOINT", raising=False)
+    monkeypatch.delenv("GWAY_TEST_ENDPOINT", raising=False)
     dispatcher = _dispatcher(tmp_path)
 
     assert dispatcher.run("vars", ["show"]) == "https://manifest.example/v1/enroll"
 
 
-def test_environment_overrides_matching_manifest_variable(
+def test_gway_environment_overrides_matching_manifest_variable(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("TEST_ENDPOINT", "https://environment.example/v1/enroll")
+    monkeypatch.setenv("GWAY_TEST_ENDPOINT", "https://environment.example/v1/enroll")
     dispatcher = _dispatcher(tmp_path)
 
     assert dispatcher.run("vars", ["show"]) == "https://environment.example/v1/enroll"
+
+
+def test_unprefixed_environment_does_not_override_manifest_variable(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("GWAY_TEST_ENDPOINT", raising=False)
+    monkeypatch.setenv("TEST_ENDPOINT", "https://unprefixed.example/v1/enroll")
+    dispatcher = _dispatcher(tmp_path)
+
+    assert dispatcher.run("vars", ["show"]) == "https://manifest.example/v1/enroll"
 
 
 def test_explicit_argument_overrides_sigil_default(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("TEST_ENDPOINT", "https://environment.example/v1/enroll")
+    monkeypatch.setenv("GWAY_TEST_ENDPOINT", "https://environment.example/v1/enroll")
     dispatcher = _dispatcher(tmp_path)
 
     assert dispatcher.run(
@@ -124,6 +136,63 @@ def test_manifest_variables_cannot_shadow_framework_context(tmp_path: Path) -> N
     assert context["cwd"] != "shadowed"
     assert isinstance(context["project"], dict)
     assert context["project"]["name"] == "vars"
+
+
+def test_nested_semantic_variable_uses_full_gway_environment_name(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project = Project(
+        name="semantic",
+        path=tmp_path,
+        adapter_type="python",
+        adapter_config={},
+        variables={"arthexis": {"data": ".arthexis/data"}},
+    )
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    monkeypatch.setenv("GWAY_ARTHEXIS_DATA", "/opt/arthexis/var/lib")
+
+    context = project_context(project, ("show",), paths=paths)
+
+    assert Sigil("[arthexis.data]").solve(context) == "/opt/arthexis/var/lib"
+
+
+def test_runtime_context_wins_over_gway_environment_and_manifest(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project = Project(
+        name="semantic",
+        path=tmp_path,
+        adapter_type="python",
+        adapter_config={},
+        variables={"endpoint": "manifest"},
+    )
+    paths = GwayPaths(tmp_path / "config", tmp_path / "data")
+    monkeypatch.setenv("GWAY_ENDPOINT", "environment")
+
+    context = project_context(
+        project,
+        ("show",),
+        paths=paths,
+        extra_context={"endpoint": "context"},
+    )
+
+    assert context["endpoint"] == "context"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("arthexis.data", "GWAY_ARTHEXIS_DATA"),
+        ("arthexis-data", "GWAY_ARTHEXIS_DATA"),
+        ("arthexis...data", "GWAY_ARTHEXIS_DATA"),
+        ("Arthexis.Data.Root", "GWAY_ARTHEXIS_DATA_ROOT"),
+        ("repo endpoint", "GWAY_REPO_ENDPOINT"),
+    ],
+)
+def test_semantic_environment_name_normalization(name: str, expected: str) -> None:
+    assert semantic_environment_name(name) == expected
 
 
 def test_manifest_rejects_non_json_variable_values(tmp_path: Path) -> None:
