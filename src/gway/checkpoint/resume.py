@@ -4,21 +4,22 @@ import hashlib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from .checkpoint import CheckpointError, ResumeCheckpoint
-from .checkpoint_chain import ChainContinuationCheckpoint, PendingChainCheckpoint
-from .checkpoint_stack import ContinuationFrameCheckpoint, ContinuationStackCheckpoint
-from .dispatcher import Dispatcher
-from .explain import record
-from .provenance import ValueProvenance
-from .recipe import (
+from ..chain import run_statement
+from ..dispatcher import Dispatcher
+from ..explain import record
+from ..provenance import ValueProvenance
+from ..recipe import (
     RecipeContext,
     RecipeSession,
     _recipe_statement_lines_from_source,
     _run_recipe_from,
     recipe_statements,
 )
-from .runtime import GwayRuntime
-from .stage import StageKind, parse_stages
+from ..runtime import GwayRuntime
+from ..stage import StageKind, parse_stages
+from .chain import ChainContinuationCheckpoint, PendingChainCheckpoint
+from .model import CheckpointError, ResumeCheckpoint
+from .stack import ContinuationFrameCheckpoint, ContinuationStackCheckpoint
 
 
 class ResumeError(CheckpointError):
@@ -287,8 +288,6 @@ def _resume_pending_statement(
     interactive: bool,
     prompt: Callable[[str], str] | None,
 ) -> object:
-    from .chain import run_statement
-
     with runtime.frame_scope(
         "statement",
         tokens=pending.statement_tokens,

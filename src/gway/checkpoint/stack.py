@@ -4,7 +4,8 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from .checkpoint import (
+from ..provenance import ContinuationPoint, ValueProvenance
+from .model import (
     CHECKPOINT_VERSION,
     CheckpointError,
     CheckpointFlags,
@@ -12,7 +13,6 @@ from .checkpoint import (
     RecipeIdentity,
     ResumeCheckpoint,
 )
-from .provenance import ContinuationPoint, ValueProvenance
 
 CONTINUATION_STACK_VERSION = 2
 
@@ -87,7 +87,6 @@ class ContinuationFrameCheckpoint:
     def __post_init__(self) -> None:
         _non_empty_string(self.frame_id, "frame_id")
         _optional_non_empty_string(self.parent_frame_id, "parent_frame_id")
-
         validated = ResumeCheckpoint(
             recipe=self.recipe,
             continuation=self.continuation,
@@ -104,27 +103,17 @@ class ContinuationFrameCheckpoint:
 
     def as_dict(self) -> dict[str, JSONValue]:
         payload = _frame_state_payload(self)
-        return {
-            "frame_id": self.frame_id,
-            "parent_frame_id": self.parent_frame_id,
-            **payload,
-        }
+        return {"frame_id": self.frame_id, "parent_frame_id": self.parent_frame_id, **payload}
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, object]) -> ContinuationFrameCheckpoint:
         expected = {
-            "frame_id",
-            "parent_frame_id",
-            "recipe",
-            "continuation",
-            "context",
-            "context_provenance",
-            "has_previous_result",
-            "previous_result",
+            "frame_id", "parent_frame_id", "recipe", "continuation", "context",
+            "context_provenance", "has_previous_result", "previous_result",
             "previous_result_provenance",
         }
         _expect_keys(raw, expected, "continuation frame")
-        legacy_raw = {
+        state = ResumeCheckpoint.from_dict({
             "version": CHECKPOINT_VERSION,
             "recipe": raw["recipe"],
             "continuation": raw["continuation"],
@@ -134,13 +123,10 @@ class ContinuationFrameCheckpoint:
             "previous_result": raw["previous_result"],
             "previous_result_provenance": raw["previous_result_provenance"],
             "flags": CheckpointFlags().as_dict(),
-        }
-        state = ResumeCheckpoint.from_dict(legacy_raw)
+        })
         return cls(
             frame_id=_non_empty_string(raw["frame_id"], "frame_id"),
-            parent_frame_id=_optional_non_empty_string(
-                raw["parent_frame_id"], "parent_frame_id"
-            ),
+            parent_frame_id=_optional_non_empty_string(raw["parent_frame_id"], "parent_frame_id"),
             recipe=state.recipe,
             continuation=state.continuation,
             context=state.context,
@@ -151,13 +137,7 @@ class ContinuationFrameCheckpoint:
         )
 
     @classmethod
-    def from_resume_checkpoint(
-        cls,
-        checkpoint: ResumeCheckpoint,
-        *,
-        frame_id: str,
-        parent_frame_id: str | None = None,
-    ) -> ContinuationFrameCheckpoint:
+    def from_resume_checkpoint(cls, checkpoint: ResumeCheckpoint, *, frame_id: str, parent_frame_id: str | None = None) -> ContinuationFrameCheckpoint:
         return cls(
             frame_id=frame_id,
             parent_frame_id=parent_frame_id,
@@ -193,22 +173,16 @@ class ContinuationStackCheckpoint:
 
     def __post_init__(self) -> None:
         if self.version != CONTINUATION_STACK_VERSION:
-            raise CheckpointError(
-                f"unsupported continuation stack version {self.version}; "
-                f"expected {CONTINUATION_STACK_VERSION}"
-            )
+            raise CheckpointError(f"unsupported continuation stack version {self.version}; expected {CONTINUATION_STACK_VERSION}")
         if not isinstance(self.flags, CheckpointFlags):
             raise CheckpointError("flags must be CheckpointFlags")
-        if isinstance(self.frames, (str, bytes, bytearray)) or not isinstance(
-            self.frames, Sequence
-        ):
+        if isinstance(self.frames, (str, bytes, bytearray)) or not isinstance(self.frames, Sequence):
             raise CheckpointError("frames must be an array")
         frames = tuple(self.frames)
         if not frames:
             raise CheckpointError("continuation stack must contain at least one frame")
         if not all(isinstance(frame, ContinuationFrameCheckpoint) for frame in frames):
             raise CheckpointError("frames must contain continuation frame checkpoints")
-
         seen: set[str] = set()
         for index, frame in enumerate(frames):
             if frame.frame_id in seen:
@@ -220,9 +194,7 @@ class ContinuationStackCheckpoint:
             else:
                 expected_parent = frames[index - 1].frame_id
                 if frame.parent_frame_id != expected_parent:
-                    raise CheckpointError(
-                        "continuation frame parent does not match the preceding stack frame"
-                    )
+                    raise CheckpointError("continuation frame parent does not match the preceding stack frame")
         object.__setattr__(self, "frames", frames)
 
     @property
@@ -230,20 +202,10 @@ class ContinuationStackCheckpoint:
         return self.frames[-1]
 
     def as_dict(self) -> dict[str, JSONValue]:
-        return {
-            "version": self.version,
-            "frames": [frame.as_dict() for frame in self.frames],
-            "flags": self.flags.as_dict(),
-        }
+        return {"version": self.version, "frames": [frame.as_dict() for frame in self.frames], "flags": self.flags.as_dict()}
 
     def to_json(self) -> str:
-        return json.dumps(
-            self.as_dict(),
-            ensure_ascii=False,
-            allow_nan=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+        return json.dumps(self.as_dict(), ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":"))
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, object]) -> ContinuationStackCheckpoint:
@@ -252,56 +214,32 @@ class ContinuationStackCheckpoint:
         if isinstance(version, bool) or not isinstance(version, int):
             raise CheckpointError("version must be an integer")
         if version != CONTINUATION_STACK_VERSION:
-            raise CheckpointError(
-                f"unsupported continuation stack version {version}; "
-                f"expected {CONTINUATION_STACK_VERSION}"
-            )
+            raise CheckpointError(f"unsupported continuation stack version {version}; expected {CONTINUATION_STACK_VERSION}")
         frames_raw = raw["frames"]
         if not isinstance(frames_raw, list):
             raise CheckpointError("frames must be an array")
-        frames = tuple(
-            ContinuationFrameCheckpoint.from_dict(
-                _require_mapping(frame, f"frames[{index}]")
-            )
-            for index, frame in enumerate(frames_raw)
-        )
+        frames = tuple(ContinuationFrameCheckpoint.from_dict(_require_mapping(frame, f"frames[{index}]")) for index, frame in enumerate(frames_raw))
         flags_raw = _require_mapping(raw["flags"], "flags")
         _expect_keys(flags_raw, {"interactive", "explain", "output_mode"}, "flags")
         flags = CheckpointFlags(
             interactive=_require_bool(flags_raw["interactive"], "flags.interactive"),
             explain=_require_bool(flags_raw["explain"], "flags.explain"),
-            output_mode=flags_raw["output_mode"],  # validated below by ResumeCheckpoint
+            output_mode=flags_raw["output_mode"],
         )
-        flags_checkpoint = ResumeCheckpoint.from_dict(
-            {
-                "version": CHECKPOINT_VERSION,
-                "recipe": frames[0].recipe.as_dict()
-                if frames
-                else {"path": "x", "sha256": "0" * 64},
-                "continuation": frames[0].continuation.as_dict()
-                if frames
-                else {
-                    "recipe_path": "x",
-                    "statement_index": 1,
-                    "line": 1,
-                    "next_statement_index": None,
-                    "next_line": None,
-                },
-                "context": {},
-                "context_provenance": {},
-                "has_previous_result": False,
-                "previous_result": None,
-                "previous_result_provenance": None,
-                "flags": flags.as_dict(),
-            }
-        )
+        flags_checkpoint = ResumeCheckpoint.from_dict({
+            "version": CHECKPOINT_VERSION,
+            "recipe": frames[0].recipe.as_dict() if frames else {"path": "x", "sha256": "0" * 64},
+            "continuation": frames[0].continuation.as_dict() if frames else {"recipe_path": "x", "statement_index": 1, "line": 1, "next_statement_index": None, "next_line": None},
+            "context": {}, "context_provenance": {}, "has_previous_result": False,
+            "previous_result": None, "previous_result_provenance": None,
+            "flags": flags.as_dict(),
+        })
         return cls(frames=frames, flags=flags_checkpoint.flags, version=version)
 
     @classmethod
     def from_json(cls, payload: str) -> ContinuationStackCheckpoint:
         def reject_constant(value: str) -> object:
             raise CheckpointError(f"checkpoint contains non-standard number {value}")
-
         try:
             raw = json.loads(payload, parse_constant=reject_constant)
         except json.JSONDecodeError as exc:
@@ -310,37 +248,17 @@ class ContinuationStackCheckpoint:
             raise CheckpointError("checkpoint JSON root must be an object")
         version = raw.get("version")
         if version == CHECKPOINT_VERSION:
-            legacy = ResumeCheckpoint.from_dict(raw)
-            return cls.from_resume_checkpoint(legacy)
+            return cls.from_resume_checkpoint(ResumeCheckpoint.from_dict(raw))
         return cls.from_dict(raw)
 
     @classmethod
-    def from_resume_checkpoint(
-        cls,
-        checkpoint: ResumeCheckpoint,
-        *,
-        frame_id: str = "legacy-frame-1",
-    ) -> ContinuationStackCheckpoint:
-        return cls(
-            frames=(
-                ContinuationFrameCheckpoint.from_resume_checkpoint(
-                    checkpoint,
-                    frame_id=frame_id,
-                ),
-            ),
-            flags=checkpoint.flags,
-        )
+    def from_resume_checkpoint(cls, checkpoint: ResumeCheckpoint, *, frame_id: str = "legacy-frame-1") -> ContinuationStackCheckpoint:
+        return cls(frames=(ContinuationFrameCheckpoint.from_resume_checkpoint(checkpoint, frame_id=frame_id),), flags=checkpoint.flags)
 
     def as_single_resume_checkpoint(self) -> ResumeCheckpoint:
         if len(self.frames) != 1:
-            raise CheckpointError(
-                "multi-frame continuation stack cannot be converted to a single resume checkpoint"
-            )
+            raise CheckpointError("multi-frame continuation stack cannot be converted to a single resume checkpoint")
         return self.frames[0].as_resume_checkpoint(flags=self.flags)
 
 
-__all__ = [
-    "CONTINUATION_STACK_VERSION",
-    "ContinuationFrameCheckpoint",
-    "ContinuationStackCheckpoint",
-]
+__all__ = ["CONTINUATION_STACK_VERSION", "ContinuationFrameCheckpoint", "ContinuationStackCheckpoint"]

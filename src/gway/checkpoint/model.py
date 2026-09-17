@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeAlias
 
-from .provenance import ContinuationPoint, ValueProvenance
+from ..provenance import ContinuationPoint, ValueProvenance
 
 CHECKPOINT_VERSION = 1
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -196,18 +196,14 @@ class ResumeCheckpoint:
             for key, value in provenance_raw.items()
             if _require_string_key(key, "context_provenance")
         }
-        has_previous_result = _require_bool(
-            raw["has_previous_result"], "has_previous_result"
-        )
+        has_previous_result = _require_bool(raw["has_previous_result"], "has_previous_result")
         previous_result = _parse_json_value(raw["previous_result"], "previous_result")
         previous_provenance_raw = raw["previous_result_provenance"]
         previous_result_provenance = (
             None
             if previous_provenance_raw is None
             else _parse_provenance(
-                _require_mapping(
-                    previous_provenance_raw, "previous_result_provenance"
-                ),
+                _require_mapping(previous_provenance_raw, "previous_result_provenance"),
                 "previous_result_provenance",
             )
         )
@@ -295,9 +291,7 @@ def _parse_continuation(raw: Mapping[str, object]) -> ContinuationPoint:
         recipe_path=_require_str(raw["recipe_path"], "continuation.recipe_path"),
         statement_index=_require_int(raw["statement_index"], "continuation.statement_index"),
         line=_require_int(raw["line"], "continuation.line"),
-        next_statement_index=_optional_int(
-            raw["next_statement_index"], "continuation.next_statement_index"
-        ),
+        next_statement_index=_optional_int(raw["next_statement_index"], "continuation.next_statement_index"),
         next_line=_optional_int(raw["next_line"], "continuation.next_line"),
     )
     _validate_continuation(point)
@@ -311,9 +305,7 @@ def _validate_provenance(value: object, label: str) -> None:
     _require_str(value.frame_kind, f"{label}.frame_kind")
     if value.operation is not None:
         _require_str(value.operation, f"{label}.operation")
-    if not isinstance(value.tokens, tuple) or not all(
-        isinstance(token, str) for token in value.tokens
-    ):
+    if not isinstance(value.tokens, tuple) or not all(isinstance(token, str) for token in value.tokens):
         raise CheckpointError(f"{label}.tokens must be a tuple of strings")
     if value.recipe_path is not None:
         _require_str(value.recipe_path, f"{label}.recipe_path")
@@ -336,11 +328,7 @@ def _provenance_dict(value: ValueProvenance) -> dict[str, JSONValue]:
 
 
 def _parse_provenance(raw: Mapping[str, object], label: str) -> ValueProvenance:
-    _expect_keys(
-        raw,
-        {"frame_id", "frame_kind", "operation", "tokens", "recipe_path", "recipe_line"},
-        label,
-    )
+    _expect_keys(raw, {"frame_id", "frame_kind", "operation", "tokens", "recipe_path", "recipe_line"}, label)
     tokens = raw["tokens"]
     if not isinstance(tokens, list) or not all(isinstance(token, str) for token in tokens):
         raise CheckpointError(f"{label}.tokens must be an array of strings")

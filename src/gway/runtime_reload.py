@@ -7,13 +7,13 @@ from pathlib import Path
 
 from .chain_context import current_chain_context, current_chain_provenance
 from .checkpoint import CheckpointFlags, ResumeCheckpoint, recipe_identity
-from .checkpoint_chain import (
+from .checkpoint.chain import (
     ChainContinuationCheckpoint,
     PendingChainCheckpoint,
     PendingStageCheckpoint,
 )
-from .checkpoint_stack import ContinuationFrameCheckpoint, ContinuationStackCheckpoint
-from .checkpoint_store import write_checkpoint_atomic
+from .checkpoint.stack import ContinuationFrameCheckpoint, ContinuationStackCheckpoint
+from .checkpoint.store import write_checkpoint_atomic
 from .explain import enabled as explain_enabled, record
 from .recipe import recipe_statements
 from .stage import StageKind, parse_stages

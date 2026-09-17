@@ -6,13 +6,13 @@ from pathlib import Path
 import pytest
 
 from gway.checkpoint import CheckpointError, CheckpointFlags, recipe_identity
-from gway.checkpoint_chain import (
+from gway.checkpoint.chain import (
     CHAIN_CONTINUATION_VERSION,
     ChainContinuationCheckpoint,
     PendingChainCheckpoint,
     PendingStageCheckpoint,
 )
-from gway.checkpoint_stack import ContinuationFrameCheckpoint, ContinuationStackCheckpoint
+from gway.checkpoint.stack import ContinuationFrameCheckpoint, ContinuationStackCheckpoint
 from gway.provenance import ContinuationPoint, ValueProvenance
 from gway.stage import StageKind, parse_stages
 

@@ -1,9 +1,9 @@
 from pathlib import Path
 
 from gway.checkpoint import CheckpointFlags, recipe_identity
-from gway.checkpoint_chain import ChainContinuationCheckpoint, PendingChainCheckpoint, PendingStageCheckpoint
-from gway.checkpoint_stack import ContinuationFrameCheckpoint
-from gway.checkpoint_store import read_checkpoint, write_checkpoint_atomic
+from gway.checkpoint.chain import ChainContinuationCheckpoint, PendingChainCheckpoint, PendingStageCheckpoint
+from gway.checkpoint.stack import ContinuationFrameCheckpoint
+from gway.checkpoint.store import read_checkpoint, write_checkpoint_atomic
 from gway.provenance import ContinuationPoint
 from gway.stage import StageKind
 

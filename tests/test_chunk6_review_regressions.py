@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 
 from gway import bootstrap
-from gway import resume as resume_module
 from gway.checkpoint import (
     CheckpointError,
     CheckpointFlags,
     ResumeCheckpoint,
     recipe_identity,
 )
-from gway.checkpoint_store import (
+from gway.checkpoint import resume as resume_module
+from gway.checkpoint.store import (
     _sync_directory,
     checkpoint_directory,
     claim_checkpoint,
@@ -148,13 +148,13 @@ def test_directory_sync_ignores_only_unsupported_errors(tmp_path: Path, monkeypa
     def unsupported(_descriptor: int) -> None:
         raise OSError(errno.EINVAL, "unsupported")
 
-    monkeypatch.setattr("gway.checkpoint_store.os.fsync", unsupported)
+    monkeypatch.setattr("gway.checkpoint.store.os.fsync", unsupported)
     _sync_directory(tmp_path)
 
     def io_error(_descriptor: int) -> None:
         raise OSError(errno.EIO, "I/O failure")
 
-    monkeypatch.setattr("gway.checkpoint_store.os.fsync", io_error)
+    monkeypatch.setattr("gway.checkpoint.store.os.fsync", io_error)
     with pytest.raises(CheckpointError, match="cannot sync checkpoint directory"):
         _sync_directory(tmp_path)
 
