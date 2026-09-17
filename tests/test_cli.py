@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 
 import gway.cli as cli
+import gway.cli.errors as cli_errors
 from gway import __version__
-from gway.cli import _render_result, main
+from gway.cli import main
+from gway.cli.render import _render_result
 from gway.registry import Registry
 
 MANIFEST = """[project]
@@ -169,7 +171,7 @@ def test_core_permission_failure_suggests_original_command(
 ) -> None:
     project = tmp_path / "wireguard"
     monkeypatch.setenv("GWAY_DATA_HOME", str(tmp_path / "state"))
-    monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
+    monkeypatch.setattr(cli_errors, "can_suggest_sudo", lambda: True)
 
     def denied(self, path):
         raise PermissionError(13, "Permission denied", str(path))
@@ -189,7 +191,7 @@ def test_wrapped_permission_failure_is_reported_without_traceback(
 ) -> None:
     project = tmp_path / "wireguard"
     monkeypatch.setenv("GWAY_DATA_HOME", str(tmp_path / "state"))
-    monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
+    monkeypatch.setattr(cli_errors, "can_suggest_sudo", lambda: True)
 
     def denied(self, path):
         try:

@@ -107,7 +107,7 @@ def _normalize_install_args(argv: Sequence[str] | None) -> tuple[list[str] | Non
 
 
 def _render_upgrade_result(result: object, *, detail: bool) -> None:
-    from .cli import _render_upgrade_record, _render_result
+    from .cli.render import _render_result, _render_upgrade_record
 
     if isinstance(result, Mapping):
         _render_upgrade_record(dict(result), detail=detail)
@@ -155,15 +155,16 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
         remove_checkpoint,
         restore_checkpoint,
     )
-    from .cli import _handle_cli_exception, _render_result, _report_error
+    from .cli.errors import handle_cli_exception, report_error
+    from .cli.render import _render_result
     from .explain import explain_scope, record, render_trace
     from .runtime import GwayRuntime
 
     def handle_resume_error(exc: Exception) -> int:
         if isinstance(exc, CheckpointError):
-            _report_error(exc, error_args)
+            report_error(exc, error_args)
             return 2
-        return _handle_cli_exception(exc, error_args)
+        return handle_cli_exception(exc, error_args)
 
     def restore_claim(claimed_path: str, checkpoint_path: str) -> None:
         try:
@@ -241,7 +242,8 @@ def _run_runtime_recipe(
     if any(arg in {"-h", "--help"} for arg in recipe_stage):
         return None
 
-    from .cli import _handle_cli_exception, _render_result
+    from .cli.errors import handle_cli_exception
+    from .cli.render import _render_result
     from .runtime import GwayRuntime
 
     interactive = any(flag in {"-i", "--interactive"} for flag in global_flags)
@@ -255,7 +257,7 @@ def _run_runtime_recipe(
             result_name="recipe",
         )
     except Exception as exc:
-        return _handle_cli_exception(exc, list(error_args if error_args is not None else args))
+        return handle_cli_exception(exc, list(error_args if error_args is not None else args))
     return 0
 
 
@@ -295,7 +297,8 @@ def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
             )
             return 2
 
-    from .cli import _handle_cli_exception, _render_result
+    from .cli.errors import handle_cli_exception
+    from .cli.render import _render_result
     from .runtime import GwayRuntime
 
     interactive = any(flag in {"-i", "--interactive"} for flag in global_flags)
@@ -317,7 +320,7 @@ def _run_runtime_lifecycle(args: Sequence[str]) -> int | None:
                 result_name=operation,
             )
     except Exception as exc:
-        return _handle_cli_exception(exc, list(args))
+        return handle_cli_exception(exc, list(args))
     return 0
 
 

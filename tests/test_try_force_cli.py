@@ -3,10 +3,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from gway.cli import _render_upgrade_record, _upgrade_status, build_parser
+from gway.cli import build_parser
+from gway.cli.render import _render_upgrade_record
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.dispatcher.errors import DispatchError
+from gway.operations.project import upgrade_status
 from gway.project import Project
 from gway.registry import Registry
 from gway.repository import WorkingTreeEntry
@@ -110,7 +112,7 @@ def test_runtime_rejects_force_with_try_force(tmp_path: Path) -> None:
 
 
 def test_upgrade_status_exposes_force_metadata(tmp_path: Path) -> None:
-    record = _upgrade_status("upgraded", _result(_project(tmp_path), forced=True))
+    record = upgrade_status("upgraded", _result(_project(tmp_path), forced=True))
 
     assert record["force_used"] is True
     assert record["force_error_type"] == "RepositoryError"
@@ -118,7 +120,7 @@ def test_upgrade_status_exposes_force_metadata(tmp_path: Path) -> None:
 
 
 def test_compact_upgrade_renderer_ignores_force_metadata(tmp_path: Path, capsys) -> None:
-    record = _upgrade_status("upgraded", _result(_project(tmp_path), forced=True))
+    record = upgrade_status("upgraded", _result(_project(tmp_path), forced=True))
 
     _render_upgrade_record(record, detail=False)
 

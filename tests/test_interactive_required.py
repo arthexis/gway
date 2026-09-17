@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gway.cli import _extract_global_flags
+from gway.cli.errors import extract_global_flags
 from gway.command import Command, Parameter
 from gway.dispatcher import _decode_structured_argv, _fill_required_options
 from gway.expression import STRUCTURED_KWARG_PREFIX
@@ -112,7 +112,7 @@ def test_attached_short_option_value_is_not_counted_as_positional(monkeypatch) -
 
 
 def test_global_flags_stop_at_end_of_options_marker() -> None:
-    args, json_output, interactive = _extract_global_flags(
+    args, json_output, interactive = extract_global_flags(
         ["service", "status", "--", "-i", "--json"]
     )
 
@@ -122,7 +122,7 @@ def test_global_flags_stop_at_end_of_options_marker() -> None:
 
 
 def test_global_interactive_flag_can_appear_after_managed_command() -> None:
-    args, json_output, interactive = _extract_global_flags(["request", "issue", "-i"])
+    args, json_output, interactive = extract_global_flags(["request", "issue", "-i"])
 
     assert args == ["request", "issue"]
     assert json_output is False
