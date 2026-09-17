@@ -29,14 +29,14 @@ def semantic_environment_name(name: str) -> str:
 
 def project_environment_name(project: Project, path: Sequence[str]) -> str | None:
     """Return a project's native environment route for an owned semantic path."""
-    if project.environment_prefix is None or len(path) < 2:
+    if project.env_prefix is None or len(path) < 2:
         return None
     if path[0].casefold() != project.name.casefold():
         return None
     suffix = _normalize_environment_name(".".join(path[1:]))
     if not suffix:
         return None
-    return f"{project.environment_prefix}_{suffix}"
+    return f"{project.env_prefix}_{suffix}"
 
 
 def _resolve_semantic_value(
@@ -277,9 +277,9 @@ def project_context(
     """Return the lazy-resolution context for one dispatched command.
 
     Project ``[variables]`` values define semantic Sigil variables. Project-owned
-    leaves may first resolve through a declared native environment prefix, then
-    through the universal ``GWAY_*`` fallback. Runtime ``extra_context`` values
-    have highest precedence. Framework-owned and managed namespaces stay protected.
+    leaves may first resolve through a declared native env prefix, then through
+    the universal ``GWAY_*`` fallback. Runtime ``extra_context`` values have
+    highest precedence. Framework-owned and managed namespaces stay protected.
     """
     context = base_context(paths)
 
@@ -301,7 +301,7 @@ def project_context(
                 "environment": (
                     str(project.environment) if project.environment is not None else None
                 ),
-                "environment_prefix": project.environment_prefix,
+                "env_prefix": project.env_prefix,
             },
             "command": {
                 "path": " ".join(command_path),
