@@ -1,29 +1,20 @@
 from __future__ import annotations
 
 import argparse
-import errno
-import os
-import shlex
-import shutil
 import sys
 from collections.abc import Sequence
 from importlib.metadata import version as distribution_version
 
 from .. import __version__
-from ..adapters import AdapterError
-from ..config import ConfigError
-from ..dispatcher import Dispatcher, DispatchError
-from ..expression import ExpressionError, normalize_managed_args
+from ..dispatcher import Dispatcher
+from ..expression import normalize_managed_args
 from ..install import Installer
-from ..project import ManifestError, Project
-from ..recipe import RecipeError
+from ..project import Project
 from ..registry import Registry, RegistryError
-from ..repository import RepositoryError
 from ..runner import RunnerError
 from ..runtime import GwayRuntime
 from ..service import ServiceError, ServiceManager
 from ..shell import (
-    ShellError,
     install_shell,
     integration_snippet,
     launch_shell,
@@ -33,6 +24,16 @@ from ..shell import (
 from ..solve import solve_values
 from ..stage import StageKind, StageSyntaxError, parse_stages
 from ..upgrade import UpgradeError, UpgradeResult, Upgrader
+from .errors import (
+    _can_suggest_sudo,
+    _extract_global_flags,
+    _handle_cli_exception,
+    _known_cli_error,
+    _managed_result_name,
+    _permission_failure,
+    _prompt_required_value,
+    _report_error,
+)
 from .help import _print_project_help
 from .render import _render_result, _render_upgrade_record
 
@@ -40,7 +41,6 @@ CORE_COMMANDS = frozenset(
     {"list", "info", "path", "register", "install", "upgrade", "service", "shell", "solve", "recipe"}
 )
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
-_PERMISSION_ERRNOS = frozenset({errno.EACCES, errno.EPERM})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -244,72 +244,6 @@ def _project_record(project: Project) -> dict[str, object]:
     return record
 
 
-def _extract_global_flags(args: list[str]) -> tuple[list[str], bool, bool]:
-    filtered: list[str] = []
-    json_output = False
-    interactive = False
-    literal = False
-
-    for arg in args:
-        if literal:
-            filtered.append(arg)
-            continue
-        if arg == "--":
-            literal = True
-            filtered.append(arg)
-            continue
-        if arg == "--json":
-            json_output = True
-            continue
-        if arg in {"-i", "--interactive"}:
-            interactive = True
-            continue
-        filtered.append(arg)
-
-    return filtered, json_output, interactive
-
-
-def _prompt_required_value(name: str) -> str:
-    while True:
-        print(f"{name}: ", end="", file=sys.stderr, flush=True)
-        value = input()
-        if value:
-            return value
-        print("A value is required.", file=sys.stderr)
-
-
-def _permission_failure(exc: BaseException) -> OSError | None:
-    pending: list[BaseException] = [exc]
-    seen: set[int] = set()
-    while pending:
-        current = pending.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        if isinstance(current, PermissionError):
-            return current
-        if isinstance(current, OSError) and current.errno in _PERMISSION_ERRNOS:
-            return current
-        for linked in (current.__cause__, current.__context__):
-            if linked is not None:
-                pending.append(linked)
-    return None
-
-
-def _can_suggest_sudo() -> bool:
-    if os.name != "posix" or shutil.which("sudo") is None:
-        return False
-    geteuid = getattr(os, "geteuid", None)
-    return not callable(geteuid) or geteuid() != 0
-
-
-def _report_error(exc: BaseException, args: Sequence[str]) -> None:
-    print(f"gway: {exc}", file=sys.stderr)
-    if _permission_failure(exc) is not None and _can_suggest_sudo():
-        command = shlex.join(["gway", *args])
-        print(f"hint: try running with sudo: sudo {command}", file=sys.stderr)
-
-
 def _runtime_component_record(name: str) -> dict[str, object] | None:
     distribution = RUNTIME_COMPONENTS.get(name)
     if distribution is None:
@@ -476,43 +410,6 @@ def _run_service(namespace: argparse.Namespace, registry: Registry) -> object:
         manager.restart()
         return {"status": "restarted", "project": project.name, "unit": manager.unit_name}
     return manager.status()
-
-
-def _known_cli_error(exc: BaseException) -> bool:
-    return isinstance(
-        exc,
-        (
-            AdapterError,
-            ConfigError,
-            DispatchError,
-            ExpressionError,
-            ManifestError,
-            RecipeError,
-            RegistryError,
-            RepositoryError,
-            RunnerError,
-            ServiceError,
-            ShellError,
-            StageSyntaxError,
-            UpgradeError,
-            OSError,
-        ),
-    )
-
-
-def _handle_cli_exception(exc: Exception, args: Sequence[str]) -> int:
-    if not _known_cli_error(exc) and _permission_failure(exc) is None:
-        raise exc
-    _report_error(exc, args)
-    return 2
-
-
-def _managed_result_name(project_name: str, project_args: Sequence[str]) -> str:
-    if project_args:
-        command_name = project_args[0]
-        if command_name and not command_name.startswith("-"):
-            return command_name.replace("-", "_")
-    return project_name.replace("-", "_")
 
 
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
