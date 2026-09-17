@@ -18,7 +18,15 @@ def _dispatcher(tmp_path: Path) -> Dispatcher:
     return \"alpha\"
 
 
+def produce_int() -> int:
+    return 42
+
+
 def optional(value: str = \"default\") -> str:
+    return value
+
+
+def optional_int(value: int = 7) -> int:
     return value
 
 
@@ -57,6 +65,24 @@ def test_optional_positional_or_keyword_accepts_chain_transfer(tmp_path: Path) -
     )
 
     assert result == "alpha"
+
+
+def test_optional_positional_transfer_preserves_type_conversion(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+
+    result = run_chain(
+        dispatcher,
+        [
+            "optional-positional",
+            "produce-int",
+            "-",
+            "optional-positional",
+            "optional-int",
+        ],
+    )
+
+    assert result == 42
+    assert isinstance(result, int)
 
 
 def test_callable_signature_capability_is_distinct_from_cli_shape(tmp_path: Path) -> None:
