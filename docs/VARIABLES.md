@@ -28,21 +28,59 @@ export GWAY_ARTHEXIS_DATA=/opt/arthexis/var/lib
 
 `[arthexis.data]` then resolves to `/opt/arthexis/var/lib`.
 
+## Project-native ENV prefixes
+
+Projects may opt into a native ENV namespace for semantic variables they own:
+
+```toml
+[project]
+name = "arthexis"
+env_prefix = "ARTHEXIS"
+
+[variables.arthexis]
+data = ".arthexis/data"
+cache = ".arthexis/cache"
+```
+
+Because `arthexis.data` is owned by the canonical `arthexis` project namespace, Gway checks the native route before the universal route:
+
+```text
+[arthexis.data]
+
+ARTHEXIS_DATA
+GWAY_ARTHEXIS_DATA
+TOML default
+```
+
+The canonical project namespace is stripped exactly once when constructing the native ENV name:
+
+```text
+arthexis.data       -> ARTHEXIS_DATA
+arthexis.cache.root -> ARTHEXIS_CACHE_ROOT
+```
+
+Aliases do not establish ownership, and unrelated namespaces do not inherit the project prefix. For example, an Arthexis manifest containing `repo.endpoint` still resolves that variable through `GWAY_REPO_ENDPOINT`, not `ARTHEXIS_REPO_ENDPOINT`.
+
+`env_prefix` is optional. Projects that omit it keep the universal `GWAY_*` behavior unchanged. Prefixes are normalized to uppercase and must start with a letter, contain only letters, numbers, and underscores, and not end with an underscore.
+
 ## Precedence
 
-Semantic values use one precedence contract:
+For a project-owned semantic variable with a native prefix, the full precedence contract is:
 
 ```text
 runtime/context value
+→ project-native environment variable
 → GWAY_<NORMALIZED_SEMANTIC_NAME>
 → gway.toml [variables] value
 → inline Sigil fallback
 → unresolved Sigil behavior
 ```
 
+For variables without a project-native route, the native step is simply skipped.
+
 Explicit command-line arguments remain outside this chain and continue to override function defaults in the normal dispatcher path.
 
-Unprefixed process environment variables are not implicit semantic-variable overrides. For example, `ARTHEXIS_DATA` does not override `[arthexis.data]`; use `GWAY_ARTHEXIS_DATA` instead.
+Arbitrary unprefixed process environment variables are not implicit semantic-variable overrides. Native variables are consulted only when the project explicitly declares `env_prefix` and the semantic path is owned by that project's canonical namespace.
 
 ## Nested variables
 
