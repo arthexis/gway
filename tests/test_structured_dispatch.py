@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from gway.command import Command, Parameter
-from gway.dispatcher import _decode_structured_argv
+from gway.dispatcher.arguments import _decode_structured_argv
 from gway.expression import (
     STRUCTURED_ARG_PREFIX,
     STRUCTURED_KWARG_PREFIX,

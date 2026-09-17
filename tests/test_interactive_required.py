@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from gway.cli.errors import extract_global_flags
 from gway.command import Command, Parameter
-from gway.dispatcher import _decode_structured_argv, _fill_required_options
+from gway.dispatcher.arguments import _decode_structured_argv
+from gway.dispatcher.prompt import _fill_required_options
 from gway.expression import STRUCTURED_KWARG_PREFIX
 
 
