@@ -30,7 +30,6 @@ from ..shell import (
 )
 from ..solve import solve_values
 from ..upgrade import UpgradeResult, Upgrader
-from . import shutil as shutil
 from .errors import (
     _can_suggest_sudo,
     _extract_global_flags,
