@@ -9,6 +9,11 @@ from ..explain import record
 from ..provenance import ContinuationPoint
 from ..runtime import GwayRuntime
 from .context import RecipeContext, child_recipe_context
+from .fitness import (
+    _evaluate_fitness_once as _evaluate_fitness_once,
+    _fitness_context as _fitness_context,
+    evaluate_fitness,
+)
 from .model import RecipeError, RecipeStatement
 from .parser import (
     _recipe_statement_lines,
@@ -49,52 +54,6 @@ class RecipeSession:
             recipe_path=str(recipe_path) if recipe_path is not None else None,
             recipe_line=recipe_line,
         )
-
-
-def _fitness_context(session: RecipeSession) -> RecipeContext:
-    """Copy current semantic context so fitness evaluation cannot overwrite recipe state."""
-    provenance = getattr(session.context, "provenance", None)
-    return RecipeContext(dict(session.context), provenance=provenance)
-
-
-def _evaluate_fitness_once(
-    session: RecipeSession,
-    statement: RecipeStatement,
-    operation_result: object,
-    *,
-    interactive: bool,
-    prompt: Callable[[str], str] | None,
-) -> tuple[bool, object]:
-    """Evaluate fitness once using normal GWAY result-transfer and context resolution."""
-    from ..chain import run_statement
-
-    assert statement.fitness_tokens is not None
-    assert session.runtime is not None
-    fitness_context = _fitness_context(session)
-    fitness_result = run_statement(
-        session.dispatcher,
-        statement.fitness_tokens,
-        interactive=interactive,
-        prompt=prompt,
-        context=fitness_context,
-        provenance=fitness_context.provenance,
-        runtime=session.runtime,
-        initial_result=operation_result,
-        has_initial_result=True,
-    )
-    satisfied = isinstance(fitness_result, bool) and fitness_result
-    record(
-        "recipe.fitness.result",
-        "evaluated recipe fitness predicate",
-        path=str(statement.path),
-        line=statement.line,
-        end_line=statement.end_line,
-        fitness_tokens=list(statement.fitness_tokens),
-        satisfied=satisfied,
-        result=fitness_result,
-        boolean=isinstance(fitness_result, bool),
-    )
-    return satisfied, fitness_result
 
 
 def _run_recipe_body(
@@ -171,7 +130,7 @@ def _run_recipe_body(
                 )
                 if statement.fitness_tokens is not None:
                     operation_result = result
-                    satisfied, fitness_result = _evaluate_fitness_once(
+                    satisfied, fitness_result = evaluate_fitness(
                         session,
                         statement,
                         operation_result,
