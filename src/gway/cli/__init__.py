@@ -22,7 +22,6 @@ from ..operations.service import (
 from ..operations.upgrade import run_upgrade as _shared_run_upgrade
 from ..project import Project
 from ..registry import Registry, RegistryError
-from ..runner import RunnerError
 from ..runtime import GwayRuntime
 from ..service import ServiceManager
 from ..shell import (
@@ -45,6 +44,7 @@ from .errors import (
     _prompt_required_value,
     _report_error,
 )
+from .handlers import handle_core_command
 from .help import _print_project_help
 from .render import _render_result, _render_upgrade_record
 
@@ -377,124 +377,41 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                 parser.error("the following arguments are required: project")
 
     try:
-        result: object = None
-        if namespace.command == "list":
-            projects = registry.list()
-            if namespace.detail:
-                result = [_project_record(project) for project in projects]
-            else:
-                result = [project.name for project in projects]
-        elif namespace.command == "info":
-            result = _project_record(registry.require(namespace.project))
-        elif namespace.command == "path":
-            result = registry.require(namespace.project).path
-        elif namespace.command == "solve":
-            result = solve_values(
-                namespace.value,
-                interactive=interactive,
-                prompt=_prompt_required_value,
-            )
-        elif namespace.command == "recipe":
-            recipe_tokens = ["recipe"]
-            if namespace.path.startswith("-"):
-                recipe_tokens.append("--")
-            recipe_tokens.extend([namespace.path, *passthrough])
-            result = GwayRuntime(active_dispatcher).execute(
-                recipe_tokens,
-                interactive=interactive,
-                prompt=_prompt_required_value if interactive else None,
-            )
-        elif namespace.command == "register":
-            project = registry.register_path(namespace.path)
-            result = _managed_status("registered", project)
-        elif namespace.command == "install":
-            if namespace.adopt_from and not namespace.adopt:
-                raise RunnerError("--from requires --adopt")
-            if namespace.dry_run and not namespace.adopt:
-                raise RunnerError("--dry-run requires --adopt")
-            if namespace.adopt and not namespace.adopt_from:
-                raise RunnerError("--adopt requires --from PATH")
-            if namespace.adopt and not namespace.dry_run:
-                raise RunnerError(
-                    "managed adoption execution is not available yet; rerun with --dry-run"
-                )
-            if namespace.adopt and namespace.service:
-                raise RunnerError("--service cannot be combined with --adopt --dry-run")
-
-            result = _runtime_component_record(namespace.project)
-            if result is not None and namespace.adopt:
-                raise RunnerError("built-in runtime components cannot be adopted")
-            if result is not None and passthrough:
-                raise RunnerError(
-                    "built-in runtime component install does not accept project arguments"
-                )
-            if result is not None and namespace.service:
-                result["service"] = {
-                    "status": "not-provided",
-                    "message": f"{namespace.project} does not provide a service",
-                }
-            if result is None:
-                if namespace.adopt:
-                    installer = Installer(registry)
-                    lifecycle_arguments = (
-                        "--adopt",
-                        "--from",
-                        namespace.adopt_from,
-                        "--dry-run",
-                        *passthrough,
-                    )
-                    preview = installer.preview_adoption(
-                        namespace.project,
-                        namespace.adopt_from,
-                        arguments=lifecycle_arguments,
-                    )
-                    result = {
-                        "status": "preflight",
-                        "name": preview.name,
-                        "source": preview.source,
-                        "target": preview.target,
-                        "revision": preview.revision,
-                        "adopt": True,
-                        "dry_run": True,
-                    }
-                else:
-                    result = install_project(
-                        registry,
-                        namespace.project,
-                        arguments=passthrough,
-                        service=namespace.service,
-                        installer_factory=Installer,
-                        manager_factory=ServiceManager,
-                    )
-        elif namespace.command == "upgrade":
-            result = _run_upgrade(
-                namespace,
-                registry,
-                json_output=json_output,
-                arguments=passthrough,
-            )
-        elif namespace.command == "service":
-            result = _run_service(namespace, registry)
-        elif namespace.command == "shell":
-            if namespace.action is None:
-                return launch_shell(namespace.shell_name)
-            if namespace.action == "print":
-                print(integration_snippet(namespace.shell_name), end="")
-                return 0
-            if namespace.action == "install":
-                result = install_shell(namespace.shell_name)
-            elif namespace.action == "uninstall":
-                result = uninstall_shell(namespace.shell_name)
-            else:
-                result = shell_status(namespace.shell_name)
-        else:
+        outcome = handle_core_command(
+            namespace,
+            passthrough,
+            dispatcher=active_dispatcher,
+            registry=registry,
+            interactive=interactive,
+            json_output=json_output,
+            prompt=_prompt_required_value,
+            project_record=_project_record,
+            runtime_component_record=_runtime_component_record,
+            managed_status=_managed_status,
+            run_upgrade=_run_upgrade,
+            run_service=_run_service,
+            solve=solve_values,
+            runtime_factory=GwayRuntime,
+            installer_factory=Installer,
+            install_project_op=install_project,
+            service_manager_factory=ServiceManager,
+            install_shell_fn=install_shell,
+            uninstall_shell_fn=uninstall_shell,
+            shell_status_fn=shell_status,
+            launch_shell_fn=launch_shell,
+            integration_snippet_fn=integration_snippet,
+        )
+        if outcome.show_help:
             parser.print_help()
             return 0
-        _render_result(
-            result,
-            json_output=json_output,
-            result_name=namespace.command,
-        )
+        if outcome.exit_code is not None:
+            return outcome.exit_code
+        if outcome.render:
+            _render_result(
+                outcome.value,
+                json_output=json_output,
+                result_name=namespace.command,
+            )
     except Exception as exc:
         return _handle_cli_exception(exc, original_args)
 
