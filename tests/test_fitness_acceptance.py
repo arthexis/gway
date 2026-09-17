@@ -120,6 +120,23 @@ def test_single_evaluation_contract_and_result_preservation(tmp_path: Path) -> N
     assert statement.data["result"] == "alpha"
 
 
+def test_satisfied_fitness_publishes_operation_result_to_next_statement(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "published-result.rx"
+    path.write_text(
+        "demo scalar --> demo scalar-good\n"
+        "demo echo [result]\n",
+        encoding="utf-8",
+    )
+
+    assert run_recipe(path, dispatcher) == "alpha"
+    assert dispatcher.invoke("demo", ("calls",)) == [
+        "scalar",
+        "scalar_good:alpha",
+        "echo:alpha",
+    ]
+
+
 def test_signature_aware_zero_arg_and_mapping_context_consumption(tmp_path: Path) -> None:
     dispatcher = _dispatcher(tmp_path)
     zero_path = tmp_path / "zero.rx"
