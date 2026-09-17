@@ -3,29 +3,32 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
-import re
-import tempfile
-import time
-from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 from .config import GwayPaths, default_paths
 from .dispatcher.errors import DispatchError
+from .logs.consumers import (
+    ConsumerResolver,
+    canonical_consumers,
+    consumer_identity,
+    normalize_consumers,
+)
+from .logs.state import (
+    atomic_private_write,
+    read_state,
+    read_state_path,
+    state_lock,
+    state_path,
+    write_state,
+)
 from .project import Project
 
-_STATE_VERSION = 1
-_CONSUMER_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 _LOG_TOKEN_ENV = "GWAY_LOG_TOKEN"
 _LOG_DESTINATION_ENV = "GWAY_LOG_DESTINATION"
 _STATE_PATH_ENV = "GWAY_LOG_CONSUMER_STATE"
-ConsumerResolver = Callable[[str], Project | None]
-
-
-def _state_path(paths: GwayPaths) -> Path:
-    return paths.data_dir / "log-consumers.json"
 
 
 def _environment_dir(paths: GwayPaths) -> Path:
@@ -34,153 +37,6 @@ def _environment_dir(paths: GwayPaths) -> Path:
 
 def _environment_dir_for_state(state_path: Path) -> Path:
     return state_path.parent / "log-consumers"
-
-
-def _private_directory(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.chmod(0o700)
-
-
-def _read_state_path(path: Path) -> dict[str, object]:
-    if not path.exists():
-        return {"version": _STATE_VERSION, "bindings": {}}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise DispatchError(f"cannot read log consumer state {path}: {exc}") from exc
-    if not isinstance(data, dict) or data.get("version") != _STATE_VERSION:
-        raise DispatchError(f"unsupported log consumer state in {path}")
-    bindings = data.get("bindings")
-    if not isinstance(bindings, dict):
-        raise DispatchError(f"unsupported log consumer state in {path}")
-    return data
-
-
-def _read_state(paths: GwayPaths) -> dict[str, object]:
-    return _read_state_path(_state_path(paths))
-
-
-def _atomic_private_write(path: Path, payload: bytes) -> None:
-    _private_directory(path.parent)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=path.parent,
-    )
-    temporary = Path(temporary_name)
-    try:
-        if hasattr(os, "fchmod"):
-            os.fchmod(descriptor, 0o600)
-        view = memoryview(payload)
-        while view:
-            written = os.write(descriptor, view)
-            view = view[written:]
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    try:
-        os.replace(temporary, path)
-        path.chmod(0o600)
-    finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
-
-
-def _write_state(paths: GwayPaths, data: dict[str, object]) -> None:
-    path = _state_path(paths)
-    payload = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    _atomic_private_write(path, payload)
-
-
-@contextmanager
-def _state_lock(paths: GwayPaths) -> Iterator[None]:
-    """Serialize consumer-state transactions across GWAY processes."""
-    path = _state_path(paths).with_suffix(".lock")
-    _private_directory(path.parent)
-    flags = os.O_RDWR | os.O_CREAT
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    descriptor = os.open(path, flags, 0o600)
-    try:
-        if hasattr(os, "fchmod"):
-            os.fchmod(descriptor, 0o600)
-        if os.name == "nt":
-            import msvcrt
-
-            if os.fstat(descriptor).st_size == 0:
-                os.write(descriptor, b"\0")
-                os.fsync(descriptor)
-            os.lseek(descriptor, 0, os.SEEK_SET)
-            while True:
-                try:
-                    msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError:
-                    time.sleep(0.05)
-            try:
-                yield
-            finally:
-                os.lseek(descriptor, 0, os.SEEK_SET)
-                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(descriptor, fcntl.LOCK_UN)
-    finally:
-        os.close(descriptor)
-
-
-def normalize_consumers(values: Sequence[str]) -> tuple[str, ...]:
-    """Normalize singular/plural consumer arguments into safe unique names."""
-    consumers: list[str] = []
-    seen: set[str] = set()
-    for raw in values:
-        for part in raw.split(","):
-            value = part.strip()
-            if not value:
-                continue
-            if not _CONSUMER_NAME.fullmatch(value):
-                raise DispatchError(f"invalid log consumer name: {value!r}")
-            key = value.casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            consumers.append(value)
-    return tuple(consumers)
-
-
-def _consumer_identity(
-    value: str,
-    resolve_consumer: ConsumerResolver | None,
-) -> tuple[str, set[str]]:
-    project = resolve_consumer(value) if resolve_consumer is not None else None
-    if project is None:
-        return value, {value.casefold()}
-    identities = {item.casefold() for item in (project.name, *project.aliases)}
-    return project.name, identities
-
-
-def _canonical_consumers(
-    values: Sequence[str],
-    resolve_consumer: ConsumerResolver | None,
-) -> tuple[tuple[str, ...], set[str]]:
-    canonical: list[str] = []
-    identities: set[str] = set()
-    seen: set[str] = set()
-    for value in normalize_consumers(values):
-        name, aliases = _consumer_identity(value, resolve_consumer)
-        identities.update(aliases)
-        key = name.casefold()
-        if key not in seen:
-            seen.add(key)
-            canonical.append(name)
-    return tuple(canonical), identities
 
 
 def _loopback_host(host: str | None) -> bool:
@@ -300,7 +156,7 @@ def _write_environment(
         unchanged = False
     if unchanged:
         return path, False
-    _atomic_private_write(path, contents.encode("utf-8"))
+    atomic_private_write(path, contents.encode("utf-8"))
     return path, True
 
 
@@ -314,17 +170,17 @@ def _remove_environment(paths: GwayPaths, consumer: str) -> bool:
 
 def _binding_state_path(paths: GwayPaths | None = None) -> Path:
     if paths is not None:
-        return _state_path(paths)
+        return state_path(paths)
     inherited = os.environ.get(_STATE_PATH_ENV)
     if inherited:
         return Path(inherited).expanduser()
-    return _state_path(default_paths())
+    return state_path(default_paths())
 
 
 def publisher_token(destination: str, *, paths: GwayPaths | None = None) -> str | None:
     """Read one private same-host publisher token without exporting it globally."""
     try:
-        state = _read_state_path(_binding_state_path(paths))
+        state = read_state_path(_binding_state_path(paths))
     except DispatchError:
         return None
     bindings = state.get("bindings", {})
@@ -396,7 +252,7 @@ def configure_consumers(
     resolve_consumer: ConsumerResolver | None = None,
 ) -> dict[str, object]:
     """Bind same-host consumers to one remotely exposed GWAY log service."""
-    selected, selected_identities = _canonical_consumers(consumers, resolve_consumer)
+    selected, selected_identities = canonical_consumers(consumers, resolve_consumer)
     if not selected:
         raise DispatchError("--consumer/--consumers requires at least one consumer")
     destination = _remote_destination(destinations)
@@ -405,8 +261,8 @@ def configure_consumers(
 
     # Keep the full read-modify-write transaction serialized so independent GWAY
     # processes cannot lose each other's bindings or race on EnvironmentFiles.
-    with _state_lock(active_paths):
-        state = _read_state(active_paths)
+    with state_lock(active_paths):
+        state = read_state(active_paths)
         bindings = state["bindings"]
         assert isinstance(bindings, dict)
 
@@ -447,7 +303,7 @@ def configure_consumers(
             for value in values:
                 if not isinstance(value, str):
                     continue
-                _, identities = _consumer_identity(value, resolve_consumer)
+                _, identities = consumer_identity(value, resolve_consumer)
                 if identities & selected_identities:
                     removed.append(value)
                 else:
@@ -466,7 +322,7 @@ def configure_consumers(
             if isinstance(prior, list)
             else []
         )
-        combined, _ = _canonical_consumers([*prior_values, *selected], resolve_consumer)
+        combined, _ = canonical_consumers([*prior_values, *selected], resolve_consumer)
         combined_keys = {value.casefold() for value in combined}
         for previous in prior_values:
             if previous.casefold() not in combined_keys:
@@ -482,7 +338,7 @@ def configure_consumers(
             }
         )
         bindings[destination] = record
-        _write_state(active_paths, state)
+        write_state(active_paths, state)
         for consumer in combined:
             _, changed = _write_environment(active_paths, consumer, destination, token)
             if changed:
@@ -491,7 +347,7 @@ def configure_consumers(
     # Only a non-secret state-file path is exported for reload/exec continuity.
     # The bearer credential itself stays in private state and process-local HTTP
     # publisher context, so unrelated managed commands/subprocesses do not inherit it.
-    os.environ[_STATE_PATH_ENV] = str(_state_path(active_paths))
+    os.environ[_STATE_PATH_ENV] = str(state_path(active_paths))
     activate_publisher_tokens((destination,), paths=active_paths)
     refreshed_services = (
         _refresh_running_consumer_services(sorted(changed_consumers), resolve_consumer)
@@ -516,7 +372,7 @@ def consumer_environment_file(
     """Return the private logging EnvironmentFile configured for a project."""
     state_path = _binding_state_path(paths)
     try:
-        state = _read_state_path(state_path)
+        state = read_state_path(state_path)
     except DispatchError:
         return None
     bindings = state.get("bindings", {})

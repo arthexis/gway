@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import gway.log_consumers as consumers_module
+from gway.logs.state import state_lock
 from gway.adapters import AdapterRegistry
 from gway.command import Command
 from gway.config import GwayPaths
@@ -161,7 +162,7 @@ def test_state_lock_serializes_writers(tmp_path: Path) -> None:
     def worker() -> None:
         nonlocal active, maximum_active
         ready.wait()
-        with consumers_module._state_lock(paths):
+        with state_lock(paths):
             with guard:
                 active += 1
                 maximum_active = max(maximum_active, active)
