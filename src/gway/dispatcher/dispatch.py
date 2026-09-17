@@ -1,170 +1,23 @@
 from __future__ import annotations
 
-import sys
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
-from contextvars import ContextVar
+from collections.abc import Callable, Mapping, Sequence
 
 from ..adapters import AdapterArgumentError, AdapterRegistry
-from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
-from ..command import Command, Parameter, command_path_aliases
+from ..command import Command
 from ..explain import record
 from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
-from ..outcome import CommandOutcome, resolve_outcome
 from ..registry import Registry, RegistryError
-from ..sigils import RESERVED_CONTEXT_KEYS
-from ..stage import decode_stage_escapes
-from .arguments import _decode_structured_argv, _fill_context_options
+from .binding import bind_command_arguments
 from .errors import CommandNotFound, DispatchError, InvocationArgumentError
-from .prompt import _fill_required_options
-
-_REDACTED_RESULT = "<redacted>"
-_redact_command_result: ContextVar[bool] = ContextVar(
-    "gway_redact_command_result", default=False
-)
-
-
-def _dispatcher_package():
-    return sys.modules[__package__]
-
-
-@contextmanager
-def redact_command_results() -> Iterator[None]:
-    """Keep a command result available to its caller while hiding it from event logs."""
-    token = _redact_command_result.set(True)
-    try:
-        yield
-    finally:
-        _redact_command_result.reset(token)
-
-
-def _logged_result(value: object) -> object:
-    return _REDACTED_RESULT if _redact_command_result.get() else value
+from .invocation import named_arguments_to_argv
+from .outcome import finalize_command_result
+from .resolution import resolve_command, resolve_default_command
+from .sigils import resolve_dispatch_arguments
 
 
 def _strict_fallback_missing(value: object) -> bool:
     return value is None or (isinstance(value, (set, frozenset)) and not value)
-
-
-def _command_key(value: str) -> str:
-    """Return the canonical lookup spelling for one command-path component."""
-    return value.replace("_", "-").casefold()
-
-
-def _command_path_key(path: Sequence[str]) -> tuple[str, ...]:
-    """Normalize command-path spelling while leaving argument values untouched."""
-    return tuple(_command_key(part) for part in path)
-
-
-def _argument_key(value: str) -> str:
-    """Normalize a named argument independently from its external spelling."""
-    return value.replace("-", "_").casefold()
-
-
-def _programmatic_bool(value: str) -> bool:
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-    raise InvocationArgumentError(f"expected boolean value, got {value!r}")
-
-
-def _parameter_option(parameter: Parameter) -> str:
-    return next(
-        (name for name in parameter.options if name.startswith("--")),
-        f"--{parameter.name.replace('_', '-')}",
-    )
-
-
-def _named_arguments_to_argv(
-    command: Command,
-    arguments: Mapping[str, str],
-) -> list[str]:
-    """Translate one named string mapping into adapter-facing command argv."""
-    parameters: dict[str, Parameter] = {}
-    for parameter in command.parameters:
-        key = _argument_key(parameter.name)
-        if key in parameters:
-            raise DispatchError(
-                f"ambiguous parameter metadata for {' '.join(command.path)}: {parameter.name}"
-            )
-        parameters[key] = parameter
-
-    provided: dict[str, str] = {}
-    for name, value in arguments.items():
-        if not isinstance(name, str):
-            raise InvocationArgumentError("programmatic argument names must be strings")
-        if not isinstance(value, str):
-            raise InvocationArgumentError(f"programmatic argument {name!r} must be a string")
-        parameter = parameters.get(_argument_key(name))
-        if parameter is None:
-            raise InvocationArgumentError(
-                f"unknown argument for {' '.join(command.path)}: {name}"
-            )
-        if parameter.name in provided:
-            raise InvocationArgumentError(f"duplicate argument: {name}")
-        provided[parameter.name] = value
-
-    argv: list[str] = []
-    missing: list[str] = []
-    for parameter in command.parameters:
-        if parameter.name not in provided:
-            if parameter.required:
-                missing.append(parameter.name)
-            continue
-
-        value = provided[parameter.name]
-        if parameter.positional:
-            argv.append(value)
-            continue
-
-        option = _parameter_option(parameter)
-        is_boolean = parameter.annotation is bool or parameter.consumes_value is False
-        if not is_boolean:
-            argv.extend((option, value))
-            continue
-
-        enabled = _programmatic_bool(value)
-        if enabled:
-            argv.append(option)
-            continue
-
-        negative_options = parameter.negative_options or ()
-        if negative_options:
-            argv.append(negative_options[0])
-        elif parameter.default is not False:
-            raise InvocationArgumentError(f"argument {parameter.name!r} does not support false")
-
-    if missing:
-        raise InvocationArgumentError(f"missing required arguments: {', '.join(missing)}")
-    return argv
-
-
-def _fill_python_string_defaults(
-    command: Command,
-    argv: Sequence[str],
-) -> tuple[list[str], dict[str, str]]:
-    """Inject omitted Python string defaults as attached option values."""
-    result = list(argv)
-    filled: dict[str, str] = {}
-    for parameter in command.parameters:
-        if not isinstance(parameter.default, str):
-            continue
-        option = next((name for name in parameter.options if name.startswith("--")), None)
-        if option is None:
-            option = f"--{parameter.name.replace('_', '-')}"
-        negative_options = parameter.negative_options or ()
-        if (
-            option in result
-            or any(token.startswith(f"{option}=") for token in result)
-            or any(negative in result for negative in negative_options)
-        ):
-            continue
-        result.append(f"{option}={parameter.default}")
-        filled[parameter.name] = parameter.default
-    return result, filled
 
 
 class Dispatcher:
@@ -188,66 +41,6 @@ class Dispatcher:
             adapter=project.adapter_type,
         )
         return adapter
-
-    @staticmethod
-    def _resolve_command(
-        commands: Sequence[Command], tokens: Sequence[str]
-    ) -> tuple[Command, list[str]]:
-        normalized_tokens = _command_path_key(tokens)
-        matches = [
-            command
-            for command in commands
-            if len(tokens) >= len(command.path)
-            and normalized_tokens[: len(command.path)] == _command_path_key(command.path)
-        ]
-        resolution = "exact"
-        if not matches:
-            matches = [
-                command
-                for command in commands
-                if len(tokens) >= len(command.path)
-                and normalized_tokens[: len(command.path)]
-                in tuple(_command_path_key(alias) for alias in command_path_aliases(command.path)[1:])
-            ]
-            resolution = "alias"
-        if not matches:
-            requested = " ".join(tokens) if tokens else "<command>"
-            record("command.resolve", "command resolution failed", requested=requested)
-            raise CommandNotFound(f"unknown command: {requested}")
-        command = max(matches, key=lambda item: len(item.path))
-        record(
-            "command.resolve",
-            "resolved managed command",
-            requested=list(tokens),
-            selected=list(command.path),
-            resolution=resolution,
-        )
-        return command, list(tokens[len(command.path) :])
-
-    @staticmethod
-    def _resolve_default_command(
-        commands: Sequence[Command],
-        default_path: tuple[str, ...],
-        tokens: Sequence[str],
-    ) -> tuple[Command, list[str]]:
-        normalized_default = _command_path_key(default_path)
-        for command in commands:
-            if _command_path_key(command.path) == normalized_default:
-                record(
-                    "command.resolve",
-                    "resolved configured default command",
-                    requested=list(tokens),
-                    selected=list(command.path),
-                    resolution="default",
-                )
-                return command, list(tokens)
-        record(
-            "command.resolve",
-            "configured default command was not found",
-            selected=list(default_path),
-            resolution="default",
-        )
-        raise CommandNotFound(f"configured default command not found: {' '.join(default_path)}")
 
     def commands(self, project_name: str) -> tuple[Command, ...]:
         adapter = self._adapter(project_name)
@@ -326,136 +119,30 @@ class Dispatcher:
         )
         commands = tuple(adapter.commands())
         try:
-            command, argv = self._resolve_command(commands, tokens)
+            command, argv = resolve_command(commands, tokens)
         except CommandNotFound:
             if not project.default_command:
                 raise
-            command, argv = self._resolve_default_command(commands, project.default_command, tokens)
-
-        alias_arguments = next(
-            (
-                arguments
-                for alias, arguments in (project.alias_arguments or {}).items()
-                if alias.casefold() == project_name.casefold()
-            ),
-            (),
-        )
-        if alias_arguments:
-            record(
-                "arguments.alias",
-                "prepended alias-bound arguments",
-                project=project.name,
-                arguments=list(alias_arguments),
-            )
-
-        argv = list(decode_stage_escapes((*alias_arguments, *argv)))
-        record(
-            "arguments.raw",
-            "collected command arguments",
-            project=project.name,
-            command=list(command.path),
-            argv=list(argv),
-        )
+            command, argv = resolve_default_command(commands, project.default_command, tokens)
 
         chain_context = current_chain_context()
-        argument_context = {
-            key: value
-            for key, value in chain_context.items()
-            if key not in RESERVED_CONTEXT_KEYS and key != "result"
-        }
-        argv, context_values = _fill_context_options(command, argv, argument_context)
-        if context_values:
-            record(
-                "arguments.context",
-                "filled command arguments from active context",
-                project=project.name,
-                command=list(command.path),
-                values=context_values,
-                argv=list(argv),
-            )
-
-        if project.adapter_type == "python":
-            argv, default_values = _fill_python_string_defaults(command, argv)
-            if default_values:
-                record(
-                    "arguments.defaults",
-                    "filled omitted string arguments from function defaults",
-                    project=project.name,
-                    command=list(command.path),
-                    values=default_values,
-                    argv=list(argv),
-                )
-
-        if interactive:
-            argv = _fill_required_options(command, argv, prompt=prompt)
-            record(
-                "arguments.interactive",
-                "filled interactive command arguments",
-                project=project.name,
-                command=list(command.path),
-                argv=list(argv),
-            )
-
-        decoded_argv = _decode_structured_argv(command, argv)
-        record(
-            "arguments.decode",
-            "decoded structured command arguments",
-            project=project.name,
-            command=list(command.path),
-            before=list(argv),
-            after=list(decoded_argv),
+        argv = bind_command_arguments(
+            project=project,
+            requested_project_name=project_name,
+            command=command,
+            argv=argv,
+            chain_context=chain_context,
+            interactive=interactive,
+            prompt=prompt,
         )
-        argv = decoded_argv
 
-        dispatcher_package = _dispatcher_package()
-        templates = dispatcher_package.capture_cli_values(argv, paths=self.registry.paths)
-        record(
-            "sigil.capture",
-            "captured command argument templates",
-            project=project.name,
-            command=list(command.path),
-            argv=list(argv),
-        )
-        extra_context: dict[str, object] = {}
-        if isinstance(adapter, SigilContextAdapter):
-            provided_context = adapter.sigil_context(command.path)
-            if not isinstance(provided_context, Mapping):
-                raise DispatchError("adapter sigil_context() must return a mapping")
-            extra_context.update(provided_context)
-            record(
-                "sigil.context",
-                "added adapter-provided Sigil context",
-                project=project.name,
-                command=list(command.path),
-                keys=sorted(str(key) for key in provided_context),
-            )
-        extra_context.update(
-            (key, value) for key, value in chain_context.items() if key not in RESERVED_CONTEXT_KEYS
-        )
-        try:
-            resolved_argv = dispatcher_package.resolve_captured_cli_values(
-                templates,
-                project,
-                command.path,
-                paths=self.registry.paths,
-                extra_context=extra_context or None,
-            )
-        except ValueError as exc:
-            record(
-                "sigil.resolve",
-                "Sigil resolution failed",
-                project=project.name,
-                command=list(command.path),
-                error=str(exc),
-            )
-            raise DispatchError(str(exc)) from exc
-        record(
-            "sigil.resolve",
-            "resolved command argument templates",
-            project=project.name,
-            command=list(command.path),
-            before=list(argv),
-            after=list(resolved_argv),
+        resolved_argv = resolve_dispatch_arguments(
+            argv,
+            project=project,
+            command=command,
+            adapter=adapter,
+            chain_context=chain_context,
+            paths=self.registry.paths,
         )
         record(
             "command.bind",
@@ -472,28 +159,12 @@ class Dispatcher:
             argv=list(resolved_argv),
         )
         raw_result = adapter.run(command.path, resolved_argv)
-        if isinstance(raw_result, CommandOutcome):
-            record(
-                "command.outcome",
-                "managed command returned explicit semantic outcome",
-                project=project.name,
-                command=list(command.path),
-                success=raw_result.success,
-                result=_logged_result(raw_result.value),
-                outcome_message=raw_result.message,
-            )
-            display_result = raw_result.value
-        else:
-            display_result = raw_result
-        result = raw_result if preserve_outcome else resolve_outcome(raw_result)
-        record(
-            "command.result",
-            "adapter command completed",
-            project=project.name,
-            command=list(command.path),
-            result=_logged_result(display_result),
+        return finalize_command_result(
+            raw_result,
+            project=project,
+            command=command,
+            preserve_outcome=preserve_outcome,
         )
-        return result
 
     def invoke(
         self,
@@ -523,14 +194,14 @@ class Dispatcher:
             adapter=project.adapter_type,
         )
 
-        command, remainder = self._resolve_command(tuple(adapter.commands()), command_path)
+        command, remainder = resolve_command(tuple(adapter.commands()), command_path)
         if remainder:
             requested = " ".join(command_path)
             raise DispatchError(
                 f"programmatic command path must identify exactly one command: {requested}"
             )
 
-        argv = _named_arguments_to_argv(command, arguments or {})
+        argv = named_arguments_to_argv(command, arguments or {})
         alias_arguments = (project.alias_arguments or {}).get(project_name.casefold(), ())
         if alias_arguments:
             record(
@@ -558,28 +229,11 @@ class Dispatcher:
             raw_result = adapter.run(command.path, argv)
         except AdapterArgumentError as exc:
             raise InvocationArgumentError(str(exc)) from exc
-        if isinstance(raw_result, CommandOutcome):
-            record(
-                "command.outcome",
-                "managed command returned explicit semantic outcome",
-                project=project.name,
-                command=list(command.path),
-                success=raw_result.success,
-                result=_logged_result(raw_result.value),
-                outcome_message=raw_result.message,
-            )
-            display_result = raw_result.value
-        else:
-            display_result = raw_result
-        result = resolve_outcome(raw_result)
-        record(
-            "command.result",
-            "adapter command completed",
-            project=project.name,
-            command=list(command.path),
-            result=_logged_result(display_result),
+        return finalize_command_result(
+            raw_result,
+            project=project,
+            command=command,
         )
-        return result
 
     def describe(self, project_name: str, path: tuple[str, ...]) -> Command:
         adapter = self._adapter(project_name)

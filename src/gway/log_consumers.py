@@ -247,7 +247,7 @@ def _issue_token(
 ) -> dict[str, object]:
     # The provider must return the raw credential to this caller, but that result
     # must never be serialized by Dispatcher instrumentation into events.jsonl.
-    from .dispatcher.dispatch import redact_command_results
+    from .dispatcher.outcome import redact_command_results
 
     with redact_command_results():
         result = dispatch(

@@ -1,4 +1,4 @@
-from gway.dispatcher import _strict_fallback_missing
+from gway.dispatcher.dispatch import _strict_fallback_missing
 from gway.expression import parse_managed_branches
 
 

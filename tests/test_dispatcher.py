@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import gway.dispatcher as dispatcher_module
+import gway.dispatcher.sigils as dispatcher_sigils
 from gway.adapters import AdapterRegistry
 from gway.cli import main
 from gway.command import Command, Parameter
@@ -168,7 +168,7 @@ def test_dispatcher_captures_eager_values_before_adapter_context(
 ) -> None:
     dispatcher = make_dispatcher(tmp_path)
     events: list[str] = []
-    original_capture = dispatcher_module.capture_cli_values
+    original_capture = dispatcher_sigils.capture_cli_values
 
     def capture(values, *, paths=None):
         events.append("capture")
@@ -178,7 +178,7 @@ def test_dispatcher_captures_eager_values_before_adapter_context(
         events.append("context")
         return {"MODEL": {"name": "demo", "command": " ".join(command_path)}}
 
-    monkeypatch.setattr(dispatcher_module, "capture_cli_values", capture)
+    monkeypatch.setattr(dispatcher_sigils, "capture_cli_values", capture)
     monkeypatch.setattr(FixtureAdapter, "sigil_context", context)
     result = dispatcher.run("fx", ["peer", "add", "%[cwd]", "[MODEL.name]"])
     assert events == ["capture", "context"]

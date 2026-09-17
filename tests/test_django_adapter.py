@@ -10,7 +10,8 @@ import pytest
 from gway.adapters.django import DjangoAdapter, _parameter_from_action
 from gway.cli import main
 from gway.config import GwayPaths
-from gway.dispatcher import Dispatcher, _provided_positional_count
+from gway.dispatcher import Dispatcher
+from gway.dispatcher.arguments import _provided_positional_count
 from gway.project import Project
 from gway.registry import Registry
 from gway.runner import Runner
