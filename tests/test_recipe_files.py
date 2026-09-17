@@ -16,11 +16,15 @@ def _dispatcher(tmp_path: Path) -> Dispatcher:
     root = tmp_path / "recipe-project"
     root.mkdir()
     (root / "recipe_commands.py").write_text(
-        """def named() -> dict[str, str]:
+        """CALLS = []
+
+
+def named() -> dict[str, str]:
     return {\"customer\": \"cust-1\", \"charger\": \"chg-1\"}
 
 
 def scalar() -> str:
+    CALLS.append(\"operation\")
     return \"alpha\"
 
 
@@ -30,6 +34,25 @@ def use_named(*, customer: str, charger: str) -> str:
 
 def echo(value: str) -> str:
     return value
+
+
+def fitness_true() -> bool:
+    CALLS.append(\"fitness_true\")
+    return True
+
+
+def fitness_false() -> bool:
+    CALLS.append(\"fitness_false\")
+    return False
+
+
+def fitness_debug() -> dict[str, str]:
+    CALLS.append(\"fitness_debug\")
+    return {\"reason\": \"not ready\"}
+
+
+def calls() -> list[str]:
+    return list(CALLS)
 """,
         encoding="utf-8",
     )
@@ -121,13 +144,36 @@ def test_recipe_fitness_rejects_malformed_syntax(
         list(recipe_statements(path))
 
 
-def test_recipe_fitness_execution_is_guarded_until_runtime_support(tmp_path: Path) -> None:
+def test_recipe_fitness_true_returns_original_operation_result(tmp_path: Path) -> None:
     dispatcher = _dispatcher(tmp_path)
     path = tmp_path / "fitness.rx"
-    path.write_text("demo scalar --> demo echo\n", encoding="utf-8")
+    path.write_text("demo scalar --> demo fitness-true\n", encoding="utf-8")
 
-    with pytest.raises(RecipeError, match="fitness execution with '-->' is not implemented yet"):
+    assert run_recipe(path, dispatcher) == "alpha"
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_true"]
+
+
+def test_recipe_fitness_false_fails_semantically(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "fitness.rx"
+    path.write_text("demo scalar --> demo fitness-false\n", encoding="utf-8")
+
+    with pytest.raises(RecipeError, match="fitness predicate returned false"):
         run_recipe(path, dispatcher)
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_false"]
+
+
+def test_recipe_fitness_non_boolean_is_failed_diagnostic_result(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "fitness.rx"
+    path.write_text("demo scalar --> demo fitness-debug\n", encoding="utf-8")
+
+    with pytest.raises(
+        RecipeError,
+        match=r"fitness predicate returned non-boolean diagnostic value .*not ready",
+    ):
+        run_recipe(path, dispatcher)
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_debug"]
 
 
 def test_recipe_continuation_normalizes_to_one_logical_statement(tmp_path: Path) -> None:

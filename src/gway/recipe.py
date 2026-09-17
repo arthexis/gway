@@ -348,6 +348,46 @@ def child_recipe_context(
     return context
 
 
+def _fitness_context(session: RecipeSession) -> RecipeContext:
+    """Copy current semantic context so fitness evaluation cannot overwrite recipe state."""
+    provenance = getattr(session.context, "provenance", None)
+    return RecipeContext(dict(session.context), provenance=provenance)
+
+
+def _evaluate_fitness_once(
+    session: RecipeSession,
+    statement: RecipeStatement,
+    *,
+    interactive: bool,
+    prompt: Callable[[str], str] | None,
+) -> tuple[bool, object]:
+    """Evaluate one fitness predicate once and classify only literal bool values as fitness."""
+    assert statement.fitness_tokens is not None
+    assert session.runtime is not None
+    fitness_context = _fitness_context(session)
+    fitness_result = session.runtime.execute(
+        statement.fitness_tokens,
+        interactive=interactive,
+        prompt=prompt,
+        context=fitness_context,
+        recipe_path=str(statement.path),
+        recipe_line=statement.line,
+    )
+    satisfied = isinstance(fitness_result, bool) and fitness_result
+    record(
+        "recipe.fitness.result",
+        "evaluated recipe fitness predicate",
+        path=str(statement.path),
+        line=statement.line,
+        end_line=statement.end_line,
+        fitness_tokens=list(statement.fitness_tokens),
+        satisfied=satisfied,
+        result=fitness_result,
+        boolean=isinstance(fitness_result, bool),
+    )
+    return satisfied, fitness_result
+
+
 def _run_recipe_body(
     recipe_path: Path,
     session: RecipeSession,
@@ -412,17 +452,6 @@ def _run_recipe_body(
                 continuation=continuation.as_dict(),
                 continuation_stack=continuation_stack,
             )
-            if statement.fitness_tokens is not None:
-                # Chunk 1 parses fitness expressions but deliberately prevents partial
-                # execution until Chunk 2 can evaluate the predicate. Chunk 2 will
-                # interpret only literal bool results as fitness; every other returned
-                # value is a failed fitness outcome retained for diagnostics, not an
-                # unhandled application error.
-                raise RecipeError(
-                    statement.path,
-                    "fitness execution with '-->' is not implemented yet",
-                    line=statement.line,
-                )
             try:
                 result = session.run(
                     statement.tokens,
@@ -431,6 +460,22 @@ def _run_recipe_body(
                     recipe_path=statement.path,
                     recipe_line=statement.line,
                 )
+                if statement.fitness_tokens is not None:
+                    satisfied, fitness_result = _evaluate_fitness_once(
+                        session,
+                        statement,
+                        interactive=interactive,
+                        prompt=prompt,
+                    )
+                    if not satisfied:
+                        if isinstance(fitness_result, bool):
+                            detail = "fitness predicate returned false"
+                        else:
+                            detail = (
+                                "fitness predicate returned non-boolean diagnostic value "
+                                f"{fitness_result!r}"
+                            )
+                        raise RecipeError(statement.path, detail, line=statement.line)
             except RecipeError:
                 raise
             except SystemExit as exc:
