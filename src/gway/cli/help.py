@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import shutil
 import textwrap
 
 from ..dispatcher import Dispatcher
+from . import shutil
 
 
 def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
