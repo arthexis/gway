@@ -64,6 +64,11 @@ def _paths(tmp_path: Path) -> GwayPaths:
     return GwayPaths(tmp_path / "config", tmp_path / "data")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_service_attachment_state(monkeypatch):
+    monkeypatch.delenv("GWAY_SERVICE_ATTACHMENT_STATE", raising=False)
+
+
 def _service_project(tmp_path: Path) -> Project:
     path = tmp_path / "wire"
     path.mkdir(exist_ok=True)

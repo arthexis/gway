@@ -15,9 +15,9 @@ try:
 except ImportError:  # pragma: no cover - unavailable on Windows
     pwd = None  # type: ignore[assignment]
 
-from ..log_consumers import consumer_environment_file
 from ..project import Project
 from ..runner import Runner
+from .attachments import service_environment_files
 from .manifest import ServiceError, _strings
 
 _UNIT_NAME = re.compile(r"^[A-Za-z0-9_.@-]+$")
@@ -434,9 +434,8 @@ class _ServiceUnit:
                 f"User={_service_user(self.config, user)}",
             ]
         )
-        log_environment = consumer_environment_file(self.project)
-        if log_environment is not None:
-            lines.append(f"EnvironmentFile={_unit_arg(log_environment)}")
+        for environment_file in service_environment_files(self.project, self.key):
+            lines.append(f"EnvironmentFile={_unit_arg(environment_file)}")
         if working_directory:
             expanded = _expand(working_directory, self.project)
             lines.append(

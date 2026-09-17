@@ -25,6 +25,7 @@ from .logs.state import (
     write_state,
 )
 from .project import Project
+from .service.attachments import attach_environment_files, detach_environment_files
 
 _LOG_TOKEN_ENV = "GWAY_LOG_TOKEN"
 _LOG_DESTINATION_ENV = "GWAY_LOG_DESTINATION"
@@ -309,6 +310,7 @@ def configure_consumers(
                 else:
                     remaining.append(value)
             for value in removed:
+                detach_environment_files(value, owner="logs", paths=active_paths)
                 if _remove_environment(active_paths, value):
                     changed_consumers.add(value)
             if remaining:
@@ -326,6 +328,7 @@ def configure_consumers(
         combined_keys = {value.casefold() for value in combined}
         for previous in prior_values:
             if previous.casefold() not in combined_keys:
+                detach_environment_files(previous, owner="logs", paths=active_paths)
                 if _remove_environment(active_paths, previous):
                     changed_consumers.add(previous)
 
@@ -340,7 +343,18 @@ def configure_consumers(
         bindings[destination] = record
         write_state(active_paths, state)
         for consumer in combined:
-            _, changed = _write_environment(active_paths, consumer, destination, token)
+            environment, changed = _write_environment(
+                active_paths,
+                consumer,
+                destination,
+                token,
+            )
+            attach_environment_files(
+                consumer,
+                owner="logs",
+                environment_files=[environment],
+                paths=active_paths,
+            )
             if changed:
                 changed_consumers.add(consumer)
 

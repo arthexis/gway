@@ -33,6 +33,7 @@ def _isolate_consumer_logging_environment(monkeypatch):
         "GWAY_LOG_DESTINATION",
         "GWAY_LOG_TOKEN",
         "GWAY_LOG_CONSUMER_STATE",
+        "GWAY_SERVICE_ATTACHMENT_STATE",
         "GWAY_LOG_CONTEXT",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -42,6 +43,7 @@ def _isolate_consumer_logging_environment(monkeypatch):
         "GWAY_LOG_DESTINATION",
         "GWAY_LOG_TOKEN",
         "GWAY_LOG_CONSUMER_STATE",
+        "GWAY_SERVICE_ATTACHMENT_STATE",
         "GWAY_LOG_CONTEXT",
     ):
         os.environ.pop(name, None)
