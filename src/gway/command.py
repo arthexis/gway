@@ -29,6 +29,7 @@ class Parameter:
     name: str
     required: bool = False
     positional: bool = False
+    accepts_positional: bool | None = None
     annotation: object | None = None
     default: Any = None
     help: str | None = None
@@ -36,6 +37,16 @@ class Parameter:
     consumes_value: bool | None = None
     option_arity: int | str | None = None
     negative_options: tuple[str, ...] | None = None
+
+
+def command_accepts_positionals(command: "Command") -> bool:
+    """Return whether a command can accept implicit positional transfer."""
+    return any(
+        parameter.positional
+        if parameter.accepts_positional is None
+        else parameter.accepts_positional
+        for parameter in command.parameters
+    )
 
 
 @dataclass(frozen=True)
