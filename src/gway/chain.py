@@ -4,8 +4,9 @@ from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from typing import TYPE_CHECKING
 
 from .chain_context import chain_context_scope, publish_chain_result
-from .dispatcher.errors import DispatchError
+from .dispatcher.errors import CommandNotFound, DispatchError
 from .explain import record
+from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .outcome import CommandOutcome, SemanticFailure, resolve_outcome
 from .provenance import ValueProvenance
 from .solve import solve_values
@@ -23,6 +24,38 @@ def _transfer_values(result: object) -> list[object]:
     if isinstance(result, Sequence) and not isinstance(result, (str, bytes, bytearray)):
         return list(result)
     return [result]
+
+
+def _stage_accepts_positional_transfer(dispatcher: Dispatcher, stage: Stage) -> bool:
+    """Return whether a managed target declares any positional receiver.
+
+    Non-managed/core stages are left unchanged so their existing transfer
+    validation remains authoritative. Managed commands are resolved using the
+    same adapter-neutral Command metadata used by normal dispatch.
+    """
+    if not stage.tokens:
+        return True
+
+    project_name, project_args = normalize_managed_args(stage.tokens)
+    if project_name == MANAGED_EXPRESSION_PROJECT:
+        return True
+
+    project = dispatcher.registry.get(project_name)
+    if project is None:
+        return True
+
+    commands = dispatcher.commands(project.name)
+    try:
+        command, _ = dispatcher._resolve_command(commands, project_args)
+    except CommandNotFound:
+        if not project.default_command:
+            return True
+        command, _ = dispatcher._resolve_default_command(
+            commands,
+            project.default_command,
+            project_args,
+        )
+    return any(parameter.positional for parameter in command.parameters)
 
 
 def _literal_solve_transfer(value: object) -> str:
@@ -204,6 +237,19 @@ def run_statement(
                     chain_state.previous_result = previous_result if has_previous else None
                     chain_state.previous_result_provenance = result_provenance if has_previous else None
                 transfer = _transfer_values(previous_result) if has_previous else []
+                if transfer and stage.kind is not StageKind.SOLVE and not _stage_accepts_positional_transfer(
+                    dispatcher,
+                    stage,
+                ):
+                    record(
+                        "transfer.omit",
+                        "omitted chain values because target accepts no positionals",
+                        stage=index + 1,
+                        tokens=list(stage.raw_tokens),
+                        incoming=list(transfer),
+                        reason="target accepts no positional parameters",
+                    )
+                    transfer = []
                 record(
                     "chain.stage.start",
                     "executing chain stage",
