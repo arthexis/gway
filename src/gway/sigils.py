@@ -18,19 +18,42 @@ _ENVIRONMENT_PREFIX = "GWAY_"
 _ENVIRONMENT_SEPARATOR = re.compile(r"[^A-Za-z0-9]+")
 
 
+def _normalize_environment_name(name: str) -> str:
+    return _ENVIRONMENT_SEPARATOR.sub("_", name).strip("_").upper()
+
+
 def semantic_environment_name(name: str) -> str:
     """Return the deterministic GWAY_* environment name for a semantic variable."""
-    normalized = _ENVIRONMENT_SEPARATOR.sub("_", name).strip("_").upper()
-    return f"{_ENVIRONMENT_PREFIX}{normalized}"
+    return f"{_ENVIRONMENT_PREFIX}{_normalize_environment_name(name)}"
 
 
-def _resolve_semantic_value(value: object, path: tuple[str, ...]) -> object:
-    """Resolve one manifest variable tree using GWAY_* overrides at its leaves."""
+def project_environment_name(project: Project, path: Sequence[str]) -> str | None:
+    """Return a project's native environment route for an owned semantic path."""
+    if project.env_prefix is None or len(path) < 2:
+        return None
+    if path[0].casefold() != project.name.casefold():
+        return None
+    suffix = _normalize_environment_name(".".join(path[1:]))
+    if not suffix:
+        return None
+    return f"{project.env_prefix}_{suffix}"
+
+
+def _resolve_semantic_value(
+    value: object,
+    path: tuple[str, ...],
+    project: Project,
+) -> object:
+    """Resolve one manifest variable tree through native then GWAY_* overrides."""
     if isinstance(value, Mapping):
         return {
-            str(key): _resolve_semantic_value(item, (*path, str(key)))
+            str(key): _resolve_semantic_value(item, (*path, str(key)), project)
             for key, item in value.items()
         }
+
+    native_name = project_environment_name(project, path)
+    if native_name is not None and native_name in os.environ:
+        return os.environ[native_name]
 
     semantic_name = ".".join(path)
     environment_name = semantic_environment_name(semantic_name)
@@ -253,11 +276,10 @@ def project_context(
 ) -> dict[str, object]:
     """Return the lazy-resolution context for one dispatched command.
 
-    Project ``[variables]`` values define semantic Sigil variables. Each leaf
-    automatically derives a ``GWAY_*`` environment fallback from its full
-    semantic path. Runtime ``extra_context`` values have highest precedence.
-    Manifest and environment values never replace framework-owned or managed
-    project namespaces.
+    Project ``[variables]`` values define semantic Sigil variables. Project-owned
+    leaves may first resolve through a declared native env prefix, then through
+    the universal ``GWAY_*`` fallback. Runtime ``extra_context`` values have
+    highest precedence. Framework-owned and managed namespaces stay protected.
     """
     context = base_context(paths)
 
@@ -265,7 +287,7 @@ def project_context(
     for key, value in (project.variables or {}).items():
         if key in protected_names:
             continue
-        context[key] = _resolve_semantic_value(value, (key,))
+        context[key] = _resolve_semantic_value(value, (key,), project)
 
     context.update(
         {
@@ -279,6 +301,7 @@ def project_context(
                 "environment": (
                     str(project.environment) if project.environment is not None else None
                 ),
+                "env_prefix": project.env_prefix,
             },
             "command": {
                 "path": " ".join(command_path),
@@ -349,6 +372,7 @@ __all__ = [
     "capture_cli_values",
     "gway_context",
     "project_context",
+    "project_environment_name",
     "resolve_captured_cli_values",
     "resolve_cli_values",
     "semantic_environment_name",

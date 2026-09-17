@@ -22,6 +22,23 @@ def _validate_name(name: str) -> None:
         raise ValueError("project name must not start with '['")
 
 
+_ENV_PREFIX = re.compile(r"^[A-Za-z](?:[A-Za-z0-9_]*[A-Za-z0-9])?$")
+
+
+def _env_prefix(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ManifestError("[project].env_prefix must be a non-empty string")
+    normalized = value.strip().upper()
+    if not _ENV_PREFIX.fullmatch(normalized):
+        raise ManifestError(
+            "[project].env_prefix must contain only letters, numbers, and underscores, "
+            "start with a letter, and not end with an underscore"
+        )
+    return normalized
+
+
 def _relative_install_path(value: object, field: str) -> Path:
     if not isinstance(value, str) or not value.strip():
         raise ManifestError(f"[install].{field} must be a non-empty relative path")
@@ -124,6 +141,7 @@ class Project:
     repository: str | None = None
     revision: str | None = None
     environment: Path | None = None
+    env_prefix: str | None = None
     variables: dict[str, object] | None = None
     service_config: dict[str, Any] | None = None
     install_layout: InstallLayout | None = None
@@ -133,6 +151,8 @@ class Project:
         _validate_name(self.name)
         if any(alias.startswith("[") for alias in self.aliases):
             raise ValueError("project aliases must not start with '['")
+        if self.env_prefix is not None:
+            object.__setattr__(self, "env_prefix", _env_prefix(self.env_prefix))
         if self.alias_arguments is None:
             object.__setattr__(self, "alias_arguments", {})
         else:
@@ -186,6 +206,7 @@ class Project:
             raise ManifestError("[lifecycle] must be a table")
 
         name = project_data.get("name")
+        env_prefix = _env_prefix(project_data.get("env_prefix"))
         adapter_type = adapter_data.get("type")
         if not isinstance(name, str) or not name.strip():
             raise ManifestError("[project].name must be a non-empty string")
@@ -245,6 +266,7 @@ class Project:
             path=root,
             adapter_type=adapter_type,
             adapter_config=adapter_config,
+            env_prefix=env_prefix,
             variables=dict(variables_data) if variables_data is not None else None,
             service_config=dict(service_data) if service_data is not None else None,
             install_layout=install_layout,
@@ -265,6 +287,7 @@ class Project:
             "repository": self.repository,
             "revision": self.revision,
             "environment": str(self.environment) if self.environment is not None else None,
+            "env_prefix": self.env_prefix,
             "variables": self.variables,
             "service_config": self.service_config,
             "install_layout": (
@@ -295,6 +318,7 @@ class Project:
             repository=data.get("repository"),
             revision=data.get("revision"),
             environment=Path(environment) if environment else None,
+            env_prefix=data.get("env_prefix"),
             variables=dict(data.get("variables", {})),
             service_config=dict(service_config) if service_config is not None else None,
             install_layout=(
