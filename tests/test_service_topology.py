@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from gway import cli, service
+from gway import service
+from gway.cli import errors as cli_errors
 from gway.project import InstallLayout, Project
 from gway.runner import Runner
 
@@ -202,7 +203,7 @@ def test_environment_selector_install_reports_real_permission_failure(
         raise PermissionError("permission denied while writing service unit")
 
     monkeypatch.setattr(service.systemd._ServiceUnit, "write", denied_write)
-    monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
+    monkeypatch.setattr(cli_errors, "can_suggest_sudo", lambda: True)
 
     with pytest.raises(PermissionError) as exc_info:
         manager.install(user="arthexis", enable=False, start=False)
@@ -216,7 +217,7 @@ def test_environment_selector_install_reports_real_permission_failure(
         "--no-enable",
         "--no-start",
     ]
-    assert cli._handle_cli_exception(exc_info.value, args) == 2
+    assert cli_errors.handle_cli_exception(exc_info.value, args) == 2
     message = capsys.readouterr().err
     assert "permission denied while writing service unit" in message
     assert "sudo gway service install arthexis --user arthexis --no-enable --no-start" in message
@@ -236,13 +237,13 @@ def test_environment_selector_uninstall_reports_real_permission_failure(
         raise PermissionError("permission denied while managing service")
 
     monkeypatch.setattr(service.systemd, "_systemctl", denied_systemctl)
-    monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
+    monkeypatch.setattr(cli_errors, "can_suggest_sudo", lambda: True)
 
     with pytest.raises(PermissionError) as exc_info:
         manager.uninstall()
 
     args = ["service", "uninstall", "arthexis"]
-    assert cli._handle_cli_exception(exc_info.value, args) == 2
+    assert cli_errors.handle_cli_exception(exc_info.value, args) == 2
     message = capsys.readouterr().err
     assert "permission denied while managing service" in message
     assert "sudo gway service uninstall arthexis" in message

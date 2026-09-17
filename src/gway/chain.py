@@ -215,9 +215,9 @@ def run_statement(
     record("chain.start", "executing command chain", stages=len(stages), tokens=list(tokens))
 
     if interactive and prompt is None:
-        from .cli import _prompt_required_value
+        from .cli.errors import prompt_required_value
 
-        prompt = _prompt_required_value
+        prompt = prompt_required_value
 
     statement_frame = active_runtime.current_frame
     recipe_path = statement_frame.recipe_path if statement_frame is not None else None

@@ -125,14 +125,3 @@ def managed_result_name(project_name: str, project_args: Sequence[str]) -> str:
         if command_name and not command_name.startswith("-"):
             return command_name.replace("-", "_")
     return project_name.replace("-", "_")
-
-
-# Compatibility aliases for callers that still import private names from gway.cli.
-_extract_global_flags = extract_global_flags
-_prompt_required_value = prompt_required_value
-_permission_failure = permission_failure
-_can_suggest_sudo = can_suggest_sudo
-_report_error = report_error
-_known_cli_error = known_cli_error
-_handle_cli_exception = handle_cli_exception
-_managed_result_name = managed_result_name

@@ -72,7 +72,7 @@ def test_install_gway_preserves_leading_global_flags(monkeypatch) -> None:
     rendered: list[bool] = []
 
     monkeypatch.setattr(
-        "gway.cli._render_result",
+        "gway.cli.render._render_result",
         lambda result, *, json_output=False, **kwargs: rendered.append(json_output),
     )
 
@@ -86,7 +86,7 @@ def test_install_self_preserves_trailing_global_flags(monkeypatch) -> None:
     rendered: list[bool] = []
 
     monkeypatch.setattr(
-        "gway.cli._render_result",
+        "gway.cli.render._render_result",
         lambda result, *, json_output=False, **kwargs: rendered.append(json_output),
     )
 

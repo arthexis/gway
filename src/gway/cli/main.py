@@ -9,7 +9,7 @@ from ..dispatcher import Dispatcher
 from ..expression import normalize_managed_args
 from ..registry import RegistryError
 from ..stage import StageKind, StageSyntaxError, parse_stages
-from .errors import _extract_global_flags, _managed_result_name
+from .errors import extract_global_flags, managed_result_name
 from .handlers import HandlerResult, handle_core_command
 from .parser import CORE_COMMANDS, build_parser
 
@@ -72,7 +72,7 @@ def run_main(
     """Run the command-line interface using explicitly supplied adapter dependencies."""
     parser = build_parser()
     original_args = list(sys.argv[1:] if argv is None else argv)
-    args, json_output, interactive = _extract_global_flags(original_args)
+    args, json_output, interactive = extract_global_flags(original_args)
     if not args:
         parser.print_help()
         return 0
@@ -109,7 +109,7 @@ def run_main(
             dependencies.render_result(
                 result,
                 json_output=json_output,
-                result_name=_managed_result_name(project_name, project_args),
+                result_name=managed_result_name(project_name, project_args),
             )
         except Exception as exc:
             return dependencies.handle_cli_exception(exc, original_args)

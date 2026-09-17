@@ -143,7 +143,7 @@ def test_bootstrap_recipe_errors_keep_original_explain_args(
         return 2
 
     monkeypatch.setattr("gway.runtime.GwayRuntime", FakeRuntime)
-    monkeypatch.setattr("gway.cli._handle_cli_exception", fake_handle)
+    monkeypatch.setattr("gway.cli.errors.handle_cli_exception", fake_handle)
 
     assert (
         bootstrap._run_runtime_recipe(

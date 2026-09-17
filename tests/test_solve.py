@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import gway.cli as cli
+import gway.cli.errors as cli_errors
 import gway.shell as shell
 import gway.solve as solve_module
 from gway.config import GwayPaths
@@ -105,7 +106,7 @@ def test_cli_solve_passes_interactive_prompt(monkeypatch, capsys) -> None:
     assert capsys.readouterr().out == "resolved\n"
     assert observed["values"] == ["[missing]"]
     assert observed["interactive"] is True
-    assert observed["prompt"] is cli._prompt_required_value
+    assert observed["prompt"] is cli_errors.prompt_required_value
 
 
 def test_cli_explicit_percent_stage_is_greedy(monkeypatch, capsys) -> None:

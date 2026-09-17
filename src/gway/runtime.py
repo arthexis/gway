@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from . import runtime_base as _base
 from .event_command import run_event
+from .upgrade import UpgradeError as _UpgradeError
 
 # Preserve the established runtime dependency patch points. Tests and callers
 # have historically replaced these names on gway.runtime, so the compatibility
@@ -194,20 +195,20 @@ class GwayRuntime(_base.GwayRuntime):
         )
         namespace, passthrough = parser.parse_known_args(list(argv))
         if namespace.service_profile is not None and not namespace.service:
-            raise _base.UpgradeError("--service-profile requires --service")
+            raise _UpgradeError("--service-profile requires --service")
         targets = list(dict.fromkeys(namespace.projects))
         if targets and (namespace.all or namespace.upgrade_self is not None):
-            raise _base.UpgradeError(
+            raise _UpgradeError(
                 "PROJECTS cannot be combined with --all, --self, or --no-self"
             )
         include_self_target = "gway" in targets
         managed_targets = [target for target in targets if target != "gway"]
         if namespace.install and not managed_targets:
-            raise _base.UpgradeError("--install requires an explicit managed PROJECT")
+            raise _UpgradeError("--install requires an explicit managed PROJECT")
         if namespace.service and not managed_targets:
-            raise _base.UpgradeError("--service requires an explicit managed PROJECT")
+            raise _UpgradeError("--service requires an explicit managed PROJECT")
         if passthrough and len(managed_targets) != 1:
-            raise _base.UpgradeError(
+            raise _UpgradeError(
                 "installer arguments require exactly one managed PROJECT"
             )
         upgrader = Upgrader(self.registry)

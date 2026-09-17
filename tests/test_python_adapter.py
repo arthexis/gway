@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-import gway.cli as cli
+import gway.cli.errors as cli_errors
 from gway.adapters import AdapterRegistry
 from gway.adapters.python import PythonAdapter
 from gway.cli import main
@@ -261,7 +261,7 @@ def test_managed_permission_failure_suggests_original_command(
     capsys,
 ) -> None:
     dispatcher = make_dispatcher(tmp_path)
-    monkeypatch.setattr(cli, "_can_suggest_sudo", lambda: True)
+    monkeypatch.setattr(cli_errors, "can_suggest_sudo", lambda: True)
 
     assert main(["fixture", "denied"], dispatcher=dispatcher) == 2
     error = capsys.readouterr().err

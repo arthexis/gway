@@ -10,7 +10,6 @@ from ..operations.install import install_project
 from ..operations.project import (
     managed_status as _shared_managed_status,
     runtime_component_record as _shared_runtime_component_record,
-    upgrade_status as _shared_upgrade_status,
 )
 from ..operations.service import (
     install_project_service as _shared_install_project_service,
@@ -29,22 +28,12 @@ from ..shell import (
     uninstall_shell,
 )
 from ..solve import solve_values
-from ..upgrade import UpgradeResult, Upgrader
-from . import shutil as shutil
-from .errors import (
-    _can_suggest_sudo,
-    _extract_global_flags,
-    _handle_cli_exception,
-    _known_cli_error,
-    _managed_result_name,
-    _permission_failure,
-    _prompt_required_value,
-    _report_error,
-)
+from ..upgrade import Upgrader
+from . import errors as cli_errors
+from . import render as cli_render
 from .help import _print_project_help
 from .main import CliDependencies, run_main
 from .parser import CORE_COMMANDS, build_parser
-from .render import _render_result, _render_upgrade_record
 
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
 
@@ -74,10 +63,6 @@ def _managed_status(status: str, project: Project) -> dict[str, object]:
     return _shared_managed_status(status, project)
 
 
-def _upgrade_status(status: str, result: UpgradeResult) -> dict[str, object]:
-    return _shared_upgrade_status(status, result)
-
-
 def _install_project_service(project: Project) -> dict[str, object]:
     return _shared_install_project_service(project, manager_factory=ServiceManager)
 
@@ -91,7 +76,10 @@ def _run_upgrade(
 ) -> object:
     on_completed = None
     if not json_output:
-        on_completed = lambda record: _render_upgrade_record(record, detail=namespace.detail)
+        on_completed = lambda record: cli_render._render_upgrade_record(
+            record,
+            detail=namespace.detail,
+        )
     result = _shared_run_upgrade(
         registry,
         projects=namespace.projects,
@@ -123,9 +111,9 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
     """Compatibility entrypoint delegating orchestration to :mod:`gway.cli.main`."""
     dependencies = CliDependencies(
         solve_values=solve_values,
-        prompt_required_value=_prompt_required_value,
-        render_result=_render_result,
-        handle_cli_exception=_handle_cli_exception,
+        prompt_required_value=cli_errors.prompt_required_value,
+        render_result=cli_render._render_result,
+        handle_cli_exception=cli_errors.handle_cli_exception,
         print_project_help=_print_project_help,
         project_record=_project_record,
         runtime_component_record=_runtime_component_record,
