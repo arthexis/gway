@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import argparse
 import inspect
 
 from gway.transfer import decode_transfer
 
 from . import AdapterError
-from .python import _EXPLICIT_NONE, PythonAdapter, _decode_structured_value, _project_import_path
+from .python import (
+    _EXPLICIT_NONE,
+    PythonAdapter,
+    _argument_converter,
+    _converter,
+    _decode_structured_value,
+    _project_import_path,
+)
+
+_TRANSFER_DEST_PREFIX = "__gway_transfer_"
 
 
 def _decode_value(value: object) -> object:
@@ -37,6 +47,24 @@ class TransferPythonAdapter(PythonAdapter):
 
     def _parser_for(self, command):
         parser = super()._parser_for(command)
+        function = command.adapter_data
+        if callable(function):
+            signature = inspect.signature(function)
+            for parameter in signature.parameters.values():
+                if (
+                    parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+                    and parameter.default is not inspect.Parameter.empty
+                ):
+                    converter, choices = _converter(parameter.annotation)
+                    parser.add_argument(
+                        f"{_TRANSFER_DEST_PREFIX}{parameter.name}",
+                        nargs="?",
+                        type=_argument_converter(converter),
+                        choices=choices,
+                        default=None,
+                        metavar=parameter.name,
+                        help=argparse.SUPPRESS,
+                    )
         for action in parser._actions:
             if action.type is not None:
                 action.type = _transfer_aware_type(action.type)
@@ -60,6 +88,9 @@ class TransferPythonAdapter(PythonAdapter):
         keywords: dict[str, object] = {}
         for parameter in signature.parameters.values():
             value = values.get(parameter.name)
+            transfer_value = values.get(f"{_TRANSFER_DEST_PREFIX}{parameter.name}")
+            if transfer_value is not None:
+                value = transfer_value
             explicit_none = value is _EXPLICIT_NONE
             if explicit_none:
                 value = None
