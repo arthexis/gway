@@ -29,7 +29,7 @@ from .service import ServiceManager
 from .stage import Stage
 from .store import run_store
 from .transfer import encode_transfer
-from .upgrade import UpgradeError, UpgradeResult, Upgrader
+from .upgrade import UpgradeResult, Upgrader
 
 _SELECTOR = re.compile(r"\[(?P<index>[1-9]\d*)\]\Z")
 _WILDCARD = "[*]"
