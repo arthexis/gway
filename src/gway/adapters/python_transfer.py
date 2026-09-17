@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import inspect
 
 from gway.transfer import decode_transfer
@@ -37,6 +38,19 @@ class TransferPythonAdapter(PythonAdapter):
 
     def _parser_for(self, command):
         parser = super()._parser_for(command)
+        function = command.adapter_data
+        if callable(function):
+            signature = inspect.signature(function)
+            for parameter in signature.parameters.values():
+                if (
+                    parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+                    and parameter.default is not inspect.Parameter.empty
+                ):
+                    parser.add_argument(
+                        parameter.name,
+                        nargs="?",
+                        default=argparse.SUPPRESS,
+                    )
         for action in parser._actions:
             if action.type is not None:
                 action.type = _transfer_aware_type(action.type)
