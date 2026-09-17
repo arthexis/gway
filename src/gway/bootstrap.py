@@ -147,7 +147,8 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
         return 2
 
     from .checkpoint import CheckpointError
-    from .checkpoint_store import (
+    from .checkpoint.resume import resume_recipe
+    from .checkpoint.store import (
         claim_checkpoint,
         read_checkpoint,
         remove_checkpoint,
@@ -155,7 +156,6 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
     )
     from .cli import _handle_cli_exception, _render_result, _report_error
     from .explain import explain_scope, record, render_trace
-    from .resume import resume_recipe
     from .runtime import GwayRuntime
 
     def handle_resume_error(exc: Exception) -> int:
