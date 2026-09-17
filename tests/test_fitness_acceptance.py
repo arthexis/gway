@@ -15,7 +15,7 @@ from gway.registry import Registry
 
 def _dispatcher(tmp_path: Path) -> Dispatcher:
     root = tmp_path / "fitness-acceptance"
-    root.mkdir()
+    root.mkdir(parents=True)
     (root / "fitness_acceptance.py").write_text(
         '''CALLS = []
 
