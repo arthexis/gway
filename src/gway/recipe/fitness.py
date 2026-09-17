@@ -62,8 +62,4 @@ def evaluate_fitness(
     return satisfied, fitness_result
 
 
-# Compatibility alias for callers that still import the private helper from gway.recipe.
-_evaluate_fitness_once = evaluate_fitness
-
-
 __all__ = ["evaluate_fitness"]

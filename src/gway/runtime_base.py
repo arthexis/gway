@@ -279,7 +279,7 @@ class GwayRuntime:
         prompt: Callable[[str], str] | None = None,
     ) -> object:
         from .recipe import child_recipe_context, run_recipe
-        from .recipe_params import parse_recipe_invocation, seed_recipe_parameters
+        from .recipe.params import parse_recipe_invocation, seed_recipe_parameters
 
         invocation = parse_recipe_invocation(argv)
         path = invocation.path

@@ -8,13 +8,9 @@ from ..chain import run_statement
 from ..dispatcher import Dispatcher
 from ..explain import record
 from ..provenance import ValueProvenance
-from ..recipe import (
-    RecipeContext,
-    RecipeSession,
-    _recipe_statement_lines_from_source,
-    _run_recipe_from,
-    recipe_statements,
-)
+from ..recipe import RecipeContext, RecipeSession, recipe_statements
+from ..recipe.execution import _run_recipe_from
+from ..recipe.parser import _recipe_statement_lines_from_source
 from ..runtime import GwayRuntime
 from ..stage import StageKind, parse_stages
 from .chain import ChainContinuationCheckpoint, PendingChainCheckpoint
