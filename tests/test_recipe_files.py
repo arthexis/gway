@@ -20,6 +20,7 @@ def _dispatcher(tmp_path: Path) -> Dispatcher:
 
 
 def named() -> dict[str, str]:
+    CALLS.append(\"named\")
     return {\"customer\": \"cust-1\", \"charger\": \"chg-1\"}
 
 
@@ -36,19 +37,29 @@ def echo(value: str) -> str:
     return value
 
 
-def fitness_true() -> bool:
-    CALLS.append(\"fitness_true\")
-    return True
+def fitness_true(value: str) -> bool:
+    CALLS.append(f\"fitness_true:{value}\")
+    return value == \"alpha\"
 
 
-def fitness_false() -> bool:
-    CALLS.append(\"fitness_false\")
+def fitness_false(value: str) -> bool:
+    CALLS.append(f\"fitness_false:{value}\")
     return False
 
 
-def fitness_debug() -> dict[str, str]:
-    CALLS.append(\"fitness_debug\")
+def fitness_debug(value: str) -> dict[str, str]:
+    CALLS.append(f\"fitness_debug:{value}\")
     return {\"reason\": \"not ready\"}
+
+
+def fitness_named(*, customer: str, charger: str) -> bool:
+    CALLS.append(f\"fitness_named:{customer}:{charger}\")
+    return customer == \"cust-1\" and charger == \"chg-1\"
+
+
+def fitness_no_input() -> bool:
+    CALLS.append(\"fitness_no_input\")
+    return True
 
 
 def calls() -> list[str]:
@@ -150,7 +161,7 @@ def test_recipe_fitness_true_returns_original_operation_result(tmp_path: Path) -
     path.write_text("demo scalar --> demo fitness-true\n", encoding="utf-8")
 
     assert run_recipe(path, dispatcher) == "alpha"
-    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_true"]
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_true:alpha"]
 
 
 def test_recipe_fitness_false_fails_semantically(tmp_path: Path) -> None:
@@ -160,7 +171,7 @@ def test_recipe_fitness_false_fails_semantically(tmp_path: Path) -> None:
 
     with pytest.raises(RecipeError, match="fitness predicate returned false"):
         run_recipe(path, dispatcher)
-    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_false"]
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_false:alpha"]
 
 
 def test_recipe_fitness_non_boolean_is_failed_diagnostic_result(tmp_path: Path) -> None:
@@ -173,7 +184,28 @@ def test_recipe_fitness_non_boolean_is_failed_diagnostic_result(tmp_path: Path) 
         match=r"fitness predicate returned non-boolean diagnostic value .*not ready",
     ):
         run_recipe(path, dispatcher)
-    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_debug"]
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_debug:alpha"]
+
+
+def test_recipe_fitness_consumes_mapping_result_from_semantic_context(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "fitness.rx"
+    path.write_text("demo named --> demo fitness-named\n", encoding="utf-8")
+
+    assert run_recipe(path, dispatcher) == {"customer": "cust-1", "charger": "chg-1"}
+    assert dispatcher.invoke("demo", ("calls",)) == [
+        "named",
+        "fitness_named:cust-1:chg-1",
+    ]
+
+
+def test_recipe_fitness_may_ignore_operation_result(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "fitness.rx"
+    path.write_text("demo scalar --> demo fitness-no-input\n", encoding="utf-8")
+
+    assert run_recipe(path, dispatcher) == "alpha"
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_no_input"]
 
 
 def test_recipe_continuation_normalizes_to_one_logical_statement(tmp_path: Path) -> None:
