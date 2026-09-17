@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import shutil
 import textwrap
 
 from ..dispatcher import Dispatcher
+
+_HELP_WIDTH = 100
 
 
 def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
@@ -17,8 +18,8 @@ def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
     if not rows:
         return
 
-    terminal_width = max(1, shutil.get_terminal_size(fallback=(100, 24)).columns)
-    left_indent = 2 if terminal_width >= 4 else 0
+    terminal_width = _HELP_WIDTH
+    left_indent = 2
     gap = 2
     name_width = max(len(name) for name, _ in rows)
     description_column = left_indent + name_width + gap
