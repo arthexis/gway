@@ -15,6 +15,8 @@ from .python import (
     _project_import_path,
 )
 
+_TRANSFER_DEST_PREFIX = "__gway_transfer_"
+
 
 def _decode_value(value: object) -> object:
     """Restore structured and opaque transferred values after argparse parsing."""
@@ -55,11 +57,12 @@ class TransferPythonAdapter(PythonAdapter):
                 ):
                     converter, choices = _converter(parameter.annotation)
                     parser.add_argument(
-                        parameter.name,
+                        f"{_TRANSFER_DEST_PREFIX}{parameter.name}",
                         nargs="?",
                         type=_argument_converter(converter),
                         choices=choices,
-                        default=argparse.SUPPRESS,
+                        default=None,
+                        metavar=parameter.name,
                         help=argparse.SUPPRESS,
                     )
         for action in parser._actions:
@@ -85,6 +88,9 @@ class TransferPythonAdapter(PythonAdapter):
         keywords: dict[str, object] = {}
         for parameter in signature.parameters.values():
             value = values.get(parameter.name)
+            transfer_value = values.get(f"{_TRANSFER_DEST_PREFIX}{parameter.name}")
+            if transfer_value is not None:
+                value = transfer_value
             explicit_none = value is _EXPLICIT_NONE
             if explicit_none:
                 value = None
