@@ -103,4 +103,33 @@ GWAY_SERVER_PORT
 GWAY_LOGS_ENDPOINT
 ```
 
+## Managed services
+
+Managed service command arguments and environment values may reference the same semantic variables. Gway resolves them before rendering the systemd unit, so the service definition does not need deployment-specific environment lookup logic.
+
+```toml
+[variables.logs]
+source = "~/.local/state/gway/runs"
+
+[services.logs]
+command = [
+    "{python}",
+    "-m",
+    "gway_web.log_service",
+    "--source",
+    "[logs.source]",
+]
+
+[services.logs.environment]
+LOG_SOURCE = "[logs.source]"
+```
+
+A deployment can override both references without changing the manifest:
+
+```bash
+export GWAY_LOGS_SOURCE=/opt/gway/runs
+```
+
+Service Sigils use the same precedence contract as other semantic variables. Only the selected service topology is resolved, so an unrelated service does not block an explicit service selection. Unlike ordinary noninteractive solving, unresolved service Sigils fail closed before a unit is written or replaced; generated systemd units therefore contain concrete values rather than unresolved Sigil expressions.
+
 This convention is intended to be shared by CLI commands, recipes, function-default Sigils, managed services, and API/MCP integrations so callers do not need per-project environment-variable plumbing.
