@@ -18,6 +18,7 @@ class RecipeStatement:
     line: int
     tokens: tuple[str, ...]
     end_line: int | None = None
+    fitness_tokens: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +26,7 @@ class _LogicalRecipeLine:
     line: int
     end_line: int
     text: str
+    continuation_parts: tuple[str, ...] = ()
 
 
 class RecipeError(RuntimeError):
@@ -130,13 +132,43 @@ def _tokenize_recipe_statement(path: Path, text: str, *, line: int) -> tuple[str
         raise RecipeError(path, str(exc), line=line) from exc
 
 
+def _split_fitness_tokens(
+    path: Path,
+    tokens: tuple[str, ...],
+    *,
+    line: int,
+) -> tuple[tuple[str, ...], tuple[str, ...] | None]:
+    """Split one recipe statement into operation and optional fitness tokens."""
+    separators = [index for index, token in enumerate(tokens) if token == "-->"]
+    if not separators:
+        return tokens, None
+    if len(separators) > 1:
+        raise RecipeError(path, "fitness syntax accepts exactly one '-->' operator", line=line)
+
+    separator = separators[0]
+    operation_tokens = tokens[:separator]
+    fitness_tokens = tokens[separator + 1 :]
+    if not operation_tokens:
+        raise RecipeError(path, "fitness syntax requires an operation before '-->'", line=line)
+    if not fitness_tokens:
+        raise RecipeError(path, "fitness syntax requires a fitness function after '-->'", line=line)
+    if any(token.startswith("-") for token in fitness_tokens):
+        raise RecipeError(
+            path,
+            "fitness functions inside '-->' do not accept inline flags; use semantic context instead",
+            line=line,
+        )
+    return operation_tokens, fitness_tokens
+
+
 def _logical_recipe_lines_from_source(path: Path, source: str) -> tuple[_LogicalRecipeLine, ...]:
     """Group physical recipe lines without tokenizing statement contents.
 
     A trailing ``:`` introduces a continuation whose following non-empty,
     non-comment lines must be indented to one common level and must begin with
-    an option token. The resulting text is still tokenized later by the normal
-    GWAY statement path, preserving lazy tokenization and one execution model.
+    an option token. Header text and continuation arguments remain structurally
+    separate so ``operation --> fitness:`` attaches continued options to the
+    operation rather than to the fitness predicate.
     """
     lines = source.splitlines()
     logical_lines: list[_LogicalRecipeLine] = []
@@ -203,7 +235,8 @@ def _logical_recipe_lines_from_source(path: Path, source: str) -> tuple[_Logical
             _LogicalRecipeLine(
                 line_number,
                 end_line,
-                " ".join((header, *continuation_parts)),
+                header,
+                tuple(continuation_parts),
             )
         )
         index = cursor
@@ -245,13 +278,24 @@ def recipe_statements(
     for statement_index, logical in enumerate(logical_lines, start=1):
         if statement_index < start_statement_index:
             continue
-        tokens = _tokenize_recipe_statement(recipe_path, logical.text, line=logical.line)
-        if tokens:
+        header_tokens = _tokenize_recipe_statement(recipe_path, logical.text, line=logical.line)
+        if header_tokens:
+            operation_tokens, fitness_tokens = _split_fitness_tokens(
+                recipe_path,
+                header_tokens,
+                line=logical.line,
+            )
+            continuation_tokens = tuple(
+                token
+                for part in logical.continuation_parts
+                for token in _tokenize_recipe_statement(recipe_path, part, line=logical.line)
+            )
             yield RecipeStatement(
                 recipe_path,
                 logical.line,
-                tokens,
+                operation_tokens + continuation_tokens,
                 logical.end_line,
+                fitness_tokens,
             )
 
 
@@ -302,6 +346,52 @@ def child_recipe_context(
             context.update(incoming)
         context["result"] = incoming
     return context
+
+
+def _fitness_context(session: RecipeSession) -> RecipeContext:
+    """Copy current semantic context so fitness evaluation cannot overwrite recipe state."""
+    provenance = getattr(session.context, "provenance", None)
+    return RecipeContext(dict(session.context), provenance=provenance)
+
+
+def _evaluate_fitness_once(
+    session: RecipeSession,
+    statement: RecipeStatement,
+    operation_result: object,
+    *,
+    interactive: bool,
+    prompt: Callable[[str], str] | None,
+) -> tuple[bool, object]:
+    """Evaluate fitness once using normal GWAY result-transfer and context resolution."""
+    from .chain import run_statement
+
+    assert statement.fitness_tokens is not None
+    assert session.runtime is not None
+    fitness_context = _fitness_context(session)
+    fitness_result = run_statement(
+        session.dispatcher,
+        statement.fitness_tokens,
+        interactive=interactive,
+        prompt=prompt,
+        context=fitness_context,
+        provenance=fitness_context.provenance,
+        runtime=session.runtime,
+        initial_result=operation_result,
+        has_initial_result=True,
+    )
+    satisfied = isinstance(fitness_result, bool) and fitness_result
+    record(
+        "recipe.fitness.result",
+        "evaluated recipe fitness predicate",
+        path=str(statement.path),
+        line=statement.line,
+        end_line=statement.end_line,
+        fitness_tokens=list(statement.fitness_tokens),
+        satisfied=satisfied,
+        result=fitness_result,
+        boolean=isinstance(fitness_result, bool),
+    )
+    return satisfied, fitness_result
 
 
 def _run_recipe_body(
@@ -362,6 +452,9 @@ def _run_recipe_body(
                 line=statement.line,
                 end_line=statement.end_line,
                 tokens=list(statement.tokens),
+                fitness_tokens=(
+                    list(statement.fitness_tokens) if statement.fitness_tokens is not None else None
+                ),
                 continuation=continuation.as_dict(),
                 continuation_stack=continuation_stack,
             )
@@ -373,6 +466,25 @@ def _run_recipe_body(
                     recipe_path=statement.path,
                     recipe_line=statement.line,
                 )
+                if statement.fitness_tokens is not None:
+                    operation_result = result
+                    satisfied, fitness_result = _evaluate_fitness_once(
+                        session,
+                        statement,
+                        operation_result,
+                        interactive=interactive,
+                        prompt=prompt,
+                    )
+                    if not satisfied:
+                        if isinstance(fitness_result, bool):
+                            detail = "fitness predicate returned false"
+                        else:
+                            detail = (
+                                "fitness predicate returned non-boolean diagnostic value "
+                                f"{fitness_result!r}"
+                            )
+                        raise RecipeError(statement.path, detail, line=statement.line)
+                    result = operation_result
             except RecipeError:
                 raise
             except SystemExit as exc:

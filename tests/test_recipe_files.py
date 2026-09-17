@@ -16,11 +16,16 @@ def _dispatcher(tmp_path: Path) -> Dispatcher:
     root = tmp_path / "recipe-project"
     root.mkdir()
     (root / "recipe_commands.py").write_text(
-        """def named() -> dict[str, str]:
+        """CALLS = []
+
+
+def named() -> dict[str, str]:
+    CALLS.append(\"named\")
     return {\"customer\": \"cust-1\", \"charger\": \"chg-1\"}
 
 
 def scalar() -> str:
+    CALLS.append(\"operation\")
     return \"alpha\"
 
 
@@ -30,6 +35,35 @@ def use_named(*, customer: str, charger: str) -> str:
 
 def echo(value: str) -> str:
     return value
+
+
+def fitness_true(value: str) -> bool:
+    CALLS.append(f\"fitness_true:{value}\")
+    return value == \"alpha\"
+
+
+def fitness_false(value: str) -> bool:
+    CALLS.append(f\"fitness_false:{value}\")
+    return False
+
+
+def fitness_debug(value: str) -> dict[str, str]:
+    CALLS.append(f\"fitness_debug:{value}\")
+    return {\"reason\": \"not ready\"}
+
+
+def fitness_named(*, customer: str, charger: str) -> bool:
+    CALLS.append(f\"fitness_named:{customer}:{charger}\")
+    return customer == \"cust-1\" and charger == \"chg-1\"
+
+
+def fitness_no_input(*_ignored: object) -> bool:
+    CALLS.append(\"fitness_no_input\")
+    return True
+
+
+def calls() -> list[str]:
+    return list(CALLS)
 """,
         encoding="utf-8",
     )
@@ -59,6 +93,119 @@ def test_recipe_statements_skip_blank_and_full_line_comments(tmp_path: Path) -> 
     assert len(statements) == 1
     assert statements[0].line == 4
     assert statements[0].tokens == ("store", "--message", "hello world")
+
+
+def test_recipe_fitness_parses_operation_and_predicate(tmp_path: Path) -> None:
+    path = tmp_path / "fitness.rx"
+    path.write_text("upgrade arthexis --> arthexis good\n", encoding="utf-8")
+
+    statements = list(recipe_statements(path))
+
+    assert len(statements) == 1
+    assert statements[0].tokens == ("upgrade", "arthexis")
+    assert statements[0].fitness_tokens == ("arthexis", "good")
+    assert statements[0].line == 1
+    assert statements[0].end_line == 1
+
+
+def test_recipe_fitness_continuation_flags_attach_to_operation(tmp_path: Path) -> None:
+    path = tmp_path / "fitness.rx"
+    path.write_text(
+        "upgrade arthexis --> arthexis good:\n"
+        "    --install\n"
+        "    --service\n"
+        "    --role Watchtower\n",
+        encoding="utf-8",
+    )
+
+    statements = list(recipe_statements(path))
+
+    assert len(statements) == 1
+    assert statements[0].tokens == (
+        "upgrade",
+        "arthexis",
+        "--install",
+        "--service",
+        "--role",
+        "Watchtower",
+    )
+    assert statements[0].fitness_tokens == ("arthexis", "good")
+    assert statements[0].line == 1
+    assert statements[0].end_line == 4
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        ("--> arthexis good\n", "requires an operation"),
+        ("upgrade arthexis -->\n", "requires a fitness function"),
+        ("upgrade arthexis --> arthexis good --> other good\n", "exactly one '-->'"),
+        ("upgrade arthexis --> arthexis good --details\n", "do not accept inline flags"),
+    ],
+)
+def test_recipe_fitness_rejects_malformed_syntax(
+    tmp_path: Path,
+    source: str,
+    message: str,
+) -> None:
+    path = tmp_path / "broken.rx"
+    path.write_text(source, encoding="utf-8")
+
+    with pytest.raises(RecipeError, match=message.replace("-->", r"\-\->")):
+        list(recipe_statements(path))
+
+
+def test_recipe_fitness_true_returns_original_operation_result(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "fitness.rx"
+    path.write_text("demo scalar --> demo fitness-true\n", encoding="utf-8")
+
+    assert run_recipe(path, dispatcher) == "alpha"
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_true:alpha"]
+
+
+def test_recipe_fitness_false_fails_semantically(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "fitness.rx"
+    path.write_text("demo scalar --> demo fitness-false\n", encoding="utf-8")
+
+    with pytest.raises(RecipeError, match="fitness predicate returned false"):
+        run_recipe(path, dispatcher)
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_false:alpha"]
+
+
+def test_recipe_fitness_non_boolean_is_failed_diagnostic_result(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "fitness.rx"
+    path.write_text("demo scalar --> demo fitness-debug\n", encoding="utf-8")
+
+    with pytest.raises(
+        RecipeError,
+        match=r"fitness predicate returned non-boolean diagnostic value .*not ready",
+    ):
+        run_recipe(path, dispatcher)
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_debug:alpha"]
+
+
+def test_recipe_fitness_consumes_mapping_result_from_semantic_context(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "fitness.rx"
+    path.write_text("demo named --> demo fitness-named\n", encoding="utf-8")
+
+    assert run_recipe(path, dispatcher) == {"customer": "cust-1", "charger": "chg-1"}
+    assert dispatcher.invoke("demo", ("calls",)) == [
+        "named",
+        "fitness_named:cust-1:chg-1",
+    ]
+
+
+def test_recipe_fitness_may_ignore_operation_result(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+    path = tmp_path / "fitness.rx"
+    path.write_text("demo scalar --> demo fitness-no-input\n", encoding="utf-8")
+
+    assert run_recipe(path, dispatcher) == "alpha"
+    assert dispatcher.invoke("demo", ("calls",)) == ["operation", "fitness_no_input"]
 
 
 def test_recipe_continuation_normalizes_to_one_logical_statement(tmp_path: Path) -> None:
