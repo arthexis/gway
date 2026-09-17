@@ -27,11 +27,12 @@ def _transfer_values(result: object) -> list[object]:
 
 
 def _stage_accepts_positional_transfer(dispatcher: Dispatcher, stage: Stage) -> bool:
-    """Return whether a managed target declares any positional receiver.
+    """Return whether a target can receive implicit positional transfer.
 
-    Non-managed/core stages are left unchanged so their existing transfer
-    validation remains authoritative. Managed commands are resolved using the
-    same adapter-neutral Command metadata used by normal dispatch.
+    ``Command.accepts_positional_transfer`` is deliberately tri-state. ``False``
+    means the adapter positively knows the target accepts no positionals;
+    ``True`` means it does; and ``None`` means the adapter has not described that
+    capability, so legacy transfer behavior is preserved.
     """
     if not stage.tokens:
         return True
@@ -55,7 +56,7 @@ def _stage_accepts_positional_transfer(dispatcher: Dispatcher, stage: Stage) -> 
             project.default_command,
             project_args,
         )
-    return any(parameter.positional for parameter in command.parameters)
+    return command.accepts_positional_transfer is not False
 
 
 def _literal_solve_transfer(value: object) -> str:
