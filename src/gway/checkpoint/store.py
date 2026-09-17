@@ -7,9 +7,9 @@ import stat
 import uuid
 from pathlib import Path
 
+from .chain import CHAIN_CONTINUATION_VERSION, ChainContinuationCheckpoint
 from .model import CheckpointError, ResumeCheckpoint
-from ..checkpoint_chain import CHAIN_CONTINUATION_VERSION, ChainContinuationCheckpoint
-from ..checkpoint_stack import CONTINUATION_STACK_VERSION, ContinuationStackCheckpoint
+from .stack import CONTINUATION_STACK_VERSION, ContinuationStackCheckpoint
 
 _UNSUPPORTED_DIR_FSYNC_ERRNOS = {
     value
@@ -22,6 +22,10 @@ _UNSUPPORTED_DIR_FSYNC_ERRNOS = {
 }
 
 CheckpointDocument = ResumeCheckpoint | ContinuationStackCheckpoint | ChainContinuationCheckpoint
+
+
+class CheckpointCleanupError(CheckpointError):
+    """Raised when a consumed checkpoint was removed but cleanup durability failed."""
 
 
 def checkpoint_directory(data_dir: Path) -> Path:
@@ -78,7 +82,9 @@ def write_checkpoint_atomic(checkpoint: CheckpointDocument, data_dir: Path) -> P
     try:
         payload = (checkpoint.to_json() + "\n").encode("utf-8")
     except UnicodeEncodeError as exc:
-        raise CheckpointError(f"checkpoint contains text that cannot be encoded as UTF-8: {exc}") from exc
+        raise CheckpointError(
+            f"checkpoint contains text that cannot be encoded as UTF-8: {exc}"
+        ) from exc
 
     descriptor: int | None = None
     replaced = False
@@ -190,7 +196,12 @@ def remove_checkpoint(path: str | Path) -> None:
         checkpoint_path.unlink()
     except OSError as exc:
         raise CheckpointError(f"cannot remove checkpoint {checkpoint_path}: {exc}") from exc
-    _sync_directory(checkpoint_path.parent)
+    try:
+        _sync_directory(checkpoint_path.parent)
+    except CheckpointError as exc:
+        raise CheckpointCleanupError(
+            f"checkpoint was consumed but its directory could not be synced: {exc}"
+        ) from exc
 
 
 def _sync_directory(directory: Path) -> None:
@@ -214,6 +225,7 @@ def _sync_directory(directory: Path) -> None:
 
 
 __all__ = [
+    "CheckpointCleanupError",
     "CheckpointDocument",
     "checkpoint_directory",
     "claim_checkpoint",

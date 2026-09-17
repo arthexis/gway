@@ -149,6 +149,7 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
     from .checkpoint import CheckpointError
     from .checkpoint.resume import resume_recipe
     from .checkpoint.store import (
+        CheckpointCleanupError,
         claim_checkpoint,
         read_checkpoint,
         remove_checkpoint,
@@ -190,7 +191,17 @@ def _run_internal_resume(args: Sequence[str]) -> int | None:
             runtime = GwayRuntime()
             runtime.output_mode = checkpoint.flags.output_mode
             result = resume_recipe(checkpoint, runtime.dispatcher, runtime=runtime)
-            remove_checkpoint(claimed_path)
+            try:
+                remove_checkpoint(claimed_path)
+            except CheckpointCleanupError as cleanup_exc:
+                record(
+                    "checkpoint.cleanup.failure",
+                    "checkpoint was consumed but directory sync failed",
+                    exception=type(cleanup_exc).__name__,
+                    error=str(cleanup_exc),
+                    checkpoint=checkpoint_path,
+                )
+                print(f"gway: warning: {cleanup_exc}", file=sys.stderr)
             _render_result(
                 result,
                 json_output=checkpoint.flags.output_mode == "json",
