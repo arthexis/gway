@@ -164,7 +164,10 @@ data = ".arthexis/data"
     assert restored.environment_prefix == "ARTHEXIS"
 
 
-@pytest.mark.parametrize("value", ["", " ", "_ARTHEXIS", "ARTHEXIS_", "ARTHEXIS-DATA", "9ARTHEXIS"])
+@pytest.mark.parametrize(
+    "value",
+    ["", " ", "_ARTHEXIS", "ARTHEXIS_", "ARTHEXIS-DATA", "9ARTHEXIS"],
+)
 def test_manifest_rejects_invalid_environment_prefix(tmp_path: Path, value: str) -> None:
     root = tmp_path / "project"
     root.mkdir()
@@ -180,5 +183,5 @@ module = "commands"
         encoding="utf-8",
     )
 
-    with pytest.raises((ManifestError, Exception)):
+    with pytest.raises(ManifestError):
         Project.from_path(root)
