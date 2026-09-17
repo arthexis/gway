@@ -19,18 +19,22 @@ class SignatureAdapter:
     def commands(self) -> tuple[Command, ...]:
         return (
             Command(("produce",)),
-            Command(("zero",)),
+            Command(("zero",), accepts_positional_transfer=False),
+            Command(("opaque",)),
             Command(
                 ("required",),
                 parameters=(Parameter("value", required=True, positional=True),),
+                accepts_positional_transfer=True,
             ),
             Command(
                 ("optional",),
                 parameters=(Parameter("value", required=False, positional=True),),
+                accepts_positional_transfer=True,
             ),
             Command(
                 ("variadic",),
                 parameters=(Parameter("values", required=False, positional=True),),
+                accepts_positional_transfer=True,
             ),
         )
 
@@ -68,6 +72,17 @@ def test_transfer_is_omitted_for_target_without_positionals(tmp_path: Path) -> N
     )
 
     assert result == []
+
+
+def test_unknown_capability_preserves_legacy_transfer(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+
+    result = run_chain(
+        dispatcher,
+        ["signature", "produce", "-", "signature", "opaque"],
+    )
+
+    assert result == ["42"]
 
 
 def test_required_positional_still_receives_transfer(tmp_path: Path) -> None:
