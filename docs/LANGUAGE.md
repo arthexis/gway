@@ -144,9 +144,9 @@ charger recover --> available
 
 This is the recipe-level expression of an `until`-style operation. Conceptually it means:
 
-> Apply the semantic operation `recover` to the current charger, pursuing the state represented by `available`, subject to the applicable execution policy.
+> Apply the semantic operation `recover` to the current charger, then evaluate the fitness condition represented by `available` against the operation result and semantic context.
 
-The right-hand side should eventually be a semantic condition or fitness function, not merely an arbitrary string.
+The right-hand side should eventually resolve to a semantic fitness function, not merely an arbitrary string.
 
 Examples:
 
@@ -155,39 +155,34 @@ service start --> healthy
 wire connect --> reachable
 charger recover --> available
 deployment apply --> converged
+upgrade arthexis --> arthexis good
 ```
 
-The implementation may poll, retry, wait on events, select another compatible realization, or fail. The recipe expresses the authorized operation and desired state rather than the mechanics of persistence.
+The initial execution model may perform the operation once and evaluate fitness once. Later execution policy may poll, retry, wait on events, select another compatible realization, or fail. The recipe expresses the authorized operation and desired state rather than the mechanics of persistence.
 
 ## Continuation and desired-state syntax compose
 
 The two constructs should work together:
 
 ```text
-charger recover --> available:
-    --mode safe
-    --retries 3
-    --timeout 2m
+upgrade arthexis --> arthexis good:
+    --install
+    --service
+    --role Watchtower
+    --site arthexis.com
 ```
 
-Semantically, arguments may apply either to the operation or to execution policy. GWAY should resolve this from known signatures/interfaces and expose the result through explain output.
+Continuation flags belong to the operation/execution construct on the left-hand side. They are not implicitly routed to the fitness function. A fitness function referenced through `-->` consumes the operation result and semantic context through normal GWAY resolution and adaptation rather than receiving flags from the continued statement.
 
-Option ownership may be inferred only when exactly one participating consumer accepts the option. If the operation, fitness function, or execution policy expose the same option name, ownership is ambiguous and GWAY should fail rather than silently choose one consumer or broadcast the value to several consumers. A value intentionally shared by multiple operations belongs in semantic context or a prior store, where each consumer can resolve it independently; command-line flags remain specific inputs to one command.
-
-This rule keeps recipe meaning stable across implementation changes: adding a parameter to a compatible implementation may surface a new ambiguity, but must not silently change which consumer receives an existing flag.
-
-For example, an explanation might distinguish:
+If a fitness function is invoked directly as an ordinary command, it may expose its own flags for diagnostics or specialized behavior:
 
 ```text
-recover:
-    mode = safe
-
-until available:
-    retries = 3
-    timeout = 2m
+arthexis good --details
 ```
 
-The recipe remains compact while deeper semantics remain inspectable.
+That standalone invocation is distinct from fitness use through `-->`. This keeps recipe meaning stable if a fitness function later gains new optional parameters and avoids introducing a second ambiguous flag-routing mechanism.
+
+Values intentionally shared by the operation and fitness predicate belong in semantic context or a prior store, where each consumer may resolve them independently.
 
 ## Desired state is a fitness function
 
@@ -198,15 +193,34 @@ The operation defines the family of actions GWAY is authorized to attempt. The f
 Conceptually:
 
 ```text
-operation + fitness + execution policy
+operation result + semantic context --> fitness -> true | false
 ```
+
+A fitness function is a semantic predicate. When used through `-->`, its recipe-visible result is satisfied or not satisfied. Rich diagnostics may still be recorded in explain/provenance output or exposed by invoking the fitness function directly as an ordinary command, but those diagnostics do not become the primary recipe result.
+
+The fitness function may naturally consume values produced by the operation. For example, an operation may return a shard ID, token, state ID, or mapping containing several identifiers, and the fitness predicate should receive or resolve those values through the same GWAY transfer, context, and adapter machinery used by ordinary commands.
 
 For example:
 
 ```text
-charger recover --> available:
-    --retries 3
-    --timeout 2m
+create shard --> shard healthy
+issue token --> token active
+upgrade arthexis --> arthexis good
+```
+
+If `create shard` returns the identifier of the new shard, `shard healthy` may consume that identifier directly. If the operation returns a mapping, the predicate may resolve the named values it requires from that result and the accumulated semantic context.
+
+Fitness evaluation must not replace the operation result. The operation result remains the primary result of the complete `operation --> fitness` construction and publishes into recipe context exactly as the operation would have published by itself. Fitness determines whether execution may continue; it does not overwrite `result` or flatten its own diagnostic return values into ordinary context.
+
+Conceptually:
+
+```text
+operation
+    -> operation_result
+    -> publish operation_result to normal context
+    -> fitness(operation_result, semantic_context)
+        -> true: continue, preserving operation_result
+        -> false: semantic failure
 ```
 
 Safe defaults should be conservative. Operations may declare that retries are unsafe, unsupported, or unnecessary. Targets may also constrain whether an `until`/fitness model is valid.
