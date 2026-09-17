@@ -5,7 +5,7 @@ import json
 import pytest
 
 from gway.checkpoint import CheckpointError, CheckpointFlags, RecipeIdentity, ResumeCheckpoint
-from gway.checkpoint_stack import (
+from gway.checkpoint.stack import (
     CONTINUATION_STACK_VERSION,
     ContinuationFrameCheckpoint,
     ContinuationStackCheckpoint,

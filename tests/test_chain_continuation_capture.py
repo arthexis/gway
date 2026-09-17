@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
-from gway.checkpoint_chain import PendingChainCheckpoint
+from gway.checkpoint.chain import PendingChainCheckpoint
 from gway.provenance import ExecutionFrameStack, ValueProvenance
 from gway.runtime import GwayRuntime
 from gway.runtime_reload import capture_pending_chains

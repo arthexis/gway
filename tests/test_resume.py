@@ -6,13 +6,13 @@ from pathlib import Path
 import pytest
 
 from gway.checkpoint import CheckpointFlags, ResumeCheckpoint, recipe_identity
+from gway.checkpoint.resume import ResumeError, resume_recipe
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.explain import explain_scope
 from gway.project import Project
 from gway.provenance import ContinuationPoint, ValueProvenance
 from gway.registry import Registry
-from gway.resume import ResumeError, resume_recipe
 from gway.runtime import GwayRuntime
 
 

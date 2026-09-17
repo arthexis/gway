@@ -3,11 +3,11 @@ from pathlib import Path
 import pytest
 
 from gway.checkpoint import CheckpointFlags, recipe_identity
-from gway.checkpoint_chain import ChainContinuationCheckpoint, PendingChainCheckpoint, PendingStageCheckpoint
-from gway.checkpoint_stack import ContinuationFrameCheckpoint
+from gway.checkpoint.chain import ChainContinuationCheckpoint, PendingChainCheckpoint, PendingStageCheckpoint
+from gway.checkpoint.resume import ResumeError, resume_recipe
+from gway.checkpoint.stack import ContinuationFrameCheckpoint
 from gway.dispatcher import Dispatcher
 from gway.provenance import ContinuationPoint
-from gway.resume import ResumeError, resume_recipe
 from gway.stage import StageKind
 
 

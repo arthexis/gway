@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from gway.checkpoint_chain import ChainContinuationCheckpoint
+from gway.checkpoint.chain import ChainContinuationCheckpoint
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.project import Project

@@ -7,9 +7,9 @@ import pytest
 
 from gway import bootstrap
 from gway.checkpoint import CheckpointError, CheckpointFlags, ResumeCheckpoint, recipe_identity
-from gway.checkpoint_chain import ChainContinuationCheckpoint
-from gway.checkpoint_stack import ContinuationStackCheckpoint
-from gway.checkpoint_store import checkpoint_directory, read_checkpoint, write_checkpoint_atomic
+from gway.checkpoint.chain import ChainContinuationCheckpoint
+from gway.checkpoint.stack import ContinuationStackCheckpoint
+from gway.checkpoint.store import checkpoint_directory, read_checkpoint, write_checkpoint_atomic
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.dispatcher.errors import DispatchError
@@ -232,7 +232,7 @@ def test_atomic_write_failure_cleans_temporary_file(tmp_path: Path, monkeypatch)
     recipe.write_text("demo produce\ndemo consume\n", encoding="utf-8")
     data_dir = tmp_path / "data"
     checkpoint = _resume_checkpoint(recipe)
-    monkeypatch.setattr("gway.checkpoint_store.os.replace", lambda source, target: (_ for _ in ()).throw(OSError("replace failed")))
+    monkeypatch.setattr("gway.checkpoint.store.os.replace", lambda source, target: (_ for _ in ()).throw(OSError("replace failed")))
     with pytest.raises(CheckpointError, match="cannot persist checkpoint"):
         write_checkpoint_atomic(checkpoint, data_dir)
     directory = checkpoint_directory(data_dir)
