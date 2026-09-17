@@ -42,14 +42,7 @@ class ServiceManager:
         self.project = project
         self.unit_directory = Path(unit_directory)
         configs, legacy = _manifest_services(project)
-        configs = {
-            key: resolve_service_config(
-                _with_runtime_paths(config),
-                project,
-                key,
-            )
-            for key, config in configs.items()
-        }
+        configs = {key: _with_runtime_paths(config) for key, config in configs.items()}
         all_configs = dict(configs)
         environment_service = None if all_services else os.environ.get("GWAY_SERVICE")
         environment_profile = None if all_services else os.environ.get("GWAY_SERVICE_PROFILE")
@@ -96,6 +89,10 @@ class ServiceManager:
             raise ServiceError(
                 f"project has no services applicable to profile {active_profile!r}: {project.name}"
             )
+        configs = {
+            key: resolve_service_config(config, project, key)
+            for key, config in configs.items()
+        }
         self.active_profile = active_profile
         self._reconcile_topology = (
             not all_services and selected_service is None and active_profile is not None

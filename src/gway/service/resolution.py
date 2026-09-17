@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ..config import GwayPaths
 from ..project import Project
 from ..sigils import resolve_cli_values
+from .manifest import ServiceError
+
+_UNRESOLVED_SIGIL = re.compile(r"(?<!\[)%?\[(?!\[)(?P<expression>[^\[\]]+?)\](?!\])")
+
+
+def _reject_unresolved(original: str, rendered: str, service: str) -> None:
+    """Reject service Sigils that survive ordinary noninteractive resolution."""
+    for match in _UNRESOLVED_SIGIL.finditer(original):
+        token = match.group(0)
+        if token in rendered:
+            raise ServiceError(
+                f"service {service!r} contains unresolved Sigil {token!r}"
+            )
 
 
 def resolve_service_values(
@@ -15,13 +29,21 @@ def resolve_service_values(
     *,
     paths: GwayPaths | None = None,
 ) -> list[str]:
-    """Resolve service templates with the owning project's Sigil context."""
-    return resolve_cli_values(
+    """Resolve service templates with the owning project's Sigil context.
+
+    Ordinary noninteractive Sigil resolution preserves unknown expressions so
+    callers can decide how to handle them. Managed services fail closed instead:
+    unresolved Sigils must never be serialized into a systemd unit.
+    """
+    rendered = resolve_cli_values(
         values,
         project,
         ("service", service),
         paths=paths,
     )
+    for original, value in zip(values, rendered, strict=True):
+        _reject_unresolved(original, value, service)
+    return rendered
 
 
 def resolve_service_config(
