@@ -17,6 +17,7 @@ from ..sigils import RESERVED_CONTEXT_KEYS
 from ..stage import decode_stage_escapes
 from .arguments import _decode_structured_argv, _fill_context_options
 from .errors import CommandNotFound, DispatchError, InvocationArgumentError
+from .invocation import named_arguments_to_argv
 from .prompt import _fill_required_options
 from .resolution import resolve_command, resolve_default_command
 
@@ -46,91 +47,6 @@ def _logged_result(value: object) -> object:
 
 def _strict_fallback_missing(value: object) -> bool:
     return value is None or (isinstance(value, (set, frozenset)) and not value)
-
-
-def _argument_key(value: str) -> str:
-    """Normalize a named argument independently from its external spelling."""
-    return value.replace("-", "_").casefold()
-
-
-def _programmatic_bool(value: str) -> bool:
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-    raise InvocationArgumentError(f"expected boolean value, got {value!r}")
-
-
-def _parameter_option(parameter: Parameter) -> str:
-    return next(
-        (name for name in parameter.options if name.startswith("--")),
-        f"--{parameter.name.replace('_', '-')}",
-    )
-
-
-def _named_arguments_to_argv(
-    command: Command,
-    arguments: Mapping[str, str],
-) -> list[str]:
-    """Translate one named string mapping into adapter-facing command argv."""
-    parameters: dict[str, Parameter] = {}
-    for parameter in command.parameters:
-        key = _argument_key(parameter.name)
-        if key in parameters:
-            raise DispatchError(
-                f"ambiguous parameter metadata for {' '.join(command.path)}: {parameter.name}"
-            )
-        parameters[key] = parameter
-
-    provided: dict[str, str] = {}
-    for name, value in arguments.items():
-        if not isinstance(name, str):
-            raise InvocationArgumentError("programmatic argument names must be strings")
-        if not isinstance(value, str):
-            raise InvocationArgumentError(f"programmatic argument {name!r} must be a string")
-        parameter = parameters.get(_argument_key(name))
-        if parameter is None:
-            raise InvocationArgumentError(
-                f"unknown argument for {' '.join(command.path)}: {name}"
-            )
-        if parameter.name in provided:
-            raise InvocationArgumentError(f"duplicate argument: {name}")
-        provided[parameter.name] = value
-
-    argv: list[str] = []
-    missing: list[str] = []
-    for parameter in command.parameters:
-        if parameter.name not in provided:
-            if parameter.required:
-                missing.append(parameter.name)
-            continue
-
-        value = provided[parameter.name]
-        if parameter.positional:
-            argv.append(value)
-            continue
-
-        option = _parameter_option(parameter)
-        is_boolean = parameter.annotation is bool or parameter.consumes_value is False
-        if not is_boolean:
-            argv.extend((option, value))
-            continue
-
-        enabled = _programmatic_bool(value)
-        if enabled:
-            argv.append(option)
-            continue
-
-        negative_options = parameter.negative_options or ()
-        if negative_options:
-            argv.append(negative_options[0])
-        elif parameter.default is not False:
-            raise InvocationArgumentError(f"argument {parameter.name!r} does not support false")
-
-    if missing:
-        raise InvocationArgumentError(f"missing required arguments: {', '.join(missing)}")
-    return argv
 
 
 def _fill_python_string_defaults(
@@ -461,7 +377,7 @@ class Dispatcher:
                 f"programmatic command path must identify exactly one command: {requested}"
             )
 
-        argv = _named_arguments_to_argv(command, arguments or {})
+        argv = named_arguments_to_argv(command, arguments or {})
         alias_arguments = (project.alias_arguments or {}).get(project_name.casefold(), ())
         if alias_arguments:
             record(
