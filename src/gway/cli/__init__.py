@@ -2,30 +2,27 @@ from __future__ import annotations
 
 import argparse
 import errno
-import json
-import math
 import os
 import shlex
 import shutil
 import sys
-import textwrap
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from importlib.metadata import version as distribution_version
 
-from . import __version__
-from .adapters import AdapterError
-from .config import ConfigError
-from .dispatcher import Dispatcher, DispatchError
-from .expression import ExpressionError, normalize_managed_args
-from .install import Installer
-from .project import ManifestError, Project
-from .recipe import RecipeError
-from .registry import Registry, RegistryError
-from .repository import RepositoryError
-from .runner import RunnerError
-from .runtime import GwayRuntime
-from .service import ServiceError, ServiceManager
-from .shell import (
+from .. import __version__
+from ..adapters import AdapterError
+from ..config import ConfigError
+from ..dispatcher import Dispatcher, DispatchError
+from ..expression import ExpressionError, normalize_managed_args
+from ..install import Installer
+from ..project import ManifestError, Project
+from ..recipe import RecipeError
+from ..registry import Registry, RegistryError
+from ..repository import RepositoryError
+from ..runner import RunnerError
+from ..runtime import GwayRuntime
+from ..service import ServiceError, ServiceManager
+from ..shell import (
     ShellError,
     install_shell,
     integration_snippet,
@@ -33,21 +30,17 @@ from .shell import (
     shell_status,
     uninstall_shell,
 )
-from .solve import solve_values
-from .stage import StageKind, StageSyntaxError, parse_stages
-from .upgrade import UpgradeError, UpgradeResult, Upgrader
+from ..solve import solve_values
+from ..stage import StageKind, StageSyntaxError, parse_stages
+from ..upgrade import UpgradeError, UpgradeResult, Upgrader
+from .help import _print_project_help
+from .render import _render_result, _render_upgrade_record
 
 CORE_COMMANDS = frozenset(
     {"list", "info", "path", "register", "install", "upgrade", "service", "shell", "solve", "recipe"}
 )
 RUNTIME_COMPONENTS = {"sigils": "gway-sigils"}
 _PERMISSION_ERRNOS = frozenset({errno.EACCES, errno.EPERM})
-_RESET = "\033[0m"
-_KEY = "\033[36m"
-_STRING = "\033[32m"
-_NUMBER = "\033[33m"
-_BOOL = "\033[35m"
-_NULL = "\033[2m"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -251,175 +244,6 @@ def _project_record(project: Project) -> dict[str, object]:
     return record
 
 
-def _print_project_help(dispatcher: Dispatcher, project_name: str) -> None:
-    project = dispatcher.registry.require(project_name)
-    commands = dispatcher.commands(project_name)
-    print(f"usage: gway {project.name} <command> [arguments]")
-    print()
-    print("commands:")
-
-    rows = [(" ".join(command.path), command.summary) for command in commands]
-    if not rows:
-        return
-
-    terminal_width = max(1, shutil.get_terminal_size(fallback=(100, 24)).columns)
-    left_indent = 2 if terminal_width >= 4 else 0
-    gap = 2
-    name_width = max(len(name) for name, _ in rows)
-    description_column = left_indent + name_width + gap
-    description_width = terminal_width - description_column
-
-    for name, summary in rows:
-        if not summary:
-            for line in textwrap.wrap(
-                name,
-                width=max(1, terminal_width - left_indent),
-                break_long_words=True,
-                break_on_hyphens=False,
-            ) or [""]:
-                print(f"{' ' * left_indent}{line}")
-            continue
-
-        if description_width < 20:
-            available = max(1, terminal_width - left_indent)
-            for line in textwrap.wrap(
-                name,
-                width=available,
-                break_long_words=True,
-                break_on_hyphens=False,
-            ) or [""]:
-                print(f"{' ' * left_indent}{line}")
-            detail_indent = min(left_indent * 2, max(0, terminal_width - 1))
-            detail_width = max(1, terminal_width - detail_indent)
-            for line in textwrap.wrap(summary, width=detail_width) or [""]:
-                print(f"{' ' * detail_indent}{line}")
-            continue
-
-        wrapped = textwrap.wrap(summary, width=description_width) or [""]
-        print(f"{' ' * left_indent}{name:<{name_width}}{' ' * gap}{wrapped[0]}")
-        continuation = " " * description_column
-        for line in wrapped[1:]:
-            print(f"{continuation}{line}")
-
-
-def _paint(text: str, code: str, *, color: bool) -> str:
-    if not color:
-        return text
-    return f"{code}{text}{_RESET}"
-
-
-def _scalar_text(value: object, *, color: bool) -> str:
-    if value is None:
-        return _paint("null", _NULL, color=color)
-    if isinstance(value, bool):
-        return _paint("true" if value else "false", _BOOL, color=color)
-    if isinstance(value, (int, float)):
-        return _paint(str(value), _NUMBER, color=color)
-    if isinstance(value, str):
-        return _paint(value, _STRING, color=color)
-    return str(value)
-
-
-def _is_nested(value: object) -> bool:
-    return isinstance(value, Mapping) or (
-        isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
-    )
-
-
-def _empty_collection_text(value: object) -> str | None:
-    if isinstance(value, Mapping) and not value:
-        return "{}"
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)) and not value:
-        return "[]"
-    return None
-
-
-def _pretty_lines(value: object, *, indent: int = 0, color: bool = False) -> list[str]:
-    prefix = "  " * indent
-    empty = _empty_collection_text(value)
-    if empty is not None:
-        return [f"{prefix}{empty}"]
-
-    if isinstance(value, Mapping):
-        lines: list[str] = []
-        for key, item in value.items():
-            label = _paint(str(key), _KEY, color=color)
-            item_empty = _empty_collection_text(item)
-            if item_empty is not None:
-                lines.append(f"{prefix}{label}: {item_empty}")
-            elif _is_nested(item):
-                lines.append(f"{prefix}{label}:")
-                lines.extend(_pretty_lines(item, indent=indent + 1, color=color))
-            else:
-                lines.append(f"{prefix}{label}: {_scalar_text(item, color=color)}")
-        return lines
-
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        lines = []
-        for item in value:
-            item_empty = _empty_collection_text(item)
-            if item_empty is not None:
-                lines.append(f"{prefix}- {item_empty}")
-            elif _is_nested(item):
-                lines.append(f"{prefix}-")
-                lines.extend(_pretty_lines(item, indent=indent + 1, color=color))
-            else:
-                lines.append(f"{prefix}- {_scalar_text(item, color=color)}")
-        return lines
-
-    return [f"{prefix}{_scalar_text(value, color=color)}"]
-
-
-def _json_safe(value: object) -> object:
-    if isinstance(value, float) and not math.isfinite(value):
-        return str(value)
-    if isinstance(value, Mapping):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return [_json_safe(item) for item in value]
-    return value
-
-
-def _json_result(result: object, *, result_name: str | None) -> object:
-    safe_result = _json_safe(result)
-    if isinstance(result, Mapping) or (
-        isinstance(result, Sequence) and not isinstance(result, (str, bytes, bytearray))
-    ):
-        return safe_result
-    return {result_name or "result": safe_result}
-
-
-def _color_enabled() -> bool:
-    if "NO_COLOR" in os.environ or os.environ.get("TERM") == "dumb":
-        return False
-    return bool(getattr(sys.stdout, "isatty", lambda: False)())
-
-
-def _render_result(
-    result: object,
-    *,
-    json_output: bool = False,
-    color: bool | None = None,
-    result_name: str | None = None,
-) -> None:
-    if result is None and not json_output:
-        return
-    if json_output:
-        print(
-            json.dumps(
-                _json_result(result, result_name=result_name),
-                indent=2,
-                default=str,
-                allow_nan=False,
-            )
-        )
-        return
-
-    use_color = _color_enabled() if color is None else color
-    for line in _pretty_lines(result, color=use_color):
-        print(line)
-
-
 def _extract_global_flags(args: list[str]) -> tuple[list[str], bool, bool]:
     filtered: list[str] = []
     json_output = False
@@ -549,15 +373,6 @@ def _install_project_service(project: Project) -> dict[str, object]:
         }
     unit = manager.install()
     return {"status": "installed", "unit": unit}
-
-
-def _render_upgrade_record(record: dict[str, object], *, detail: bool) -> None:
-    if detail:
-        _render_result(record)
-        return
-    revision = record.get("revision")
-    suffix = f" {str(revision)[:12]}" if revision else ""
-    print(f"{record['status']} {record['name']}{suffix}")
 
 
 def _run_upgrade(
