@@ -1,46 +1,19 @@
 from __future__ import annotations
 
-import sys
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
-from contextvars import ContextVar
+from collections.abc import Callable, Mapping, Sequence
 
 from ..adapters import AdapterArgumentError, AdapterRegistry
-from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
 from ..command import Command
 from ..explain import record
 from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
-from ..outcome import CommandOutcome, resolve_outcome
 from ..registry import Registry, RegistryError
-from ..sigils import RESERVED_CONTEXT_KEYS
 from .binding import bind_command_arguments
 from .errors import CommandNotFound, DispatchError, InvocationArgumentError
 from .invocation import named_arguments_to_argv
+from .outcome import finalize_command_result
 from .resolution import resolve_command, resolve_default_command
-
-_REDACTED_RESULT = "<redacted>"
-_redact_command_result: ContextVar[bool] = ContextVar(
-    "gway_redact_command_result", default=False
-)
-
-
-def _dispatcher_package():
-    return sys.modules[__package__]
-
-
-@contextmanager
-def redact_command_results() -> Iterator[None]:
-    """Keep a command result available to its caller while hiding it from event logs."""
-    token = _redact_command_result.set(True)
-    try:
-        yield
-    finally:
-        _redact_command_result.reset(token)
-
-
-def _logged_result(value: object) -> object:
-    return _REDACTED_RESULT if _redact_command_result.get() else value
+from .sigils import resolve_dispatch_arguments
 
 
 def _strict_fallback_missing(value: object) -> bool:
@@ -163,55 +136,13 @@ class Dispatcher:
             prompt=prompt,
         )
 
-        dispatcher_package = _dispatcher_package()
-        templates = dispatcher_package.capture_cli_values(argv, paths=self.registry.paths)
-        record(
-            "sigil.capture",
-            "captured command argument templates",
-            project=project.name,
-            command=list(command.path),
-            argv=list(argv),
-        )
-        extra_context: dict[str, object] = {}
-        if isinstance(adapter, SigilContextAdapter):
-            provided_context = adapter.sigil_context(command.path)
-            if not isinstance(provided_context, Mapping):
-                raise DispatchError("adapter sigil_context() must return a mapping")
-            extra_context.update(provided_context)
-            record(
-                "sigil.context",
-                "added adapter-provided Sigil context",
-                project=project.name,
-                command=list(command.path),
-                keys=sorted(str(key) for key in provided_context),
-            )
-        extra_context.update(
-            (key, value) for key, value in chain_context.items() if key not in RESERVED_CONTEXT_KEYS
-        )
-        try:
-            resolved_argv = dispatcher_package.resolve_captured_cli_values(
-                templates,
-                project,
-                command.path,
-                paths=self.registry.paths,
-                extra_context=extra_context or None,
-            )
-        except ValueError as exc:
-            record(
-                "sigil.resolve",
-                "Sigil resolution failed",
-                project=project.name,
-                command=list(command.path),
-                error=str(exc),
-            )
-            raise DispatchError(str(exc)) from exc
-        record(
-            "sigil.resolve",
-            "resolved command argument templates",
-            project=project.name,
-            command=list(command.path),
-            before=list(argv),
-            after=list(resolved_argv),
+        resolved_argv = resolve_dispatch_arguments(
+            argv,
+            project=project,
+            command=command,
+            adapter=adapter,
+            chain_context=chain_context,
+            paths=self.registry.paths,
         )
         record(
             "command.bind",
@@ -228,28 +159,12 @@ class Dispatcher:
             argv=list(resolved_argv),
         )
         raw_result = adapter.run(command.path, resolved_argv)
-        if isinstance(raw_result, CommandOutcome):
-            record(
-                "command.outcome",
-                "managed command returned explicit semantic outcome",
-                project=project.name,
-                command=list(command.path),
-                success=raw_result.success,
-                result=_logged_result(raw_result.value),
-                outcome_message=raw_result.message,
-            )
-            display_result = raw_result.value
-        else:
-            display_result = raw_result
-        result = raw_result if preserve_outcome else resolve_outcome(raw_result)
-        record(
-            "command.result",
-            "adapter command completed",
-            project=project.name,
-            command=list(command.path),
-            result=_logged_result(display_result),
+        return finalize_command_result(
+            raw_result,
+            project=project,
+            command=command,
+            preserve_outcome=preserve_outcome,
         )
-        return result
 
     def invoke(
         self,
@@ -314,28 +229,11 @@ class Dispatcher:
             raw_result = adapter.run(command.path, argv)
         except AdapterArgumentError as exc:
             raise InvocationArgumentError(str(exc)) from exc
-        if isinstance(raw_result, CommandOutcome):
-            record(
-                "command.outcome",
-                "managed command returned explicit semantic outcome",
-                project=project.name,
-                command=list(command.path),
-                success=raw_result.success,
-                result=_logged_result(raw_result.value),
-                outcome_message=raw_result.message,
-            )
-            display_result = raw_result.value
-        else:
-            display_result = raw_result
-        result = resolve_outcome(raw_result)
-        record(
-            "command.result",
-            "adapter command completed",
-            project=project.name,
-            command=list(command.path),
-            result=_logged_result(display_result),
+        return finalize_command_result(
+            raw_result,
+            project=project,
+            command=command,
         )
-        return result
 
     def describe(self, project_name: str, path: tuple[str, ...]) -> Command:
         adapter = self._adapter(project_name)

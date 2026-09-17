@@ -13,7 +13,7 @@ from gway.adapters import AdapterRegistry
 from gway.command import Command
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
-from gway.dispatcher.dispatch import redact_command_results
+from gway.dispatcher.outcome import redact_command_results
 from gway.dispatcher.errors import DispatchError
 from gway.log_consumers import configure_consumers
 from gway.project import Project
@@ -101,9 +101,9 @@ type = "secret"
     adapters.register("secret", SecretAdapter)
     dispatcher = Dispatcher(registry, adapters)
     events: list[tuple[str, dict[str, object]]] = []
-    dispatch_module = importlib.import_module("gway.dispatcher.dispatch")
+    outcome_module = importlib.import_module("gway.dispatcher.outcome")
     monkeypatch.setattr(
-        dispatch_module,
+        outcome_module,
         "record",
         lambda kind, message, **data: events.append((kind, data)),
     )
