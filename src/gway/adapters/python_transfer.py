@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import inspect
+from typing import get_type_hints
 
 from gway.transfer import decode_transfer
 
@@ -50,12 +51,14 @@ class TransferPythonAdapter(PythonAdapter):
         function = command.adapter_data
         if callable(function):
             signature = inspect.signature(function)
+            hints = get_type_hints(function)
             for parameter in signature.parameters.values():
                 if (
                     parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
                     and parameter.default is not inspect.Parameter.empty
                 ):
-                    converter, choices = _converter(parameter.annotation)
+                    annotation = hints.get(parameter.name, parameter.annotation)
+                    converter, choices = _converter(annotation)
                     parser.add_argument(
                         f"{_TRANSFER_DEST_PREFIX}{parameter.name}",
                         nargs="?",

@@ -14,7 +14,10 @@ def _dispatcher(tmp_path: Path) -> Dispatcher:
     root = tmp_path / "optional-positional-project"
     root.mkdir()
     (root / "commands.py").write_text(
-        """def produce() -> str:
+        """from __future__ import annotations
+
+
+def produce() -> str:
     return \"alpha\"
 
 
@@ -27,6 +30,10 @@ def optional(value: str = \"default\") -> str:
 
 
 def optional_int(value: int = 7) -> int:
+    return value
+
+
+def optional_bool(value: bool = False) -> bool:
     return value
 
 
@@ -83,6 +90,17 @@ def test_optional_positional_transfer_preserves_type_conversion(tmp_path: Path) 
 
     assert result == 42
     assert isinstance(result, int)
+
+
+def test_postponed_boolean_annotation_is_resolved(tmp_path: Path) -> None:
+    dispatcher = _dispatcher(tmp_path)
+
+    result = run_chain(
+        dispatcher,
+        ["optional-positional", "optional-bool", "--value"],
+    )
+
+    assert result is True
 
 
 def test_callable_signature_capability_is_distinct_from_cli_shape(tmp_path: Path) -> None:
