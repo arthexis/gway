@@ -9,6 +9,7 @@ from ..config import default_paths
 from ..project import Project
 from . import systemd
 from .manifest import ServiceError, _manifest_service_profile, _manifest_services, _strings
+from .resolution import resolve_service_config
 
 
 def _with_runtime_paths(config: dict[str, Any]) -> dict[str, Any]:
@@ -88,6 +89,10 @@ class ServiceManager:
             raise ServiceError(
                 f"project has no services applicable to profile {active_profile!r}: {project.name}"
             )
+        configs = {
+            key: resolve_service_config(config, project, key)
+            for key, config in configs.items()
+        }
         self.active_profile = active_profile
         self._reconcile_topology = (
             not all_services and selected_service is None and active_profile is not None
