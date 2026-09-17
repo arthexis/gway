@@ -57,7 +57,7 @@ def fitness_named(*, customer: str, charger: str) -> bool:
     return customer == \"cust-1\" and charger == \"chg-1\"
 
 
-def fitness_no_input() -> bool:
+def fitness_no_input(*_ignored: object) -> bool:
     CALLS.append(\"fitness_no_input\")
     return True
 
