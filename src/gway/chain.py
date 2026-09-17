@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from .chain_context import chain_context_scope, publish_chain_result
 from .dispatcher.errors import CommandNotFound, DispatchError
+from .dispatcher.resolution import resolve_command, resolve_default_command
 from .explain import record
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .outcome import CommandOutcome, SemanticFailure, resolve_outcome
@@ -47,11 +48,11 @@ def _stage_accepts_positional_transfer(dispatcher: Dispatcher, stage: Stage) -> 
 
     commands = dispatcher.commands(project.name)
     try:
-        command, _ = dispatcher._resolve_command(commands, project_args)
+        command, _ = resolve_command(commands, project_args)
     except CommandNotFound:
         if not project.default_command:
             return True
-        command, _ = dispatcher._resolve_default_command(
+        command, _ = resolve_default_command(
             commands,
             project.default_command,
             project_args,

@@ -5,7 +5,7 @@ import pytest
 from gway.bootstrap import _normalize_command_identifiers
 from gway.command import Command
 from gway.config import GwayPaths
-from gway.dispatcher import Dispatcher
+from gway.dispatcher.resolution import resolve_command
 from gway.project import Project
 from gway.registry import Registry, RegistryError
 from gway.stage import classify_stage
@@ -71,7 +71,7 @@ def test_alias_argument_keys_are_normalized_case_insensitively() -> None:
 def test_managed_command_resolution_is_case_insensitive_without_changing_arguments() -> None:
     command = Command(("authorize-tag",))
 
-    resolved, argv = Dispatcher._resolve_command(
+    resolved, argv = resolve_command(
         (command,),
         ("AUTHORIZE_TAG", "Tag-With-Mixed-Case"),
     )

@@ -10,6 +10,7 @@ from pathlib import Path
 from .chain_context import current_chain_context
 from .dispatcher import Dispatcher
 from .dispatcher.errors import CommandNotFound, DispatchError
+from .dispatcher.resolution import resolve_command, resolve_default_command
 from .explain import record
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .install import Installer
@@ -465,12 +466,12 @@ class GwayRuntime:
         commands = self.dispatcher.commands(project_name)
         used_default = False
         try:
-            command, argv = self.dispatcher._resolve_command(commands, project_args)
+            command, argv = resolve_command(commands, project_args)
         except CommandNotFound:
             if not project.default_command:
                 raise
             used_default = True
-            command, argv = self.dispatcher._resolve_default_command(
+            command, argv = resolve_default_command(
                 commands,
                 project.default_command,
                 project_args,

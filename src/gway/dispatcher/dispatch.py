@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from ..adapters import AdapterArgumentError, AdapterRegistry
 from ..adapters.base import SigilContextAdapter
 from ..chain_context import current_chain_context
-from ..command import Command, Parameter, command_path_aliases
+from ..command import Command, Parameter
 from ..explain import record
 from ..expression import MANAGED_CHAIN_PROJECT, MANAGED_EXPRESSION_PROJECT, parse_managed_branches
 from ..outcome import CommandOutcome, resolve_outcome
@@ -18,6 +18,7 @@ from ..stage import decode_stage_escapes
 from .arguments import _decode_structured_argv, _fill_context_options
 from .errors import CommandNotFound, DispatchError, InvocationArgumentError
 from .prompt import _fill_required_options
+from .resolution import resolve_command, resolve_default_command
 
 _REDACTED_RESULT = "<redacted>"
 _redact_command_result: ContextVar[bool] = ContextVar(
@@ -45,16 +46,6 @@ def _logged_result(value: object) -> object:
 
 def _strict_fallback_missing(value: object) -> bool:
     return value is None or (isinstance(value, (set, frozenset)) and not value)
-
-
-def _command_key(value: str) -> str:
-    """Return the canonical lookup spelling for one command-path component."""
-    return value.replace("_", "-").casefold()
-
-
-def _command_path_key(path: Sequence[str]) -> tuple[str, ...]:
-    """Normalize command-path spelling while leaving argument values untouched."""
-    return tuple(_command_key(part) for part in path)
 
 
 def _argument_key(value: str) -> str:
@@ -189,66 +180,6 @@ class Dispatcher:
         )
         return adapter
 
-    @staticmethod
-    def _resolve_command(
-        commands: Sequence[Command], tokens: Sequence[str]
-    ) -> tuple[Command, list[str]]:
-        normalized_tokens = _command_path_key(tokens)
-        matches = [
-            command
-            for command in commands
-            if len(tokens) >= len(command.path)
-            and normalized_tokens[: len(command.path)] == _command_path_key(command.path)
-        ]
-        resolution = "exact"
-        if not matches:
-            matches = [
-                command
-                for command in commands
-                if len(tokens) >= len(command.path)
-                and normalized_tokens[: len(command.path)]
-                in tuple(_command_path_key(alias) for alias in command_path_aliases(command.path)[1:])
-            ]
-            resolution = "alias"
-        if not matches:
-            requested = " ".join(tokens) if tokens else "<command>"
-            record("command.resolve", "command resolution failed", requested=requested)
-            raise CommandNotFound(f"unknown command: {requested}")
-        command = max(matches, key=lambda item: len(item.path))
-        record(
-            "command.resolve",
-            "resolved managed command",
-            requested=list(tokens),
-            selected=list(command.path),
-            resolution=resolution,
-        )
-        return command, list(tokens[len(command.path) :])
-
-    @staticmethod
-    def _resolve_default_command(
-        commands: Sequence[Command],
-        default_path: tuple[str, ...],
-        tokens: Sequence[str],
-    ) -> tuple[Command, list[str]]:
-        normalized_default = _command_path_key(default_path)
-        for command in commands:
-            if _command_path_key(command.path) == normalized_default:
-                record(
-                    "command.resolve",
-                    "resolved configured default command",
-                    requested=list(tokens),
-                    selected=list(command.path),
-                    resolution="default",
-                )
-                return command, list(tokens)
-        record(
-            "command.resolve",
-            "configured default command was not found",
-            selected=list(default_path),
-            resolution="default",
-        )
-        raise CommandNotFound(f"configured default command not found: {' '.join(default_path)}")
-
     def commands(self, project_name: str) -> tuple[Command, ...]:
         adapter = self._adapter(project_name)
         return tuple(adapter.commands())
@@ -326,11 +257,11 @@ class Dispatcher:
         )
         commands = tuple(adapter.commands())
         try:
-            command, argv = self._resolve_command(commands, tokens)
+            command, argv = resolve_command(commands, tokens)
         except CommandNotFound:
             if not project.default_command:
                 raise
-            command, argv = self._resolve_default_command(commands, project.default_command, tokens)
+            command, argv = resolve_default_command(commands, project.default_command, tokens)
 
         alias_arguments = next(
             (
@@ -523,7 +454,7 @@ class Dispatcher:
             adapter=project.adapter_type,
         )
 
-        command, remainder = self._resolve_command(tuple(adapter.commands()), command_path)
+        command, remainder = resolve_command(tuple(adapter.commands()), command_path)
         if remainder:
             requested = " ".join(command_path)
             raise DispatchError(
