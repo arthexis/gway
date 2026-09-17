@@ -9,11 +9,22 @@ from .. import __version__
 from ..dispatcher import Dispatcher
 from ..expression import normalize_managed_args
 from ..install import Installer
+from ..operations.install import install_project
+from ..operations.project import (
+    managed_status as _shared_managed_status,
+    runtime_component_record as _shared_runtime_component_record,
+    upgrade_status as _shared_upgrade_status,
+)
+from ..operations.service import (
+    install_project_service as _shared_install_project_service,
+    run_service as _shared_run_service,
+)
+from ..operations.upgrade import run_upgrade as _shared_run_upgrade
 from ..project import Project
 from ..registry import Registry, RegistryError
 from ..runner import RunnerError
 from ..runtime import GwayRuntime
-from ..service import ServiceError, ServiceManager
+from ..service import ServiceManager
 from ..shell import (
     install_shell,
     integration_snippet,
@@ -23,7 +34,7 @@ from ..shell import (
 )
 from ..solve import solve_values
 from ..stage import StageKind, StageSyntaxError, parse_stages
-from ..upgrade import UpgradeError, UpgradeResult, Upgrader
+from ..upgrade import UpgradeResult, Upgrader
 from .errors import (
     _can_suggest_sudo,
     _extract_global_flags,
@@ -245,68 +256,19 @@ def _project_record(project: Project) -> dict[str, object]:
 
 
 def _runtime_component_record(name: str) -> dict[str, object] | None:
-    distribution = RUNTIME_COMPONENTS.get(name)
-    if distribution is None:
-        return None
-    return {
-        "status": "installed",
-        "name": name,
-        "distribution": distribution,
-        "version": distribution_version(distribution),
-    }
+    return _shared_runtime_component_record(name, version_resolver=distribution_version)
 
 
 def _managed_status(status: str, project: Project) -> dict[str, object]:
-    record: dict[str, object] = {
-        "status": status,
-        "name": project.name,
-        "path": project.path,
-    }
-    if project.repository:
-        record["repository"] = project.repository
-    if project.revision:
-        record["revision"] = project.revision
-    return record
+    return _shared_managed_status(status, project)
 
 
 def _upgrade_status(status: str, result: UpgradeResult) -> dict[str, object]:
-    record = _managed_status(status, result.project)
-    record["force_used"] = bool(getattr(result, "force_used", False))
-    force_error_type = getattr(result, "force_error_type", None)
-    force_error = getattr(result, "force_error", None)
-    dirty_files = getattr(result, "dirty_files", ())
-    if force_error_type is not None:
-        record["force_error_type"] = force_error_type
-    if force_error is not None:
-        record["force_error"] = force_error
-    if dirty_files:
-        record["dirty_files"] = [
-            {
-                "status": entry.status,
-                "path": entry.path,
-                **(
-                    {"original_path": entry.original_path}
-                    if entry.original_path is not None
-                    else {}
-                ),
-            }
-            for entry in dirty_files
-        ]
-    return record
+    return _shared_upgrade_status(status, result)
 
 
 def _install_project_service(project: Project) -> dict[str, object]:
-    try:
-        manager = ServiceManager(project)
-    except ServiceError as exc:
-        if "does not declare [service] or [services]" not in str(exc):
-            raise
-        return {
-            "status": "not-provided",
-            "message": f"{project.name} does not provide a service",
-        }
-    unit = manager.install()
-    return {"status": "installed", "unit": unit}
+    return _shared_install_project_service(project, manager_factory=ServiceManager)
 
 
 def _run_upgrade(
@@ -316,100 +278,34 @@ def _run_upgrade(
     json_output: bool,
     arguments: Sequence[str] = (),
 ) -> object:
-    targets = list(dict.fromkeys(namespace.projects))
-    if targets and (namespace.all or namespace.upgrade_self is not None):
-        raise UpgradeError("PROJECTS cannot be combined with --all, --self, or --no-self")
-
-    include_self_target = "gway" in targets
-    managed_targets = [target for target in targets if target != "gway"]
-    if arguments and len(managed_targets) != 1:
-        raise UpgradeError("installer arguments require exactly one managed PROJECT")
-
-    upgrader = Upgrader(registry)
-    results: list[dict[str, object]] = []
-
-    def completed(record: dict[str, object]) -> None:
-        if json_output:
-            results.append(record)
-        else:
-            _render_upgrade_record(record, detail=namespace.detail)
-
-    if targets:
-        if include_self_target:
-            upgrader.upgrade_self()
-            completed(
-                {
-                    "status": "upgraded",
-                    "name": "gway",
-                    "repository": "arthexis/gway",
-                    "revision": "main",
-                }
-            )
-
-        for target in managed_targets:
-            upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
-            result = upgrader.project_result(
-                target,
-                force=namespace.force,
-                reload=namespace.reload,
-                arguments=arguments if len(managed_targets) == 1 else (),
-                **upgrade_kwargs,
-            )
-            completed(_upgrade_status("upgraded" if result.changed else "skipped", result))
-
-        if json_output and len(managed_targets) == 1 and not include_self_target:
-            return results[0]
-        return results if json_output else None
-
-    default_mode = not namespace.all and namespace.upgrade_self is None
-    include_self = namespace.upgrade_self is True or (
-        namespace.upgrade_self is None and (default_mode or namespace.all)
+    on_completed = None
+    if not json_output:
+        on_completed = lambda record: _render_upgrade_record(record, detail=namespace.detail)
+    result = _shared_run_upgrade(
+        registry,
+        projects=namespace.projects,
+        all_projects=namespace.all,
+        upgrade_self=namespace.upgrade_self,
+        force=namespace.force,
+        try_force=namespace.try_force,
+        reload=namespace.reload,
+        arguments=arguments,
+        upgrader_factory=Upgrader,
+        on_completed=on_completed,
     )
-    include_projects = namespace.all or default_mode or namespace.upgrade_self is False
-
-    if include_self:
-        upgrader.upgrade_self()
-        completed(
-            {
-                "status": "upgraded",
-                "name": "gway",
-                "repository": "arthexis/gway",
-                "revision": "main",
-            }
-        )
-
-    if include_projects:
-        upgrade_kwargs = {"try_force": True} if namespace.try_force else {}
-        for result in upgrader.all_project_results(
-            force=namespace.force,
-            reload=namespace.reload,
-            **upgrade_kwargs,
-        ):
-            status = "upgraded" if result.changed else "skipped"
-            completed(_upgrade_status(status, result))
-
-    return results if json_output else None
+    return result if json_output else None
 
 
 def _run_service(namespace: argparse.Namespace, registry: Registry) -> object:
-    project = registry.require(namespace.project)
-    manager = ServiceManager(project)
-    if namespace.action == "install":
-        unit = manager.install(user=namespace.user, enable=namespace.enable, start=namespace.start)
-        return {"status": "installed", "project": project.name, "unit": unit}
-    if namespace.action == "uninstall":
-        removed = manager.uninstall()
-        return {"status": "uninstalled", "project": project.name, "removed": removed}
-    if namespace.action == "start":
-        manager.start()
-        return {"status": "started", "project": project.name, "unit": manager.unit_name}
-    if namespace.action == "stop":
-        manager.stop()
-        return {"status": "stopped", "project": project.name, "unit": manager.unit_name}
-    if namespace.action == "restart":
-        manager.restart()
-        return {"status": "restarted", "project": project.name, "unit": manager.unit_name}
-    return manager.status()
+    return _shared_run_service(
+        registry,
+        action=namespace.action,
+        project_name=namespace.project,
+        user=namespace.user,
+        enable=namespace.enable,
+        start=namespace.start,
+        manager_factory=ServiceManager,
+    )
 
 
 def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = None) -> int:
@@ -538,8 +434,8 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                     "message": f"{namespace.project} does not provide a service",
                 }
             if result is None:
-                installer = Installer(registry)
                 if namespace.adopt:
+                    installer = Installer(registry)
                     lifecycle_arguments = (
                         "--adopt",
                         "--from",
@@ -562,13 +458,14 @@ def main(argv: Sequence[str] | None = None, *, dispatcher: Dispatcher | None = N
                         "dry_run": True,
                     }
                 else:
-                    if passthrough:
-                        project = installer.install(namespace.project, arguments=passthrough)
-                    else:
-                        project = installer.install(namespace.project)
-                    result = _managed_status("installed", project)
-                    if namespace.service:
-                        result["service"] = _install_project_service(project)
+                    result = install_project(
+                        registry,
+                        namespace.project,
+                        arguments=passthrough,
+                        service=namespace.service,
+                        installer_factory=Installer,
+                        manager_factory=ServiceManager,
+                    )
         elif namespace.command == "upgrade":
             result = _run_upgrade(
                 namespace,
