@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import ipaddress
 from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from .logs.binding import PublisherBinding
+from .binding import PublisherBinding
 
 _TIMEOUT_SECONDS = 2.0
 
@@ -18,6 +19,18 @@ class _RejectRedirects(HTTPRedirectHandler):
 
 
 _OPENER = build_opener(_RejectRedirects())
+
+
+def _loopback_host(host: str | None) -> bool:
+    if host is None:
+        return False
+    normalized = host.rstrip(".").casefold()
+    if normalized == "localhost" or normalized.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 def _render(template: str, values: Mapping[str, str], *, run_id: str) -> str:
@@ -35,6 +48,8 @@ def endpoint(binding: PublisherBinding, run_id: str) -> str | None:
     url = _render(template, binding.environment, run_id=run_id)
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    if parsed.scheme == "http" and not _loopback_host(parsed.hostname):
         return None
     return url
 

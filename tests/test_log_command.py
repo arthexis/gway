@@ -7,14 +7,9 @@ import pytest
 
 from gway.chain_context import chain_context_scope
 from gway.dispatcher.errors import DispatchError
-from gway.log_command import run_log as legacy_run_log
 from gway.logs.command import run_log
 from gway.logging import write_event
 from gway.runtime import GwayRuntime
-
-
-def test_legacy_log_command_facade_reexports_package_owner() -> None:
-    assert legacy_run_log is run_log
 
 
 def _events(path: Path) -> list[dict[str, object]]:

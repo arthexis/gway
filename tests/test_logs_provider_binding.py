@@ -7,10 +7,11 @@ import pytest
 
 from gway.config import GwayPaths
 from gway.dispatcher.errors import DispatchError
-from gway.logs.command import run_log
-from gway.log_consumers import configure_consumers
 from gway.logs import PublisherBinding, ServiceRef
+from gway.logs.command import run_log
+from gway.logs.configuration import configure_consumers
 from gway.logs.providers import CommandLogPublisherProvider
+from gway.logs.publishers import binding_for, clear_bindings, set_binding
 
 
 class FixtureProvider:
@@ -64,11 +65,15 @@ def test_consumer_configuration_uses_resolved_provider_without_web_dispatch(
     assert result["provider"] == "fixture"
     publisher = result["publisher"]
     assert isinstance(publisher, dict)
-    assert publisher["metadata"] == {"binding_id": "fixture-1"}
+    assert publisher == {
+        "provider": "fixture",
+        "destination": "https://logs.example.test",
+    }
 
     environment = paths.data_dir / "log-consumers" / "wire.env"
     contents = environment.read_text(encoding="utf-8")
     assert 'FIXTURE_LOG_DESTINATION="https://logs.example.test"' in contents
+    assert 'GWAY_LOG_DESTINATION="https://logs.example.test"' in contents
     assert f'GWAY_LOG_CONSUMER_STATE="{paths.data_dir / "log-consumers.json"}"' in contents
 
     state = json.loads((paths.data_dir / "log-consumers.json").read_text(encoding="utf-8"))
@@ -80,7 +85,9 @@ def test_consumer_configuration_uses_resolved_provider_without_web_dispatch(
 def test_provider_receives_current_persisted_binding(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     provider = FixtureProvider()
-    resolver = lambda name: provider if name == "fixture" else None
+
+    def resolver(name: str):
+        return provider if name == "fixture" else None
 
     configure_consumers(
         ["wire"],
@@ -115,6 +122,9 @@ def test_log_command_selects_explicit_provider(tmp_path: Path, monkeypatch) -> N
     def reject_dispatch(_project: str, _tokens) -> object:
         raise AssertionError("custom provider must not invoke Web")
 
+    def resolver(name: str):
+        return provider if name == "fixture" else None
+
     state = run_log(
         [
             "--to",
@@ -127,7 +137,7 @@ def test_log_command_selects_explicit_provider(tmp_path: Path, monkeypatch) -> N
         dispatch=reject_dispatch,
         paths=paths,
         resolve_consumer=lambda _name: None,
-        resolve_provider=lambda name: provider if name == "fixture" else None,
+        resolve_provider=resolver,
     )
 
     assert state["consumer_provider"] == "fixture"
@@ -193,3 +203,15 @@ def test_command_provider_rejects_invalid_binding_record() -> None:
             destination="https://logs.example.test",
             consumer="wire",
         )
+
+
+def test_publisher_binding_context_starts_empty() -> None:
+    clear_bindings()
+    binding = PublisherBinding(
+        provider="fixture",
+        destination="https://logs.example.test",
+    )
+    set_binding(binding)
+    assert binding_for(binding.destination) == binding
+    clear_bindings()
+    assert binding_for(binding.destination) is None

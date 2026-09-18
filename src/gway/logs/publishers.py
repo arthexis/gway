@@ -4,15 +4,15 @@ from contextvars import ContextVar
 
 from .binding import PublisherBinding
 
-_bindings: ContextVar[dict[str, PublisherBinding]] = ContextVar(
+_bindings: ContextVar[dict[str, PublisherBinding] | None] = ContextVar(
     "gway_log_publisher_bindings",
-    default={},
+    default=None,
 )
 
 
 def set_binding(binding: PublisherBinding) -> None:
     """Activate one provider-supplied publisher binding for this process."""
-    current = dict(_bindings.get())
+    current = dict(_bindings.get() or {})
     current[binding.destination] = binding
     _bindings.set(current)
 
@@ -23,7 +23,7 @@ def clear_bindings() -> None:
 
 
 def binding_for(destination: str) -> PublisherBinding | None:
-    return _bindings.get().get(destination)
+    return (_bindings.get() or {}).get(destination)
 
 
 def publish(destination: str, run_id: str, data: bytes) -> bool:
@@ -33,7 +33,7 @@ def publish(destination: str, run_id: str, data: bytes) -> bool:
         return False
     transport = binding.configuration.get("transport")
     if transport == "http":
-        from ..log_http import publish as publish_http
+        from .http import publish as publish_http
 
         return publish_http(binding, run_id, data)
     return False

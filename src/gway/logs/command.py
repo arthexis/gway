@@ -6,9 +6,9 @@ from collections.abc import Callable, Sequence
 from ..config import GwayPaths
 from ..dispatcher.errors import DispatchError
 from ..history import last_run
-from ..log_consumers import ConsumerResolver, configure_consumers, normalize_consumers
 from ..logging import configure, current_context
 from ..solve import solve_values
+from .configuration import ConsumerResolver, configure_consumers, normalize_consumers
 from .providers import ProviderResolver
 
 
@@ -134,9 +134,6 @@ def run_log(
             state["consumer_destination"] = binding["destination"]
             state["consumer_provider"] = binding["provider"]
             state["consumer_publisher"] = binding["publisher"]
-            token_id = binding.get("token_id")
-            if isinstance(token_id, str):
-                state["consumer_token_id"] = token_id
         return state
     return current_context()
 

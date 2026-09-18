@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from gway.config import GwayPaths
 from gway.project import Project
-from gway.service import ServiceManager, attach_environment_files, detach_environment_files
+from gway.service import ServiceError, ServiceManager, attach_environment_files, detach_environment_files
 from gway.service.attachments import service_environment_files
 
 
@@ -98,3 +100,13 @@ def test_detaching_environment_files_removes_provider_attachment(tmp_path: Path)
     detach_environment_files(project.name, owner="fixture", paths=paths)
 
     assert service_environment_files(project, "web") == ()
+
+
+def test_attachment_environment_path_rejects_nul(tmp_path: Path) -> None:
+    with pytest.raises(ServiceError, match="NUL"):
+        attach_environment_files(
+            "app",
+            owner="fixture",
+            environment_files=[Path("/tmp/provider\0.env")],
+            paths=_paths(tmp_path),
+        )

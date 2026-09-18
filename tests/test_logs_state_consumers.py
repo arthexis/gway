@@ -49,7 +49,7 @@ def test_consumer_identity_resolves_project_aliases(tmp_path: Path) -> None:
 def test_logging_state_round_trips_under_lock(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     payload = {
-        "version": 1,
+        "version": 2,
         "bindings": {
             "https://logs.example.test": {
                 "provider": "fixture",
@@ -64,3 +64,16 @@ def test_logging_state_round_trips_under_lock(tmp_path: Path) -> None:
     assert state_path(paths) == paths.data_dir / "log-consumers.json"
     assert read_state(paths) == payload
     assert oct(state_path(paths).stat().st_mode & 0o777) == "0o600"
+
+
+def test_legacy_logging_state_is_rejected_explicitly(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+    path = state_path(paths)
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        '{"version": 1, "bindings": {"https://logs.example.test": {"provider": "web"}}}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(DispatchError, match="legacy log consumer state"):
+        read_state(paths)

@@ -52,7 +52,7 @@ def _safe_run_id(value: str) -> bool:
 
 def _activate_private_publishers() -> None:
     try:
-        from .log_consumers import activate_publishers
+        from .logs.configuration import activate_publishers
 
         activate_publishers(_destinations.get())
     except Exception:

@@ -11,7 +11,7 @@ from pathlib import Path
 from ..config import GwayPaths
 from ..dispatcher.errors import DispatchError
 
-_STATE_VERSION = 1
+_STATE_VERSION = 2
 
 
 def state_path(paths: GwayPaths) -> Path:
@@ -30,7 +30,15 @@ def read_state_path(path: Path) -> dict[str, object]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise DispatchError(f"cannot read log consumer state {path}: {exc}") from exc
-    if not isinstance(data, dict) or data.get("version") != _STATE_VERSION:
+    if not isinstance(data, dict):
+        raise DispatchError(f"unsupported log consumer state in {path}")
+    version = data.get("version")
+    if version != _STATE_VERSION:
+        if version == 1:
+            raise DispatchError(
+                f"legacy log consumer state in {path}; reconfigure log consumers "
+                "to provision provider bindings"
+            )
         raise DispatchError(f"unsupported log consumer state in {path}")
     bindings = data.get("bindings")
     if not isinstance(bindings, dict):

@@ -8,17 +8,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .config import GwayPaths, default_paths
-from .dispatcher.errors import DispatchError
-from .logs.binding import PublisherBinding
-from .logs.consumers import (
+from ..config import GwayPaths, default_paths
+from ..dispatcher.errors import DispatchError
+from ..project import Project
+from ..service.attachments import attach_environment_files, detach_environment_files
+from .binding import PublisherBinding
+from .consumers import (
     ConsumerResolver,
     canonical_consumers,
     consumer_identity,
     normalize_consumers,
 )
-from .logs.providers import CommandLogPublisherProvider, ProviderResolver, resolve_provider
-from .logs.state import (
+from .providers import CommandLogPublisherProvider, ProviderResolver, resolve_provider
+from .state import (
     atomic_private_write,
     read_state,
     read_state_path,
@@ -26,8 +28,6 @@ from .logs.state import (
     state_path,
     write_state,
 )
-from .project import Project
-from .service.attachments import attach_environment_files, detach_environment_files
 
 _STATE_PATH_ENV = "GWAY_LOG_CONSUMER_STATE"
 
@@ -163,8 +163,8 @@ def activate_publishers(
     paths: GwayPaths | None = None,
 ) -> None:
     """Load persisted publisher bindings into process-local runtime state."""
-    from .logging import retry_remote_destination
-    from .logs.publishers import set_binding
+    from ..logging import retry_remote_destination
+    from .publishers import set_binding
 
     for destination in destinations:
         binding = publisher_binding(destination, paths=paths)
@@ -180,7 +180,7 @@ def _refresh_running_consumer_services(
     """Restart installed consumer units after their persisted logging environment changes."""
     if resolve_consumer is None:
         return []
-    from .service import ServiceError, ServiceManager
+    from ..service import ServiceError, ServiceManager
 
     projects: dict[str, Project] = {}
     for consumer in consumers:
@@ -256,8 +256,12 @@ def configure_consumers(
                 "log publisher provider returned a binding for a different destination"
             )
 
+        binding_changed = current != publisher
+        stale_consumers: set[str] = set()
+
         # A project identity (canonical name or alias) has one active local logging
-        # destination. Resolve stored aliases where possible before moving it.
+        # destination. Update persisted membership first, but keep the old
+        # environment/attachment artifacts until the replacement is fully staged.
         for other_destination, other in list(bindings.items()):
             if other_destination == destination or not isinstance(other, dict):
                 continue
@@ -274,10 +278,7 @@ def configure_consumers(
                     removed.append(value)
                 else:
                     remaining.append(value)
-            for value in removed:
-                detach_environment_files(value, owner="logs", paths=active_paths)
-                if _remove_environment(active_paths, value):
-                    changed_consumers.add(value)
+            stale_consumers.update(removed)
             if remaining:
                 other["consumers"] = remaining
             else:
@@ -291,11 +292,11 @@ def configure_consumers(
         )
         combined, _ = canonical_consumers([*prior_values, *selected], resolve_consumer)
         combined_keys = {value.casefold() for value in combined}
-        for previous in prior_values:
-            if previous.casefold() not in combined_keys:
-                detach_environment_files(previous, owner="logs", paths=active_paths)
-                if _remove_environment(active_paths, previous):
-                    changed_consumers.add(previous)
+        stale_consumers.update(
+            previous
+            for previous in prior_values
+            if previous.casefold() not in combined_keys
+        )
 
         record = {
             "provider": publisher.provider,
@@ -305,25 +306,57 @@ def configure_consumers(
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         bindings[destination] = record
-        write_state(active_paths, state)
-        for consumer in combined:
-            service_environment = {
-                **publisher.environment,
-                _STATE_PATH_ENV: str(state_path(active_paths)),
-            }
-            environment, changed = _write_environment(
-                active_paths,
-                consumer,
-                service_environment,
-            )
-            attach_environment_files(
-                consumer,
-                owner="logs",
-                environment_files=[environment],
-                paths=active_paths,
-            )
-            if changed:
-                changed_consumers.add(consumer)
+
+        # Stage the replacement environment and attachment before committing state
+        # or retiring any old artifact. Restore any overwritten EnvironmentFiles
+        # if staging or the state commit fails.
+        environment_backups: dict[Path, bytes | None] = {}
+        try:
+            for consumer in combined:
+                environment_path = _environment_path(active_paths, consumer)
+                if environment_path not in environment_backups:
+                    try:
+                        environment_backups[environment_path] = environment_path.read_bytes()
+                    except FileNotFoundError:
+                        environment_backups[environment_path] = None
+                service_environment = {
+                    **publisher.environment,
+                    "GWAY_LOG_DESTINATION": destination,
+                    _STATE_PATH_ENV: str(state_path(active_paths)),
+                }
+                environment, changed = _write_environment(
+                    active_paths,
+                    consumer,
+                    service_environment,
+                )
+                attach_environment_files(
+                    consumer,
+                    owner="logs",
+                    environment_files=[environment],
+                    paths=active_paths,
+                )
+                if changed or binding_changed:
+                    changed_consumers.add(consumer)
+
+            write_state(active_paths, state)
+        except Exception:
+            for environment_path, previous in environment_backups.items():
+                if previous is None:
+                    try:
+                        environment_path.unlink()
+                    except FileNotFoundError:
+                        pass
+                else:
+                    atomic_private_write(environment_path, previous)
+            raise
+
+        # Replacement is durable. Retire stale alias/consumer artifacts last.
+        for stale in sorted(stale_consumers):
+            if stale.casefold() in combined_keys:
+                continue
+            detach_environment_files(stale, owner="logs", paths=active_paths)
+            if _remove_environment(active_paths, stale):
+                changed_consumers.add(stale)
 
     # Only a non-secret state-file path is exported for reload/exec continuity.
     # Provider secrets stay in private state and process-local publisher bindings,
@@ -339,11 +372,11 @@ def configure_consumers(
         "provider": publisher.provider,
         "destination": destination,
         "consumers": list(combined),
-        "publisher": publisher.to_record(),
+        "publisher": {
+            "provider": publisher.provider,
+            "destination": publisher.destination,
+        },
     }
-    token_id = publisher.metadata.get("token_id")
-    if isinstance(token_id, str):
-        result["token_id"] = token_id
     if refreshed_services:
         result["refreshed_services"] = refreshed_services
     return result

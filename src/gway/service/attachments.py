@@ -4,9 +4,9 @@ import json
 import os
 import tempfile
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from collections.abc import Iterator
 from pathlib import Path
 
 from ..config import GwayPaths, default_paths
@@ -122,8 +122,10 @@ def _attachment_files(files: tuple[Path, ...] | list[Path]) -> list[str]:
         if not path.is_absolute():
             raise ServiceError("service attachment environment files must be absolute paths")
         text = str(path)
-        if "\n" in text or "\r" in text:
-            raise ServiceError("service attachment environment files must not contain newlines")
+        if "\0" in text or "\n" in text or "\r" in text:
+            raise ServiceError(
+                "service attachment environment files must not contain NUL characters or newlines"
+            )
         if text not in result:
             result.append(text)
     return result

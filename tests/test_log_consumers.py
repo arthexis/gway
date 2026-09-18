@@ -11,7 +11,7 @@ from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.dispatcher.errors import DispatchError
 from gway.logs.command import run_log
-from gway.log_consumers import configure_consumers, consumer_environment_file
+from gway.logs.configuration import configure_consumers, consumer_environment_file
 from gway.logs.publishers import clear_bindings
 from gway.logging import configure, current_context, write_event
 from gway.project import Project
@@ -125,7 +125,7 @@ def test_log_plural_consumers_accepts_csv_and_singular_accepts_one(
 
     assert state["consumers"] == ["wire", "arthexis", "epaper"]
     assert state["consumer_destination"] == "https://logs.example.test"
-    assert state["consumer_token_id"] == web.token_id
+    assert "consumer_token_id" not in state
     assert web.issued == 1
     for consumer in ("wire", "arthexis", "epaper"):
         environment = paths.data_dir / "log-consumers" / f"{consumer}.env"
@@ -164,7 +164,10 @@ def test_consumer_binding_reuses_provider_binding(tmp_path: Path) -> None:
         paths=paths,
     )
 
-    assert first["token_id"] == second["token_id"] == web.token_id
+    assert first["publisher"] == second["publisher"] == {
+        "provider": "web",
+        "destination": "https://logs.example.test",
+    }
     assert second["consumers"] == ["wire", "arthexis"]
     assert web.issued == 1
 
@@ -189,8 +192,38 @@ def test_consumer_binding_accepts_provider_rotated_binding(tmp_path: Path) -> No
         paths=paths,
     )
 
-    assert result["token_id"] == "replacement"
+    assert result["publisher"] == {
+        "provider": "web",
+        "destination": "https://logs.example.test",
+    }
     assert web.issued == 2
+
+
+def test_log_command_result_does_not_expose_provider_secret(
+    tmp_path: Path, monkeypatch
+) -> None:
+    paths = _paths(tmp_path)
+    web = FakeWeb()
+    monkeypatch.setenv("GWAY_LOG_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("GWAY_RUN_ID", "test-secret-result")
+
+    state = run_log(
+        [
+            "--to",
+            "https://logs.example.test",
+            "--consumer",
+            "wire",
+        ],
+        dispatch=web.dispatch,
+        paths=paths,
+        resolve_consumer=lambda _name: None,
+    )
+
+    assert web.token not in repr(state)
+    assert state["consumer_publisher"] == {
+        "provider": "web",
+        "destination": "https://logs.example.test",
+    }
 
 
 def test_consumer_credential_is_not_exported_to_shared_process_environment(tmp_path: Path) -> None:

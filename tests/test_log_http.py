@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import importlib
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import gway.logging as logging_module
-from gway.log_http import endpoint, publish
+from gway.logs.http import endpoint, publish
 from gway.logging import configure, write_event
 from gway.logs import PublisherBinding
+
+
+def test_importing_logging_before_logs_package_is_safe() -> None:
+    module = importlib.import_module("gway.logging")
+    assert callable(module.current_run_id)
 
 
 def _binding(destination: str, *, token: str = "secret-token") -> PublisherBinding:
@@ -37,6 +43,13 @@ def test_endpoint_comes_from_provider_binding() -> None:
         configuration={"transport": "http"},
     )
     assert endpoint(missing, "run-1") is None
+
+
+def test_endpoint_rejects_remote_plain_http() -> None:
+    assert endpoint(_binding("http://logs.example"), "run-1") is None
+    assert endpoint(_binding("http://127.0.0.1:8040"), "run-1") == (
+        "http://127.0.0.1:8040/ingest/run-1"
+    )
 
 
 def test_publish_uses_provider_declared_endpoint_and_headers() -> None:

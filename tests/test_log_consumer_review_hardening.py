@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import gway.log_consumers as consumers_module
+import gway.logs.configuration as consumers_module
 from gway.logs.state import state_lock
 from gway.adapters import AdapterRegistry
 from gway.command import Command
@@ -15,7 +15,7 @@ from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.dispatcher.outcome import redact_command_results
 from gway.dispatcher.errors import DispatchError
-from gway.log_consumers import configure_consumers
+from gway.logs.configuration import configure_consumers
 from gway.project import Project
 from gway.registry import Registry
 from gway.service import ServiceManager
@@ -281,3 +281,109 @@ def test_provider_rotated_binding_refreshes_registered_consumers(tmp_path: Path,
 
     assert refreshed == ["wire"]
     assert result["refreshed_services"] == ["gway-wire.service"]
+
+
+def test_publisher_configuration_change_refreshes_registered_consumers(
+    tmp_path: Path, monkeypatch
+) -> None:
+    paths = _paths(tmp_path)
+    project = _service_project(tmp_path)
+    refreshed: list[str] = []
+    version = 1
+
+    class Provider:
+        name = "fixture"
+
+        def provision(
+            self,
+            *,
+            destination: str,
+            consumer: str,
+            service=None,
+            current=None,
+        ):
+            from gway.logs import PublisherBinding
+
+            return PublisherBinding(
+                provider=self.name,
+                destination=destination,
+                configuration={
+                    "transport": "http",
+                    "url_template": f"{destination}/v{version}/{{run_id}}",
+                },
+                environment={"FIXTURE_TOKEN": "stable"},
+            )
+
+    provider = Provider()
+
+    def resolve_consumer(name: str) -> Project | None:
+        return project if name.casefold() in {"wire", "gway-wire"} else None
+
+    def resolve_provider(name: str):
+        return provider if name == "fixture" else None
+
+    monkeypatch.setattr(
+        consumers_module,
+        "_refresh_running_consumer_services",
+        lambda consumers, resolver: refreshed.extend(consumers) or ["gway-wire.service"],
+    )
+
+    configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=lambda _project, _tokens: None,
+        paths=paths,
+        resolve_consumer=resolve_consumer,
+        provider="fixture",
+        provider_resolver=resolve_provider,
+    )
+    refreshed.clear()
+    version = 2
+
+    result = configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=lambda _project, _tokens: None,
+        paths=paths,
+        resolve_consumer=resolve_consumer,
+        provider="fixture",
+        provider_resolver=resolve_provider,
+    )
+
+    assert refreshed == ["wire"]
+    assert result["refreshed_services"] == ["gway-wire.service"]
+
+
+def test_failed_state_commit_restores_previous_environment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    paths = _paths(tmp_path)
+    web = FakeWeb()
+
+    configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+    )
+    environment = paths.data_dir / "log-consumers" / "wire.env"
+    previous = environment.read_bytes()
+
+    web.rotate = True
+    web.token_id = "replacement"
+    web.token = "replacement-secret"
+
+    def fail_write_state(*_args, **_kwargs):
+        raise OSError("simulated state failure")
+
+    monkeypatch.setattr(consumers_module, "write_state", fail_write_state)
+
+    with pytest.raises(OSError, match="simulated state failure"):
+        configure_consumers(
+            ["wire"],
+            ["https://logs.example.test"],
+            dispatch=web.dispatch,
+            paths=paths,
+        )
+
+    assert environment.read_bytes() == previous
