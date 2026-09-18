@@ -3,8 +3,19 @@
 import inspect
 import types
 import typing
+from dataclasses import dataclass
 
 from .binding import BoundCall
+
+
+@dataclass(frozen=True)
+class AdaptationPlan:
+    """Deterministic plan for placing one pipeline value into a consumer."""
+
+    rule: str
+    parameter: str
+    producer_subject: str | None
+    consumer_subject: str | None
 
 
 def _result_subject(runtime, value):
@@ -50,10 +61,68 @@ def _available_parameters(signature, args, kwargs):
     ]
 
 
-def _place_value(signature, parameter, value, args, kwargs):
-    """Place a value without disturbing explicitly supplied arguments."""
+def plan_pipeline(runtime, func, value, *, args=(), kwargs=None) -> AdaptationPlan:
+    """Plan where a pipeline result should bind without modifying arguments."""
+    if not callable(func):
+        raise TypeError(f"{func!r} is not callable")
+
     args = tuple(args)
-    kwargs = dict(kwargs)
+    kwargs = {} if kwargs is None else dict(kwargs)
+    signature = inspect.signature(func)
+    available = _available_parameters(signature, args, kwargs)
+    consumer_subject = getattr(func, "__gway_subject__", None)
+    producer_subject = _result_subject(runtime, value)
+
+    if consumer_subject:
+        for parameter in available:
+            if parameter.name == consumer_subject:
+                return AdaptationPlan(
+                    "consumer_subject",
+                    parameter.name,
+                    producer_subject,
+                    consumer_subject,
+                )
+
+    if producer_subject:
+        for parameter in available:
+            if parameter.name == producer_subject:
+                return AdaptationPlan(
+                    "producer_subject",
+                    parameter.name,
+                    producer_subject,
+                    consumer_subject,
+                )
+
+    for parameter in available:
+        if _compatible(parameter.annotation, value):
+            return AdaptationPlan(
+                "annotation",
+                parameter.name,
+                producer_subject,
+                consumer_subject,
+            )
+
+    for parameter in available:
+        if parameter.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            return AdaptationPlan(
+                "positional",
+                parameter.name,
+                producer_subject,
+                consumer_subject,
+            )
+
+    raise TypeError("Consumer has no available parameter for the pipeline value")
+
+
+def apply_plan(func, plan, value, *, args=(), kwargs=None) -> BoundCall:
+    """Apply an AdaptationPlan while preserving explicit arguments."""
+    signature = inspect.signature(func)
+    parameter = signature.parameters[plan.parameter]
+    args = tuple(args)
+    kwargs = {} if kwargs is None else dict(kwargs)
 
     positional = [
         item
@@ -73,7 +142,6 @@ def _place_value(signature, parameter, value, args, kwargs):
     ):
         args = (*args, value)
     elif parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
-        # Python cannot skip positional-only parameters.
         raise TypeError(
             f"Cannot adapt pipeline value to positional-only parameter "
             f"{parameter.name!r}"
@@ -86,41 +154,6 @@ def _place_value(signature, parameter, value, args, kwargs):
 
 
 def adapt_pipeline(runtime, func, value, *, args=(), kwargs=None) -> BoundCall:
-    """Adapt a pipeline result to the best available consumer parameter.
-
-    Matching is deterministic: consumer semantic subject, producer subject name,
-    compatible annotation, then the first available positional parameter.
-    Explicit native arguments always remain authoritative.
-    """
-    if not callable(func):
-        raise TypeError(f"{func!r} is not callable")
-
-    args = tuple(args)
-    kwargs = {} if kwargs is None else dict(kwargs)
-    signature = inspect.signature(func)
-    available = _available_parameters(signature, args, kwargs)
-
-    consumer_subject = getattr(func, "__gway_subject__", None)
-    if consumer_subject:
-        for parameter in available:
-            if parameter.name == consumer_subject:
-                return _place_value(signature, parameter, value, args, kwargs)
-
-    producer_subject = _result_subject(runtime, value)
-    if producer_subject:
-        for parameter in available:
-            if parameter.name == producer_subject:
-                return _place_value(signature, parameter, value, args, kwargs)
-
-    for parameter in available:
-        if _compatible(parameter.annotation, value):
-            return _place_value(signature, parameter, value, args, kwargs)
-
-    for parameter in available:
-        if parameter.kind in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        ):
-            return _place_value(signature, parameter, value, args, kwargs)
-
-    raise TypeError("Consumer has no available parameter for the pipeline value")
+    """Plan and apply pipeline adaptation for one consumer."""
+    plan = plan_pipeline(runtime, func, value, args=args, kwargs=kwargs)
+    return apply_plan(func, plan, value, args=args, kwargs=kwargs)

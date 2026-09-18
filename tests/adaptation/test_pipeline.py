@@ -1,6 +1,6 @@
 import pytest
 
-from gway.adaptation import adapt_pipeline
+from gway.adaptation import AdaptationPlan, adapt_pipeline, apply_plan, plan_pipeline
 
 
 def test_pipeline_adapts_to_first_positional_input():
@@ -9,8 +9,10 @@ def test_pipeline_adapts_to_first_positional_input():
     def consume(value):
         return value
 
+    plan = plan_pipeline(None, consume, marker)
     adapted = adapt_pipeline(None, consume, marker)
 
+    assert plan == AdaptationPlan("positional", "value", None, None)
     assert adapted.args == (marker,)
     assert adapted.kwargs == {}
 
@@ -21,8 +23,11 @@ def test_pipeline_precedes_explicit_native_arguments():
     def filter_items(items, status):
         return items, status
 
-    adapted = adapt_pipeline(None, filter_items, marker, args=("active",))
+    plan = plan_pipeline(None, filter_items, marker, args=("active",))
+    adapted = apply_plan(filter_items, plan, marker, args=("active",))
 
+    assert plan.rule == "positional"
+    assert plan.parameter == "status"
     assert adapted.args == ("active", marker)
 
 
@@ -50,9 +55,12 @@ def test_consumer_semantic_subject_is_preferred(gateway):
         return prefix, chargers
 
     wrapped = gateway.wrap("summarize_chargers", summarize)
-    adapted = adapt_pipeline(gateway, wrapped, marker)
+    plan = plan_pipeline(gateway, wrapped, marker)
+    adapted = apply_plan(wrapped, plan, marker)
 
-    assert adapted.args == ()
+    assert plan.rule == "consumer_subject"
+    assert plan.parameter == "chargers"
+    assert plan.consumer_subject == "chargers"
     assert adapted.kwargs == {"chargers": marker}
 
 
@@ -63,10 +71,11 @@ def test_producer_subject_name_is_used_when_consumer_subject_does_not_match(gate
     def summarize(prefix, chargers):
         return prefix, chargers
 
-    adapted = adapt_pipeline(gateway, summarize, marker)
+    plan = plan_pipeline(gateway, summarize, marker)
 
-    assert adapted.args == ()
-    assert adapted.kwargs == {"chargers": marker}
+    assert plan.rule == "producer_subject"
+    assert plan.parameter == "chargers"
+    assert plan.producer_subject == "chargers"
 
 
 def test_compatible_annotation_precedes_positional_fallback():
@@ -75,9 +84,11 @@ def test_compatible_annotation_precedes_positional_fallback():
     def summarize(prefix: str, items: list):
         return prefix, items
 
-    adapted = adapt_pipeline(None, summarize, marker)
+    plan = plan_pipeline(None, summarize, marker)
+    adapted = apply_plan(summarize, plan, marker)
 
-    assert adapted.args == ()
+    assert plan.rule == "annotation"
+    assert plan.parameter == "items"
     assert adapted.kwargs == {"items": marker}
 
 
@@ -87,9 +98,10 @@ def test_union_annotation_can_match_pipeline_value():
     def summarize(prefix: str, items: list | tuple):
         return prefix, items
 
-    adapted = adapt_pipeline(None, summarize, marker)
+    plan = plan_pipeline(None, summarize, marker)
 
-    assert adapted.kwargs == {"items": marker}
+    assert plan.rule == "annotation"
+    assert plan.parameter == "items"
 
 
 def test_explicit_keyword_is_not_overwritten_by_adaptation(gateway):
@@ -100,14 +112,20 @@ def test_explicit_keyword_is_not_overwritten_by_adaptation(gateway):
         return chargers, fallback
 
     wrapped = gateway.wrap("summarize_chargers", summarize)
-    adapted = adapt_pipeline(
+    plan = plan_pipeline(
         gateway,
         wrapped,
         marker,
         kwargs={"chargers": explicit},
     )
+    adapted = apply_plan(
+        wrapped,
+        plan,
+        marker,
+        kwargs={"chargers": explicit},
+    )
 
-    assert adapted.args == ()
+    assert plan.parameter == "fallback"
     assert adapted.kwargs == {"chargers": explicit, "fallback": marker}
 
 
@@ -116,4 +134,4 @@ def test_pipeline_rejects_consumer_without_available_parameter():
         return title
 
     with pytest.raises(TypeError, match="no available parameter"):
-        adapt_pipeline(None, report, object(), kwargs={"title": "Fleet"})
+        plan_pipeline(None, report, object(), kwargs={"title": "Fleet"})
