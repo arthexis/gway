@@ -22,6 +22,15 @@ def test_results_preserve_mapping_under_subject():
     assert "serial" not in results
 
 
+def test_results_preserve_arbitrary_object_identity():
+    results = Results()
+    results.clear()
+    value = object()
+
+    results.insert("report", value)
+    assert results["report"] is value
+
+
 def test_same_thread_gateways_share_state():
     first = Gateway()
     first.context.clear()

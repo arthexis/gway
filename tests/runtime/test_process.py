@@ -28,3 +28,22 @@ def test_process_can_chain_through_published_subject(gateway):
     results, last = process([["get_charger"], ["inspect_charger"]], gw_instance=gateway)
     assert results == ["CHG001", "inspect:CHG001"]
     assert last == "inspect:CHG001"
+
+
+def test_process_chains_original_mapping_object_by_subject(gateway):
+    report = {"chargers": 3}
+
+    def get_report():
+        return report
+
+    def inspect_report(report):
+        assert report is gateway.results["report"]
+        return report
+
+    gateway.get_report = gateway.wrap("get_report", get_report)
+    gateway.inspect_report = gateway.wrap("inspect_report", inspect_report)
+
+    results, last = process([["get_report"], ["inspect_report"]], gw_instance=gateway)
+
+    assert results[0] is report
+    assert last is report
