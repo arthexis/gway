@@ -1,4 +1,5 @@
-import gway.invocation as invocation
+import importlib.util
+
 import gway.runner as runner
 from gway import Gateway
 
@@ -7,8 +8,8 @@ def test_runner_module_owns_invocation_contract():
     assert callable(runner.invoke)
 
 
-def test_invocation_module_is_compatibility_alias():
-    assert invocation.invoke is runner.invoke
+def test_invocation_compatibility_module_is_removed():
+    assert importlib.util.find_spec("gway.invocation") is None
 
 
 def test_gateway_no_longer_inherits_legacy_runner_class():
