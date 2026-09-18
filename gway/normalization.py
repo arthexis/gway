@@ -3,7 +3,7 @@
 import inspect
 
 from .binding import BoundCall, Literal
-from .sigils import Sigil, Spool
+from .sigil import Sigil, Spool
 
 
 def complete_arguments(runtime, subject, func, args=(), kwargs=None) -> BoundCall:

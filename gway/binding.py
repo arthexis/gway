@@ -3,7 +3,7 @@
 import inspect
 from dataclasses import dataclass
 
-from .sigils import Sigil
+from .sigil import Sigil
 from .tokens import Token, is_literal, token_value
 
 

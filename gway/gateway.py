@@ -8,7 +8,7 @@ from .invocation import invoke
 from .normalization import complete_arguments
 from .publication import publish
 from .runner import Runner
-from .sigils import Resolver
+from .sigil import Resolver
 from .structs import Results
 
 

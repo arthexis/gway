@@ -2,7 +2,7 @@
 
 from .gateway import Gateway, gw
 from .console import cli_main, process, load_recipe
-from .sigils import Sigil, Resolver, Spool, __
+from .sigil import Sigil, Resolver, Spool, __
 from .structs import Results
 
 __all__ = [

@@ -375,8 +375,8 @@ gway/sigil/
     spool.py       # ordered Sigil alternatives
 ```
 
-`gway/sigils.py` is currently a compatibility façade for existing imports.
-New internal code should prefer the package itself.
+Import sigil primitives from `gway.sigil` (or from the public `gway` package).
+There is no parallel `gway.sigils` module.
 
 ## Composition model
 
@@ -397,6 +397,16 @@ This is why operation names, Python parameter names, semantic subjects, results,
 context, and sigils work together. Prefer composing operations through those
 contracts rather than manually passing values that GWAY can resolve
 semantically.
+
+## Module and package naming
+
+Use single-word module and package names wherever practical. Do not introduce
+underscore-separated implementation module names such as `sigil_paths.py` or
+`argument_binding.py`; group related behavior into a package and use focused
+single-word modules inside it.
+
+`__init__.py` and `__main__.py` are standard Python dunder modules and are the
+intentional exceptions to this naming rule.
 
 ## Repository scope
 
