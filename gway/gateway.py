@@ -1,15 +1,14 @@
 # file: gway/gateway.py
 
-import inspect
 import logging
 import os
 import threading
 
-from .binding import Literal
 from .invocation import invoke
+from .normalization import complete_arguments
 from .publication import publish
 from .runner import Runner
-from .sigils import Resolver, Sigil, Spool
+from .sigils import Resolver
 from .structs import Results
 
 
@@ -111,51 +110,23 @@ class Gateway(Resolver, Runner):
         if not callable(func_obj):
             raise TypeError(f"{func_name!r} is not callable")
 
+        subject = self.subject(func_name)
+
         def wrapped(*args, **kwargs):
-            signature = inspect.signature(func_obj)
-            bound = signature.bind_partial(*args, **kwargs)
-            subject = self.subject(func_name)
-
-            call_args = []
-            call_kwargs = {}
-            for name, parameter in signature.parameters.items():
-                if name in bound.arguments:
-                    value = bound.arguments[name]
-                elif subject and name == subject:
-                    value = self.find_value(name)
-                    if value is None:
-                        value = parameter.default
-                else:
-                    value = parameter.default
-
-                if isinstance(value, (Sigil, Spool)):
-                    value = value.resolve(self)
-
-                if value is inspect.Parameter.empty:
-                    raise TypeError(f"missing required argument: {name}")
-
-                if isinstance(value, Literal):
-                    value = str(value)
-
-                if parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
-                    call_args.append(value)
-                elif parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD:
-                    call_args.append(value)
-                elif parameter.kind is inspect.Parameter.VAR_POSITIONAL:
-                    call_args.extend(value)
-                elif parameter.kind is inspect.Parameter.KEYWORD_ONLY:
-                    call_kwargs[name] = value
-                elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
-                    call_kwargs.update(value)
-
+            call = complete_arguments(
+                self,
+                subject,
+                func_obj,
+                args=args,
+                kwargs=kwargs,
+            )
             result = invoke(
                 self,
                 func_name,
                 func_obj,
-                args=tuple(call_args),
-                kwargs=call_kwargs,
+                args=call.args,
+                kwargs=call.kwargs,
             )
-
             return publish(self, subject, result)
 
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
