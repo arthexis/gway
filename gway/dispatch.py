@@ -61,6 +61,7 @@ def dispatch_stage(
     initial_kwargs = kwargs
     if pipeline is not _MISSING:
         adapted = adapt_pipeline(
+            runtime,
             func,
             pipeline,
             args=initial_args,

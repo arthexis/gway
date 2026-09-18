@@ -161,6 +161,7 @@ class Gateway(Resolver):
         wrapped.__doc__ = getattr(func_obj, "__doc__", None)
         wrapped.__wrapped__ = func_obj
         wrapped.__gway_operation__ = func_name
+        wrapped.__gway_subject__ = subject
         self.ops.register(func_name, wrapped)
         return wrapped
 
