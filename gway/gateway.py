@@ -55,6 +55,11 @@ class Gateway(Resolver):
             ("env", os.environ),
         ])
 
+    @property
+    def last(self):
+        """Return the raw result of the most recently completed operation."""
+        return self.results.last
+
     def debug(self, message, *args, **kwargs):
         if self.debug_enabled:
             return self.logger.debug(message, *args, **kwargs)

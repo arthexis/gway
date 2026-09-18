@@ -31,6 +31,42 @@ def test_results_preserve_arbitrary_object_identity():
     assert results["report"] is value
 
 
+def test_results_support_python_style_history_indexing():
+    results = Results()
+    results.clear()
+
+    results.insert("first", "A")
+    results.insert("second", "B")
+
+    assert results[-1] == "B"
+    assert results[-2] == "A"
+    assert results[0] == "A"
+
+
+def test_results_last_tracks_none_and_subjectless_values():
+    results = Results()
+    results.clear()
+
+    results.insert("charger", "CHG001")
+    results.insert(None, None)
+
+    assert results.last is None
+    assert results[-1] is None
+    assert results["charger"] == "CHG001"
+
+
+def test_results_clear_resets_semantic_and_historical_state():
+    results = Results()
+    results.clear()
+    results.insert("charger", "CHG001")
+
+    results.clear()
+
+    assert results.last is None
+    assert len(results.history) == 0
+    assert "charger" not in results
+
+
 def test_same_thread_gateways_share_state():
     first = Gateway()
     first.context.clear()

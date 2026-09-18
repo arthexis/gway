@@ -2,11 +2,10 @@
 
 
 def publish(runtime, subject, result):
-    """Publish a result using the runtime's current semantic conventions."""
-    if not subject or result is None:
-        return result
-
+    """Publish a completed operation result to history and semantic state."""
     runtime.results.insert(subject, result)
-    if isinstance(result, dict):
+
+    if subject and isinstance(result, dict):
         runtime.context.update(result)
+
     return result

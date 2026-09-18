@@ -23,18 +23,27 @@ def test_mapping_result_is_merged_into_context(gateway):
     assert gateway.context["online"] is True
 
 
-def test_repeated_publication_replaces_same_subject(gateway):
+def test_repeated_publication_replaces_same_subject_but_keeps_history(gateway):
     publish(gateway, "charger", "CHG001")
     publish(gateway, "charger", "CHG002")
 
     assert gateway.results["charger"] == "CHG002"
+    assert gateway.results[-2] == "CHG001"
+    assert gateway.results[-1] == "CHG002"
 
 
-def test_none_result_is_not_published(gateway):
+def test_none_result_is_recorded_as_last_without_overwriting_subject(gateway):
+    publish(gateway, "charger", "CHG001")
     assert publish(gateway, "charger", None) is None
-    assert "charger" not in gateway.results
+
+    assert gateway.results["charger"] is None
+    assert gateway.results[-1] is None
+    assert gateway.last is None
 
 
-def test_missing_subject_is_not_published(gateway):
+def test_subjectless_result_is_recorded_in_history_only(gateway):
     assert publish(gateway, None, "value") == "value"
+
+    assert gateway.results[-1] == "value"
+    assert gateway.last == "value"
     assert "value" not in gateway.results.values()
