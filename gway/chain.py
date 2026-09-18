@@ -1,7 +1,6 @@
 """Scoped manual command chains for embedded GWAY use."""
 
-from .binding import bind_arguments
-from .console import _resolve_operation
+from .dispatch import dispatch_stage
 from .tokens import chunk, tokenize
 
 
@@ -43,16 +42,14 @@ class Chain:
                 "A chain call accepts one command stage; call the chain again for the next stage"
             )
 
-        func, arguments, _ = _resolve_operation(self.gateway, commands[0])
-        bound = bind_arguments(
-            func,
-            arguments,
-            runtime=self.gateway,
-            interactive=self.gateway.interactive_enabled,
-            initial_args=(self.last, *args),
-            initial_kwargs=kwargs,
+        result = dispatch_stage(
+            self.gateway,
+            commands[0],
+            pipeline=self.last,
+            args=args,
+            kwargs=kwargs,
+            allow_inline_with_native=True,
         )
-        result = func(*bound.args, **bound.kwargs)
         self.last = result
         self.history.append(result)
         return result

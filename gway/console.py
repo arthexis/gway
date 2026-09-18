@@ -2,11 +2,10 @@
 
 import argparse
 import json
-import time
-from .binding import bind_arguments
 from .gateway import Gateway, gw
 from .recipes import load_recipe
-from .tokens import Token, chunk, is_literal, token_value, tokenize
+from .dispatch import dispatch_stage
+from .tokens import Token, is_literal, token_value
 
 
 def parse_recipe_context(tokens):
@@ -76,38 +75,8 @@ def cli_main():
     return 0
 
 
-def _resolve_operation(runtime, tokens):
-    """Resolve the longest leading token sequence to a callable."""
-    values = [token_value(token) for token in tokens]
-    for size in range(len(values), 0, -1):
-        candidates = (
-            " ".join(values[:size]),
-            "_".join(token.replace("-", "_") for token in values[:size]),
-            ".".join(token.replace("-", "_") for token in values[:size]),
-        )
-        for candidate in candidates:
-            value = runtime.ops.resolve(candidate)
-            if callable(value):
-                return value, tokens[size:], candidate
-
-            value = runtime.find_value(candidate)
-            if callable(value):
-                return value, tokens[size:], candidate
-
-            obj = runtime
-            try:
-                for part in candidate.replace(" ", ".").split("."):
-                    obj = getattr(obj, part)
-            except AttributeError:
-                continue
-            if callable(obj):
-                return obj, tokens[size:], candidate
-
-    raise LookupError(f"Unable to resolve operation: {' '.join(values)}")
-
-
 def process(command_sources, *, gw_instance=None, **context):
-    """Execute recipe/CLI stages against a Gateway instance."""
+    """Execute recipe/CLI stages through the unified dispatcher."""
     runtime = gw_instance or Gateway(context=context)
     if context:
         runtime.context.update(context)
@@ -120,21 +89,7 @@ def process(command_sources, *, gw_instance=None, **context):
         if not tokens:
             continue
 
-        func, arguments, name = _resolve_operation(runtime, tokens)
-        bound = bind_arguments(
-            func,
-            arguments,
-            runtime=runtime,
-            interactive=runtime.interactive_enabled,
-        )
-        start = time.perf_counter() if runtime.timed_enabled else None
-        result = func(*bound.args, **bound.kwargs)
-        if start is not None:
-            runtime.logger.info(
-                "[timed] %s took %.3fs",
-                name,
-                time.perf_counter() - start,
-            )
+        result = dispatch_stage(runtime, tokens)
         results.append(result)
         last_result = result
 
