@@ -3,9 +3,12 @@
 import inspect
 from dataclasses import dataclass
 
-from .gateway import Literal
 from .sigils import Sigil
 from .tokens import Token, is_literal, token_value
+
+
+class Literal(str):
+    """String value protected from signature-based coercion."""
 
 
 @dataclass(frozen=True)

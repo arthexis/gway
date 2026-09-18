@@ -1,5 +1,5 @@
 from gway import Gateway
-from gway.console import process
+from gway.binding import bind_arguments
 
 
 def test_interactive_prompts_only_for_missing_required(monkeypatch):
@@ -10,7 +10,6 @@ def test_interactive_prompts_only_for_missing_required(monkeypatch):
     def create_charger(serial: str, *, limit: int = 32):
         return serial, limit
 
-    runtime.create_charger = runtime.wrap_callable("create_charger", create_charger)
     prompts = []
 
     def fake_input(prompt):
@@ -18,6 +17,13 @@ def test_interactive_prompts_only_for_missing_required(monkeypatch):
         return "ABC"
 
     monkeypatch.setattr("builtins.input", fake_input)
-    _, last = process([["create_charger"]], gw_instance=runtime)
-    assert last == ("ABC", 32)
+    bound = bind_arguments(
+        create_charger,
+        [],
+        runtime=runtime,
+        interactive=True,
+    )
+
+    assert bound.args == ("ABC",)
+    assert bound.kwargs == {}
     assert prompts == ["serial: "]

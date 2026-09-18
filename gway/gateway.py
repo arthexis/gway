@@ -6,13 +6,10 @@ import os
 import threading
 import time
 
+from .binding import Literal
 from .runner import Runner
 from .sigils import Resolver, Sigil, Spool
 from .structs import Results
-
-
-class Literal(str):
-    """String value that must bypass GWAY type coercion."""
 
 
 class Gateway(Resolver, Runner):
@@ -137,21 +134,8 @@ class Gateway(Resolver, Runner):
                 if value is inspect.Parameter.empty:
                     raise TypeError(f"missing required argument: {name}")
 
-                literal = isinstance(value, Literal)
-                if literal:
+                if isinstance(value, Literal):
                     value = str(value)
-
-                annotation = parameter.annotation
-                if (
-                    not literal
-                    and annotation in (str, int, float, bool)
-                    and value is not None
-                    and not isinstance(value, annotation)
-                ):
-                    if annotation is bool and isinstance(value, str):
-                        value = value.lower() in {"1", "true", "yes", "on"}
-                    else:
-                        value = annotation(value)
 
                 if parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
                     call_args.append(value)
