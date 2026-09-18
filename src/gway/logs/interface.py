@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from ..project import Project
 from .binding import PublisherBinding, ServiceRef
 
 
@@ -16,8 +15,9 @@ class LogPublisherProvider(Protocol):
         self,
         *,
         destination: str,
-        consumer: Project,
+        consumer: str,
         service: ServiceRef | None = None,
+        current: PublisherBinding | None = None,
     ) -> PublisherBinding: ...
 
 

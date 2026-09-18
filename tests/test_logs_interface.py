@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from gway.logs import LogBinding, LogPublisherProvider, PublisherBinding, ServiceRef
-from gway.project import Project
 
 
 class FixtureProvider:
@@ -13,24 +10,16 @@ class FixtureProvider:
         self,
         *,
         destination: str,
-        consumer: Project,
+        consumer: str,
         service: ServiceRef | None = None,
+        current: PublisherBinding | None = None,
     ) -> PublisherBinding:
         return PublisherBinding(
             provider=self.name,
             destination=destination,
-            configuration={"consumer": consumer.name},
+            configuration={"consumer": consumer},
             metadata={"service": service.service if service is not None else None},
         )
-
-
-def _project() -> Project:
-    return Project(
-        name="consumer",
-        path=Path("/tmp/consumer"),
-        adapter_type="python",
-        adapter_config={},
-    )
 
 
 def test_logging_provider_contract_is_runtime_checkable() -> None:
@@ -43,7 +32,7 @@ def test_provider_returns_opaque_publisher_binding() -> None:
     service = ServiceRef(project="consumer", service="worker")
     binding = provider.provision(
         destination="https://logs.example.test",
-        consumer=_project(),
+        consumer="consumer",
         service=service,
     )
 

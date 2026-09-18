@@ -7,6 +7,7 @@ from .config import GwayPaths
 from .dispatcher.errors import DispatchError
 from .history import last_run
 from .log_consumers import ConsumerResolver, configure_consumers, normalize_consumers
+from .logs.providers import ProviderResolver
 from .logging import configure, current_context
 from .solve import solve_values
 
@@ -39,6 +40,7 @@ def run_log(
     dispatch: Callable[[str, Sequence[str]], object] | None = None,
     paths: GwayPaths | None = None,
     resolve_consumer: ConsumerResolver | None = None,
+    resolve_provider: ProviderResolver | None = None,
 ) -> dict[str, object]:
     """Inspect logging context, configure consumers, or query command history."""
     parser = argparse.ArgumentParser(prog="gway log", add_help=False)
@@ -46,6 +48,7 @@ def run_log(
     parser.add_argument("--to", action="append", default=[])
     parser.add_argument("--consumer", action="append", default=[])
     parser.add_argument("--consumers", action="append", default=[])
+    parser.add_argument("--publisher")
     parser.add_argument("--last", action="store_true")
     parser.add_argument("--failed", action="store_true")
     parser.add_argument("--project")
@@ -58,6 +61,8 @@ def run_log(
             raise DispatchError("--consumer accepts one consumer; use --consumers for comma-separated names")
 
     consumer_values = (*namespace.consumer, *namespace.consumers)
+    if namespace.publisher is not None and not consumer_values:
+        raise DispatchError("--publisher requires --consumer or --consumers")
     if namespace.failed and not namespace.last:
         raise DispatchError("--failed requires --last")
     if namespace.project and not namespace.last:
@@ -118,6 +123,8 @@ def run_log(
             dispatch=active_dispatch,
             paths=active_paths,
             resolve_consumer=active_resolver,
+            provider=namespace.publisher or "web",
+            provider_resolver=resolve_provider,
         )
 
     if tags or destinations or consumers:
@@ -125,7 +132,11 @@ def run_log(
         if binding is not None:
             state["consumers"] = binding["consumers"]
             state["consumer_destination"] = binding["destination"]
-            state["consumer_token_id"] = binding["token_id"]
+            state["consumer_provider"] = binding["provider"]
+            state["consumer_publisher"] = binding["publisher"]
+            token_id = binding.get("token_id")
+            if isinstance(token_id, str):
+                state["consumer_token_id"] = token_id
         return state
     return current_context()
 
