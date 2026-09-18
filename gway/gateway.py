@@ -105,6 +105,31 @@ class Gateway(Resolver, Runner):
             if value is not None:
                 setattr(instance, f"{name}_enabled", bool(value))
 
+    def __call__(self, command, *args, **kwargs):
+        """Execute a GWAY command, optionally with native Python arguments."""
+        from .console import _resolve_operation, process
+        from .tokens import chunk, tokenize
+
+        if isinstance(command, str):
+            tokens = tokenize(command)
+        else:
+            tokens = list(command)
+
+        if not tokens:
+            raise ValueError("Gateway command cannot be empty")
+
+        if args or kwargs:
+            func, remaining, _ = _resolve_operation(self, tokens)
+            if remaining:
+                raise TypeError(
+                    "Native arguments require an operation name without inline arguments"
+                )
+            return func(*args, **kwargs)
+
+        commands = chunk(tokens)
+        _, result = process(commands, gw_instance=self)
+        return result
+
     def wrap(self, func_name, func_obj):
         """Normalize a Python callable to GWAY context and result conventions."""
         if not callable(func_obj):
