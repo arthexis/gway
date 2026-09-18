@@ -18,3 +18,8 @@ def test_console_process_uses_dispatch_stage():
     names = set(console.process.__code__.co_names)
     assert "dispatch_stage" in names
     assert "bind_arguments" not in names
+
+
+def test_dispatch_does_not_use_resolver_for_callable_discovery():
+    names = set(dispatch.resolve_operation.__code__.co_names)
+    assert "find_value" not in names

@@ -35,7 +35,7 @@ class Resolver:
             raise last_exc
         raise KeyError("No arguments provided to resolve() or all were None")
 
-    def find_value(self, key, fallback=None, exec=False):
+    def find_value(self, key, fallback=None):
         for name, source in self._search_order:
             if name == "env":
                 value = os.getenv(key.upper())
@@ -51,35 +51,7 @@ class Resolver:
                 except Exception:
                     pass
 
-        if exec:
-            value = self._resolve_callable_legacy(key)
-            if value is not None:
-                return value
-
         return fallback
-
-    def _resolve_callable_legacy(self, key):
-        func_name = key.strip()
-        variants = (
-            func_name,
-            func_name.replace("-", "_"),
-            func_name.replace("_", "-"),
-            func_name.lower(),
-            func_name.upper(),
-        )
-        for variant in variants:
-            obj = self
-            try:
-                for part in variant.split("."):
-                    obj = getattr(obj, part)
-            except Exception:
-                continue
-            if callable(obj):
-                try:
-                    return obj()
-                except TypeError:
-                    continue
-        return None
 
     def _resolve_key(self, key, fallback=None):
         key = key.strip()

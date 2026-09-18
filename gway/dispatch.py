@@ -20,18 +20,15 @@ def resolve_operation(runtime, tokens):
             if callable(value):
                 return value, tokens[size:], candidate
 
-            # Compatibility fallback while ingestion migrates fully to ops.
-            value = runtime.find_value(candidate)
-            if callable(value):
-                return value, tokens[size:], candidate
-
+            # Temporary attribute fallback for wrapped operations exposed directly
+            # on Gateway. Executable discovery otherwise belongs to runtime.ops.
             obj = runtime
             try:
                 for part in candidate.replace(" ", ".").split("."):
                     obj = getattr(obj, part)
             except AttributeError:
                 continue
-            if callable(obj):
+            if callable(obj) and getattr(obj, "__gway_operation__", None) is not None:
                 return obj, tokens[size:], candidate
 
     raise LookupError(f"Unable to resolve operation: {' '.join(values)}")
