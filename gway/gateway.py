@@ -67,6 +67,10 @@ class Gateway(Resolver):
             return next(target)
         return next(target, default)
 
+    def __next__(self):
+        """Advance the current iterator result."""
+        return self.next()
+
     def debug(self, message, *args, **kwargs):
         if self.debug_enabled:
             return self.logger.debug(message, *args, **kwargs)
