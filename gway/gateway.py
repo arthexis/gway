@@ -6,6 +6,7 @@ import threading
 
 from .runner import invoke
 from .normalization import complete_arguments
+from .operations import Operations
 from .publication import publish
 from .sigil import Resolver
 from .structs import Results
@@ -30,6 +31,7 @@ class Gateway(Resolver):
     ):
         self.name = name
         self.logger = logging.getLogger(name)
+        self.ops = Operations()
         self.debug_enabled = bool(debug)
         self.verbose_enabled = bool(verbose)
         self.silent_enabled = bool(silent)
@@ -177,7 +179,21 @@ class Gateway(Resolver):
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
         wrapped.__doc__ = getattr(func_obj, "__doc__", None)
         wrapped.__wrapped__ = func_obj
+        wrapped.__gway_operation__ = func_name
+        self.ops.register(func_name, wrapped)
         return wrapped
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        if name.startswith("_") or name == "ops":
+            return
+        ops = self.__dict__.get("ops")
+        if (
+            ops is not None
+            and callable(value)
+            and getattr(value, "__gway_operation__", None) is not None
+        ):
+            ops.register(name, value)
 
     def __getattr__(self, name):
         logger_method = getattr(self.logger, name, None)
