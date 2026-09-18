@@ -1,6 +1,25 @@
 import threading
 
 from gway import Gateway
+from gway.structs import Results
+
+
+def test_results_preserve_scalar_under_subject():
+    results = Results()
+    results.clear()
+
+    results.insert("charger", "CHG001")
+    assert results["charger"] == "CHG001"
+
+
+def test_results_preserve_mapping_under_subject():
+    results = Results()
+    results.clear()
+    value = {"serial": "CHG001"}
+
+    results.insert("charger", value)
+    assert results["charger"] is value
+    assert "serial" not in results
 
 
 def test_same_thread_gateways_share_state():

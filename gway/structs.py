@@ -15,10 +15,7 @@ class Results(collections.ChainMap):
         super().__init__(*self._thread_local.maps)
 
     def insert(self, name, value):
-        if isinstance(value, dict):
-            self.maps[0].update(value)
-        else:
-            self.maps[0][name] = value
+        self.maps[0][name] = value
 
     def get_results(self):
         return self.maps[0]
