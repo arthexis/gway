@@ -11,6 +11,10 @@ from .sigils import Resolver, Sigil, Spool
 from .structs import Results
 
 
+class Literal(str):
+    """String value that must bypass GWAY type coercion."""
+
+
 class Gateway(Resolver, Runner):
     """Minimal GWAY runtime: resolution, callable wrapping, and shared context."""
 
@@ -133,9 +137,14 @@ class Gateway(Resolver, Runner):
                 if value is inspect.Parameter.empty:
                     raise TypeError(f"missing required argument: {name}")
 
+                literal = isinstance(value, Literal)
+                if literal:
+                    value = str(value)
+
                 annotation = parameter.annotation
                 if (
-                    annotation in (str, int, float, bool)
+                    not literal
+                    and annotation in (str, int, float, bool)
                     and value is not None
                     and not isinstance(value, annotation)
                 ):

@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .gateway import Gateway, gw
+from .gateway import Gateway, Literal, gw
 from .sigils import Sigil
 
 
@@ -210,7 +210,7 @@ def _convert(token, parameter, runtime):
     annotation = parameter.annotation
 
     if literal:
-        return value
+        return Literal(value)
 
     if isinstance(value, str) and Sigil._pattern.search(value):
         value = runtime.resolve(value)
@@ -291,7 +291,6 @@ def _bind_arguments(func, tokens, *, runtime, interactive=False):
             response = input(f"{name}: ")
             bound.arguments[name] = _convert(Token(response), parameter, runtime)
 
-    signature.bind(*bound.args, **bound.kwargs)
     return bound.args, bound.kwargs
 
 

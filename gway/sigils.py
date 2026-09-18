@@ -33,6 +33,8 @@ class Sigil:
                 val = None
                 if isinstance(finder, dict):
                     val = finder.get(variant)
+                elif hasattr(finder, "find_value"):
+                    val = finder.find_value(variant, None, exec=True)
                 elif callable(finder):
                     try:
                         val = finder(variant, None, True)
@@ -162,6 +164,13 @@ def _follow_path(value, parts, lookup_fn=None):
                 value = value[part]
                 continue
             if isinstance(part, str):
+                try:
+                    numeric_part = int(part)
+                except (ValueError, TypeError):
+                    numeric_part = None
+                if numeric_part is not None and numeric_part in value:
+                    value = value[numeric_part]
+                    continue
                 normalized = part.lower().replace('-', '_')
                 sentinel = object()
                 resolved = sentinel
