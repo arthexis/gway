@@ -1,46 +1,37 @@
-# file: gway/runner.py
+"""Callable execution support for GWAY runtimes."""
 
 import asyncio
-import re
+import inspect
 import time
 
 
-class Runner:
-    """Core callable and coroutine execution support."""
+def _run_awaitable(awaitable):
+    """Run an awaitable synchronously at the GWAY execution boundary."""
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(awaitable)
+    finally:
+        loop.close()
 
-    def _resolve_callable(self, value):
-        if callable(value):
-            return value
 
-        key = re.sub(r"^(gw|gway)[. ]+", "", str(value).strip())
-        candidate = self.get(key)
-        if callable(candidate):
-            return candidate
+def invoke(runtime, name, func, args=(), kwargs=None):
+    """Invoke a callable, awaiting its result when needed and applying timing policy."""
+    if not callable(func):
+        raise TypeError(f"{name!r} is not callable")
 
-        obj = self
-        for part in re.split(r"[. ]+", key):
-            obj = getattr(obj, part)
-        if not callable(obj):
-            raise TypeError(f"{value!r} did not resolve to a callable")
-        return obj
+    kwargs = {} if kwargs is None else kwargs
+    start = time.perf_counter() if getattr(runtime, "timed_enabled", False) else None
 
-    def run_coroutine(self, func_name, coroutine):
-        """Run an awaitable synchronously at the runtime boundary."""
-        start = time.perf_counter() if getattr(self, "timed_enabled", False) else None
-        loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(coroutine)
-            if hasattr(self, "results"):
-                self.results.insert(func_name, result)
-                if isinstance(result, dict) and hasattr(self, "context"):
-                    self.context.update(result)
-            return result
-        finally:
-            loop.close()
-            if start is not None and hasattr(self, "logger"):
-                self.logger.info(
-                    "[timed] %s took %.3fs",
-                    func_name,
-                    time.perf_counter() - start,
-                )
+    try:
+        result = func(*args, **kwargs)
+        if inspect.isawaitable(result):
+            result = _run_awaitable(result)
+        return result
+    finally:
+        if start is not None and hasattr(runtime, "logger"):
+            runtime.logger.info(
+                "[timed] %s took %.3fs",
+                name,
+                time.perf_counter() - start,
+            )

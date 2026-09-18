@@ -4,15 +4,14 @@ import logging
 import os
 import threading
 
-from .invocation import invoke
+from .runner import invoke
 from .normalization import complete_arguments
 from .publication import publish
-from .runner import Runner
 from .sigil import Resolver
 from .structs import Results
 
 
-class Gateway(Resolver, Runner):
+class Gateway(Resolver):
     """Minimal GWAY runtime: resolution, callable wrapping, and shared context."""
 
     _thread_local = threading.local()
@@ -36,7 +35,6 @@ class Gateway(Resolver, Runner):
         self.silent_enabled = bool(silent)
         self.interactive_enabled = bool(interactive)
         self.timed_enabled = bool(timed)
-        self._async_threads = []
 
         if not hasattr(type(self)._thread_local, "context"):
             type(self)._thread_local.context = {}

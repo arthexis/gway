@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from gway.invocation import invoke
+from gway.runner import invoke
 
 
 class Runtime:
