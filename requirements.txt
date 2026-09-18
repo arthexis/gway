@@ -1,1 +1,0 @@
-# GWAY core has no runtime dependencies.\n
