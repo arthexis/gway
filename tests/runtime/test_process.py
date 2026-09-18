@@ -18,7 +18,7 @@ def test_process_passes_keyword_arguments(gateway):
     assert last == 32
 
 
-def test_process_can_chain_through_published_subject(gateway):
+def test_process_chains_through_explicit_pipeline(gateway):
     def get_charger():
         return "CHG001"
     def inspect_charger(charger):
@@ -30,7 +30,28 @@ def test_process_can_chain_through_published_subject(gateway):
     assert last == "inspect:CHG001"
 
 
-def test_process_chains_original_mapping_object_by_subject(gateway):
+def test_process_pipeline_does_not_require_matching_published_subject(gateway):
+    report = object()
+
+    def get_report():
+        return report
+
+    def consume_items(items):
+        return items
+
+    gateway.get_report = gateway.wrap("get_report", get_report)
+    gateway.consume_items = gateway.wrap("consume_items", consume_items)
+
+    results, last = process(
+        [["get_report"], ["consume_items"]],
+        gw_instance=gateway,
+    )
+
+    assert results[0] is report
+    assert last is report
+
+
+def test_process_chains_original_mapping_object(gateway):
     report = {"chargers": 3}
 
     def get_report():

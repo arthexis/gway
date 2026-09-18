@@ -30,6 +30,21 @@ def test_dispatch_executes_multiple_stages(gateway):
     assert dispatch(gateway, "get_charger - inspect_charger") == "inspect:CHG001"
 
 
+def test_dispatch_multistage_uses_raw_pipeline_not_subject_lookup(gateway):
+    report = object()
+
+    def get_report():
+        return report
+
+    def consume_items(items):
+        return items
+
+    gateway.get_report = gateway.wrap("get_report", get_report)
+    gateway.consume_items = gateway.wrap("consume_items", consume_items)
+
+    assert dispatch(gateway, "get_report - consume_items") is report
+
+
 def test_dispatch_stage_accepts_pipeline_before_inline_arguments(gateway):
     def filter_chargers(chargers, prefix: str):
         return [charger for charger in chargers if charger.startswith(prefix)]

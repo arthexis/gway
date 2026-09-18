@@ -89,7 +89,10 @@ def process(command_sources, *, gw_instance=None, **context):
         if not tokens:
             continue
 
-        result = dispatch_stage(runtime, tokens)
+        if results:
+            result = dispatch_stage(runtime, tokens, pipeline=last_result)
+        else:
+            result = dispatch_stage(runtime, tokens)
         results.append(result)
         last_result = result
 

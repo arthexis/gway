@@ -111,6 +111,7 @@ def dispatch(runtime, command, *args, **kwargs):
         result = dispatch_stage(
             runtime,
             stage,
+            pipeline=result if index else _MISSING,
             args=args if index == 0 else (),
             kwargs=kwargs if index == 0 else None,
         )
