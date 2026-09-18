@@ -170,9 +170,6 @@ class Gateway(Resolver, Runner):
         wrapped.__wrapped__ = func_obj
         return wrapped
 
-    # Temporary compatibility alias while callers migrate to the normalization API.
-    wrap_callable = wrap
-
     def __getattr__(self, name):
         logger_method = getattr(self.logger, name, None)
         if callable(logger_method):
