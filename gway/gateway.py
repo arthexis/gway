@@ -6,7 +6,7 @@ import threading
 
 from .runner import invoke
 from .normalization import complete_arguments
-from .operations import Operations
+from .operations import registry_views
 from .publication import publish
 from .sigil import Resolver
 from .structs import Results
@@ -31,7 +31,7 @@ class Gateway(Resolver):
     ):
         self.name = name
         self.logger = logging.getLogger(name)
-        self.ops = Operations()
+        self.ops, self.subs = registry_views()
         self.debug_enabled = bool(debug)
         self.verbose_enabled = bool(verbose)
         self.silent_enabled = bool(silent)
@@ -185,7 +185,7 @@ class Gateway(Resolver):
 
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
-        if name.startswith("_") or name == "ops":
+        if name.startswith("_") or name in {"ops", "subs"}:
             return
         ops = self.__dict__.get("ops")
         if (
@@ -193,7 +193,7 @@ class Gateway(Resolver):
             and callable(value)
             and getattr(value, "__gway_operation__", None) is not None
         ):
-            ops.register(name, value)
+            ops.register_alias(name, value)
 
     def __getattr__(self, name):
         logger_method = getattr(self.logger, name, None)
@@ -203,7 +203,7 @@ class Gateway(Resolver):
 
     @staticmethod
     def subject(func_name: str):
-        """Return the semantic subject from verb_subject or a dotted name."""
+        """Return the semantic subject from operation_subject or a dotted name."""
         simple = func_name.rsplit(".", 1)[-1]
         words = simple.replace("-", "_").split("_")
         if len(words) > 1:

@@ -86,7 +86,7 @@ def _resolve_operation(runtime, tokens):
             ".".join(token.replace("-", "_") for token in values[:size]),
         )
         for candidate in candidates:
-            value = runtime.ops.get(candidate)
+            value = runtime.ops.resolve(candidate)
             if callable(value):
                 return value, tokens[size:], candidate
 
