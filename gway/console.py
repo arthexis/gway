@@ -3,112 +3,11 @@
 import argparse
 import inspect
 import json
-import shlex
-import sys
 import time
-from dataclasses import dataclass
-from pathlib import Path
-
 from .gateway import Gateway, Literal, gw
+from .recipes import load_recipe
 from .sigils import Sigil
-
-
-@dataclass(frozen=True)
-class Token:
-    """A lexical token with optional quote provenance."""
-
-    value: str
-    quote: str | None = None
-
-    @property
-    def literal(self) -> bool:
-        return self.quote == "single"
-
-    def __str__(self) -> str:
-        return self.value
-
-
-def tokenize(text: str) -> list[Token]:
-    """Split recipe text while preserving single/double quote provenance."""
-    tokens: list[Token] = []
-    current: list[str] = []
-    quote: str | None = None
-    token_quote: str | None = None
-    escaped = False
-    started = False
-
-    def emit() -> None:
-        nonlocal current, token_quote, started
-        if started:
-            tokens.append(Token("".join(current), token_quote))
-        current = []
-        token_quote = None
-        started = False
-
-    for char in text:
-        if escaped:
-            current.append(char)
-            started = True
-            escaped = False
-            continue
-
-        if quote == "double" and char == "\\":
-            escaped = True
-            started = True
-            continue
-
-        if quote is None:
-            if char.isspace():
-                emit()
-                continue
-            if char == "'":
-                if not started:
-                    token_quote = "single"
-                elif token_quote != "single":
-                    token_quote = None
-                quote = "single"
-                started = True
-                continue
-            if char == '"':
-                if not started:
-                    token_quote = "double"
-                elif token_quote != "double":
-                    token_quote = None
-                quote = "double"
-                started = True
-                continue
-            current.append(char)
-            started = True
-            continue
-
-        if quote == "single":
-            if char == "'":
-                quote = None
-            else:
-                current.append(char)
-            continue
-
-        if quote == "double":
-            if char == '"':
-                quote = None
-            else:
-                current.append(char)
-            continue
-
-    if escaped:
-        current.append("\\")
-    if quote is not None:
-        raise ValueError(f"Unterminated {quote}-quoted string")
-    emit()
-    return tokens
-
-
-def _value(token) -> str:
-    return token.value if isinstance(token, Token) else str(token)
-
-
-def _literal(token) -> bool:
-    return isinstance(token, Token) and token.literal
+from .tokens import Token, chunk, is_literal, token_value, tokenize
 
 
 def parse_recipe_context(tokens):
@@ -117,14 +16,14 @@ def parse_recipe_context(tokens):
     index = 0
     tokens = list(tokens)
     while index < len(tokens):
-        token = _value(tokens[index])
-        if _literal(tokens[index]) or not token.startswith("--") or token == "--":
+        token = token_value(tokens[index])
+        if is_literal(tokens[index]) or not token.startswith("--") or token == "--":
             raise ValueError(f"Unexpected argument: {token}")
         key = token[2:].replace("-", "_")
         if index + 1 < len(tokens):
             next_token = tokens[index + 1]
-            next_value = _value(next_token)
-            if _literal(next_token) or not next_value.startswith("--"):
+            next_value = token_value(next_token)
+            if is_literal(next_token) or not next_value.startswith("--"):
                 context[key] = next_value
                 index += 2
                 continue
@@ -180,7 +79,7 @@ def cli_main():
 
 def _resolve_operation(runtime, tokens):
     """Resolve the longest leading token sequence to a callable."""
-    values = [_value(token) for token in tokens]
+    values = [token_value(token) for token in tokens]
     for size in range(len(values), 0, -1):
         candidates = (
             " ".join(values[:size]),
@@ -188,7 +87,7 @@ def _resolve_operation(runtime, tokens):
             ".".join(token.replace("-", "_") for token in values[:size]),
         )
         for candidate in candidates:
-            value = runtime.find_value(candidate)
+            value = runtime.findtoken_value(candidate)
             if callable(value):
                 return value, tokens[size:], candidate
 
@@ -205,8 +104,8 @@ def _resolve_operation(runtime, tokens):
 
 
 def _convert(token, parameter, runtime):
-    literal = _literal(token)
-    value = _value(token)
+    literal = is_literal(token)
+    value = token_value(token)
     annotation = parameter.annotation
 
     if literal:
@@ -234,14 +133,14 @@ def _bind_arguments(func, tokens, *, runtime, interactive=False):
 
     while index < len(tokens):
         raw = tokens[index]
-        token = _value(raw)
+        token = token_value(raw)
 
-        if not literal_mode and not _literal(raw) and token == "--":
+        if not literal_mode and not is_literal(raw) and token == "--":
             literal_mode = True
             index += 1
             continue
 
-        if not literal_mode and not _literal(raw) and token.startswith("--"):
+        if not literal_mode and not is_literal(raw) and token.startswith("--"):
             key = token[2:].replace("-", "_")
             parameter = signature.parameters.get(key)
             if parameter is None:
@@ -273,7 +172,7 @@ def _bind_arguments(func, tokens, *, runtime, interactive=False):
                 _convert(token, positional_parameters[offset], runtime)
             )
         else:
-            converted_positional.append(_value(token))
+            converted_positional.append(token_value(token))
 
     bound = signature.bind_partial(*converted_positional, **keywords)
 
@@ -327,63 +226,3 @@ def process(command_sources, *, gw_instance=None, **context):
         last_result = result
 
     return results, last_result
-
-
-def load_recipe(recipe_filename, *, strict=True, section=None):
-    """Load a recipe from an explicit filesystem path.
-
-    Blank lines and comments are ignored. A physical line beginning with --
-    extends the previous operation. Quote provenance is retained so single
-    quotes can mark opaque literal values.
-    """
-    path = Path(recipe_filename).expanduser()
-    if not path.is_file():
-        if strict:
-            raise FileNotFoundError(f"Recipe not found: {path}")
-        return [], []
-
-    commands = []
-    comments = []
-    current = None
-    active_section = section is None
-
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        stripped = raw_line.strip()
-        if not stripped:
-            continue
-
-        if stripped.startswith("#"):
-            comments.append(stripped)
-            if section is not None and stripped.startswith("# ") and not stripped.startswith("## "):
-                active_section = stripped[2:].strip().casefold() == section.strip().casefold()
-            continue
-
-        if not active_section:
-            continue
-
-        tokens = tokenize(stripped)
-        if stripped.startswith("--") and current is not None:
-            current["tokens"].extend(tokens)
-            continue
-
-        current = {"tokens": tokens}
-        commands.append(current)
-
-    return commands, comments
-
-
-def chunk(tokens):
-    """Split command-line tokens on standalone unquoted stage separators."""
-    chunks = []
-    current = []
-    for token in tokens:
-        value = _value(token)
-        if not _literal(token) and value in {"-", ";"}:
-            if current:
-                chunks.append(current)
-                current = []
-        else:
-            current.append(token)
-    if current:
-        chunks.append(current)
-    return chunks
