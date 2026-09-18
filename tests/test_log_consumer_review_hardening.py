@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib
 import threading
 import time
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -26,23 +25,29 @@ class FakeWeb:
     def __init__(self) -> None:
         self.token_id = "local-ingest"
         self.token = "gweb_v1_local-ingest_secret"
-        self.revoked = False
+        self.rotate = False
+        self.bindings: dict[str, dict[str, object]] = {}
 
     def dispatch(self, project: str, tokens) -> object:
         assert project == "web"
-        if "--list" in tokens:
-            return [
-                {
-                    "token_id": self.token_id,
-                    "expires_at": (
-                        datetime.now(timezone.utc) + timedelta(days=30)
-                    ).isoformat(),
-                    "revoked_at": (
-                        datetime.now(timezone.utc).isoformat() if self.revoked else None
-                    ),
-                }
-            ]
-        return {"token_id": self.token_id, "token": self.token}
+        assert tokens[0] == "log-publisher"
+        destination = tokens[tokens.index("--destination") + 1]
+        current = self.bindings.get(destination)
+        if current is not None and not self.rotate:
+            return current
+        binding = {
+            "provider": "web",
+            "destination": destination,
+            "configuration": {},
+            "environment": {
+                "GWAY_LOG_DESTINATION": destination,
+                "GWAY_LOG_TOKEN": self.token,
+            },
+            "metadata": {"token_id": self.token_id},
+        }
+        self.bindings[destination] = binding
+        self.rotate = False
+        return binding
 
 
 class SecretAdapter:
@@ -232,7 +237,7 @@ def test_environment_change_refreshes_registered_consumers(tmp_path: Path, monke
     assert moved["refreshed_services"] == ["gway-wire.service"]
 
 
-def test_rotated_token_refreshes_registered_consumers(tmp_path: Path, monkeypatch) -> None:
+def test_provider_rotated_binding_refreshes_registered_consumers(tmp_path: Path, monkeypatch) -> None:
     paths = _paths(tmp_path)
     project = _service_project(tmp_path)
     web = FakeWeb()
@@ -256,7 +261,7 @@ def test_rotated_token_refreshes_registered_consumers(tmp_path: Path, monkeypatc
     )
     refreshed.clear()
 
-    web.revoked = True
+    web.rotate = True
     web.token_id = "replacement"
     web.token = "gweb_v1_replacement_secret"
     result = configure_consumers(

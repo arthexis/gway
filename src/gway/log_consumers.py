@@ -17,8 +17,7 @@ from .logs.consumers import (
     consumer_identity,
     normalize_consumers,
 )
-from .logs.interface import LogPublisherProvider
-from .logs.providers import ProviderResolver, resolve_provider
+from .logs.providers import CommandLogPublisherProvider, ProviderResolver, resolve_provider
 from .logs.state import (
     atomic_private_write,
     read_state,
@@ -31,7 +30,6 @@ from .project import Project
 from .service.attachments import attach_environment_files, detach_environment_files
 
 _LOG_TOKEN_ENV = "GWAY_LOG_TOKEN"
-_LOG_DESTINATION_ENV = "GWAY_LOG_DESTINATION"
 _STATE_PATH_ENV = "GWAY_LOG_CONSUMER_STATE"
 
 
@@ -72,136 +70,13 @@ def _remote_destination(destinations: Sequence[str]) -> str:
     return remote[0]
 
 
-def _binding_token_valid(binding: PublisherBinding, listed: object) -> bool:
-    token_id = binding.metadata.get("token_id")
-    token = binding.environment.get(_LOG_TOKEN_ENV)
-    if not isinstance(token_id, str) or not isinstance(token, str):
-        return False
-    if not isinstance(listed, list):
-        return False
-    metadata = next(
-        (
-            item
-            for item in listed
-            if isinstance(item, dict) and item.get("token_id") == token_id
-        ),
-        None,
-    )
-    if metadata is None or metadata.get("revoked_at") is not None:
-        return False
-    expires_at = metadata.get("expires_at")
-    if not isinstance(expires_at, str):
-        return False
-    try:
-        expiry = datetime.fromisoformat(expires_at)
-        if expiry.tzinfo is None:
-            expiry = expiry.replace(tzinfo=timezone.utc)
-        return expiry > datetime.now(timezone.utc)
-    except (TypeError, ValueError):
-        return False
-
-
-def _issue_token(
-    dispatch: Callable[[str, Sequence[str]], object],
-    destination: str,
-) -> dict[str, str]:
-    # Temporary compatibility provider behavior. G5 moves this lifecycle behind
-    # the Web provider implementation.
-    from .dispatcher.outcome import redact_command_results
-
-    with redact_command_results():
-        result = dispatch(
-            "web",
-            [
-                "token",
-                "--name",
-                f"gway-consumers:{urlparse(destination).netloc or destination}",
-                "--scope",
-                "logs:ingest",
-            ],
-        )
-    if not isinstance(result, dict):
-        raise DispatchError("web token command did not return token metadata")
-    token = result.get("token")
-    token_id = result.get("token_id")
-    if not isinstance(token, str) or not token or not isinstance(token_id, str) or not token_id:
-        raise DispatchError("web token command did not return an ingest credential")
-    return {"token": token, "token_id": token_id}
-
-
-def _publisher_binding(record: Mapping[str, object], destination: str) -> PublisherBinding | None:
+def _publisher_binding(
+    record: Mapping[str, object],
+) -> PublisherBinding | None:
     stored = record.get("publisher")
-    if isinstance(stored, Mapping):
-        binding = PublisherBinding.from_record(stored)
-        if binding is not None:
-            return binding
-
-    # Read legacy records during the transition without making the generic
-    # binding format understand Web token semantics.
-    token = record.get("token")
-    token_id = record.get("token_id")
-    provider = record.get("provider")
-    if (
-        provider == "web"
-        and isinstance(token, str)
-        and token
-        and isinstance(token_id, str)
-        and token_id
-    ):
-        return PublisherBinding(
-            provider="web",
-            destination=destination,
-            environment={
-                _LOG_DESTINATION_ENV: destination,
-                _LOG_TOKEN_ENV: token,
-            },
-            metadata={"token_id": token_id},
-        )
-    return None
-
-
-class _LegacyWebProvider:
-    """Compatibility provider until GWAY Web implements the shared interface."""
-
-    name = "web"
-
-    def __init__(self, dispatch: Callable[[str, Sequence[str]], object]) -> None:
-        self.dispatch = dispatch
-
-    def provision(
-        self,
-        *,
-        destination: str,
-        consumer: str,
-        service=None,
-        current: PublisherBinding | None = None,
-    ) -> PublisherBinding:
-        listed: object = None
-        if current is not None:
-            try:
-                listed = self.dispatch("web", ["token", "--list"])
-            except Exception:
-                listed = None
-        if current is not None and _binding_token_valid(current, listed):
-            return current
-
-        try:
-            credential = _issue_token(self.dispatch, destination)
-        except Exception as exc:
-            if isinstance(exc, DispatchError):
-                raise
-            raise DispatchError(
-                "cannot issue local log consumer credential through the registered web project"
-            ) from exc
-        return PublisherBinding(
-            provider=self.name,
-            destination=destination,
-            environment={
-                _LOG_DESTINATION_ENV: destination,
-                _LOG_TOKEN_ENV: credential["token"],
-            },
-            metadata={"token_id": credential["token_id"]},
-        )
+    if not isinstance(stored, Mapping):
+        return None
+    return PublisherBinding.from_record(stored)
 
 
 def _select_provider(
@@ -209,12 +84,10 @@ def _select_provider(
     *,
     dispatch: Callable[[str, Sequence[str]], object],
     provider_resolver: ProviderResolver | None,
-) -> LogPublisherProvider:
+):
     if provider_resolver is not None:
         return resolve_provider(name, provider_resolver)
-    if name.casefold() == "web":
-        return _LegacyWebProvider(dispatch)
-    raise DispatchError(f"unknown log publisher provider: {name}")
+    return CommandLogPublisherProvider(name, dispatch)
 
 
 def _environment_contents(environment: Mapping[str, str]) -> str:
@@ -278,7 +151,7 @@ def publisher_token(destination: str, *, paths: GwayPaths | None = None) -> str 
     record = bindings.get(destination)
     if not isinstance(record, dict):
         return None
-    binding = _publisher_binding(record, destination)
+    binding = _publisher_binding(record)
     if binding is not None:
         token = binding.environment.get(_LOG_TOKEN_ENV)
         return token if isinstance(token, str) and token else None
@@ -362,7 +235,7 @@ def configure_consumers(
 
         existing = bindings.get(destination)
         record = dict(existing) if isinstance(existing, dict) else {}
-        current = _publisher_binding(record, destination)
+        current = _publisher_binding(record)
         if current is not None and current.provider.casefold() != provider.casefold():
             current = None
         publisher_provider = _select_provider(

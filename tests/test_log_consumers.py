@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -59,28 +58,30 @@ class FakeWeb:
         self.issued = 0
         self.token_id = "local-ingest"
         self.token = "gweb_v1_local-ingest_secret"
-        self.revoked = False
-        self.naive_expiry = False
+        self.rotate = False
+        self.bindings: dict[str, dict[str, object]] = {}
 
     def dispatch(self, project: str, tokens) -> object:
         assert project == "web"
-        assert tokens[0] == "token"
-        if "--list" in tokens:
-            expiry = datetime.now(timezone.utc) + timedelta(days=30)
-            if self.naive_expiry:
-                expiry = expiry.replace(tzinfo=None)
-            return [
-                {
-                    "token_id": self.token_id,
-                    "expires_at": expiry.isoformat(),
-                    "revoked_at": datetime.now(timezone.utc).isoformat()
-                    if self.revoked
-                    else None,
-                }
-            ]
+        assert tokens[0] == "log-publisher"
+        destination = tokens[tokens.index("--destination") + 1]
+        current = self.bindings.get(destination)
+        if current is not None and not self.rotate:
+            return current
         self.issued += 1
-        assert tokens[tokens.index("--scope") + 1] == "logs:ingest"
-        return {"token_id": self.token_id, "token": self.token}
+        binding = {
+            "provider": "web",
+            "destination": destination,
+            "configuration": {},
+            "environment": {
+                "GWAY_LOG_DESTINATION": destination,
+                "GWAY_LOG_TOKEN": self.token,
+            },
+            "metadata": {"token_id": self.token_id},
+        }
+        self.bindings[destination] = binding
+        self.rotate = False
+        return binding
 
 
 def _wire_project(tmp_path: Path) -> Project:
@@ -138,7 +139,7 @@ def test_singular_consumer_rejects_csv(tmp_path: Path, monkeypatch) -> None:
         )
 
 
-def test_consumer_binding_reuses_live_local_token(tmp_path: Path) -> None:
+def test_consumer_binding_reuses_provider_binding(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     web = FakeWeb()
 
@@ -160,7 +161,7 @@ def test_consumer_binding_reuses_live_local_token(tmp_path: Path) -> None:
     assert web.issued == 1
 
 
-def test_consumer_binding_accepts_naive_future_expiry(tmp_path: Path) -> None:
+def test_consumer_binding_accepts_provider_rotated_binding(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     web = FakeWeb()
     configure_consumers(
@@ -169,29 +170,7 @@ def test_consumer_binding_accepts_naive_future_expiry(tmp_path: Path) -> None:
         dispatch=web.dispatch,
         paths=paths,
     )
-    web.naive_expiry = True
-
-    result = configure_consumers(
-        ["wire"],
-        ["https://logs.example.test"],
-        dispatch=web.dispatch,
-        paths=paths,
-    )
-
-    assert result["token_id"] == web.token_id
-    assert web.issued == 1
-
-
-def test_consumer_binding_rotates_revoked_token(tmp_path: Path) -> None:
-    paths = _paths(tmp_path)
-    web = FakeWeb()
-    configure_consumers(
-        ["wire"],
-        ["https://logs.example.test"],
-        dispatch=web.dispatch,
-        paths=paths,
-    )
-    web.revoked = True
+    web.rotate = True
     web.token_id = "replacement"
     web.token = "gweb_v1_replacement_secret"
 

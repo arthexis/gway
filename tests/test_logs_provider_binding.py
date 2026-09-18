@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from gway.config import GwayPaths
+from gway.dispatcher.errors import DispatchError
 from gway.log_command import run_log
 from gway.log_consumers import configure_consumers
-from gway.logs import PublisherBinding
+from gway.logs import PublisherBinding, ServiceRef
+from gway.logs.providers import CommandLogPublisherProvider
 
 
 class FixtureProvider:
@@ -131,3 +135,61 @@ def test_log_command_selects_explicit_provider(tmp_path: Path, monkeypatch) -> N
     assert isinstance(publisher, dict)
     assert publisher["provider"] == "fixture"
     assert "consumer_token_id" not in state
+
+
+def test_command_provider_keeps_current_binding_out_of_dispatch_arguments() -> None:
+    calls: list[tuple[str, list[str]]] = []
+
+    def dispatch(project: str, tokens) -> object:
+        calls.append((project, list(tokens)))
+        return {
+            "provider": "fixture",
+            "destination": "https://logs.example.test",
+            "configuration": {"mode": "remote"},
+            "environment": {"FIXTURE_TOKEN": "secret"},
+            "metadata": {"binding_id": "replacement"},
+        }
+
+    current = PublisherBinding(
+        provider="fixture",
+        destination="https://logs.example.test",
+        configuration={"mode": "remote"},
+        environment={"FIXTURE_TOKEN": "old-secret"},
+        metadata={"binding_id": "current"},
+    )
+    provider = CommandLogPublisherProvider("fixture", dispatch)
+
+    binding = provider.provision(
+        destination="https://logs.example.test",
+        consumer="wire",
+        service=ServiceRef(project="wire", service="worker"),
+        current=current,
+    )
+
+    assert binding.metadata == {"binding_id": "replacement"}
+    project, argv = calls[0]
+    assert project == "fixture"
+    assert argv[:5] == [
+        "log-publisher",
+        "--destination",
+        "https://logs.example.test",
+        "--consumer",
+        "wire",
+    ]
+    assert argv[argv.index("--service-project") + 1] == "wire"
+    assert argv[argv.index("--service") + 1] == "worker"
+    assert "--current" not in argv
+    assert "old-secret" not in repr(argv)
+
+
+def test_command_provider_rejects_invalid_binding_record() -> None:
+    provider = CommandLogPublisherProvider(
+        "fixture",
+        lambda _project, _tokens: {"provider": "fixture"},
+    )
+
+    with pytest.raises(DispatchError, match="invalid binding record"):
+        provider.provision(
+            destination="https://logs.example.test",
+            consumer="wire",
+        )
