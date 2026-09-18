@@ -1,0 +1,9 @@
+# file: recipes/rfid_lcd_loop.gwr
+#
+# Continuously scan RFID cards and show the UID with the timestamp on the LCD.
+
+rfid scan --once
+clock timestamp
+hello-world --greeting Card [rfid] @ [clock]
+lcd show %[greeting] --wrap
+repeat --rest=0.1

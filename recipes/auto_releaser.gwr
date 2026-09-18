@@ -1,0 +1,12 @@
+# file: recipes/auto_releaser.gwr
+#
+# Automated release loop that watches the tracked git branch for changes and
+# triggers `gway release build --all` whenever a new commit appears. Successful
+# releases rest for five minutes while failures raise a Windows notification and
+# open a Notepad report with captured logs. The auto releaser runs on a
+# background thread managed by the `until` builtin so the recipe can restart it
+# automatically when requested.
+
+release auto-releaser-check --branch %[branch|main] --remote %[remote|origin]
+release auto-releaser --branch %[branch|main] --remote %[remote|origin] --poll-interval %[poll_interval|60] --success-rest %[success_rest|300] --failure-rest %[failure_rest|60] --retry-on-failure %[retry_on_failure|false] --background true
+until --done --notify

@@ -1,0 +1,22 @@
+# file: recipes/transcriptor.gwr
+#
+# Listen for speech continuously, classify recognized transcripts using
+# keyword buckets, and print the category alongside the text. Invoke via:
+#   gway -r transcriptor --happy "glad fun excited" --sad "tired bored"
+# Additional options can tune the recognizer:
+#   --engine       Recognition backend (google, sphinx, auto)
+#   --language     Locale passed to the recognizer (default: en-US)
+#   --pause        Seconds of silence that mark the end of a sentence
+#   --phrase       Maximum seconds to capture for a single sentence
+#   --rest         Delay in seconds between classification loops
+#   --energy       Override the recognizer energy threshold
+#   --ambient      Seconds to sample ambient noise before listening
+#   --dynamic      Enable automatic energy adjustment (true/false)
+#   --timeout      Abort listening if no speech is heard within N seconds
+#   --once         Exit after the first successful transcription
+#   --default      Label applied when no categories are provided
+#   --unknown      Label applied when a transcript matches no keywords
+#   --reserved     Extra CLI keys to ignore when building categories
+
+transcriptor configure --default %[default|uncategorized] --unknown %[unknown|] --reserved %[reserved|]
+transcriptor listen --language %[language|en-US] --engine %[engine|auto] --pause %[pause|0.8] --phrase %[phrase|] --rest %[rest|0] --energy %[energy|] --ambient %[ambient|0.5] --dynamic %[dynamic|true] --timeout %[timeout|] --once %[once|false]
