@@ -1,6 +1,7 @@
 import pytest
 
-from gway.console import chunk, parse_recipe_context, process
+from gway.console import parse_recipe_context, process
+from gway.tokens import chunk
 
 
 def test_unknown_keyword_fails_cleanly(gateway):

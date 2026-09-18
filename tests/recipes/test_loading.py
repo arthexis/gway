@@ -1,6 +1,6 @@
 import pytest
 
-from gway.console import load_recipe
+from gway.recipes import load_recipe
 
 
 def test_recipe_loads_explicit_path(tmp_path, token_values):

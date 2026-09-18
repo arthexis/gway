@@ -1,4 +1,4 @@
-from gway.console import load_recipe
+from gway.recipes import load_recipe
 
 
 def test_section_selection(tmp_path, token_values):

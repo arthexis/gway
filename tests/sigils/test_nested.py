@@ -1,6 +1,7 @@
 import pytest
 
-from gway.console import Token, process
+from gway.console import process
+from gway.tokens import Token
 
 
 def test_nested_sigil_selects_mapping_key(gateway):

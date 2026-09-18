@@ -1,6 +1,6 @@
 import pytest
 
-from gway.console import Token
+from gway.tokens import Token
 
 
 @pytest.fixture

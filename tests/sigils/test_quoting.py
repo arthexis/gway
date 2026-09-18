@@ -1,6 +1,7 @@
 import pytest
 
-from gway.console import Token, chunk, process, tokenize
+from gway.console import process
+from gway.tokens import Token, chunk, tokenize
 
 
 def test_double_quotes_group_spaces():
