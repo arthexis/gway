@@ -22,6 +22,21 @@ tests:
 
 The package currently has no runtime dependencies.
 
+Manual chains
+-------------
+
+Python code can mirror recipe-style chaining with a scoped callable chain:
+
+.. code-block:: python
+
+   with gw.chain("chargers") as __:
+       __("filter active")
+       report = __("summarize")
+
+The name ``__`` is only a convention for short-lived chain variables. Any
+valid Python name can be used. Each call receives the previous raw result as
+its pipeline input while preserving normal Python return values.
+
 License
 -------
 

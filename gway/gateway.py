@@ -144,6 +144,12 @@ class Gateway(Resolver):
         _, result = process(commands, gw_instance=self)
         return result
 
+    def chain(self, command, *args, **kwargs):
+        """Create a scoped manual pipeline rooted in an initial command."""
+        from .chain import Chain
+
+        return Chain(self, command, args=args, kwargs=kwargs)
+
     def wrap(self, func_name, func_obj):
         """Normalize a Python callable to GWAY context and result conventions."""
         if not callable(func_obj):

@@ -38,11 +38,19 @@ def convert_argument(token, parameter, runtime):
     return value
 
 
-def bind_arguments(func, tokens, *, runtime, interactive=False) -> BoundCall:
-    """Bind explicit command tokens to a callable without resolving semantic gaps."""
+def bind_arguments(
+    func,
+    tokens,
+    *,
+    runtime,
+    interactive=False,
+    initial_args=(),
+    initial_kwargs=None,
+) -> BoundCall:
+    """Bind command tokens after any already-supplied native arguments."""
     signature = inspect.signature(func)
     positional = []
-    keywords = {}
+    keywords = {} if initial_kwargs is None else dict(initial_kwargs)
     tokens = list(tokens)
     index = 0
     literal_mode = False
@@ -81,11 +89,17 @@ def bind_arguments(func, tokens, *, runtime, interactive=False) -> BoundCall:
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
         )
     ]
-    converted_positional = []
+    converted_positional = list(initial_args)
+    positional_offset = len(converted_positional)
     for offset, token in enumerate(positional):
-        if offset < len(positional_parameters):
+        parameter_offset = positional_offset + offset
+        if parameter_offset < len(positional_parameters):
             converted_positional.append(
-                convert_argument(token, positional_parameters[offset], runtime)
+                convert_argument(
+                    token,
+                    positional_parameters[parameter_offset],
+                    runtime,
+                )
             )
         else:
             converted_positional.append(token_value(token))
