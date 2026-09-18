@@ -143,10 +143,6 @@ def _resolve_single(raw, lookup_fn):
         gw.verbose(f"Sigil [{original_raw}] not resolved, using fallback {fallback_value!r}")
         return fallback_value
 
-    if quoted:
-        gw.verbose(f"Sigil [{original_raw}] not resolved, using quoted literal '{key}'")
-        return key
-
     raise KeyError(f"Unresolved sigil: [{original_raw}]")
 
 def _follow_path(value, parts, lookup_fn=None):

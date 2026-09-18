@@ -34,5 +34,5 @@ jobs:
         run: |
           python -c "import gway; from gway import Gateway; Gateway(); print('gway import OK')"
 
-      - name: Run smoke tests
-        run: python -m pytest -q tests/test_smoke.py
+      - name: Run core test suite
+        run: python -m pytest -q
