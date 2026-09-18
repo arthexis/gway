@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'src/gway/logging.py'
-      - 'src/gway/log_command.py'
+      - 'src/gway/logs/**'
       - 'src/gway/runtime.py'
       - 'src/gway/bootstrap.py'
       - 'tests/test_log_command.py'

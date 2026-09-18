@@ -7,7 +7,7 @@ import pytest
 
 from gway.chain_context import chain_context_scope
 from gway.dispatcher.errors import DispatchError
-from gway.log_command import run_log
+from gway.logs.command import run_log
 from gway.logging import write_event
 from gway.runtime import GwayRuntime
 

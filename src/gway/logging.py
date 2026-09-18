@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Mapping
 from urllib.parse import unquote, urlparse
 
-from .log_http import clear_tokens, publish as publish_http
+from .logs.publishers import clear_bindings, publish as publish_remote
 
 _RUN_ID_ENV = "GWAY_RUN_ID"
 _LOG_DIR_ENV = "GWAY_LOG_DIR"
@@ -50,11 +50,11 @@ def _safe_run_id(value: str) -> bool:
     return not path.is_absolute() and path.name == value and "/" not in value and "\\" not in value
 
 
-def _activate_private_tokens() -> None:
+def _activate_private_publishers() -> None:
     try:
-        from .log_consumers import activate_publisher_tokens
+        from .logs.configuration import activate_publishers
 
-        activate_publisher_tokens(_destinations.get())
+        activate_publishers(_destinations.get())
     except Exception:
         # Logging remains best-effort. A corrupt/unavailable optional consumer
         # binding must never turn a normal GWAY command into a failure.
@@ -65,8 +65,8 @@ def _reset_run_context() -> None:
     _tags.set(())
     _destinations.set(_default_destinations())
     _failed_remote_destinations.set(frozenset())
-    clear_tokens()
-    _activate_private_tokens()
+    clear_bindings()
+    _activate_private_publishers()
 
 
 def _persist_run_context(run_id: str) -> None:
@@ -92,9 +92,9 @@ def _restore_run_context(run_id: str) -> None:
             if isinstance(destinations, list) and all(isinstance(value, str) for value in destinations):
                 _destinations.set(tuple(dict.fromkeys((*_destinations.get(), *destinations))))
     # Consumer state stores only a non-secret path in the inherited environment;
-    # reload/exec can therefore recover the process-local publisher credential
-    # without exporting the bearer token to unrelated subprocesses.
-    _activate_private_tokens()
+    # reload/exec can therefore recover the process-local publisher binding
+    # without exporting provider secrets to unrelated subprocesses.
+    _activate_private_publishers()
 
 
 def current_run_id() -> str:
@@ -180,7 +180,7 @@ def _replace(path: Path, data: bytes) -> None:
 def _publish_remote(destination: str, data: bytes) -> None:
     if destination in _failed_remote_destinations.get():
         return
-    if publish_http(destination, current_run_id(), data):
+    if publish_remote(destination, current_run_id(), data):
         return
     _failed_remote_destinations.set(_failed_remote_destinations.get() | {destination})
 
@@ -220,7 +220,7 @@ def configure(*, tags: tuple[str, ...] = (), to: tuple[str, ...] = ()) -> dict[s
     if to:
         additions = tuple(value for value in to if value not in _destinations.get())
         _destinations.set(tuple(dict.fromkeys((*_destinations.get(), *to))))
-        _activate_private_tokens()
+        _activate_private_publishers()
         for destination in additions:
             _backfill(destination)
     _persist_run_context(run_id)

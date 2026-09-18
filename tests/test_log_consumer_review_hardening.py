@@ -3,19 +3,19 @@ from __future__ import annotations
 import importlib
 import threading
 import time
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
-import gway.log_consumers as consumers_module
+import gway.logs.configuration as consumers_module
+from gway.logs.state import state_lock
 from gway.adapters import AdapterRegistry
 from gway.command import Command
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.dispatcher.outcome import redact_command_results
 from gway.dispatcher.errors import DispatchError
-from gway.log_consumers import configure_consumers
+from gway.logs.configuration import configure_consumers
 from gway.project import Project
 from gway.registry import Registry
 from gway.service import ServiceManager
@@ -25,23 +25,36 @@ class FakeWeb:
     def __init__(self) -> None:
         self.token_id = "local-ingest"
         self.token = "gweb_v1_local-ingest_secret"
-        self.revoked = False
+        self.rotate = False
+        self.bindings: dict[str, dict[str, object]] = {}
 
     def dispatch(self, project: str, tokens) -> object:
         assert project == "web"
-        if "--list" in tokens:
-            return [
-                {
-                    "token_id": self.token_id,
-                    "expires_at": (
-                        datetime.now(timezone.utc) + timedelta(days=30)
-                    ).isoformat(),
-                    "revoked_at": (
-                        datetime.now(timezone.utc).isoformat() if self.revoked else None
-                    ),
-                }
-            ]
-        return {"token_id": self.token_id, "token": self.token}
+        assert tokens[0] == "log-publisher"
+        destination = tokens[tokens.index("--destination") + 1]
+        current = self.bindings.get(destination)
+        if current is not None and not self.rotate:
+            return current
+        binding = {
+            "provider": "web",
+            "destination": destination,
+            "configuration": {
+                "transport": "http",
+                "url_template": f"{destination}/api/logs/{{run_id}}/events",
+                "headers": {
+                    "Authorization": "Bearer {GWAY_LOG_TOKEN}",
+                    "Content-Type": "application/x-ndjson",
+                },
+            },
+            "environment": {
+                "GWAY_LOG_DESTINATION": destination,
+                "GWAY_LOG_TOKEN": self.token,
+            },
+            "metadata": {"token_id": self.token_id},
+        }
+        self.bindings[destination] = binding
+        self.rotate = False
+        return binding
 
 
 class SecretAdapter:
@@ -61,6 +74,11 @@ class SecretAdapter:
 
 def _paths(tmp_path: Path) -> GwayPaths:
     return GwayPaths(tmp_path / "config", tmp_path / "data")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_service_attachment_state(monkeypatch):
+    monkeypatch.delenv("GWAY_SERVICE_ATTACHMENT_STATE", raising=False)
 
 
 def _service_project(tmp_path: Path) -> Project:
@@ -161,7 +179,7 @@ def test_state_lock_serializes_writers(tmp_path: Path) -> None:
     def worker() -> None:
         nonlocal active, maximum_active
         ready.wait()
-        with consumers_module._state_lock(paths):
+        with state_lock(paths):
             with guard:
                 active += 1
                 maximum_active = max(maximum_active, active)
@@ -226,7 +244,7 @@ def test_environment_change_refreshes_registered_consumers(tmp_path: Path, monke
     assert moved["refreshed_services"] == ["gway-wire.service"]
 
 
-def test_rotated_token_refreshes_registered_consumers(tmp_path: Path, monkeypatch) -> None:
+def test_provider_rotated_binding_refreshes_registered_consumers(tmp_path: Path, monkeypatch) -> None:
     paths = _paths(tmp_path)
     project = _service_project(tmp_path)
     web = FakeWeb()
@@ -250,7 +268,7 @@ def test_rotated_token_refreshes_registered_consumers(tmp_path: Path, monkeypatc
     )
     refreshed.clear()
 
-    web.revoked = True
+    web.rotate = True
     web.token_id = "replacement"
     web.token = "gweb_v1_replacement_secret"
     result = configure_consumers(
@@ -263,3 +281,109 @@ def test_rotated_token_refreshes_registered_consumers(tmp_path: Path, monkeypatc
 
     assert refreshed == ["wire"]
     assert result["refreshed_services"] == ["gway-wire.service"]
+
+
+def test_publisher_configuration_change_refreshes_registered_consumers(
+    tmp_path: Path, monkeypatch
+) -> None:
+    paths = _paths(tmp_path)
+    project = _service_project(tmp_path)
+    refreshed: list[str] = []
+    version = 1
+
+    class Provider:
+        name = "fixture"
+
+        def provision(
+            self,
+            *,
+            destination: str,
+            consumer: str,
+            service=None,
+            current=None,
+        ):
+            from gway.logs import PublisherBinding
+
+            return PublisherBinding(
+                provider=self.name,
+                destination=destination,
+                configuration={
+                    "transport": "http",
+                    "url_template": f"{destination}/v{version}/{{run_id}}",
+                },
+                environment={"FIXTURE_TOKEN": "stable"},
+            )
+
+    provider = Provider()
+
+    def resolve_consumer(name: str) -> Project | None:
+        return project if name.casefold() in {"wire", "gway-wire"} else None
+
+    def resolve_provider(name: str):
+        return provider if name == "fixture" else None
+
+    monkeypatch.setattr(
+        consumers_module,
+        "_refresh_running_consumer_services",
+        lambda consumers, resolver: refreshed.extend(consumers) or ["gway-wire.service"],
+    )
+
+    configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=lambda _project, _tokens: None,
+        paths=paths,
+        resolve_consumer=resolve_consumer,
+        provider="fixture",
+        provider_resolver=resolve_provider,
+    )
+    refreshed.clear()
+    version = 2
+
+    result = configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=lambda _project, _tokens: None,
+        paths=paths,
+        resolve_consumer=resolve_consumer,
+        provider="fixture",
+        provider_resolver=resolve_provider,
+    )
+
+    assert refreshed == ["wire"]
+    assert result["refreshed_services"] == ["gway-wire.service"]
+
+
+def test_failed_state_commit_restores_previous_environment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    paths = _paths(tmp_path)
+    web = FakeWeb()
+
+    configure_consumers(
+        ["wire"],
+        ["https://logs.example.test"],
+        dispatch=web.dispatch,
+        paths=paths,
+    )
+    environment = paths.data_dir / "log-consumers" / "wire.env"
+    previous = environment.read_bytes()
+
+    web.rotate = True
+    web.token_id = "replacement"
+    web.token = "replacement-secret"
+
+    def fail_write_state(*_args, **_kwargs):
+        raise OSError("simulated state failure")
+
+    monkeypatch.setattr(consumers_module, "write_state", fail_write_state)
+
+    with pytest.raises(OSError, match="simulated state failure"):
+        configure_consumers(
+            ["wire"],
+            ["https://logs.example.test"],
+            dispatch=web.dispatch,
+            paths=paths,
+        )
+
+    assert environment.read_bytes() == previous

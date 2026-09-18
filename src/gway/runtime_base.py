@@ -14,7 +14,7 @@ from .dispatcher.resolution import resolve_command, resolve_default_command
 from .explain import record
 from .expression import MANAGED_EXPRESSION_PROJECT, normalize_managed_args
 from .install import Installer
-from .log_command import run_log
+from .logs.command import run_log
 from .operations.install import install_project, uninstall_project
 from .operations.project import (
     managed_status as _shared_managed_status,

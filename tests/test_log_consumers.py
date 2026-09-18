@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -11,9 +10,9 @@ import gway.runtime as runtime_module
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.dispatcher.errors import DispatchError
-from gway.log_command import run_log
-from gway.log_consumers import configure_consumers, consumer_environment_file
-from gway.log_http import clear_tokens
+from gway.logs.command import run_log
+from gway.logs.configuration import configure_consumers, consumer_environment_file
+from gway.logs.publishers import clear_bindings
 from gway.logging import configure, current_context, write_event
 from gway.project import Project
 from gway.registry import Registry
@@ -33,19 +32,21 @@ def _isolate_consumer_logging_environment(monkeypatch):
         "GWAY_LOG_DESTINATION",
         "GWAY_LOG_TOKEN",
         "GWAY_LOG_CONSUMER_STATE",
+        "GWAY_SERVICE_ATTACHMENT_STATE",
         "GWAY_LOG_CONTEXT",
     ):
         monkeypatch.delenv(name, raising=False)
-    clear_tokens()
+    clear_bindings()
     yield
     for name in (
         "GWAY_LOG_DESTINATION",
         "GWAY_LOG_TOKEN",
         "GWAY_LOG_CONSUMER_STATE",
+        "GWAY_SERVICE_ATTACHMENT_STATE",
         "GWAY_LOG_CONTEXT",
     ):
         os.environ.pop(name, None)
-    clear_tokens()
+    clear_bindings()
     logging_module._run_id.set(None)
     logging_module._tags.set(())
     logging_module._destinations.set(())
@@ -57,28 +58,37 @@ class FakeWeb:
         self.issued = 0
         self.token_id = "local-ingest"
         self.token = "gweb_v1_local-ingest_secret"
-        self.revoked = False
-        self.naive_expiry = False
+        self.rotate = False
+        self.bindings: dict[str, dict[str, object]] = {}
 
     def dispatch(self, project: str, tokens) -> object:
         assert project == "web"
-        assert tokens[0] == "token"
-        if "--list" in tokens:
-            expiry = datetime.now(timezone.utc) + timedelta(days=30)
-            if self.naive_expiry:
-                expiry = expiry.replace(tzinfo=None)
-            return [
-                {
-                    "token_id": self.token_id,
-                    "expires_at": expiry.isoformat(),
-                    "revoked_at": datetime.now(timezone.utc).isoformat()
-                    if self.revoked
-                    else None,
-                }
-            ]
+        assert tokens[0] == "log-publisher"
+        destination = tokens[tokens.index("--destination") + 1]
+        current = self.bindings.get(destination)
+        if current is not None and not self.rotate:
+            return current
         self.issued += 1
-        assert tokens[tokens.index("--scope") + 1] == "logs:ingest"
-        return {"token_id": self.token_id, "token": self.token}
+        binding = {
+            "provider": "web",
+            "destination": destination,
+            "configuration": {
+                "transport": "http",
+                "url_template": f"{destination}/api/logs/{{run_id}}/events",
+                "headers": {
+                    "Authorization": "Bearer {GWAY_LOG_TOKEN}",
+                    "Content-Type": "application/x-ndjson",
+                },
+            },
+            "environment": {
+                "GWAY_LOG_DESTINATION": destination,
+                "GWAY_LOG_TOKEN": self.token,
+            },
+            "metadata": {"token_id": self.token_id},
+        }
+        self.bindings[destination] = binding
+        self.rotate = False
+        return binding
 
 
 def _wire_project(tmp_path: Path) -> Project:
@@ -115,7 +125,7 @@ def test_log_plural_consumers_accepts_csv_and_singular_accepts_one(
 
     assert state["consumers"] == ["wire", "arthexis", "epaper"]
     assert state["consumer_destination"] == "https://logs.example.test"
-    assert state["consumer_token_id"] == web.token_id
+    assert "consumer_token_id" not in state
     assert web.issued == 1
     for consumer in ("wire", "arthexis", "epaper"):
         environment = paths.data_dir / "log-consumers" / f"{consumer}.env"
@@ -124,6 +134,7 @@ def test_log_plural_consumers_accepts_csv_and_singular_accepts_one(
         text = environment.read_text(encoding="utf-8")
         assert "GWAY_LOG_DESTINATION=\"https://logs.example.test\"" in text
         assert f'GWAY_LOG_TOKEN="{web.token}"' in text
+        assert f'GWAY_LOG_CONSUMER_STATE="{paths.data_dir / "log-consumers.json"}"' in text
 
 
 def test_singular_consumer_rejects_csv(tmp_path: Path, monkeypatch) -> None:
@@ -136,7 +147,7 @@ def test_singular_consumer_rejects_csv(tmp_path: Path, monkeypatch) -> None:
         )
 
 
-def test_consumer_binding_reuses_live_local_token(tmp_path: Path) -> None:
+def test_consumer_binding_reuses_provider_binding(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     web = FakeWeb()
 
@@ -153,12 +164,15 @@ def test_consumer_binding_reuses_live_local_token(tmp_path: Path) -> None:
         paths=paths,
     )
 
-    assert first["token_id"] == second["token_id"] == web.token_id
+    assert first["publisher"] == second["publisher"] == {
+        "provider": "web",
+        "destination": "https://logs.example.test",
+    }
     assert second["consumers"] == ["wire", "arthexis"]
     assert web.issued == 1
 
 
-def test_consumer_binding_accepts_naive_future_expiry(tmp_path: Path) -> None:
+def test_consumer_binding_accepts_provider_rotated_binding(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     web = FakeWeb()
     configure_consumers(
@@ -167,29 +181,7 @@ def test_consumer_binding_accepts_naive_future_expiry(tmp_path: Path) -> None:
         dispatch=web.dispatch,
         paths=paths,
     )
-    web.naive_expiry = True
-
-    result = configure_consumers(
-        ["wire"],
-        ["https://logs.example.test"],
-        dispatch=web.dispatch,
-        paths=paths,
-    )
-
-    assert result["token_id"] == web.token_id
-    assert web.issued == 1
-
-
-def test_consumer_binding_rotates_revoked_token(tmp_path: Path) -> None:
-    paths = _paths(tmp_path)
-    web = FakeWeb()
-    configure_consumers(
-        ["wire"],
-        ["https://logs.example.test"],
-        dispatch=web.dispatch,
-        paths=paths,
-    )
-    web.revoked = True
+    web.rotate = True
     web.token_id = "replacement"
     web.token = "gweb_v1_replacement_secret"
 
@@ -200,8 +192,38 @@ def test_consumer_binding_rotates_revoked_token(tmp_path: Path) -> None:
         paths=paths,
     )
 
-    assert result["token_id"] == "replacement"
+    assert result["publisher"] == {
+        "provider": "web",
+        "destination": "https://logs.example.test",
+    }
     assert web.issued == 2
+
+
+def test_log_command_result_does_not_expose_provider_secret(
+    tmp_path: Path, monkeypatch
+) -> None:
+    paths = _paths(tmp_path)
+    web = FakeWeb()
+    monkeypatch.setenv("GWAY_LOG_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("GWAY_RUN_ID", "test-secret-result")
+
+    state = run_log(
+        [
+            "--to",
+            "https://logs.example.test",
+            "--consumer",
+            "wire",
+        ],
+        dispatch=web.dispatch,
+        paths=paths,
+        resolve_consumer=lambda _name: None,
+    )
+
+    assert web.token not in repr(state)
+    assert state["consumer_publisher"] == {
+        "provider": "web",
+        "destination": "https://logs.example.test",
+    }
 
 
 def test_consumer_credential_is_not_exported_to_shared_process_environment(tmp_path: Path) -> None:
@@ -365,7 +387,7 @@ def test_explicit_destination_moves_consumer_from_existing_sink(
     web = FakeWeb()
     monkeypatch.setenv("GWAY_LOG_DIR", str(tmp_path / "runs"))
     monkeypatch.setenv("GWAY_RUN_ID", "test-move-consumer")
-    monkeypatch.setattr(logging_module, "publish_http", lambda *_args: True)
+    monkeypatch.setattr(logging_module, "publish_remote", lambda *_args: True)
 
     run_log(
         ["--to", "https://old.example.test", "--consumer", "wire"],
@@ -401,7 +423,7 @@ def test_consumer_activation_retries_previously_failed_sink(
 
     monkeypatch.setenv("GWAY_LOG_DIR", str(tmp_path / "runs"))
     monkeypatch.setenv("GWAY_RUN_ID", "test-retry-consumer")
-    monkeypatch.setattr(logging_module, "publish_http", publish)
+    monkeypatch.setattr(logging_module, "publish_remote", publish)
 
     configure(to=(destination,))
     assert destination in logging_module._failed_remote_destinations.get()
