@@ -1,6 +1,10 @@
 import pytest
 
-from gway.console import load_recipe
+from gway.console import Token, load_recipe
+
+
+def token_values(command):
+    return [token.value if isinstance(token, Token) else token for token in command["tokens"]]
 
 
 def test_recipe_loads_explicit_path(tmp_path):
@@ -8,7 +12,7 @@ def test_recipe_loads_explicit_path(tmp_path):
     path.write_text("echo hello\n", encoding="utf-8")
 
     commands, comments = load_recipe(path)
-    assert commands == [{"tokens": ["echo", "hello"]}]
+    assert token_values(commands[0]) == ["echo", "hello"]
     assert comments == []
 
 
@@ -22,17 +26,13 @@ def test_multiline_flags_extend_previous_operation(tmp_path):
     )
 
     commands, _ = load_recipe(path)
-    assert commands == [
-        {
-            "tokens": [
-                "create",
-                "charger",
-                "--serial",
-                "ABC",
-                "--limit",
-                "32",
-            ]
-        }
+    assert token_values(commands[0]) == [
+        "create",
+        "charger",
+        "--serial",
+        "ABC",
+        "--limit",
+        "32",
     ]
 
 
@@ -46,7 +46,7 @@ def test_blank_lines_and_comments_do_not_create_operations(tmp_path):
     )
 
     commands, comments = load_recipe(path)
-    assert commands == [{"tokens": ["echo", "one"]}]
+    assert token_values(commands[0]) == ["echo", "one"]
     assert comments == ["# heading", "# explanation"]
 
 
@@ -61,7 +61,8 @@ def test_section_selection(tmp_path):
     )
 
     commands, _ = load_recipe(path, section="Second")
-    assert commands == [{"tokens": ["echo", "two"]}]
+    assert len(commands) == 1
+    assert token_values(commands[0]) == ["echo", "two"]
 
 
 def test_missing_recipe_raises(tmp_path):
@@ -79,4 +80,4 @@ def test_python_fence_is_plain_recipe_text_not_executed(tmp_path):
     path = tmp_path / "python.rx"
     path.write_text("result = dangerous()\n", encoding="utf-8")
     commands, _ = load_recipe(path)
-    assert commands == [{"tokens": ["result", "=", "dangerous()"]}]
+    assert token_values(commands[0]) == ["result", "=", "dangerous()"]
