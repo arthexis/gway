@@ -105,8 +105,8 @@ class Gateway(Resolver, Runner):
             if value is not None:
                 setattr(instance, f"{name}_enabled", bool(value))
 
-    def wrap_callable(self, func_name, func_obj):
-        """Adapt a Python callable to GWAY context and result conventions."""
+    def wrap(self, func_name, func_obj):
+        """Normalize a Python callable to GWAY context and result conventions."""
         if not callable(func_obj):
             raise TypeError(f"{func_name!r} is not callable")
 
@@ -169,6 +169,9 @@ class Gateway(Resolver, Runner):
         wrapped.__doc__ = getattr(func_obj, "__doc__", None)
         wrapped.__wrapped__ = func_obj
         return wrapped
+
+    # Temporary compatibility alias while callers migrate to the normalization API.
+    wrap_callable = wrap
 
     def __getattr__(self, name):
         logger_method = getattr(self.logger, name, None)

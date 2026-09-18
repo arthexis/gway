@@ -43,7 +43,7 @@ def test_nested_sigil_in_double_quoted_token_can_resolve(gateway):
     def echo(value: str):
         return value
 
-    gateway.echo = gateway.wrap_callable("echo_value", echo)
+    gateway.echo = gateway.wrap("echo_value", echo)
     _, last = process(
         [[Token("echo"), Token("[charger [field]]", "double")]],
         gw_instance=gateway,
@@ -58,7 +58,7 @@ def test_nested_sigil_in_single_quoted_token_is_literal(gateway):
     def echo(value: str):
         return value
 
-    gateway.echo = gateway.wrap_callable("echo_value", echo)
+    gateway.echo = gateway.wrap("echo_value", echo)
     _, last = process(
         [[Token("echo"), Token("[charger [field]]", "single")]],
         gw_instance=gateway,
