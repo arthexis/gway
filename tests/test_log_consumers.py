@@ -10,7 +10,7 @@ import gway.runtime as runtime_module
 from gway.config import GwayPaths
 from gway.dispatcher import Dispatcher
 from gway.dispatcher.errors import DispatchError
-from gway.log_command import run_log
+from gway.logs.command import run_log
 from gway.log_consumers import configure_consumers, consumer_environment_file
 from gway.logs.publishers import clear_bindings
 from gway.logging import configure, current_context, write_event

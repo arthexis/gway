@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from gway.history import last_run
-from gway.log_command import run_log
+from gway.logs.command import run_log
 
 
 def _write_run(root: Path, run_id: str, events: list[dict[str, object]]) -> None:

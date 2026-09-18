@@ -7,7 +7,7 @@ import pytest
 
 from gway.config import GwayPaths
 from gway.dispatcher.errors import DispatchError
-from gway.log_command import run_log
+from gway.logs.command import run_log
 from gway.log_consumers import configure_consumers
 from gway.logs import PublisherBinding, ServiceRef
 from gway.logs.providers import CommandLogPublisherProvider

@@ -1,4 +1,5 @@
 from .binding import LogBinding, PublisherBinding, ServiceRef
+from .command import run_log
 from .consumers import ConsumerResolver, normalize_consumers
 from .interface import LogPublisherProvider
 from .providers import CommandLogPublisherProvider, ProviderResolver, resolve_provider
@@ -9,6 +10,7 @@ __all__ = [
     "LogBinding",
     "LogPublisherProvider",
     "ProviderResolver",
+    "run_log",
     "PublisherBinding",
     "normalize_consumers",
     "resolve_provider",
