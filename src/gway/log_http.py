@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-import os
-from contextvars import ContextVar
+from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlparse, urlunparse
+from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-_TOKEN_ENV = "GWAY_LOG_TOKEN"
-_DESTINATION_ENV = "GWAY_LOG_DESTINATION"
+from .logs.binding import PublisherBinding
+
 _TIMEOUT_SECONDS = 2.0
-_tokens: ContextVar[dict[str, str]] = ContextVar("gway_log_http_tokens", default={})
 
 
 class _RejectRedirects(HTTPRedirectHandler):
-    """Reject redirects so bearer credentials and POST bodies never move origins."""
+    """Reject redirects so provider headers and POST bodies never move origins."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
         return None
@@ -22,53 +20,57 @@ class _RejectRedirects(HTTPRedirectHandler):
 _OPENER = build_opener(_RejectRedirects())
 
 
-def set_token(destination: str, token: str) -> None:
-    """Set a process-local bearer credential for one logging destination."""
-    current = dict(_tokens.get())
-    current[destination] = token
-    _tokens.set(current)
+def _render(template: str, values: Mapping[str, str], *, run_id: str) -> str:
+    rendered = template.replace("{run_id}", quote(run_id, safe=""))
+    for key, value in values.items():
+        rendered = rendered.replace("{" + key + "}", value)
+    return rendered
 
 
-def clear_tokens() -> None:
-    """Drop process-local publisher credentials without modifying the environment."""
-    _tokens.set({})
-
-
-def ingest_url(destination: str, run_id: str) -> str | None:
-    """Return the GWAY Web ingest endpoint for an HTTP(S) log destination."""
-    parsed = urlparse(destination)
+def endpoint(binding: PublisherBinding, run_id: str) -> str | None:
+    """Render one provider-declared HTTP endpoint."""
+    template = binding.configuration.get("url_template")
+    if not isinstance(template, str) or not template:
+        return None
+    url = _render(template, binding.environment, run_id=run_id)
+    parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None
-    base_path = parsed.path.rstrip("/")
-    if base_path.endswith("/api/logs"):
-        path = f"{base_path}/{quote(run_id, safe='')}/events"
-    else:
-        path = f"{base_path}/api/logs/{quote(run_id, safe='')}/events"
-    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
+    return url
 
 
-def _environment_token(destination: str) -> str | None:
-    configured_destination = os.environ.get(_DESTINATION_ENV, "").strip()
-    if configured_destination != destination:
+def headers(binding: PublisherBinding, run_id: str) -> dict[str, str] | None:
+    """Render provider-declared HTTP headers from its private environment."""
+    configured = binding.configuration.get("headers", {})
+    if not isinstance(configured, Mapping):
         return None
-    token = os.environ.get(_TOKEN_ENV)
-    return token if token else None
+    rendered: dict[str, str] = {}
+    for key, value in configured.items():
+        if not isinstance(key, str) or not key or not isinstance(value, str):
+            return None
+        if any(character in key for character in "\r\n:"):
+            return None
+        rendered_value = _render(value, binding.environment, run_id=run_id)
+        if "\r" in rendered_value or "\n" in rendered_value:
+            return None
+        rendered[key] = rendered_value
+    return rendered
 
 
-def publish(destination: str, run_id: str, data: bytes) -> bool:
-    """Best-effort publish an NDJSON batch using a destination-scoped bearer token."""
-    token = _tokens.get().get(destination) or _environment_token(destination)
-    endpoint = ingest_url(destination, run_id)
-    if not token or endpoint is None or not data:
+def publish(binding: PublisherBinding, run_id: str, data: bytes) -> bool:
+    """Best-effort publish using an explicit provider-declared HTTP request."""
+    url = endpoint(binding, run_id)
+    request_headers = headers(binding, run_id)
+    if url is None or request_headers is None or not data:
+        return False
+    method = binding.configuration.get("method", "POST")
+    if not isinstance(method, str) or method.upper() not in {"POST", "PUT"}:
         return False
     request = Request(
-        endpoint,
+        url,
         data=data,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/x-ndjson",
-        },
+        method=method.upper(),
+        headers=request_headers,
     )
     try:
         with _OPENER.open(request, timeout=_TIMEOUT_SECONDS) as response:
@@ -78,4 +80,4 @@ def publish(destination: str, run_id: str, data: bytes) -> bool:
         return False
 
 
-__all__ = ["clear_tokens", "ingest_url", "publish", "set_token"]
+__all__ = ["endpoint", "headers", "publish"]

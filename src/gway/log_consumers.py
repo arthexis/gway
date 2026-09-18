@@ -29,7 +29,6 @@ from .logs.state import (
 from .project import Project
 from .service.attachments import attach_environment_files, detach_environment_files
 
-_LOG_TOKEN_ENV = "GWAY_LOG_TOKEN"
 _STATE_PATH_ENV = "GWAY_LOG_CONSUMER_STATE"
 
 
@@ -139,8 +138,12 @@ def _binding_state_path(paths: GwayPaths | None = None) -> Path:
     return state_path(default_paths())
 
 
-def publisher_token(destination: str, *, paths: GwayPaths | None = None) -> str | None:
-    """Read one private same-host publisher token without exporting it globally."""
+def publisher_binding(
+    destination: str,
+    *,
+    paths: GwayPaths | None = None,
+) -> PublisherBinding | None:
+    """Read one persisted publisher binding for a destination."""
     try:
         state = read_state_path(_binding_state_path(paths))
     except DispatchError:
@@ -151,26 +154,22 @@ def publisher_token(destination: str, *, paths: GwayPaths | None = None) -> str 
     record = bindings.get(destination)
     if not isinstance(record, dict):
         return None
-    binding = _publisher_binding(record)
-    if binding is not None:
-        token = binding.environment.get(_LOG_TOKEN_ENV)
-        return token if isinstance(token, str) and token else None
-    return None
+    return _publisher_binding(record)
 
 
-def activate_publisher_tokens(
+def activate_publishers(
     destinations: Sequence[str],
     *,
     paths: GwayPaths | None = None,
 ) -> None:
-    """Load private consumer credentials into process-local HTTP publisher state."""
-    from .log_http import set_token
+    """Load persisted publisher bindings into process-local runtime state."""
     from .logging import retry_remote_destination
+    from .logs.publishers import set_binding
 
     for destination in destinations:
-        token = publisher_token(destination, paths=paths)
-        if token is not None:
-            set_token(destination, token)
+        binding = publisher_binding(destination, paths=paths)
+        if binding is not None:
+            set_binding(binding)
             retry_remote_destination(destination)
 
 
@@ -308,10 +307,14 @@ def configure_consumers(
         bindings[destination] = record
         write_state(active_paths, state)
         for consumer in combined:
+            service_environment = {
+                **publisher.environment,
+                _STATE_PATH_ENV: str(state_path(active_paths)),
+            }
             environment, changed = _write_environment(
                 active_paths,
                 consumer,
-                publisher.environment,
+                service_environment,
             )
             attach_environment_files(
                 consumer,
@@ -323,10 +326,10 @@ def configure_consumers(
                 changed_consumers.add(consumer)
 
     # Only a non-secret state-file path is exported for reload/exec continuity.
-    # The bearer credential itself stays in private state and process-local HTTP
-    # publisher context, so unrelated managed commands/subprocesses do not inherit it.
+    # Provider secrets stay in private state and process-local publisher bindings,
+    # so unrelated managed commands/subprocesses do not inherit them.
     os.environ[_STATE_PATH_ENV] = str(state_path(active_paths))
-    activate_publisher_tokens((destination,), paths=active_paths)
+    activate_publishers((destination,), paths=active_paths)
     refreshed_services = (
         _refresh_running_consumer_services(sorted(changed_consumers), resolve_consumer)
         if changed_consumers
@@ -393,9 +396,9 @@ def consumer_environment_file(
 
 
 __all__ = [
-    "activate_publisher_tokens",
+    "activate_publishers",
     "configure_consumers",
     "consumer_environment_file",
     "normalize_consumers",
-    "publisher_token",
+    "publisher_binding",
 ]

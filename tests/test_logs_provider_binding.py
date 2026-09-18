@@ -67,9 +67,9 @@ def test_consumer_configuration_uses_resolved_provider_without_web_dispatch(
     assert publisher["metadata"] == {"binding_id": "fixture-1"}
 
     environment = paths.data_dir / "log-consumers" / "wire.env"
-    assert environment.read_text(encoding="utf-8") == (
-        'FIXTURE_LOG_DESTINATION="https://logs.example.test"\n'
-    )
+    contents = environment.read_text(encoding="utf-8")
+    assert 'FIXTURE_LOG_DESTINATION="https://logs.example.test"' in contents
+    assert f'GWAY_LOG_CONSUMER_STATE="{paths.data_dir / "log-consumers.json"}"' in contents
 
     state = json.loads((paths.data_dir / "log-consumers.json").read_text(encoding="utf-8"))
     record = state["bindings"]["https://logs.example.test"]

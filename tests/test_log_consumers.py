@@ -12,7 +12,7 @@ from gway.dispatcher import Dispatcher
 from gway.dispatcher.errors import DispatchError
 from gway.log_command import run_log
 from gway.log_consumers import configure_consumers, consumer_environment_file
-from gway.log_http import clear_tokens
+from gway.logs.publishers import clear_bindings
 from gway.logging import configure, current_context, write_event
 from gway.project import Project
 from gway.registry import Registry
@@ -36,7 +36,7 @@ def _isolate_consumer_logging_environment(monkeypatch):
         "GWAY_LOG_CONTEXT",
     ):
         monkeypatch.delenv(name, raising=False)
-    clear_tokens()
+    clear_bindings()
     yield
     for name in (
         "GWAY_LOG_DESTINATION",
@@ -46,7 +46,7 @@ def _isolate_consumer_logging_environment(monkeypatch):
         "GWAY_LOG_CONTEXT",
     ):
         os.environ.pop(name, None)
-    clear_tokens()
+    clear_bindings()
     logging_module._run_id.set(None)
     logging_module._tags.set(())
     logging_module._destinations.set(())
@@ -72,7 +72,14 @@ class FakeWeb:
         binding = {
             "provider": "web",
             "destination": destination,
-            "configuration": {},
+            "configuration": {
+                "transport": "http",
+                "url_template": f"{destination}/api/logs/{{run_id}}/events",
+                "headers": {
+                    "Authorization": "Bearer {GWAY_LOG_TOKEN}",
+                    "Content-Type": "application/x-ndjson",
+                },
+            },
             "environment": {
                 "GWAY_LOG_DESTINATION": destination,
                 "GWAY_LOG_TOKEN": self.token,
@@ -127,6 +134,7 @@ def test_log_plural_consumers_accepts_csv_and_singular_accepts_one(
         text = environment.read_text(encoding="utf-8")
         assert "GWAY_LOG_DESTINATION=\"https://logs.example.test\"" in text
         assert f'GWAY_LOG_TOKEN="{web.token}"' in text
+        assert f'GWAY_LOG_CONSUMER_STATE="{paths.data_dir / "log-consumers.json"}"' in text
 
 
 def test_singular_consumer_rejects_csv(tmp_path: Path, monkeypatch) -> None:
@@ -346,7 +354,7 @@ def test_explicit_destination_moves_consumer_from_existing_sink(
     web = FakeWeb()
     monkeypatch.setenv("GWAY_LOG_DIR", str(tmp_path / "runs"))
     monkeypatch.setenv("GWAY_RUN_ID", "test-move-consumer")
-    monkeypatch.setattr(logging_module, "publish_http", lambda *_args: True)
+    monkeypatch.setattr(logging_module, "publish_remote", lambda *_args: True)
 
     run_log(
         ["--to", "https://old.example.test", "--consumer", "wire"],
@@ -382,7 +390,7 @@ def test_consumer_activation_retries_previously_failed_sink(
 
     monkeypatch.setenv("GWAY_LOG_DIR", str(tmp_path / "runs"))
     monkeypatch.setenv("GWAY_RUN_ID", "test-retry-consumer")
-    monkeypatch.setattr(logging_module, "publish_http", publish)
+    monkeypatch.setattr(logging_module, "publish_remote", publish)
 
     configure(to=(destination,))
     assert destination in logging_module._failed_remote_destinations.get()

@@ -38,7 +38,14 @@ class FakeWeb:
         binding = {
             "provider": "web",
             "destination": destination,
-            "configuration": {},
+            "configuration": {
+                "transport": "http",
+                "url_template": f"{destination}/api/logs/{{run_id}}/events",
+                "headers": {
+                    "Authorization": "Bearer {GWAY_LOG_TOKEN}",
+                    "Content-Type": "application/x-ndjson",
+                },
+            },
             "environment": {
                 "GWAY_LOG_DESTINATION": destination,
                 "GWAY_LOG_TOKEN": self.token,
