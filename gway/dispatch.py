@@ -1,5 +1,6 @@
 """Unified command resolution and dispatch for GWAY runtimes."""
 
+from .adaptation import adapt_pipeline
 from .binding import bind_arguments
 from .tokens import chunk, token_value, tokenize
 
@@ -57,8 +58,16 @@ def dispatch_stage(
         )
 
     initial_args = tuple(args)
+    initial_kwargs = kwargs
     if pipeline is not _MISSING:
-        initial_args = (pipeline, *initial_args)
+        adapted = adapt_pipeline(
+            func,
+            pipeline,
+            args=initial_args,
+            kwargs=initial_kwargs,
+        )
+        initial_args = adapted.args
+        initial_kwargs = adapted.kwargs
 
     if arguments:
         bound = bind_arguments(
@@ -67,12 +76,12 @@ def dispatch_stage(
             runtime=runtime,
             interactive=runtime.interactive_enabled,
             initial_args=initial_args,
-            initial_kwargs=kwargs,
+            initial_kwargs=initial_kwargs,
         )
         return func(*bound.args, **bound.kwargs)
 
     if pipeline is not _MISSING:
-        return func(*initial_args, **kwargs)
+        return func(*initial_args, **initial_kwargs)
 
     if args or kwargs:
         return func(*args, **kwargs)
