@@ -1,21 +1,26 @@
-"""Smoke tests for quick upgrade validation."""
+import subprocess
+import sys
 
-import unittest
-from datetime import datetime
-
-from gway import gw
-
-
-class SmokeTests(unittest.TestCase):
-    """Minimal checks executed during upgrade smoke runs."""
-
-    def test_gateway_clock_now_returns_string(self) -> None:
-        """Ensure the clock helper is available and returns a timestamp string."""
-
-        timestamp = gw.clock.now()
-        self.assertIsInstance(timestamp, datetime)
-        self.assertTrue(timestamp.isoformat())
+import gway
+from gway import Gateway
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_import_gway():
+    assert gway.gw is not None
+    assert isinstance(gway.gw, Gateway)
+
+
+def test_gateway_constructs_without_bundled_projects():
+    gateway = Gateway()
+    assert gateway.projects() == []
+
+
+def test_cli_help_runs():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0
+    assert "Dynamic Project CLI" in completed.stdout

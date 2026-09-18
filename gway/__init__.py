@@ -12,18 +12,3 @@ from ._env_bindings import resolve_env_bindings
 _ENV_BINDINGS = resolve_env_bindings()
 load_env = _ENV_BINDINGS.load_env
 
-# Expose the standalone ``projects`` package under ``gway.projects`` so
-# callers can import project modules via ``gway.projects.<name>``.
-import sys
-from pathlib import Path
-
-try:  # pragma: no cover - depends on installation layout
-    import projects as _projects
-except ModuleNotFoundError:  # pragma: no cover - ensure direct repo use works
-    root = Path(__file__).resolve().parents[1]
-    if str(root) not in sys.path:
-        sys.path.append(str(root))
-    import projects as _projects
-
-sys.modules[__name__ + ".projects"] = _projects
-

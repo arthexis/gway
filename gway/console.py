@@ -7,7 +7,6 @@ import json
 import time
 import inspect
 import argparse
-import argcomplete
 import csv
 import difflib
 import re
@@ -22,41 +21,6 @@ from .builtins import abort
 from .builtins.recipes import _RepeatDirective
 from .gateway import Gateway, gw
 from .sigils import Sigil, Spool, _replace_sigils
-
-
-def _should_enable_argcomplete(environ: dict[str, str] | None = None) -> bool:
-    """Return ``True`` when it's safe to run :mod:`argcomplete`.
-
-    Some environments mistakenly leave the ``_ARGCOMPLETE`` marker set
-    without the rest of the shell-completion context. Invoking
-    :func:`argcomplete.autocomplete` in that state causes it to call
-    ``os._exit`` immediately, which makes ``gway`` appear to do nothing.
-    We skip the autocomplete hook unless the core variables provided by
-    the completion scripts are present *and* the completion output stream
-    is available.
-    """
-
-    environ = environ or os.environ
-    marker = environ.get("_ARGCOMPLETE")
-    if not marker:
-        return True
-
-    if not marker.isdigit():
-        return False
-
-    required = {"COMP_LINE", "COMP_POINT"}
-    if not required.issubset(environ):
-        return False
-
-    if "_ARGCOMPLETE_STDOUT_FILENAME" in environ:
-        return True
-
-    try:
-        os.fstat(8)
-    except OSError:
-        return False
-
-    return True
 
 
 def parse_recipe_context(tokens):
@@ -162,8 +126,6 @@ def cli_main():
     add("-v", dest="verbose", action="store_true", help="Verbose mode (where supported)")
     add("-w", dest="wizard", action="store_true", help="Wizard mode.")
     add("-z", dest="silent", action="store_true", help="Suppress all non-critical output")
-    if _should_enable_argcomplete():
-        argcomplete.autocomplete(parser)
     def _print_main_help() -> None:
         """Display the main parser help with an extra trailing newline."""
 
