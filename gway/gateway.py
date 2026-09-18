@@ -4,9 +4,9 @@ import inspect
 import logging
 import os
 import threading
-import time
 
 from .binding import Literal
+from .invocation import invoke
 from .runner import Runner
 from .sigils import Resolver, Sigil, Spool
 from .structs import Results
@@ -111,7 +111,6 @@ class Gateway(Resolver, Runner):
             raise TypeError(f"{func_name!r} is not callable")
 
         def wrapped(*args, **kwargs):
-            start = time.perf_counter() if self.timed_enabled else None
             signature = inspect.signature(func_obj)
             bound = signature.bind_partial(*args, **kwargs)
             subject = self.subject(func_name)
@@ -148,21 +147,19 @@ class Gateway(Resolver, Runner):
                 elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
                     call_kwargs.update(value)
 
-            result = func_obj(*call_args, **call_kwargs)
-            if inspect.isawaitable(result):
-                return self.run_coroutine(func_name, result)
+            result = invoke(
+                self,
+                func_name,
+                func_obj,
+                args=tuple(call_args),
+                kwargs=call_kwargs,
+            )
 
             if subject and result is not None:
                 self.results.insert(subject, result)
                 if isinstance(result, dict):
                     self.context.update(result)
 
-            if start is not None:
-                self.logger.info(
-                    "[timed] %s took %.3fs",
-                    func_name,
-                    time.perf_counter() - start,
-                )
             return result
 
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
