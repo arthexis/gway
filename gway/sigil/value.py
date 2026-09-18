@@ -2,7 +2,7 @@
 
 import re
 
-from .sigil_resolution import is_single_sigil, resolve_text
+from .resolution import is_single_sigil, resolve_text
 
 _PATTERN = re.compile(r"\[([^\[\]]+)\]")
 
@@ -16,7 +16,6 @@ def _lookup_for(context):
             key.lower(),
             key.upper(),
         )
-
         for variant in variants:
             value = None
             if isinstance(context, dict):
@@ -28,21 +27,14 @@ def _lookup_for(context):
                     value = context(variant, None)
                 except TypeError:
                     value = context(variant)
-
             if value is not None:
                 return value
         return None
-
     return lookup
 
 
 class Sigil:
-    """A context-free sigil expression.
-
-    The explicit constructor implies the outer brackets. Existing bracketed
-    input is accepted unchanged, and brackets inside the payload represent
-    nested sigils.
-    """
+    """A context-free sigil expression with implicit outer brackets."""
 
     _pattern = _PATTERN
 

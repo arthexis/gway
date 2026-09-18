@@ -3,7 +3,7 @@
 import json
 import re
 
-from .sigil_paths import follow_path
+from .paths import follow_path
 
 _PATTERN = re.compile(r"\[([^\[\]]+)\]")
 

@@ -1,5 +1,6 @@
 """Path traversal helpers for sigil resolution."""
 
+
 def follow_path(value, parts, lookup=None, resolve_text=None):
     for part in parts:
         original_part = part

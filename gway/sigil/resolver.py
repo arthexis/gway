@@ -3,9 +3,9 @@
 import os
 import re
 
-from .sigil import Sigil
-from .sigil_paths import follow_path
-from .sigil_resolution import resolve_text
+from .paths import follow_path
+from .resolution import resolve_text
+from .value import Sigil
 
 
 class Resolver:
@@ -25,10 +25,7 @@ class Resolver:
             text = expression.original if isinstance(expression, Sigil) else expression
 
             try:
-                return resolve_text(
-                    text,
-                    lambda key: self.find_value(key, None),
-                )
+                return resolve_text(text, lambda key: self.find_value(key, None))
             except KeyError as exc:
                 last_exc = exc
 
