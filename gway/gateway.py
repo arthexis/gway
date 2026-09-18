@@ -7,6 +7,7 @@ import threading
 
 from .binding import Literal
 from .invocation import invoke
+from .publication import publish
 from .runner import Runner
 from .sigils import Resolver, Sigil, Spool
 from .structs import Results
@@ -155,12 +156,7 @@ class Gateway(Resolver, Runner):
                 kwargs=call_kwargs,
             )
 
-            if subject and result is not None:
-                self.results.insert(subject, result)
-                if isinstance(result, dict):
-                    self.context.update(result)
-
-            return result
+            return publish(self, subject, result)
 
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
         wrapped.__doc__ = getattr(func_obj, "__doc__", None)
