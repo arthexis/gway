@@ -1,19 +1,415 @@
-# Repository Guidelines
+# GWAY Agent Guide
 
-This branch is the minimal GWAY Gateway rebuild.
+This branch is the minimal GWAY Gateway rebuild. This document describes how
+GWAY works **today**. Treat it as an operating guide, not a roadmap: do not
+infer planned syntax or future features from older branches, issues, or
+historical implementations.
 
-## Scope
+## Core principle
 
-Keep the repository focused on GWAY core mechanics. Do not add bundled domain
+GWAY is a small Python command-dispatch and composition core. It exposes Python
+callables as operations, binds command input to their signatures, completes
+missing semantic values from runtime context, invokes the callable, and
+publishes its result for later operations.
+
+A typical operation is named with a verb and semantic subject:
+
+```python
+def get_charger():
+    ...
+
+def inspect_charger(charger):
+    ...
+```
+
+The subject of both operations is `charger`. A result published by
+`get_charger` can therefore satisfy the `charger` argument of a later
+`inspect_charger` operation without the caller spelling the value again.
+
+Keep Python responsible for Python control flow and domain logic. Recipes are
+for declaring and composing operations.
+
+## Running GWAY
+
+Install the package in editable mode:
+
+```bash
+python -m pip install -e .
+```
+
+The CLI entry point is `gway`. With no operation or expression it prints
+help.
+
+Current global options are:
+
+```text
+-d, --debug
+-i, --interactive
+-j, --json
+-r, --recipe PATH
+-t, --timed
+-v, --verbose
+-z, --silent
+-e, --expression EXPR
+```
+
+Examples:
+
+```bash
+gway get charger
+gway set limit --limit 32
+gway -e "[site]"
+gway -r ./deploy.rx --site MTY
+```
+
+Operation resolution uses the longest leading token sequence that resolves to a
+callable. GWAY tries space-separated, underscore-separated, and dotted forms,
+so an exposed `get_charger` operation can be addressed naturally as
+`get charger` when the runtime exposes that callable.
+
+## Arguments and Python signatures
+
+Explicit command arguments are bound against the Python callable signature.
+
+Positional input:
+
+```bash
+gway echo hello
+```
+
+Keyword input:
+
+```bash
+gway set limit --limit 32
+```
+
+Boolean parameters can be supplied as bare flags:
+
+```bash
+gway configure charger --enabled
+```
+
+The standalone `--` ends option parsing. Everything after it is positional
+input even if it begins with `--`.
+
+Binding performs signature-aware conversion for explicit command input.
+Currently `int`, `float`, and `bool` annotations receive primitive
+conversion. Direct Python calls to wrapped functions are not silently retyped;
+CLI/recipe conversion belongs to the binding boundary.
+
+With `--interactive`, missing required arguments are prompted for before
+semantic completion.
+
+## Quoting
+
+GWAY preserves quote provenance in recipe tokens.
+
+Single quotes mean opaque literal text:
+
+```text
+echo '[site]'
+echo '32'
+echo '--special'
+```
+
+Those values are not interpreted as sigils or coerced through type annotations.
+
+Double quotes group text but retain normal GWAY interpretation:
+
+```text
+echo "[site]"
+set limit --limit "32"
+```
+
+A double-quoted sigil can resolve, and double-quoted numeric text can still be
+converted according to the Python signature.
+
+A standalone unquoted `-` or `;` is recognized by the token chunking helper
+as a stage separator. Quoted separators are ordinary values. Current recipe
+files normally express composition as separate operation lines.
+
+## Recipes
+
+Recipes are loaded from an explicit filesystem path:
+
+```bash
+gway -r ./example.rx
+```
+
+A recipe is a sequence of operations. Blank lines and comments are ignored.
+
+Example:
+
+```text
+# Charger setup
+create charger --serial ABC
+inspect charger
+```
+
+A physical line beginning with `--` continues the preceding operation:
+
+```text
+configure charger
+--limit 32
+--enabled
+```
+
+Top-level headings can be used as recipe sections by the recipe loader:
+
+```text
+# Production
+deploy charger
+
+# Test
+inspect charger
+```
+
+Recipe CLI arguments such as:
+
+```bash
+gway -r ./example.rx --site MTY --dry-run
+```
+
+are parsed into the Gateway context before the recipe executes.
+
+Do not rely on implicit bundled recipe lookup. The current loader expects an
+explicit path.
+
+## Gateway wrapping and execution
+
+`Gateway.wrap(name, callable)` is the normalization entry point for Python
+operations. The old `wrap_callable` API is removed.
+
+The current execution path is deliberately separated:
+
+```text
+binding
+  -> semantic completion
+  -> invocation
+  -> publication
+```
+
+The implementation lives in:
+
+```text
+gway/binding.py
+gway/normalization.py
+gway/invocation.py
+gway/publication.py
+```
+
+`Gateway.wrap()` is the façade tying those pieces together.
+
+Semantic completion can fill an argument whose name matches the operation's
+subject. Python defaults and Sigil defaults are resolved at call time.
+
+Invocation supports synchronous and awaitable callables. Timing policy is
+handled at the invocation boundary.
+
+## Results and context
+
+Gateway resolution currently searches sources in this order:
+
+```text
+results
+context
+environment
+```
+
+That precedence matters. A published result with a matching name shadows an
+ordinary context value, which shadows an environment variable.
+
+Published results are retained under their semantic subject:
+
+```python
+get_charger() -> "CHG001"
+# results["charger"] == "CHG001"
+```
+
+Mapping results are also preserved as the value of their subject rather than
+being flattened into the results mapping.
+
+For current composition behavior, mapping results are additionally merged into
+Gateway context:
+
+```python
+inspect_charger() -> {"serial": "ABC", "online": True}
+
+# results["charger"] is the mapping
+# context["serial"] == "ABC"
+# context["online"] is True
+```
+
+Publishing another value under the same subject replaces the previous value.
+
+## Sigils
+
+A Sigil is a semantic reference, not a lexical token and not a storage
+location.
+
+The design lineage comes from contextual token-resolution systems used in
+Project and Portfolio Management software, but GWAY deliberately calls these
+values *sigils*: a token is a lexical unit, whereas a sigil has contextual
+meaning.
+
+The central rule is:
+
+> A sigil identifies meaning. It does not specify where that meaning is stored.
+
+For example:
+
+```text
+[charger]
+[charger serial]
+[response payload chargers 1 serial]
+[chargers [index]]
+```
+
+The caller does not manually choose a result map, context dictionary, or
+environment source. The active resolver determines the value from its ordered
+sources.
+
+### Sigil constructor
+
+The explicit constructor implies the outer brackets:
+
+```python
+Sigil("charger")
+```
+
+is equivalent to:
+
+```python
+Sigil("[charger]")
+```
+
+Already-bracketed input is accepted without double-wrapping.
+
+Brackets inside constructor input mean nested sigils:
+
+```python
+Sigil("chargers [index]")
+```
+
+represents:
+
+```text
+[chargers [index]]
+```
+
+Sigil instances are context-free. They do not capture or hide a Gateway,
+mapping, environment, or other resolver.
+
+### Resolution
+
+Normal string expressions require explicit brackets:
+
+```python
+gateway.resolve("[site]")
+gateway.resolve("[charger serial]")
+```
+
+Nested sigils resolve selectors dynamically:
+
+```python
+gateway.context["field"] = "serial"
+gateway.context["charger"] = {"serial": "ABC"}
+
+gateway.resolve("[charger [field]]")
+# "ABC"
+```
+
+Paths can traverse mappings, sequences, and object attributes.
+
+Quoted keys inside a sigil are still lookups, not string literals:
+
+```python
+gateway.context["status code"] = 200
+gateway.resolve('["status code"]')
+# 200
+```
+
+An unresolved sigil raises `KeyError` unless the resolver call explicitly
+supplies a default.
+
+### The modulo operator
+
+`%` is an explicit resolution operator. It is **not** an eagerness marker.
+
+A context-free Sigil can be resolved against a context:
+
+```python
+Sigil("site") % gateway
+Sigil("site") % {"site": "MTY"}
+```
+
+Gateway/Resolver instances can resolve expressions from the other direction:
+
+```python
+gateway % Sigil("site")
+gateway % "[site]"
+```
+
+Where Python's reverse-operator protocol permits it, `context % sigil` is
+also handled by `Sigil.__rmod__`.
+
+The old embedded eager form:
+
+```text
+%[site]
+```
+
+is not part of the current sigil syntax.
+
+### Sigil implementation layout
+
+Sigil behavior is organized as a package:
+
+```text
+gway/sigil/
+    __init__.py
+    value.py       # context-free Sigil value
+    resolver.py    # source precedence and Resolver API
+    resolution.py  # expression resolution
+    paths.py       # mapping/sequence/attribute traversal
+    spool.py       # ordered Sigil alternatives
+```
+
+`gway/sigils.py` is currently a compatibility façade for existing imports.
+New internal code should prefer the package itself.
+
+## Composition model
+
+The useful mental model for current GWAY execution is:
+
+```text
+command text
+  -> lexical tokens
+  -> operation resolution
+  -> explicit argument binding
+  -> semantic argument completion
+  -> invocation
+  -> publication
+  -> later operations resolve from the updated runtime
+```
+
+This is why operation names, Python parameter names, semantic subjects, results,
+context, and sigils work together. Prefer composing operations through those
+contracts rather than manually passing values that GWAY can resolve
+semantically.
+
+## Repository scope
+
+Keep this repository focused on GWAY core mechanics. Do not add bundled domain
 projects, framework-specific integrations, deployment tooling, or third-party
-runtime dependencies unless the architecture explicitly calls for them.
+runtime dependencies unless the architecture explicitly requires them.
 
-The current baseline must remain importable and runnable with no runtime
-dependencies.
+The current baseline must remain importable and runnable with no third-party
+runtime dependencies.
 
 ## Testing
 
-Install the package and pytest, then run:
+Install pytest and run the complete suite:
 
 ```bash
 python -m pip install -e .
@@ -21,5 +417,8 @@ python -m pip install pytest
 python -m pytest -q
 ```
 
-At minimum, preserve smoke coverage for importing `gway`, constructing
-`Gateway`, and invoking the CLI help entry point.
+CI currently exercises the suite on Python 3.10 and Python 3.13.
+
+When refactoring, preserve behavioral contracts first. Move/reorganize tests
+only after the implementation remains green, unless the change intentionally
+modifies a public contract.
