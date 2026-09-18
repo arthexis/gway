@@ -1,12 +1,11 @@
 # file: gway/console.py
 
 import argparse
-import inspect
 import json
 import time
-from .gateway import Gateway, Literal, gw
+from .binding import bind_arguments
+from .gateway import Gateway, gw
 from .recipes import load_recipe
-from .sigils import Sigil
 from .tokens import Token, chunk, is_literal, token_value, tokenize
 
 
@@ -87,7 +86,7 @@ def _resolve_operation(runtime, tokens):
             ".".join(token.replace("-", "_") for token in values[:size]),
         )
         for candidate in candidates:
-            value = runtime.findtoken_value(candidate)
+            value = runtime.find_value(candidate)
             if callable(value):
                 return value, tokens[size:], candidate
 
@@ -101,96 +100,6 @@ def _resolve_operation(runtime, tokens):
                 return obj, tokens[size:], candidate
 
     raise LookupError(f"Unable to resolve operation: {' '.join(values)}")
-
-
-def _convert(token, parameter, runtime):
-    literal = is_literal(token)
-    value = token_value(token)
-    annotation = parameter.annotation
-
-    if literal:
-        return Literal(value)
-
-    if isinstance(value, str) and Sigil._pattern.search(value):
-        value = runtime.resolve(value)
-
-    if annotation in (inspect.Parameter.empty, str):
-        return value
-    if annotation is bool and isinstance(value, str):
-        return value.lower() in {"1", "true", "yes", "on"}
-    if annotation in (int, float):
-        return annotation(value)
-    return value
-
-
-def _bind_arguments(func, tokens, *, runtime, interactive=False):
-    signature = inspect.signature(func)
-    positional = []
-    keywords = {}
-    tokens = list(tokens)
-    index = 0
-    literal_mode = False
-
-    while index < len(tokens):
-        raw = tokens[index]
-        token = token_value(raw)
-
-        if not literal_mode and not is_literal(raw) and token == "--":
-            literal_mode = True
-            index += 1
-            continue
-
-        if not literal_mode and not is_literal(raw) and token.startswith("--"):
-            key = token[2:].replace("-", "_")
-            parameter = signature.parameters.get(key)
-            if parameter is None:
-                raise TypeError(f"Unknown argument --{key.replace('_', '-')}")
-            if parameter.annotation is bool or isinstance(parameter.default, bool):
-                keywords[key] = True
-                index += 1
-                continue
-            if index + 1 >= len(tokens):
-                raise TypeError(f"Expected a value after {token}")
-            keywords[key] = _convert(tokens[index + 1], parameter, runtime)
-            index += 2
-        else:
-            positional.append(raw)
-            index += 1
-
-    positional_parameters = [
-        parameter
-        for parameter in signature.parameters.values()
-        if parameter.kind in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        )
-    ]
-    converted_positional = []
-    for offset, token in enumerate(positional):
-        if offset < len(positional_parameters):
-            converted_positional.append(
-                _convert(token, positional_parameters[offset], runtime)
-            )
-        else:
-            converted_positional.append(token_value(token))
-
-    bound = signature.bind_partial(*converted_positional, **keywords)
-
-    if interactive:
-        for name, parameter in signature.parameters.items():
-            if name in bound.arguments:
-                continue
-            if parameter.kind in (
-                inspect.Parameter.VAR_POSITIONAL,
-                inspect.Parameter.VAR_KEYWORD,
-            ):
-                continue
-            if parameter.default is not inspect.Parameter.empty:
-                continue
-            response = input(f"{name}: ")
-            bound.arguments[name] = _convert(Token(response), parameter, runtime)
-
-    return bound.args, bound.kwargs
 
 
 def process(command_sources, *, gw_instance=None, **context):
@@ -208,14 +117,14 @@ def process(command_sources, *, gw_instance=None, **context):
             continue
 
         func, arguments, name = _resolve_operation(runtime, tokens)
-        args, kwargs = _bind_arguments(
+        bound = bind_arguments(
             func,
             arguments,
             runtime=runtime,
             interactive=runtime.interactive_enabled,
         )
         start = time.perf_counter() if runtime.timed_enabled else None
-        result = func(*args, **kwargs)
+        result = func(*bound.args, **bound.kwargs)
         if start is not None:
             runtime.logger.info(
                 "[timed] %s took %.3fs",
