@@ -60,6 +60,13 @@ class Gateway(Resolver):
         """Return the raw result of the most recently completed operation."""
         return self.results.last
 
+    def next(self, subject=None, default=...):
+        """Advance an iterator result without publishing a new operation result."""
+        target = self.last if subject is None else self.results[subject]
+        if default is ...:
+            return next(target)
+        return next(target, default)
+
     def debug(self, message, *args, **kwargs):
         if self.debug_enabled:
             return self.logger.debug(message, *args, **kwargs)
