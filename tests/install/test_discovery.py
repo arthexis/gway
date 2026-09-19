@@ -35,7 +35,7 @@ def test_fresh_gateway_discovers_managed_user_installation(
     assert record is not None
     assert record.value == installed
     assert record.expanded is False
-    assert record.expander is None
+    assert callable(record.expander)
     assert fresh.ops.resolve("wire") is None
 
 
