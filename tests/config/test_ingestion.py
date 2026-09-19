@@ -301,3 +301,29 @@ def test_declarative_url_source_is_not_resolved_as_local_path(tmp_path):
     source = "https://example.test/tool.py"
 
     assert config._source_from_manifest(source, tmp_path) == source
+
+
+
+def test_bootstrap_skips_toml_backend_without_ingest_section(
+    tmp_path,
+    monkeypatch,
+):
+    manifest = tmp_path / "gway.toml"
+    manifest.write_text(
+        "[project]\n"
+        "name = 'plain'\n"
+        "\n"
+        "[install.scripts]\n"
+        "plain = 'plain:main'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    def fail_load(path):
+        raise AssertionError("full TOML backend should not be used")
+
+    monkeypatch.setattr(config.toml, "load", fail_load)
+
+    runtime = Gateway()
+
+    assert runtime._manifest_path == manifest.resolve()
