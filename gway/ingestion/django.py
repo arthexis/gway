@@ -243,8 +243,21 @@ def ingest_manager(gateway, manager, *, path=None, **kwargs):
         "django-manager",
     )
     record = remember_object(gateway, manager, root, expander=ingest_manager)
+    _register_path_aliases(gateway, wrapped, record.paths)
     record.expanded = True
     return wrapped
+
+
+def _register_path_aliases(gateway, wrapped, roots):
+    """Register alternate semantic paths for already-wrapped operations."""
+    for operation in wrapped:
+        path = getattr(operation, "__gway_path__", None)
+        if not path:
+            continue
+        name = path[-1]
+        for root in roots:
+            alias = ".".join((*root, name))
+            gateway.ops.register_alias(alias, operation)
 
 
 def ingest_model(gateway, model, *, path=None, **kwargs):
@@ -439,23 +452,30 @@ def _index_management(gateway, mount):
 
 
 def _index_registry(gateway, mount):
-    """Remember apps and models as lazy GWAY branches without exposing methods."""
+    """Remember apps/models under global and project-qualified lazy paths."""
     apps = tuple(mount.registry.get_app_configs())
     mount.apps = apps
 
     models = []
     for app in apps:
-        app_path = (str(app.label),)
-        remember_object(gateway, app, app_path, expander=ingest_app)
+        app_name = str(app.label)
+        app_paths = [(app_name,)]
+        if mount.name is not None:
+            app_paths.append((mount.name, app_name))
+
+        for app_path in app_paths:
+            remember_object(gateway, app, app_path, expander=ingest_app)
+
         for model in app.get_models():
             model_name = str(model._meta.model_name)
             models.append((app, model, model_name))
-            remember_object(
-                gateway,
-                model,
-                (*app_path, model_name),
-                expander=ingest_model,
-            )
+            for app_path in app_paths:
+                remember_object(
+                    gateway,
+                    model,
+                    (*app_path, model_name),
+                    expander=ingest_model,
+                )
 
     counts = Counter(model_name for _, _, model_name in models)
     for _, model, model_name in models:
@@ -466,6 +486,13 @@ def _index_registry(gateway, mount):
                 (model_name,),
                 expander=ingest_model,
             )
+            if mount.name is not None:
+                remember_object(
+                    gateway,
+                    model,
+                    (mount.name, model_name),
+                    expander=ingest_model,
+                )
 
     return mount
 
