@@ -5,8 +5,8 @@ from collections.abc import Mapping
 import json
 from .gateway import Gateway, gw
 from .recipes import load_recipe
-from .dispatch import dispatch_sequence
-from .tokens import chunk, is_literal, token_value
+from .dispatch import dispatch_program
+from .tokens import is_literal, statements, token_value
 
 
 def parse_recipe_context(tokens):
@@ -82,11 +82,11 @@ def process(command_sources, *, gw_instance=None, **context):
     if context:
         runtime.context.update(context)
 
-    stages = []
+    statement_list = []
     for entry in command_sources:
         tokens = list(entry.get("tokens", [])) if isinstance(entry, Mapping) else list(entry)
-        stages.extend(chunk(tokens))
+        statement_list.extend(statements(tokens))
 
-    if not stages:
+    if not statement_list:
         return [], None
-    return dispatch_sequence(runtime, stages)
+    return dispatch_program(runtime, statement_list)
