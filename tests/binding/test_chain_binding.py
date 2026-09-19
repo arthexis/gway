@@ -71,3 +71,31 @@ def test_single_quoted_numeric_sigil_is_not_chain_selector(gateway):
     )
 
     assert bound.args == ("A", "[0]")
+
+
+def test_repeated_numeric_selectors_duplicate_one_snapshot_slot(gateway):
+    def consume(first, second, third, fourth, fifth):
+        return first, second, third, fourth, fifth
+
+    bound = bind_arguments(
+        consume,
+        [Token("[1]"), Token("[1]"), Token("[1]")],
+        runtime=gateway,
+        pipeline=("A", "B", "C"),
+    )
+
+    assert bound.args == ("A", "C", "B", "B", "B")
+
+
+def test_star_excludes_indices_selected_later_in_same_snapshot(gateway):
+    def consume(first, second, third):
+        return first, second, third
+
+    bound = bind_arguments(
+        consume,
+        [Token("[*]"), Token("[1]")],
+        runtime=gateway,
+        pipeline=("A", "B", "C"),
+    )
+
+    assert bound.args == ("A", "C", "B")
