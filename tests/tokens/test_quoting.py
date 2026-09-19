@@ -1,7 +1,7 @@
 import pytest
 
 from gway.console import process
-from gway.tokens import Token, chunk, tokenize
+from gway.tokens import Token, chunk, statements, tokenize
 
 
 def test_double_quotes_group_spaces():
@@ -61,9 +61,22 @@ def test_single_quoted_dash_does_not_split_stage():
     ]
 
 
-def test_single_quoted_semicolon_does_not_split_stage():
-    assert chunk([Token("echo"), Token(";", "single")]) == [
+def test_single_quoted_semicolon_does_not_split_statement():
+    assert statements([Token("echo"), Token(";", "single")]) == [
         [Token("echo"), Token(";", "single")]
+    ]
+
+
+def test_unquoted_semicolon_splits_statements():
+    assert statements([Token("one"), Token(";"), Token("two")]) == [
+        [Token("one")],
+        [Token("two")],
+    ]
+
+
+def test_semicolon_is_not_a_pipeline_separator():
+    assert chunk([Token("one"), Token(";"), Token("two")]) == [
+        [Token("one"), Token(";"), Token("two")]
     ]
 
 
