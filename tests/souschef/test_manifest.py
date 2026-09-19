@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from gway.souschef import DEFAULT_TIMEOUT, duration, jobs_from_data
+from gway.souschef import DEFAULT_TIMEOUT, duration, jobs_from_data, load
 
 
 def test_duration_parses_compact_units():
@@ -121,3 +121,23 @@ def test_invalid_job_declarations_are_rejected(tmp_path, job, message):
 def test_sous_chef_section_must_be_a_table(tmp_path):
     with pytest.raises(ValueError, match="must be a table"):
         jobs_from_data({"sous-chef": []}, root=tmp_path)
+
+
+
+def test_hyphenated_sous_chef_toml_section_loads(tmp_path):
+    manifest = tmp_path / "gway.toml"
+    manifest.write_text(
+        "[sous-chef.cleanup]\n"
+        "recipe = 'recipes/cleanup.rx'\n"
+        "every = '1h'\n"
+        "timeout = '10m'\n",
+        encoding="utf-8",
+    )
+
+    jobs = load(manifest)
+
+    assert len(jobs) == 1
+    assert jobs[0].name == "cleanup"
+    assert jobs[0].recipe == (tmp_path / "recipes/cleanup.rx").resolve()
+    assert jobs[0].every == 3600.0
+    assert jobs[0].timeout == 600.0
