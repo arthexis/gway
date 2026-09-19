@@ -4,11 +4,12 @@ import ast
 from collections import Counter
 from dataclasses import dataclass, field
 from importlib import import_module
+import inspect
 import os
 from pathlib import Path
 import sys
 
-from .base import normalize_path, remember_object
+from .base import IngestedOperation, normalize_path, register_operation, remember_object
 
 
 @dataclass
@@ -100,32 +101,224 @@ def _setup_project(root, *, settings=None):
     return registry
 
 
-def _mark_expanded(gateway, source, path, expander):
-    record = remember_object(gateway, source, path, expander=expander)
+def _django_types():
+    """Return Django ORM base types, or None when Django is unavailable."""
+    try:
+        models = import_module("django.db.models")
+    except ModuleNotFoundError as exc:
+        if exc.name == "django" or str(exc.name).startswith("django."):
+            return None
+        raise
+    return models.Model, models.Manager
+
+
+def source_kind(source):
+    """Return the Django ORM source kind for an object, if any."""
+    types = _django_types()
+    if types is None:
+        return None
+
+    model_type, manager_type = types
+    if inspect.isclass(source):
+        try:
+            if issubclass(source, model_type):
+                return "model"
+        except TypeError:
+            pass
+    if isinstance(source, model_type):
+        return "instance"
+    if isinstance(source, manager_type):
+        return "manager"
+    return None
+
+
+def _model_for(source, kind=None):
+    kind = kind or source_kind(source)
+    if kind == "model":
+        return source
+    if kind == "instance":
+        return type(source)
+    if kind == "manager":
+        return source.model
+    raise TypeError("Source is not a Django model, model instance, or manager")
+
+
+def _model_identity(model, *, path=None):
+    """Return canonical root and semantic subject for one Django model."""
+    meta = model._meta
+    subject = str(meta.model_name)
+    app_label = getattr(meta, "app_label", None)
+    if app_label:
+        return (str(app_label), subject), subject
+    if path is not None:
+        root = normalize_path(path)
+        if root[-1] == subject:
+            return root, subject
+    return (subject,), subject
+
+
+def _public_bound_methods(source):
+    """Yield safe public bound callables without evaluating arbitrary properties."""
+    cls = source if inspect.isclass(source) else type(source)
+    for name in dir(cls):
+        if name.startswith("_"):
+            continue
+        try:
+            descriptor = inspect.getattr_static(cls, name)
+        except AttributeError:
+            continue
+        if not callable(descriptor) and not isinstance(
+            descriptor,
+            (classmethod, staticmethod),
+        ):
+            continue
+        try:
+            value = getattr(source, name)
+        except Exception:
+            continue
+        if callable(value):
+            yield name, value
+
+
+def _class_operations(model):
+    """Yield only class/static methods from a model class."""
+    for name in dir(model):
+        if name.startswith("_"):
+            continue
+        try:
+            descriptor = inspect.getattr_static(model, name)
+        except AttributeError:
+            continue
+        if not isinstance(descriptor, (classmethod, staticmethod)):
+            continue
+        try:
+            value = getattr(model, name)
+        except Exception:
+            continue
+        if callable(value):
+            yield name, value
+
+
+def _register_surface(gateway, source, methods, root, subject, kind):
+    """Register one Django callable surface under its model identity."""
+    record = remember_object(gateway, source, root)
+    wrapped = []
+    for name, callable_ in methods:
+        operation_path = (*root, name)
+        existing = record.operations.get(operation_path)
+        if existing is not None:
+            continue
+        operation = IngestedOperation(
+            operation_path,
+            callable_,
+            source=source,
+            kind=kind,
+            op=name,
+            sub=subject,
+            metadata={
+                "model": subject,
+                "object": source,
+            },
+        )
+        registered = register_operation(gateway, operation)
+        record.operations[operation_path] = registered
+        if record.operation is None:
+            record.operation = registered
+        record.registered = True
+        wrapped.append(registered)
+    return wrapped
+
+
+def ingest_manager(gateway, manager, *, path=None, **kwargs):
+    """Expose public manager/query operations on the manager's model subject."""
+    model = _model_for(manager, "manager")
+    root, subject = _model_identity(model, path=path)
+    wrapped = _register_surface(
+        gateway,
+        manager,
+        _public_bound_methods(manager),
+        root,
+        subject,
+        "django-manager",
+    )
+    record = remember_object(gateway, manager, root, expander=ingest_manager)
+    record.expanded = True
+    return wrapped
+
+
+def ingest_model(gateway, model, *, path=None, **kwargs):
+    """Expose one model's manager and class-level operations."""
+    root, subject = _model_identity(model, path=path)
+    record = remember_object(gateway, model, root, expander=ingest_model)
+    if record.expanded:
+        return []
+
+    wrapped = []
+    manager = getattr(model, "_default_manager", None)
+    if manager is not None:
+        wrapped.extend(ingest_manager(gateway, manager, path=root))
+    wrapped.extend(
+        _register_surface(
+            gateway,
+            model,
+            _class_operations(model),
+            root,
+            subject,
+            "django-model",
+        )
+    )
+    record.expanded = True
+    return wrapped
+
+
+def ingest_instance(gateway, instance, *, path=None, **kwargs):
+    """Expose bound instance methods and bind the object to its model subject."""
+    model = _model_for(instance, "instance")
+    root, subject = _model_identity(model, path=path)
+
+    # Make the explicitly ingested object available for semantic completion.
+    gateway.context[subject] = instance
+
+    wrapped = ingest_model(gateway, model, path=root)
+    record = remember_object(
+        gateway,
+        instance,
+        root,
+        expander=ingest_instance,
+    )
+    if not record.expanded:
+        wrapped.extend(
+            _register_surface(
+                gateway,
+                instance,
+                _public_bound_methods(instance),
+                root,
+                subject,
+                "django-instance",
+            )
+        )
+        record.expanded = True
+    return wrapped
+
+
+def ingest_app(gateway, app, *, path=None, **kwargs):
+    """Mark one Django app registry node expanded; models remain lazy children."""
+    root = normalize_path(path) if path is not None else (app.label,)
+    record = remember_object(gateway, app, root, expander=ingest_app)
     record.expanded = True
     return []
 
 
-def ingest_app(gateway, app, *, path=None, **kwargs):
-    """Expand one Django app registry node.
-
-    ORM operations are intentionally added by the later model-ingestion layer.
-    """
-    root = normalize_path(path) if path is not None else (app.label,)
-    return _mark_expanded(gateway, app, root, ingest_app)
-
-
-def ingest_model(gateway, model, *, path=None, **kwargs):
-    """Expand one Django model registry node.
-
-    ORM operations are intentionally added by the later model-ingestion layer.
-    """
-    root = (
-        normalize_path(path)
-        if path is not None
-        else (model._meta.model_name,)
-    )
-    return _mark_expanded(gateway, model, root, ingest_model)
+def ingest_orm(gateway, source, *, path=None, **kwargs):
+    """Route a Django ORM object to its model-scoped ingestor."""
+    kind = source_kind(source)
+    if kind == "model":
+        return ingest_model(gateway, source, path=path, **kwargs)
+    if kind == "instance":
+        return ingest_instance(gateway, source, path=path, **kwargs)
+    if kind == "manager":
+        return ingest_manager(gateway, source, path=path, **kwargs)
+    raise TypeError("Source is not a Django ORM object")
 
 
 def _index_registry(gateway, mount):
