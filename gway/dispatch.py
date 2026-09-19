@@ -60,7 +60,6 @@ def dispatch_stage(
     pipeline=_MISSING,
     args=(),
     kwargs=None,
-    allow_inline_with_native=False,
 ):
     """Resolve, bind, and execute one command stage."""
     kwargs = {} if kwargs is None else dict(kwargs)
@@ -70,7 +69,7 @@ def dispatch_stage(
 
     func, arguments, _ = resolve_operation(runtime, tokens)
 
-    if (args or kwargs) and arguments and not allow_inline_with_native:
+    if (args or kwargs) and arguments:
         raise TypeError(
             "Native arguments require an operation name without inline arguments"
         )
@@ -114,23 +113,56 @@ def dispatch_stage(
     return func(*bound.args, **bound.kwargs)
 
 
+def dispatch_sequence(
+    runtime,
+    stages,
+    *,
+    pipeline=_MISSING,
+    args=(),
+    kwargs=None,
+):
+    """Execute an ordered sequence of stages with one shared pipeline contract."""
+    stages = [list(stage) for stage in stages if stage]
+    if not stages:
+        raise ValueError("Gateway command cannot be empty")
+    if (args or kwargs) and len(stages) != 1:
+        raise TypeError("Native arguments require a single operation")
+
+    results = []
+    current = pipeline
+    for index, stage in enumerate(stages):
+        stage_kwargs = kwargs if index == 0 else None
+        stage_args = args if index == 0 else ()
+        if current is _MISSING:
+            result = dispatch_stage(
+                runtime,
+                stage,
+                args=stage_args,
+                kwargs=stage_kwargs,
+            )
+        else:
+            result = dispatch_stage(
+                runtime,
+                stage,
+                pipeline=current,
+                args=stage_args,
+                kwargs=stage_kwargs,
+            )
+        results.append(result)
+        current = result
+    return results, current
+
+
 def dispatch(runtime, command, *args, **kwargs):
     """Execute one or more command stages through the unified dispatcher."""
     tokens = tokenize(command) if isinstance(command, str) else list(command)
     if not tokens:
         raise ValueError("Gateway command cannot be empty")
 
-    commands = chunk(tokens)
-    if (args or kwargs) and len(commands) != 1:
-        raise TypeError("Native arguments require a single operation")
-
-    result = None
-    for index, stage in enumerate(commands):
-        result = dispatch_stage(
-            runtime,
-            stage,
-            pipeline=result if index else _MISSING,
-            args=args if index == 0 else (),
-            kwargs=kwargs if index == 0 else None,
-        )
+    _, result = dispatch_sequence(
+        runtime,
+        chunk(tokens),
+        args=args,
+        kwargs=kwargs,
+    )
     return result
