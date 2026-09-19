@@ -4,31 +4,9 @@ import argparse
 from collections.abc import Mapping
 import json
 from .gateway import Gateway, gw
-from .recipes import load_recipe
+from .recipes import execute_recipe, parse_recipe_context
 from .dispatch import dispatch_program
 from .tokens import is_literal, statements, token_value
-
-
-def parse_recipe_context(tokens):
-    """Parse --key value tokens into a context mapping."""
-    context = {}
-    index = 0
-    tokens = list(tokens)
-    while index < len(tokens):
-        token = token_value(tokens[index])
-        if is_literal(tokens[index]) or not token.startswith("--") or token == "--":
-            raise ValueError(f"Unexpected argument: {token}")
-        key = token[2:].replace("-", "_")
-        if index + 1 < len(tokens):
-            next_token = tokens[index + 1]
-            next_value = token_value(next_token)
-            if is_literal(next_token) or not next_value.startswith("--"):
-                context[key] = next_value
-                index += 2
-                continue
-        context[key] = True
-        index += 1
-    return context
 
 
 def cli_main():
@@ -56,9 +34,11 @@ def cli_main():
     )
 
     if args.recipe:
-        runtime.context.update(parse_recipe_context(unknown))
-        commands, _ = load_recipe(args.recipe)
-        _, output = process(commands, gw_instance=runtime)
+        _, output = execute_recipe(
+            runtime,
+            args.recipe,
+            context=parse_recipe_context(unknown),
+        )
     elif args.expression:
         runtime.context.update(parse_recipe_context(unknown))
         output = runtime.resolve(args.expression)
