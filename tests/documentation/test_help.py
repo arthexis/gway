@@ -1,6 +1,8 @@
 import inspect
+import sys
 
 from gway import Gateway
+from gway.console import cli_main
 from gway.documentation import render
 
 
@@ -145,3 +147,32 @@ def test_verbose_help_does_not_duplicate_parameter_prose():
     assert output.count("Deployment target name or address.") == 1
     assert "Args:" not in output
     assert "Parameters:" in output
+
+
+
+def test_cli_verbose_help_uses_structured_documentation(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["gway", "-v", "help", "log", "config"])
+
+    assert cli_main() == 0
+
+    output = capsys.readouterr().out
+    assert "Inspect or configure one Python logger." in output
+    assert "Parameters:" in output
+    assert "Logging threshold name or numeric value" in output
+
+
+def test_cli_verbose_interactive_uses_same_parameter_documentation(
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setenv("GWAY_DOC_TEST", "documented-value")
+    monkeypatch.setattr(sys, "argv", ["gway", "-i", "-v", "env"])
+    monkeypatch.setattr("builtins.input", lambda prompt: "GWAY_DOC_TEST")
+
+    assert cli_main() == 0
+
+    output = capsys.readouterr().out
+    assert "name" in output
+    assert "Environment variable name to read." in output
+    assert "Required" in output
+    assert "documented-value" in output
