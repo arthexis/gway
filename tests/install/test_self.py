@@ -80,7 +80,6 @@ def test_gway_can_install_itself_and_run_outside_source_checkout(
     ).get("gway") == installed
 
 
-def test_repeated_self_install_is_noop(
     gateway,
     tmp_path,
     monkeypatch,
@@ -96,7 +95,6 @@ def test_repeated_self_install_is_noop(
     assert second == first
 
 
-def test_self_install_tracks_branch_movement_and_honors_no_upgrade(
     gateway,
     tmp_path,
     monkeypatch,
@@ -136,7 +134,6 @@ def test_self_install_tracks_branch_movement_and_honors_no_upgrade(
 
 
 @pytest.mark.parametrize("policy", ["force", "stash"])
-def test_self_install_handles_dirty_managed_copy(
     gateway,
     tmp_path,
     monkeypatch,
@@ -168,7 +165,6 @@ def test_self_install_handles_dirty_managed_copy(
         assert not (install_environment.data / "stashes").exists()
 
 
-def test_self_uninstall_removes_managed_copy_launcher_and_state(
     gateway,
     tmp_path,
     monkeypatch,
