@@ -55,6 +55,36 @@ def recipe_path(runtime, source, *, allow_bare=True):
     return None
 
 
+def companion_path(recipe_filename):
+    """Return the sibling Python path associated with one recipe path."""
+    recipe = Path(recipe_filename).expanduser().resolve()
+    companion = recipe.with_suffix(".py")
+    if companion == recipe or not companion.is_file():
+        return None
+    return companion
+
+
+def ingest_companion(runtime, recipe_filename):
+    """Ingest a recipe's sibling Python companion once per Gateway."""
+    companion = companion_path(recipe_filename)
+    if companion is None:
+        return []
+
+    ingested = getattr(runtime, "_recipe_companions", None)
+    if ingested is None:
+        ingested = set()
+        runtime._recipe_companions = ingested
+
+    if companion in ingested:
+        return []
+
+    # Mark the path only after successful ingestion so a failed import may be
+    # retried after its cause is corrected.
+    wrapped = runtime.ingest_path(companion)
+    ingested.add(companion)
+    return wrapped
+
+
 def load_recipe(recipe_filename, *, strict=True, section=None):
     """Load a recipe from an explicit filesystem path.
 
@@ -129,6 +159,7 @@ def execute_recipe(
         if context:
             runtime.context.update(context)
 
+        ingest_companion(runtime, path)
         commands, _ = load_recipe(path, section=section)
         statement_list = []
         for command in commands:
