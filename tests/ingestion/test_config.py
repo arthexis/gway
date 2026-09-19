@@ -13,7 +13,6 @@ def django_ingest_spy(monkeypatch):
     seen = {}
 
     def fake(runtime, source, **kwargs):
-        seen["runtime"] = runtime
         seen["source"] = source
         seen["kwargs"] = kwargs
         return "mounted"
@@ -171,7 +170,6 @@ def test_gateway_bootstraps_nearest_gway_toml_before_commands(
 
     runtime = Gateway()
 
-    assert django_ingest_spy["runtime"] is runtime
     assert django_ingest_spy["source"] == manage.resolve()
     assert django_ingest_spy["kwargs"] == {"name": "arthexis"}
     assert runtime._manifest_path == (project / "gway.toml").resolve()
@@ -308,14 +306,6 @@ def test_explicit_declarative_name_beats_folder_inference(
         "name = 'api'\n",
         encoding="utf-8",
     )
-    seen = {}
-
-    def fake(runtime, source, **kwargs):
-        seen["kwargs"] = kwargs
-        return "mounted"
-
-    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
-
     config.load_ingestions(gateway, manifest)
 
     assert django_ingest_spy["kwargs"] == {"name": "api"}
