@@ -13,9 +13,10 @@ def test_gateway_call_delegates_to_dispatch_module():
     assert "process" not in names
 
 
-def test_console_process_uses_dispatch_stage():
+def test_console_process_uses_shared_dispatch_sequence():
     names = set(console.process.__code__.co_names)
-    assert "dispatch_stage" in names
+    assert "dispatch_sequence" in names
+    assert "dispatch_stage" not in names
     assert "bind_arguments" not in names
 
 
