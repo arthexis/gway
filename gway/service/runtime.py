@@ -13,7 +13,8 @@ from .state import ServiceState, new_record, record_matches
 class ProcessBackend:
     """Manage project-owned service processes across Gateway instances."""
 
-    def __init__(self, *, state_root=None):
+    def __init__(self, *, state_root=None, installations=None):
+        self.installations = installations or {}
         self.state_root = (
             Path(state_root).expanduser().resolve()
             if state_root is not None
@@ -61,6 +62,10 @@ class ProcessBackend:
         root = self.state_root or (service.root.parent.parent / "services")
         return ServiceState(root)
 
+    def _project_fingerprint(self, service):
+        installation = self.installations.get(service.project)
+        return getattr(installation, "fingerprint", None)
+
     def _record(self, service):
         return self._state(service).get(service.project, service.name)
 
@@ -104,7 +109,13 @@ class ProcessBackend:
             stderr=subprocess.DEVNULL,
             start_new_session=(os.name != "nt"),
         )
-        record = new_record(service, process.pid, command, cwd)
+        record = new_record(
+            service,
+            process.pid,
+            command,
+            cwd,
+            project_fingerprint=self._project_fingerprint(service),
+        )
         state.put(record)
         return self.status(service)
 
@@ -150,12 +161,19 @@ class ProcessBackend:
             state.remove(service.project, service.name)
             return self._stopped(service)
 
+        current_fingerprint = self._project_fingerprint(service)
+        stale = (
+            record.project_fingerprint is not None
+            and current_fingerprint is not None
+            and record.project_fingerprint != current_fingerprint
+        )
         return {
             "project": service.project,
             "service": service.name,
             "running": True,
             "pid": record.pid,
             "started_at": record.started_at,
+            "stale": stale,
         }
 
     @staticmethod
@@ -166,4 +184,5 @@ class ProcessBackend:
             "running": False,
             "pid": None,
             "started_at": None,
+            "stale": False,
         }
