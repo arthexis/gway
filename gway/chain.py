@@ -1,6 +1,6 @@
 """Scoped manual command chains for embedded GWAY use."""
 
-from .dispatch import dispatch_pipeline
+from .dispatch import dispatch_pipeline, split_stage
 from .tokens import statements, tokenize
 
 
@@ -42,6 +42,18 @@ class Chain:
                 "A chain call accepts one statement; call the chain again for the next statement"
             )
 
+        _, remaining = split_stage(
+            self.gateway,
+            statement_list[0],
+            pipeline=self.last,
+            args=args,
+            kwargs=kwargs,
+        )
+        if remaining:
+            raise ValueError(
+                "A chain call accepts one command stage; call the chain again for the next stage"
+            )
+
         produced, result = dispatch_pipeline(
             self.gateway,
             statement_list[0],
@@ -49,10 +61,6 @@ class Chain:
             args=args,
             kwargs=kwargs,
         )
-        if len(produced) != 1:
-            raise ValueError(
-                "A chain call accepts one command stage; call the chain again for the next stage"
-            )
         self.last = result
         self.history.append(result)
         return result
