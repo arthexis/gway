@@ -184,6 +184,29 @@ def discover_installations(*, system=False):
     ]
 
 
+
+def expand_installed_project(runtime, installation, *, path=None):
+    """Load one installed project's declarative ingestion exactly once."""
+    record = remember_object(
+        runtime,
+        installation,
+        path or (installation.name,),
+        expander=expand_installed_project,
+    )
+    if record.expanded:
+        return []
+
+    manifest = installation.install_path / "gway.toml"
+    if not manifest.is_file():
+        raise RuntimeError(
+            f"Installed project {installation.name!r} has no gway.toml"
+        )
+
+    loaded = load_ingestions(runtime, manifest)
+    record.expanded = True
+    return loaded
+
+
 def discover_managed_projects(runtime):
     """Remember installed user/system projects as lazy Gateway branches."""
     discovered = {}
@@ -196,7 +219,12 @@ def discover_managed_projects(runtime):
             if record.name in discovered:
                 continue
             discovered[record.name] = record
-            remember_object(runtime, record, (record.name,))
+            remember_object(
+                runtime,
+                record,
+                (record.name,),
+                expander=expand_installed_project,
+            )
 
     runtime._installed = discovered
     return discovered
