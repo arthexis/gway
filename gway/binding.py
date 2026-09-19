@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import get_args, get_origin
 
+from .operations import singularize
 from .sigil import Sigil
 from .tokens import Token, is_literal, token_value
 
@@ -152,16 +153,6 @@ def _is_boolean_parameter(parameter):
     )
 
 
-def _singular_name(name):
-    if name.endswith("ies") and len(name) > 3:
-        return name[:-3] + "y"
-    if name.endswith(("xes", "zes", "ches", "shes", "ses")) and len(name) > 2:
-        return name[:-2]
-    if name.endswith("s") and not name.endswith("ss") and len(name) > 1:
-        return name[:-1]
-    return None
-
-
 def _option_details(signature, token):
     """Return (name, parameter, negated, singular) for one long option token."""
     raw = token[2:]
@@ -173,7 +164,7 @@ def _option_details(signature, token):
     for name, candidate in signature.parameters.items():
         if not _sequence_annotation(candidate.annotation):
             continue
-        if _singular_name(name) == key:
+        if singularize(name) == key:
             return name, candidate, False, True
 
     if raw.startswith("no-"):
