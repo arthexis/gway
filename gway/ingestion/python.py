@@ -93,7 +93,7 @@ def _child_operation(source, root, name, child):
 
 def _operation(source, root, name, child):
     """Describe one callable using module entry semantics when applicable."""
-    if isinstance(source, ModuleType) and callable(getattr(source, "__main__", None)):
+    if root and isinstance(source, ModuleType) and callable(getattr(source, "__main__", None)):
         if name == "__main__":
             path = root
             op = root[-1]
@@ -171,7 +171,12 @@ def _register_callable(gateway, record, operation):
         record.registered = True
         return wrapped
 
-    gateway.ops.register_alias(operation.name, record.operation)
+    gateway.ops.register(
+        operation.name,
+        record.operation,
+        op=operation.op,
+        sub=operation.sub,
+    )
     return None
 
 
