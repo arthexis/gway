@@ -67,6 +67,10 @@ class Gateway(Resolver):
         ingest_module(self, builtin, transparent=True)
         self.clear = self.wrap("clear", self._clear_context)
 
+        from .config import bootstrap
+
+        bootstrap(self)
+
     def _clear_context(self, **values):
         """Clear all accumulated context, or only explicitly named keys."""
         if values:
