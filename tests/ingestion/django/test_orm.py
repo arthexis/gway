@@ -200,3 +200,111 @@ def test_unusable_natural_key_signatures_are_not_discovered(
 
     record = find_ingested(gateway, ("energy", "charger"))
     assert "natural_key" not in record.metadata
+
+
+
+def test_natural_key_selector_uses_app_qualified_model_subject(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+
+    def get_by_natural_key(identity):
+        return Charger(identity)
+
+    manager.get_by_natural_key = get_by_natural_key
+    gateway.ingest(Charger)
+
+    selected = gateway("energy charger CHG001")
+
+    assert isinstance(selected, Charger)
+    assert selected.serial == "CHG001"
+    operation = gateway.ops.resolve("energy.charger")
+    assert operation is not None
+    assert operation.__gway_source_kind__ == "django-natural-key"
+    assert operation.__gway_metadata__["natural_key"] == {
+        "parameters": ("identity",),
+        "arity": 1,
+    }
+
+
+def test_project_indexed_natural_key_selector_gets_short_subject_alias(
+    gateway,
+    django_project,
+    django_setup,
+    django_orm,
+):
+    root, _ = django_project()
+    Charger, manager = django_orm
+
+    def get_by_natural_key(identity):
+        return Charger(identity)
+
+    manager.get_by_natural_key = get_by_natural_key
+    django_setup(_app("energy", [Charger]))
+    django_ingestor.ingest_project(gateway, root)
+
+    selected = gateway("charger CHG002")
+
+    assert isinstance(selected, Charger)
+    assert selected.serial == "CHG002"
+
+
+def test_composite_natural_key_selector_binds_all_positional_parts(
+    gateway,
+    django_project,
+    django_setup,
+    django_orm,
+):
+    root, _ = django_project()
+    Charger, manager = django_orm
+
+    def get_by_natural_key(site, identity):
+        return Charger(f"{site}:{identity}")
+
+    manager.get_by_natural_key = get_by_natural_key
+    django_setup(_app("energy", [Charger]))
+    django_ingestor.ingest_project(gateway, root)
+
+    selected = gateway("charger MTY CHG003")
+
+    assert selected.serial == "MTY:CHG003"
+
+
+def test_natural_key_selection_can_pipe_into_model_operation(
+    gateway,
+    django_project,
+    django_setup,
+    django_orm,
+):
+    root, _ = django_project()
+    Charger, manager = django_orm
+
+    def get_by_natural_key(identity):
+        return Charger(identity)
+
+    @classmethod
+    def reset(cls, charger, *, hard: bool = False):
+        return charger.serial, hard
+
+    manager.get_by_natural_key = get_by_natural_key
+    Charger.reset = reset
+    django_setup(_app("energy", [Charger]))
+    django_ingestor.ingest_project(gateway, root)
+
+    assert gateway("charger CHG004 - reset --hard") == ("CHG004", True)
+
+
+def test_model_without_natural_key_is_not_directly_selectable(
+    gateway,
+    django_project,
+    django_setup,
+    django_orm,
+):
+    root, _ = django_project()
+    Charger, _ = django_orm
+    django_setup(_app("energy", [Charger]))
+    django_ingestor.ingest_project(gateway, root)
+
+    with pytest.raises(LookupError, match="Unable to resolve operation"):
+        gateway("charger CHG005")
