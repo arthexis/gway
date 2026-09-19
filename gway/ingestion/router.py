@@ -41,9 +41,11 @@ def ingest(gateway, source, **kwargs):
     """Route an explicitly requested ingestion source to its ingestor."""
     kind = kwargs.pop("kind", None)
     if kind == "django":
-        from .django import ingest_project as ingest_django_project
+        from .django import ingest_orm, ingest_project, source_kind
 
-        return ingest_django_project(gateway, source, **kwargs)
+        if source_kind(source) is not None:
+            return ingest_orm(gateway, source, **kwargs)
+        return ingest_project(gateway, source, **kwargs)
 
     if _is_pathlike(source):
         return ingest_path(gateway, source, **kwargs)
@@ -57,6 +59,11 @@ def ingest(gateway, source, **kwargs):
         from .python import ingest_module
 
         return ingest_module(gateway, source, **kwargs)
+
+    from .django import ingest_orm, source_kind
+
+    if source_kind(source) is not None:
+        return ingest_orm(gateway, source, **kwargs)
 
     from .python import ingest_python
 
