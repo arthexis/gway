@@ -32,7 +32,6 @@ def test_render_verbose_help_includes_docstring_and_parameter_facts():
     output = render(deploy, verbose=True)
 
     assert "Deploy one target." in output
-    assert "target: Deployment target name or address." in output
     assert "  target\n" in output
     assert "    Deployment target name or address." in output
     assert "    Type: str" in output
@@ -130,3 +129,19 @@ def test_callable_log_level_has_subject_specific_summary(gateway):
 
     assert "Log a DEBUG diagnostic" in output
     assert "callable and truth-testable" not in output
+
+
+
+def test_verbose_help_does_not_duplicate_parameter_prose():
+    def deploy(target: str):
+        """Deploy one target.
+
+        Args:
+            target: Deployment target name or address.
+        """
+
+    output = render(deploy, verbose=True)
+
+    assert output.count("Deployment target name or address.") == 1
+    assert "Args:" not in output
+    assert "Parameters:" in output
