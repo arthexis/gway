@@ -43,10 +43,11 @@ def normalize_source(source):
 
     match = _GITHUB_SHORT.fullmatch(source)
     if match:
-        return (
-            "https://github.com/"
-            f"{match.group('owner')}/{match.group('repo')}.git"
-        )
+        owner = match.group("owner")
+        repo = match.group("repo")
+        if owner in {".", ".."} or repo in {".", ".."}:
+            raise ValueError(f"Unsupported Git source: {source}")
+        return f"https://github.com/{owner}/{repo}.git"
 
     match = _GITHUB_SCP.fullmatch(source)
     if match:
