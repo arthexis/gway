@@ -97,7 +97,7 @@ def uninstall_units(
     return records
 
 
-def runtime(*, installations=None, state_root=None):
+def runtime(*, record=None, installations=None, state_root=None):
     """Return the portable runtime backend for installed process services."""
     return ProcessBackend(
         installations=installations,
