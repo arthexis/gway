@@ -13,7 +13,7 @@ from .paths import install_paths
 from .source import fingerprint, local_source, project_name
 from .stash import preserve as preserve_stash
 from .state import InstallState
-from .systemd import UnitState, install_units, uninstall_units
+from .systemd import UnitState
 
 
 def _is_within(path, parent):
@@ -223,8 +223,12 @@ def _converge_services(request, paths, project, root):
     names = _selected_service_names(request, paths, project)
     if not names:
         return []
+
+    from .backends import get as get_backend
+
+    backend = get_backend(request.backend)
     services = _service_definitions(root, project, names)
-    return install_units(
+    return backend.install_units(
         project,
         services,
         state_root=_unit_state_root(paths),
@@ -466,10 +470,19 @@ def uninstall_local(request, *, paths=None, state=None):
     if existing is None:
         return None
 
-    uninstall_units(
-        request.project,
-        state_root=_unit_state_root(selected),
-    )
+    records = UnitState(_unit_state_root(selected)).get(request.project)
+    if records:
+        from .backends import get as get_backend
+
+        grouped = {}
+        for record in records:
+            grouped.setdefault(record.backend, []).append(record)
+        for backend_name in grouped:
+            backend = get_backend(backend_name)
+            backend.uninstall_units(
+                request.project,
+                state_root=_unit_state_root(selected),
+            )
 
     destination = selected.projects / request.project
     _expected_destination(existing, destination)
