@@ -286,6 +286,35 @@ def ingest_manager(gateway, manager, *, path=None, **kwargs):
     return wrapped
 
 
+def _register_natural_selector(gateway, manager, record, root, subject):
+    """Register a model-subject selector backed by get_by_natural_key()."""
+    natural_key = _natural_key_metadata(manager)
+    if natural_key is None:
+        return None
+
+    lookup = manager.get_by_natural_key
+    operation = IngestedOperation(
+        root,
+        lookup,
+        source=manager.model,
+        kind="django-natural-key",
+        op=subject,
+        sub=subject,
+        metadata={
+            "model": subject,
+            "object": manager.model,
+            "natural_key": natural_key,
+        },
+    )
+    registered = register_operation(gateway, operation)
+    record.operation = registered
+    record.registered = True
+
+    for path in record.paths:
+        gateway.ops.register_alias(".".join(path), registered)
+    return registered
+
+
 def _register_path_aliases(gateway, wrapped, roots):
     """Register alternate semantic paths for already-wrapped operations."""
     for operation in wrapped:
@@ -311,6 +340,15 @@ def ingest_model(gateway, model, *, path=None, **kwargs):
         natural_key = _natural_key_metadata(manager)
         if natural_key is not None:
             record.metadata["natural_key"] = natural_key
+            selector = _register_natural_selector(
+                gateway,
+                manager,
+                record,
+                root,
+                subject,
+            )
+            if selector is not None:
+                wrapped.append(selector)
         wrapped.extend(ingest_manager(gateway, manager, path=root))
     wrapped.extend(
         _register_surface(
