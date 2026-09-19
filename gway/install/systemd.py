@@ -290,3 +290,52 @@ def uninstall_units(project, *, state_root, root=None, records=None):
     ]
     state.put(project, remaining)
     return records
+
+
+
+class RuntimeBackend:
+    """Manage one installed service through systemd."""
+
+    def __init__(self, record):
+        self.record = record
+
+    def _status(self, service):
+        result = _systemctl(
+            "is-active",
+            self.record.unit,
+            system=self.record.system,
+            check=False,
+        )
+        running = getattr(result, "returncode", 1) == 0
+        return {
+            "project": service.project,
+            "service": service.name,
+            "running": running,
+            "pid": None,
+            "started_at": None,
+            "stale": False,
+        }
+
+    def start(self, service):
+        """Start one installed systemd service."""
+        _systemctl("start", self.record.unit, system=self.record.system)
+        return self._status(service)
+
+    def stop(self, service):
+        """Stop one installed systemd service."""
+        _systemctl("stop", self.record.unit, system=self.record.system, check=False)
+        return self._status(service)
+
+    def restart(self, service):
+        """Restart one installed systemd service."""
+        _systemctl("restart", self.record.unit, system=self.record.system)
+        return self._status(service)
+
+    def status(self, service):
+        """Return runtime status for one installed systemd service."""
+        return self._status(service)
+
+
+def runtime(*, record, **kwargs):
+    """Return the systemd runtime adapter for one installed service."""
+    return RuntimeBackend(record)
