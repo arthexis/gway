@@ -19,6 +19,7 @@ class UnitRecord:
     service: str
     unit: str
     system: bool = False
+    backend: str = "systemd"
 
 
 class UnitState:
@@ -42,6 +43,7 @@ class UnitState:
                 service=item["service"],
                 unit=item["unit"],
                 system=bool(item.get("system", False)),
+                backend=item.get("backend", "systemd"),
             )
             for item in data
         ]
@@ -215,6 +217,7 @@ def install_units(
                     service=service.name,
                     unit=filename,
                     system=system,
+                    backend="systemd",
                 )
             )
 
