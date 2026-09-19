@@ -409,7 +409,7 @@ def test_singular_cardinality_checks_only_first_two_lazy_results(
     assert lazy.slices == [slice(None, 2, None)]
 
 
-def test_plural_collection_does_not_implicitly_feed_singular_model_operation(
+def test_direct_plural_collection_rejects_singular_model_operation(
     gateway,
     django_orm,
 ):
@@ -429,7 +429,7 @@ def test_plural_collection_does_not_implicitly_feed_singular_model_operation(
         gateway("charging chargers - reset")
 
 
-def test_plural_collection_can_feed_operation_that_explicitly_accepts_collection(
+def test_direct_plural_collection_accepts_explicit_collection_consumer(
     gateway,
     django_orm,
 ):
@@ -448,7 +448,7 @@ def test_plural_collection_can_feed_operation_that_explicitly_accepts_collection
     assert gateway("charging chargers - summarize") == ["CHG001", "CHG002"]
 
 
-def test_plural_collection_can_feed_annotated_collection_parameter(
+def test_direct_plural_collection_accepts_collection_annotation(
     gateway,
     django_orm,
 ):
@@ -467,7 +467,7 @@ def test_plural_collection_can_feed_annotated_collection_parameter(
     assert gateway("charging chargers - summarize") == ["CHG001", "CHG002"]
 
 
-def test_django_natural_key_and_cardinality_work_together_end_to_end(
+def test_project_indexed_natural_key_and_cardinality_work_together(
     gateway,
     django_mount,
     django_orm,
@@ -507,7 +507,7 @@ def test_django_natural_key_and_cardinality_work_together_end_to_end(
     }
 
 
-def test_django_composite_natural_key_and_plural_query_can_coexist(
+def test_project_indexed_composite_key_and_plural_query_coexist(
     gateway,
     django_mount,
     django_orm,
@@ -539,7 +539,7 @@ def test_django_composite_natural_key_and_plural_query_can_coexist(
     ]
 
 
-def test_plural_query_result_cannot_flow_into_singular_domain_action_end_to_end(
+def test_project_indexed_plural_query_rejects_singular_domain_action(
     gateway,
     django_mount,
     django_orm,
@@ -561,7 +561,7 @@ def test_plural_query_result_cannot_flow_into_singular_domain_action_end_to_end(
         gateway("connected chargers - reset")
 
 
-def test_plural_query_result_can_flow_into_explicit_collection_consumer_end_to_end(
+def test_project_indexed_plural_query_accepts_collection_consumer(
     gateway,
     django_mount,
     django_orm,
