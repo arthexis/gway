@@ -874,7 +874,7 @@ GWAY keyword flags are forwarded to Django, and the command's return value is
 published normally as the result of the project-scoped operation. Management
 command discovery is idempotent per mounted project.
 
-## Installation foundation
+## Managed installation
 
 GWAY exposes `install` and `uninstall` as core builtins. Their lifecycle
 contract is binary and convergent: install means a project should be present at
@@ -883,21 +883,44 @@ no separate upgrade operation. The install request carries `upgrade=True` by
 default and therefore accepts `--no-upgrade` when a caller wants to suppress
 replacement of an existing installation.
 
-The current installation layer defines and persists desired/installed state but
-does not yet copy or remove project files. Until the filesystem transaction
-layer is implemented, the builtins return normalized request records:
+The current implementation supports local project directories:
 
 ```text
-gway install arthexis/gway
-gway install arthexis/gway --ref gateway-rebuild
-gway install arthexis/gway --no-upgrade
-gway uninstall gway
+gway install ./project
+gway install ./project --system
+gway uninstall project
 ```
 
-`--force` and `--stash` are mutually exclusive install intents. Their
-managed-checkout behavior is implemented by a later transaction layer; the
-request contract exists now so recipes and callers can rely on one stable
-surface.
+A local source must be an existing directory containing `gway.toml` with a
+non-empty, path-safe `[project].name`. GWAY computes a stable source
+fingerprint from project paths, contents, symlink targets, and mode bits while
+ignoring incidental VCS/tool-cache internals such as `.git` and
+`__pycache__`.
+
+Installation never writes into or mutates the source tree. GWAY stages a full
+managed copy beneath the selected durable `projects/` directory, validates
+that the staged project still has the expected identity and fingerprint, then
+atomically activates the staged directory. Only after activation succeeds is
+the authoritative SQLite installation record written. If that state write
+fails, activation is rolled back.
+
+Repeating an unchanged local install is a no-op and returns the existing
+installation record. If the local source has changed, `--no-upgrade` leaves
+the existing managed installation untouched. Replacement reconciliation for
+the normal `upgrade=True` path is not implemented yet; changed installed
+state currently fails rather than overwriting the existing managed project.
+
+Uninstall is idempotent. A managed project is first renamed to a tombstone,
+then its authoritative state record is removed, then the tombstone is deleted.
+If the state update fails, the live managed directory is restored. A missing
+managed directory with a stale state record is reconciled by removing the stale
+record. Registry paths outside the expected managed project location are never
+deleted.
+
+`--ref` is reserved for the upcoming Git/GitHub source layer and is rejected
+for local sources. `--force` and `--stash` remain mutually exclusive request
+intents; dirty-checkout handling is not implemented in this local transaction
+chunk.
 
 Durable installation state is separate from the disposable cache. User data
 uses the platform data directory (`$XDG_DATA_HOME/gway` or
