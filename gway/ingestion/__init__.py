@@ -1,4 +1,4 @@
-"""Shared ingestion primitives."""
+"""Shared ingestion primitives and routing."""
 
 from .base import (
     IngestedOperation,
@@ -7,10 +7,13 @@ from .base import (
     register_operation,
     register_operations,
 )
+from .router import ingest, ingest_path
 
 __all__ = [
     "IngestedOperation",
     "canonical_name",
+    "ingest",
+    "ingest_path",
     "normalize_path",
     "register_operation",
     "register_operations",

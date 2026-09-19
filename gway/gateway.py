@@ -133,6 +133,18 @@ class Gateway(Resolver):
 
         return Chain(self, command, args=args, kwargs=kwargs)
 
+    def ingest(self, source, **kwargs):
+        """Ingest a Python source, qualified name, or filesystem source."""
+        from .ingestion import ingest
+
+        return ingest(self, source, **kwargs)
+
+    def ingest_path(self, path, **kwargs):
+        """Ingest a filesystem source through path-based routing."""
+        from .ingestion import ingest_path
+
+        return ingest_path(self, path, **kwargs)
+
     def wrap(self, func_name, func_obj):
         """Normalize a Python callable to GWAY context and result conventions."""
         if not callable(func_obj):
