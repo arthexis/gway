@@ -2,11 +2,12 @@
 
 import os
 from dataclasses import dataclass
+from collections.abc import Mapping
 
 from .adaptation import adapt_pipeline
 from .binding import bind_arguments, pipeline_boundary
 from .ingestion.base import expand_path
-from .operations import subject_cardinality
+from .operations import Cardinality, subject_cardinality
 from .recipes import execute_recipe, parse_recipe_context, recipe_path
 from .tokens import is_literal, statements, token_value, tokenize
 
@@ -117,6 +118,41 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
     raise LookupError(f"Unable to resolve operation: {' '.join(values)}")
 
 
+def _enforce_cardinality(resolution, result):
+    """Apply semantic ONE/MANY intent to collection-producing operations."""
+    if resolution.cardinality is None:
+        return result
+
+    kind = getattr(resolution.callable, "__gway_source_kind__", None)
+    if kind != "django-manager":
+        return result
+
+    if resolution.cardinality is Cardinality.MANY:
+        return result
+
+    if isinstance(result, (str, bytes, bytearray, Mapping)):
+        return result
+
+    subject = resolution.subject or "result"
+
+    if hasattr(result, "__getitem__") and hasattr(result, "__iter__"):
+        try:
+            selected = list(result[:2])
+        except (TypeError, KeyError, IndexError):
+            selected = None
+        if selected is not None:
+            if not selected:
+                raise LookupError(f"No {subject} matched the query")
+            if len(selected) > 1:
+                raise LookupError(
+                    f"Expected one {subject}; query matched multiple results. "
+                    f"Use the plural subject to allow multiple results."
+                )
+            return selected[0]
+
+    return result
+
+
 def _recipe_source(token):
     return token if isinstance(token, os.PathLike) else token_value(token)
 
@@ -167,7 +203,8 @@ def dispatch_stage(
     if not tokens:
         raise ValueError("Gateway command cannot be empty")
 
-    func, arguments, _ = resolve_operation(runtime, tokens, pipeline=pipeline)
+    resolution = resolve_operation(runtime, tokens, pipeline=pipeline)
+    func, arguments, _ = resolution
 
     if (args or kwargs) and arguments:
         raise TypeError(
@@ -193,7 +230,7 @@ def dispatch_stage(
                 initial_kwargs=initial_kwargs,
                 pipeline=pipeline,
             )
-            return func(*bound.args, **bound.kwargs)
+            return _enforce_cardinality(resolution, func(*bound.args, **bound.kwargs))
 
         adapted = adapt_pipeline(
             runtime,
@@ -214,13 +251,13 @@ def dispatch_stage(
             initial_args=initial_args,
             initial_kwargs=initial_kwargs,
         )
-        return func(*bound.args, **bound.kwargs)
+        return _enforce_cardinality(resolution, func(*bound.args, **bound.kwargs))
 
     if pipeline is not _MISSING:
-        return func(*initial_args, **initial_kwargs)
+        return _enforce_cardinality(resolution, func(*initial_args, **initial_kwargs))
 
     if args or kwargs:
-        return func(*args, **kwargs)
+        return _enforce_cardinality(resolution, func(*args, **kwargs))
 
     bound = bind_arguments(
         func,
@@ -228,7 +265,7 @@ def dispatch_stage(
         runtime=runtime,
         interactive=runtime.interactive_enabled,
     )
-    return func(*bound.args, **bound.kwargs)
+    return _enforce_cardinality(resolution, func(*bound.args, **bound.kwargs))
 
 
 
