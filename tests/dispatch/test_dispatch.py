@@ -3,6 +3,7 @@ import logging
 import pytest
 
 from gway.dispatch import dispatch, dispatch_stage, resolve_operation
+from gway.operations import Cardinality
 
 
 def test_resolve_operation_prefers_registered_ops(gateway):
@@ -170,3 +171,103 @@ def test_semicolon_preserves_named_results_without_raw_transfer(gateway):
     gateway.inspect_charger = gateway.wrap("inspect_charger", inspect_charger)
 
     assert dispatch(gateway, "get_charger ; inspect_charger") == "inspect:CHG001"
+
+
+
+def test_resolve_operation_records_singular_subject_cardinality(gateway):
+    def filter_charger():
+        return "one"
+
+    wrapped = gateway.wrap("filter_charger", filter_charger)
+    resolution = resolve_operation(gateway, ["filter", "charger"])
+
+    func, remaining, name = resolution
+    assert func is wrapped
+    assert remaining == []
+    assert name == "filter charger"
+    assert resolution.subject == "charger"
+    assert resolution.cardinality is Cardinality.ONE
+
+
+def test_resolve_operation_accepts_plural_subject_as_many(gateway):
+    def filter_charger():
+        return "one"
+
+    wrapped = gateway.wrap("filter_charger", filter_charger)
+    resolution = resolve_operation(gateway, ["filter", "chargers"])
+
+    func, remaining, name = resolution
+    assert func is wrapped
+    assert remaining == []
+    assert name == "filter chargers"
+    assert resolution.subject == "charger"
+    assert resolution.cardinality is Cardinality.MANY
+
+
+@pytest.mark.parametrize(
+    ("singular", "plural"),
+    [
+        ("charger", "chargers"),
+        ("category", "categories"),
+        ("box", "boxes"),
+        ("status", "statuses"),
+    ],
+)
+def test_plural_subject_resolution_uses_shared_inflection(
+    gateway,
+    singular,
+    plural,
+):
+    def inspect():
+        return singular
+
+    wrapped = gateway.wrap(
+        f"inspect_{singular}",
+        inspect,
+        op="inspect",
+        sub=singular,
+    )
+
+    resolution = resolve_operation(gateway, ["inspect", plural])
+
+    assert resolution.callable is wrapped
+    assert resolution.subject == singular
+    assert resolution.cardinality is Cardinality.MANY
+
+
+def test_plural_inference_does_not_singularize_double_s_subject(gateway):
+    def inspect_glass():
+        return "glass"
+
+    gateway.wrap("inspect_glass", inspect_glass)
+
+    with pytest.raises(LookupError, match="Unable to resolve operation"):
+        resolve_operation(gateway, ["inspect", "glass"] + ["s"])
+
+
+def test_exact_plural_subject_wins_over_inferred_singular(gateway):
+    def singular():
+        return "singular"
+
+    def plural():
+        return "plural"
+
+    singular_wrapped = gateway.wrap(
+        "inspect_charger",
+        singular,
+        op="inspect",
+        sub="charger",
+    )
+    plural_wrapped = gateway.wrap(
+        "inspect_chargers",
+        plural,
+        op="inspect",
+        sub="chargers",
+    )
+
+    resolution = resolve_operation(gateway, ["inspect", "chargers"])
+
+    assert resolution.callable is plural_wrapped
+    assert resolution.callable is not singular_wrapped
+    assert resolution.subject == "chargers"
+    assert resolution.cardinality is Cardinality.ONE
