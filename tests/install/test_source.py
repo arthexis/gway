@@ -112,5 +112,5 @@ def test_project_name_rejects_unsafe_path_components(tmp_path, name):
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="Invalid \[project\]\.name"):
+    with pytest.raises(ValueError, match=r"Invalid \[project\]\.name"):
         project_name(root)
