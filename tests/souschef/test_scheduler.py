@@ -1,10 +1,12 @@
 import threading
 import time
 
+import pytest
+
 from gway.souschef import Job, Scheduler
 
 
-def test_duplicate_pending_job_coalesces_reasons(tmp_path, job_factory):
+def test_duplicate_pending_job_coalesces_reasons(job_factory):
     job = job_factory("cleanup")
     calls = []
     scheduler = Scheduler([job], executor=lambda current: calls.append(current.identity))
@@ -24,7 +26,7 @@ def test_duplicate_pending_job_coalesces_reasons(tmp_path, job_factory):
     assert scheduler.active is None
 
 
-def test_jobs_run_fifo_and_failures_do_not_stop_scheduler(tmp_path, job_factory):
+def test_jobs_run_fifo_and_failures_do_not_stop_scheduler(job_factory):
     first = job_factory("first")
     second = job_factory("second")
     third = job_factory("third")
@@ -52,7 +54,7 @@ def test_jobs_run_fifo_and_failures_do_not_stop_scheduler(tmp_path, job_factory)
     assert scheduler.active is None
 
 
-def test_trigger_during_active_run_creates_one_follow_up(tmp_path, job_factory):
+def test_trigger_during_active_run_creates_one_follow_up(job_factory):
     job = job_factory("build")
     started = threading.Event()
     release = threading.Event()
@@ -89,7 +91,7 @@ def test_trigger_during_active_run_creates_one_follow_up(tmp_path, job_factory):
     assert scheduler.active is None
 
 
-def test_concurrent_run_next_calls_never_overlap(tmp_path, job_factory):
+def test_concurrent_run_next_calls_never_overlap(job_factory):
     first = job_factory("first")
     second = job_factory("second")
     state_lock = threading.Lock()
@@ -133,7 +135,7 @@ def test_concurrent_run_next_calls_never_overlap(tmp_path, job_factory):
     assert scheduler.active is None
 
 
-def test_same_job_name_is_distinct_across_projects(tmp_path, job_factory):
+def test_same_job_name_is_distinct_across_projects(job_factory):
     alpha = job_factory("cleanup", project="alpha")
     beta = job_factory("cleanup", project="beta")
     scheduler = Scheduler(
@@ -162,9 +164,5 @@ def test_scheduler_rejects_conflicting_identity(tmp_path, job_factory):
     )
     scheduler = Scheduler([original], executor=lambda job: None)
 
-    try:
+    with pytest.raises(ValueError, match="Duplicate Sous Chef job identity"):
         scheduler.add([conflicting])
-    except ValueError as exc:
-        assert "Duplicate Sous Chef job identity" in str(exc)
-    else:
-        raise AssertionError("conflicting identity was accepted")
