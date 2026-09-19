@@ -80,6 +80,12 @@ class Gateway(Resolver):
 
         bootstrap(self)
 
+        from .ingestion.python import ingest_python
+        from .service.controller import Controller
+
+        self._service_controller = Controller(self)
+        ingest_python(self, self._service_controller, path=("service",))
+
     def _clear_context(self, **values):
         """Clear accumulated semantic context.
 
