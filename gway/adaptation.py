@@ -1,8 +1,6 @@
 """Pipeline adaptation for GWAY operation composition."""
 
 import inspect
-import types
-import typing
 from dataclasses import dataclass
 
 from .binding import BoundCall
@@ -24,24 +22,6 @@ def _result_subject(runtime, value):
         return None
 
     return runtime.results.subject(value)
-
-
-def _compatible(annotation, value):
-    """Return whether a runtime value satisfies a concrete type annotation."""
-    if annotation is inspect.Parameter.empty:
-        return False
-
-    origin = typing.get_origin(annotation)
-    if origin in (typing.Union, types.UnionType):
-        return any(_compatible(option, value) for option in typing.get_args(annotation))
-
-    if origin is not None:
-        annotation = origin
-
-    try:
-        return isinstance(value, annotation)
-    except TypeError:
-        return False
 
 
 def _available_parameters(signature, args, kwargs):
@@ -78,35 +58,6 @@ def plan_pipeline(runtime, func, value, *, args=(), kwargs=None) -> AdaptationPl
             consumer_subject,
         )
 
-    if consumer_subject:
-        for parameter in available:
-            if parameter.name == consumer_subject:
-                return AdaptationPlan(
-                    "consumer_subject",
-                    parameter.name,
-                    producer_subject,
-                    consumer_subject,
-                )
-
-    if producer_subject:
-        for parameter in available:
-            if parameter.name == producer_subject:
-                return AdaptationPlan(
-                    "producer_subject",
-                    parameter.name,
-                    producer_subject,
-                    consumer_subject,
-                )
-
-    for parameter in available:
-        if _compatible(parameter.annotation, value):
-            return AdaptationPlan(
-                "annotation",
-                parameter.name,
-                producer_subject,
-                consumer_subject,
-            )
-
     for parameter in available:
         if parameter.kind in (
             inspect.Parameter.POSITIONAL_ONLY,
@@ -119,7 +70,7 @@ def plan_pipeline(runtime, func, value, *, args=(), kwargs=None) -> AdaptationPl
                 consumer_subject,
             )
 
-    raise TypeError("Consumer has no available parameter for the pipeline value")
+    raise TypeError("Consumer has no available positional parameter for the pipeline value")
 
 
 def apply_plan(func, plan, value, *, args=(), kwargs=None) -> BoundCall:
