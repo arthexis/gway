@@ -383,6 +383,12 @@ def bind_arguments(
                 continue
             if parameter.default is not inspect.Parameter.empty:
                 continue
+            if getattr(runtime, "verbose", False):
+                from .documentation import render_parameter
+
+                details = render_parameter(func, name)
+                if details:
+                    print(details)
             response = input(f"{name}: ")
             bound.arguments[name] = convert_argument(
                 Token(response),
