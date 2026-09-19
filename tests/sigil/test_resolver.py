@@ -65,3 +65,14 @@ def test_gway_prefix_is_ordinary_semantic_data(gateway):
 def test_resolver_does_not_fall_back_to_its_own_attributes(gateway):
     with pytest.raises(KeyError):
         gateway.resolve("[resolve]")
+
+
+def test_none_is_a_resolved_semantic_value(gateway):
+    gateway.context["optional"] = None
+
+    assert gateway.resolve("[optional]") is None
+    assert gateway.resolve("[optional|fallback]") is None
+
+
+def test_literal_raise_default_is_not_internal_control_value(gateway):
+    assert gateway.resolve("[missing]", default="_raise") == "_raise"
