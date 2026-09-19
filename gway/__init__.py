@@ -2,7 +2,7 @@
 
 from .cache import Cache
 from .gateway import Gateway, gw
-from .install import Installation, InstallRequest, InstallState, UninstallRequest
+from .install import Installation, InstallRequest, InstallState, Stash, UninstallRequest
 from .operations import Operations, Subjects
 from .console import cli_main, process
 from .recipes import load_recipe
@@ -15,6 +15,7 @@ __all__ = [
     "Installation",
     "InstallRequest",
     "InstallState",
+    "Stash",
     "Operations",
     "Subjects",
     "Resolver",
