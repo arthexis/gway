@@ -10,8 +10,8 @@ import sys
 import tempfile
 import uuid
 
-from .manifest import load as load_manifest
 from .model import validate_name
+from ..project import scripts
 
 
 _TARGET = re.compile(
@@ -19,33 +19,6 @@ _TARGET = re.compile(
     r"(?P<attribute>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)$"
 )
 _MARKER = "# gway-managed-launcher:"
-
-
-def scripts(project):
-    """Return validated [install.scripts] declarations from one project."""
-    project = Path(project)
-    manifest = project / "gway.toml"
-    if not manifest.is_file():
-        return {}
-
-    data = load_manifest(manifest)
-    install = data.get("install") if isinstance(data, dict) else None
-    values = install.get("scripts") if isinstance(install, dict) else None
-    if values is None:
-        return {}
-    if not isinstance(values, dict):
-        raise ValueError("[install.scripts] must be a TOML table")
-
-    result = {}
-    for command, target in values.items():
-        validate_name(command)
-        if not isinstance(target, str) or _TARGET.fullmatch(target) is None:
-            raise ValueError(
-                f"Invalid launcher target for {command!r}: {target!r}; "
-                "expected module:callable"
-            )
-        result[command] = target
-    return result
 
 
 def _index_path(paths, project):
