@@ -154,3 +154,45 @@ def test_git_install_uses_cache_outside_managed_project(
     assert snapshots
     assert installed.install_path.is_relative_to(data)
     assert not installed.install_path.is_relative_to(cache)
+
+
+
+def test_github_shorthand_routes_through_git_materialization(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    import gway.install.git as git_source
+
+    materialized = tmp_path / "materialized"
+    materialized.mkdir()
+    (materialized / "gway.toml").write_text(
+        "[project]\nname = 'gway'\n",
+        encoding="utf-8",
+    )
+    (materialized / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    data = tmp_path / "data"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
+    seen = {}
+
+    def fake_materialize(source, *, ref=None, cache=None):
+        seen["source"] = source
+        seen["ref"] = ref
+        return git_source.GitArtifact(
+            source="https://github.com/arthexis/gway.git",
+            requested_ref=ref,
+            resolved_revision="a" * 40,
+            path=materialized,
+        )
+
+    monkeypatch.setattr(git_source, "materialize", fake_materialize)
+
+    installed = gateway("install arthexis/gway --ref gateway-rebuild")
+
+    assert seen == {
+        "source": "arthexis/gway",
+        "ref": "gateway-rebuild",
+    }
+    assert installed.source == "https://github.com/arthexis/gway.git"
+    assert installed.requested_ref == "gateway-rebuild"
+    assert installed.resolved_revision == "a" * 40
