@@ -70,6 +70,33 @@ def _variadic_parameter(signature):
     )
 
 
+def _is_boolean_parameter(parameter):
+    return (
+        parameter.annotation is bool
+        or isinstance(parameter.default, bool)
+    )
+
+
+def _option_details(signature, token):
+    """Return (name, parameter, negated) for one long option token."""
+    raw = token[2:]
+    key = raw.replace("-", "_")
+    parameter = signature.parameters.get(key)
+    if parameter is not None:
+        return key, parameter, False
+
+    if raw.startswith("no-"):
+        candidate = raw[3:].replace("-", "_")
+        candidate_parameter = signature.parameters.get(candidate)
+        if (
+            candidate_parameter is not None
+            and _is_boolean_parameter(candidate_parameter)
+        ):
+            return candidate, candidate_parameter, True
+
+    return key, None, False
+
+
 def _variadic_keyword_parameter(signature):
     return next(
         (
@@ -197,8 +224,7 @@ def pipeline_boundary(
             continue
 
         if not literal_mode and not is_literal(raw) and token.startswith("--"):
-            key = token[2:].replace("-", "_")
-            parameter = signature.parameters.get(key)
+            key, parameter, negated = _option_details(signature, token)
             if parameter is None:
                 if _variadic_keyword_parameter(signature) is None:
                     return None
@@ -217,7 +243,7 @@ def pipeline_boundary(
                 index += 1
                 continue
             filled.add(key)
-            if parameter.annotation is bool or isinstance(parameter.default, bool):
+            if _is_boolean_parameter(parameter):
                 index += 1
             else:
                 if index + 1 >= len(tokens):
@@ -281,8 +307,7 @@ def bind_arguments(
             continue
 
         if not literal_mode and not is_literal(item) and token.startswith("--"):
-            key = token[2:].replace("-", "_")
-            keyword_parameter = signature.parameters.get(key)
+            key, keyword_parameter, negated = _option_details(signature, token)
             if keyword_parameter is None:
                 variadic_keywords = _variadic_keyword_parameter(signature)
                 if variadic_keywords is None:
@@ -305,11 +330,8 @@ def bind_arguments(
                 keywords[key] = True
                 index += 1
                 continue
-            if (
-                keyword_parameter.annotation is bool
-                or isinstance(keyword_parameter.default, bool)
-            ):
-                keywords[key] = True
+            if _is_boolean_parameter(keyword_parameter):
+                keywords[key] = not negated
                 filled.add(key)
                 index += 1
                 continue
