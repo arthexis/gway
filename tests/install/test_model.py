@@ -72,3 +72,40 @@ def test_install_request_name_requires_one_service():
             services=("web", "worker"),
             name="custom",
         )
+
+
+
+def test_install_request_backend_defaults_to_preserve():
+    request = InstallRequest(
+        "arthexis/gway",
+        services=("web",),
+    )
+
+    assert request.backend is None
+
+
+def test_install_request_accepts_systemd_backend():
+    request = InstallRequest(
+        "arthexis/gway",
+        services=("web",),
+        backend="systemd",
+    )
+
+    assert request.backend == "systemd"
+
+
+def test_install_request_rejects_unknown_backend():
+    with pytest.raises(ValueError, match="Unsupported service backend"):
+        InstallRequest(
+            "arthexis/gway",
+            services=("web",),
+            backend="unknown",
+        )
+
+
+def test_install_request_backend_requires_service_selection():
+    with pytest.raises(ValueError, match="requires at least one selected service"):
+        InstallRequest(
+            "arthexis/gway",
+            backend="systemd",
+        )
