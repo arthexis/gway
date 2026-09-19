@@ -117,3 +117,64 @@ def resolve_target(project, target):
     if not callable(value):
         raise TypeError(f"Project script target is not callable: {target}")
     return value
+
+
+def main_packages(project):
+    """Return import names and paths for conventional package __main__.py files."""
+    project = Path(project).expanduser().resolve()
+    roots = [project]
+    src = project / "src"
+    if src.is_dir():
+        roots.insert(0, src)
+
+    discovered = {}
+    for source_root in roots:
+        for main in source_root.rglob("__main__.py"):
+            package = main.parent
+            try:
+                relative = package.relative_to(source_root)
+            except ValueError:
+                continue
+
+            parts = relative.parts
+            if not parts or not all(part.isidentifier() for part in parts):
+                continue
+
+            current = source_root
+            conventional = True
+            for part in parts:
+                current = current / part
+                if not (current / "__init__.py").is_file():
+                    conventional = False
+                    break
+            if not conventional:
+                continue
+
+            name = ".".join(parts)
+            discovered.setdefault(name, package.resolve())
+    return discovered
+
+
+def import_project_module(project, name):
+    """Import one module with the project's conventional source roots visible."""
+    project = Path(project).expanduser().resolve()
+    roots = []
+    src = project / "src"
+    if src.is_dir():
+        roots.append(src)
+    roots.append(project)
+
+    inserted = []
+    for root in reversed(roots):
+        text = str(root)
+        if text not in sys.path:
+            sys.path.insert(0, text)
+            inserted.append(text)
+    try:
+        return import_module(name)
+    finally:
+        for text in inserted:
+            try:
+                sys.path.remove(text)
+            except ValueError:
+                pass
