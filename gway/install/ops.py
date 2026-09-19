@@ -8,8 +8,14 @@ from .model import InstallRequest, UninstallRequest
 def _local_intent(source):
     if isinstance(source, Path):
         return True
+
+    text = str(source)
+    if text.startswith(("./", "../", "~")) or "\\" in text:
+        return True
+
     try:
-        return Path(str(source)).expanduser().exists()
+        path = Path(text).expanduser()
+        return path.exists() and (path / "gway.toml").is_file()
     except OSError:
         return False
 
@@ -38,11 +44,15 @@ def install(
     if _local_intent(source):
         return install_local(request)
 
+    from .source import named_source
+
+    resolved_source = named_source(request.source) or request.source
+
     from .git import is_git_source, materialize
 
-    if is_git_source(request.source):
+    if is_git_source(resolved_source):
         artifact = materialize(
-            request.source,
+            resolved_source,
             ref=request.ref,
         )
         return install_materialized(
