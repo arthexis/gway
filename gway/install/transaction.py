@@ -219,12 +219,84 @@ def _service_definitions(root, project, names):
     return tuple(available[name] for name in names)
 
 
-def _converge_services(request, paths, project, root):
+def _remove_backend_records(
+    paths,
+    project,
+    root,
+    records,
+    *,
+    installation=None,
+):
+    from .backends import get as get_backend
+
+    records = list(records)
+    if not records:
+        return []
+
+    definitions = _service_definitions(
+        root,
+        project,
+        tuple(record.service for record in records),
+    )
+    grouped = {}
+    for record in records:
+        grouped.setdefault(record.backend, []).append(record)
+
+    removed = []
+    installations = (
+        {project: installation}
+        if installation is not None
+        else {}
+    )
+    for backend_name, backend_records in grouped.items():
+        backend = get_backend(backend_name)
+        names = {record.service for record in backend_records}
+        services = tuple(
+            service
+            for service in definitions
+            if service.name in names
+        )
+        removed.extend(
+            backend.uninstall_units(
+                project,
+                state_root=_unit_state_root(paths),
+                records=backend_records,
+                services=services,
+                installations=installations,
+                process_state_root=paths.root / "services",
+            )
+        )
+    return removed
+
+
+def _converge_services(
+    request,
+    paths,
+    project,
+    root,
+    *,
+    installation=None,
+):
     from .backends import get as get_backend
 
     state_root = _unit_state_root(paths)
     if request.services:
         backend_name = request.backend or "systemd"
+        existing_records = UnitState(state_root).get(project)
+        desired = set(request.services)
+        obsolete = [
+            record
+            for record in existing_records
+            if record.backend != backend_name or record.service not in desired
+        ]
+        _remove_backend_records(
+            paths,
+            project,
+            root,
+            obsolete,
+            installation=installation,
+        )
+
         backend = get_backend(backend_name)
         services = _service_definitions(root, project, request.services)
         return backend.install_units(
@@ -340,7 +412,13 @@ def install_materialized(
         if same:
             launcher = activate_project(name, destination, selected)
             try:
-                _converge_services(request, selected, name, destination)
+                _converge_services(
+                    request,
+                    selected,
+                    name,
+                    destination,
+                    installation=existing,
+                )
             except Exception:
                 launcher.rollback()
                 raise
@@ -371,7 +449,13 @@ def install_materialized(
                 launcher.rollback()
                 raise
             try:
-                _converge_services(request, selected, name, destination)
+                _converge_services(
+                    request,
+                    selected,
+                    name,
+                    destination,
+                    installation=existing,
+                )
             except Exception:
                 registry.put(existing)
                 launcher.rollback()
@@ -421,7 +505,13 @@ def install_materialized(
             launcher = activate_project(name, destination, selected)
             stored = registry.put(record)
             state_written = True
-            _converge_services(request, selected, name, destination)
+            _converge_services(
+                    request,
+                    selected,
+                    name,
+                    destination,
+                    installation=existing,
+                )
         except Exception:
             if state_written:
                 if existing is None:
@@ -489,22 +579,17 @@ def uninstall_local(request, *, paths=None, state=None):
     if existing is None:
         return None
 
+    destination = selected.projects / request.project
+
     records = UnitState(_unit_state_root(selected)).get(request.project)
     if records:
-        from .backends import get as get_backend
-
-        grouped = {}
-        for record in records:
-            grouped.setdefault(record.backend, []).append(record)
-        for backend_name, backend_records in grouped.items():
-            backend = get_backend(backend_name)
-            backend.uninstall_units(
-                request.project,
-                state_root=_unit_state_root(selected),
-                records=backend_records,
-            )
-
-    destination = selected.projects / request.project
+        _remove_backend_records(
+            selected,
+            request.project,
+            destination,
+            records,
+            installation=existing,
+        )
     _expected_destination(existing, destination)
 
     tombstone = None
