@@ -1,14 +1,49 @@
 """Unified command resolution and dispatch for GWAY runtimes."""
 
 import os
+from dataclasses import dataclass
 
 from .adaptation import adapt_pipeline
 from .binding import bind_arguments, pipeline_boundary
 from .ingestion.base import expand_path
+from .operations import subject_cardinality
 from .recipes import execute_recipe, parse_recipe_context, recipe_path
 from .tokens import is_literal, statements, token_value, tokenize
 
 _MISSING = object()
+
+
+@dataclass(frozen=True)
+class ResolvedOperation:
+    """One resolved callable plus per-invocation semantic subject intent."""
+
+    callable: object
+    arguments: list
+    candidate: str
+    subject: str | None = None
+    cardinality: object = None
+
+    def __iter__(self):
+        yield self.callable
+        yield self.arguments
+        yield self.candidate
+
+
+def _resolved(func, arguments, candidate):
+    subject = getattr(func, "__gway_subject__", None)
+    requested = candidate.replace(" ", ".").split(".")[-1]
+    cardinality = (
+        subject_cardinality(requested, subject)
+        if subject is not None
+        else None
+    )
+    return ResolvedOperation(
+        func,
+        arguments,
+        candidate,
+        subject=subject,
+        cardinality=cardinality,
+    )
 
 
 def _expand_candidate(runtime, candidate):
@@ -42,7 +77,7 @@ def _semantic_pipeline_operation(runtime, tokens, pipeline):
         for candidate in candidates:
             value = runtime.ops.resolve_pair(candidate, subject)
             if callable(value):
-                return value, tokens[size:], candidate
+                return _resolved(value, tokens[size:], candidate)
     return None
 
 
@@ -58,12 +93,12 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
         for candidate in candidates:
             value = runtime.ops.resolve(candidate)
             if callable(value):
-                return value, tokens[size:], candidate
+                return _resolved(value, tokens[size:], candidate)
 
             if _expand_candidate(runtime, candidate):
                 value = runtime.ops.resolve(candidate)
                 if callable(value):
-                    return value, tokens[size:], candidate
+                    return _resolved(value, tokens[size:], candidate)
 
             obj = runtime
             try:
@@ -72,7 +107,7 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
             except AttributeError:
                 continue
             if callable(obj) and getattr(obj, "__gway_operation__", None) is not None:
-                return obj, tokens[size:], candidate
+                return _resolved(obj, tokens[size:], candidate)
 
     if pipeline is not _MISSING:
         semantic = _semantic_pipeline_operation(runtime, tokens, pipeline)
