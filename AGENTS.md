@@ -755,6 +755,51 @@ project mount records an optional project `name`; management-command exposure
 is permitted only for named mounts and is implemented as a separate ingestion
 layer.
 
+### Django management commands
+
+Only named Django project mounts expose management commands. An unnamed mount
+indexes apps/models but does not create any management-command discovery branch.
+
+For a named mount such as `arthexis`, the mount itself is remembered as a lazy
+semantic subject. The first resolution of a command against that subject, for
+example:
+
+```text
+migrate arthexis
+```
+
+expands the mount's management surface using Django's effective command
+registry. Commands are then registered canonically beneath the project:
+
+```text
+arthexis.migrate
+arthexis.collectstatic
+```
+
+with semantic identity such as:
+
+```text
+op = migrate
+sub = arthexis
+```
+
+No bare top-level `migrate` or `collectstatic` aliases are created. This keeps
+application-wide commands tied to the Django project subject.
+
+Django command names containing underscores also receive only project-qualified
+humanized aliases, so a command named `rebuild_search` can be called as:
+
+```text
+rebuild search arthexis
+```
+
+without creating a bare `rebuild search` operation.
+
+Command execution delegates to Django's `call_command()`. Positional values and
+GWAY keyword flags are forwarded to Django, and the command's return value is
+published normally as the result of the project-scoped operation. Management
+command discovery is idempotent per mounted project.
+
 ## Ingestion routing
 
 Filesystem discovery is opt-in through explicit ingestion. Ordinary operation
