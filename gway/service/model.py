@@ -21,12 +21,19 @@ class Service:
     restart: str | None = None
     restart_sec: float | None = None
     autostart: bool = False
+    state_root: Path | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "root", Path(self.root).expanduser().resolve())
         object.__setattr__(self, "command", tuple(self.command))
         object.__setattr__(self, "writable_paths", tuple(self.writable_paths))
         object.__setattr__(self, "profiles", tuple(self.profiles))
+        if self.state_root is not None:
+            object.__setattr__(
+                self,
+                "state_root",
+                Path(self.state_root).expanduser().resolve(),
+            )
         object.__setattr__(
             self,
             "environment",
