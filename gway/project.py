@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import warnings
 
-from . import toml
+from .install.manifest import load as load_manifest
 from .install.model import validate_name
 
 
@@ -39,7 +39,7 @@ def project_scripts(project):
     if not manifest.is_file():
         return {}
 
-    data = toml.load(manifest)
+    data = load_manifest(manifest)
     project_data = data.get("project") if isinstance(data, dict) else None
     values = project_data.get("scripts") if isinstance(project_data, dict) else None
     if values is None:
@@ -61,7 +61,7 @@ def legacy_scripts(project):
     if not manifest.is_file():
         return {}
 
-    data = toml.load(manifest)
+    data = load_manifest(manifest)
     install = data.get("install") if isinstance(data, dict) else None
     values = install.get("scripts") if isinstance(install, dict) else None
     if values is None:
