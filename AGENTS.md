@@ -687,6 +687,74 @@ Single-quoted forms such as `'[0]'` remain literal text and do not act as
 chain selectors.
 
 
+## Django ingestion
+
+Django support is optional and lazily imported. Core GWAY has no mandatory
+Django runtime dependency.
+
+A conventional Django project can be mounted from its `manage.py` or from a
+directory containing `manage.py`. A settings module can also be mounted
+explicitly with `kind="django"`. Project mounting configures Django, indexes
+the installed app registry, and remembers app/model branches lazily.
+
+Apps are remembered as top-level branches. Models are remembered beneath their
+Django app label, for example:
+
+```text
+energy.charger
+sales.customer
+```
+
+When a model name is unique across the mounted registry, the model is also
+remembered under its short semantic name such as `charger`. Duplicate model
+names are not given an ambiguous short branch.
+
+Django ORM sources are recognized automatically by `Gateway.ingest()`:
+
+```python
+gateway.ingest(Charger)
+gateway.ingest(Charger.objects)
+gateway.ingest(charger_instance)
+```
+
+Regardless of source type, ORM operations use the Django model name as their
+semantic subject. Canonical paths retain app/model qualification where Django
+metadata provides it. For example, the default manager's `filter()` method on
+`energy.Charger` is registered canonically as:
+
+```text
+energy.charger.filter
+```
+
+with semantic identity:
+
+```text
+op = filter
+sub = charger
+```
+
+so ordinary GWAY resolution can use:
+
+```text
+filter charger --status online
+```
+
+Ingesting a model class exposes its default manager methods plus explicit
+class/static model methods. Ingesting a manager exposes that manager's public
+callable surface on its model subject. Ingesting a concrete model instance also
+exposes its bound public methods and stores that object in Gateway context under
+the model subject so later semantic completion can reuse it.
+
+Project-mounted models stay lazy: mounting a Django project does not eagerly
+register every manager/model method. Resolving a model-scoped command such as
+`filter charger` expands the remembered model branch and exposes its ORM
+surface on demand.
+
+Management commands are intentionally not part of the ORM layer. A Django
+project mount records an optional project `name`; management-command exposure
+is permitted only for named mounts and is implemented as a separate ingestion
+layer.
+
 ## Ingestion routing
 
 Filesystem discovery is opt-in through explicit ingestion. Ordinary operation
