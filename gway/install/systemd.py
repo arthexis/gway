@@ -175,7 +175,17 @@ def install_units(
     target_root = unit_root(system=system) if root is None else Path(root)
     target_root.mkdir(parents=True, exist_ok=True)
     state = UnitState(state_root)
-    previous = {record.service: record for record in state.get(project)}
+    previous_all = state.get(project)
+    previous = {
+        record.service: record
+        for record in previous_all
+        if record.backend == "systemd"
+    }
+    foreign = [
+        record
+        for record in previous_all
+        if record.backend != "systemd"
+    ]
     selected = {service.name for service in services}
 
     previous_files = {}
@@ -224,7 +234,7 @@ def install_units(
         _systemctl("daemon-reload", system=system)
         for record in records:
             _systemctl("enable", record.unit, system=system)
-        state.put(project, records)
+        state.put(project, [*foreign, *records])
         return records
     except Exception:
         for record in records:
@@ -244,17 +254,22 @@ def install_units(
             else:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(content)
-        state.put(project, previous.values())
+        state.put(project, previous_all)
         _systemctl("daemon-reload", system=system, check=False)
         for record in previous.values():
             _systemctl("enable", record.unit, system=record.system, check=False)
         raise
 
 
-def uninstall_units(project, *, state_root, root=None):
-    """Disable and remove all persisted systemd units owned by one project."""
+def uninstall_units(project, *, state_root, root=None, records=None):
+    """Disable and remove persisted systemd units owned by one project."""
     state = UnitState(state_root)
-    records = state.get(project)
+    all_records = state.get(project)
+    records = (
+        [record for record in all_records if record.backend == "systemd"]
+        if records is None
+        else list(records)
+    )
     if not records:
         return []
 
@@ -267,5 +282,11 @@ def uninstall_units(project, *, state_root, root=None):
             pass
         _systemctl("daemon-reload", system=record.system, check=False)
 
-    state.remove(project)
+    removed = {(record.backend, record.service, record.unit) for record in records}
+    remaining = [
+        record
+        for record in all_records
+        if (record.backend, record.service, record.unit) not in removed
+    ]
+    state.put(project, remaining)
     return records
