@@ -204,9 +204,9 @@ set limit --limit "32"
 A double-quoted sigil can resolve, and double-quoted numeric text can still be
 converted according to the Python signature.
 
-A standalone unquoted `-` or `;` is recognized by the token chunking helper
-as a stage separator. Quoted separators are ordinary values. Current recipe
-files normally express composition as separate operation lines.
+A standalone unquoted `-` is a raw positional pipeline separator. A standalone
+unquoted `;` is a statement boundary with the same named-context continuity as
+a recipe newline. Quoted separators are ordinary values.
 
 ## Recipes
 
@@ -546,6 +546,9 @@ and environment-backed resolution are still available by name.
 A standalone dash keeps the same named semantic state and additionally offers
 the immediately previous raw result to the next stage as positional input. Dash
 transport is positional: it does not require producer/consumer subject names to
-match. After explicit and dash-supplied positional values are bound, any
-remaining concrete parameters may still be completed from named semantic
-context by parameter name.
+match. A scalar raw result contributes one leading positional value. A tuple raw
+result is a positional bundle and expands into multiple leading positional
+values; lists and other iterables remain single positional values. Explicit
+positional arguments on the chained operation follow that pipeline prefix. Any
+remaining concrete parameters may then be completed from named semantic context
+by parameter name.
