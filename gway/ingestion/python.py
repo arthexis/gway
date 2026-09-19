@@ -164,20 +164,17 @@ def discover_python(source, *, path=None):
 
 
 def _register_callable(gateway, record, operation):
-    """Register one callable identity once and alias any additional paths."""
-    if record.operation is None:
-        wrapped = register_operation(gateway, operation)
-        record.operation = wrapped
-        record.registered = True
-        return wrapped
+    """Register one wrapper per semantic path while reusing object identity state."""
+    existing = record.operations.get(operation.path)
+    if existing is not None:
+        return None
 
-    gateway.ops.register(
-        operation.name,
-        record.operation,
-        op=operation.op,
-        sub=operation.sub,
-    )
-    return None
+    wrapped = register_operation(gateway, operation)
+    record.operations[operation.path] = wrapped
+    if record.operation is None:
+        record.operation = wrapped
+    record.registered = True
+    return wrapped
 
 
 def _remember_child(gateway, child, path):
