@@ -71,6 +71,8 @@ def test_github_sources_are_normalized(source, expected):
     "source",
     [
         "./local/project",
+        "./repo",
+        "../repo",
         "gway",
         "https://example.test/archive.tar.gz",
     ],
