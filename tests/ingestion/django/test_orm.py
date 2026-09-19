@@ -4,6 +4,11 @@ import gway.ingestion.django as django_ingestor
 from gway.ingestion.base import find_ingested
 
 
+def _manager_returns(manager, name, value):
+    """Install one simple collection-returning manager operation."""
+    setattr(type(manager), name, lambda self: value)
+
+
 def test_direct_model_ingestion_exposes_manager_operations_on_model_subject(
     gateway,
     django_orm,
@@ -63,9 +68,7 @@ def test_project_indexed_model_expands_manager_surface_on_first_resolution(
     django_orm,
 ):
     Charger, _ = django_orm
-    django_setup(_app("energy", [Charger]))
-
-    django_ingestor.ingest_project(gateway, root)
+    django_mount(Charger)
 
     assert gateway.ops.resolve("energy.charger.filter") is None
     assert gateway("filter charger --site MTY") == {"site": "MTY"}
@@ -90,7 +93,6 @@ def test_model_operations_retain_app_qualified_canonical_paths(
 
     assert gateway.ops.resolve("energy.charger.filter") is not None
     assert gateway.ops.resolve_pair("filter", "charger") is not None
-
 
 
 def test_model_ingestion_discovers_single_part_natural_key(
@@ -191,7 +193,6 @@ def test_unusable_natural_key_signatures_are_not_discovered(
     assert "natural_key" not in record.metadata
 
 
-
 def test_natural_key_selector_uses_app_qualified_model_subject(
     gateway,
     django_orm,
@@ -287,17 +288,13 @@ def test_model_without_natural_key_is_not_directly_selectable(
         gateway("charger CHG005")
 
 
-
 def test_singular_django_manager_result_unwraps_exactly_one_match(
     gateway,
     django_orm,
 ):
     Charger, manager = django_orm
 
-    def connected(self):
-        return [Charger("CHG001")]
-
-    type(manager).connected = connected
+    _manager_returns(manager, "connected", [Charger("CHG001")])
     gateway.ingest(Charger)
 
     selected = gateway("connected charger")
@@ -316,10 +313,7 @@ def test_plural_django_manager_result_preserves_collection(
 
     chargers = [Charger("CHG001"), Charger("CHG002")]
 
-    def connected(self):
-        return chargers
-
-    type(manager).connected = connected
+    _manager_returns(manager, "connected", chargers)
     gateway.ingest(Charger)
 
     selected = gateway("connected chargers")
@@ -335,10 +329,7 @@ def test_singular_django_manager_result_rejects_zero_matches(
 ):
     Charger, manager = django_orm
 
-    def connected(self):
-        return []
-
-    type(manager).connected = connected
+    _manager_returns(manager, "connected", [])
     gateway.ingest(Charger)
 
     with pytest.raises(LookupError, match="No charger matched"):
@@ -354,10 +345,11 @@ def test_singular_django_manager_result_rejects_multiple_matches(
 ):
     Charger, manager = django_orm
 
-    def connected(self):
-        return [Charger("CHG001"), Charger("CHG002")]
-
-    type(manager).connected = connected
+    _manager_returns(
+        manager,
+        "connected",
+        [Charger("CHG001"), Charger("CHG002")],
+    )
     gateway.ingest(Charger)
 
     with pytest.raises(LookupError, match="Expected one charger"):
@@ -375,10 +367,11 @@ def test_failed_cardinality_restores_previous_semantic_result(
     previous = Charger("PREVIOUS")
     gateway.results.insert("charger", previous)
 
-    def connected(self):
-        return [Charger("CHG001"), Charger("CHG002")]
-
-    type(manager).connected = connected
+    _manager_returns(
+        manager,
+        "connected",
+        [Charger("CHG001"), Charger("CHG002")],
+    )
     gateway.ingest(Charger)
 
     with pytest.raises(LookupError, match="Expected one charger"):
@@ -407,17 +400,13 @@ def test_singular_cardinality_checks_only_first_two_lazy_results(
 
     lazy = LazyResults()
 
-    def connected(self):
-        return lazy
-
-    type(manager).connected = connected
+    _manager_returns(manager, "connected", lazy)
     gateway.ingest(Charger)
 
     with pytest.raises(LookupError, match="Expected one charger"):
         gateway("connected charger")
 
     assert lazy.slices == [slice(None, 2, None)]
-
 
 
 def test_plural_collection_does_not_implicitly_feed_singular_model_operation(
@@ -427,14 +416,12 @@ def test_plural_collection_does_not_implicitly_feed_singular_model_operation(
     Charger, manager = django_orm
     chargers = [Charger("CHG001"), Charger("CHG002")]
 
-    def charging(self):
-        return chargers
+    _manager_returns(manager, "charging", chargers)
 
     @classmethod
     def reset(cls, charger):
         raise AssertionError("reset must not be invoked for a charger collection")
 
-    type(manager).charging = charging
     Charger.reset = reset
     gateway.ingest(Charger)
 
@@ -449,14 +436,12 @@ def test_plural_collection_can_feed_operation_that_explicitly_accepts_collection
     Charger, manager = django_orm
     chargers = [Charger("CHG001"), Charger("CHG002")]
 
-    def charging(self):
-        return chargers
+    _manager_returns(manager, "charging", chargers)
 
     @classmethod
     def summarize(cls, chargers):
         return [charger.serial for charger in chargers]
 
-    type(manager).charging = charging
     Charger.summarize = summarize
     gateway.ingest(Charger)
 
@@ -470,19 +455,16 @@ def test_plural_collection_can_feed_annotated_collection_parameter(
     Charger, manager = django_orm
     chargers = [Charger("CHG001"), Charger("CHG002")]
 
-    def charging(self):
-        return chargers
+    _manager_returns(manager, "charging", chargers)
 
     @classmethod
     def summarize(cls, items: list):
         return [charger.serial for charger in items]
 
-    type(manager).charging = charging
     Charger.summarize = summarize
     gateway.ingest(Charger)
 
     assert gateway("charging chargers - summarize") == ["CHG001", "CHG002"]
-
 
 
 def test_django_natural_key_and_cardinality_work_together_end_to_end(
@@ -499,15 +481,13 @@ def test_django_natural_key_and_cardinality_work_together_end_to_end(
                 return charger
         raise LookupError(identity)
 
-    def connected(self):
-        return fleet
+    _manager_returns(manager, "connected", fleet)
 
     @classmethod
     def reset(cls, charger, *, hard: bool = False):
         return {"identity": charger.serial, "hard": hard}
 
     manager.get_by_natural_key = get_by_natural_key
-    type(manager).connected = connected
     Charger.reset = reset
 
     django_mount(Charger)
@@ -546,11 +526,9 @@ def test_django_composite_natural_key_and_plural_query_can_coexist(
                 return charger
         raise LookupError(serial)
 
-    def connected(self):
-        return fleet[:2]
+    _manager_returns(manager, "connected", fleet[:2])
 
     manager.get_by_natural_key = get_by_natural_key
-    type(manager).connected = connected
 
     django_mount(Charger)
 
@@ -569,14 +547,12 @@ def test_plural_query_result_cannot_flow_into_singular_domain_action_end_to_end(
     Charger, manager = django_orm
     fleet = [Charger("CHG001"), Charger("CHG002")]
 
-    def connected(self):
-        return fleet
+    _manager_returns(manager, "connected", fleet)
 
     @classmethod
     def reset(cls, charger):
         raise AssertionError("collection fan-out must not happen")
 
-    type(manager).connected = connected
     Charger.reset = reset
 
     django_mount(Charger)
@@ -593,14 +569,12 @@ def test_plural_query_result_can_flow_into_explicit_collection_consumer_end_to_e
     Charger, manager = django_orm
     fleet = [Charger("CHG001"), Charger("CHG002")]
 
-    def connected(self):
-        return fleet
+    _manager_returns(manager, "connected", fleet)
 
     @classmethod
     def summarize(cls, chargers):
         return tuple(charger.serial for charger in chargers)
 
-    type(manager).connected = connected
     Charger.summarize = summarize
 
     django_mount(Charger)
