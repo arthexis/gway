@@ -1,5 +1,7 @@
 """Path traversal helpers for sigil resolution."""
 
+from collections.abc import Mapping, Sequence
+
 
 def follow_path(value, parts, lookup=None, resolve_text=None):
     for part in parts:
@@ -15,7 +17,7 @@ def follow_path(value, parts, lookup=None, resolve_text=None):
             if part.startswith("_"):
                 raise KeyError(f"Path segment '{part}' not found")
 
-        if isinstance(value, dict):
+        if isinstance(value, Mapping):
             if part in value:
                 value = value[part]
                 continue
@@ -52,7 +54,11 @@ def follow_path(value, parts, lookup=None, resolve_text=None):
             except (ValueError, TypeError):
                 idx = None
 
-        if idx is not None and isinstance(value, (list, tuple)):
+        if (
+            idx is not None
+            and isinstance(value, Sequence)
+            and not isinstance(value, (str, bytes, bytearray))
+        ):
             value = value[idx]
             continue
 
@@ -64,7 +70,7 @@ def follow_path(value, parts, lookup=None, resolve_text=None):
             try:
                 value = value[part]
                 continue
-            except Exception:
+            except (KeyError, IndexError, TypeError):
                 pass
 
         raise KeyError(f"Path segment '{original_part}' not found")
