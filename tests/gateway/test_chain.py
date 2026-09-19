@@ -124,3 +124,83 @@ def test_chain_prefix_then_explicit_then_named_completion(gateway):
 
     with gateway.chain("pair") as __:
         assert __("combine", "C") == ("A", "B", "C", "D")
+
+
+def test_chain_numeric_sigils_reorder_original_tuple_positions(gateway):
+    def triple():
+        return ("A", "B", "C")
+
+    def combine(first, second, third):
+        return first, second, third
+
+    gateway.triple = gateway.wrap("get_triple", triple)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    assert gateway("triple - combine [2] [0] [1]") == ("C", "A", "B")
+
+
+def test_chain_numeric_sigils_remove_selected_values_from_default_prefix(gateway):
+    def triple():
+        return ("A", "B", "C")
+
+    def combine(first, second, third):
+        return first, second, third
+
+    gateway.triple = gateway.wrap("get_triple", triple)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    assert gateway("triple - combine [2] [0]") == ("B", "C", "A")
+
+
+def test_chain_star_places_remaining_tuple_values_at_marker(gateway):
+    def pair():
+        return ("A", "B")
+
+    def combine(first, second, third):
+        return first, second, third
+
+    gateway.pair = gateway.wrap("get_pair", pair)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    assert gateway("pair - combine C [*]") == ("C", "A", "B")
+
+
+def test_chain_numeric_then_star_consumes_remaining_values(gateway):
+    def triple():
+        return ("A", "B", "C")
+
+    def combine(first, second, third):
+        return first, second, third
+
+    gateway.triple = gateway.wrap("get_triple", triple)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    assert gateway("triple - combine [2] [*]") == ("C", "A", "B")
+
+
+def test_chain_rejects_reusing_consumed_numeric_slot(gateway):
+    def pair():
+        return ("A", "B")
+
+    def combine(first, second):
+        return first, second
+
+    gateway.pair = gateway.wrap("get_pair", pair)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    with pytest.raises(ValueError, match="already been consumed"):
+        gateway("pair - combine [0] [0]")
+
+
+def test_chain_rejects_numeric_selector_after_star_consumes_pool(gateway):
+    def pair():
+        return ("A", "B")
+
+    def combine(first, second, third):
+        return first, second, third
+
+    gateway.pair = gateway.wrap("get_pair", pair)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    with pytest.raises(ValueError, match="already been consumed"):
+        gateway("pair - combine [*] [0]")
