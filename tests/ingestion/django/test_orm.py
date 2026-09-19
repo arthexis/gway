@@ -48,7 +48,7 @@ def test_direct_manager_ingestion_infers_its_model_subject(
 
     gateway.ingest(manager)
 
-    assert gateway("all charger") == ["all"]
+    assert gateway("all chargers") == ["all"]
     assert gateway.ops.resolve("energy.charger.all") is not None
 
 
@@ -308,3 +308,135 @@ def test_model_without_natural_key_is_not_directly_selectable(
 
     with pytest.raises(LookupError, match="Unable to resolve operation"):
         gateway("charger CHG005")
+
+
+
+def test_singular_django_manager_result_unwraps_exactly_one_match(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+
+    def connected(self):
+        return [Charger("CHG001")]
+
+    type(manager).connected = connected
+    gateway.ingest(Charger)
+
+    selected = gateway("connected charger")
+
+    assert isinstance(selected, Charger)
+    assert selected.serial == "CHG001"
+    assert gateway.last is selected
+    assert gateway.results["charger"] is selected
+
+
+def test_plural_django_manager_result_preserves_collection(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+
+    chargers = [Charger("CHG001"), Charger("CHG002")]
+
+    def connected(self):
+        return chargers
+
+    type(manager).connected = connected
+    gateway.ingest(Charger)
+
+    selected = gateway("connected chargers")
+
+    assert selected is chargers
+    assert gateway.last is chargers
+    assert gateway.results["charger"] is chargers
+
+
+def test_singular_django_manager_result_rejects_zero_matches(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+
+    def connected(self):
+        return []
+
+    type(manager).connected = connected
+    gateway.ingest(Charger)
+
+    with pytest.raises(LookupError, match="No charger matched"):
+        gateway("connected charger")
+
+    assert gateway.last is None
+    assert "charger" not in gateway.results.maps[0]
+
+
+def test_singular_django_manager_result_rejects_multiple_matches(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+
+    def connected(self):
+        return [Charger("CHG001"), Charger("CHG002")]
+
+    type(manager).connected = connected
+    gateway.ingest(Charger)
+
+    with pytest.raises(LookupError, match="Expected one charger"):
+        gateway("connected charger")
+
+    assert gateway.last is None
+    assert "charger" not in gateway.results.maps[0]
+
+
+def test_failed_cardinality_restores_previous_semantic_result(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+    previous = Charger("PREVIOUS")
+    gateway.results.insert("charger", previous)
+
+    def connected(self):
+        return [Charger("CHG001"), Charger("CHG002")]
+
+    type(manager).connected = connected
+    gateway.ingest(Charger)
+
+    with pytest.raises(LookupError, match="Expected one charger"):
+        gateway("connected charger")
+
+    assert gateway.last is previous
+    assert gateway.results["charger"] is previous
+
+
+def test_singular_cardinality_checks_only_first_two_lazy_results(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+
+    class LazyResults:
+        def __init__(self):
+            self.slices = []
+
+        def __getitem__(self, key):
+            self.slices.append(key)
+            return [Charger("CHG001"), Charger("CHG002")][key]
+
+        def __iter__(self):
+            raise AssertionError("full collection should not be iterated")
+
+    lazy = LazyResults()
+
+    def connected(self):
+        return lazy
+
+    type(manager).connected = connected
+    gateway.ingest(Charger)
+
+    with pytest.raises(LookupError, match="Expected one charger"):
+        gateway("connected charger")
+
+    assert lazy.slices == [slice(None, 2, None)]
