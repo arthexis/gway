@@ -41,7 +41,10 @@ class ProcessBackend:
 
     @classmethod
     def _command(cls, service):
-        return [cls._expand(service, part) for part in service.command]
+        return [
+            cls._expand(service, part)
+            for part in service.launchable.command
+        ]
 
     @classmethod
     def _cwd(cls, service):
