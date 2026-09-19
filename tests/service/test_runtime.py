@@ -3,7 +3,6 @@ import sys
 import time
 from types import SimpleNamespace
 
-from gway.service.model import Service
 from gway.service.runtime import ProcessBackend
 from gway.service.state import ProcessRecord, ServiceState, process_token
 
@@ -56,13 +55,8 @@ def test_process_backend_resolves_project_python_cwd_and_environment(tmp_path):
     assert status["pid"] is None
 
 
-def test_process_backend_start_is_idempotent_while_running(tmp_path):
-    service = Service(
-        project="demo",
-        name="sleeper",
-        root=tmp_path,
-        command=("{python}", "-c", "import time; time.sleep(30)"),
-    )
+def test_process_backend_start_is_idempotent_while_running(tmp_path, service_factory):
+    service = service_factory()
     backend = ProcessBackend(state_root=tmp_path / "state")
 
     first = backend.start(service)
@@ -76,13 +70,8 @@ def test_process_backend_start_is_idempotent_while_running(tmp_path):
         backend.stop(service)
 
 
-def test_process_backend_restart_replaces_process(tmp_path):
-    service = Service(
-        project="demo",
-        name="sleeper",
-        root=tmp_path,
-        command=("{python}", "-c", "import time; time.sleep(30)"),
-    )
+def test_process_backend_restart_replaces_process(tmp_path, service_factory):
+    service = service_factory()
     backend = ProcessBackend(state_root=tmp_path / "state")
 
     first = backend.start(service)
@@ -96,13 +85,8 @@ def test_process_backend_restart_replaces_process(tmp_path):
 
 
 
-def test_durable_state_allows_later_backend_to_manage_service(tmp_path):
-    service = Service(
-        project="demo",
-        name="sleeper",
-        root=tmp_path,
-        command=("{python}", "-c", "import time; time.sleep(30)"),
-    )
+def test_durable_state_allows_later_backend_to_manage_service(tmp_path, service_factory):
+    service = service_factory()
     state_root = tmp_path / "state"
     starter = ProcessBackend(state_root=state_root)
     later = ProcessBackend(state_root=state_root)
@@ -164,13 +148,8 @@ def test_stale_pid_record_is_removed_without_signalling_unowned_process(
     assert state.get("demo", "stale") is None
 
 
-def test_process_record_uses_kernel_start_token_when_available(tmp_path):
-    service = Service(
-        project="demo",
-        name="sleeper",
-        root=tmp_path,
-        command=("{python}", "-c", "import time; time.sleep(30)"),
-    )
+def test_process_record_uses_kernel_start_token_when_available(tmp_path, service_factory):
+    service = service_factory()
     backend = ProcessBackend(state_root=tmp_path / "state")
 
     started = backend.start(service)
@@ -186,13 +165,9 @@ def test_process_record_uses_kernel_start_token_when_available(tmp_path):
 
 def test_running_service_reports_stale_after_installation_fingerprint_changes(
     tmp_path,
+    service_factory,
 ):
-    service = Service(
-        project="demo",
-        name="sleeper",
-        root=tmp_path,
-        command=("{python}", "-c", "import time; time.sleep(30)"),
-    )
+    service = service_factory()
     installations = {
         "demo": SimpleNamespace(fingerprint="first"),
     }
