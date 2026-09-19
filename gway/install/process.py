@@ -56,7 +56,16 @@ def install_units(
     return records
 
 
-def uninstall_units(project, *, state_root, root=None, records=None):
+def uninstall_units(
+    project,
+    *,
+    state_root,
+    root=None,
+    records=None,
+    services=(),
+    installations=None,
+    process_state_root=None,
+):
     """Stop and remove process-backed service ownership records."""
     state = UnitState(state_root)
     all_records = state.get(project)
@@ -68,10 +77,16 @@ def uninstall_units(project, *, state_root, root=None, records=None):
     if not records:
         return []
 
-    # Process-backed services use ProcessBackend durable state below the same
-    # Gway installation root. Service definitions are not required here:
-    # package uninstall routes stop through the service controller before the
-    # managed project tree is removed.
+    definitions = {service.name: service for service in services}
+    backend = ProcessBackend(
+        installations=installations,
+        state_root=process_state_root,
+    )
+    for record in records:
+        service = definitions.get(record.service)
+        if service is not None:
+            backend.stop(service)
+
     removed = {(record.backend, record.service, record.unit) for record in records}
     remaining = [
         record
