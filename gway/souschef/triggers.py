@@ -47,7 +47,14 @@ class TriggerEngine:
     def _restore_pending(self):
         for job in self.jobs.values():
             state = self.state.get(*job.identity)
-            if state.pending:
+            interrupted = (
+                state.last_started is not None
+                and (
+                    state.last_completed is None
+                    or state.last_completed < state.last_started
+                )
+            )
+            if state.pending or interrupted:
                 self.scheduler.enqueue(job, "resume")
 
     def _started(self, job, reasons):
