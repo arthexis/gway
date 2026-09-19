@@ -1,9 +1,12 @@
 """Unified command resolution and dispatch for GWAY runtimes."""
 
+import os
+
 from .adaptation import adapt_pipeline
 from .binding import bind_arguments, pipeline_boundary
 from .ingestion.base import expand_path
-from .tokens import statements, token_value, tokenize
+from .recipes import execute_recipe, parse_recipe_context, recipe_path
+from .tokens import is_literal, statements, token_value, tokenize
 
 _MISSING = object()
 
@@ -77,6 +80,42 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
             return semantic
 
     raise LookupError(f"Unable to resolve operation: {' '.join(values)}")
+
+
+def _recipe_source(token):
+    return token if isinstance(token, os.PathLike) else token_value(token)
+
+
+def _split_recipe_stage(tokens):
+    """Split one recipe invocation from a following raw pipeline."""
+    tokens = list(tokens)
+    for index, token in enumerate(tokens[1:], start=1):
+        if not is_literal(token) and token_value(token) == "-":
+            return tokens[:index], tokens[index + 1 :]
+    return tokens, []
+
+
+def _resolve_recipe_stage(runtime, tokens, *, pipeline=_MISSING):
+    """Resolve a recipe stage using explicit-path then operation-safe fallback."""
+    if not tokens:
+        return None
+
+    source = _recipe_source(tokens[0])
+    explicit = recipe_path(runtime, source, allow_bare=False)
+    if explicit is not None:
+        stage, remaining = _split_recipe_stage(tokens)
+        return explicit, stage[1:], remaining
+
+    bare = recipe_path(runtime, source, allow_bare=True)
+    if bare is None:
+        return None
+
+    try:
+        resolve_operation(runtime, tokens, pipeline=pipeline)
+    except LookupError:
+        stage, remaining = _split_recipe_stage(tokens)
+        return bare, stage[1:], remaining
+    return None
 
 
 def dispatch_stage(
@@ -223,6 +262,31 @@ def dispatch_pipeline(
     while remaining:
         stage_args = args if first else ()
         stage_kwargs = kwargs if first else None
+
+        recipe = _resolve_recipe_stage(
+            runtime,
+            remaining,
+            pipeline=current,
+        )
+        if recipe is not None:
+            if stage_args or stage_kwargs:
+                raise TypeError("Native arguments are not supported for recipe stages")
+            path, recipe_arguments, remaining = recipe
+            context = parse_recipe_context(recipe_arguments)
+            if current is _MISSING:
+                _, result = execute_recipe(runtime, path, context=context)
+            else:
+                _, result = execute_recipe(
+                    runtime,
+                    path,
+                    context=context,
+                    pipeline=current,
+                )
+            results.append(result)
+            current = result
+            first = False
+            continue
+
         stage, remaining = split_stage(
             runtime,
             remaining,
@@ -245,7 +309,14 @@ def dispatch_pipeline(
     return results, current
 
 
-def dispatch_program(runtime, statement_list, *, args=(), kwargs=None):
+def dispatch_program(
+    runtime,
+    statement_list,
+    *,
+    pipeline=_MISSING,
+    args=(),
+    kwargs=None,
+):
     """Execute statements without raw transfer across statement boundaries."""
     statement_list = [list(statement) for statement in statement_list if statement]
     if not statement_list:
@@ -259,6 +330,7 @@ def dispatch_program(runtime, statement_list, *, args=(), kwargs=None):
         produced, last = dispatch_pipeline(
             runtime,
             statement,
+            pipeline=pipeline if index == 0 else _MISSING,
             args=args if index == 0 else (),
             kwargs=kwargs if index == 0 else None,
         )
@@ -307,7 +379,12 @@ def dispatch_sequence(
 
 def dispatch(runtime, command, *args, **kwargs):
     """Execute one or more statements through the unified dispatcher."""
-    tokens = tokenize(command) if isinstance(command, str) else list(command)
+    if isinstance(command, str):
+        tokens = tokenize(command)
+    elif isinstance(command, os.PathLike):
+        tokens = [command]
+    else:
+        tokens = list(command)
     if not tokens:
         raise ValueError("Gateway command cannot be empty")
 
