@@ -13,7 +13,7 @@ class AdaptationPlan:
     """Deterministic plan for placing one pipeline value into a consumer."""
 
     rule: str
-    parameter: str
+    parameter: str | None
     producer_subject: str | None
     consumer_subject: str | None
 
@@ -23,11 +23,7 @@ def _result_subject(runtime, value):
     if runtime is None or not hasattr(runtime, "results"):
         return None
 
-    results = runtime.results.get_results()
-    for subject, candidate in reversed(tuple(results.items())):
-        if candidate is value:
-            return subject
-    return None
+    return runtime.results.subject(value)
 
 
 def _compatible(annotation, value):
@@ -72,6 +68,15 @@ def plan_pipeline(runtime, func, value, *, args=(), kwargs=None) -> AdaptationPl
     available = _available_parameters(signature, args, kwargs)
     consumer_subject = getattr(func, "__gway_subject__", None)
     producer_subject = _result_subject(runtime, value)
+    receiver = getattr(func, "__gway_receiver__", None)
+
+    if receiver is not None and producer_subject == receiver:
+        return AdaptationPlan(
+            "receiver",
+            None,
+            producer_subject,
+            consumer_subject,
+        )
 
     if consumer_subject:
         for parameter in available:
@@ -120,10 +125,14 @@ def plan_pipeline(runtime, func, value, *, args=(), kwargs=None) -> AdaptationPl
 def apply_plan(func, plan, value, *, args=(), kwargs=None) -> BoundCall:
     """Apply an AdaptationPlan while preserving explicit arguments."""
     signature = inspect.signature(func)
-    parameter = signature.parameters[plan.parameter]
     args = tuple(args)
     kwargs = {} if kwargs is None else dict(kwargs)
 
+    if plan.rule == "receiver":
+        signature.bind_partial(*args, **kwargs)
+        return BoundCall(args, kwargs)
+
+    parameter = signature.parameters[plan.parameter]
     positional = [
         item
         for item in signature.parameters.values()
