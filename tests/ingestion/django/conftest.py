@@ -123,3 +123,21 @@ def django_orm(monkeypatch):
     )
 
     return Charger, manager
+
+
+
+@pytest.fixture
+def django_mount(gateway, django_project, django_setup):
+    """Mount supplied fake models as one lazily indexed Django app."""
+
+    def mount(*models, label="energy"):
+        root, _ = django_project()
+        app = SimpleNamespace(
+            label=label,
+            get_models=lambda: list(models),
+        )
+        django_setup(app)
+        django_ingestor.ingest_project(gateway, root)
+        return root
+
+    return mount
