@@ -4,17 +4,8 @@ import time
 from gway.souschef import Job, Scheduler
 
 
-def make_job(tmp_path, project, name):
-    return Job(
-        project=project,
-        name=name,
-        root=tmp_path,
-        recipe=tmp_path / f"{name}.rx",
-    )
-
-
-def test_duplicate_pending_job_coalesces_reasons(tmp_path):
-    job = make_job(tmp_path, "demo", "cleanup")
+def test_duplicate_pending_job_coalesces_reasons(tmp_path, job_factory):
+    job = job_factory("cleanup")
     calls = []
     scheduler = Scheduler([job], executor=lambda current: calls.append(current.identity))
 
@@ -33,10 +24,10 @@ def test_duplicate_pending_job_coalesces_reasons(tmp_path):
     assert scheduler.active is None
 
 
-def test_jobs_run_fifo_and_failures_do_not_stop_scheduler(tmp_path):
-    first = make_job(tmp_path, "demo", "first")
-    second = make_job(tmp_path, "demo", "second")
-    third = make_job(tmp_path, "demo", "third")
+def test_jobs_run_fifo_and_failures_do_not_stop_scheduler(tmp_path, job_factory):
+    first = job_factory("first")
+    second = job_factory("second")
+    third = job_factory("third")
     calls = []
 
     def execute(job):
@@ -61,8 +52,8 @@ def test_jobs_run_fifo_and_failures_do_not_stop_scheduler(tmp_path):
     assert scheduler.active is None
 
 
-def test_trigger_during_active_run_creates_one_follow_up(tmp_path):
-    job = make_job(tmp_path, "demo", "build")
+def test_trigger_during_active_run_creates_one_follow_up(tmp_path, job_factory):
+    job = job_factory("build")
     started = threading.Event()
     release = threading.Event()
     calls = []
@@ -98,9 +89,9 @@ def test_trigger_during_active_run_creates_one_follow_up(tmp_path):
     assert scheduler.active is None
 
 
-def test_concurrent_run_next_calls_never_overlap(tmp_path):
-    first = make_job(tmp_path, "demo", "first")
-    second = make_job(tmp_path, "demo", "second")
+def test_concurrent_run_next_calls_never_overlap(tmp_path, job_factory):
+    first = job_factory("first")
+    second = job_factory("second")
     state_lock = threading.Lock()
     active = 0
     maximum = 0
@@ -142,9 +133,9 @@ def test_concurrent_run_next_calls_never_overlap(tmp_path):
     assert scheduler.active is None
 
 
-def test_same_job_name_is_distinct_across_projects(tmp_path):
-    alpha = make_job(tmp_path, "alpha", "cleanup")
-    beta = make_job(tmp_path, "beta", "cleanup")
+def test_same_job_name_is_distinct_across_projects(tmp_path, job_factory):
+    alpha = job_factory("cleanup", project="alpha")
+    beta = job_factory("cleanup", project="beta")
     scheduler = Scheduler(
         [alpha, beta],
         executor=lambda job: job.identity,
@@ -161,8 +152,8 @@ def test_same_job_name_is_distinct_across_projects(tmp_path):
     ]
 
 
-def test_scheduler_rejects_conflicting_identity(tmp_path):
-    original = make_job(tmp_path, "demo", "cleanup")
+def test_scheduler_rejects_conflicting_identity(tmp_path, job_factory):
+    original = job_factory("cleanup")
     conflicting = Job(
         project="demo",
         name="cleanup",
