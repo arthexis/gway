@@ -173,6 +173,12 @@ class ProcessBackend:
     def status(self, service):
         """Return durable runtime status for one discovered service."""
         state = self._state(service)
+        local = self._processes.get(service.identity)
+        if local is not None and local.poll() is not None:
+            self._processes.pop(service.identity, None)
+            state.remove(service.project, service.name)
+            return self._stopped(service)
+
         record = state.get(service.project, service.name)
         if record is None:
             return self._stopped(service)
