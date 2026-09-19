@@ -48,6 +48,16 @@ class _Registry:
                 return operation
         return self.register(name, operation)
 
+    def resolve_pair(self, op, sub, default=None):
+        matches = [
+            record.callable
+            for record in self.records.values()
+            if record.op == op and record.sub == sub
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return default
+
     def resolve(self, name, default=None):
         canonical = self.aliases.get(name, name)
         record = self.records.get(canonical)
@@ -121,6 +131,9 @@ class Operations(Mapping):
 
     def resolve(self, name, default=None):
         return self._registry.resolve(name, default)
+
+    def resolve_pair(self, op, sub, default=None):
+        return self._registry.resolve_pair(op, sub, default)
 
     def __getitem__(self, op):
         items = {
