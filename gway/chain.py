@@ -48,7 +48,6 @@ class Chain:
             pipeline=self.last,
             args=args,
             kwargs=kwargs,
-            allow_inline_with_native=True,
         )
         self.last = result
         self.history.append(result)
