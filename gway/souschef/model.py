@@ -9,8 +9,9 @@ DEFAULT_TIMEOUT = 15 * 60
 
 @dataclass(frozen=True)
 class Job:
-    """Normalized Sous Chef recipe rule."""
+    """Normalized Sous Chef recipe rule owned by one Gway project."""
 
+    project: str
     name: str
     root: Path
     recipe: Path
@@ -30,6 +31,11 @@ class Job:
         object.__setattr__(self, "root", root)
         object.__setattr__(self, "recipe", recipe)
         object.__setattr__(self, "watch", watch)
+
+    @property
+    def identity(self):
+        """Return the durable project/job identity."""
+        return self.project, self.name
 
     @property
     def triggers(self):
