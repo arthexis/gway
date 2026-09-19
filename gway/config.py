@@ -185,6 +185,30 @@ def discover_installations(*, system=False):
 
 
 
+
+def project_aliases(manifest):
+    """Return validated aliases declared by one project manifest."""
+    from .install.model import validate_name
+
+    data = toml.load(manifest)
+    project = data.get("project") if isinstance(data, dict) else None
+    values = project.get("aliases", ()) if isinstance(project, dict) else ()
+    if values is None:
+        return ()
+    if not isinstance(values, list):
+        raise ValueError("[project].aliases must be an array of names")
+
+    aliases = []
+    for value in values:
+        try:
+            alias = validate_name(value)
+        except ValueError as exc:
+            raise ValueError(f"Invalid project alias: {exc}") from exc
+        if alias not in aliases:
+            aliases.append(alias)
+    return tuple(aliases)
+
+
 def expand_installed_project(runtime, installation, *, path=None):
     """Load one installed project's declarative ingestion exactly once."""
     record = remember_object(
@@ -208,8 +232,9 @@ def expand_installed_project(runtime, installation, *, path=None):
 
 
 def discover_managed_projects(runtime):
-    """Remember installed user/system projects as lazy Gateway branches."""
+    """Remember installed user/system projects and declared lazy aliases."""
     discovered = {}
+    aliases = {}
     for system in (False, True):
         try:
             records = discover_installations(system=system)
@@ -219,14 +244,31 @@ def discover_managed_projects(runtime):
             if record.name in discovered:
                 continue
             discovered[record.name] = record
-            remember_object(
+            branch = remember_object(
                 runtime,
                 record,
                 (record.name,),
                 expander=expand_installed_project,
             )
+            for alias in project_aliases(record.install_path / "gway.toml"):
+                if alias == record.name:
+                    continue
+                if alias in discovered:
+                    raise RuntimeError(
+                        f"Installed project alias {alias!r} conflicts with "
+                        "an installed project name"
+                    )
+                owner = aliases.get(alias)
+                if owner is not None and owner != record.name:
+                    raise RuntimeError(
+                        f"Installed project alias {alias!r} is declared by "
+                        f"both {owner!r} and {record.name!r}"
+                    )
+                aliases[alias] = record.name
+                branch.paths.add((alias,))
 
     runtime._installed = discovered
+    runtime._installed_aliases = aliases
     return discovered
 
 
