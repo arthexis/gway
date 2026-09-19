@@ -28,6 +28,26 @@ def test_install_builtin_installs_local_project(gateway, tmp_path, monkeypatch):
     assert InstallState(data / "state.sqlite").get("wire") == installed
 
 
+def test_install_builtin_reconciles_changed_source_by_default(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = _project(tmp_path, "wire")
+    data = tmp_path / "data"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
+
+    first = gateway(f"install {source}")
+    (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    second = gateway(f"install {source}")
+
+    assert second.fingerprint != first.fingerprint
+    assert (second.install_path / "module.py").read_text(
+        encoding="utf-8"
+    ) == "VALUE = 2\n"
+
+
 def test_install_builtin_defaults_upgrade_on_but_no_upgrade_can_suppress_change(
     gateway,
     tmp_path,
