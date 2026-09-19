@@ -6,13 +6,13 @@ from pathlib import Path
 from .. import toml
 
 
-_SECTIONS = {"project", "install.scripts"}
+_SECTIONS = {"project", "project.scripts", "install.scripts"}
 
 
 def _fallback(path):
     """Read only string values used by the install contract."""
     result = {
-        "project": {},
+        "project": {"scripts": {}},
         "install": {"scripts": {}},
     }
     section = None
@@ -39,6 +39,8 @@ def _fallback(path):
 
         if section == "project":
             result["project"][key] = parsed
+        elif section == "project.scripts":
+            result["project"]["scripts"][key] = parsed
         elif section == "install.scripts":
             result["install"]["scripts"][key] = parsed
 
