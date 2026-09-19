@@ -6,6 +6,7 @@ import re
 from .paths import follow_path
 
 _PATTERN = re.compile(r"\[([^\[\]]+)\]")
+_MISSING = object()
 
 
 def is_single_sigil(text):
@@ -79,12 +80,19 @@ def resolve_single(raw, lookup):
             return nested
         key = nested
 
-    value = lookup(key)
-    if value is None:
+    try:
+        value = lookup(key)
+    except KeyError:
+        value = _MISSING
+
+    if value is _MISSING:
         parts = re.split(r"[. ]+", key)
         if len(parts) > 1:
-            base = lookup(parts[0])
-            if base is not None:
+            try:
+                base = lookup(parts[0])
+            except KeyError:
+                base = _MISSING
+            if base is not _MISSING:
                 try:
                     value = follow_path(
                         base,
@@ -93,9 +101,9 @@ def resolve_single(raw, lookup):
                         resolve_text=resolve_text,
                     )
                 except KeyError:
-                    value = None
+                    value = _MISSING
 
-    if value is not None:
+    if value is not _MISSING:
         return value
 
     if fallback_spec is not None:
