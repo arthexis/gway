@@ -118,6 +118,7 @@ def test_named_project_mount_authorizes_later_management_command_ingestion(
         "_setup_project",
         lambda *args, **kwargs: registry,
     )
+    _management_fixture(monkeypatch)
 
     mount = django_ingestor.ingest_project(gateway, root, name="arthexis")
 
@@ -138,6 +139,7 @@ def test_reingesting_unnamed_project_can_add_project_name(
         "_setup_project",
         lambda *args, **kwargs: registry,
     )
+    _management_fixture(monkeypatch)
 
     first = django_ingestor.ingest_project(gateway, root)
     second = django_ingestor.ingest_project(gateway, root, name="arthexis")
@@ -159,6 +161,7 @@ def test_reingesting_named_project_with_different_name_is_rejected(
         "_setup_project",
         lambda *args, **kwargs: registry,
     )
+    _management_fixture(monkeypatch)
 
     django_ingestor.ingest_project(gateway, root, name="first")
 
@@ -181,6 +184,7 @@ def test_settings_module_source_can_mount_django_without_manage_py(
         return registry
 
     monkeypatch.setattr(django_ingestor, "_setup_project", fake_setup)
+    _management_fixture(monkeypatch)
 
     mount = django_ingestor.ingest_project(
         gateway,
@@ -600,5 +604,8 @@ def test_adding_name_to_existing_mount_indexes_management_subject(
     )
 
     assert same_mount is mount
-    assert find_ingested(gateway, ("arthexis",)).value is mount
+    command = find_ingested(gateway, ("migrate", "arthexis"))
+    assert command is not None
+    assert command.value.mount is mount
+    assert command.value.name == "migrate"
     assert gateway("migrate arthexis")["command"] == "migrate"
