@@ -74,6 +74,7 @@ class Gateway(Resolver):
 
         ingest_module(self, builtin, transparent=True)
         self.clear = self.wrap("clear", self._clear_context)
+        self.help = self.wrap("help", self._help)
 
         from .config import bootstrap
 
@@ -87,6 +88,22 @@ class Gateway(Resolver):
         else:
             self.context.clear()
         return None
+
+    def _help(self, operation: str, verbose=False):
+        """Return help for one Gway operation.
+
+        Args:
+            operation: Operation name, including an optional semantic subject.
+            verbose: Include the full docstring and parameter details.
+        """
+        from .documentation import render
+        from .dispatch import resolve_operation
+        from .tokens import tokenize
+
+        target, remaining, _ = resolve_operation(self, tokenize(operation))
+        if remaining:
+            raise LookupError(f"Unable to resolve operation: {operation}")
+        return render(target, verbose=verbose)
 
     @property
     def last(self):
