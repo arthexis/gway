@@ -106,15 +106,19 @@ class _Registry:
             return record.callable if record is not None else default
 
         op, sub = parts[-2], parts[-1]
-        subjects = (sub,)
-        singular = singularize(sub)
-        if singular is not None:
-            subjects = (sub, singular)
         matches = [
             record
             for record in self.records.values()
-            if record.op == op and record.sub in subjects
+            if record.op == op and record.sub == sub
         ]
+        if not matches:
+            singular = singularize(sub)
+            if singular is not None:
+                matches = [
+                    record
+                    for record in self.records.values()
+                    if record.op == op and record.sub == singular
+                ]
 
         prefix = ".".join(parts[:-2])
         if prefix:
