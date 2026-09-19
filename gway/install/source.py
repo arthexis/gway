@@ -5,7 +5,7 @@ from importlib import metadata as importlib_metadata
 import os
 from pathlib import Path
 
-from gway import toml
+from .manifest import load as load_manifest
 from .model import validate_name
 
 
@@ -56,7 +56,7 @@ def project_name(root):
     if not manifest.is_file():
         raise ValueError(f"Install source requires gway.toml: {root}")
 
-    data = toml.load(manifest)
+    data = load_manifest(manifest)
     project = data.get("project") if isinstance(data, dict) else None
     name = project.get("name") if isinstance(project, dict) else None
     if not isinstance(name, str) or not name.strip():
