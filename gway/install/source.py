@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from gway import toml
+from .model import validate_name
 
 
 _IGNORED_PARTS = frozenset(
@@ -40,7 +41,10 @@ def project_name(root):
     name = project.get("name") if isinstance(project, dict) else None
     if not isinstance(name, str) or not name.strip():
         raise ValueError("Install source requires non-empty [project].name")
-    return name.strip()
+    try:
+        return validate_name(name)
+    except ValueError as exc:
+        raise ValueError(f"Invalid [project].name: {exc}") from exc
 
 
 def _ignored(path, root):
