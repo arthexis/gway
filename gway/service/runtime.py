@@ -68,6 +68,13 @@ class ProcessBackend:
     def _wait_gone(pid, timeout=5):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            if hasattr(os, "waitpid"):
+                try:
+                    waited, _ = os.waitpid(pid, os.WNOHANG)
+                except ChildProcessError:
+                    waited = 0
+                if waited == pid:
+                    return True
             try:
                 os.kill(pid, 0)
             except ProcessLookupError:
