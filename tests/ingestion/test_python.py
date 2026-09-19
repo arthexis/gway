@@ -178,4 +178,5 @@ def test_class_factory_and_instance_methods_use_generic_semantic_subject(gateway
     assert gateway.results["device"] is created
 
     assert gateway("label device unit") == "unit:ABC"
+    assert gateway("device XYZ - label unit") == "unit:XYZ"
     assert gateway.ops["label"]["device"] is gateway.ops.resolve("device.label")
