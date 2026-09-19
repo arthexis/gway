@@ -94,3 +94,29 @@ def test_dash_adds_raw_positional_transfer_without_losing_named_context(gateway)
     result = gateway("produce_raw - consume [site]")
 
     assert result == (raw, "MTY")
+
+
+def test_named_context_fills_positional_parameter_without_dash(gateway):
+    gateway.context["chargers"] = ["context"]
+
+    def inspect_report(chargers):
+        return chargers
+
+    gateway.inspect_report = gateway.wrap("inspect_report", inspect_report)
+
+    assert gateway("inspect_report") == ["context"]
+
+
+def test_dash_uses_position_before_name_matching(gateway):
+    gateway.context["chargers"] = ["context"]
+
+    def get_report():
+        return ["pipeline"]
+
+    def inspect_report(chargers):
+        return chargers
+
+    gateway.get_report = gateway.wrap("get_report", get_report)
+    gateway.inspect_report = gateway.wrap("inspect_report", inspect_report)
+
+    assert gateway("get_report - inspect_report") == ["pipeline"]
