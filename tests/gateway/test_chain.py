@@ -191,7 +191,6 @@ def test_chain_repeated_numeric_selector_duplicates_snapshot_value(gateway):
     assert gateway("pair - combine [1] [1]") == ("A", "B", "B")
 
 
-def test_repeated_numeric_selector_consumes_source_slot_only_once(gateway):
     def triple():
         return ("A", "B", "C")
 
@@ -204,7 +203,6 @@ def test_repeated_numeric_selector_consumes_source_slot_only_once(gateway):
     assert gateway("triple - combine [1] [1] [1]") == ("A", "C", "B", "B", "B")
 
 
-def test_numeric_selector_after_star_uses_same_snapshot(gateway):
     def triple():
         return ("A", "B", "C")
 
