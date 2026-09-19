@@ -140,6 +140,51 @@ def dispatch_stage(
 
 
 
+
+def split_stage(
+    runtime,
+    tokens,
+    *,
+    pipeline=_MISSING,
+    args=(),
+    kwargs=None,
+):
+    """Split the first executable stage from the remaining raw pipeline."""
+    tokens = list(tokens)
+    func, arguments, _ = resolve_operation(runtime, tokens, pipeline=pipeline)
+
+    initial_args = tuple(args)
+    initial_kwargs = {} if kwargs is None else dict(kwargs)
+    if pipeline is not _MISSING:
+        adapted = adapt_pipeline(
+            runtime,
+            func,
+            pipeline,
+            args=initial_args,
+            kwargs=initial_kwargs,
+        )
+        initial_args = adapted.args
+        initial_kwargs = adapted.kwargs
+
+    boundary = pipeline_boundary(
+        func,
+        arguments,
+        initial_args=initial_args,
+        initial_kwargs=initial_kwargs,
+    )
+    if boundary is None:
+        return tokens, []
+
+    if args or kwargs:
+        raise TypeError("Native arguments require a single operation")
+
+    operation_size = len(tokens) - len(arguments)
+    return (
+        tokens[: operation_size + boundary],
+        arguments[boundary + 1 :],
+    )
+
+
 def dispatch_pipeline(
     runtime,
     tokens,
@@ -160,37 +205,13 @@ def dispatch_pipeline(
     while remaining:
         stage_args = args if first else ()
         stage_kwargs = kwargs if first else None
-        func, arguments, _ = resolve_operation(runtime, remaining, pipeline=current)
-
-        initial_args = tuple(stage_args)
-        initial_kwargs = {} if stage_kwargs is None else dict(stage_kwargs)
-        if current is not _MISSING:
-            adapted = adapt_pipeline(
-                runtime,
-                func,
-                current,
-                args=initial_args,
-                kwargs=initial_kwargs,
-            )
-            initial_args = adapted.args
-            initial_kwargs = adapted.kwargs
-
-        boundary = pipeline_boundary(
-            func,
-            arguments,
-            initial_args=initial_args,
-            initial_kwargs=initial_kwargs,
+        stage, remaining = split_stage(
+            runtime,
+            remaining,
+            pipeline=current,
+            args=stage_args,
+            kwargs=stage_kwargs,
         )
-        operation_size = len(remaining) - len(arguments)
-
-        if boundary is None:
-            stage = remaining
-            remaining = []
-        else:
-            if stage_args or stage_kwargs:
-                raise TypeError("Native arguments require a single operation")
-            stage = remaining[: operation_size + boundary]
-            remaining = arguments[boundary + 1 :]
 
         result = dispatch_stage(
             runtime,
