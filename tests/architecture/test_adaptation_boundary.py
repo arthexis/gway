@@ -18,5 +18,5 @@ def test_adaptation_planning_is_separate_from_application():
     adapt_names = set(adaptation.adapt_pipeline.__code__.co_names)
 
     assert "_available_parameters" in plan_names
-    assert "_compatible" in plan_names
+    assert "AdaptationPlan" in plan_names
     assert "apply_plan" in adapt_names
