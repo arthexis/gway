@@ -119,43 +119,45 @@ def _normalize_pipeline_index(index, size):
 
 
 def _compose_pipeline_stream(tokens, pipeline):
-    """Place and consume chain-local [n] and [*] selectors in an argument stream."""
+    """Place chain-local selectors against one immutable pipeline snapshot."""
     bundle = _pipeline_bundle(pipeline)
-    consumed = set()
+    tokens = list(tokens)
+
+    numeric = []
+    star_count = 0
+    for token in tokens:
+        selector = _chain_selector(token)
+        if selector is None:
+            continue
+        if selector == "*":
+            star_count += 1
+            continue
+        numeric.append(_normalize_pipeline_index(int(selector), len(bundle)))
+
+    if star_count > 1:
+        raise ValueError("Chain positional selector [*] may appear only once")
+
+    consumed = set(numeric)
+    remaining = [
+        _PipelineValue(value)
+        for index, value in enumerate(bundle)
+        if index not in consumed
+    ]
+
     composed = []
-    saw_star = False
-
-    def remaining():
-        return [
-            _PipelineValue(value)
-            for index, value in enumerate(bundle)
-            if index not in consumed
-        ]
-
     for token in tokens:
         selector = _chain_selector(token)
         if selector is None:
             composed.append(token)
             continue
-
         if selector == "*":
-            if saw_star:
-                raise ValueError("Chain positional selector [*] may appear only once")
-            saw_star = True
-            composed.extend(remaining())
-            consumed.update(range(len(bundle)))
+            composed.extend(remaining)
             continue
-
         index = _normalize_pipeline_index(int(selector), len(bundle))
-        if index in consumed:
-            raise ValueError(
-                f"Pipeline result index {selector} has already been consumed"
-            )
         composed.append(_PipelineValue(bundle[index]))
-        consumed.add(index)
 
-    if not saw_star:
-        composed = [*remaining(), *composed]
+    if star_count == 0:
+        composed = [*remaining, *composed]
 
     return composed
 
