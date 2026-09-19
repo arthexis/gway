@@ -51,8 +51,7 @@ class InstallRequest:
     force: bool = False
     stash: bool = False
     system: bool = False
-    service: str | None = None
-    services: str | None = None
+    services: tuple[str, ...] = ()
     name: str | None = None
 
     def __post_init__(self):
@@ -60,29 +59,21 @@ class InstallRequest:
             raise ValueError("install source must be a non-empty string")
         if self.force and self.stash:
             raise ValueError("--force and --stash are mutually exclusive")
-        if self.service is not None and self.services is not None:
-            raise ValueError("--service and --services are mutually exclusive")
-        selected = self.selected_services
-        if self.name is not None:
-            validate_name(self.name.removesuffix(".service"))
-            if len(selected) != 1:
-                raise ValueError("--name requires exactly one selected service")
-
-    @property
-    def selected_services(self):
-        """Return normalized selected service names in request order."""
-        value = self.service if self.service is not None else self.services
-        if value is None:
-            return ()
-        if not isinstance(value, str):
-            raise ValueError("service selection must be a string")
+        values = self.services
+        if isinstance(values, str):
+            values = tuple(part.strip() for part in values.split(","))
+        else:
+            values = tuple(values)
         names = []
-        for raw in value.split(","):
-            name = raw.strip()
+        for name in values:
             validate_name(name)
             if name not in names:
                 names.append(name)
-        return tuple(names)
+        object.__setattr__(self, "services", tuple(names))
+        if self.name is not None:
+            validate_name(self.name.removesuffix(".service"))
+            if len(self.services) != 1:
+                raise ValueError("--name requires exactly one selected service")
 
     @property
     def scope(self):
