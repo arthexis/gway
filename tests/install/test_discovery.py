@@ -304,3 +304,172 @@ def test_installed_project_manifest_expansion_is_idempotent(
     assert fresh("migrate backend") == "migrate"
     assert fresh("migrate backend") == "migrate"
     assert len(setup_calls) == 1
+
+
+
+def test_installed_django_entrypoint_targets_real_app_not_project_alias(
+    gateway,
+    make_project,
+    install_environment,
+    tmp_path,
+    monkeypatch,
+):
+    source = make_project("arthexis")
+    (source / "manage.py").write_text(
+        "import os\n"
+        "os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'demo.settings')\n",
+        encoding="utf-8",
+    )
+    (source / "gway.toml").write_text(
+        "[project]\n"
+        "name = 'arthexis'\n"
+        "aliases = ['ocpp']\n"
+        "\n"
+        "[ingest]\n"
+        "django = '.'\n",
+        encoding="utf-8",
+    )
+    gateway(f"install {source}")
+
+    class ModelBase:
+        pass
+
+    class ManagerBase:
+        pass
+
+    class Charger(ModelBase):
+        _meta = SimpleNamespace(
+            app_label="ocpp",
+            model_name="charger",
+        )
+
+    class ChargerManager(ManagerBase):
+        model = Charger
+
+        def filter(self, **criteria):
+            return criteria
+
+    Charger._default_manager = ChargerManager()
+    app = SimpleNamespace(label="ocpp", get_models=lambda: [Charger])
+    registry = SimpleNamespace(get_app_configs=lambda: (app,))
+
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda root, settings=None: registry,
+    )
+    monkeypatch.setattr(
+        django_ingestor,
+        "_management_api",
+        lambda: (
+            lambda: {"migrate": "django.core"},
+            lambda name, *args, **options: name,
+        ),
+    )
+    monkeypatch.setattr(
+        django_ingestor,
+        "_django_types",
+        lambda: (ModelBase, ManagerBase),
+    )
+
+    outside = tmp_path / "outside-entrypoint"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    fresh = Gateway()
+
+    trigger = find_ingested(fresh, ("ocpp",))
+    assert trigger is not None
+    assert trigger.value.name == "arthexis"
+    assert trigger.expanded is False
+
+    assert fresh("ocpp charger filter --status online") == {
+        "status": "online"
+    }
+
+    app_branch = find_ingested(fresh, ("ocpp",))
+    assert app_branch is not None
+    assert getattr(app_branch.value, "label", None) == "ocpp"
+    assert fresh._installed_entrypoints["ocpp"] == "arthexis"
+
+    with pytest.raises(LookupError):
+        fresh("migrate ocpp")
+
+
+def test_django_app_operations_allow_optional_project_prefix(
+    gateway,
+    make_project,
+    install_environment,
+    tmp_path,
+    monkeypatch,
+):
+    source = make_project("arthexis")
+    (source / "manage.py").write_text(
+        "import os\n"
+        "os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'demo.settings')\n",
+        encoding="utf-8",
+    )
+    (source / "gway.toml").write_text(
+        "[project]\n"
+        "name = 'arthexis'\n"
+        "aliases = ['ocpp']\n"
+        "\n"
+        "[ingest]\n"
+        "django = '.'\n",
+        encoding="utf-8",
+    )
+    gateway(f"install {source}")
+
+    class ModelBase:
+        pass
+
+    class ManagerBase:
+        pass
+
+    class Charger(ModelBase):
+        _meta = SimpleNamespace(
+            app_label="ocpp",
+            model_name="charger",
+        )
+
+    class ChargerManager(ManagerBase):
+        model = Charger
+
+        def filter(self, **criteria):
+            return criteria
+
+    Charger._default_manager = ChargerManager()
+    app = SimpleNamespace(label="ocpp", get_models=lambda: [Charger])
+    registry = SimpleNamespace(get_app_configs=lambda: (app,))
+
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda root, settings=None: registry,
+    )
+    monkeypatch.setattr(
+        django_ingestor,
+        "_management_api",
+        lambda: (lambda: {}, lambda *args, **kwargs: None),
+    )
+    monkeypatch.setattr(
+        django_ingestor,
+        "_django_types",
+        lambda: (ModelBase, ManagerBase),
+    )
+
+    outside = tmp_path / "outside-qualified"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    fresh = Gateway()
+
+    assert fresh("arthexis ocpp charger filter --site MTY") == {
+        "site": "MTY"
+    }
+    assert fresh("ocpp charger filter --site SLP") == {
+        "site": "SLP"
+    }
+
+    canonical = fresh.ops.resolve("ocpp.charger.filter")
+    qualified = fresh.ops.resolve("arthexis.ocpp.charger.filter")
+    assert canonical is not None
+    assert qualified is canonical
