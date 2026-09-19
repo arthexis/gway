@@ -261,7 +261,16 @@ def install_units(
         raise
 
 
-def uninstall_units(project, *, state_root, root=None, records=None):
+def uninstall_units(
+    project,
+    *,
+    state_root,
+    root=None,
+    records=None,
+    services=(),
+    installations=None,
+    process_state_root=None,
+):
     """Disable and remove persisted systemd units owned by one project."""
     state = UnitState(state_root)
     all_records = state.get(project)
