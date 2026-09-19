@@ -1,3 +1,5 @@
+from pathlib import Path
+
 def test_builtin_env_is_ingested_under_gway_root(gateway, monkeypatch):
     monkeypatch.setenv("GWAY_TEST_ENV", "present")
 
@@ -78,3 +80,25 @@ def test_builtin_toml_routes_to_version_backend():
 
     expected = "tomllib" if sys.version_info >= (3, 11) else "tomli"
     assert gway_toml._backend().__name__ == expected
+
+
+def test_builtin_path_constructs_semantic_path(gateway, tmp_path):
+    result = gateway("gway path", str(tmp_path))
+
+    assert result == Path(tmp_path)
+    assert gateway.results["path"] == result
+    assert gateway.ops["path"]["path"] is gateway.ops.resolve("gway.path")
+
+
+def test_builtin_path_methods_become_semantic_operations(gateway, tmp_path):
+    first = tmp_path / "first.py"
+    second = tmp_path / "second.txt"
+    first.write_text("print('ok')\n", encoding="utf-8")
+    second.write_text("ignore\n", encoding="utf-8")
+
+    gateway("gway path", str(tmp_path))
+    matches = list(gateway("gway glob path", "*.py"))
+
+    assert matches == [first]
+    assert gateway.ops.resolve("gway.path.glob") is not None
+    assert gateway.ops["glob"]["path"] is gateway.ops.resolve("gway glob path")
