@@ -115,6 +115,28 @@ def register_operation(gateway, operation):
     wrapped.__gway_path__ = operation.path
     wrapped.__gway_metadata__ = operation.metadata
 
+    root = operation.metadata.get("root")
+    if root is None and isinstance(operation.source, str):
+        root = None
+    elif root is None:
+        try:
+            from pathlib import Path
+
+            if isinstance(operation.source, Path):
+                root = operation.source
+        except Exception:
+            root = None
+
+    gateway.launchables.operation(
+        operation.name,
+        root=root,
+        metadata={
+            "source_kind": operation.kind,
+            "path": operation.path,
+            **dict(operation.metadata),
+        },
+    )
+
     for alias in operation.aliases:
         gateway.ops.register_alias(alias, wrapped)
 
