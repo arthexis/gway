@@ -234,38 +234,38 @@ def expand_installed_project(runtime, installation, *, path=None):
 def discover_managed_projects(runtime):
     """Remember installed user/system projects and declared lazy aliases."""
     discovered = {}
-    aliases = {}
     for system in (False, True):
         try:
             records = discover_installations(system=system)
         except (OSError, PermissionError):
             continue
         for record in records:
-            if record.name in discovered:
+            discovered.setdefault(record.name, record)
+
+    aliases = {}
+    for name, record in discovered.items():
+        branch = remember_object(
+            runtime,
+            record,
+            (name,),
+            expander=expand_installed_project,
+        )
+        for alias in project_aliases(record.install_path / "gway.toml"):
+            if alias == name:
                 continue
-            discovered[record.name] = record
-            branch = remember_object(
-                runtime,
-                record,
-                (record.name,),
-                expander=expand_installed_project,
-            )
-            for alias in project_aliases(record.install_path / "gway.toml"):
-                if alias == record.name:
-                    continue
-                if alias in discovered:
-                    raise RuntimeError(
-                        f"Installed project alias {alias!r} conflicts with "
-                        "an installed project name"
-                    )
-                owner = aliases.get(alias)
-                if owner is not None and owner != record.name:
-                    raise RuntimeError(
-                        f"Installed project alias {alias!r} is declared by "
-                        f"both {owner!r} and {record.name!r}"
-                    )
-                aliases[alias] = record.name
-                branch.paths.add((alias,))
+            if alias in discovered:
+                raise RuntimeError(
+                    f"Installed project alias {alias!r} conflicts with "
+                    "an installed project name"
+                )
+            owner = aliases.get(alias)
+            if owner is not None and owner != name:
+                raise RuntimeError(
+                    f"Installed project alias {alias!r} is declared by "
+                    f"both {owner!r} and {name!r}"
+                )
+            aliases[alias] = name
+            branch.paths.add((alias,))
 
     runtime._installed = discovered
     runtime._installed_aliases = aliases
