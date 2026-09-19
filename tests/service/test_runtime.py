@@ -46,7 +46,12 @@ def test_process_backend_resolves_project_python_cwd_and_environment(tmp_path):
     assert cwd == str(tmp_path.resolve())
     assert value == str((tmp_path / "value").resolve())
 
+    deadline = time.time() + 5
     status = backend.status(service)
+    while time.time() < deadline and status["running"]:
+        time.sleep(0.01)
+        status = backend.status(service)
+
     assert status["running"] is False
     assert status["pid"] is None
 
