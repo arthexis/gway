@@ -112,3 +112,18 @@ def test_cli_invokes_path_builtin_without_internal_gway_prefix(monkeypatch, caps
 
     assert cli_main() == 0
     assert capsys.readouterr().out.strip() == str(tmp_path)
+
+
+def test_builtin_path_pipeline_infers_glob_from_subject_and_sigils(gateway, tmp_path):
+    first = tmp_path / "first.py"
+    second = tmp_path / "second.txt"
+    first.write_text("print('ok')\n", encoding="utf-8")
+    second.write_text("ignore\n", encoding="utf-8")
+    gateway.context["path"] = str(tmp_path)
+    gateway.context["pattern"] = "*.py"
+
+    matches = list(gateway("path [path] - glob [pattern]"))
+
+    assert matches == [first]
+    assert gateway.ops.resolve("path.glob") is not None
+    assert gateway.ops["glob"]["path"] is gateway.ops.resolve("path.glob")
