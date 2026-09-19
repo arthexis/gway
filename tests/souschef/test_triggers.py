@@ -287,3 +287,34 @@ def test_run_state_records_success_and_failure(tmp_path):
     assert failure_state.last_completed == 1000.0
     assert failure_state.last_failure == 1000.0
     assert failure_state.last_success is None
+
+
+
+def test_interrupted_active_job_is_restored_after_restart(tmp_path):
+    clock = Clock()
+    job = make_job(tmp_path, "hourly", every=60)
+    state_root = tmp_path / "state"
+    scheduler = Scheduler([job], executor=lambda current: None)
+    engine = TriggerEngine(
+        [job],
+        scheduler=scheduler,
+        state_root=state_root,
+        clock=clock,
+    )
+
+    assert engine.evaluate_job(job) == ("every",)
+
+    # Simulate Sous Chef dying after marking the job started but before
+    # completion state can be written.
+    engine._started(job, ("every",))
+
+    restarted_scheduler = Scheduler([job], executor=lambda current: None)
+    TriggerEngine(
+        [job],
+        scheduler=restarted_scheduler,
+        state_root=state_root,
+        clock=clock,
+    )
+
+    assert restarted_scheduler.pending == (job,)
+    assert restarted_scheduler.run_next().reasons == ("resume",)
