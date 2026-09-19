@@ -29,7 +29,16 @@ def install(
     stash: bool = False,
     system: bool = False,
 ):
-    """Converge one local or Git project installation toward requested state."""
+    """Converge one local or Git project installation toward requested state.
+
+    Args:
+        source: Local project path, Git source, GitHub shorthand, or known project identity.
+        ref: Branch, tag, or commit requested for Git sources.
+        upgrade: Replace an existing installation when the requested source state changes.
+        force: Discard drift in a dirty managed installation before reconciliation.
+        stash: Preserve a dirty managed installation before reconciliation.
+        system: Use system-wide data and launcher locations instead of user locations.
+    """
     request = InstallRequest(
         source=str(source),
         ref=ref,
@@ -67,7 +76,12 @@ def install(
 
 
 def uninstall(project, *, system: bool = False):
-    """Converge one managed project toward absence."""
+    """Converge one managed project toward absence.
+
+    Args:
+        project: Installed project identity to remove.
+        system: Remove the project from the system-wide installation scope.
+    """
     request = UninstallRequest(
         project=str(project),
         system=system,
