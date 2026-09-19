@@ -395,3 +395,21 @@ def test_managed_tree_drift_blocks_source_upgrade_before_swap(tmp_path):
     ) == "CUSTOM = True\n"
     assert list(paths.projects.glob(".wire.replace-*")) == []
     assert list(paths.projects.glob(".wire.stage-*")) == []
+
+
+
+def test_missing_managed_copy_with_changed_source_respects_no_upgrade(tmp_path):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    first = transaction.install_local(InstallRequest(str(source)), paths=paths)
+    transaction._remove_path(first.install_path)
+    (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="would require an upgrade"):
+        transaction.install_local(
+            InstallRequest(str(source), upgrade=False),
+            paths=paths,
+        )
+
+    assert not first.install_path.exists()
+    assert InstallState(paths.state).get("wire") == first
