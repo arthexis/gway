@@ -596,3 +596,30 @@ values belong to the remaining pool.
 
 Single-quoted forms such as `'[0]'` remain literal text and do not act as
 chain selectors.
+
+
+## Ingestion routing
+
+Filesystem discovery is opt-in through explicit ingestion. Ordinary operation
+resolution never probes the current directory or automatically exposes files.
+
+`Gateway.ingest(source)` routes sources by explicit intent:
+
+- Any `os.PathLike` value, including a relative `Path("README")`, is always
+  treated as a filesystem source.
+- A string containing path syntax such as `/`, `\\`, `~`, or a Windows
+  drive prefix is treated as a filesystem source even if it does not exist.
+- A bare string with no path syntax is treated as a filesystem source when an
+  entry with that name exists in the current directory.
+- Otherwise a bare string is treated as a Python import name.
+
+For the ambiguous bare-name case, filesystem existence wins only because the
+caller explicitly requested ingestion. Thus `gateway.ingest("json")` may
+intentionally ingest a local entry named `json`, while executing
+`gateway("json")` never discovers that file automatically.
+
+Once something is classified as a filesystem source, it is always delegated to
+`ingest_path()`. File extensions are not used to decide whether the source is
+a path; they are only used later to select an available path ingestor. This
+keeps extensionless files and future source types eligible for ingestion routing
+without changing top-level path inference.
