@@ -88,3 +88,16 @@ def test_repeated_callable_identity_registers_additional_paths_as_aliases(gatewa
     assert first_op is second_op
     assert gateway("first ping") == "pong"
     assert gateway("second ping") == "pong"
+
+
+def test_repeated_callable_identity_preserves_each_semantic_path(gateway):
+    shared = lambda value=None: value
+    first = SimpleNamespace(read_item=shared)
+    second = SimpleNamespace(write_item=shared)
+
+    ingest_python(gateway, first, path=("first",))
+    ingest_python(gateway, second, path=("second",))
+
+    assert gateway.ops.resolve("first.read_item") is gateway.ops.resolve("second.write_item")
+    assert gateway.ops["read"]["item"] is gateway.ops.resolve("first.read_item")
+    assert gateway.ops["write"]["item"] is gateway.ops.resolve("second.write_item")
