@@ -883,13 +883,48 @@ no separate upgrade operation. The install request carries `upgrade=True` by
 default and therefore accepts `--no-upgrade` when a caller wants to suppress
 replacement of an existing installation.
 
-The current implementation supports local project directories:
+The current implementation supports local project directories and Git/GitHub
+sources:
 
 ```text
 gway install ./project
 gway install ./project --system
+
+gway install arthexis/gway
+gway install arthexis/gway --ref gateway-rebuild
+gway install https://github.com/arthexis/gway --ref main
+gway install https://example.com/project.git --ref v1.2.3
+
 gway uninstall project
 ```
+
+Local filesystem intent wins before GitHub shorthand resolution. An existing
+path is always treated as local, and explicit relative spellings such as
+`./repo` or `../repo` are never reinterpreted as GitHub repositories.
+A shorthand such as `arthexis/gway` canonicalizes to
+`https://github.com/arthexis/gway.git`. Full GitHub HTTPS URLs with or
+without `.git`, GitHub SSH shorthand, generic `ssh://`, `git://`,
+`file://`, and HTTP(S) URLs ending in `.git` are also accepted Git sources.
+
+Git support uses the system `git` executable and introduces no third-party
+Python runtime dependency. Each canonical repository has a mirror under the
+general GWAY cache `git` namespace. Every install refreshes that mirror,
+resolves the requested `--ref` (branch, tag, or commit) to an immutable commit
+SHA, and materializes a detached content snapshot keyed by that SHA. Snapshot
+trees contain no `.git` metadata. Cached snapshot fingerprints are verified
+before reuse; a modified/corrupt snapshot is rebuilt.
+
+The cache path is only a materialization detail. Authoritative installation
+state records the canonical repository source, the requested ref, and the
+resolved immutable commit separately from the durable managed project copy.
+Deleting the Git cache must therefore never uninstall a project or erase which
+revision is installed.
+
+A moving branch naturally participates in normal convergence: rerunning the
+same install command after the branch resolves to a different commit upgrades
+the managed project by default. `--no-upgrade` keeps the already-installed
+commit even though GWAY may refresh the repository mirror to discover the newer
+remote state. A pinned commit becomes a stable no-op once installed.
 
 A local source must be an existing directory containing `gway.toml` with a
 non-empty, path-safe `[project].name`. GWAY computes a stable source
@@ -952,10 +987,11 @@ managed directory with a stale state record is reconciled by removing the stale
 record. Registry paths outside the expected managed project location are never
 deleted.
 
-`--ref` is reserved for the upcoming Git/GitHub source layer and is rejected
-for local sources. `--force` and `--stash` are mutually exclusive mutation
-policies and are meaningful only when managed drift is detected; otherwise they
-do not force needless reinstall work.
+`--ref` applies to Git sources and may name a branch, tag, or commit. It is
+rejected for ordinary local-directory sources. `--force` and `--stash` are
+mutually exclusive mutation policies and remain orthogonal to Git source
+selection: they handle drift in the managed installation, while `--ref`
+selects desired repository state.
 
 Durable installation state is separate from the disposable cache. User data
 uses the platform data directory (`$XDG_DATA_HOME/gway` or
