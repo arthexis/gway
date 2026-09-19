@@ -104,6 +104,7 @@ def register_operation(gateway, operation):
         operation.callable,
         op=operation.op,
         sub=operation.sub,
+        receiver=operation.metadata.get("receiver"),
     )
     wrapped.__gway_source__ = operation.source
     wrapped.__gway_source_kind__ = operation.kind
