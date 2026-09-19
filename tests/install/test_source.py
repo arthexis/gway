@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from gway.install.source import fingerprint, local_source, project_name
+from gway.install.source import fingerprint, local_source, named_source, project_name
 
 
 def _project(tmp_path, name="demo"):
@@ -114,3 +114,15 @@ def test_project_name_rejects_unsafe_path_components(tmp_path, name):
 
     with pytest.raises(ValueError, match=r"Invalid \[project\]\.name"):
         project_name(root)
+
+
+
+def test_bare_gway_identity_resolves_repository_metadata():
+    source = named_source("gway")
+
+    assert source is not None
+    assert source.endswith("/arthexis/gway.git")
+
+
+def test_unknown_bare_project_identity_is_not_resolved():
+    assert named_source("not-gway") is None
