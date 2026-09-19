@@ -243,7 +243,6 @@ def ingest_manager(gateway, manager, *, path=None, **kwargs):
         "django-manager",
     )
     record = remember_object(gateway, manager, root, expander=ingest_manager)
-    _register_path_aliases(gateway, wrapped, record.paths)
     record.expanded = True
     return wrapped
 
@@ -281,6 +280,7 @@ def ingest_model(gateway, model, *, path=None, **kwargs):
             "django-model",
         )
     )
+    _register_path_aliases(gateway, wrapped, record.paths)
     record.expanded = True
     return wrapped
 
