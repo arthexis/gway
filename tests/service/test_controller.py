@@ -1,9 +1,6 @@
-from pathlib import Path
-
 import pytest
 
 from gway import Gateway
-from gway.service.model import Service
 
 
 class FakeBackend:
@@ -32,20 +29,18 @@ class FakeBackend:
 
 
 @pytest.fixture
-def service_gateway(tmp_path):
+def service_gateway(service_factory):
     gateway = Gateway()
-    alpha = Service(
+    alpha = service_factory(
+        "worker",
         project="arthexis",
-        name="worker",
-        root=tmp_path,
         command=("{python}", "-m", "worker"),
         description="Worker",
         profiles=("Control",),
     )
-    beta = Service(
+    beta = service_factory(
+        "beat",
         project="arthexis",
-        name="beat",
-        root=tmp_path,
         command=("{python}", "-m", "beat"),
         description="Beat",
     )
@@ -77,12 +72,11 @@ def test_service_list_uses_project_owned_identity(service_gateway):
     ]
 
 
-def test_service_list_can_filter_one_project(service_gateway, tmp_path):
+def test_service_list_can_filter_one_project(service_gateway, service_factory):
     gateway, _ = service_gateway
-    other = Service(
+    other = service_factory(
+        "worker",
         project="wire",
-        name="worker",
-        root=tmp_path,
         command=("{python}", "-m", "worker"),
     )
     gateway._services[other.identity] = other
