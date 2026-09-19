@@ -210,31 +210,77 @@ a recipe newline. Quoted separators are ordinary values.
 
 ## Recipes
 
-Recipes are loaded from an explicit filesystem path:
+Recipes are executable GWAY stages and use the same dispatcher from the CLI,
+`Gateway(...)`, notebooks, chains, and nested recipes.
+
+An explicit path always denotes a recipe stage:
+
+```bash
+gway ./example.rx
+```
+
+```python
+gw("./example.rx")
+gw(Path("./example.rx"))
+```
+
+A bare existing filename is also eligible as a recipe fallback when no already
+registered GWAY operation resolves that command. Registered operations therefore
+win ambiguous bare-name collisions, while explicit path syntax wins deliberately:
+
+```text
+deploy       # registered operation wins over ./deploy
+./deploy     # explicit recipe reference
+```
+
+The legacy explicit CLI form remains supported:
 
 ```bash
 gway -r ./example.rx
 ```
 
-A recipe is a sequence of operations. Blank lines and comments are ignored.
-
-Example:
+A recipe is a sequence of ordinary GWAY statements. Blank lines and comments
+are ignored, and a physical line beginning with `--` continues the preceding
+operation:
 
 ```text
 # Charger setup
-create charger --serial ABC
+create charger
+--serial ABC
+--limit 32
 inspect charger
 ```
 
-A physical line beginning with `--` continues the preceding operation:
+Recipe arguments populate the same Gateway context before execution:
 
-```text
-configure charger
---limit 32
---enabled
+```bash
+gway ./example.rx --site MTY --dry-run
 ```
 
-Top-level headings can be used as recipe sections by the recipe loader:
+Recipes do not introduce semantic scope. Every internal operation publishes
+normally into the caller's shared results/context, so values published by
+intermediate steps remain available after the recipe and to nested recipes.
+Only raw positional flow is narrowed: without an explicit dash, recipe
+newlines do not carry the previous raw result.
+
+The recipe's raw output is simply the final operation's raw result. This makes
+recipes ordinary pipeline stages:
+
+```text
+prepare.rx - summarize
+produce - consume.rx
+```
+
+An incoming raw pipeline value feeds the first statement of a recipe; normal
+newline semantics apply after that. A following dash receives the final
+operation result. Existing tuple expansion and chain-local `[n]` / `[*]`
+selectors therefore work unchanged on recipe output.
+
+Nested relative recipe references resolve from the directory containing the
+current recipe, not from the process working directory. Recursive recipe cycles
+are rejected with a recipe call-stack error.
+
+Top-level headings can still be selected as recipe sections by the loader:
 
 ```text
 # Production
@@ -243,17 +289,6 @@ deploy charger
 # Test
 inspect charger
 ```
-
-Recipe CLI arguments such as:
-
-```bash
-gway -r ./example.rx --site MTY --dry-run
-```
-
-are parsed into the Gateway context before the recipe executes.
-
-Do not rely on implicit bundled recipe lookup. The current loader expects an
-explicit path.
 
 ## Gateway wrapping and execution
 
@@ -289,6 +324,26 @@ are used only after named semantic lookup. Variadic collectors (`*args`,
 
 Invocation supports synchronous and awaitable callables. Timing policy is
 handled at the invocation boundary.
+
+
+
+## Clearing accumulated context
+
+Each Gateway exposes a runtime-bound `clear` builtin. With no flags it clears
+the current Gateway context:
+
+```text
+clear
+```
+
+Specific bare flags remove only those context keys:
+
+```text
+clear --site --charger
+```
+
+`clear` does not unregister operations and does not erase published result
+history. It is a context-control operation, not a full Gateway reset.
 
 ## Results and context
 
