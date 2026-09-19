@@ -1,3 +1,5 @@
+from types import MappingProxyType
+
 from gway.publication import publish
 
 
@@ -47,3 +49,12 @@ def test_subjectless_result_is_recorded_in_history_only(gateway):
     assert gateway.results[-1] == "value"
     assert gateway.last == "value"
     assert "value" not in gateway.results.values()
+
+
+def test_generic_mapping_result_is_merged_into_context(gateway):
+    result = MappingProxyType({"serial": "CHG001"})
+
+    publish(gateway, "charger", result)
+
+    assert gateway.results["charger"] is result
+    assert gateway.context["serial"] == "CHG001"
