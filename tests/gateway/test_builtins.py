@@ -46,7 +46,7 @@ def test_builtin_envs_can_feed_pipeline(gateway, monkeypatch):
 
     gateway.read_value = gateway.wrap("read_value", read_value)
 
-    assert gateway("gway envs - read_value GWAY_PIPELINE_ENV") == "pipeline"
+    assert gateway("envs - read_value GWAY_PIPELINE_ENV") == "pipeline"
 
 
 def test_builtins_are_registered_only_under_gway_root(gateway):
