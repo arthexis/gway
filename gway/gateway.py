@@ -112,30 +112,6 @@ class Gateway(Resolver):
                 )
             )
 
-    @classmethod
-    def update_modes(
-        cls,
-        *,
-        debug=None,
-        verbose=None,
-        silent=None,
-        interactive=None,
-        timed=None,
-    ):
-        """Update execution policy on the process-wide gw instance."""
-        instance = globals().get("gw")
-        if not isinstance(instance, cls):
-            return
-        for name, value in {
-            "debug_enabled": debug,
-            "interactive_enabled": interactive,
-            "timed_enabled": timed,
-            "verbose": verbose,
-            "silent": silent,
-        }.items():
-            if value is not None:
-                setattr(instance, name, bool(value))
-
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command through the unified dispatcher."""
         from .dispatch import dispatch
