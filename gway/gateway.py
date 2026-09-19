@@ -65,6 +65,16 @@ class Gateway(Resolver):
         from .ingestion.python import ingest_module
 
         ingest_module(self, builtin, transparent=True)
+        self.clear = self.wrap("clear", self._clear_context)
+
+    def _clear_context(self, **values):
+        """Clear all accumulated context, or only explicitly named keys."""
+        if values:
+            for name in values:
+                self.context.pop(name, None)
+        else:
+            self.context.clear()
+        return None
 
     @property
     def last(self):
