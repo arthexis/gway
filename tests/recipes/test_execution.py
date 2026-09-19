@@ -179,3 +179,109 @@ def test_recipe_flags_extend_shared_context(gateway, tmp_path):
 
     assert gateway(f"{recipe} --site MTY") == "MTY"
     assert gateway.context["site"] == "MTY"
+
+
+
+def test_recipe_ingests_same_stem_python_companion_before_resolution(
+    gateway,
+    tmp_path,
+):
+    recipe = tmp_path / "deploy.rx"
+    companion = tmp_path / "deploy.py"
+
+    companion.write_text(
+        "def prepare(name):\n"
+        "    return f'prepared:{name}'\n",
+        encoding="utf-8",
+    )
+    recipe.write_text("deploy prepare charger\n", encoding="utf-8")
+
+    assert gateway(recipe) == "prepared:charger"
+    assert gateway.ops.resolve("deploy.prepare") is not None
+
+
+def test_recipe_companion_is_resolved_from_recipe_directory_not_cwd(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    recipes = tmp_path / "recipes"
+    elsewhere = tmp_path / "elsewhere"
+    recipes.mkdir()
+    elsewhere.mkdir()
+
+    recipe = recipes / "status.rx"
+    companion = recipes / "status.py"
+    companion.write_text(
+        "def read():\n"
+        "    return 'recipe-dir'\n",
+        encoding="utf-8",
+    )
+    recipe.write_text("status read\n", encoding="utf-8")
+
+    (elsewhere / "status.py").write_text(
+        "def read():\n"
+        "    return 'cwd'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(elsewhere)
+
+    assert gateway(recipe) == "recipe-dir"
+
+
+def test_recipe_without_companion_executes_normally(gateway, tmp_path):
+    def echo(value):
+        return value
+
+    gateway.echo = gateway.wrap("echo_value", echo)
+    recipe = tmp_path / "plain.rx"
+    recipe.write_text("echo ok\n", encoding="utf-8")
+
+    assert gateway(recipe) == "ok"
+
+
+def test_recipe_companion_is_ingested_once_per_gateway(gateway, tmp_path):
+    recipe = tmp_path / "once.rx"
+    companion = tmp_path / "once.py"
+    marker = tmp_path / "imports.txt"
+
+    companion.write_text(
+        "from pathlib import Path\n"
+        f"_marker = Path({str(marker)!r})\n"
+        "_marker.write_text(_marker.read_text() + 'x' if _marker.exists() else 'x')\n"
+        "def run():\n"
+        "    return 'ok'\n",
+        encoding="utf-8",
+    )
+    recipe.write_text("once run\n", encoding="utf-8")
+
+    assert gateway(recipe) == "ok"
+    assert gateway(recipe) == "ok"
+    assert marker.read_text(encoding="utf-8") == "x"
+
+
+def test_nested_recipe_loads_its_own_companion(gateway, tmp_path):
+    outer = tmp_path / "outer.rx"
+    inner = tmp_path / "inner.rx"
+    companion = tmp_path / "inner.py"
+
+    companion.write_text(
+        "def ping():\n"
+        "    return 'pong'\n",
+        encoding="utf-8",
+    )
+    inner.write_text("inner ping\n", encoding="utf-8")
+    outer.write_text("./inner.rx\n", encoding="utf-8")
+
+    assert gateway(outer) == "pong"
+
+
+def test_failed_companion_import_prevents_recipe_execution(gateway, tmp_path):
+    recipe = tmp_path / "broken.rx"
+    companion = tmp_path / "broken.py"
+
+    companion.write_text("raise RuntimeError('companion boom')\n", encoding="utf-8")
+    recipe.write_text("clear\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="companion boom"):
+        gateway(recipe)
