@@ -97,6 +97,11 @@ def _source_from_manifest(source, directory):
     if not isinstance(source, str):
         return source
 
+    from .ingestion.url import is_url
+
+    if is_url(source):
+        return source
+
     candidate = Path(source).expanduser()
     manifest_candidate = candidate
     if not candidate.is_absolute():
