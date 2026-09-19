@@ -89,7 +89,7 @@ class Gateway(Resolver):
             self.context.clear()
         return None
 
-    def _help(self, operation: str, *, verbose=False):
+    def _help(self, *operation: str, verbose=False):
         """Return help for one Gway operation.
 
         Args:
@@ -100,9 +100,12 @@ class Gateway(Resolver):
         from .dispatch import resolve_operation
         from .tokens import tokenize
 
-        target, remaining, _ = resolve_operation(self, tokenize(operation))
+        if not operation:
+            raise TypeError("help requires an operation name")
+        name = " ".join(operation)
+        target, remaining, _ = resolve_operation(self, tokenize(name))
         if remaining:
-            raise LookupError(f"Unable to resolve operation: {operation}")
+            raise LookupError(f"Unable to resolve operation: {name}")
         return render(target, verbose=verbose)
 
     @property
