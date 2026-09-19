@@ -272,21 +272,20 @@ def ingest_module(gateway, source, *, path=None, transparent=False, **kwargs):
         return []
 
     wrapped = []
+    entry = None if transparent else _module_entry_operation(source, root)
 
-    if not transparent:
-        entry = _module_entry_operation(source, root)
-        if entry is not None:
-            entry_record = remember_object(
-                gateway,
-                entry.callable,
-                entry.path,
-                metadata=dict(entry.metadata),
-            )
-            registered = _register_callable(gateway, entry_record, entry)
-            if registered is not None:
-                wrapped.append(registered)
+    if entry is not None:
+        entry_record = remember_object(
+            gateway,
+            entry.callable,
+            entry.path,
+            metadata=dict(entry.metadata),
+        )
+        registered = _register_callable(gateway, entry_record, entry)
+        if registered is not None:
+            wrapped.append(registered)
 
-    entry_registered = not transparent and _module_entry_operation(source, root) is not None
+    entry_registered = entry is not None
     for name, child in _public_members(source):
         if name == "__main__" and (transparent or entry_registered):
             continue
