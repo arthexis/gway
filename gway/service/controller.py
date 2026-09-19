@@ -8,7 +8,8 @@ class Controller:
 
     def __init__(self, gateway, *, backend=None):
         self.gateway = gateway
-        self.backend = backend or ProcessBackend(
+        self.backend = backend
+        self._fallback = ProcessBackend(
             installations=getattr(gateway, "_installed", {}),
         )
 
@@ -63,19 +64,61 @@ class Controller:
             "autostart": definition.autostart,
         }
 
+    def _installed_backend(self, definition):
+        if self.backend is not None:
+            return self.backend
+
+        installation = getattr(self.gateway, "_installed", {}).get(
+            definition.project
+        )
+        if installation is None:
+            return self._fallback
+
+        from ..install.backends import get as get_backend
+        from ..install.paths import install_paths
+        from ..install.systemd import UnitState
+
+        paths = install_paths(system=installation.scope == "system")
+        records = UnitState(paths.root / "systemd").get(definition.project)
+        record = next(
+            (
+                current
+                for current in records
+                if current.service == definition.name
+            ),
+            None,
+        )
+        if record is None:
+            return self._fallback
+
+        backend = get_backend(record.backend)
+        runtime = getattr(backend, "runtime", None)
+        if runtime is None:
+            raise RuntimeError(
+                f"Service backend {record.backend!r} has no runtime adapter"
+            )
+        return runtime(
+            record=record,
+            installations=getattr(self.gateway, "_installed", {}),
+            state_root=paths.root / "services",
+        )
+
     def start(self, project, service):
-        """Start one discovered service in the current Gateway runtime."""
-        return self.backend.start(self._service(project, service))
+        """Start one discovered service through its installed backend."""
+        definition = self._service(project, service)
+        return self._installed_backend(definition).start(definition)
 
     def stop(self, project, service):
-        """Stop one service owned by the current Gateway runtime."""
-        return self.backend.stop(self._service(project, service))
+        """Stop one discovered service through its installed backend."""
+        definition = self._service(project, service)
+        return self._installed_backend(definition).stop(definition)
 
     def restart(self, project, service):
-        """Restart one service owned by the current Gateway runtime."""
+        """Restart one discovered service through its installed backend."""
         definition = self._service(project, service)
-        return self.backend.restart(definition)
+        return self._installed_backend(definition).restart(definition)
 
     def status(self, project, service):
-        """Return runtime status for one discovered service."""
-        return self.backend.status(self._service(project, service))
+        """Return runtime status through the service's installed backend."""
+        definition = self._service(project, service)
+        return self._installed_backend(definition).status(definition)
