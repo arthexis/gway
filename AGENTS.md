@@ -920,9 +920,26 @@ perform an upgrade.
 
 Before any no-op, repair, or replacement, GWAY verifies that the live managed
 tree still matches its recorded fingerprint. Drift is treated as evidence of
-manual customization and blocks reconciliation rather than overwriting those
-changes. The upcoming mutation-handling layer will connect this guard to the
-existing `--force` and `--stash` request intents.
+manual customization and blocks reconciliation by default rather than
+overwriting those changes.
+
+`--force` explicitly authorizes discarding that managed drift and rebuilding
+from the requested source. GWAY emits a warning when force is used against a
+dirty managed installation so callers know customizations are being discarded.
+
+`--stash` is the preservation alternative. Before reconciliation, GWAY copies
+the entire dirty managed tree into durable installation data under
+`stashes/<project>/<timestamp-id>/tree` and writes adjacent `metadata.json`
+containing source/ref provenance, scope, install path, recorded fingerprint, and
+the actual dirty fingerprint. The stash is durable state, not cache, and is not
+removed when cache data is cleared. After preservation succeeds, reconciliation
+proceeds with the same clean replacement behavior as force.
+
+Neither mutation override bypasses `--no-upgrade`. If the source itself has
+changed and `--no-upgrade` is set, GWAY will not use that newer source as the
+baseline for cleaning a dirty installation. When the source is unchanged,
+`--force --no-upgrade` or `--stash --no-upgrade` may repair managed drift
+because no source-version change is required.
 
 If a caller points install at a different local source with the same project
 name and identical content, GWAY updates source provenance without needlessly
@@ -936,9 +953,9 @@ record. Registry paths outside the expected managed project location are never
 deleted.
 
 `--ref` is reserved for the upcoming Git/GitHub source layer and is rejected
-for local sources. `--force` and `--stash` remain mutually exclusive request
-intents; managed-tree drift is detected now, while discard/stash behavior is
-implemented by the next mutation-handling chunk.
+for local sources. `--force` and `--stash` are mutually exclusive mutation
+policies and are meaningful only when managed drift is detected; otherwise they
+do not force needless reinstall work.
 
 Durable installation state is separate from the disposable cache. User data
 uses the platform data directory (`$XDG_DATA_HOME/gway` or
