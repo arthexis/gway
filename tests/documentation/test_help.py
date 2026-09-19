@@ -1,8 +1,5 @@
 import inspect
-import sys
-
 from gway import Gateway
-from gway.console import cli_main
 from gway.documentation import render
 
 
@@ -101,7 +98,6 @@ def test_help_preserves_receiver_adjusted_signature(gateway):
     assert "self" not in output
 
 
-
 def test_builtin_install_help_explains_reconciliation_policy(gateway):
     output = gateway("help install --verbose")
 
@@ -133,7 +129,6 @@ def test_callable_log_level_has_subject_specific_summary(gateway):
     assert "callable and truth-testable" not in output
 
 
-
 def test_verbose_help_does_not_duplicate_parameter_prose():
     def deploy(target: str):
         """Deploy one target.
@@ -149,13 +144,10 @@ def test_verbose_help_does_not_duplicate_parameter_prose():
     assert "Parameters:" in output
 
 
+def test_cli_verbose_help_uses_structured_documentation(run_cli):
+    status, output, _ = run_cli("-v", "help", "log", "config")
 
-def test_cli_verbose_help_uses_structured_documentation(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "argv", ["gway", "-v", "help", "log", "config"])
-
-    assert cli_main() == 0
-
-    output = capsys.readouterr().out
+    assert status == 0
     assert "Inspect or configure one Python logger." in output
     assert "Parameters:" in output
     assert "Logging threshold name or numeric value" in output
@@ -163,15 +155,14 @@ def test_cli_verbose_help_uses_structured_documentation(monkeypatch, capsys):
 
 def test_cli_verbose_interactive_uses_same_parameter_documentation(
     monkeypatch,
-    capsys,
+    run_cli,
 ):
     monkeypatch.setenv("GWAY_DOC_TEST", "documented-value")
-    monkeypatch.setattr(sys, "argv", ["gway", "-i", "-v", "env"])
     monkeypatch.setattr("builtins.input", lambda prompt: "GWAY_DOC_TEST")
 
-    assert cli_main() == 0
+    status, output, _ = run_cli("-i", "-v", "env")
 
-    output = capsys.readouterr().out
+    assert status == 0
     assert "name" in output
     assert "Environment variable name to read." in output
     assert "Required" in output
