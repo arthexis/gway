@@ -5,6 +5,7 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
 import inspect
+import runpy
 import sys
 
 from .base import (
@@ -44,6 +45,73 @@ def _public_members(source):
             continue
         yield name, value
 
+
+def _package_main_path(source):
+    """Return a conventional package __main__.py path without importing it."""
+    if not isinstance(source, ModuleType):
+        return None
+    paths = getattr(source, "__path__", None)
+    if paths is None:
+        return None
+
+    for entry in paths:
+        candidate = Path(entry) / "__main__.py"
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
+def _package_main_callable(source):
+    """Create a callable that mirrors python -m package at invocation time."""
+    package = getattr(source, "__name__", None)
+    main_path = _package_main_path(source)
+    if not package or main_path is None:
+        return None
+
+    def invoke(*arguments):
+        previous = list(sys.argv)
+        sys.argv = [str(main_path), *map(str, arguments)]
+        try:
+            return runpy.run_module(
+                f"{package}.__main__",
+                run_name="__main__",
+                alter_sys=True,
+            )
+        finally:
+            sys.argv[:] = previous
+
+    invoke.__name__ = "__main__"
+    invoke.__doc__ = f"Run {package!r} using its package __main__.py."
+    return invoke
+
+
+def _module_entry_operation(source, root):
+    """Return the module/package entry operation, when one is conventional."""
+    direct = getattr(source, "__main__", None)
+    if callable(direct):
+        callable_ = direct
+        kind = "python"
+        metadata = {"object": callable_, "entrypoint": "callable"}
+    else:
+        callable_ = _package_main_callable(source)
+        if callable_ is None:
+            return None
+        kind = "python-main"
+        metadata = {
+            "object": callable_,
+            "entrypoint": "__main__.py",
+            "path": str(_package_main_path(source)),
+        }
+
+    return IngestedOperation(
+        root,
+        callable_,
+        source=source,
+        kind=kind,
+        op=root[-1],
+        sub=None,
+        metadata=metadata,
+    )
 
 def _receiver_subject(source, root, name, child):
     """Return the semantic receiver for one unbound instance method."""
@@ -128,11 +196,16 @@ def discover_module(source, *, path=None, transparent=False):
         raise TypeError("source must be a Python module")
     source_root = normalize_path(path) if path is not None else _default_path(source)
     root = () if transparent else source_root
-    return [
+    discovered = [
         _operation(source, root, name, child)
         for name, child in _public_members(source)
         if callable(child) and not (transparent and name == "__main__")
     ]
+    if not transparent:
+        entry = _module_entry_operation(source, root)
+        if entry is not None and not any(item.path == entry.path for item in discovered):
+            discovered.insert(0, entry)
+    return discovered
 
 
 def discover_python(source, *, path=None):
@@ -199,6 +272,20 @@ def ingest_module(gateway, source, *, path=None, transparent=False, **kwargs):
         return []
 
     wrapped = []
+
+    if not transparent:
+        entry = _module_entry_operation(source, root)
+        if entry is not None:
+            entry_record = remember_object(
+                gateway,
+                entry.callable,
+                entry.path,
+                metadata=dict(entry.metadata),
+            )
+            registered = _register_callable(gateway, entry_record, entry)
+            if registered is not None:
+                wrapped.append(registered)
+
     for name, child in _public_members(source):
         if transparent and name == "__main__":
             continue
