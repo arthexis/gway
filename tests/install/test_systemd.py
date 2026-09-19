@@ -76,7 +76,7 @@ def test_explicit_services_converge_owned_unit_set(
 
     assert (units / "demo-web.service").is_file()
     assert not (units / "demo-worker.service").exists()
-    assert (("disable", "demo-worker.service"), False, False) in calls
+    assert (("disable", "--now", "demo-worker.service"), False, False) in calls
     assert [record.service for record in UnitState(data / "systemd").get("demo")] == [
         "web"
     ]
