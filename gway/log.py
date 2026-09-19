@@ -20,9 +20,7 @@ logger.setLevel(_NOTSET)
 _instances = _count()
 
 
-def warn(message, *args, **kwargs):
-    """Alias the legacy warn subject to logging.warning without using logging.warn."""
-    return warning(message, *args, **kwargs)
+warn = warning
 
 
 def __main__(message, *args, level: int = _INFO, **kwargs):
