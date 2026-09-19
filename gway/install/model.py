@@ -4,6 +4,17 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 
+def validate_name(value):
+    """Return one safe managed-project name."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("installation name must be a non-empty string")
+    if value != value.strip():
+        raise ValueError("installation name cannot have surrounding whitespace")
+    if value in {".", ".."} or "/" in value or "\\" in value or "\0" in value:
+        raise ValueError("installation name must be one safe path component")
+    return value
+
+
 @dataclass(frozen=True)
 class Installation:
     """Authoritative record for one managed project installation."""
@@ -18,8 +29,7 @@ class Installation:
     installed_at: str | None = None
 
     def __post_init__(self):
-        if not isinstance(self.name, str) or not self.name.strip():
-            raise ValueError("installation name must be a non-empty string")
+        validate_name(self.name)
         if not isinstance(self.source, str) or not self.source.strip():
             raise ValueError("installation source must be a non-empty string")
         if self.scope not in {"user", "system"}:
