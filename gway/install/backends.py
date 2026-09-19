@@ -1,9 +1,10 @@
 """Service-install backend selection."""
 
-from . import systemd
+from . import process, systemd
 
 
 _BACKENDS = {
+    "process": process,
     "systemd": systemd,
 }
 
