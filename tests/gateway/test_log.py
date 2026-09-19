@@ -35,18 +35,18 @@ def test_verbose_and_silent_are_runtime_logger_properties(gateway):
 
 
 def test_log_dunder_main_is_default_operation(gateway, caplog):
-    assert gateway.ops.resolve("gway.log") is None
+    assert gateway.ops.resolve("log") is None
 
     with caplog.at_level(logging.INFO):
-        assert gateway("gway log hello") is None
+        assert gateway("log hello") is None
 
-    assert gateway.ops.resolve("gway.log") is not None
+    assert gateway.ops.resolve("log") is not None
     assert any(record.getMessage() == "hello" for record in caplog.records)
 
 
 def test_log_dunder_main_supports_explicit_level(gateway, caplog):
     with caplog.at_level(logging.WARNING):
-        assert gateway("gway log hello --level 30") is None
+        assert gateway("log hello --level 30") is None
 
     assert any(
         record.getMessage() == "hello" and record.levelno == logging.WARNING
@@ -55,19 +55,19 @@ def test_log_dunder_main_supports_explicit_level(gateway, caplog):
 
 
 def test_log_subjects_are_jit_ingested(gateway, caplog):
-    assert gateway.ops.resolve("gway.log.info") is None
+    assert gateway.ops.resolve("log.info") is None
 
     with caplog.at_level(logging.INFO):
-        assert gateway("gway log info hello") is None
+        assert gateway("log info hello") is None
 
-    assert gateway.ops.resolve("gway.log.info") is not None
+    assert gateway.ops.resolve("log.info") is not None
     assert any(record.getMessage() == "hello" for record in caplog.records)
 
 
 def test_log_family_uses_operation_and_subject_semantics(gateway):
-    gateway("gway log info hello")
-    gateway("gway log warning warning-message")
-    gateway("gway log warn warn-message")
+    gateway("log info hello")
+    gateway("log warning warning-message")
+    gateway("log warn warn-message")
 
     family = gateway.ops["log"]
 
@@ -82,7 +82,7 @@ def test_log_family_uses_operation_and_subject_semantics(gateway):
 
 
 def test_log_exposes_standard_level_subjects(gateway):
-    gateway("gway log info hello")
+    gateway("log info hello")
 
     family = gateway.ops["log"]
     for subject in (
