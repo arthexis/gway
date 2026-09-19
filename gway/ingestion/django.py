@@ -321,6 +321,88 @@ def ingest_orm(gateway, source, *, path=None, **kwargs):
     raise TypeError("Source is not a Django ORM object")
 
 
+def _management_api():
+    """Return Django management discovery/execution functions lazily."""
+    try:
+        management = import_module("django.core.management")
+    except ModuleNotFoundError as exc:
+        if exc.name == "django" or str(exc.name).startswith("django."):
+            raise ModuleNotFoundError(
+                "Django ingestion requires Django to be installed"
+            ) from exc
+        raise
+    return management.get_commands, management.call_command
+
+
+def _command_callable(command_name):
+    """Create a lightweight GWAY operation backed by Django call_command()."""
+    def invoke(*args, **options):
+        _, call_command = _management_api()
+        return call_command(command_name, *args, **options)
+
+    invoke.__name__ = str(command_name)
+    invoke.__doc__ = f"Run Django management command {command_name!r}."
+    return invoke
+
+
+def ingest_commands(gateway, mount, *, path=None, **kwargs):
+    """Expose a named project's Django management commands on its subject."""
+    if not mount.management_enabled:
+        return []
+
+    root = normalize_path(path) if path is not None else (mount.name,)
+    record = remember_object(
+        gateway,
+        mount,
+        root,
+        expander=ingest_commands,
+    )
+    if record.expanded:
+        return []
+
+    get_commands, _ = _management_api()
+    wrapped = []
+    for command_name in sorted(get_commands()):
+        name = str(command_name)
+        operation_path = (*root, name)
+        if operation_path in record.operations:
+            continue
+        operation = IngestedOperation(
+            operation_path,
+            _command_callable(name),
+            source=mount,
+            kind="django-command",
+            op=name,
+            sub=mount.name,
+            metadata={
+                "project": mount.name,
+                "command": name,
+                "settings": mount.settings,
+            },
+        )
+        registered = register_operation(gateway, operation)
+        record.operations[operation_path] = registered
+        if record.operation is None:
+            record.operation = registered
+        record.registered = True
+        wrapped.append(registered)
+
+    record.expanded = True
+    return wrapped
+
+
+def _index_management(gateway, mount):
+    """Remember the named project as a lazy management-command subject."""
+    if mount.management_enabled:
+        remember_object(
+            gateway,
+            mount,
+            (mount.name,),
+            expander=ingest_commands,
+        )
+    return mount
+
+
 def _index_registry(gateway, mount):
     """Remember apps and models as lazy GWAY branches without exposing methods."""
     apps = tuple(mount.registry.get_app_configs())
@@ -406,6 +488,7 @@ def ingest_project(
         )
         mounts[key] = mount
         _index_registry(gateway, mount)
+        _index_management(gateway, mount)
         return mount
 
     if name is not None:
@@ -414,5 +497,6 @@ def ingest_project(
                 f"Django project is already mounted as {mount.name!r}"
             )
         mount.name = name
+        _index_management(gateway, mount)
 
     return mount
