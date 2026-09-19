@@ -53,3 +53,22 @@ def test_uninstall_request_is_scope_aware():
 
     assert request.project == "gway"
     assert request.scope == "system"
+
+
+
+def test_install_request_normalizes_service_selection():
+    request = InstallRequest(
+        "arthexis/gway",
+        services=("web", "worker", "web"),
+    )
+
+    assert request.services == ("web", "worker")
+
+
+def test_install_request_name_requires_one_service():
+    with pytest.raises(ValueError, match="exactly one selected service"):
+        InstallRequest(
+            "arthexis/gway",
+            services=("web", "worker"),
+            name="custom",
+        )
