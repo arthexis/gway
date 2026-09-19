@@ -89,7 +89,7 @@ class Gateway(Resolver):
             self.context.clear()
         return None
 
-    def _help(self, operation: str, verbose=False):
+    def _help(self, operation: str, *, verbose=False):
         """Return help for one Gway operation.
 
         Args:
