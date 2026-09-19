@@ -127,3 +127,32 @@ def test_builtin_path_pipeline_infers_glob_from_subject_and_sigils(gateway, tmp_
     assert matches == [first]
     assert gateway.ops.resolve("path.glob") is not None
     assert gateway.ops["glob"]["path"] is gateway.ops.resolve("path.glob")
+
+
+
+def test_clear_builtin_clears_all_accumulated_context(gateway):
+    gateway.context.update({"site": "MTY", "charger": "A"})
+
+    assert gateway("clear") is None
+    assert gateway.context == {}
+
+
+def test_clear_builtin_can_remove_only_named_context_flags(gateway):
+    gateway.context.update({"site": "MTY", "charger": "A", "keep": 1})
+
+    assert gateway("clear --site --charger") is None
+    assert gateway.context == {"keep": 1}
+
+
+def test_clear_builtin_does_not_remove_published_result_history(gateway):
+    def get_site():
+        return "MTY"
+
+    gateway.get_site = gateway.wrap("get_site", get_site)
+    gateway("get_site")
+    gateway.context["temporary"] = True
+
+    gateway("clear")
+
+    assert gateway.context == {}
+    assert gateway.results["site"] == "MTY"
