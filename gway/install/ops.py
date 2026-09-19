@@ -30,7 +30,7 @@ def install(
     system: bool = False,
     services: tuple[str, ...] = (),
     name: str | None = None,
-    backend: str = "systemd",
+    backend: str | None = None,
 ):
     """Converge one local or Git project installation toward requested state.
 
@@ -44,7 +44,8 @@ def install(
         services: Declared services to install as systemd units. Gway also infers
             the singular --service form for exactly one item.
         name: Override the backend service name when exactly one service is selected.
-        backend: Service installation backend. Currently only "systemd" is supported.
+        backend: Service installation backend. Omitted means preserve an existing
+            backend or use "systemd" for newly selected services.
     """
     request = InstallRequest(
         source=str(source),
