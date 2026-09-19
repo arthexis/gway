@@ -9,27 +9,9 @@ from gway.souschef import (
 )
 
 
-def write_recipe(root, name, body, recipe_line):
-    recipe = root / f"{name}.rx"
-    companion = root / f"{name}.py"
-    companion.write_text(body, encoding="utf-8")
-    recipe.write_text(recipe_line + "\n", encoding="utf-8")
-    return recipe
-
-
-def make_job(root, name, *, timeout=5):
-    return Job(
-        project="demo",
-        name=name,
-        root=root,
-        recipe=root / f"{name}.rx",
-        timeout=timeout,
-    )
-
-
-def test_recipe_executor_uses_canonical_recipe_evaluator(tmp_path):
+def test_recipe_executor_uses_canonical_recipe_evaluator(tmp_path, job_factory, recipe_factory):
     output = tmp_path / "done.txt"
-    write_recipe(
+    recipe_factory(
         tmp_path,
         "success",
         "from pathlib import Path\n"
@@ -37,7 +19,7 @@ def test_recipe_executor_uses_canonical_recipe_evaluator(tmp_path):
         "    return 'ok'\n",
         "success mark",
     )
-    job = make_job(tmp_path, "success")
+    job = job_factory("success", timeout=5)
     executor = RecipeExecutor()
 
     value = executor(job)
@@ -46,15 +28,15 @@ def test_recipe_executor_uses_canonical_recipe_evaluator(tmp_path):
     assert output.read_text(encoding="utf-8") == "done"
 
 
-def test_recipe_failure_does_not_stop_later_scheduler_work(tmp_path):
-    write_recipe(
+def test_recipe_failure_does_not_stop_later_scheduler_work(tmp_path, job_factory, recipe_factory):
+    recipe_factory(
         tmp_path,
         "fail",
         "def explode():\n    raise RuntimeError('boom')\n",
         "fail explode",
     )
     output = tmp_path / "after.txt"
-    write_recipe(
+    recipe_factory(
         tmp_path,
         "after",
         "from pathlib import Path\n"
@@ -62,8 +44,8 @@ def test_recipe_failure_does_not_stop_later_scheduler_work(tmp_path):
         "    return 'after'\n",
         "after mark",
     )
-    failed = make_job(tmp_path, "fail")
-    after = make_job(tmp_path, "after")
+    failed = job_factory("fail", timeout=5)
+    after = job_factory("after", timeout=5)
     scheduler = Scheduler([failed, after])
     scheduler.enqueue(failed)
     scheduler.enqueue(after)
@@ -79,8 +61,8 @@ def test_recipe_failure_does_not_stop_later_scheduler_work(tmp_path):
     assert output.read_text(encoding="utf-8") == "after"
 
 
-def test_timed_out_recipe_is_terminated_and_scheduler_continues(tmp_path):
-    write_recipe(
+def test_timed_out_recipe_is_terminated_and_scheduler_continues(tmp_path, job_factory, recipe_factory):
+    recipe_factory(
         tmp_path,
         "slow",
         "import time\n"
@@ -88,7 +70,7 @@ def test_timed_out_recipe_is_terminated_and_scheduler_continues(tmp_path):
         "slow wait",
     )
     output = tmp_path / "after-timeout.txt"
-    write_recipe(
+    recipe_factory(
         tmp_path,
         "after",
         "from pathlib import Path\n"
@@ -96,8 +78,8 @@ def test_timed_out_recipe_is_terminated_and_scheduler_continues(tmp_path):
         "    return 'ok'\n",
         "after mark",
     )
-    slow = make_job(tmp_path, "slow", timeout=0.2)
-    after = make_job(tmp_path, "after", timeout=5)
+    slow = job_factory("slow", timeout=0.2)
+    after = job_factory("after", timeout=5)
     scheduler = Scheduler([slow, after])
     scheduler.enqueue(slow)
     scheduler.enqueue(after)
