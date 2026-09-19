@@ -1,6 +1,14 @@
+import pytest
+
 from gway import Gateway
 from gway.ingestion.base import find_ingested
 from gway.install import Installation, InstallState
+
+
+@pytest.fixture(autouse=True)
+def isolate_system_installations(tmp_path, monkeypatch):
+    monkeypatch.setenv("GWAY_SYSTEM_DATA_DIR", str(tmp_path / "system-data"))
+    monkeypatch.setenv("GWAY_SYSTEM_BIN_DIR", str(tmp_path / "system-bin"))
 
 
 def test_fresh_gateway_discovers_managed_user_installation(
@@ -34,7 +42,6 @@ def test_installed_project_discovery_does_not_eagerly_ingest_django(
     install_environment,
     tmp_path,
     monkeypatch,
-    django_ingest_spy,
 ):
     source = make_project("backend")
     (source / "manage.py").write_text("# django entry\n", encoding="utf-8")
@@ -52,10 +59,19 @@ def test_installed_project_discovery_does_not_eagerly_ingest_django(
     outside.mkdir()
     monkeypatch.chdir(outside)
 
+    import gway.ingestion.django as django_ingestor
+
+    calls = []
+
+    def unexpected_ingest(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("installed project was ingested eagerly")
+
+    monkeypatch.setattr(django_ingestor, "ingest_project", unexpected_ingest)
     fresh = Gateway()
 
     assert "backend" in fresh._installed
-    assert django_ingest_spy == {}
+    assert calls == []
     assert fresh.ops.resolve("backend") is None
 
 
