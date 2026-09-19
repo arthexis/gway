@@ -890,9 +890,9 @@ sources:
 gway install ./project
 gway install ./project --system
 
-gway install arthexis/gway
-gway install arthexis/gway --ref gateway-rebuild
-gway install https://github.com/arthexis/gway --ref main
+gway install owner/project
+gway install owner/project --ref feature-branch
+gway install https://github.com/owner/project --ref main
 gway install https://example.com/project.git --ref v1.2.3
 
 gway uninstall project
@@ -901,8 +901,8 @@ gway uninstall project
 Local filesystem intent wins before GitHub shorthand resolution. An existing
 path is always treated as local, and explicit relative spellings such as
 `./repo` or `../repo` are never reinterpreted as GitHub repositories.
-A shorthand such as `arthexis/gway` canonicalizes to
-`https://github.com/arthexis/gway.git`. Full GitHub HTTPS URLs with or
+A shorthand such as `owner/project` canonicalizes to
+`https://github.com/owner/project.git`. Full GitHub HTTPS URLs with or
 without `.git`, GitHub SSH shorthand, generic `ssh://`, `git://`,
 `file://`, and HTTP(S) URLs ending in `.git` are also accepted Git sources.
 
