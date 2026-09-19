@@ -1,6 +1,7 @@
 """Built-in GWAY operations and namespaces."""
 
 import os as _os
+from pathlib import Path as path
 
 from . import log, toml
 
