@@ -473,3 +473,136 @@ def test_django_app_operations_allow_optional_project_prefix(
     qualified = fresh.ops.resolve("arthexis.ocpp.charger.filter")
     assert canonical is not None
     assert qualified is canonical
+
+
+
+def test_uninstall_removes_project_from_future_gateway_bootstrap(
+    gateway,
+    make_project,
+    install_environment,
+    tmp_path,
+    monkeypatch,
+):
+    source = make_project("wire")
+    installed = gateway(f"install {source}")
+
+    outside = tmp_path / "outside-uninstall"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+
+    before = Gateway()
+    assert before._installed["wire"] == installed
+    assert find_ingested(before, ("wire",)) is not None
+
+    removed = gateway("uninstall wire")
+    assert removed == installed
+
+    after = Gateway()
+    assert "wire" not in after._installed
+    assert find_ingested(after, ("wire",)) is None
+
+
+def test_uninstall_removes_lazy_project_entrypoints_from_future_bootstrap(
+    gateway,
+    make_project,
+    install_environment,
+    tmp_path,
+    monkeypatch,
+):
+    source = make_project("arthexis")
+    (source / "gway.toml").write_text(
+        "[project]\n"
+        "name = 'arthexis'\n"
+        "aliases = ['ocpp', 'energy']\n",
+        encoding="utf-8",
+    )
+    gateway(f"install {source}")
+
+    outside = tmp_path / "outside-entrypoint-uninstall"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+
+    before = Gateway()
+    assert before._installed_entrypoints == {
+        "ocpp": "arthexis",
+        "energy": "arthexis",
+    }
+    assert find_ingested(before, ("ocpp",)) is not None
+    assert find_ingested(before, ("energy",)) is not None
+
+    gateway("uninstall arthexis")
+
+    after = Gateway()
+    assert after._installed == {}
+    assert after._installed_entrypoints == {}
+    assert find_ingested(after, ("ocpp",)) is None
+    assert find_ingested(after, ("energy",)) is None
+
+
+def test_upgrade_refreshes_discovered_entrypoints_for_new_gateway(
+    gateway,
+    make_project,
+    install_environment,
+    tmp_path,
+    monkeypatch,
+):
+    source = make_project("arthexis")
+    manifest = source / "gway.toml"
+    manifest.write_text(
+        "[project]\n"
+        "name = 'arthexis'\n"
+        "aliases = ['ocpp']\n",
+        encoding="utf-8",
+    )
+    first = gateway(f"install {source}")
+
+    outside = tmp_path / "outside-upgrade"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+
+    initial = Gateway()
+    assert initial._installed_entrypoints == {"ocpp": "arthexis"}
+    assert find_ingested(initial, ("ocpp",)) is not None
+    assert find_ingested(initial, ("energy",)) is None
+
+    manifest.write_text(
+        "[project]\n"
+        "name = 'arthexis'\n"
+        "aliases = ['energy']\n",
+        encoding="utf-8",
+    )
+    second = gateway(f"install {source}")
+
+    assert second.fingerprint != first.fingerprint
+
+    refreshed = Gateway()
+    assert refreshed._installed_entrypoints == {"energy": "arthexis"}
+    assert find_ingested(refreshed, ("ocpp",)) is None
+    assert find_ingested(refreshed, ("energy",)) is not None
+
+
+def test_system_installation_remains_discoverable_after_user_uninstall(
+    gateway,
+    make_project,
+    install_environment,
+    tmp_path,
+    monkeypatch,
+):
+    system_source = make_project("shared")
+    system = gateway(f"install {system_source} --system")
+
+    user_source = make_project("shared")
+    user = gateway(f"install {user_source}")
+
+    outside = tmp_path / "outside-scope-fallback"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+
+    before = Gateway()
+    assert before._installed["shared"] == user
+
+    gateway("uninstall shared")
+
+    after = Gateway()
+    assert after._installed["shared"] == system
+    assert find_ingested(after, ("shared",)).value == system
