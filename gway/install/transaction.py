@@ -6,9 +6,11 @@ import shutil
 import tempfile
 import uuid
 
+from .. import log as gway_log
 from .model import Installation, InstallRequest, UninstallRequest, validate_name
 from .paths import install_paths
 from .source import fingerprint, local_source, project_name
+from .stash import preserve as preserve_stash
 from .state import InstallState
 
 
@@ -47,8 +49,8 @@ def _expected_destination(existing, destination):
         )
 
 
-def _validate_managed_tree(existing, destination):
-    """Reject drift in a managed tree before convergence can replace it."""
+def _managed_fingerprint(existing, destination):
+    """Return the live managed fingerprint after validating its location."""
     _expected_destination(existing, destination)
     if not destination.exists() and not destination.is_symlink():
         return None
@@ -56,13 +58,54 @@ def _validate_managed_tree(existing, destination):
         raise RuntimeError(
             f"Managed installation is not a directory: {destination}"
         )
-    actual = fingerprint(destination)
-    if existing.fingerprint is None or actual != existing.fingerprint:
+    return fingerprint(destination)
+
+
+def _handle_drift(request, existing, destination, actual, desired_fingerprint, stashes):
+    """Validate or preserve/discard managed drift before reconciliation."""
+    drifted = (
+        actual is not None
+        and (
+            existing.fingerprint is None
+            or actual != existing.fingerprint
+        )
+    )
+    if not drifted:
+        return None
+
+    if not request.force and not request.stash:
         raise RuntimeError(
             f"Managed project {existing.name!r} has local modifications; "
-            "save them before reinstalling"
+            "use --stash to preserve them or --force to discard them"
         )
-    return actual
+
+    source_changed = existing.fingerprint != desired_fingerprint
+    if not request.upgrade and source_changed:
+        raise RuntimeError(
+            f"Managed project {existing.name!r} has local modifications and "
+            "the source has changed; --no-upgrade prevents using the changed "
+            "source as a repair baseline"
+        )
+
+    if request.stash:
+        snapshot = preserve_stash(
+            existing,
+            destination,
+            actual,
+            stashes,
+        )
+        gway_log.warning(
+            "Preserved local modifications for %s at %s",
+            existing.name,
+            snapshot.path,
+        )
+        return snapshot
+
+    gway_log.warning(
+        "Discarding local modifications for %s because --force was requested",
+        existing.name,
+    )
+    return None
 
 
 def _stage_project(source, name, desired_fingerprint, projects):
@@ -137,23 +180,44 @@ def install_local(request, *, paths=None, state=None):
         raise ValueError("Cannot install a project from its managed destination")
 
     existing = registry.get(name, scope=selected.scope)
+    drifted = False
     if existing is None:
         if destination.exists() or destination.is_symlink():
             raise RuntimeError(
                 f"Managed destination exists without installation state: {destination}"
             )
     else:
-        _validate_managed_tree(existing, destination)
+        actual = _managed_fingerprint(existing, destination)
+        drifted = (
+            actual is not None
+            and (
+                existing.fingerprint is None
+                or actual != existing.fingerprint
+            )
+        )
+        _handle_drift(
+            request,
+            existing,
+            destination,
+            actual,
+            desired_fingerprint,
+            selected.stashes,
+        )
 
         same = (
-            existing.source == str(source)
+            not drifted
+            and existing.source == str(source)
             and existing.fingerprint == desired_fingerprint
             and destination.is_dir()
         )
         if same:
             return existing
 
-        if destination.is_dir() and existing.fingerprint == desired_fingerprint:
+        if (
+            not drifted
+            and destination.is_dir()
+            and existing.fingerprint == desired_fingerprint
+        ):
             record = _record_for(
                 source,
                 name,
@@ -170,7 +234,7 @@ def install_local(request, *, paths=None, state=None):
                     f"Managed project {name!r} is missing and the source has changed; "
                     "repair would require an upgrade"
                 )
-            if destination.is_dir():
+            if destination.is_dir() and not drifted:
                 return existing
 
     stage = _stage_project(
