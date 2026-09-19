@@ -8,17 +8,49 @@ from .ingestion.router import has_path_syntax
 
 
 def find_manifest(start=None):
-    """Return the nearest gway.toml from start/current directory upward."""
+    """Return the nearest standard project metadata file.
+
+    pyproject.toml is preferred. Legacy gway.toml remains discoverable during
+    its deprecation window so existing projects continue to bootstrap.
+    """
     root = Path.cwd() if start is None else Path(start)
     root = root.expanduser().resolve()
     if root.is_file():
         root = root.parent
 
     for directory in (root, *root.parents):
-        manifest = directory / "gway.toml"
-        if manifest.is_file():
-            return manifest
+        pyproject = directory / "pyproject.toml"
+        if pyproject.is_file():
+            return pyproject
+
+        legacy = directory / "gway.toml"
+        if legacy.is_file():
+            warnings.warn(
+                "gway.toml is deprecated; use pyproject.toml for project metadata",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return legacy
     return None
+
+
+def _legacy_manifest(project_file):
+    """Return a sibling legacy Gway manifest when one still exists."""
+    project_file = Path(project_file)
+    legacy = (
+        project_file
+        if project_file.name == "gway.toml"
+        else project_file.with_name("gway.toml")
+    )
+    if not legacy.is_file():
+        return None
+    if legacy != project_file:
+        warnings.warn(
+            "gway.toml is deprecated; migrate Gway-specific overrides away from it",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    return legacy
 
 
 def _project_name(data):
@@ -129,6 +161,10 @@ def _django_name_from_source(source):
 def load_ingestions(runtime, manifest):
     """Load declarative ingestion entries into one Gateway."""
     manifest = Path(manifest).expanduser().resolve()
+    manifest = Path(manifest)
+    if not manifest.is_file():
+        return ()
+
     data = toml.load(manifest)
     entries = ingestion_entries(data)
 
@@ -168,7 +204,10 @@ def _valid_installation(record, paths):
         return False
     if not installed.is_dir():
         return False
-    return (installed / "gway.toml").is_file()
+    return any(
+        (installed / filename).is_file()
+        for filename in ("pyproject.toml", "gway.toml")
+    )
 
 
 def discover_installations(*, system=False):
@@ -226,12 +265,7 @@ def expand_installed_project(runtime, installation, *, path=None):
         return []
 
     manifest = installation.install_path / "gway.toml"
-    if not manifest.is_file():
-        raise RuntimeError(
-            f"Installed project {installation.name!r} has no gway.toml"
-        )
-
-    loaded = load_ingestions(runtime, manifest)
+    loaded = load_ingestions(runtime, manifest) if manifest.is_file() else []
     record.expanded = True
 
     requested = tuple(path) if path is not None else (installation.name,)
@@ -298,15 +332,18 @@ def bootstrap(runtime, *, start=None):
     if manifest is None:
         return None
 
-    runtime._manifest_path = manifest
-    if _declares_ingestion(manifest):
-        load_ingestions(runtime, manifest)
+    runtime._project_path = manifest
+    legacy = _legacy_manifest(manifest)
+    runtime._manifest_path = legacy or manifest
+
+    if legacy is not None and _declares_ingestion(legacy):
+        load_ingestions(runtime, legacy)
 
     from .souschef.discovery import discover as discover_souschef
 
     discover_souschef(
         runtime,
         getattr(runtime, "_installed", {}).values(),
-        local_manifest=manifest,
+        local_manifest=legacy,
     )
     return manifest
