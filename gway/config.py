@@ -259,12 +259,9 @@ def project_entrypoints(manifest):
 
 
 def _script_aliases(runtime, project, command):
-    """Return safe aliases for one installed project's standard script."""
-    aliases = [f"{project}.{command}"]
+    """Return a bare alias only when one project owns that script name."""
     owners = getattr(runtime, "_script_owners", {}).get(command, ())
-    if len(owners) == 1:
-        aliases.append(command)
-    return tuple(aliases)
+    return (command,) if owners == (project,) else ()
 
 
 def load_project_scripts(runtime, root, project):
@@ -395,11 +392,19 @@ def bootstrap(runtime, *, start=None):
         project_data = data.get("project") if isinstance(data, dict) else None
         project_name = project_data.get("name") if isinstance(project_data, dict) else None
         if isinstance(project_name, str) and project_name.strip():
+            from .project import project_scripts
+
+            owners = {
+                command: list(projects)
+                for command, projects in getattr(runtime, "_script_owners", {}).items()
+            }
+            for command in project_scripts(manifest.parent):
+                owners.setdefault(command, [])
+                if project_name not in owners[command]:
+                    owners[command].append(project_name)
             runtime._script_owners = {
-                command: (project_name,)
-                for command in __import__(
-                    "gway.project", fromlist=["project_scripts"]
-                ).project_scripts(manifest.parent)
+                command: tuple(projects)
+                for command, projects in owners.items()
             }
             load_project_scripts(runtime, manifest.parent, project_name)
 
