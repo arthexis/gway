@@ -34,7 +34,7 @@ class Gateway(Resolver):
     ):
         self.name = name
         self.logger = gway_log._child(name, level=log_level)
-        for level_name, level in gway_log.levels(self.logger).items():
+        for level_name, level in gway_log._levels(self.logger).items():
             setattr(self, level_name, level)
         self.ops, self.subs = registry_views()
         self._ingested = {}
