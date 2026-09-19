@@ -69,7 +69,7 @@ def _package_main_callable(source):
         return None
 
     def invoke(*arguments):
-        previous = list(sys.argv)
+        previous = sys.argv
         sys.argv = [str(main_path), *map(str, arguments)]
         try:
             return runpy.run_module(
@@ -78,7 +78,7 @@ def _package_main_callable(source):
                 alter_sys=True,
             )
         finally:
-            sys.argv[:] = previous
+            sys.argv = previous
 
     invoke.__name__ = "__main__"
     invoke.__doc__ = f"Run {package!r} using its package __main__.py."
@@ -286,8 +286,9 @@ def ingest_module(gateway, source, *, path=None, transparent=False, **kwargs):
             if registered is not None:
                 wrapped.append(registered)
 
+    entry_registered = not transparent and _module_entry_operation(source, root) is not None
     for name, child in _public_members(source):
-        if transparent and name == "__main__":
+        if name == "__main__" and (transparent or entry_registered):
             continue
         child_path = (*root, name)
         child_record = _remember_child(gateway, child, child_path)
