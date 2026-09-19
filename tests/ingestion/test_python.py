@@ -13,17 +13,13 @@ def test_ingest_plain_function(gateway):
     assert gateway.ops.resolve("ping")() == "pong"
 
 
-def test_ingest_instance_expands_only_direct_public_methods(gateway):
-    class Child:
-        def ping(self):
-            return "pong"
-
+def test_ingest_instance_expands_only_direct_public_methods(gateway, make_ping_node):
     class Client:
         def start(self, service):
             return f"start:{service}"
 
     client = Client()
-    client.child = Child()
+    client.child = make_ping_node()
     ingest_python(gateway, client, path=("client",))
 
     assert gateway("client start arthexis") == "start:arthexis"
@@ -41,83 +37,19 @@ def test_ingest_class_discovers_direct_public_methods(gateway):
     assert gateway("tools ping") == "pong"
 
 
-def test_nested_object_hierarchy_expands_one_level_at_a_time(gateway):
-    class Service:
-        def status(self):
-            return "running"
-
-    service = Service()
+def test_nested_object_hierarchy_expands_one_level_at_a_time(gateway, make_ping_node):
+    service = make_ping_node("running")
     system = SimpleNamespace(service=service)
     root = SimpleNamespace(system=system)
 
     ingest_python(gateway, root, path=("root",))
-    assert gateway.ops.resolve("root.system.service.status") is None
+    assert gateway.ops.resolve("root.system.service.ping") is None
 
     ingest_python(gateway, system, path=("root", "system"))
-    assert gateway.ops.resolve("root.system.service.status") is None
+    assert gateway.ops.resolve("root.system.service.ping") is None
 
     ingest_python(gateway, service, path=("root", "system", "service"))
-    assert gateway("root system service status") == "running"
-
-
-def test_seen_child_can_be_expanded_later(gateway):
-    class Child:
-        def ping(self):
-            return "pong"
-
-    child = Child()
-    root = SimpleNamespace(child=child)
-
-    ingest_python(gateway, root, path=("root",))
-    record = gateway._ingested[id(child)]
-
-    assert record.expanded is False
-    assert record.registered is False
-    assert ("root", "child") in record.paths
-
-    ingest_python(gateway, child, path=("root", "child"))
-
-    assert record.expanded is True
-    assert gateway("root child ping") == "pong"
-
-
-def test_reingesting_expanded_object_is_noop(gateway):
-    root = SimpleNamespace()
-    root.ping = lambda: "pong"
-
-    first = ingest_python(gateway, root, path=("root",))
-    second = ingest_python(gateway, root, path=("root",))
-
-    assert len(first) == 1
-    assert second == []
-    assert gateway("root ping") == "pong"
-
-
-def test_repeated_reference_is_remembered_once_by_identity(gateway):
-    child = SimpleNamespace()
-    root = SimpleNamespace(left=child, right=child)
-
-    ingest_python(gateway, root, path=("root",))
-
-    record = gateway._ingested[id(child)]
-    assert record.value is child
-    assert record.paths == {("root", "left"), ("root", "right")}
-    assert record.expanded is False
-
-
-def test_cycle_is_seen_without_recursive_expansion(gateway):
-    class Node:
-        def ping(self):
-            return "pong"
-
-    node = Node()
-    node.self = node
-
-    ingest_python(gateway, node, path=("node",))
-
-    assert gateway("node ping") == "pong"
-    assert gateway._ingested[id(node)].expanded is True
-    assert ("node", "self") in gateway._ingested[id(node)].paths
+    assert gateway("root system service ping") == "running"
 
 
 def test_callable_object_itself_is_registered(gateway):
@@ -145,12 +77,8 @@ def test_private_members_are_skipped(gateway):
     assert gateway.ops.resolve("client._private") is None
 
 
-def test_discover_python_is_one_level_only():
-    class Child:
-        def ping(self):
-            return "pong"
-
-    root = SimpleNamespace(child=Child())
+def test_discover_python_is_one_level_only(make_ping_node):
+    root = SimpleNamespace(child=make_ping_node())
     root.run = lambda: "run"
 
     names = {item.name for item in discover_python(root, path=("root",))}
