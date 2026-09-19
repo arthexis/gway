@@ -99,3 +99,25 @@ def test_discovered_operations_preserve_python_provenance():
     assert status.source is client
     assert status.kind == "python"
     assert status.metadata["object"].__self__ is client
+
+
+def test_module_dunder_main_represents_module_operation(gateway):
+    from types import ModuleType
+
+    module = ModuleType("demo")
+
+    def __main__(value):
+        return f"main:{value}"
+
+    def info(value):
+        return f"info:{value}"
+
+    module.__main__ = __main__
+    module.info = info
+
+    ingest_python(gateway, module, path=("demo",))
+
+    assert gateway("demo value") == "main:value"
+    assert gateway("demo info value") == "info:value"
+    assert gateway.ops["demo"][None].__wrapped__ is __main__
+    assert gateway.ops["demo"]["info"].__wrapped__ is info

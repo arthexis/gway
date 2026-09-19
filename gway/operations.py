@@ -32,10 +32,11 @@ class _Registry:
         self.records = {}
         self.aliases = {}
 
-    def register(self, name, operation):
+    def register(self, name, operation, *, op=None, sub=None):
         if not callable(operation):
             raise TypeError(f"{name!r} is not callable")
-        op, sub = split_operation(name)
+        if op is None:
+            op, sub = split_operation(name)
         self.records[name] = OperationRecord(name, op, sub, operation)
         self.aliases[name] = name
         return operation
@@ -81,8 +82,8 @@ class Operations(Mapping):
     def __init__(self, registry=None):
         self._registry = registry or _Registry()
 
-    def register(self, name, operation):
-        return self._registry.register(name, operation)
+    def register(self, name, operation, *, op=None, sub=None):
+        return self._registry.register(name, operation, op=op, sub=sub)
 
     def register_alias(self, name, operation):
         return self._registry.alias(name, operation)

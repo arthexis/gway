@@ -1,4 +1,4 @@
-"""Logging primitives and logger hierarchy for GWAY."""
+"""Built-in logging operations and GWAY logger hierarchy."""
 
 from itertools import count as _count
 from logging import (
@@ -6,25 +6,24 @@ from logging import (
     INFO as _INFO,
     NOTSET as _NOTSET,
     critical,
+    debug,
     error,
     exception,
     getLogger as _get_logger,
     info,
+    log as _log,
+    warn,
     warning,
 )
-
-__all__ = [
-    "critical",
-    "error",
-    "exception",
-    "info",
-    "logger",
-    "warning",
-]
 
 logger = _get_logger("gway")
 logger.setLevel(_NOTSET)
 _instances = _count()
+
+
+def __main__(message, *args, level: int = _INFO, **kwargs):
+    """Log a message at an explicit level, defaulting to INFO."""
+    return _log(level, message, *args, **kwargs)
 
 
 def _child(name="gw"):

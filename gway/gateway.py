@@ -4,7 +4,7 @@ import os
 import threading
 
 from .runner import invoke
-from . import logging as gway_logging
+from . import log as gway_log
 from .normalization import complete_arguments
 from .operations import registry_views
 from .publication import publish
@@ -30,7 +30,7 @@ class Gateway(Resolver):
         **values,
     ):
         self.name = name
-        self.logger = gway_logging._child(name)
+        self.logger = gway_log._child(name)
         self.ops, self.subs = registry_views()
         self._ingested = {}
         self.debug_enabled = bool(debug)
@@ -61,9 +61,9 @@ class Gateway(Resolver):
         ])
 
         from . import builtin
-        from .ingestion.python import ingest_python
+        from .ingestion.python import ingest_module
 
-        ingest_python(self, builtin, path=("gway",))
+        ingest_module(self, builtin, path=("gway",))
 
     @property
     def last(self):
@@ -105,7 +105,7 @@ class Gateway(Resolver):
         logger = self.__dict__.get("logger")
         if logger is not None:
             logger.setLevel(
-                gway_logging._level(
+                gway_log._level(
                     verbose=self.__dict__.get("_verbose", False),
                     silent=self.__dict__.get("_silent", False),
                 )
@@ -159,12 +159,12 @@ class Gateway(Resolver):
 
         return ingest_path(self, path, **kwargs)
 
-    def wrap(self, func_name, func_obj):
+    def wrap(self, func_name, func_obj, *, op=None, sub=None):
         """Normalize a Python callable to GWAY context and result conventions."""
         if not callable(func_obj):
             raise TypeError(f"{func_name!r} is not callable")
 
-        subject = self.subject(func_name)
+        subject = self.subject(func_name) if op is None else sub
 
         def wrapped(*args, **kwargs):
             call = complete_arguments(
@@ -186,9 +186,9 @@ class Gateway(Resolver):
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
         wrapped.__doc__ = getattr(func_obj, "__doc__", None)
         wrapped.__wrapped__ = func_obj
-        wrapped.__gway_operation__ = func_name
+        wrapped.__gway_operation__ = op or func_name
         wrapped.__gway_subject__ = subject
-        self.ops.register(func_name, wrapped)
+        self.ops.register(func_name, wrapped, op=op, sub=sub)
         return wrapped
 
     def __setattr__(self, name, value):

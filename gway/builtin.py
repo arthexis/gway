@@ -2,8 +2,7 @@
 
 import os as _os
 
-from . import logging
-from .logging import *
+from . import log
 
 
 def env(name, default=None):

@@ -76,6 +76,8 @@ class IngestedOperation:
     source: object = None
     kind: str | None = None
     aliases: tuple[str, ...] = ()
+    op: str | None = None
+    sub: str | None = None
     metadata: object = field(default_factory=dict)
 
     def __post_init__(self):
@@ -97,7 +99,12 @@ def register_operation(gateway, operation):
     if not isinstance(operation, IngestedOperation):
         raise TypeError("operation must be an IngestedOperation")
 
-    wrapped = gateway.wrap(operation.name, operation.callable)
+    wrapped = gateway.wrap(
+        operation.name,
+        operation.callable,
+        op=operation.op,
+        sub=operation.sub,
+    )
     wrapped.__gway_source__ = operation.source
     wrapped.__gway_source_kind__ = operation.kind
     wrapped.__gway_path__ = operation.path

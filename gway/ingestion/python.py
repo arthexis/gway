@@ -3,6 +3,7 @@
 from importlib import import_module
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+from types import ModuleType
 import sys
 
 from .base import (
@@ -27,14 +28,14 @@ def _default_path(source):
 
 
 def _public_members(source):
-    """Yield direct public attributes, ignoring attributes that cannot be read."""
+    """Yield direct public attributes plus the module __main__ convention."""
     try:
         names = dir(source)
     except Exception:
         return
 
     for name in names:
-        if name.startswith("_"):
+        if name.startswith("_") and name != "__main__":
             continue
         try:
             value = getattr(source, name)
@@ -43,8 +44,50 @@ def _public_members(source):
         yield name, value
 
 
+def _operation(source, root, name, child):
+    """Describe one callable using module entry semantics when applicable."""
+    if isinstance(source, ModuleType) and callable(getattr(source, "__main__", None)):
+        if name == "__main__":
+            path = root
+            op = root[-1]
+            sub = None
+        else:
+            path = (*root, name)
+            op = root[-1]
+            sub = name
+    else:
+        path = (*root, name)
+        op = None
+        sub = None
+
+    return IngestedOperation(
+        path,
+        child,
+        source=source,
+        kind="python",
+        op=op,
+        sub=sub,
+        metadata={"object": child},
+    )
+
+
+def discover_module(source, *, path=None):
+    """Describe direct callables in a Python module namespace."""
+    if not isinstance(source, ModuleType):
+        raise TypeError("source must be a Python module")
+    root = normalize_path(path) if path is not None else _default_path(source)
+    return [
+        _operation(source, root, name, child)
+        for name, child in _public_members(source)
+        if callable(child)
+    ]
+
+
 def discover_python(source, *, path=None):
     """Describe callable values in exactly one Python namespace level."""
+    if isinstance(source, ModuleType):
+        return discover_module(source, path=path)
+
     root = normalize_path(path) if path is not None else _default_path(source)
     discovered = []
 
@@ -86,8 +129,45 @@ def _register_callable(gateway, record, operation):
     return None
 
 
+def _remember_child(gateway, child, path):
+    expander = ingest_module if isinstance(child, ModuleType) else ingest_python
+    return remember_object(gateway, child, path, expander=expander)
+
+
+def ingest_module(gateway, source, *, path=None, **kwargs):
+    """Expand exactly one Python module namespace."""
+    if not isinstance(source, ModuleType):
+        raise TypeError("source must be a Python module")
+
+    root = normalize_path(path) if path is not None else _default_path(source)
+    source_record = remember_object(
+        gateway,
+        source,
+        root,
+        expander=ingest_module,
+    )
+    if source_record.expanded:
+        return []
+
+    wrapped = []
+    for name, child in _public_members(source):
+        child_path = (*root, name)
+        child_record = _remember_child(gateway, child, child_path)
+        if callable(child):
+            operation = _operation(source, root, name, child)
+            registered = _register_callable(gateway, child_record, operation)
+            if registered is not None:
+                wrapped.append(registered)
+
+    source_record.expanded = True
+    return wrapped
+
+
 def ingest_python(gateway, source, *, path=None, **kwargs):
     """Expand one imported Python object namespace and register direct callables."""
+    if isinstance(source, ModuleType):
+        return ingest_module(gateway, source, path=path, **kwargs)
+
     root = normalize_path(path) if path is not None else _default_path(source)
     source_record = remember_object(
         gateway,
@@ -114,12 +194,7 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
 
     for name, child in _public_members(source):
         child_path = (*root, name)
-        child_record = remember_object(
-            gateway,
-            child,
-            child_path,
-            expander=ingest_python,
-        )
+        child_record = _remember_child(gateway, child, child_path)
         if callable(child):
             operation = IngestedOperation(
                 child_path,
@@ -137,12 +212,12 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
 
 
 def ingest_name(gateway, name, *, path=None, **kwargs):
-    """Import and incrementally ingest a fully qualified Python module/package name."""
+    """Import and ingest a fully qualified Python module/package name."""
     if not isinstance(name, str) or not name.strip():
         raise ValueError("Python import name must be a non-empty string")
 
     module = import_module(name)
-    return ingest_python(gateway, module, path=path, **kwargs)
+    return ingest_module(gateway, module, path=path, **kwargs)
 
 
 def _load_path(path, *, name=None):
@@ -183,6 +258,6 @@ def _load_path(path, *, name=None):
 
 
 def ingest_path(gateway, path, *, name=None, root=None, **kwargs):
-    """Load and incrementally ingest Python from a module file or package path."""
+    """Load and ingest Python from a module file or package path."""
     module = _load_path(path, name=name)
-    return ingest_python(gateway, module, path=root, **kwargs)
+    return ingest_module(gateway, module, path=root, **kwargs)

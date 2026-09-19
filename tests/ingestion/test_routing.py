@@ -1,5 +1,5 @@
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -96,3 +96,18 @@ def test_unknown_non_python_non_executable_path_is_rejected(gateway, tmp_path):
 
     with pytest.raises(ValueError, match="Unsupported ingestion path"):
         gateway.ingest_path(path)
+
+
+def test_ingest_routes_imported_module_to_module_ingestion(monkeypatch, gateway):
+    module = ModuleType("demo")
+    seen = {}
+
+    def fake(runtime, value, **kwargs):
+        seen["runtime"] = runtime
+        seen["value"] = value
+        return "python-module"
+
+    monkeypatch.setattr(python_ingestor, "ingest_module", fake)
+
+    assert ingest(gateway, module) == "python-module"
+    assert seen == {"runtime": gateway, "value": module}

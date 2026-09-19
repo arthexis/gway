@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from types import ModuleType
 
 
 def _is_pathlike(source):
@@ -26,6 +27,11 @@ def ingest(gateway, source, **kwargs):
         from .python import ingest_name
 
         return ingest_name(gateway, source, **kwargs)
+
+    if isinstance(source, ModuleType):
+        from .python import ingest_module
+
+        return ingest_module(gateway, source, **kwargs)
 
     from .python import ingest_python
 
