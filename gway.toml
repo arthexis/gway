@@ -1,5 +1,0 @@
-[project]
-name = "gway"
-
-[install.scripts]
-gway = "gway:cli_main"
