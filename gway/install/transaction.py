@@ -39,6 +39,72 @@ def _remove_path(path):
         shutil.rmtree(path)
 
 
+def _expected_destination(existing, destination):
+    if Path(existing.install_path).resolve() != destination.resolve():
+        raise RuntimeError(
+            "Installation state points outside the managed project location: "
+            f"{existing.install_path}"
+        )
+
+
+def _validate_managed_tree(existing, destination):
+    """Reject drift in a managed tree before convergence can replace it."""
+    _expected_destination(existing, destination)
+    if not destination.exists() and not destination.is_symlink():
+        return None
+    if not destination.is_dir():
+        raise RuntimeError(
+            f"Managed installation is not a directory: {destination}"
+        )
+    actual = fingerprint(destination)
+    if existing.fingerprint is None or actual != existing.fingerprint:
+        raise RuntimeError(
+            f"Managed project {existing.name!r} has local modifications; "
+            "save them before reinstalling"
+        )
+    return actual
+
+
+def _stage_project(source, name, desired_fingerprint, projects):
+    projects.mkdir(parents=True, exist_ok=True)
+    stage = Path(
+        tempfile.mkdtemp(
+            prefix=f".{name}.stage-",
+            dir=projects,
+        )
+    )
+    try:
+        _copy_project(source, stage)
+
+        staged_name = project_name(stage)
+        if staged_name != name:
+            raise RuntimeError(
+                f"Project identity changed while staging: {name!r} -> {staged_name!r}"
+            )
+
+        staged_fingerprint = fingerprint(stage)
+        if staged_fingerprint != desired_fingerprint:
+            raise RuntimeError("Project source changed while installation was staging")
+        return stage
+    except Exception:
+        if stage.exists():
+            _remove_path(stage)
+        raise
+
+
+def _record_for(source, name, fingerprint_value, destination, scope, *, installed_at=None):
+    return Installation(
+        name=name,
+        source=str(source),
+        requested_ref=None,
+        resolved_revision=None,
+        fingerprint=fingerprint_value,
+        install_path=destination,
+        scope=scope,
+        installed_at=installed_at,
+    )
+
+
 def _paths_and_state(request, *, paths=None, state=None):
     selected = install_paths(system=request.system) if paths is None else paths
     registry = InstallState(selected.state) if state is None else state
@@ -46,7 +112,7 @@ def _paths_and_state(request, *, paths=None, state=None):
 
 
 def install_local(request, *, paths=None, state=None):
-    """Install one local project through staging and atomic activation."""
+    """Install or reconcile one local project through atomic activation."""
     if not isinstance(request, InstallRequest):
         raise TypeError("install_local requires an InstallRequest")
     if request.ref is not None:
@@ -71,69 +137,87 @@ def install_local(request, *, paths=None, state=None):
         raise ValueError("Cannot install a project from its managed destination")
 
     existing = registry.get(name, scope=selected.scope)
-    if existing is not None:
+    if existing is None:
+        if destination.exists() or destination.is_symlink():
+            raise RuntimeError(
+                f"Managed destination exists without installation state: {destination}"
+            )
+    else:
+        _validate_managed_tree(existing, destination)
+
         same = (
-            Path(existing.install_path).resolve() == destination.resolve()
-            and existing.source == str(source)
+            existing.source == str(source)
             and existing.fingerprint == desired_fingerprint
             and destination.is_dir()
         )
         if same:
             return existing
-        if not request.upgrade:
+
+        if destination.is_dir() and existing.fingerprint == desired_fingerprint:
+            record = _record_for(
+                source,
+                name,
+                desired_fingerprint,
+                destination,
+                selected.scope,
+                installed_at=existing.installed_at,
+            )
+            return registry.put(record)
+
+        if destination.is_dir() and not request.upgrade:
             return existing
-        raise RuntimeError(
-            f"Project {name!r} is already installed with different state; "
-            "replacement reconciliation is not implemented yet"
-        )
 
-    if destination.exists() or destination.is_symlink():
-        raise RuntimeError(
-            f"Managed destination exists without installation state: {destination}"
-        )
-
-    selected.projects.mkdir(parents=True, exist_ok=True)
-    stage = Path(
-        tempfile.mkdtemp(
-            prefix=f".{name}.stage-",
-            dir=selected.projects,
-        )
+    stage = _stage_project(
+        source,
+        name,
+        desired_fingerprint,
+        selected.projects,
     )
-
+    backup = None
     activated = False
     try:
-        _copy_project(source, stage)
-
-        staged_name = project_name(stage)
-        if staged_name != name:
-            raise RuntimeError(
-                f"Project identity changed while staging: {name!r} -> {staged_name!r}"
+        if destination.exists() or destination.is_symlink():
+            backup = selected.projects / (
+                f".{name}.replace-{uuid.uuid4().hex}"
             )
-
-        staged_fingerprint = fingerprint(stage)
-        if staged_fingerprint != desired_fingerprint:
-            raise RuntimeError("Project source changed while installation was staging")
+            os.replace(destination, backup)
 
         os.replace(stage, destination)
         activated = True
 
-        record = Installation(
-            name=name,
-            source=str(source),
-            requested_ref=None,
-            resolved_revision=None,
-            fingerprint=desired_fingerprint,
-            install_path=destination,
-            scope=selected.scope,
+        record = _record_for(
+            source,
+            name,
+            desired_fingerprint,
+            destination,
+            selected.scope,
         )
         try:
-            return registry.put(record)
+            stored = registry.put(record)
         except Exception:
-            _remove_path(destination)
+            if destination.exists() or destination.is_symlink():
+                _remove_path(destination)
+            if backup is not None and (
+                backup.exists() or backup.is_symlink()
+            ):
+                os.replace(backup, destination)
             activated = False
             raise
-    finally:
+
+        if backup is not None and (
+            backup.exists() or backup.is_symlink()
+        ):
+            try:
+                _remove_path(backup)
+            except OSError:
+                pass
+        return stored
+    except Exception:
         if not activated and stage.exists():
+            _remove_path(stage)
+        raise
+    finally:
+        if stage.exists():
             _remove_path(stage)
 
 
@@ -153,11 +237,7 @@ def uninstall_local(request, *, paths=None, state=None):
         return None
 
     destination = selected.projects / request.project
-    if Path(existing.install_path).resolve() != destination.resolve():
-        raise RuntimeError(
-            "Installation state points outside the managed project location: "
-            f"{existing.install_path}"
-        )
+    _expected_destination(existing, destination)
 
     if not destination.exists() and not destination.is_symlink():
         registry.remove(request.project, scope=selected.scope)
