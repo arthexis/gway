@@ -51,7 +51,35 @@ class _Registry:
     def resolve(self, name, default=None):
         canonical = self.aliases.get(name, name)
         record = self.records.get(canonical)
-        return record.callable if record is not None else default
+        if record is not None:
+            return record.callable
+
+        parts = tuple(
+            part
+            for part in str(name).replace(" ", ".").split(".")
+            if part
+        )
+        if len(parts) < 2:
+            return default
+
+        op, sub = parts[-2], parts[-1]
+        matches = [
+            record
+            for record in self.records.values()
+            if record.op == op and record.sub == sub
+        ]
+
+        prefix = ".".join(parts[:-2])
+        if prefix:
+            matches = [
+                record
+                for record in matches
+                if record.name.startswith(f"{prefix}.")
+            ]
+
+        if len(matches) == 1:
+            return matches[0].callable
+        return default
 
     def unregister(self, name):
         canonical = self.aliases.get(name, name)
