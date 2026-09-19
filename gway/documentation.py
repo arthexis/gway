@@ -25,13 +25,20 @@ class ParameterDocumentation:
 
 @dataclass(frozen=True)
 class CallableDocumentation:
-    """Structured documentation extracted from one Python callable."""
+    """Structured documentation extracted from a raw or Gway-bound callable."""
 
     callable: object
+    target: object
     summary: str
     docstring: str
     signature: inspect.Signature | None
     parameters: tuple[ParameterDocumentation, ...]
+    source: object = None
+    source_kind: str | None = None
+    path: tuple[str, ...] | None = None
+    metadata: object = None
+    operation: str | None = None
+    subject: str | None = None
 
     def parameter(self, name):
         """Return documentation for one parameter by name, if present."""
@@ -102,7 +109,8 @@ def describe(callable_obj):
     if not callable(callable_obj):
         raise TypeError("documentation target must be callable")
 
-    docstring = inspect.getdoc(callable_obj) or ""
+    target = getattr(callable_obj, "__wrapped__", callable_obj)
+    docstring = inspect.getdoc(target) or inspect.getdoc(callable_obj) or ""
     summary = docstring.splitlines()[0].strip() if docstring else ""
     descriptions = _parameter_descriptions(docstring)
     signature = _signature(callable_obj)
@@ -128,10 +136,21 @@ def describe(callable_obj):
             for parameter in signature.parameters.values()
         )
 
+    path = getattr(callable_obj, "__gway_path__", None)
+    if path is not None:
+        path = tuple(path)
+
     return CallableDocumentation(
         callable=callable_obj,
+        target=target,
         summary=summary,
         docstring=docstring,
         signature=signature,
         parameters=parameters,
+        source=getattr(callable_obj, "__gway_source__", None),
+        source_kind=getattr(callable_obj, "__gway_source_kind__", None),
+        path=path,
+        metadata=getattr(callable_obj, "__gway_metadata__", None),
+        operation=getattr(callable_obj, "__gway_operation__", None),
+        subject=getattr(callable_obj, "__gway_subject__", None),
     )
