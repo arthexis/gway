@@ -114,7 +114,7 @@ def _systemctl(*args, system=False, check=True):
     )
 
 
-def render(service, *, unit):
+def render(service, *, unit, system=False):
     """Render one declared Gway service as a systemd unit."""
     backend = ProcessBackend()
     command = backend._command(service)
@@ -150,7 +150,7 @@ def render(service, *, unit):
     lines.extend([
         "",
         "[Install]",
-        "WantedBy=default.target" if not unit.startswith("/") else "WantedBy=multi-user.target",
+        "WantedBy=multi-user.target" if system else "WantedBy=default.target",
         "",
     ])
     return "\n".join(lines)
@@ -188,9 +188,18 @@ def install_units(
 
     records = []
     for service in services:
-        filename = unit_name(project, service.name, name=name)
+        previous_record = previous.get(service.name)
+        if name is not None:
+            filename = unit_name(project, service.name, name=name)
+        elif previous_record is not None:
+            filename = previous_record.unit
+        else:
+            filename = unit_name(project, service.name)
         path = target_root / filename
-        path.write_text(render(service, unit=filename), encoding="utf-8")
+        path.write_text(
+            render(service, unit=filename, system=system),
+            encoding="utf-8",
+        )
         records.append(
             UnitRecord(
                 project=project,
