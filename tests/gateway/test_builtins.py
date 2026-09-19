@@ -49,3 +49,32 @@ def test_builtins_are_registered_only_under_gway_root(gateway):
     assert gateway.ops.resolve("gway.envs") is not None
     assert "env" not in gateway.__dict__
     assert "envs" not in gateway.__dict__
+
+
+def test_builtin_toml_default_operation_parses_text(gateway):
+    assert gateway.ops.resolve("gway.toml") is None
+
+    result = gateway("gway toml", 'name = "gway"\n[tool]\nenabled = true')
+
+    assert result == {"name": "gway", "tool": {"enabled": True}}
+    assert gateway.ops.resolve("gway.toml") is not None
+
+
+def test_builtin_toml_loads_subject_parses_text(gateway):
+    assert gateway("gway toml loads", "answer = 42") == {"answer": 42}
+
+
+def test_builtin_toml_load_subject_reads_path(gateway, tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('site = "MTY"\n', encoding="utf-8")
+
+    assert gateway("gway toml load", str(path)) == {"site": "MTY"}
+
+
+def test_builtin_toml_routes_to_version_backend():
+    import sys
+
+    import gway.toml as gway_toml
+
+    expected = "tomllib" if sys.version_info >= (3, 11) else "tomli"
+    assert gway_toml._backend().__name__ == expected
