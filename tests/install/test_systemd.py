@@ -1,59 +1,18 @@
-from pathlib import Path
-
 import pytest
 
 from gway import Gateway
 from gway.install.systemd import UnitState
-import gway.install.systemd as systemd
-
-
-def make_service_project(tmp_path, name="demo"):
-    root = tmp_path / "source"
-    root.mkdir()
-    (root / "gway.toml").write_text(
-        f"[project]\n"
-        f"name = {name!r}\n"
-        "\n"
-        "[services.web]\n"
-        "command = ['{python}', '-c', 'print(\"web\")']\n"
-        "restart = 'on-failure'\n"
-        "restart_sec = 5\n"
-        "\n"
-        "[services.worker]\n"
-        "command = ['{python}', '-c', 'print(\"worker\")']\n",
-        encoding="utf-8",
-    )
-    return root
-
-
-@pytest.fixture
-def fake_systemd(tmp_path, monkeypatch):
-    units = tmp_path / "units"
-    calls = []
-
-    monkeypatch.setattr(
-        systemd,
-        "unit_root",
-        lambda **kwargs: units,
-    )
-
-    def call(*args, system=False, check=True):
-        calls.append((args, system, check))
-        return None
-
-    monkeypatch.setattr(systemd, "_systemctl", call)
-    return units, calls
 
 
 def test_install_singular_service_flag_creates_named_unit(
     tmp_path,
     monkeypatch,
     fake_systemd,
+    make_service_project,
+    install_environment,
 ):
-    source = make_service_project(tmp_path)
-    data = tmp_path / "data"
-    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
-    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+    source = make_service_project()
+    data = install_environment.data
     monkeypatch.chdir(tmp_path)
     units, calls = fake_systemd
 
@@ -81,11 +40,11 @@ def test_install_plural_services_flag_creates_multiple_units(
     tmp_path,
     monkeypatch,
     fake_systemd,
+    make_service_project,
+    install_environment,
 ):
-    source = make_service_project(tmp_path)
-    data = tmp_path / "data"
-    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
-    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+    source = make_service_project()
+    data = install_environment.data
     monkeypatch.chdir(tmp_path)
     units, _ = fake_systemd
 
@@ -102,11 +61,11 @@ def test_explicit_services_converge_owned_unit_set(
     tmp_path,
     monkeypatch,
     fake_systemd,
+    make_service_project,
+    install_environment,
 ):
-    source = make_service_project(tmp_path)
-    data = tmp_path / "data"
-    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
-    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+    source = make_service_project()
+    data = install_environment.data
     monkeypatch.chdir(tmp_path)
     units, calls = fake_systemd
 
@@ -126,11 +85,11 @@ def test_upgrade_preserves_custom_unit_name_without_repeating_flags(
     tmp_path,
     monkeypatch,
     fake_systemd,
+    make_service_project,
+    install_environment,
 ):
-    source = make_service_project(tmp_path)
-    data = tmp_path / "data"
-    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
-    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+    source = make_service_project()
+    data = install_environment.data
     monkeypatch.chdir(tmp_path)
     units, _ = fake_systemd
 
@@ -157,11 +116,11 @@ def test_uninstall_removes_all_owned_units(
     tmp_path,
     monkeypatch,
     fake_systemd,
+    make_service_project,
+    install_environment,
 ):
-    source = make_service_project(tmp_path)
-    data = tmp_path / "data"
-    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
-    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+    source = make_service_project()
+    data = install_environment.data
     monkeypatch.chdir(tmp_path)
     units, calls = fake_systemd
 
@@ -180,11 +139,11 @@ def test_unknown_selected_service_fails_before_install_mutation(
     tmp_path,
     monkeypatch,
     fake_systemd,
+    make_service_project,
+    install_environment,
 ):
-    source = make_service_project(tmp_path)
-    data = tmp_path / "data"
-    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
-    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+    source = make_service_project()
+    data = install_environment.data
     monkeypatch.chdir(tmp_path)
 
     gateway = Gateway()
