@@ -367,11 +367,16 @@ def ingest_commands(gateway, mount, *, path=None, **kwargs):
         operation_path = (*root, name)
         if operation_path in record.operations:
             continue
+        human_name = name.replace("_", " ")
         operation = IngestedOperation(
             operation_path,
             _command_callable(name),
             source=mount,
             kind="django-command",
+            aliases=(
+                f"{human_name} {mount.name}",
+                f"{mount.name} {human_name}",
+            ),
             op=name,
             sub=mount.name,
             metadata={
