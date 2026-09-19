@@ -1,5 +1,6 @@
 """Context-free sigil values."""
 
+from collections.abc import Mapping
 import re
 
 from .resolution import is_single_sigil, resolve_text
@@ -18,7 +19,7 @@ def _lookup_for(context):
         )
         for variant in variants:
             value = None
-            if isinstance(context, dict):
+            if isinstance(context, Mapping):
                 value = context.get(variant)
             elif hasattr(context, "find_value"):
                 value = context.find_value(variant, None)
