@@ -57,6 +57,11 @@ class Gateway(Resolver):
             ("env", os.environ),
         ])
 
+        from . import builtin
+        from .ingestion.python import ingest_python
+
+        ingest_python(self, builtin, path=("gway",))
+
     @property
     def last(self):
         """Return the raw result of the most recently completed operation."""
