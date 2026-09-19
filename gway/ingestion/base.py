@@ -32,9 +32,10 @@ class IngestedObject:
     operations: dict[tuple[str, ...], object] = field(default_factory=dict)
     expanded: bool = False
     expander: object = None
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
-def remember_object(gateway, value, path, *, expander=None):
+def remember_object(gateway, value, path, *, expander=None, metadata=None):
     """Remember an object by identity and record another path that reaches it."""
     path = normalize_path(path)
     state = gateway._ingested
@@ -45,6 +46,8 @@ def remember_object(gateway, value, path, *, expander=None):
         state[identity] = record
     elif record.expander is None and expander is not None:
         record.expander = expander
+    if metadata:
+        record.metadata.update(metadata)
     record.paths.add(path)
     return record
 
