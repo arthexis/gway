@@ -158,6 +158,38 @@ def _model_identity(model, *, path=None):
     return (subject,), subject
 
 
+def _natural_key_metadata(manager):
+    """Return fixed positional natural-key metadata for one Django manager."""
+    lookup = getattr(manager, "get_by_natural_key", None)
+    if not callable(lookup):
+        return None
+
+    try:
+        signature = inspect.signature(lookup)
+    except (TypeError, ValueError):
+        return None
+
+    parameters = tuple(signature.parameters.values())
+    if not parameters:
+        return None
+    if any(
+        parameter.kind
+        not in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+        or parameter.default is not inspect.Parameter.empty
+        for parameter in parameters
+    ):
+        return None
+
+    names = tuple(parameter.name for parameter in parameters)
+    return {
+        "parameters": names,
+        "arity": len(names),
+    }
+
+
 def _public_bound_methods(source):
     """Yield safe public bound callables without evaluating arbitrary properties."""
     cls = source if inspect.isclass(source) else type(source)
@@ -234,6 +266,7 @@ def ingest_manager(gateway, manager, *, path=None, **kwargs):
     """Expose public manager/query operations on the manager's model subject."""
     model = _model_for(manager, "manager")
     root, subject = _model_identity(model, path=path)
+    natural_key = _natural_key_metadata(manager)
     wrapped = _register_surface(
         gateway,
         manager,
@@ -242,7 +275,13 @@ def ingest_manager(gateway, manager, *, path=None, **kwargs):
         subject,
         "django-manager",
     )
-    record = remember_object(gateway, manager, root, expander=ingest_manager)
+    record = remember_object(
+        gateway,
+        manager,
+        root,
+        expander=ingest_manager,
+        metadata={"natural_key": natural_key} if natural_key else None,
+    )
     record.expanded = True
     return wrapped
 
@@ -269,6 +308,9 @@ def ingest_model(gateway, model, *, path=None, **kwargs):
     wrapped = []
     manager = getattr(model, "_default_manager", None)
     if manager is not None:
+        natural_key = _natural_key_metadata(manager)
+        if natural_key is not None:
+            record.metadata["natural_key"] = natural_key
         wrapped.extend(ingest_manager(gateway, manager, path=root))
     wrapped.extend(
         _register_surface(
