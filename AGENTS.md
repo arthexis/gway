@@ -874,6 +874,48 @@ GWAY keyword flags are forwarded to Django, and the command's return value is
 published normally as the result of the project-scoped operation. Management
 command discovery is idempotent per mounted project.
 
+## Installation foundation
+
+GWAY exposes `install` and `uninstall` as core builtins. Their lifecycle
+contract is binary and convergent: install means a project should be present at
+the requested source/ref, while uninstall means it should be absent. There is
+no separate upgrade operation. The install request carries `upgrade=True` by
+default and therefore accepts `--no-upgrade` when a caller wants to suppress
+replacement of an existing installation.
+
+The current installation layer defines and persists desired/installed state but
+does not yet copy or remove project files. Until the filesystem transaction
+layer is implemented, the builtins return normalized request records:
+
+```text
+gway install arthexis/gway
+gway install arthexis/gway --ref gateway-rebuild
+gway install arthexis/gway --no-upgrade
+gway uninstall gway
+```
+
+`--force` and `--stash` are mutually exclusive install intents. Their
+managed-checkout behavior is implemented by a later transaction layer; the
+request contract exists now so recipes and callers can rely on one stable
+surface.
+
+Durable installation state is separate from the disposable cache. User data
+uses the platform data directory (`$XDG_DATA_HOME/gway` or
+`~/.local/share/gway` on Linux), while system data uses a system location
+(`/var/lib/gway` on Linux). `GWAY_DATA_DIR` and
+`GWAY_SYSTEM_DATA_DIR` override those roots. Each scope reserves:
+
+```text
+projects/
+stashes/
+state.sqlite
+```
+
+The SQLite registry is authoritative durable state and records project name,
+source identity, requested ref, resolved revision, fingerprint, install path,
+scope, and installation timestamp. Cache deletion must never remove these
+records or durable project/stash data.
+
 ## Cache
 
 GWAY has a general-purpose namespaced cache available as `Gateway.cache`. The
