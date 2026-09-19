@@ -7,6 +7,13 @@ import gway.config as config
 import gway.ingestion.django as django_ingestor
 
 
+@pytest.fixture
+def django_ingest_spy(monkeypatch):
+    """Capture declarative Django ingestion calls."""
+
+    return seen
+
+
 def test_find_manifest_uses_nearest_ancestor(tmp_path):
     project = tmp_path / "project"
     nested = project / "src" / "pkg"
@@ -106,6 +113,7 @@ def test_declarative_source_is_resolved_from_manifest_directory(
     gateway,
     tmp_path,
     monkeypatch,
+    django_ingest_spy,
 ):
     project = tmp_path / "project"
     elsewhere = tmp_path / "elsewhere"
@@ -123,18 +131,10 @@ def test_declarative_source_is_resolved_from_manifest_directory(
         "kind = 'django'\n",
         encoding="utf-8",
     )
-    seen = {}
-
-    def fake(runtime, source, **kwargs):
-        seen["source"] = source
-        seen["kwargs"] = kwargs
-        return "mounted"
-
-    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
     monkeypatch.chdir(elsewhere)
 
     assert config.load_ingestions(gateway, manifest) == ["mounted"]
-    assert seen == {
+    assert django_ingest_spy == {
         "source": manage.resolve(),
         "kwargs": {"name": "arthexis"},
     }
@@ -143,6 +143,7 @@ def test_declarative_source_is_resolved_from_manifest_directory(
 def test_gateway_bootstraps_nearest_gway_toml_before_commands(
     tmp_path,
     monkeypatch,
+    django_ingest_spy,
 ):
     project = tmp_path / "project"
     nested = project / "notebooks"
@@ -158,22 +159,13 @@ def test_gateway_bootstraps_nearest_gway_toml_before_commands(
         "kind = 'django'\n",
         encoding="utf-8",
     )
-    seen = {}
-
-    def fake(runtime, source, **kwargs):
-        seen["runtime"] = runtime
-        seen["source"] = source
-        seen["kwargs"] = kwargs
-        return "mounted"
-
-    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
     monkeypatch.chdir(nested)
 
     runtime = Gateway()
 
-    assert seen["runtime"] is runtime
-    assert seen["source"] == manage.resolve()
-    assert seen["kwargs"] == {"name": "arthexis"}
+    assert django_ingest_spy["runtime"] is runtime
+    assert django_ingest_spy["source"] == manage.resolve()
+    assert django_ingest_spy["kwargs"] == {"name": "arthexis"}
     assert runtime._manifest_path == (project / "gway.toml").resolve()
 
 
@@ -202,7 +194,7 @@ def test_invalid_ingest_entry_fails_closed():
 def test_declarative_django_directory_infers_project_name_from_folder(
     gateway,
     tmp_path,
-    monkeypatch,
+    django_ingest_spy,
 ):
     project = tmp_path / "backend"
     project.mkdir()
@@ -214,18 +206,10 @@ def test_declarative_django_directory_infers_project_name_from_folder(
         "kind = 'django'\n",
         encoding="utf-8",
     )
-    seen = {}
-
-    def fake(runtime, source, **kwargs):
-        seen["source"] = source
-        seen["kwargs"] = kwargs
-        return "mounted"
-
-    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
 
     config.load_ingestions(gateway, manifest)
 
-    assert seen == {
+    assert django_ingest_spy == {
         "source": project.resolve(),
         "kwargs": {"name": "backend"},
     }
@@ -234,7 +218,7 @@ def test_declarative_django_directory_infers_project_name_from_folder(
 def test_declarative_manage_py_infers_project_name_from_parent_folder(
     gateway,
     tmp_path,
-    monkeypatch,
+    django_ingest_spy,
 ):
     project = tmp_path / "billing"
     project.mkdir()
@@ -247,18 +231,10 @@ def test_declarative_manage_py_infers_project_name_from_parent_folder(
         "kind = 'django'\n",
         encoding="utf-8",
     )
-    seen = {}
-
-    def fake(runtime, source, **kwargs):
-        seen["source"] = source
-        seen["kwargs"] = kwargs
-        return "mounted"
-
-    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
 
     config.load_ingestions(gateway, manifest)
 
-    assert seen == {
+    assert django_ingest_spy == {
         "source": manage.resolve(),
         "kwargs": {"name": "billing"},
     }
@@ -267,7 +243,7 @@ def test_declarative_manage_py_infers_project_name_from_parent_folder(
 def test_declarative_dot_django_source_uses_manifest_directory_name(
     gateway,
     tmp_path,
-    monkeypatch,
+    django_ingest_spy,
 ):
     project = tmp_path / "arthexis"
     project.mkdir()
@@ -278,18 +254,10 @@ def test_declarative_dot_django_source_uses_manifest_directory_name(
         "django = '.'\n",
         encoding="utf-8",
     )
-    seen = {}
-
-    def fake(runtime, source, **kwargs):
-        seen["source"] = source
-        seen["kwargs"] = kwargs
-        return "mounted"
-
-    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
 
     config.load_ingestions(gateway, manifest)
 
-    assert seen == {
+    assert django_ingest_spy == {
         "source": project.resolve(),
         "kwargs": {"name": "arthexis"},
     }
@@ -298,7 +266,7 @@ def test_declarative_dot_django_source_uses_manifest_directory_name(
 def test_declarative_settings_module_does_not_infer_name_from_text(
     gateway,
     tmp_path,
-    monkeypatch,
+    django_ingest_spy,
 ):
     manifest = tmp_path / "gway.toml"
     manifest.write_text(
@@ -307,18 +275,10 @@ def test_declarative_settings_module_does_not_infer_name_from_text(
         "kind = 'django'\n",
         encoding="utf-8",
     )
-    seen = {}
-
-    def fake(runtime, source, **kwargs):
-        seen["source"] = source
-        seen["kwargs"] = kwargs
-        return "mounted"
-
-    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
 
     config.load_ingestions(gateway, manifest)
 
-    assert seen == {
+    assert django_ingest_spy == {
         "source": "config.settings",
         "kwargs": {},
     }
@@ -327,7 +287,7 @@ def test_declarative_settings_module_does_not_infer_name_from_text(
 def test_explicit_declarative_name_beats_folder_inference(
     gateway,
     tmp_path,
-    monkeypatch,
+    django_ingest_spy,
 ):
     project = tmp_path / "backend"
     project.mkdir()
@@ -350,4 +310,4 @@ def test_explicit_declarative_name_beats_folder_inference(
 
     config.load_ingestions(gateway, manifest)
 
-    assert seen["kwargs"] == {"name": "api"}
+    assert django_ingest_spy["kwargs"] == {"name": "api"}
