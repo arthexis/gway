@@ -135,3 +135,24 @@ def test_pipeline_rejects_consumer_without_available_parameter():
 
     with pytest.raises(TypeError, match="no available parameter"):
         plan_pipeline(None, report, object(), kwargs={"title": "Fleet"})
+
+
+def test_pipeline_can_satisfy_semantic_method_receiver(gateway):
+    class Device:
+        def label(self, prefix):
+            return f"{prefix}:device"
+
+    device = Device()
+    gateway.results.insert("device", device)
+    wrapped = gateway.wrap(
+        "device.label",
+        Device.label,
+        receiver="device",
+    )
+
+    plan = plan_pipeline(gateway, wrapped, device)
+    adapted = apply_plan(wrapped, plan, device)
+
+    assert plan == AdaptationPlan("receiver", None, "device", "device")
+    assert adapted.args == ()
+    assert adapted.kwargs == {}
