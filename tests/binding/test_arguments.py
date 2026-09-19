@@ -50,3 +50,18 @@ def test_variadic_positional_arguments_receive_sigil_resolution(gateway):
     )
 
     assert bound.args == ("/tmp/example",)
+
+
+
+def test_negative_boolean_flag_sets_known_parameter_false(gateway):
+    def operation(*, enabled: bool = True):
+        return enabled
+
+    bound = bind_arguments(
+        operation,
+        [Token("--no-enabled")],
+        runtime=gateway,
+    )
+
+    assert bound.args == ()
+    assert bound.kwargs == {"enabled": False}
