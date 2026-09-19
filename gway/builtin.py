@@ -8,7 +8,12 @@ from .install import install, uninstall
 
 
 def env(name, default=None):
-    """Return one environment variable."""
+    """Return one environment variable.
+
+    Args:
+        name: Environment variable name to read.
+        default: Value returned when the variable is not defined.
+    """
     return _os.environ.get(name, default)
 
 
