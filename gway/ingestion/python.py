@@ -4,6 +4,7 @@ from importlib import import_module
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
+import inspect
 import sys
 
 from .base import (
@@ -44,6 +45,52 @@ def _public_members(source):
         yield name, value
 
 
+def _receiver_subject(source, root, name, child):
+    """Return the semantic receiver for one unbound instance method."""
+    if not inspect.isclass(source):
+        return None
+
+    try:
+        descriptor = inspect.getattr_static(source, name)
+    except AttributeError:
+        return None
+
+    if isinstance(descriptor, (staticmethod, classmethod)):
+        return None
+
+    try:
+        parameters = tuple(inspect.signature(child).parameters.values())
+    except (TypeError, ValueError):
+        return None
+
+    if not parameters:
+        return None
+
+    first = parameters[0]
+    if first.kind not in (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    ):
+        return None
+    return root[-1]
+
+
+def _child_operation(source, root, name, child):
+    """Describe one callable child and any semantic instance receiver."""
+    metadata = {"object": child}
+    receiver = _receiver_subject(source, root, name, child)
+    if receiver is not None:
+        metadata["receiver"] = receiver
+
+    return IngestedOperation(
+        (*root, name),
+        child,
+        source=source,
+        kind="python",
+        metadata=metadata,
+    )
+
+
 def _operation(source, root, name, child):
     """Describe one callable using module entry semantics when applicable."""
     if isinstance(source, ModuleType) and callable(getattr(source, "__main__", None)):
@@ -55,6 +102,10 @@ def _operation(source, root, name, child):
             path = (*root, name)
             op = root[-1]
             sub = name
+    elif inspect.isclass(child):
+        path = (*root, name)
+        op = name
+        sub = name
     else:
         path = (*root, name)
         op = None
@@ -98,21 +149,15 @@ def discover_python(source, *, path=None):
                 source,
                 source=source,
                 kind="python",
+                op=root[-1] if inspect.isclass(source) else None,
+                sub=root[-1] if inspect.isclass(source) else None,
                 metadata={"object": source},
             )
         )
 
     for name, child in _public_members(source):
         if callable(child):
-            discovered.append(
-                IngestedOperation(
-                    (*root, name),
-                    child,
-                    source=source,
-                    kind="python",
-                    metadata={"object": child},
-                )
-            )
+            discovered.append(_child_operation(source, root, name, child))
 
     return discovered
 
@@ -186,6 +231,8 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
             source,
             source=source,
             kind="python",
+            op=root[-1] if inspect.isclass(source) else None,
+            sub=root[-1] if inspect.isclass(source) else None,
             metadata={"object": source},
         )
         registered = _register_callable(gateway, source_record, operation)
@@ -196,13 +243,7 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
         child_path = (*root, name)
         child_record = _remember_child(gateway, child, child_path)
         if callable(child):
-            operation = IngestedOperation(
-                child_path,
-                child,
-                source=source,
-                kind="python",
-                metadata={"object": child},
-            )
+            operation = _child_operation(source, root, name, child)
             registered = _register_callable(gateway, child_record, operation)
             if registered is not None:
                 wrapped.append(registered)
