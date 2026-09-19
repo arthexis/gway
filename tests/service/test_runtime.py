@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from types import SimpleNamespace
 
 from gway.service.model import Service
 from gway.service.runtime import ProcessBackend
@@ -173,5 +174,37 @@ def test_process_record_uses_kernel_start_token_when_available(tmp_path):
         assert record is not None
         if process_token(record.pid) is not None:
             assert record.process_token == process_token(record.pid)
+    finally:
+        backend.stop(service)
+
+
+
+def test_running_service_reports_stale_after_installation_fingerprint_changes(
+    tmp_path,
+):
+    service = Service(
+        project="demo",
+        name="sleeper",
+        root=tmp_path,
+        command=("{python}", "-c", "import time; time.sleep(30)"),
+    )
+    installations = {
+        "demo": SimpleNamespace(fingerprint="first"),
+    }
+    backend = ProcessBackend(
+        state_root=tmp_path / "state",
+        installations=installations,
+    )
+
+    started = backend.start(service)
+    try:
+        assert started["stale"] is False
+
+        installations["demo"] = SimpleNamespace(fingerprint="second")
+        status = backend.status(service)
+
+        assert status["running"] is True
+        assert status["pid"] == started["pid"]
+        assert status["stale"] is True
     finally:
         backend.stop(service)
