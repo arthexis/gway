@@ -89,15 +89,28 @@ def bind_arguments(
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
         )
     ]
+    variadic_parameter = next(
+        (
+            parameter
+            for parameter in signature.parameters.values()
+            if parameter.kind is inspect.Parameter.VAR_POSITIONAL
+        ),
+        None,
+    )
     converted_positional = list(initial_args)
     positional_offset = len(converted_positional)
     for offset, token in enumerate(positional):
         parameter_offset = positional_offset + offset
         if parameter_offset < len(positional_parameters):
+            parameter = positional_parameters[parameter_offset]
+        else:
+            parameter = variadic_parameter
+
+        if parameter is not None:
             converted_positional.append(
                 convert_argument(
                     token,
-                    positional_parameters[parameter_offset],
+                    parameter,
                     runtime,
                 )
             )
