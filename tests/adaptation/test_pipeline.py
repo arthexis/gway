@@ -79,7 +79,7 @@ def test_pipeline_does_not_route_by_annotation():
     assert adapted.args == (marker,)
 
 
-def test_explicit_keyword_is_not_overwritten_by_adaptation(gateway):
+def test_explicit_keyword_cannot_displace_pipeline_positional_prefix(gateway):
     marker = object()
     explicit = object()
 
@@ -87,28 +87,40 @@ def test_explicit_keyword_is_not_overwritten_by_adaptation(gateway):
         return chargers, fallback
 
     wrapped = gateway.wrap("summarize_chargers", summarize)
-    plan = plan_pipeline(
+
+    with pytest.raises(TypeError, match="cannot accept pipeline positional"):
+        plan_pipeline(
+            gateway,
+            wrapped,
+            marker,
+            kwargs={"chargers": explicit},
+        )
+
+
+def test_later_keyword_remains_available_after_pipeline_prefix(gateway):
+    marker = object()
+    explicit = object()
+
+    def summarize(chargers, fallback):
+        return chargers, fallback
+
+    wrapped = gateway.wrap("summarize_chargers", summarize)
+    adapted = adapt_pipeline(
         gateway,
         wrapped,
         marker,
-        kwargs={"chargers": explicit},
-    )
-    adapted = apply_plan(
-        wrapped,
-        plan,
-        marker,
-        kwargs={"chargers": explicit},
+        kwargs={"fallback": explicit},
     )
 
-    assert plan.parameter == "fallback"
-    assert adapted.kwargs == {"chargers": explicit, "fallback": marker}
+    assert adapted.args == (marker,)
+    assert adapted.kwargs == {"fallback": explicit}
 
 
 def test_pipeline_rejects_consumer_without_available_parameter():
     def report(*, title):
         return title
 
-    with pytest.raises(TypeError, match="no available positional parameter"):
+    with pytest.raises(TypeError, match="cannot accept pipeline positional"):
         plan_pipeline(None, report, object(), kwargs={"title": "Fleet"})
 
 
