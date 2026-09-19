@@ -61,7 +61,14 @@ def _managed_fingerprint(existing, destination):
     return fingerprint(destination)
 
 
-def _handle_drift(request, existing, destination, actual, desired_fingerprint, stashes):
+def _handle_drift(
+    request,
+    existing,
+    destination,
+    actual,
+    desired_changed,
+    stashes,
+):
     """Validate or preserve/discard managed drift before reconciliation."""
     drifted = (
         actual is not None
@@ -79,8 +86,7 @@ def _handle_drift(request, existing, destination, actual, desired_fingerprint, s
             "use --stash to preserve them or --force to discard them"
         )
 
-    source_changed = existing.fingerprint != desired_fingerprint
-    if not request.upgrade and source_changed:
+    if not request.upgrade and desired_changed:
         raise RuntimeError(
             f"Managed project {existing.name!r} has local modifications and "
             "the source has changed; --no-upgrade prevents using the changed "
@@ -135,16 +141,44 @@ def _stage_project(source, name, desired_fingerprint, projects):
         raise
 
 
-def _record_for(source, name, fingerprint_value, destination, scope, *, installed_at=None):
+def _record_for(
+    source_identity,
+    name,
+    fingerprint_value,
+    destination,
+    scope,
+    *,
+    requested_ref=None,
+    resolved_revision=None,
+    installed_at=None,
+):
     return Installation(
         name=name,
-        source=str(source),
-        requested_ref=None,
-        resolved_revision=None,
+        source=source_identity,
+        requested_ref=requested_ref,
+        resolved_revision=resolved_revision,
         fingerprint=fingerprint_value,
         install_path=destination,
         scope=scope,
         installed_at=installed_at,
+    )
+
+
+def _desired_changed(
+    existing,
+    *,
+    source_identity,
+    requested_ref,
+    resolved_revision,
+    fingerprint_value,
+):
+    return any(
+        (
+            existing.source != source_identity,
+            existing.requested_ref != requested_ref,
+            existing.resolved_revision != resolved_revision,
+            existing.fingerprint != fingerprint_value,
+        )
     )
 
 
@@ -154,19 +188,26 @@ def _paths_and_state(request, *, paths=None, state=None):
     return selected, registry
 
 
-def install_local(request, *, paths=None, state=None):
-    """Install or reconcile one local project through atomic activation."""
+def install_materialized(
+    request,
+    source,
+    *,
+    source_identity,
+    requested_ref=None,
+    resolved_revision=None,
+    paths=None,
+    state=None,
+):
+    """Install/reconcile one already-materialized project tree."""
     if not isinstance(request, InstallRequest):
-        raise TypeError("install_local requires an InstallRequest")
-    if request.ref is not None:
-        raise ValueError("--ref is not supported for local install sources")
+        raise TypeError("install_materialized requires an InstallRequest")
 
     selected, registry = _paths_and_state(
         request,
         paths=paths,
         state=state,
     )
-    source = local_source(request.source)
+    source = local_source(source)
     name = project_name(source)
     validate_name(name)
     desired_fingerprint = fingerprint(source)
@@ -181,12 +222,20 @@ def install_local(request, *, paths=None, state=None):
 
     existing = registry.get(name, scope=selected.scope)
     drifted = False
+    desired_changed = True
     if existing is None:
         if destination.exists() or destination.is_symlink():
             raise RuntimeError(
                 f"Managed destination exists without installation state: {destination}"
             )
     else:
+        desired_changed = _desired_changed(
+            existing,
+            source_identity=source_identity,
+            requested_ref=requested_ref,
+            resolved_revision=resolved_revision,
+            fingerprint_value=desired_fingerprint,
+        )
         actual = _managed_fingerprint(existing, destination)
         drifted = (
             actual is not None
@@ -200,14 +249,13 @@ def install_local(request, *, paths=None, state=None):
             existing,
             destination,
             actual,
-            desired_fingerprint,
+            desired_changed,
             selected.stashes,
         )
 
         same = (
             not drifted
-            and existing.source == str(source)
-            and existing.fingerprint == desired_fingerprint
+            and not desired_changed
             and destination.is_dir()
         )
         if same:
@@ -218,20 +266,24 @@ def install_local(request, *, paths=None, state=None):
             and destination.is_dir()
             and existing.fingerprint == desired_fingerprint
         ):
+            if not request.upgrade:
+                return existing
             record = _record_for(
-                source,
+                source_identity,
                 name,
                 desired_fingerprint,
                 destination,
                 selected.scope,
+                requested_ref=requested_ref,
+                resolved_revision=resolved_revision,
                 installed_at=existing.installed_at,
             )
             return registry.put(record)
 
         if not request.upgrade:
-            if not destination.is_dir() and existing.fingerprint != desired_fingerprint:
+            if not destination.is_dir() and desired_changed:
                 raise RuntimeError(
-                    f"Managed project {name!r} is missing and the source has changed; "
+                    f"Managed project {name!r} is missing and desired state changed; "
                     "repair would require an upgrade"
                 )
             if destination.is_dir() and not drifted:
@@ -256,11 +308,13 @@ def install_local(request, *, paths=None, state=None):
         activated = True
 
         record = _record_for(
-            source,
+            source_identity,
             name,
             desired_fingerprint,
             destination,
             selected.scope,
+            requested_ref=requested_ref,
+            resolved_revision=resolved_revision,
         )
         try:
             stored = registry.put(record)
@@ -289,6 +343,23 @@ def install_local(request, *, paths=None, state=None):
     finally:
         if stage.exists():
             _remove_path(stage)
+
+
+def install_local(request, *, paths=None, state=None):
+    """Install or reconcile one local project through atomic activation."""
+    if not isinstance(request, InstallRequest):
+        raise TypeError("install_local requires an InstallRequest")
+    if request.ref is not None:
+        raise ValueError("--ref is not supported for local install sources")
+
+    source = local_source(request.source)
+    return install_materialized(
+        request,
+        source,
+        source_identity=str(source),
+        paths=paths,
+        state=state,
+    )
 
 
 def uninstall_local(request, *, paths=None, state=None):
