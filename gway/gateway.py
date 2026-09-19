@@ -37,6 +37,10 @@ class Gateway(Resolver):
         for level_name, level in gway_log._levels(self.logger).items():
             setattr(self, level_name, level)
         self.ops, self.subs = registry_views()
+
+        from .launchable import Launchables
+
+        self.launchables = Launchables()
         self._ingested = {}
 
         from .cache import Cache
@@ -206,6 +210,13 @@ class Gateway(Resolver):
         wrapped.__gway_subject__ = subject
         wrapped.__gway_receiver__ = receiver
         self.ops.register(func_name, wrapped, op=op, sub=sub)
+        self.launchables.operation(
+            func_name,
+            metadata={
+                "operation": op or func_name,
+                "subject": subject,
+            },
+        )
         return wrapped
 
     def __setattr__(self, name, value):
