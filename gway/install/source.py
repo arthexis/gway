@@ -1,6 +1,7 @@
 """Local project source inspection and content identity."""
 
 import hashlib
+from importlib import metadata as importlib_metadata
 import os
 from pathlib import Path
 
@@ -17,6 +18,25 @@ _IGNORED_PARTS = frozenset(
         ".ruff_cache",
     }
 )
+
+
+def named_source(value):
+    """Resolve a known bare project identity to its canonical repository."""
+    if str(value).strip() != "gway":
+        return None
+
+    try:
+        metadata = importlib_metadata.metadata("gway")
+    except importlib_metadata.PackageNotFoundError:
+        metadata = None
+
+    if metadata is not None:
+        for entry in metadata.get_all("Project-URL") or ():
+            label, separator, url = entry.partition(",")
+            if separator and label.strip().lower() == "repository" and url.strip():
+                return url.strip()
+
+    return "https://github.com/arthexis/gway.git"
 
 
 def local_source(value):
