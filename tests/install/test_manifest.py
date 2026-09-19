@@ -1,3 +1,5 @@
+import pytest
+
 import gway.install.manifest as install_manifest
 
 
@@ -39,9 +41,7 @@ def test_install_manifest_does_not_hide_other_import_failures(tmp_path, monkeypa
 
     monkeypatch.setattr(install_manifest.toml, "load", missing_other)
 
-    try:
+    with pytest.raises(ModuleNotFoundError) as error:
         install_manifest.load(manifest)
-    except ModuleNotFoundError as exc:
-        assert exc.name == "other"
-    else:
-        raise AssertionError("unrelated import failures must not be swallowed")
+
+    assert error.value.name == "other"
