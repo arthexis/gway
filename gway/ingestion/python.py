@@ -122,15 +122,16 @@ def _operation(source, root, name, child):
     )
 
 
-def discover_module(source, *, path=None):
+def discover_module(source, *, path=None, transparent=False):
     """Describe direct callables in a Python module namespace."""
     if not isinstance(source, ModuleType):
         raise TypeError("source must be a Python module")
-    root = normalize_path(path) if path is not None else _default_path(source)
+    source_root = normalize_path(path) if path is not None else _default_path(source)
+    root = () if transparent else source_root
     return [
         _operation(source, root, name, child)
         for name, child in _public_members(source)
-        if callable(child)
+        if callable(child) and not (transparent and name == "__main__")
     ]
 
 
@@ -179,16 +180,17 @@ def _remember_child(gateway, child, path):
     return remember_object(gateway, child, path, expander=expander)
 
 
-def ingest_module(gateway, source, *, path=None, **kwargs):
+def ingest_module(gateway, source, *, path=None, transparent=False, **kwargs):
     """Expand exactly one Python module namespace."""
     if not isinstance(source, ModuleType):
         raise TypeError("source must be a Python module")
 
-    root = normalize_path(path) if path is not None else _default_path(source)
+    source_root = normalize_path(path) if path is not None else _default_path(source)
+    root = () if transparent else source_root
     source_record = remember_object(
         gateway,
         source,
-        root,
+        source_root,
         expander=ingest_module,
     )
     if source_record.expanded:
@@ -196,6 +198,8 @@ def ingest_module(gateway, source, *, path=None, **kwargs):
 
     wrapped = []
     for name, child in _public_members(source):
+        if transparent and name == "__main__":
+            continue
         child_path = (*root, name)
         child_record = _remember_child(gateway, child, child_path)
         if callable(child):
