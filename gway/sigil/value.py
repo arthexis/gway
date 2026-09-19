@@ -6,6 +6,7 @@ import re
 from .resolution import is_single_sigil, resolve_text
 
 _PATTERN = re.compile(r"\[([^\[\]]+)\]")
+_MISSING = object()
 
 
 def _lookup_for(context):
@@ -18,19 +19,21 @@ def _lookup_for(context):
             key.upper(),
         )
         for variant in variants:
-            value = None
             if isinstance(context, Mapping):
-                value = context.get(variant)
-            elif hasattr(context, "find_value"):
-                value = context.find_value(variant, None)
-            elif callable(context):
+                if variant in context:
+                    return context[variant]
+                continue
+            if hasattr(context, "find_value"):
+                value = context.find_value(variant, _MISSING)
+                if value is not _MISSING:
+                    return value
+                continue
+            if callable(context):
                 try:
-                    value = context(variant, None)
-                except TypeError:
-                    value = context(variant)
-            if value is not None:
-                return value
-        return None
+                    return context(variant)
+                except KeyError:
+                    continue
+        raise KeyError(key)
     return lookup
 
 
