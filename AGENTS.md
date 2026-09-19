@@ -24,7 +24,9 @@ def inspect_charger(charger):
 
 The subject of both operations is `charger`. A result published by
 `get_charger` can therefore satisfy the `charger` argument of a later
-`inspect_charger` operation without the caller spelling the value again.
+`inspect_charger` operation without the caller spelling the value again. More
+generally, any still-unbound concrete parameter can be completed from a named
+runtime value with the same parameter name.
 
 Keep Python responsible for Python control flow and domain logic. Recipes are
 for declaring and composing operations.
@@ -278,8 +280,12 @@ gway/publication.py
 
 `Gateway.wrap()` is the façade tying those pieces together.
 
-Semantic completion can fill an argument whose name matches the operation's
-subject. Python defaults and Sigil defaults are resolved at call time.
+Semantic completion can fill any still-unbound concrete parameter from runtime
+state using the parameter name, regardless of whether Python would ordinarily
+receive that parameter positionally or by keyword. Explicit/native arguments
+and dash-pipeline positional values take precedence; defaults and Sigil defaults
+are used only after named semantic lookup. Variadic collectors (`*args`,
+`**kwargs`) are not semantic lookup slots.
 
 Invocation supports synchronous and awaitable callables. Timing policy is
 handled at the invocation boundary.
@@ -528,3 +534,18 @@ CI currently exercises the suite on Python 3.10 and Python 3.13.
 When refactoring, preserve behavioral contracts first. Move/reorganize tests
 only after the implementation remains green, unless the change intentionally
 modifies a public contract.
+
+
+### Statement context versus dash pipelines
+
+Recipe newlines and standalone semicolons begin new statements without carrying
+the previous raw result as an unnamed positional value. Named semantic state
+remains continuous across those boundaries: published results, context values,
+and environment-backed resolution are still available by name.
+
+A standalone dash keeps the same named semantic state and additionally offers
+the immediately previous raw result to the next stage as positional input. Dash
+transport is positional: it does not require producer/consumer subject names to
+match. After explicit and dash-supplied positional values are bound, any
+remaining concrete parameters may still be completed from named semantic
+context by parameter name.
