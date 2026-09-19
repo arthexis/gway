@@ -128,3 +128,33 @@ def test_describe_rejects_non_callable():
         assert str(exc) == "documentation target must be callable"
     else:
         raise AssertionError("describe() accepted a non-callable")
+
+
+
+def test_parameter_prose_is_optional_and_does_not_override_signature_facts():
+    def reconcile(source: str, upgrade=True, force=False):
+        """Reconcile one managed project.
+
+        Args:
+            force: Allow replacement of a dirty managed installation.
+        """
+
+    documentation = describe(reconcile)
+
+    source = documentation.parameter("source")
+    upgrade = documentation.parameter("upgrade")
+    force = documentation.parameter("force")
+
+    assert source.description is None
+    assert source.required is True
+    assert source.annotation is str
+
+    assert upgrade.description is None
+    assert upgrade.required is False
+    assert upgrade.default is True
+
+    assert force.description == (
+        "Allow replacement of a dirty managed installation."
+    )
+    assert force.required is False
+    assert force.default is False
