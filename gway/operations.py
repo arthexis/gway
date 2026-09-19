@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 
 
 @dataclass(frozen=True)
@@ -12,6 +13,33 @@ class OperationRecord:
     op: str
     sub: str | None
     callable: object
+
+
+class Cardinality(str, Enum):
+    """Requested semantic subject cardinality."""
+
+    ONE = "one"
+    MANY = "many"
+
+
+def singularize(name):
+    """Return the simple singular form used for semantic subject aliases."""
+    if name.endswith("ies") and len(name) > 3:
+        return name[:-3] + "y"
+    if name.endswith(("xes", "zes", "ches", "shes", "ses")) and len(name) > 2:
+        return name[:-2]
+    if name.endswith("s") and not name.endswith("ss") and len(name) > 1:
+        return name[:-1]
+    return None
+
+
+def subject_cardinality(requested, canonical):
+    """Return ONE/MANY when requested names the canonical semantic subject."""
+    if requested == canonical:
+        return Cardinality.ONE
+    if singularize(requested) == canonical:
+        return Cardinality.MANY
+    return None
 
 
 def split_operation(name):
@@ -70,13 +98,22 @@ class _Registry:
             if part
         )
         if len(parts) < 2:
-            return default
+            singular = singularize(parts[0]) if parts else None
+            if singular is None:
+                return default
+            canonical = self.aliases.get(singular, singular)
+            record = self.records.get(canonical)
+            return record.callable if record is not None else default
 
         op, sub = parts[-2], parts[-1]
+        subjects = (sub,)
+        singular = singularize(sub)
+        if singular is not None:
+            subjects = (sub, singular)
         matches = [
             record
             for record in self.records.values()
-            if record.op == op and record.sub == sub
+            if record.op == op and record.sub in subjects
         ]
 
         prefix = ".".join(parts[:-2])
