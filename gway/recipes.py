@@ -145,6 +145,10 @@ def execute_recipe(
 ):
     """Execute one recipe in the caller's runtime and return its internal results."""
     path = Path(recipe_filename).expanduser().resolve()
+    runtime.launchables.recipe(
+        path,
+        metadata={"recipe": str(path)},
+    )
     stack = getattr(runtime, "_recipe_stack", None)
     if stack is None:
         stack = []
