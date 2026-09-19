@@ -50,9 +50,20 @@ def _convert_scalar(value, annotation):
     return value
 
 
-def _convert_sequence(value, annotation):
+def _sequence_container(values, annotation):
     origin = get_origin(annotation)
     target = origin or annotation
+    values = list(values)
+    if target is list:
+        return values
+    if target is set:
+        return set(values)
+    if target is frozenset:
+        return frozenset(values)
+    return tuple(values)
+
+
+def _convert_sequence(value, annotation):
     element_annotation = _sequence_element_annotation(annotation)
 
     if isinstance(value, str):
@@ -62,17 +73,37 @@ def _convert_sequence(value, annotation):
     else:
         values = list(value)
 
-    converted = [
-        _convert_scalar(item, element_annotation)
-        for item in values
-    ]
-    if target is list:
-        return converted
-    if target is set:
-        return set(converted)
-    if target is frozenset:
-        return frozenset(converted)
-    return tuple(converted)
+    return _sequence_container(
+        (_convert_scalar(item, element_annotation) for item in values),
+        annotation,
+    )
+
+
+def _convert_singular_sequence(token, parameter, runtime):
+    literal = is_literal(token)
+    value = token_value(token)
+    annotation = parameter.annotation
+
+    if literal:
+        return _sequence_container((Literal(value),), annotation)
+
+    if isinstance(value, str) and Sigil._pattern.search(value):
+        value = runtime.resolve(value)
+
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        values = list(value)
+        if len(values) != 1:
+            raise TypeError("singular sequence option accepts exactly one item")
+        value = values[0]
+
+    if isinstance(value, str) and "," in value:
+        raise TypeError("singular sequence option accepts exactly one item")
+
+    converted = _convert_scalar(
+        value,
+        _sequence_element_annotation(annotation),
+    )
+    return _sequence_container((converted,), annotation)
 
 
 def convert_argument(token, parameter, runtime):
@@ -399,26 +430,45 @@ def bind_arguments(
                 raise TypeError(f"Expected a value after {token}")
             value_item = stream[index + 1]
             if isinstance(value_item, _PipelineValue):
-                keywords[key] = value_item.value
+                value = value_item.value
+                if singular:
+                    if isinstance(value, Sequence) and not isinstance(
+                        value, (str, bytes, bytearray)
+                    ):
+                        if len(value) != 1:
+                            raise TypeError(
+                                f"{token} accepts exactly one item; use "
+                                f"--{key.replace('_', '-')} for multiple items"
+                            )
+                        value = list(value)[0]
+                    keywords[key] = _sequence_container(
+                        (value,),
+                        keyword_parameter.annotation,
+                    )
+                else:
+                    keywords[key] = value
             else:
-                converted = convert_argument(
-                    value_item,
-                    keyword_parameter,
-                    runtime,
-                )
-                if singular and len(converted) != 1:
-                    raise TypeError(
-                        f"{token} accepts exactly one item; use "
-                        f"--{key.replace('_', '-')} for multiple items"
+                try:
+                    keywords[key] = (
+                        _convert_singular_sequence(
+                            value_item,
+                            keyword_parameter,
+                            runtime,
+                        )
+                        if singular
+                        else convert_argument(
+                            value_item,
+                            keyword_parameter,
+                            runtime,
+                        )
                     )
-                keywords[key] = converted
-            if singular and isinstance(value_item, _PipelineValue):
-                value = keywords[key]
-                if len(value) != 1:
-                    raise TypeError(
-                        f"{token} accepts exactly one item; use "
-                        f"--{key.replace('_', '-')} for multiple items"
-                    )
+                except TypeError as exc:
+                    if singular:
+                        raise TypeError(
+                            f"{token} accepts exactly one item; use "
+                            f"--{key.replace('_', '-')} for multiple items"
+                        ) from exc
+                    raise
             filled.add(key)
             index += 2
             continue
