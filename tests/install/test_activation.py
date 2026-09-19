@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 import subprocess
 import sys
 
@@ -60,12 +59,7 @@ def test_install_activates_declared_script(tmp_path):
     )
     assert result.returncode == 0
     assert result.stdout.strip() == "managed launcher works"
-    assert installed.install_path in Path(
-        launcher.read_text(encoding="utf-8").splitlines()[4]
-        .split("(", 1)[1]
-        .rsplit(")", 1)[0]
-        .strip("'\"")
-    ).parents or str(installed.install_path) in launcher.read_text(encoding="utf-8")
+    assert str(installed.install_path) in launcher.read_text(encoding="utf-8")
 
 
 def test_noop_install_repairs_missing_owned_launcher(tmp_path):
