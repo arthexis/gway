@@ -8,18 +8,10 @@ from gway.service.state import ServiceState
 def test_process_backend_install_persists_without_starting(
     tmp_path,
     monkeypatch,
-    make_service_project,
+    install_declared_service,
     install_environment,
 ):
-    source = make_service_project(
-        worker_command="import time; time.sleep(30)",
-    )
-    monkeypatch.chdir(tmp_path)
-
-    gateway = Gateway()
-    installed = gateway(
-        f"install {source} --service worker --backend process"
-    )
+    _, installed = install_declared_service(backend="process")
 
     records = UnitState(install_environment.data / "systemd").get("demo")
     assert [(record.service, record.backend) for record in records] == [
@@ -35,16 +27,10 @@ def test_process_backend_install_persists_without_starting(
 def test_process_backend_lifecycle_works_from_fresh_gateway(
     tmp_path,
     monkeypatch,
-    make_service_project,
+    install_declared_service,
     install_environment,
 ):
-    source = make_service_project(
-        worker_command="import time; time.sleep(30)",
-    )
-    monkeypatch.chdir(tmp_path)
-
-    installer = Gateway()
-    installer(f"install {source} --service worker --backend process")
+    install_declared_service(backend="process")
 
     first = Gateway()
     started = first("service start demo worker")
@@ -67,16 +53,10 @@ def test_process_backend_lifecycle_works_from_fresh_gateway(
 def test_uninstall_stops_running_process_backend_service(
     tmp_path,
     monkeypatch,
-    make_service_project,
+    install_declared_service,
     install_environment,
 ):
-    source = make_service_project(
-        worker_command="import time; time.sleep(30)",
-    )
-    monkeypatch.chdir(tmp_path)
-
-    gateway = Gateway()
-    gateway(f"install {source} --service worker --backend process")
+    install_declared_service(backend="process")
     started = Gateway()("service start demo worker")
     assert started["running"] is True
 
@@ -94,17 +74,12 @@ def test_switching_from_systemd_to_process_removes_old_unit(
     tmp_path,
     monkeypatch,
     fake_systemd,
-    make_service_project,
+    install_declared_service,
     install_environment,
 ):
-    source = make_service_project(
-        worker_command="import time; time.sleep(30)",
-    )
-    monkeypatch.chdir(tmp_path)
     units, calls = fake_systemd
 
-    gateway = Gateway()
-    gateway(f"install {source} --service worker --backend systemd")
+    source, _ = install_declared_service(backend="systemd")
     assert (units / "demo-worker.service").is_file()
 
     gateway(f"install {source} --service worker --backend process")
