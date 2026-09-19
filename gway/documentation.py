@@ -154,3 +154,69 @@ def describe(callable_obj):
         operation=getattr(callable_obj, "__gway_operation__", None),
         subject=getattr(callable_obj, "__gway_subject__", None),
     )
+
+
+def _display_name(documentation):
+    """Return the best human-facing operation name for documentation."""
+    if documentation.path:
+        return " ".join(documentation.path)
+    operation = documentation.operation
+    subject = documentation.subject
+    if operation and subject:
+        return f"{operation} {subject}"
+    if operation:
+        return operation
+    return getattr(documentation.target, "__name__", type(documentation.target).__name__)
+
+
+def _annotation_name(annotation):
+    """Return a compact readable annotation name."""
+    if annotation is inspect.Parameter.empty:
+        return None
+    if isinstance(annotation, type):
+        return annotation.__name__
+    return str(annotation).replace("typing.", "")
+
+
+def _default_text(value):
+    """Return a compact representation for one parameter default."""
+    if value is inspect.Parameter.empty:
+        return None
+    return repr(value)
+
+
+def render(callable_obj, *, verbose=False):
+    """Render compact or verbose human-facing help for one callable."""
+    documentation = describe(callable_obj)
+    name = _display_name(documentation)
+    signature = str(documentation.signature) if documentation.signature is not None else ""
+    header = f"{name}{signature}"
+
+    if not verbose:
+        if documentation.summary:
+            return f"{header}\n{documentation.summary}"
+        return header
+
+    lines = [header]
+    if documentation.docstring:
+        lines.extend(["", documentation.docstring])
+
+    if documentation.parameters:
+        lines.extend(["", "Parameters:"])
+        for parameter in documentation.parameters:
+            lines.append(f"  {parameter.name}")
+            if parameter.description:
+                lines.append(f"    {parameter.description}")
+
+            annotation = _annotation_name(parameter.annotation)
+            if annotation:
+                lines.append(f"    Type: {annotation}")
+
+            if parameter.required:
+                lines.append("    Required")
+            else:
+                default = _default_text(parameter.default)
+                if default is not None:
+                    lines.append(f"    Default: {default}")
+
+    return "\n".join(lines)
