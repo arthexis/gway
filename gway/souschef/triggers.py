@@ -71,14 +71,17 @@ class TriggerEngine:
         self.state.put(state)
 
     def _service_down(self, target):
-        if self.service_status is None:
+        if self.service_status is None or "://" in target:
             return False
         if "/" not in target:
             return False
         project, service = target.split("/", 1)
         if not project or not service:
             return False
-        status = self.service_status(project, service)
+        try:
+            status = self.service_status(project, service)
+        except LookupError:
+            return True
         return not bool(status.get("running"))
 
     def evaluate_job(self, job):
