@@ -34,6 +34,10 @@ class Gateway(Resolver):
         self.logger = gway_log._child(name)
         self.ops, self.subs = registry_views()
         self._ingested = {}
+
+        from .cache import Cache
+
+        self.cache = Cache()
         self.debug_enabled = bool(debug)
         self._verbose = False
         self._silent = False
