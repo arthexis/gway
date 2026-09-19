@@ -9,6 +9,7 @@ from .resolution import resolve_text
 from .value import Sigil
 
 _MISSING = object()
+_RAISE = object()
 
 
 class Environment(Mapping):
@@ -35,7 +36,7 @@ class Resolver:
         """Append a semantic source without assigning behavior to its name."""
         self._search_order.append((name or type(source).__name__, source))
 
-    def resolve(self, *args, default="_raise"):
+    def resolve(self, *args, default=_RAISE):
         last_exc = None
         for arg in args:
             if arg is None:
@@ -45,11 +46,11 @@ class Resolver:
             text = expression.original if isinstance(expression, Sigil) else expression
 
             try:
-                return resolve_text(text, lambda key: self.find_value(key, None))
+                return resolve_text(text, self._lookup)
             except KeyError as exc:
                 last_exc = exc
 
-        if default != "_raise":
+        if default is not _RAISE:
             return default
         if last_exc is not None:
             raise last_exc
@@ -63,6 +64,12 @@ class Resolver:
             except (KeyError, IndexError, TypeError):
                 continue
         return fallback
+
+    def _lookup(self, key):
+        value = self.find_value(key, _MISSING)
+        if value is _MISSING:
+            raise KeyError(key)
+        return value
 
     def _resolve_key(self, key, fallback=None):
         key = key.strip()
@@ -79,7 +86,7 @@ class Resolver:
                     return follow_path(
                         base,
                         parts[1:],
-                        lookup=lambda inner: self.find_value(inner, None),
+                        lookup=self._lookup,
                         resolve_text=resolve_text,
                     )
                 except KeyError:
