@@ -552,3 +552,39 @@ values; lists and other iterables remain single positional values. Explicit
 positional arguments on the chained operation follow that pipeline prefix. Any
 remaining concrete parameters may then be completed from named semantic context
 by parameter name.
+
+
+### Chain-local positional sigils
+
+Raw dash chains can reposition values from the immediately previous positional
+result without turning those selectors into global sigil meanings.
+
+When the previous raw result is a tuple, its elements form the positional
+bundle for the next stage. Outside a raw chain, numeric and asterisk sigils keep
+their ordinary semantic meaning.
+
+Within a raw chain, an exact non-literal sigil containing a constant integer
+selects that element from the original positional bundle and consumes it:
+
+```text
+triple - combine [2] [0] [1]
+```
+
+uses the original third, first, then second tuple element. Indexing follows
+normal Python/GWAY sequence indexing, including negative indices. A consumed
+slot cannot be selected again.
+
+An exact `[*]` sigil consumes and splices all still-unconsumed positional
+values at that point:
+
+```text
+pair - combine manual [*]
+```
+
+If no `[*]` appears, all still-unconsumed positional values retain the normal
+chain behavior and are inserted as a prefix before explicit positional
+arguments. Selectors are evaluated left-to-right; once `[*]` consumes the
+remaining pool, later numeric selectors for those values are invalid.
+
+Single-quoted forms such as `'[0]'` remain literal text and do not act as
+chain selectors.
