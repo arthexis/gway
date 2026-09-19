@@ -1,11 +1,12 @@
 # file: gway/console.py
 
 import argparse
+from collections.abc import Mapping
 import json
 from .gateway import Gateway, gw
 from .recipes import load_recipe
 from .dispatch import dispatch_sequence
-from .tokens import Token, chunk, is_literal, token_value
+from .tokens import chunk, is_literal, token_value
 
 
 def parse_recipe_context(tokens):
@@ -83,7 +84,7 @@ def process(command_sources, *, gw_instance=None, **context):
 
     stages = []
     for entry in command_sources:
-        tokens = list(entry.get("tokens", [])) if isinstance(entry, dict) else list(entry)
+        tokens = list(entry.get("tokens", [])) if isinstance(entry, Mapping) else list(entry)
         stages.extend(chunk(tokens))
 
     if not stages:
