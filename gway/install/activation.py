@@ -10,7 +10,7 @@ import sys
 import tempfile
 import uuid
 
-from .. import toml
+from .manifest import load as load_manifest
 from .model import validate_name
 
 
@@ -28,7 +28,7 @@ def scripts(project):
     if not manifest.is_file():
         return {}
 
-    data = toml.load(manifest)
+    data = load_manifest(manifest)
     install = data.get("install") if isinstance(data, dict) else None
     values = install.get("scripts") if isinstance(install, dict) else None
     if values is None:
