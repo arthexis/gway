@@ -290,6 +290,17 @@ def load_project_scripts(runtime, root, project):
     return wrapped
 
 
+def load_project_main_packages(runtime, root):
+    """Expose conventional package __main__.py entrypoints from a project tree."""
+    from .project import import_project_module, main_packages
+
+    wrapped = []
+    for name in main_packages(root):
+        module = import_project_module(root, name)
+        wrapped.extend(runtime.ingest(module, path=tuple(name.split("."))))
+    return wrapped
+
+
 def expand_installed_project(runtime, installation, *, path=None):
     """Load one installed project's declarative ingestion exactly once."""
     record = remember_object(
@@ -307,6 +318,7 @@ def expand_installed_project(runtime, installation, *, path=None):
         installation.install_path,
         installation.name,
     )
+    loaded.extend(load_project_main_packages(runtime, installation.install_path))
     if manifest.is_file():
         loaded.extend(load_ingestions(runtime, manifest))
     record.expanded = True
@@ -407,6 +419,7 @@ def bootstrap(runtime, *, start=None):
                 for command, projects in owners.items()
             }
             load_project_scripts(runtime, manifest.parent, project_name)
+            load_project_main_packages(runtime, manifest.parent)
 
     legacy = _legacy_manifest(manifest)
     runtime._manifest_path = legacy or manifest
