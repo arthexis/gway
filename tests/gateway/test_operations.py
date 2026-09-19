@@ -25,6 +25,9 @@ def test_ops_and_subs_are_shared_semantic_views(gateway):
 
 
 def test_public_aliases_do_not_pollute_ops_or_subs(gateway):
+    baseline_ops = set(gateway.ops)
+    baseline_subs = set(gateway.subs)
+
     def get_chargers():
         return ["A"]
 
@@ -32,8 +35,8 @@ def test_public_aliases_do_not_pollute_ops_or_subs(gateway):
     gateway.chargers = wrapped
 
     assert "chargers" not in gateway.ops
-    assert set(gateway.ops) == {"get"}
-    assert set(gateway.subs) == {"chargers"}
+    assert set(gateway.ops) == baseline_ops | {"get"}
+    assert set(gateway.subs) == baseline_subs | {"chargers"}
     assert gateway.ops.resolve("chargers") is wrapped
 
 
