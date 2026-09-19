@@ -505,3 +505,142 @@ def test_plural_collection_can_feed_annotated_collection_parameter(
     gateway.ingest(Charger)
 
     assert gateway("charging chargers - summarize") == ["CHG001", "CHG002"]
+
+
+
+def test_django_natural_key_and_cardinality_work_together_end_to_end(
+    gateway,
+    django_project,
+    django_setup,
+    django_orm,
+):
+    root, _ = django_project()
+    Charger, manager = django_orm
+    fleet = [Charger("CHG001"), Charger("CHG002")]
+
+    def get_by_natural_key(identity):
+        for charger in fleet:
+            if charger.serial == identity:
+                return charger
+        raise LookupError(identity)
+
+    def connected(self):
+        return fleet
+
+    @classmethod
+    def reset(cls, charger, *, hard: bool = False):
+        return {"identity": charger.serial, "hard": hard}
+
+    manager.get_by_natural_key = get_by_natural_key
+    type(manager).connected = connected
+    Charger.reset = reset
+
+    django_setup(_app("energy", [Charger]))
+    django_ingestor.ingest_project(gateway, root)
+
+    selected = gateway("charger CHG001")
+    assert selected is fleet[0]
+
+    all_connected = gateway("connected chargers")
+    assert all_connected is fleet
+
+    with pytest.raises(LookupError, match="Expected one charger"):
+        gateway("connected charger")
+
+    assert gateway("charger CHG002 - reset --hard") == {
+        "identity": "CHG002",
+        "hard": True,
+    }
+
+
+def test_django_composite_natural_key_and_plural_query_can_coexist(
+    gateway,
+    django_project,
+    django_setup,
+    django_orm,
+):
+    root, _ = django_project()
+    Charger, manager = django_orm
+    fleet = [
+        Charger("MTY:CHG001"),
+        Charger("MTY:CHG002"),
+        Charger("GDL:CHG001"),
+    ]
+
+    def get_by_natural_key(site, identity):
+        serial = f"{site}:{identity}"
+        for charger in fleet:
+            if charger.serial == serial:
+                return charger
+        raise LookupError(serial)
+
+    def connected(self):
+        return fleet[:2]
+
+    manager.get_by_natural_key = get_by_natural_key
+    type(manager).connected = connected
+
+    django_setup(_app("energy", [Charger]))
+    django_ingestor.ingest_project(gateway, root)
+
+    assert gateway("charger MTY CHG002").serial == "MTY:CHG002"
+    assert [charger.serial for charger in gateway("connected chargers")] == [
+        "MTY:CHG001",
+        "MTY:CHG002",
+    ]
+
+
+def test_plural_query_result_cannot_flow_into_singular_domain_action_end_to_end(
+    gateway,
+    django_project,
+    django_setup,
+    django_orm,
+):
+    root, _ = django_project()
+    Charger, manager = django_orm
+    fleet = [Charger("CHG001"), Charger("CHG002")]
+
+    def connected(self):
+        return fleet
+
+    @classmethod
+    def reset(cls, charger):
+        raise AssertionError("collection fan-out must not happen")
+
+    type(manager).connected = connected
+    Charger.reset = reset
+
+    django_setup(_app("energy", [Charger]))
+    django_ingestor.ingest_project(gateway, root)
+
+    with pytest.raises(TypeError, match="Collection of charger"):
+        gateway("connected chargers - reset")
+
+
+def test_plural_query_result_can_flow_into_explicit_collection_consumer_end_to_end(
+    gateway,
+    django_project,
+    django_setup,
+    django_orm,
+):
+    root, _ = django_project()
+    Charger, manager = django_orm
+    fleet = [Charger("CHG001"), Charger("CHG002")]
+
+    def connected(self):
+        return fleet
+
+    @classmethod
+    def summarize(cls, chargers):
+        return tuple(charger.serial for charger in chargers)
+
+    type(manager).connected = connected
+    Charger.summarize = summarize
+
+    django_setup(_app("energy", [Charger]))
+    django_ingestor.ingest_project(gateway, root)
+
+    assert gateway("connected chargers - summarize") == (
+        "CHG001",
+        "CHG002",
+    )
