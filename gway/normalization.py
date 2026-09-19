@@ -38,8 +38,8 @@ def complete_arguments(
         if name in bound.arguments:
             value = bound.arguments[name]
         elif subject and name == subject:
-            value = runtime.find_value(name)
-            if value is None:
+            value = runtime.find_value(name, _MISSING)
+            if value is _MISSING:
                 value = parameter.default
         else:
             value = parameter.default
