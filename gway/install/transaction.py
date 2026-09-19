@@ -7,6 +7,7 @@ import tempfile
 import uuid
 
 from .. import log as gway_log
+from .activation import activate as activate_project, deactivate as deactivate_project
 from .model import Installation, InstallRequest, UninstallRequest, validate_name
 from .paths import install_paths
 from .source import fingerprint, local_source, project_name
@@ -259,6 +260,8 @@ def install_materialized(
             and destination.is_dir()
         )
         if same:
+            launcher = activate_project(name, destination, selected)
+            launcher.commit()
             return existing
 
         if (
@@ -278,7 +281,14 @@ def install_materialized(
                 resolved_revision=resolved_revision,
                 installed_at=existing.installed_at,
             )
-            return registry.put(record)
+            launcher = activate_project(name, destination, selected)
+            try:
+                stored = registry.put(record)
+            except Exception:
+                launcher.rollback()
+                raise
+            launcher.commit()
+            return stored
 
         if not request.upgrade:
             if not destination.is_dir() and desired_changed:
@@ -316,9 +326,13 @@ def install_materialized(
             requested_ref=requested_ref,
             resolved_revision=resolved_revision,
         )
+        launcher = None
         try:
+            launcher = activate_project(name, destination, selected)
             stored = registry.put(record)
         except Exception:
+            if launcher is not None:
+                launcher.rollback()
             if destination.exists() or destination.is_symlink():
                 _remove_path(destination)
             if backup is not None and (
@@ -328,6 +342,7 @@ def install_materialized(
             activated = False
             raise
 
+        launcher.commit()
         if backup is not None and (
             backup.exists() or backup.is_symlink()
         ):
@@ -363,7 +378,7 @@ def install_local(request, *, paths=None, state=None):
 
 
 def uninstall_local(request, *, paths=None, state=None):
-    """Remove one managed local installation transactionally and idempotently."""
+    """Remove one managed installation and its owned launchers transactionally."""
     if not isinstance(request, UninstallRequest):
         raise TypeError("uninstall_local requires an UninstallRequest")
 
@@ -380,26 +395,35 @@ def uninstall_local(request, *, paths=None, state=None):
     destination = selected.projects / request.project
     _expected_destination(existing, destination)
 
-    if not destination.exists() and not destination.is_symlink():
-        registry.remove(request.project, scope=selected.scope)
-        return existing
+    tombstone = None
+    if destination.exists() or destination.is_symlink():
+        selected.projects.mkdir(parents=True, exist_ok=True)
+        tombstone = selected.projects / (
+            f".{request.project}.remove-{uuid.uuid4().hex}"
+        )
+        os.replace(destination, tombstone)
 
-    selected.projects.mkdir(parents=True, exist_ok=True)
-    tombstone = selected.projects / (
-        f".{request.project}.remove-{uuid.uuid4().hex}"
-    )
-    os.replace(destination, tombstone)
-
+    launcher = None
     try:
+        launcher = deactivate_project(request.project, selected)
         removed = registry.remove(request.project, scope=selected.scope)
         if not removed:
             raise RuntimeError(
                 f"Installation state disappeared while removing {request.project!r}"
             )
     except Exception:
-        if tombstone.exists() or tombstone.is_symlink():
+        if launcher is not None:
+            launcher.rollback()
+        if tombstone is not None and (
+            tombstone.exists() or tombstone.is_symlink()
+        ):
             os.replace(tombstone, destination)
         raise
 
-    _remove_path(tombstone)
+    launcher.commit()
+    if tombstone is not None and (
+        tombstone.exists() or tombstone.is_symlink()
+    ):
+        _remove_path(tombstone)
     return existing
+
