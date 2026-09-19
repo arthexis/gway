@@ -4,6 +4,7 @@ import os as _os
 from pathlib import Path as path
 
 from . import log, toml
+from .install import install, uninstall
 
 
 def env(name, default=None):
