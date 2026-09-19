@@ -9,11 +9,16 @@ _MISSING = object()
 
 
 def _expand_candidate(runtime, candidate):
-    """JIT-expand known ingestion branches along one hierarchical candidate."""
+    """JIT-expand hierarchical and semantic branches for one candidate."""
     path = tuple(part for part in candidate.replace(" ", ".").split(".") if part)
     expanded = False
     for size in range(1, len(path) + 1):
         expanded = expand_path(runtime, path[:size]) or expanded
+
+    if len(path) >= 2:
+        semantic_branch = (*path[:-2], path[-1])
+        expanded = expand_path(runtime, semantic_branch) or expanded
+
     return expanded
 
 
