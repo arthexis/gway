@@ -21,6 +21,7 @@ class DjangoProject:
     name: str | None
     registry: object = field(repr=False)
     apps: tuple[object, ...] = field(default_factory=tuple, repr=False)
+    management_indexed: bool = False
 
     @property
     def management_enabled(self):
@@ -334,6 +335,14 @@ def _management_api():
     return management.get_commands, management.call_command
 
 
+@dataclass(frozen=True)
+class DjangoCommand:
+    """Lazy reference to one command on one named Django project."""
+
+    mount: DjangoProject
+    name: str
+
+
 def _command_callable(command_name):
     """Create a lightweight GWAY operation backed by Django call_command()."""
     def invoke(*args, **options):
@@ -345,66 +354,87 @@ def _command_callable(command_name):
     return invoke
 
 
-def ingest_commands(gateway, mount, *, path=None, **kwargs):
-    """Expose a named project's Django management commands on its subject."""
+def ingest_command(gateway, command, *, path=None, **kwargs):
+    """Expose one lazily indexed Django management command."""
+    mount = command.mount
     if not mount.management_enabled:
         return []
 
-    root = normalize_path(path) if path is not None else (mount.name,)
+    root = (mount.name, command.name)
     record = remember_object(
         gateway,
-        mount,
+        command,
         root,
-        expander=ingest_commands,
+        expander=ingest_command,
     )
     if record.expanded:
         return []
 
-    get_commands, _ = _management_api()
-    wrapped = []
-    for command_name in sorted(get_commands()):
-        name = str(command_name)
-        operation_path = (*root, name)
-        if operation_path in record.operations:
-            continue
-        human_name = name.replace("_", " ")
-        operation = IngestedOperation(
-            operation_path,
-            _command_callable(name),
-            source=mount,
-            kind="django-command",
-            aliases=(
-                f"{human_name} {mount.name}",
-                f"{mount.name} {human_name}",
-            ),
-            op=name,
-            sub=mount.name,
-            metadata={
-                "project": mount.name,
-                "command": name,
-                "settings": mount.settings,
-            },
-        )
-        registered = register_operation(gateway, operation)
-        record.operations[operation_path] = registered
-        if record.operation is None:
-            record.operation = registered
-        record.registered = True
-        wrapped.append(registered)
-
+    human_name = command.name.replace("_", " ")
+    operation = IngestedOperation(
+        root,
+        _command_callable(command.name),
+        source=mount,
+        kind="django-command",
+        aliases=(
+            f"{human_name} {mount.name}",
+            f"{mount.name} {human_name}",
+        ),
+        op=command.name,
+        sub=mount.name,
+        metadata={
+            "project": mount.name,
+            "command": command.name,
+            "settings": mount.settings,
+        },
+    )
+    registered = register_operation(gateway, operation)
+    record.operations[root] = registered
+    record.operation = registered
+    record.registered = True
     record.expanded = True
+    return [registered]
+
+
+def ingest_commands(gateway, mount, *, path=None, **kwargs):
+    """Expand every indexed management command for an explicitly requested mount."""
+    if not mount.management_enabled:
+        return []
+
+    _index_management(gateway, mount)
+    wrapped = []
+    for record in tuple(gateway._ingested.values()):
+        value = record.value
+        if isinstance(value, DjangoCommand) and value.mount is mount:
+            wrapped.extend(ingest_command(gateway, value))
     return wrapped
 
 
 def _index_management(gateway, mount):
-    """Remember the named project as a lazy management-command subject."""
-    if mount.management_enabled:
-        remember_object(
-            gateway,
-            mount,
-            (mount.name,),
-            expander=ingest_commands,
-        )
+    """Index command names as lazy project-qualified resolution branches."""
+    if not mount.management_enabled or mount.management_indexed:
+        return mount
+
+    get_commands, _ = _management_api()
+    for command_name in sorted(get_commands()):
+        name = str(command_name)
+        command = DjangoCommand(mount, name)
+        human = tuple(part for part in name.split("_") if part)
+        paths = {
+            (name, mount.name),
+            (*human, mount.name),
+            (mount.name, name),
+            (mount.name, *human),
+        }
+        for command_path in paths:
+            remember_object(
+                gateway,
+                command,
+                command_path,
+                expander=ingest_command,
+            )
+
+    mount.management_indexed = True
     return mount
 
 
