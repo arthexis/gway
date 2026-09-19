@@ -91,6 +91,30 @@ def _parameter_descriptions(docstring):
     return descriptions
 
 
+def _narrative_docstring(docstring):
+    """Return docstring prose without structured parameter sections."""
+    if not docstring:
+        return ""
+
+    lines = docstring.splitlines()
+    kept = []
+    index = 0
+    while index < len(lines):
+        if not _ARGS_HEADER.match(lines[index]):
+            kept.append(lines[index])
+            index += 1
+            continue
+
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            if line.strip() and not line[:1].isspace():
+                break
+            index += 1
+
+    return "\n".join(kept).strip()
+
+
 def _signature(callable_obj):
     """Return an inspect signature when the callable exposes one."""
     try:
@@ -198,8 +222,9 @@ def render(callable_obj, *, verbose=False):
         return header
 
     lines = [header]
-    if documentation.docstring:
-        lines.extend(["", documentation.docstring])
+    narrative = _narrative_docstring(documentation.docstring)
+    if narrative:
+        lines.extend(["", narrative])
 
     if documentation.parameters:
         lines.extend(["", "Parameters:"])
