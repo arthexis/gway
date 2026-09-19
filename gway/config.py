@@ -107,6 +107,19 @@ def _source_from_manifest(source, directory):
     return source
 
 
+def _django_name_from_source(source):
+    """Infer a declarative Django mount name from a concrete project path."""
+    if not isinstance(source, Path):
+        return None
+
+    path = source.expanduser().resolve()
+    if path.is_file() and path.name == "manage.py":
+        return path.parent.name or None
+    if path.is_dir() and (path / "manage.py").is_file():
+        return path.name or None
+    return None
+
+
 def load_ingestions(runtime, manifest):
     """Load declarative ingestion entries into one Gateway."""
     manifest = Path(manifest).expanduser().resolve()
@@ -118,6 +131,12 @@ def load_ingestions(runtime, manifest):
         options = dict(entry)
         source = options.pop("source")
         source = _source_from_manifest(source, manifest.parent)
+
+        if options.get("kind") == "django" and "name" not in options:
+            inferred = _django_name_from_source(source)
+            if inferred is not None:
+                options["name"] = inferred
+
         loaded.append(runtime.ingest(source, **options))
     return loaded
 
