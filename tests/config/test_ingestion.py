@@ -294,3 +294,10 @@ def test_explicit_declarative_name_beats_folder_inference(
     config.load_ingestions(gateway, manifest)
 
     assert django_ingest_spy["kwargs"] == {"name": "api"}
+
+
+
+def test_declarative_url_source_is_not_resolved_as_local_path(tmp_path):
+    source = "https://example.test/tool.py"
+
+    assert config._source_from_manifest(source, tmp_path) == source
