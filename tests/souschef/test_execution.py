@@ -1,7 +1,6 @@
 import time
 
 from gway.souschef import (
-    Job,
     RecipeExecutionError,
     RecipeExecutor,
     RecipeTimeoutError,
