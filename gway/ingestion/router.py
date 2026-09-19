@@ -39,6 +39,12 @@ def _is_pathlike(source):
 
 def ingest(gateway, source, **kwargs):
     """Route an explicitly requested ingestion source to its ingestor."""
+    kind = kwargs.pop("kind", None)
+    if kind == "django":
+        from .django import ingest_project as ingest_django_project
+
+        return ingest_django_project(gateway, source, **kwargs)
+
     if _is_pathlike(source):
         return ingest_path(gateway, source, **kwargs)
 
@@ -60,6 +66,13 @@ def ingest(gateway, source, **kwargs):
 def ingest_path(gateway, path, **kwargs):
     """Route a filesystem path by structural source type."""
     path = Path(path).expanduser()
+
+    from .django import is_project_path
+
+    if is_project_path(path):
+        from .django import ingest_project as ingest_django_project
+
+        return ingest_django_project(gateway, path, **kwargs)
 
     if path.suffix == ".py" or path.is_dir():
         from .python import ingest_path as ingest_python_path
