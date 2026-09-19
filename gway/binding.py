@@ -118,8 +118,8 @@ def _normalize_pipeline_index(index, size):
     return index
 
 
-def _compose_pipeline_positionals(positionals, pipeline):
-    """Place and consume chain-local [n] and [*] selectors."""
+def _compose_pipeline_stream(tokens, pipeline):
+    """Place and consume chain-local [n] and [*] selectors in an argument stream."""
     bundle = _pipeline_bundle(pipeline)
     consumed = set()
     composed = []
@@ -132,7 +132,7 @@ def _compose_pipeline_positionals(positionals, pipeline):
             if index not in consumed
         ]
 
-    for token in positionals:
+    for token in tokens:
         selector = _chain_selector(token)
         if selector is None:
             composed.append(token)
@@ -158,7 +158,6 @@ def _compose_pipeline_positionals(positionals, pipeline):
         composed = [*remaining(), *composed]
 
     return composed
-
 
 def pipeline_boundary(
     func,
@@ -222,51 +221,21 @@ def bind_arguments(
     initial_kwargs=None,
     pipeline=_NO_PIPELINE,
 ) -> BoundCall:
-    """Bind command tokens after any already-supplied native arguments."""
+    """Bind explicit tokens and optional raw chain positionals to one callable."""
     signature = inspect.signature(func)
     keywords = {} if initial_kwargs is None else dict(initial_kwargs)
-    positional = []
-    tokens = list(tokens)
-    index = 0
-    literal_mode = False
-
-    while index < len(tokens):
-        raw = tokens[index]
-        token = token_value(raw)
-
-        if not literal_mode and not is_literal(raw) and token == "--":
-            literal_mode = True
-            index += 1
-            continue
-
-        if not literal_mode and not is_literal(raw) and token.startswith("--"):
-            key = token[2:].replace("-", "_")
-            parameter = signature.parameters.get(key)
-            if parameter is None:
-                raise TypeError(f"Unknown argument --{key.replace('_', '-')}")
-            if parameter.annotation is bool or isinstance(parameter.default, bool):
-                keywords[key] = True
-                index += 1
-                continue
-            if index + 1 >= len(tokens):
-                raise TypeError(f"Expected a value after {token}")
-            keywords[key] = convert_argument(tokens[index + 1], parameter, runtime)
-            index += 2
-            continue
-
-        positional.append(raw)
-        index += 1
-
+    stream = list(tokens)
     if pipeline is not _NO_PIPELINE:
-        positional = _compose_pipeline_positionals(positional, pipeline)
+        stream = _compose_pipeline_stream(stream, pipeline)
 
     converted_positional = list(initial_args)
     filled = _initial_filled(signature, converted_positional, keywords)
     greedy = _greedy_parameter(signature)
+    literal_mode = False
     index = 0
 
-    while index < len(positional):
-        item = positional[index]
+    while index < len(stream):
+        item = stream[index]
         parameter = _next_positional(signature, filled)
 
         if isinstance(item, _PipelineValue):
@@ -276,19 +245,55 @@ def bind_arguments(
             index += 1
             continue
 
+        token = token_value(item)
+
+        if not literal_mode and not is_literal(item) and token == "--":
+            literal_mode = True
+            index += 1
+            continue
+
+        if not literal_mode and not is_literal(item) and token.startswith("--"):
+            key = token[2:].replace("-", "_")
+            keyword_parameter = signature.parameters.get(key)
+            if keyword_parameter is None:
+                raise TypeError(f"Unknown argument --{key.replace('_', '-')}")
+            if (
+                keyword_parameter.annotation is bool
+                or isinstance(keyword_parameter.default, bool)
+            ):
+                keywords[key] = True
+                filled.add(key)
+                index += 1
+                continue
+            if index + 1 >= len(stream):
+                raise TypeError(f"Expected a value after {token}")
+            value_item = stream[index + 1]
+            if isinstance(value_item, _PipelineValue):
+                keywords[key] = value_item.value
+            else:
+                keywords[key] = convert_argument(
+                    value_item,
+                    keyword_parameter,
+                    runtime,
+                )
+            filled.add(key)
+            index += 2
+            continue
+
         if greedy is not None and parameter is greedy:
-            tail = positional[index:]
-            if all(not isinstance(part, _PipelineValue) for part in tail):
-                parts = [
-                    convert_argument(part, greedy, runtime)
-                    for part in tail
-                ]
-                converted_positional.append(" ".join(str(part) for part in parts))
-                filled.add(greedy.name)
-                break
+            tail = stream[index:]
+            if any(isinstance(part, _PipelineValue) for part in tail):
+                raise TypeError(
+                    "Pipeline positional values cannot be inserted after "
+                    "a greedy string argument has started"
+                )
+            parts = [convert_argument(part, greedy, runtime) for part in tail]
+            converted_positional.append(" ".join(str(part) for part in parts))
+            filled.add(greedy.name)
+            break
 
         if parameter is None:
-            converted_positional.append(token_value(item))
+            converted_positional.append(token)
         else:
             converted_positional.append(convert_argument(item, parameter, runtime))
             if parameter.kind is not inspect.Parameter.VAR_POSITIONAL:
@@ -316,3 +321,4 @@ def bind_arguments(
             )
 
     return BoundCall(bound.args, bound.kwargs)
+
