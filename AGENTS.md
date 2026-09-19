@@ -905,10 +905,28 @@ the authoritative SQLite installation record written. If that state write
 fails, activation is rolled back.
 
 Repeating an unchanged local install is a no-op and returns the existing
-installation record. If the local source has changed, `--no-upgrade` leaves
-the existing managed installation untouched. Replacement reconciliation for
-the normal `upgrade=True` path is not implemented yet; changed installed
-state currently fails rather than overwriting the existing managed project.
+installation record. If the local source has changed, the default
+`upgrade=True` path stages the new source beside the active installation,
+renames the active tree to a temporary replacement backup, atomically activates
+the staged tree, updates authoritative SQLite state, and only then removes the
+backup. If the state update fails, GWAY removes the failed replacement and
+restores the previous managed tree.
+
+`--no-upgrade` leaves an existing managed installation untouched when the
+source fingerprint has changed. A missing managed copy may still be repaired
+under `--no-upgrade` when the source matches the recorded fingerprint; if the
+source has also changed, GWAY refuses because that repair would implicitly
+perform an upgrade.
+
+Before any no-op, repair, or replacement, GWAY verifies that the live managed
+tree still matches its recorded fingerprint. Drift is treated as evidence of
+manual customization and blocks reconciliation rather than overwriting those
+changes. The upcoming mutation-handling layer will connect this guard to the
+existing `--force` and `--stash` request intents.
+
+If a caller points install at a different local source with the same project
+name and identical content, GWAY updates source provenance without needlessly
+replacing the managed tree.
 
 Uninstall is idempotent. A managed project is first renamed to a tombstone,
 then its authoritative state record is removed, then the tombstone is deleted.
@@ -919,8 +937,8 @@ deleted.
 
 `--ref` is reserved for the upcoming Git/GitHub source layer and is rejected
 for local sources. `--force` and `--stash` remain mutually exclusive request
-intents; dirty-checkout handling is not implemented in this local transaction
-chunk.
+intents; managed-tree drift is detected now, while discard/stash behavior is
+implemented by the next mutation-handling chunk.
 
 Durable installation state is separate from the disposable cache. User data
 uses the platform data directory (`$XDG_DATA_HOME/gway` or
