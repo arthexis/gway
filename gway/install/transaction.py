@@ -164,8 +164,14 @@ def install_local(request, *, paths=None, state=None):
             )
             return registry.put(record)
 
-        if destination.is_dir() and not request.upgrade:
-            return existing
+        if not request.upgrade:
+            if not destination.is_dir() and existing.fingerprint != desired_fingerprint:
+                raise RuntimeError(
+                    f"Managed project {name!r} is missing and the source has changed; "
+                    "repair would require an upgrade"
+                )
+            if destination.is_dir():
+                return existing
 
     stage = _stage_project(
         source,
