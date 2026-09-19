@@ -26,3 +26,16 @@ def test_command_recipe_and_manual_chain_share_pipeline_semantics(gateway):
 
     with gateway.chain("get_report") as __:
         assert __("consume_items") is marker
+
+
+def test_process_chunks_inline_stage_separators(gateway):
+    marker = object()
+    _install_pipeline(gateway, marker)
+
+    results, last = process(
+        [["get_report", "-", "consume_items"]],
+        gw_instance=gateway,
+    )
+
+    assert results == [marker, marker]
+    assert last is marker
