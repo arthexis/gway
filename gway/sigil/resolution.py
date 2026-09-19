@@ -72,7 +72,6 @@ def resolve_single(raw, lookup):
             )
 
     key = _unquote(raw) if quoted else raw
-    key = re.sub(r"^(gw|gway)[. ]+", "", key)
 
     if not quoted and "[" in key and "]" in key:
         nested = resolve_text(key, lookup)
