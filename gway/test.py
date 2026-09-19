@@ -79,7 +79,12 @@ def _inventory(root="tests", package=None):
 
 
 def summary(root="tests", package=None):
-    """Return a static summary of test functions, modules, and packages."""
+    """Return a static summary of discovered test functions.
+
+    Args:
+        root: Test-suite directory used as the discovery boundary.
+        package: Optional file or subdirectory to inspect within the test root.
+    """
     records = _inventory(root, package)
     packages = {}
     for record in records:
@@ -92,12 +97,23 @@ def summary(root="tests", package=None):
 
 
 def __main__(root="tests", package=None):
-    """Return the default test-suite summary."""
+    """Return the default test-suite summary.
+
+    Args:
+        root: Test-suite directory used as the discovery boundary.
+        package: Optional file or subdirectory to inspect within the test root.
+    """
     return summary(root=root, package=package)
 
 
 def count(package=None, root="tests", by=None):
-    """Count test functions, optionally grouped by package or module."""
+    """Count discovered test functions.
+
+    Args:
+        package: Optional file or subdirectory to inspect within the test root.
+        root: Test-suite directory used as the discovery boundary.
+        by: Optional grouping, either "package" or "module".
+    """
     records = _inventory(root, package)
     if by is None:
         return sum(record["count"] for record in records)
@@ -112,7 +128,12 @@ def count(package=None, root="tests", by=None):
 
 
 def list(package=None, root="tests"):
-    """List discovered test functions with their package and module."""
+    """List discovered test functions with provenance.
+
+    Args:
+        package: Optional file or subdirectory to inspect within the test root.
+        root: Test-suite directory used as the discovery boundary.
+    """
     return [
         {
             "package": record["package"],
@@ -130,7 +151,12 @@ def _pytest_args(package=None, root="tests"):
 
 
 def collect(package=None, root="tests"):
-    """Ask pytest how many executable cases it would collect."""
+    """Ask pytest how many executable cases it would collect.
+
+    Args:
+        package: Optional file or subdirectory passed to pytest for collection.
+        root: Test-suite directory used as the selection boundary.
+    """
     command = [*_pytest_args(package, root), "--collect-only", "-q"]
     completed = _subprocess.run(
         command,
@@ -155,7 +181,15 @@ def run(
     failed=False,
     verbose=False,
 ):
-    """Run tests through pytest and return its exit status."""
+    """Run tests through pytest and return its exit status.
+
+    Args:
+        package: Optional file or subdirectory to execute within the test root.
+        root: Test-suite directory used as the selection boundary.
+        keyword: Pytest -k expression used to filter collected tests.
+        failed: Re-run only tests remembered by pytest as last failures.
+        verbose: Ask pytest for its verbose test-reporting mode.
+    """
     command = _pytest_args(package, root)
     if keyword:
         command.extend(["-k", keyword])
