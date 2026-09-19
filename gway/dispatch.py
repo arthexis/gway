@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from .adaptation import adapt_pipeline
 from .binding import bind_arguments, pipeline_boundary
 from .ingestion.base import expand_path
-from .operations import Cardinality, subject_cardinality
+from .operations import Cardinality, singularize, subject_cardinality
 from .recipes import execute_recipe, parse_recipe_context, recipe_path
 from .tokens import is_literal, statements, token_value, tokenize
 
@@ -57,6 +57,10 @@ def _expand_candidate(runtime, candidate):
     if len(path) >= 2:
         semantic_branch = (*path[:-2], path[-1])
         expanded = expand_path(runtime, semantic_branch) or expanded
+        singular = singularize(path[-1])
+        if singular is not None:
+            singular_branch = (*path[:-2], singular)
+            expanded = expand_path(runtime, singular_branch) or expanded
 
     return expanded
 
