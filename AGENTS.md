@@ -760,16 +760,18 @@ layer.
 Only named Django project mounts expose management commands. An unnamed mount
 indexes apps/models but does not create any management-command discovery branch.
 
-For a named mount such as `arthexis`, the mount itself is remembered as a lazy
-semantic subject. The first resolution of a command against that subject, for
-example:
+For a named mount such as `arthexis`, GWAY reads Django's effective command
+registry once and indexes only the command names as lazy resolution branches.
+It does not eagerly register or execute the command implementations.
+
+The first resolution of a command against that project, for example:
 
 ```text
 migrate arthexis
 ```
 
-expands the mount's management surface using Django's effective command
-registry. Commands are then registered canonically beneath the project:
+expands only the matching indexed command and registers it canonically beneath
+the project:
 
 ```text
 arthexis.migrate
