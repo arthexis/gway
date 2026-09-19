@@ -874,6 +874,47 @@ GWAY keyword flags are forwarded to Django, and the command's return value is
 published normally as the result of the project-scoped operation. Management
 command discovery is idempotent per mounted project.
 
+## Cache
+
+GWAY has a general-purpose namespaced cache available as `Gateway.cache`. The
+default root is outside project/source trees and follows the host platform:
+
+```text
+Linux/Unix:  $XDG_CACHE_HOME/gway or ~/.cache/gway
+macOS:       ~/Library/Caches/gway
+Windows:     %LOCALAPPDATA%/gway/cache
+```
+
+`GWAY_CACHE_DIR` overrides the default and is the preferred mechanism for
+system/service deployments that need a shared location such as
+`/var/cache/gway`. A caller may also construct `Gateway(cache=...)` with a
+root path or an existing `Cache` instance.
+
+Cache construction is lazy: creating a Gateway does not create cache
+directories. A namespace is created only when a feature actually stores
+something. Cache namespaces are intended for reusable artifacts and computed
+state such as URL materializations, recipe compilation, parsed recipe data,
+source hashes, and operation-discovery metadata. Arbitrary command results are
+not transparently cached because side effects and external state require
+command-specific invalidation semantics.
+
+URL ingestion is the first cache consumer. HTTP(S) sources are materialized
+under the `url` namespace using a stable URL key and content-addressed payload
+directory. Metadata records the requested URL, final URL, content hash, and
+materialized artifact path. A repeated URL uses the cached artifact unless
+`refresh=True` is requested.
+
+Remote code is never executed merely because it was downloaded. URL ingestion
+requires `trust=True` before the cached artifact is delegated to ordinary
+path ingestion:
+
+```python
+gateway.ingest("https://example.com/tools.py", trust=True)
+```
+
+Without trust, the artifact may be materialized into the cache, but execution
+is rejected.
+
 ## Ingestion routing
 
 Filesystem discovery is opt-in through explicit ingestion. Ordinary operation
