@@ -101,8 +101,6 @@ def test_project_without_services_does_not_invoke_service_parser(
     monkeypatch,
 ):
     source = make_project("wire")
-    # No --service flag: this deliberately leaves the service without an
-    # installed backend record so the controller must use its process fallback.
     gateway(f"install {source}")
 
     calls = []
@@ -141,6 +139,8 @@ def test_unmaterialized_service_uses_process_fallback_across_gateways(
         "working_directory = '{project}'\n",
         encoding="utf-8",
     )
+    # No --service flag: this deliberately leaves the declared service without
+    # an installed backend record so the controller must use its process fallback.
     gateway(f"install {source}")
 
     outside = tmp_path / "outside-service-runtime"
