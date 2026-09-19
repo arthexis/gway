@@ -81,3 +81,54 @@ def test_package_main_restores_sys_argv(tmp_path):
 
     assert result["ARGS"][1:] == ["alpha"]
     assert sys.argv is original
+
+
+def test_gateway_bootstrap_discovers_package_main_without_project_script(
+    tmp_path,
+    monkeypatch,
+):
+    package = tmp_path / "samplepkg"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "__main__.py").write_text(
+        "import sys\n"
+        "ARGS = sys.argv[1:]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "sample-project"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    runtime = Gateway()
+
+    result = runtime("samplepkg alpha beta")
+
+    assert result["ARGS"] == ["alpha", "beta"]
+
+
+def test_gateway_bootstrap_discovers_src_layout_nested_package_main(
+    tmp_path,
+    monkeypatch,
+):
+    package = tmp_path / "src" / "acme" / "worker"
+    package.mkdir(parents=True)
+    (tmp_path / "src" / "acme" / "__init__.py").write_text("", encoding="utf-8")
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "__main__.py").write_text(
+        "import sys\n"
+        "ARGS = sys.argv[1:]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "acme-project"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    runtime = Gateway()
+
+    result = runtime("acme worker job-1")
+
+    assert result["ARGS"] == ["job-1"]
