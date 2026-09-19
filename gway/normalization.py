@@ -25,6 +25,12 @@ def complete_arguments(runtime, subject, func, args=(), kwargs=None) -> BoundCal
         else:
             value = parameter.default
 
+        if value is inspect.Parameter.empty:
+            if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+                value = ()
+            elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
+                value = {}
+
         if isinstance(value, (Sigil, Spool)):
             value = value.resolve(runtime)
 

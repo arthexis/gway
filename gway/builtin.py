@@ -1,6 +1,8 @@
-"""Built-in GWAY operations."""
+"""Built-in GWAY operations and namespaces."""
 
 import os as _os
+
+from . import logging
 
 
 def env(name, default=None):

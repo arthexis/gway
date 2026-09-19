@@ -54,6 +54,16 @@ def test_missing_required_argument_fails_after_semantic_completion(gateway):
         complete_arguments(gateway, "charger", create_charger)
 
 
+def test_empty_variadics_are_not_treated_as_required(gateway):
+    def operation(message, *args, **kwargs):
+        return message, args, kwargs
+
+    call = complete_arguments(gateway, None, operation, args=("hello",))
+
+    assert call.args == ("hello",)
+    assert call.kwargs == {}
+
+
 def test_literal_marker_is_unwrapped_without_type_coercion(gateway):
     def create_charger(limit: int):
         return limit

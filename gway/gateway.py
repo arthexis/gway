@@ -1,10 +1,10 @@
 # file: gway/gateway.py
 
-import logging
 import os
 import threading
 
 from .runner import invoke
+from . import logging as gway_logging
 from .normalization import complete_arguments
 from .operations import registry_views
 from .publication import publish
@@ -30,12 +30,14 @@ class Gateway(Resolver):
         **values,
     ):
         self.name = name
-        self.logger = logging.getLogger(name)
+        self.logger = gway_logging._child(name)
         self.ops, self.subs = registry_views()
         self._ingested = {}
         self.debug_enabled = bool(debug)
-        self.verbose_enabled = bool(verbose)
-        self.silent_enabled = bool(silent)
+        self._verbose = False
+        self._silent = False
+        self.verbose = verbose
+        self.silent = silent
         self.interactive_enabled = bool(interactive)
         self.timed_enabled = bool(timed)
 
@@ -79,29 +81,35 @@ class Gateway(Resolver):
         """Advance the current iterator result."""
         return self.next()
 
-    def debug(self, message, *args, **kwargs):
-        if self.debug_enabled:
-            return self.logger.debug(message, *args, **kwargs)
+    @property
+    def verbose(self):
+        """Whether this runtime emits informational logging."""
+        return self._verbose
 
-    def verbose(self, message, *args, **kwargs):
-        if self.verbose_enabled:
-            return self.logger.info(message, *args, **kwargs)
+    @verbose.setter
+    def verbose(self, value):
+        self._verbose = bool(value)
+        self._apply_logger_level()
 
-    def info(self, message, *args, **kwargs):
-        return self.logger.info(message, *args, **kwargs)
+    @property
+    def silent(self):
+        """Whether this runtime suppresses all logging output."""
+        return self._silent
 
-    def warning(self, message, *args, **kwargs):
-        return self.logger.warning(message, *args, **kwargs)
+    @silent.setter
+    def silent(self, value):
+        self._silent = bool(value)
+        self._apply_logger_level()
 
-    warn = warning
-
-    def error(self, message, *args, **kwargs):
-        return self.logger.error(message, *args, **kwargs)
-
-    def exception(self, exception, *args, **kwargs):
-        if isinstance(exception, BaseException):
-            return self.logger.exception(str(exception), *args, **kwargs)
-        return self.logger.exception(exception, *args, **kwargs)
+    def _apply_logger_level(self):
+        logger = self.__dict__.get("logger")
+        if logger is not None:
+            logger.setLevel(
+                gway_logging._level(
+                    verbose=self.__dict__.get("_verbose", False),
+                    silent=self.__dict__.get("_silent", False),
+                )
+            )
 
     @classmethod
     def update_modes(
@@ -118,14 +126,14 @@ class Gateway(Resolver):
         if not isinstance(instance, cls):
             return
         for name, value in {
-            "debug": debug,
+            "debug_enabled": debug,
+            "interactive_enabled": interactive,
+            "timed_enabled": timed,
             "verbose": verbose,
             "silent": silent,
-            "interactive": interactive,
-            "timed": timed,
         }.items():
             if value is not None:
-                setattr(instance, f"{name}_enabled", bool(value))
+                setattr(instance, name, bool(value))
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command through the unified dispatcher."""
@@ -194,12 +202,6 @@ class Gateway(Resolver):
             and getattr(value, "__gway_operation__", None) is not None
         ):
             ops.register_alias(name, value)
-
-    def __getattr__(self, name):
-        logger_method = getattr(self.logger, name, None)
-        if callable(logger_method):
-            return logger_method
-        raise AttributeError(name)
 
     @staticmethod
     def subject(func_name: str):
