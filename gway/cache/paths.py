@@ -5,22 +5,26 @@ from pathlib import Path
 import sys
 
 
-def default_root():
+def default_root(*, environ=None, platform=None, home=None):
     """Return GWAY's per-user cache root without creating it."""
-    override = os.environ.get("GWAY_CACHE_DIR")
+    environ = os.environ if environ is None else environ
+    platform = sys.platform if platform is None else platform
+    home = Path.home() if home is None else Path(home)
+
+    override = environ.get("GWAY_CACHE_DIR")
     if override:
         return Path(override).expanduser()
 
-    if os.name == "nt":
-        base = os.environ.get("LOCALAPPDATA")
+    if platform.startswith("win"):
+        base = environ.get("LOCALAPPDATA")
         if base:
             return Path(base) / "gway" / "cache"
-        return Path.home() / "AppData" / "Local" / "gway" / "cache"
+        return home / "AppData" / "Local" / "gway" / "cache"
 
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Caches" / "gway"
+    if platform == "darwin":
+        return home / "Library" / "Caches" / "gway"
 
-    base = os.environ.get("XDG_CACHE_HOME")
+    base = environ.get("XDG_CACHE_HOME")
     if base:
         return Path(base).expanduser() / "gway"
-    return Path.home() / ".cache" / "gway"
+    return home / ".cache" / "gway"
