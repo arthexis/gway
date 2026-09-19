@@ -1,7 +1,7 @@
 """Pipeline adaptation for GWAY operation composition."""
 
 import inspect
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import get_origin
 from dataclasses import dataclass
 
@@ -35,7 +35,7 @@ def _collection_value(value):
     """Return whether one pipeline value is a collection rather than one domain object."""
     return (
         not isinstance(value, (str, bytes, bytearray, Mapping))
-        and isinstance(value, (Collection, Sequence))
+        and isinstance(value, Iterable)
     )
 
 
