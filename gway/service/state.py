@@ -19,6 +19,7 @@ class ProcessRecord:
     command: tuple[str, ...]
     cwd: str
     started_at: str
+    project_fingerprint: str | None = None
 
     @property
     def identity(self):
@@ -89,6 +90,7 @@ class ServiceState:
             command=tuple(data.get("command", ())),
             cwd=data["cwd"],
             started_at=data["started_at"],
+            project_fingerprint=data.get("project_fingerprint"),
         )
 
     def put(self, record):
@@ -125,7 +127,14 @@ class ServiceState:
         return True
 
 
-def new_record(service, pid, command, cwd):
+def new_record(
+    service,
+    pid,
+    command,
+    cwd,
+    *,
+    project_fingerprint=None,
+):
     """Create one ownership record for a newly spawned process."""
     return ProcessRecord(
         project=service.project,
@@ -135,4 +144,5 @@ def new_record(service, pid, command, cwd):
         command=tuple(command),
         cwd=str(cwd),
         started_at=datetime.now(timezone.utc).isoformat(),
+        project_fingerprint=project_fingerprint,
     )
