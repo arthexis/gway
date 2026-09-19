@@ -1,36 +1,14 @@
 from gway import Gateway
 
 
-def write_project(tmp_path):
-    (tmp_path / "gway.toml").write_text(
-        "[project]\n"
-        "name = 'demo'\n"
-        "\n"
-        "[sous-chef.cleanup]\n"
-        "recipe = 'cleanup.rx'\n"
-        "every = '1h'\n"
-        "timeout = '5m'\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "cleanup.py").write_text(
-        "def mark():\n"
-        "    return 'clean'\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "cleanup.rx").write_text(
-        "cleanup mark\n",
-        encoding="utf-8",
-    )
-
-
 def fresh_gateway(tmp_path, monkeypatch):
     monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / ".gway-data"))
     monkeypatch.chdir(tmp_path)
     return Gateway()
 
 
-def test_sous_chef_list_and_inspect_local_jobs(tmp_path, monkeypatch):
-    write_project(tmp_path)
+def test_sous_chef_list_and_inspect_local_jobs(tmp_path, monkeypatch, souschef_project):
+    souschef_project(tmp_path)
     gateway = fresh_gateway(tmp_path, monkeypatch)
 
     listed = gateway("sous chef list")
@@ -51,8 +29,8 @@ def test_sous_chef_list_and_inspect_local_jobs(tmp_path, monkeypatch):
     assert inspected["timeout"] == 300.0
 
 
-def test_sous_chef_run_executes_job_through_scheduler(tmp_path, monkeypatch):
-    write_project(tmp_path)
+def test_sous_chef_run_executes_job_through_scheduler(tmp_path, monkeypatch, souschef_project):
+    souschef_project(tmp_path)
     gateway = fresh_gateway(tmp_path, monkeypatch)
 
     result = gateway("sous chef run cleanup")
@@ -67,8 +45,8 @@ def test_sous_chef_run_executes_job_through_scheduler(tmp_path, monkeypatch):
     }
 
 
-def test_multiword_sous_chef_path_wins_over_sous_operation(tmp_path, monkeypatch):
-    write_project(tmp_path)
+def test_multiword_sous_chef_path_wins_over_sous_operation(tmp_path, monkeypatch, souschef_project):
+    souschef_project(tmp_path)
     gateway = fresh_gateway(tmp_path, monkeypatch)
 
     gateway.wrap("sous", lambda chef: f"fallback:{chef}")
