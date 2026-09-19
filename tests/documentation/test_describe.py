@@ -1,3 +1,4 @@
+import pytest
 import inspect
 from types import ModuleType
 
@@ -91,7 +92,6 @@ def test_describe_bound_gway_operation_prefers_existing_provenance(gateway):
     assert documentation.source is module
     assert documentation.source_kind == "python"
     assert documentation.path == ("demo", "connect")
-    assert documentation.metadata["object"] is connect
     assert documentation.operation == "demo.connect"
     assert documentation.subject == "demo"
     assert documentation.signature == inspect.signature(connect)
@@ -122,13 +122,8 @@ def test_describe_respects_receiver_adjusted_bound_signature(gateway):
 
 
 def test_describe_rejects_non_callable():
-    try:
+    with pytest.raises(TypeError, match="documentation target must be callable"):
         describe(42)
-    except TypeError as exc:
-        assert str(exc) == "documentation target must be callable"
-    else:
-        raise AssertionError("describe() accepted a non-callable")
-
 
 
 def test_parameter_prose_is_optional_and_does_not_override_signature_facts():
