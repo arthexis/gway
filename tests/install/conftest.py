@@ -138,7 +138,12 @@ def managed_paths(tmp_path):
 @pytest.fixture
 def make_service_project(tmp_path):
     """Create an installable project with two representative services."""
-    def make(name="demo"):
+    def make(
+        name="demo",
+        *,
+        web_command='print("web")',
+        worker_command='print("worker")',
+    ):
         root = tmp_path / f"service-{name}"
         root.mkdir()
         (root / "gway.toml").write_text(
@@ -146,12 +151,12 @@ def make_service_project(tmp_path):
             f"name = {name!r}\n"
             "\n"
             "[services.web]\n"
-            "command = ['{python}', '-c', 'print(\"web\")']\n"
+            f"command = ['{{python}}', '-c', {web_command!r}]\n"
             "restart = 'on-failure'\n"
             "restart_sec = 5\n"
             "\n"
             "[services.worker]\n"
-            "command = ['{python}', '-c', 'print(\"worker\")']\n",
+            f"command = ['{{python}}', '-c', {worker_command!r}]\n",
             encoding="utf-8",
         )
         return root
