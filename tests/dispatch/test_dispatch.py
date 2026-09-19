@@ -156,3 +156,16 @@ def test_options_can_precede_greedy_final_string(gateway):
         gateway,
         "select --limit 5 * from users where Some - Dept ;",
     ) == ("* from users where Some - Dept", 5)
+
+
+def test_semicolon_preserves_named_results_without_raw_transfer(gateway):
+    def get_charger():
+        return "CHG001"
+
+    def inspect_charger(charger):
+        return f"inspect:{charger}"
+
+    gateway.get_charger = gateway.wrap("get_charger", get_charger)
+    gateway.inspect_charger = gateway.wrap("inspect_charger", inspect_charger)
+
+    assert dispatch(gateway, "get_charger ; inspect_charger") == "inspect:CHG001"
