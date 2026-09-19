@@ -1,7 +1,6 @@
 # file: gway/gateway.py
 
 import inspect
-import os
 import threading
 
 from .runner import invoke
@@ -10,6 +9,7 @@ from .normalization import complete_arguments
 from .operations import registry_views, split_operation
 from .publication import publish
 from .sigil import Resolver
+from .sigil.resolver import Environment
 from .structs import Results
 
 
@@ -58,7 +58,7 @@ class Gateway(Resolver):
         super().__init__([
             ("results", self.results),
             ("context", self.context),
-            ("env", os.environ),
+            ("env", Environment()),
         ])
 
         from . import builtin
