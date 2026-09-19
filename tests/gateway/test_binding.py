@@ -55,3 +55,36 @@ def test_semantic_completion_preserves_explicit_none_result(gateway):
     wrapped = gateway.wrap("inspect_charger", inspect_charger)
 
     assert wrapped() is None
+
+
+def test_missing_positional_parameter_is_completed_by_its_name(gateway):
+    gateway.context["chargers"] = ["A", "B"]
+
+    def summarize(items, chargers):
+        return items, chargers
+
+    wrapped = gateway.wrap("summarize_report", summarize)
+
+    assert wrapped("ready") == ("ready", ["A", "B"])
+
+
+def test_positional_only_parameter_can_be_completed_by_semantic_name(gateway):
+    gateway.context["chargers"] = ["A", "B"]
+
+    def summarize(chargers, /):
+        return chargers
+
+    wrapped = gateway.wrap("summarize_report", summarize)
+
+    assert wrapped() == ["A", "B"]
+
+
+def test_explicit_argument_precedes_named_semantic_completion(gateway):
+    gateway.context["chargers"] = ["context"]
+
+    def summarize(chargers):
+        return chargers
+
+    wrapped = gateway.wrap("summarize_report", summarize)
+
+    assert wrapped(["explicit"]) == ["explicit"]
