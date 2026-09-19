@@ -417,7 +417,7 @@ def install_materialized(
                     selected,
                     name,
                     destination,
-                    installation=stored,
+                    installation=existing,
                 )
             except Exception:
                 launcher.rollback()
