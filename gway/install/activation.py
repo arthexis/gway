@@ -4,7 +4,6 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import sys
 import tempfile
@@ -14,10 +13,6 @@ from .model import validate_name
 from ..project import scripts
 
 
-_TARGET = re.compile(
-    r"^(?P<module>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*):"
-    r"(?P<attribute>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)$"
-)
 _MARKER = "# gway-managed-launcher:"
 
 
