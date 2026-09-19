@@ -687,6 +687,56 @@ Single-quoted forms such as `'[0]'` remain literal text and do not act as
 chain selectors.
 
 
+## Declarative project ingestion
+
+Each new `Gateway` searches from the current directory upward for the nearest
+`gway.toml`. When present, GWAY processes declarative ingestion entries before
+the caller executes commands. Relative filesystem sources are resolved from the
+directory containing the manifest rather than from the process working
+directory.
+
+The canonical form is an array of ingestion tables:
+
+```toml
+[project]
+name = "arthexis"
+
+[[ingest]]
+source = "./manage.py"
+kind = "django"
+```
+
+Every entry is routed through the same `Gateway.ingest()` API used for manual
+ingestion, so declarative configuration does not introduce a separate ingestion
+implementation.
+
+For Django entries, an explicit `name` on the ingestion table wins. Otherwise
+`[project].name`, when declared, becomes the Django mount name:
+
+```toml
+[[ingest]]
+source = "./manage.py"
+kind = "django"
+name = "backend"
+```
+
+If neither location provides a name, the Django project is mounted unnamed:
+apps/models are available, but management commands are not indexed or exposed.
+
+A concise single-source-per-kind shorthand is also accepted:
+
+```toml
+[project]
+name = "arthexis"
+
+[ingest]
+django = "./manage.py"
+```
+
+The manifest bootstrap affects only declared ingestion sources. Other
+`gway.toml` sections remain available for their own project concerns and are
+not interpreted by the ingestion bootstrap.
+
 ## Django ingestion
 
 Django support is optional and lazily imported. Core GWAY has no mandatory
