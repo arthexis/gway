@@ -16,28 +16,76 @@ def test_gateway_instances_use_unique_child_loggers():
     assert gway_log.logger.parent is logging.getLogger()
 
 
-def test_verbose_and_silent_are_runtime_logger_properties(gateway):
-    assert gateway.verbose is False
-    assert gateway.silent is False
-    assert gateway.logger.level == logging.NOTSET
+def test_gateway_log_levels_are_callable_and_boolean():
+    gateway = Gateway(log_level="WARNING")
 
-    gateway.verbose = True
-    assert gateway.logger.level == logging.INFO
+    assert bool(gateway.debug) is False
+    assert bool(gateway.info) is False
+    assert bool(gateway.warning) is True
+    assert bool(gateway.error) is True
+    assert gateway.warn is gateway.warning
 
-    gateway.silent = True
-    assert gateway.logger.level > logging.CRITICAL
 
-    gateway.silent = False
-    assert gateway.logger.level == logging.INFO
+def test_gateway_log_level_can_change_without_changing_output_intent():
+    gateway = Gateway(verbose=True, silent=True, log_level="DEBUG")
 
-    gateway.verbose = False
-    assert gateway.logger.level == logging.NOTSET
+    assert gateway.verbose is True
+    assert gateway.silent is True
+    assert bool(gateway.debug) is True
+
+    gateway.logger.setLevel(logging.ERROR)
+
+    assert gateway.verbose is True
+    assert gateway.silent is True
+    assert bool(gateway.info) is False
+    assert bool(gateway.error) is True
+
+
+def test_verbose_and_silent_are_semantic_output_intent():
+    gateway = Gateway(verbose=True, silent=True)
+
+    def intent(verbose=False, silent=False):
+        return verbose, silent
+
+    gateway.intent = gateway.wrap("intent", intent)
+
+    assert gateway("intent") == (True, True)
+
+
+def test_log_config_changes_parent_level_and_boolean_levels():
+    previous = gway_log.logger.level
+    gateway = Gateway()
+    try:
+        configured = gateway("log config --level INFO")
+
+        assert configured["logger"] == "gway"
+        assert configured["level"] == "INFO"
+        assert bool(gateway.info) is True
+        assert bool(gateway.debug) is False
+    finally:
+        gway_log.logger.setLevel(previous)
+
+
+def test_log_config_can_target_another_python_logger():
+    target = logging.getLogger("gway-test.external")
+    previous = target.level
+    gateway = Gateway()
+    try:
+        configured = gateway(
+            "log config --level ERROR --logger gway-test.external"
+        )
+
+        assert configured["logger"] == "gway-test.external"
+        assert configured["level"] == "ERROR"
+        assert target.level == logging.ERROR
+    finally:
+        target.setLevel(previous)
 
 
 def test_log_dunder_main_is_default_operation(gateway, caplog):
     assert gateway.ops.resolve("log") is None
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger="gway"):
         assert gateway("log hello") is None
 
     assert gateway.ops.resolve("log") is not None
@@ -45,7 +93,7 @@ def test_log_dunder_main_is_default_operation(gateway, caplog):
 
 
 def test_log_dunder_main_supports_explicit_level(gateway, caplog):
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="gway"):
         assert gateway("log hello --level 30") is None
 
     assert any(
@@ -57,7 +105,7 @@ def test_log_dunder_main_supports_explicit_level(gateway, caplog):
 def test_log_subjects_are_jit_ingested(gateway, caplog):
     assert gateway.ops.resolve("log.info") is None
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger="gway"):
         assert gateway("log info hello") is None
 
     assert gateway.ops.resolve("log.info") is not None
@@ -81,7 +129,7 @@ def test_log_family_uses_operation_and_subject_semantics(gateway):
     assert gateway.subs["warn"]["log"] is family["warn"]
 
 
-def test_log_exposes_standard_level_subjects(gateway):
+def test_log_exposes_standard_levels_and_config(gateway):
     gateway("log info hello")
 
     family = gateway.ops["log"]
@@ -93,5 +141,6 @@ def test_log_exposes_standard_level_subjects(gateway):
         "error",
         "critical",
         "exception",
+        "config",
     ):
         assert subject in family
