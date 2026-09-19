@@ -7,7 +7,7 @@ import threading
 from .runner import invoke
 from . import log as gway_log
 from .normalization import complete_arguments
-from .operations import registry_views
+from .operations import registry_views, split_operation
 from .publication import publish
 from .sigil import Resolver
 from .structs import Results
@@ -212,15 +212,8 @@ class Gateway(Resolver):
 
     @staticmethod
     def subject(func_name: str):
-        """Return the semantic subject from operation_subject or a dotted name."""
-        simple = func_name.rsplit(".", 1)[-1]
-        words = simple.replace("-", "_").split("_")
-        if len(words) > 1:
-            return "_".join(words[1:])
-        parts = func_name.split(".")
-        if len(parts) > 1:
-            return parts[-2]
-        return None
+        """Return the semantic subject derived by the operation registry."""
+        return split_operation(func_name)[1]
 
 
 gw = Gateway()
