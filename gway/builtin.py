@@ -2,7 +2,7 @@
 
 import os as _os
 
-from . import log
+from . import log, toml
 
 
 def env(name, default=None):
