@@ -146,6 +146,15 @@ def load_ingestions(runtime, manifest):
     return loaded
 
 
+def _declares_ingestion(manifest):
+    """Return whether a manifest contains an ingestion table declaration."""
+    for raw in Path(manifest).read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if line in {"[ingest]", "[[ingest]]"}:
+            return True
+    return False
+
+
 def bootstrap(runtime, *, start=None):
     """Apply nearest project manifest ingestion declarations, if present."""
     manifest = find_manifest(start)
@@ -153,5 +162,6 @@ def bootstrap(runtime, *, start=None):
         return None
 
     runtime._manifest_path = manifest
-    load_ingestions(runtime, manifest)
+    if _declares_ingestion(manifest):
+        load_ingestions(runtime, manifest)
     return manifest
