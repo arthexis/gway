@@ -196,3 +196,158 @@ def test_gateway_with_manifest_but_no_ingest_table_starts_normally(
 def test_invalid_ingest_entry_fails_closed():
     with pytest.raises(ValueError, match="requires source"):
         config.ingestion_entries({"ingest": [{"kind": "django"}]})
+
+
+
+def test_declarative_django_directory_infers_project_name_from_folder(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "backend"
+    project.mkdir()
+    (project / "manage.py").write_text("# manage\n", encoding="utf-8")
+    manifest = tmp_path / "gway.toml"
+    manifest.write_text(
+        "[[ingest]]\n"
+        "source = './backend'\n"
+        "kind = 'django'\n",
+        encoding="utf-8",
+    )
+    seen = {}
+
+    def fake(runtime, source, **kwargs):
+        seen["source"] = source
+        seen["kwargs"] = kwargs
+        return "mounted"
+
+    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
+
+    config.load_ingestions(gateway, manifest)
+
+    assert seen == {
+        "source": project.resolve(),
+        "kwargs": {"name": "backend"},
+    }
+
+
+def test_declarative_manage_py_infers_project_name_from_parent_folder(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "billing"
+    project.mkdir()
+    manage = project / "manage.py"
+    manage.write_text("# manage\n", encoding="utf-8")
+    manifest = tmp_path / "gway.toml"
+    manifest.write_text(
+        "[[ingest]]\n"
+        "source = './billing/manage.py'\n"
+        "kind = 'django'\n",
+        encoding="utf-8",
+    )
+    seen = {}
+
+    def fake(runtime, source, **kwargs):
+        seen["source"] = source
+        seen["kwargs"] = kwargs
+        return "mounted"
+
+    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
+
+    config.load_ingestions(gateway, manifest)
+
+    assert seen == {
+        "source": manage.resolve(),
+        "kwargs": {"name": "billing"},
+    }
+
+
+def test_declarative_dot_django_source_uses_manifest_directory_name(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "arthexis"
+    project.mkdir()
+    (project / "manage.py").write_text("# manage\n", encoding="utf-8")
+    manifest = project / "gway.toml"
+    manifest.write_text(
+        "[ingest]\n"
+        "django = '.'\n",
+        encoding="utf-8",
+    )
+    seen = {}
+
+    def fake(runtime, source, **kwargs):
+        seen["source"] = source
+        seen["kwargs"] = kwargs
+        return "mounted"
+
+    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
+
+    config.load_ingestions(gateway, manifest)
+
+    assert seen == {
+        "source": project.resolve(),
+        "kwargs": {"name": "arthexis"},
+    }
+
+
+def test_declarative_settings_module_does_not_infer_name_from_text(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    manifest = tmp_path / "gway.toml"
+    manifest.write_text(
+        "[[ingest]]\n"
+        "source = 'config.settings'\n"
+        "kind = 'django'\n",
+        encoding="utf-8",
+    )
+    seen = {}
+
+    def fake(runtime, source, **kwargs):
+        seen["source"] = source
+        seen["kwargs"] = kwargs
+        return "mounted"
+
+    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
+
+    config.load_ingestions(gateway, manifest)
+
+    assert seen == {
+        "source": "config.settings",
+        "kwargs": {},
+    }
+
+
+def test_explicit_declarative_name_beats_folder_inference(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "backend"
+    project.mkdir()
+    (project / "manage.py").write_text("# manage\n", encoding="utf-8")
+    manifest = tmp_path / "gway.toml"
+    manifest.write_text(
+        "[[ingest]]\n"
+        "source = './backend'\n"
+        "kind = 'django'\n"
+        "name = 'api'\n",
+        encoding="utf-8",
+    )
+    seen = {}
+
+    def fake(runtime, source, **kwargs):
+        seen["kwargs"] = kwargs
+        return "mounted"
+
+    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
+
+    config.load_ingestions(gateway, manifest)
+
+    assert seen["kwargs"] == {"name": "api"}
