@@ -10,11 +10,6 @@ def _is_path_string(source):
     if not isinstance(source, str) or not source:
         return False
 
-    # Existing filesystem entries are path sources even when their spelling is
-    # otherwise ambiguous, such as an extensionless bare filename like README.
-    if Path(source).expanduser().exists():
-        return True
-
     # Path separators make relative intent explicit even when the target does
     # not exist yet. Support both separator spellings independent of host OS.
     if "/" in source or "\\" in source:
@@ -29,7 +24,9 @@ def _is_path_string(source):
     if PureWindowsPath(source).drive:
         return True
 
-    return False
+    # A bare spelling has no syntactic path marker. Inside explicit ingest(),
+    # filesystem existence is the final disambiguator.
+    return Path(source).exists()
 
 
 def _is_pathlike(source):
