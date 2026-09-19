@@ -55,7 +55,6 @@ def test_dispatch_stage_accepts_pipeline_before_inline_arguments(gateway):
         gateway,
         ["filter", "A"],
         pipeline=["A", "B"],
-        allow_inline_with_native=True,
     )
 
     assert result == ["A"]
@@ -83,3 +82,25 @@ def test_dispatch_does_not_duplicate_runner_timing(gateway, caplog):
 
     timed = [record for record in caplog.records if "[timed]" in record.getMessage()]
     assert len(timed) == 1
+
+
+def test_process_style_stage_sequence_matches_inline_dispatch(gateway):
+    from gway.dispatch import dispatch_sequence
+
+    def produce_value():
+        return "value"
+
+    def consume_value(value):
+        return f"seen:{value}"
+
+    gateway.produce_value = gateway.wrap("produce_value", produce_value)
+    gateway.consume_value = gateway.wrap("consume_value", consume_value)
+
+    results, last = dispatch_sequence(
+        gateway,
+        [["produce_value"], ["consume_value"]],
+    )
+
+    assert results == ["value", "seen:value"]
+    assert last == "seen:value"
+    assert dispatch(gateway, "produce_value - consume_value") == last
