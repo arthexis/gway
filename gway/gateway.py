@@ -64,7 +64,7 @@ class Gateway(Resolver):
         from . import builtin
         from .ingestion.python import ingest_module
 
-        ingest_module(self, builtin, path=("gway",))
+        ingest_module(self, builtin, transparent=True)
 
     @property
     def last(self):
