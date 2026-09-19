@@ -12,16 +12,28 @@ def _backend():
 
 
 def loads(value):
-    """Parse TOML text into a Python mapping."""
+    """Parse TOML text into a Python mapping.
+
+    Args:
+        value: Complete TOML document text.
+    """
     return _backend().loads(value)
 
 
 def load(path):
-    """Parse a TOML file from a filesystem path."""
+    """Parse a TOML file from a filesystem path.
+
+    Args:
+        path: Path to a TOML document opened and parsed as binary input.
+    """
     with open(path, "rb") as stream:
         return _backend().load(stream)
 
 
 def __main__(value):
-    """Parse TOML text using the stable top-level toml operation."""
+    """Parse TOML text using the stable top-level toml operation.
+
+    Args:
+        value: Complete TOML document text.
+    """
     return loads(value)
