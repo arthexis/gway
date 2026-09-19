@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from . import toml
+from .ingestion.base import remember_object
 from .ingestion.router import has_path_syntax
 
 
@@ -155,8 +156,57 @@ def _declares_ingestion(manifest):
     return False
 
 
+
+def _valid_installation(record, paths):
+    """Return whether one registry record still names a managed project tree."""
+    expected = (paths.projects / record.name).resolve()
+    try:
+        installed = record.install_path.expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    if installed != expected:
+        return False
+    if not installed.is_dir():
+        return False
+    return (installed / "gway.toml").is_file()
+
+
+def discover_installations(runtime, *, system=False):
+    """Remember valid Gway-managed projects without importing project code."""
+    from .install import InstallState, install_paths
+
+    paths = install_paths(system=system)
+    state = InstallState(paths.state)
+    discovered = []
+
+    for record in state.all(scope=paths.scope):
+        if not _valid_installation(record, paths):
+            continue
+        remember_object(runtime, record, (record.name,))
+        discovered.append(record)
+
+    return discovered
+
+
+def discover_managed_projects(runtime):
+    """Remember installed user/system projects as lazy Gateway branches."""
+    discovered = {}
+    for system in (False, True):
+        try:
+            records = discover_installations(runtime, system=system)
+        except (OSError, PermissionError):
+            continue
+        for record in records:
+            discovered.setdefault(record.name, record)
+
+    runtime._installed = discovered
+    return discovered
+
+
 def bootstrap(runtime, *, start=None):
-    """Apply nearest project manifest ingestion declarations, if present."""
+    """Discover managed projects and apply the nearest local project manifest."""
+    discover_managed_projects(runtime)
+
     manifest = find_manifest(start)
     if manifest is None:
         return None
