@@ -81,7 +81,15 @@ class Gateway(Resolver):
         bootstrap(self)
 
     def _clear_context(self, **values):
-        """Clear all accumulated context, or only explicitly named keys."""
+        """Clear accumulated semantic context.
+
+        With no named values, clear the entire context. Bare keyword flags
+        remove only the corresponding context keys while preserving operation
+        registration and result history.
+
+        Args:
+            values: Context-key names to remove selectively.
+        """
         if values:
             for name in values:
                 self.context.pop(name, None)
@@ -90,11 +98,11 @@ class Gateway(Resolver):
         return None
 
     def _help(self, *operation: str, verbose=False):
-        """Return help for one Gway operation.
+        """Return documentation for one Gway operation.
 
         Args:
-            operation: Operation name, including an optional semantic subject.
-            verbose: Include the full docstring and parameter details.
+            operation: Operation name parts, including an optional semantic subject.
+            verbose: Include the full docstring and merged parameter details.
         """
         from .documentation import render
         from .dispatch import resolve_operation
