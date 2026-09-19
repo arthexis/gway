@@ -1,5 +1,6 @@
 """Resolver policy and source precedence."""
 
+from collections.abc import Mapping
 import os
 import re
 
@@ -7,13 +8,32 @@ from .paths import follow_path
 from .resolution import resolve_text
 from .value import Sigil
 
+_MISSING = object()
+
+
+class Environment(Mapping):
+    """Case-normalized view of an environment mapping for semantic lookup."""
+
+    def __init__(self, environ=None):
+        self._environ = os.environ if environ is None else environ
+
+    def __getitem__(self, key):
+        return self._environ[str(key).upper()]
+
+    def __iter__(self):
+        return iter(self._environ)
+
+    def __len__(self):
+        return len(self._environ)
+
 
 class Resolver:
     def __init__(self, search_order):
-        self._search_order = search_order
+        self._search_order = list(search_order)
 
-    def append_source(self, source):
-        self._search_order.append(source)
+    def append_source(self, source, *, name=None):
+        """Append a semantic source without assigning behavior to its name."""
+        self._search_order.append((name or type(source).__name__, source))
 
     def resolve(self, *args, default="_raise"):
         last_exc = None
@@ -36,35 +56,25 @@ class Resolver:
         raise KeyError("No arguments provided to resolve() or all were None")
 
     def find_value(self, key, fallback=None):
-        for name, source in self._search_order:
-            if name == "env":
-                value = os.getenv(key.upper())
-                if value is not None:
-                    return value
-            elif isinstance(source, dict) and key in source:
+        """Return the first matching value from the configured semantic sources."""
+        for _, source in self._search_order:
+            try:
                 return source[key]
-            elif hasattr(source, "__getitem__"):
-                try:
-                    value = source[key]
-                    if value is not None:
-                        return value
-                except Exception:
-                    pass
-
+            except (KeyError, IndexError, TypeError):
+                continue
         return fallback
 
     def _resolve_key(self, key, fallback=None):
         key = key.strip()
-        key = re.sub(r"^(gw|gway)[. ]+", "", key)
 
-        value = self.find_value(key, None)
-        if value is not None:
+        value = self.find_value(key, _MISSING)
+        if value is not _MISSING:
             return value
 
         parts = re.split(r"[. ]+", key.replace("-", "_"))
         if len(parts) > 1:
-            base = self.find_value(parts[0], None)
-            if base is not None:
+            base = self.find_value(parts[0], _MISSING)
+            if base is not _MISSING:
                 try:
                     return follow_path(
                         base,
@@ -73,25 +83,15 @@ class Resolver:
                         resolve_text=resolve_text,
                     )
                 except KeyError:
-                    return fallback
+                    pass
 
-        current = self
-        for part in parts:
-            if part.startswith("_"):
-                return fallback
-            if hasattr(current, part):
-                current = getattr(current, part)
-            elif isinstance(current, dict) and part in current:
-                current = current[part]
-            else:
-                return fallback
-        return current
+        return fallback
 
     def __getitem__(self, key):
         if isinstance(key, str) and key.startswith("[") and key.endswith("]"):
             key = key[1:-1]
-        value = self._resolve_key(key)
-        if value is None:
+        value = self._resolve_key(key, _MISSING)
+        if value is _MISSING:
             raise KeyError(f"Cannot resolve key '{key}'")
         return value
 
@@ -114,7 +114,7 @@ class Resolver:
         return {
             key
             for _, source in self._search_order
-            if isinstance(source, dict)
+            if isinstance(source, Mapping)
             for key in source
         }
 
