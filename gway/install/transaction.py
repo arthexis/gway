@@ -13,6 +13,7 @@ from .paths import install_paths
 from .source import fingerprint, local_source, project_name
 from .stash import preserve as preserve_stash
 from .state import InstallState
+from .systemd import UnitState, install_units, uninstall_units
 
 
 def _is_within(path, parent):
@@ -183,6 +184,55 @@ def _desired_changed(
     )
 
 
+def _unit_state_root(paths):
+    return paths.root / "systemd"
+
+
+def _selected_service_names(request, paths, project):
+    if request.services:
+        return tuple(request.services)
+    return tuple(
+        record.service
+        for record in UnitState(_unit_state_root(paths)).get(project)
+    )
+
+
+def _service_definitions(root, project, names):
+    names = tuple(names)
+    if not names:
+        return ()
+
+    from ..service.manifest import load as load_services
+
+    manifest = Path(root) / "gway.toml"
+    catalog = load_services(manifest)
+    if catalog.project != project:
+        raise RuntimeError(
+            f"Service manifest project mismatch: {catalog.project!r} != {project!r}"
+        )
+    available = {service.name: service for service in catalog.services}
+    missing = [name for name in names if name not in available]
+    if missing:
+        raise ValueError(
+            f"Unknown service(s) for {project!r}: {', '.join(missing)}"
+        )
+    return tuple(available[name] for name in names)
+
+
+def _converge_services(request, paths, project, root):
+    names = _selected_service_names(request, paths, project)
+    if not names:
+        return []
+    services = _service_definitions(root, project, names)
+    return install_units(
+        project,
+        services,
+        state_root=_unit_state_root(paths),
+        system=request.system,
+        name=request.name,
+    )
+
+
 def _paths_and_state(request, *, paths=None, state=None):
     selected = install_paths(system=request.system) if paths is None else paths
     registry = InstallState(selected.state) if state is None else state
@@ -213,6 +263,11 @@ def install_materialized(
     validate_name(name)
     desired_fingerprint = fingerprint(source)
     destination = selected.projects / name
+
+    # Validate explicit or previously materialized service selections before
+    # mutating the managed installation.
+    selected_names = _selected_service_names(request, selected, name)
+    _service_definitions(source, name, selected_names)
 
     if _is_within(selected.root, source):
         raise ValueError(
@@ -261,6 +316,11 @@ def install_materialized(
         )
         if same:
             launcher = activate_project(name, destination, selected)
+            try:
+                _converge_services(request, selected, name, destination)
+            except Exception:
+                launcher.rollback()
+                raise
             launcher.commit()
             return existing
 
@@ -284,6 +344,11 @@ def install_materialized(
             launcher = activate_project(name, destination, selected)
             try:
                 stored = registry.put(record)
+            except Exception:
+                launcher.rollback()
+                raise
+            try:
+                _converge_services(request, selected, name, destination)
             except Exception:
                 launcher.rollback()
                 raise
@@ -330,6 +395,7 @@ def install_materialized(
         try:
             launcher = activate_project(name, destination, selected)
             stored = registry.put(record)
+            _converge_services(request, selected, name, destination)
         except Exception:
             if launcher is not None:
                 launcher.rollback()
@@ -391,6 +457,11 @@ def uninstall_local(request, *, paths=None, state=None):
     existing = registry.get(request.project, scope=selected.scope)
     if existing is None:
         return None
+
+    uninstall_units(
+        request.project,
+        state_root=_unit_state_root(selected),
+    )
 
     destination = selected.projects / request.project
     _expected_destination(existing, destination)
