@@ -1,7 +1,9 @@
 """Recursive ingestion for already-imported Python sources."""
 
 from importlib import import_module
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import sys
 
 from .base import IngestedOperation, normalize_path, register_operations
 
@@ -81,7 +83,44 @@ def ingest_name(gateway, name, *, path=None, **kwargs):
     return ingest_python(gateway, module, path=path, **kwargs)
 
 
-def ingest_path(gateway, path, **kwargs):
-    """Load and ingest Python from a module file or package path."""
-    path = Path(path)
-    raise NotImplementedError(f"Python path ingestion is not implemented yet: {path}")
+def _load_path(path, *, name=None):
+    """Load one Python module or package directly from a filesystem path."""
+    path = Path(path).expanduser().resolve()
+
+    if path.is_dir():
+        init = path / "__init__.py"
+        if not init.is_file():
+            raise ValueError(f"Python package path has no __init__.py: {path}")
+        module_name = name or path.name
+        spec = spec_from_file_location(
+            module_name,
+            init,
+            submodule_search_locations=[str(path)],
+        )
+    elif path.is_file() and path.suffix == ".py":
+        module_name = name or path.stem
+        spec = spec_from_file_location(module_name, path)
+    else:
+        raise ValueError(f"Unsupported Python path: {path}")
+
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load Python source from {path}")
+
+    module = module_from_spec(spec)
+    previous = sys.modules.get(module_name)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        if previous is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = previous
+        raise
+    return module
+
+
+def ingest_path(gateway, path, *, name=None, root=None, **kwargs):
+    """Load and recursively ingest Python from a module file or package path."""
+    module = _load_path(path, name=name)
+    return ingest_python(gateway, module, path=root, **kwargs)
