@@ -76,6 +76,7 @@ def test_dispatch_does_not_duplicate_runner_timing(gateway, caplog):
 
     gateway.ping = gateway.wrap("ping", ping)
     gateway.timed_enabled = True
+    gateway.logger.setLevel(logging.INFO)
 
     with caplog.at_level(logging.INFO):
         assert dispatch(gateway, "ping") == "pong"
