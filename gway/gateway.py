@@ -171,6 +171,7 @@ class Gateway(Resolver):
                 wrapped.__signature__ = signature.replace(parameters=parameters[1:])
         wrapped.__gway_operation__ = op or func_name
         wrapped.__gway_subject__ = subject
+        wrapped.__gway_receiver__ = receiver
         self.ops.register(func_name, wrapped, op=op, sub=sub)
         return wrapped
 
