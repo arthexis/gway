@@ -153,6 +153,33 @@ def _enforce_cardinality(resolution, result):
     return result
 
 
+def _invoke_resolved(runtime, resolution, *args, **kwargs):
+    """Invoke one resolved operation and keep published state cardinality-consistent."""
+    subject = resolution.subject
+    results = runtime.results
+    history_size = len(results.history)
+    had_subject = subject is not None and subject in results.maps[0]
+    previous = results.maps[0].get(subject) if had_subject else None
+
+    try:
+        raw = resolution.callable(*args, **kwargs)
+        normalized = _enforce_cardinality(resolution, raw)
+    except Exception:
+        del results.history[history_size:]
+        if subject is not None:
+            if had_subject:
+                results.maps[0][subject] = previous
+            else:
+                results.maps[0].pop(subject, None)
+        raise
+
+    if normalized is not raw and len(results.history) > history_size:
+        results.history[-1] = normalized
+        if subject is not None and results.maps[0].get(subject) is raw:
+            results.maps[0][subject] = normalized
+    return normalized
+
+
 def _recipe_source(token):
     return token if isinstance(token, os.PathLike) else token_value(token)
 
@@ -230,7 +257,7 @@ def dispatch_stage(
                 initial_kwargs=initial_kwargs,
                 pipeline=pipeline,
             )
-            return _enforce_cardinality(resolution, func(*bound.args, **bound.kwargs))
+            return _invoke_resolved(runtime, resolution, *bound.args, **bound.kwargs)
 
         adapted = adapt_pipeline(
             runtime,
@@ -251,13 +278,13 @@ def dispatch_stage(
             initial_args=initial_args,
             initial_kwargs=initial_kwargs,
         )
-        return _enforce_cardinality(resolution, func(*bound.args, **bound.kwargs))
+        return _invoke_resolved(runtime, resolution, *bound.args, **bound.kwargs)
 
     if pipeline is not _MISSING:
-        return _enforce_cardinality(resolution, func(*initial_args, **initial_kwargs))
+        return _invoke_resolved(runtime, resolution, *initial_args, **initial_kwargs)
 
     if args or kwargs:
-        return _enforce_cardinality(resolution, func(*args, **kwargs))
+        return _invoke_resolved(runtime, resolution, *args, **kwargs)
 
     bound = bind_arguments(
         func,
@@ -265,7 +292,7 @@ def dispatch_stage(
         runtime=runtime,
         interactive=runtime.interactive_enabled,
     )
-    return _enforce_cardinality(resolution, func(*bound.args, **bound.kwargs))
+    return _invoke_resolved(runtime, resolution, *bound.args, **bound.kwargs)
 
 
 
