@@ -104,3 +104,55 @@ def test_process_style_stage_sequence_matches_inline_dispatch(gateway):
     assert results == ["value", "seen:value"]
     assert last == "seen:value"
     assert dispatch(gateway, "produce_value - consume_value") == last
+
+
+def test_semicolon_starts_new_statement_without_raw_pipeline(gateway):
+    marker = object()
+
+    def get_report():
+        return marker
+
+    def consume_items(items="default"):
+        return items
+
+    gateway.get_report = gateway.wrap("get_report", get_report)
+    gateway.consume_items = gateway.wrap("consume_items", consume_items)
+
+    assert dispatch(gateway, "get_report ; consume_items") == "default"
+
+
+def test_semicolon_statement_still_sees_published_semantic_context(gateway):
+    def get_items():
+        return {"items": ["A", "B"]}
+
+    def count_items(items):
+        return len(items)
+
+    gateway.get_items = gateway.wrap("get_items", get_items)
+    gateway.count_items = gateway.wrap("count_items", count_items)
+
+    assert dispatch(gateway, "get_items ; count_items") == 2
+
+
+def test_greedy_final_string_consumes_dash_and_double_dash_until_statement_end(gateway):
+    def select(predicate: str):
+        return predicate
+
+    gateway.select = gateway.wrap("select", select)
+
+    assert (
+        dispatch(gateway, "select * from users where Some - Dept -- literal ;")
+        == "* from users where Some - Dept -- literal"
+    )
+
+
+def test_options_can_precede_greedy_final_string(gateway):
+    def select(predicate: str, *, limit: int = 0):
+        return predicate, limit
+
+    gateway.select = gateway.wrap("select", select)
+
+    assert dispatch(
+        gateway,
+        "select --limit 5 * from users where Some - Dept ;",
+    ) == ("* from users where Some - Dept", 5)
