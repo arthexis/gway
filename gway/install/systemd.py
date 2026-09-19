@@ -1,0 +1,227 @@
+"""Systemd unit materialization for declared Gway services."""
+
+from dataclasses import asdict, dataclass
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import tempfile
+
+from ..service.runtime import ProcessBackend
+
+
+@dataclass(frozen=True)
+class UnitRecord:
+    """Persisted mapping from one project service to a systemd unit."""
+
+    project: str
+    service: str
+    unit: str
+    system: bool = False
+
+
+class UnitState:
+    """Atomic JSON mapping for systemd units owned by installed projects."""
+
+    def __init__(self, root):
+        self.root = Path(root).expanduser().resolve()
+
+    def path(self, project):
+        return self.root / f"{project}.json"
+
+    def get(self, project):
+        path = self.path(project)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return []
+        return [
+            UnitRecord(
+                project=item["project"],
+                service=item["service"],
+                unit=item["unit"],
+                system=bool(item.get("system", False)),
+            )
+            for item in data
+        ]
+
+    def put(self, project, records):
+        path = self.path(project)
+        records = list(records)
+        if not records:
+            self.remove(project)
+            return records
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(
+            prefix=f".{project}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        temp = Path(temporary)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(
+                    [asdict(record) for record in records],
+                    stream,
+                    indent=2,
+                    sort_keys=True,
+                )
+                stream.write("\n")
+            os.replace(temp, path)
+        finally:
+            if temp.exists():
+                temp.unlink()
+        return records
+
+    def remove(self, project):
+        try:
+            self.path(project).unlink()
+        except FileNotFoundError:
+            return False
+        return True
+
+
+def unit_root(*, system=False, home=None):
+    """Return the systemd unit directory for one installation scope."""
+    if system:
+        return Path("/etc/systemd/system")
+    home = Path.home() if home is None else Path(home)
+    return home / ".config" / "systemd" / "user"
+
+
+def unit_name(project, service, *, name=None):
+    """Return one safe .service unit filename."""
+    raw = name or f"{project}-{service}"
+    raw = str(raw).strip()
+    if raw.endswith(".service"):
+        raw = raw[:-8]
+    if not raw or "/" in raw or "\\" in raw or raw in {".", ".."}:
+        raise ValueError("systemd unit name must be one safe unit name")
+    return f"{raw}.service"
+
+
+def _systemctl(*args, system=False, check=True):
+    command = ["systemctl"]
+    if not system:
+        command.append("--user")
+    command.extend(args)
+    return subprocess.run(
+        command,
+        check=check,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def render(service, *, unit):
+    """Render one declared Gway service as a systemd unit."""
+    backend = ProcessBackend()
+    command = backend._command(service)
+    cwd = backend._cwd(service)
+    environment = backend._environment(service)
+    declared_environment = {
+        key: environment[key]
+        for key in service.environment
+    }
+
+    lines = [
+        "[Unit]",
+        f"Description={service.description or service.project + '/' + service.name}",
+        "",
+        "[Service]",
+        "Type=simple",
+        f"WorkingDirectory={cwd}",
+        "ExecStart=" + " ".join(shlex.quote(part) for part in command),
+    ]
+    for key, value in sorted(declared_environment.items()):
+        escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+        lines.append(f'Environment="{key}={escaped}"')
+
+    if service.restart:
+        restart = service.restart
+        if restart == "on-failure":
+            lines.append("Restart=on-failure")
+        elif restart in {"always", "no", "on-success", "on-abnormal", "on-abort", "on-watchdog"}:
+            lines.append(f"Restart={restart}")
+    if service.restart_sec is not None:
+        lines.append(f"RestartSec={service.restart_sec:g}")
+
+    lines.extend([
+        "",
+        "[Install]",
+        "WantedBy=default.target" if not unit.startswith("/") else "WantedBy=multi-user.target",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def install_units(
+    project,
+    services,
+    *,
+    state_root,
+    system=False,
+    name=None,
+    root=None,
+):
+    """Write and enable selected service units, replacing prior mappings."""
+    services = list(services)
+    if name is not None and len(services) != 1:
+        raise ValueError("--name requires exactly one selected service")
+
+    target_root = unit_root(system=system) if root is None else Path(root)
+    target_root.mkdir(parents=True, exist_ok=True)
+    state = UnitState(state_root)
+    previous = {record.service: record for record in state.get(project)}
+    selected = {service.name for service in services}
+
+    # Remove units no longer selected by the converged install request.
+    for service_name, record in previous.items():
+        if service_name in selected:
+            continue
+        _systemctl("disable", record.unit, system=record.system, check=False)
+        try:
+            (target_root / record.unit).unlink()
+        except FileNotFoundError:
+            pass
+
+    records = []
+    for service in services:
+        filename = unit_name(project, service.name, name=name)
+        path = target_root / filename
+        path.write_text(render(service, unit=filename), encoding="utf-8")
+        records.append(
+            UnitRecord(
+                project=project,
+                service=service.name,
+                unit=filename,
+                system=system,
+            )
+        )
+
+    _systemctl("daemon-reload", system=system)
+    for record in records:
+        _systemctl("enable", record.unit, system=system)
+    state.put(project, records)
+    return records
+
+
+def uninstall_units(project, *, state_root, root=None):
+    """Disable and remove all persisted systemd units owned by one project."""
+    state = UnitState(state_root)
+    records = state.get(project)
+    if not records:
+        return []
+
+    for record in records:
+        target_root = unit_root(system=record.system) if root is None else Path(root)
+        _systemctl("disable", "--now", record.unit, system=record.system, check=False)
+        try:
+            (target_root / record.unit).unlink()
+        except FileNotFoundError:
+            pass
+        _systemctl("daemon-reload", system=record.system, check=False)
+
+    state.remove(project)
+    return records
