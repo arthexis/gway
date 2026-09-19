@@ -27,6 +27,10 @@ class Scheduler:
         self._active = None
         self._lock = threading.RLock()
         self._run_lock = threading.Lock()
+        if executor is None:
+            from .executor import RecipeExecutor
+
+            executor = RecipeExecutor()
         self.executor = executor
         self.add(jobs)
 
@@ -109,8 +113,6 @@ class Scheduler:
 
             job, reasons = taken
             try:
-                if self.executor is None:
-                    raise RuntimeError("Sous Chef scheduler has no executor")
                 value = self.executor(job)
             except BaseException as exc:
                 return RunResult(
