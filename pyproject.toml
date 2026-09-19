@@ -9,7 +9,7 @@ description = "Software Project Infrastructure by https://www.gelectriic.com"
 requires-python = ">=3.10"
 license = { file = "LICENSE.md" }
 classifiers = [ "Programming Language :: Python :: 3", "Operating System :: OS Independent",]
-dependencies = [ 'tomli>=2; python_version < "3.11"',]
+dependencies = []
 [[project.authors]]
 name = "Rafael J. Guillén-Osorio"
 email = "tecnologia@gelectriic.com"
@@ -20,6 +20,7 @@ content-type = "text/x-rst"
 
 [project.optional-dependencies]
 dev = ["pytest"]
+toml = ['tomli>=2; python_version < "3.11"']
 
 [project.scripts]
 gway = "gway:cli_main"
