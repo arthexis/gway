@@ -8,7 +8,9 @@ class Controller:
 
     def __init__(self, gateway, *, backend=None):
         self.gateway = gateway
-        self.backend = backend or ProcessBackend()
+        self.backend = backend or ProcessBackend(
+            installations=getattr(gateway, "_installed", {}),
+        )
 
     def _service(self, project, service):
         try:
