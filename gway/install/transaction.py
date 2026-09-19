@@ -393,15 +393,18 @@ def install_materialized(
             resolved_revision=resolved_revision,
         )
         launcher = None
+        state_written = False
         try:
             launcher = activate_project(name, destination, selected)
             stored = registry.put(record)
+            state_written = True
             _converge_services(request, selected, name, destination)
         except Exception:
-            if existing is None:
-                registry.remove(name, scope=selected.scope)
-            else:
-                registry.put(existing)
+            if state_written:
+                if existing is None:
+                    registry.remove(name, scope=selected.scope)
+                else:
+                    registry.put(existing)
             if launcher is not None:
                 launcher.rollback()
             if destination.exists() or destination.is_symlink():
