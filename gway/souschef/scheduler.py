@@ -19,7 +19,14 @@ class RunResult:
 class Scheduler:
     """Deduplicating, single-worker scheduler for Sous Chef jobs."""
 
-    def __init__(self, jobs=(), *, executor=None):
+    def __init__(
+        self,
+        jobs=(),
+        *,
+        executor=None,
+        on_started=None,
+        on_completed=None,
+    ):
         self._jobs = {}
         self._queue = deque()
         self._pending = set()
@@ -32,6 +39,8 @@ class Scheduler:
 
             executor = RecipeExecutor()
         self.executor = executor
+        self.on_started = on_started
+        self.on_completed = on_completed
         self.add(jobs)
 
     @property
@@ -112,17 +121,20 @@ class Scheduler:
                 return None
 
             job, reasons = taken
+            if self.on_started is not None:
+                self.on_started(job, reasons)
+            result = None
             try:
                 value = self.executor(job)
             except BaseException as exc:
-                return RunResult(
+                result = RunResult(
                     job=job,
                     reasons=reasons,
                     success=False,
                     error=exc,
                 )
             else:
-                return RunResult(
+                result = RunResult(
                     job=job,
                     reasons=reasons,
                     success=True,
@@ -131,6 +143,9 @@ class Scheduler:
             finally:
                 with self._lock:
                     self._active = None
+            if self.on_completed is not None:
+                self.on_completed(result)
+            return result
 
     def drain(self):
         """Run queued jobs serially until no pending work remains."""
