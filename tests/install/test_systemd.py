@@ -55,6 +55,7 @@ def test_install_plural_services_flag_creates_multiple_units(
     assert (units / "demo-worker.service").is_file()
     records = UnitState(data / "systemd").get("demo")
     assert [record.service for record in records] == ["web", "worker"]
+    assert {record.backend for record in records} == {"systemd"}
 
 
 def test_explicit_services_converge_owned_unit_set(
@@ -149,5 +150,46 @@ def test_unknown_selected_service_fails_before_install_mutation(
     gateway = Gateway()
     with pytest.raises(ValueError, match="Unknown service"):
         gateway(f"install {source} --service missing")
+
+    assert not (data / "projects" / "demo").exists()
+
+
+
+def test_explicit_systemd_backend_matches_default(
+    tmp_path,
+    monkeypatch,
+    fake_systemd,
+    make_service_project,
+    install_environment,
+):
+    source = make_service_project()
+    data = install_environment.data
+    monkeypatch.chdir(tmp_path)
+    units, _ = fake_systemd
+
+    gateway = Gateway()
+    gateway(f"install {source} --service web --backend systemd")
+
+    assert (units / "demo-web.service").is_file()
+    records = UnitState(data / "systemd").get("demo")
+    assert [(record.service, record.backend) for record in records] == [
+        ("web", "systemd")
+    ]
+
+
+def test_unknown_backend_fails_before_install_mutation(
+    tmp_path,
+    monkeypatch,
+    fake_systemd,
+    make_service_project,
+    install_environment,
+):
+    source = make_service_project()
+    data = install_environment.data
+    monkeypatch.chdir(tmp_path)
+
+    gateway = Gateway()
+    with pytest.raises(ValueError, match="Unsupported service backend"):
+        gateway(f"install {source} --service web --backend unknown")
 
     assert not (data / "projects" / "demo").exists()
