@@ -1,9 +1,6 @@
 import logging
-import sys
-
 import gway.log as gway_log
 from gway import Gateway
-from gway.console import cli_main
 
 
 def test_gateway_instances_use_unique_child_loggers():
@@ -54,18 +51,14 @@ def test_verbose_and_silent_are_semantic_output_intent():
     assert gateway("intent") == (True, True)
 
 
-def test_log_config_changes_parent_level_and_boolean_levels():
-    previous = gway_log.logger.level
+def test_log_config_changes_parent_level_and_boolean_levels(restore_gway_log_level):
     gateway = Gateway()
-    try:
-        configured = gateway("log config --level INFO")
+    configured = gateway("log config --level INFO")
 
-        assert configured["logger"] == "gway"
-        assert configured["level"] == "INFO"
-        assert bool(gateway.info) is True
-        assert bool(gateway.debug) is False
-    finally:
-        gway_log.logger.setLevel(previous)
+    assert configured["logger"] == "gway"
+    assert configured["level"] == "INFO"
+    assert bool(gateway.info) is True
+    assert bool(gateway.debug) is False
 
 
 def test_log_config_can_target_another_python_logger():
@@ -148,41 +141,36 @@ def test_log_exposes_standard_levels_and_config(gateway):
         assert subject in family
 
 
-def test_cli_log_level_controls_gway_logger_hierarchy(monkeypatch, caplog):
-    previous = gway_log.logger.level
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["gway", "-L", "DEBUG", "log", "debug", "cli-debug"],
-    )
-    try:
-        with caplog.at_level(logging.DEBUG):
-            assert cli_main() == 0
+def test_cli_log_level_controls_gway_logger_hierarchy(
+    run_cli,
+    caplog,
+    restore_gway_log_level,
+):
+    with caplog.at_level(logging.DEBUG):
+        status, _, _ = run_cli("-L", "DEBUG", "log", "debug", "cli-debug")
 
-        assert any(
-            record.getMessage() == "cli-debug"
-            and record.levelno == logging.DEBUG
-            for record in caplog.records
-        )
-    finally:
-        gway_log.logger.setLevel(previous)
+    assert status == 0
+    assert any(
+        record.getMessage() == "cli-debug"
+        and record.levelno == logging.DEBUG
+        for record in caplog.records
+    )
 
 
 def test_cli_silent_suppresses_result_without_changing_log_level(
     monkeypatch,
-    capsys,
+    run_cli,
+    restore_gway_log_level,
 ):
-    previous = gway_log.logger.level
     gway_log.logger.setLevel(logging.WARNING)
     monkeypatch.setenv("GWAY_SILENT_RESULT", "visible")
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["gway", "--silent", "env", "GWAY_SILENT_RESULT"],
+
+    status, stdout, _ = run_cli(
+        "--silent",
+        "env",
+        "GWAY_SILENT_RESULT",
     )
-    try:
-        assert cli_main() == 0
-        assert capsys.readouterr().out == ""
-        assert gway_log.logger.level == logging.WARNING
-    finally:
-        gway_log.logger.setLevel(previous)
+
+    assert status == 0
+    assert stdout == ""
+    assert gway_log.logger.level == logging.WARNING
