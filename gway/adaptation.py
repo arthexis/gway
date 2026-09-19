@@ -149,8 +149,8 @@ def apply_plan(func, plan, value, *, args=(), kwargs=None) -> BoundCall:
     else:
         kwargs[parameter.name] = value
 
-    bound = signature.bind_partial(*args, **kwargs)
-    return BoundCall(bound.args, bound.kwargs)
+    signature.bind_partial(*args, **kwargs)
+    return BoundCall(args, kwargs)
 
 
 def adapt_pipeline(runtime, func, value, *, args=(), kwargs=None) -> BoundCall:
