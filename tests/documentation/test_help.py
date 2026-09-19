@@ -1,0 +1,100 @@
+import inspect
+
+from gway import Gateway
+from gway.documentation import render
+
+
+def test_render_compact_help_uses_signature_and_summary():
+    def deploy(target: str, force=False):
+        """Deploy one target.
+
+        Args:
+            target: Deployment target name or address.
+        """
+
+    output = render(deploy)
+
+    assert output == (
+        "deploy(target: str, force=False)\n"
+        "Deploy one target."
+    )
+
+
+def test_render_verbose_help_includes_docstring_and_parameter_facts():
+    def deploy(target: str, force=False):
+        """Deploy one target.
+
+        Args:
+            target: Deployment target name or address.
+            force: Replace an existing deployment.
+        """
+
+    output = render(deploy, verbose=True)
+
+    assert "Deploy one target." in output
+    assert "target: Deployment target name or address." in output
+    assert "  target\n" in output
+    assert "    Deployment target name or address." in output
+    assert "    Type: str" in output
+    assert "    Required" in output
+    assert "  force\n" in output
+    assert "    Default: False" in output
+
+
+def test_help_resolves_jit_ingested_builtin_operation(gateway):
+    assert gateway.ops.resolve("log.config") is None
+
+    output = gateway("help log config")
+
+    assert gateway.ops.resolve("log.config") is not None
+    assert output.startswith("log config(")
+    assert "Inspect or configure one Python logger." in output
+    assert "\nParameters:" not in output
+
+
+def test_global_verbose_enables_full_help():
+    gateway = Gateway(verbose=True)
+    gateway.context.clear()
+    gateway.context["verbose"] = True
+    gateway.context["silent"] = False
+
+    output = gateway("help log config")
+
+    assert "Inspect or configure one Python logger." in output
+    assert "\nParameters:" in output
+    assert "  level\n" in output
+    assert "  logger\n" in output
+
+
+def test_explicit_help_verbose_overrides_runtime_default(gateway):
+    output = gateway("help log config --verbose")
+
+    assert "\nParameters:" in output
+
+
+def test_help_handles_undocumented_parameter_mechanically(gateway):
+    def inspect_target(target: str, retries=3):
+        """Inspect one target."""
+
+    gateway.inspect_target = gateway.wrap("inspect_target", inspect_target)
+
+    output = gateway("help inspect_target --verbose")
+
+    assert "  target\n" in output
+    assert "    Type: str" in output
+    assert "    Required" in output
+    assert "  retries\n" in output
+    assert "    Default: 3" in output
+
+
+def test_help_preserves_receiver_adjusted_signature(gateway):
+    class Device:
+        def label(self, prefix: str):
+            """Return a device label."""
+
+    gateway.ingest(Device, path=("device",))
+
+    output = gateway("help device label")
+
+    assert output.startswith("device label(prefix: str)")
+    assert "self" not in output
