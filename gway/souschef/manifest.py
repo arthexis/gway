@@ -54,7 +54,7 @@ def _target(value, field):
     return value.strip()
 
 
-def job_from_data(name, data, *, root):
+def job_from_data(project, name, data, *, root):
     """Normalize one [sous-chef.<name>] table."""
     validate_name(name)
     if not isinstance(data, dict):
@@ -89,6 +89,7 @@ def job_from_data(name, data, *, root):
     )
 
     return Job(
+        project=project,
         name=name,
         root=root,
         recipe=recipe,
@@ -104,6 +105,12 @@ def jobs_from_data(data, *, root):
     if not isinstance(data, dict):
         raise ValueError("gway.toml root must be a table")
 
+    project_data = data.get("project")
+    if not isinstance(project_data, dict):
+        raise ValueError("[project] table is required for Sous Chef jobs")
+    project = project_data.get("name")
+    validate_name(project)
+
     jobs = data.get("sous-chef", {})
     if jobs is None:
         jobs = {}
@@ -111,7 +118,7 @@ def jobs_from_data(data, *, root):
         raise ValueError("[sous-chef] must be a table")
 
     return tuple(
-        job_from_data(name, value, root=root)
+        job_from_data(project, name, value, root=root)
         for name, value in jobs.items()
     )
 
