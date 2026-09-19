@@ -81,3 +81,30 @@ def test_chain_call_accepts_one_stage_at_a_time(gateway):
     with gateway.chain("chargers") as __:
         with pytest.raises(ValueError, match="one command stage"):
             __("count - count")
+
+
+def test_chain_tuple_result_prefixes_explicit_native_positionals(gateway):
+    def pair():
+        return ("A", "B")
+
+    def combine(first, second, third):
+        return first, second, third
+
+    gateway.pair = gateway.wrap("get_pair", pair)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    with gateway.chain("pair") as __:
+        assert __("combine", "C") == ("A", "B", "C")
+
+
+def test_dash_tuple_result_prefixes_inline_positionals(gateway):
+    def pair():
+        return ("A", "B")
+
+    def combine(first, second, third):
+        return first, second, third
+
+    gateway.pair = gateway.wrap("get_pair", pair)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    assert gateway("pair - combine C") == ("A", "B", "C")
