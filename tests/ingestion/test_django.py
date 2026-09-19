@@ -383,3 +383,222 @@ def test_model_operations_retain_app_qualified_canonical_paths(
 
     assert gateway.ops.resolve("energy.charger.filter") is not None
     assert gateway.ops.resolve_pair("filter", "charger") is not None
+
+
+
+def _management_fixture(monkeypatch):
+    calls = []
+
+    def get_commands():
+        return {
+            "collectstatic": "django.contrib.staticfiles",
+            "migrate": "django.core",
+            "rebuild_search": "search",
+        }
+
+    def call_command(name, *args, **options):
+        calls.append((name, args, options))
+        return {
+            "command": name,
+            "args": args,
+            "options": options,
+        }
+
+    monkeypatch.setattr(
+        django_ingestor,
+        "_management_api",
+        lambda: (get_commands, call_command),
+    )
+    return calls
+
+
+def test_unnamed_django_mount_does_not_index_management_commands(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    root, _ = _project(tmp_path)
+    registry = SimpleNamespace(get_app_configs=lambda: ())
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda *args, **kwargs: registry,
+    )
+    _management_fixture(monkeypatch)
+
+    mount = django_ingestor.ingest_project(gateway, root)
+
+    assert mount.management_enabled is False
+    assert find_ingested(gateway, ("arthexis",)) is None
+    assert django_ingestor.ingest_commands(gateway, mount) == []
+    assert gateway.ops.resolve("migrate") is None
+
+
+def test_named_mount_expands_management_commands_on_first_project_subject_use(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    root, _ = _project(tmp_path)
+    registry = SimpleNamespace(get_app_configs=lambda: ())
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda *args, **kwargs: registry,
+    )
+    calls = _management_fixture(monkeypatch)
+
+    django_ingestor.ingest_project(gateway, root, name="arthexis")
+
+    assert gateway.ops.resolve("arthexis.migrate") is None
+
+    result = gateway("migrate arthexis --database default")
+
+    assert result == {
+        "command": "migrate",
+        "args": (),
+        "options": {"database": "default"},
+    }
+    assert calls == [
+        ("migrate", (), {"database": "default"}),
+    ]
+    assert gateway.ops.resolve("arthexis.migrate") is not None
+
+
+def test_management_commands_are_not_exposed_as_bare_top_level_operations(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    root, _ = _project(tmp_path)
+    registry = SimpleNamespace(get_app_configs=lambda: ())
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda *args, **kwargs: registry,
+    )
+    _management_fixture(monkeypatch)
+
+    django_ingestor.ingest_project(gateway, root, name="arthexis")
+    gateway("migrate arthexis")
+
+    assert gateway.ops.resolve("migrate") is None
+    assert gateway.ops.resolve_pair("migrate", "arthexis") is not None
+    assert gateway.ops.resolve("arthexis.migrate") is not None
+
+
+def test_management_command_passes_positionals_and_boolean_flags_to_django(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    root, _ = _project(tmp_path)
+    registry = SimpleNamespace(get_app_configs=lambda: ())
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda *args, **kwargs: registry,
+    )
+    calls = _management_fixture(monkeypatch)
+
+    django_ingestor.ingest_project(gateway, root, name="arthexis")
+
+    result = gateway("rebuild search arthexis index-a --force")
+
+    assert result == {
+        "command": "rebuild_search",
+        "args": ("index-a",),
+        "options": {"force": True},
+    }
+    assert calls[-1] == (
+        "rebuild_search",
+        ("index-a",),
+        {"force": True},
+    )
+
+
+def test_management_command_metadata_identifies_project_and_command(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    root, _ = _project(tmp_path)
+    registry = SimpleNamespace(get_app_configs=lambda: ())
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda *args, **kwargs: registry,
+    )
+    _management_fixture(monkeypatch)
+
+    django_ingestor.ingest_project(gateway, root, name="arthexis")
+    gateway("collectstatic arthexis")
+
+    operation = gateway.ops.resolve("arthexis.collectstatic")
+    assert operation.__gway_source_kind__ == "django-command"
+    assert operation.__gway_subject__ == "arthexis"
+    assert operation.__gway_metadata__["project"] == "arthexis"
+    assert operation.__gway_metadata__["command"] == "collectstatic"
+
+
+def test_management_command_expansion_is_idempotent(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    root, _ = _project(tmp_path)
+    registry = SimpleNamespace(get_app_configs=lambda: ())
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda *args, **kwargs: registry,
+    )
+
+    discoveries = []
+
+    def get_commands():
+        discoveries.append(True)
+        return {"migrate": "django.core"}
+
+    def call_command(name, *args, **options):
+        return name
+
+    monkeypatch.setattr(
+        django_ingestor,
+        "_management_api",
+        lambda: (get_commands, call_command),
+    )
+
+    django_ingestor.ingest_project(gateway, root, name="arthexis")
+
+    assert gateway("migrate arthexis") == "migrate"
+    assert gateway("migrate arthexis") == "migrate"
+    assert discoveries == [True]
+
+
+def test_adding_name_to_existing_mount_indexes_management_subject(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    root, _ = _project(tmp_path)
+    registry = SimpleNamespace(get_app_configs=lambda: ())
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda *args, **kwargs: registry,
+    )
+    _management_fixture(monkeypatch)
+
+    mount = django_ingestor.ingest_project(gateway, root)
+    assert find_ingested(gateway, ("arthexis",)) is None
+
+    same_mount = django_ingestor.ingest_project(
+        gateway,
+        root,
+        name="arthexis",
+    )
+
+    assert same_mount is mount
+    assert find_ingested(gateway, ("arthexis",)).value is mount
+    assert gateway("migrate arthexis")["command"] == "migrate"
