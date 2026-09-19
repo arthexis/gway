@@ -103,6 +103,24 @@ def dispatch_stage(
     initial_args = tuple(args)
     initial_kwargs = kwargs
     if pipeline is not _MISSING:
+        receiver = getattr(func, "__gway_receiver__", None)
+        producer_subject = runtime.results.subject(pipeline)
+        pipeline_is_receiver = (
+            receiver is not None and producer_subject == receiver
+        )
+
+        if arguments and not pipeline_is_receiver:
+            bound = bind_arguments(
+                func,
+                arguments,
+                runtime=runtime,
+                interactive=runtime.interactive_enabled,
+                initial_args=initial_args,
+                initial_kwargs=initial_kwargs,
+                pipeline=pipeline,
+            )
+            return func(*bound.args, **bound.kwargs)
+
         adapted = adapt_pipeline(
             runtime,
             func,
