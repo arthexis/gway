@@ -74,7 +74,7 @@ def test_jiti_updates_only_requested_branch_state(gateway, make_ping_node):
     assert gateway._ingested[id(sibling)].expanded is False
 
 
-def test_repeated_callable_identity_registers_additional_paths_as_aliases(gateway):
+def test_repeated_callable_identity_gets_path_specific_wrappers(gateway):
     shared = lambda: "pong"
     first = SimpleNamespace(ping=shared)
     second = SimpleNamespace(ping=shared)
@@ -85,7 +85,9 @@ def test_repeated_callable_identity_registers_additional_paths_as_aliases(gatewa
     first_op = gateway.ops.resolve("first.ping")
     second_op = gateway.ops.resolve("second.ping")
 
-    assert first_op is second_op
+    assert first_op is not second_op
+    assert first_op.__wrapped__ is shared
+    assert second_op.__wrapped__ is shared
     assert gateway("first ping") == "pong"
     assert gateway("second ping") == "pong"
 
@@ -98,6 +100,8 @@ def test_repeated_callable_identity_preserves_each_semantic_path(gateway):
     ingest_python(gateway, first, path=("first",))
     ingest_python(gateway, second, path=("second",))
 
-    assert gateway.ops.resolve("first.read_item") is gateway.ops.resolve("second.write_item")
+    assert gateway.ops.resolve("first.read_item") is not gateway.ops.resolve("second.write_item")
+    assert gateway.ops.resolve("first.read_item").__wrapped__ is shared
+    assert gateway.ops.resolve("second.write_item").__wrapped__ is shared
     assert gateway.ops["read"]["item"] is gateway.ops.resolve("first.read_item")
     assert gateway.ops["write"]["item"] is gateway.ops.resolve("second.write_item")
