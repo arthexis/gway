@@ -413,3 +413,157 @@ def test_missing_managed_copy_with_changed_source_respects_no_upgrade(tmp_path):
 
     assert not first.install_path.exists()
     assert InstallState(paths.state).get("wire") == first
+
+
+
+def test_force_discards_managed_drift_and_reinstalls_clean_source(
+    tmp_path,
+    caplog,
+):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+    )
+    managed = installed.install_path / "module.py"
+    managed.write_text("CUSTOM = True\n", encoding="utf-8")
+
+    repaired = transaction.install_local(
+        InstallRequest(str(source), force=True),
+        paths=paths,
+    )
+
+    assert managed.read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert repaired.fingerprint == transaction.fingerprint(source)
+    assert "Discarding local modifications for wire" in caplog.text
+    assert not paths.stashes.exists()
+
+
+def test_force_can_repair_drift_without_enabling_source_upgrade(
+    tmp_path,
+):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+    )
+    managed = installed.install_path / "module.py"
+    managed.write_text("CUSTOM = True\n", encoding="utf-8")
+
+    repaired = transaction.install_local(
+        InstallRequest(str(source), force=True, upgrade=False),
+        paths=paths,
+    )
+
+    assert managed.read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert repaired.fingerprint == installed.fingerprint
+
+
+def test_stash_preserves_managed_drift_before_reinstall(tmp_path, caplog):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+    )
+    managed = installed.install_path / "module.py"
+    managed.write_text("CUSTOM = True\n", encoding="utf-8")
+
+    repaired = transaction.install_local(
+        InstallRequest(str(source), stash=True),
+        paths=paths,
+    )
+
+    stashes = list((paths.stashes / "wire").iterdir())
+    assert len(stashes) == 1
+    assert (stashes[0] / "tree" / "module.py").read_text(
+        encoding="utf-8"
+    ) == "CUSTOM = True\n"
+    assert managed.read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert repaired.fingerprint == installed.fingerprint
+    assert "Preserved local modifications for wire at" in caplog.text
+
+
+def test_stash_preserves_drift_then_applies_source_upgrade(tmp_path):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+    )
+    managed = installed.install_path / "module.py"
+    managed.write_text("CUSTOM = True\n", encoding="utf-8")
+    (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    upgraded = transaction.install_local(
+        InstallRequest(str(source), stash=True),
+        paths=paths,
+    )
+
+    stashes = list((paths.stashes / "wire").iterdir())
+    assert len(stashes) == 1
+    assert (stashes[0] / "tree" / "module.py").read_text(
+        encoding="utf-8"
+    ) == "CUSTOM = True\n"
+    assert managed.read_text(encoding="utf-8") == "VALUE = 2\n"
+    assert upgraded.fingerprint != installed.fingerprint
+
+
+@pytest.mark.parametrize("mutation", [{"force": True}, {"stash": True}])
+def test_no_upgrade_with_changed_source_never_uses_mutation_override(
+    tmp_path,
+    mutation,
+):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+    )
+    managed = installed.install_path / "module.py"
+    managed.write_text("CUSTOM = True\n", encoding="utf-8")
+    (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="--no-upgrade prevents"):
+        transaction.install_local(
+            InstallRequest(
+                str(source),
+                upgrade=False,
+                **mutation,
+            ),
+            paths=paths,
+        )
+
+    assert managed.read_text(encoding="utf-8") == "CUSTOM = True\n"
+    assert not paths.stashes.exists()
+
+
+def test_stash_failure_leaves_managed_tree_untouched(
+    tmp_path,
+    monkeypatch,
+):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+    )
+    managed = installed.install_path / "module.py"
+    managed.write_text("CUSTOM = True\n", encoding="utf-8")
+
+    def fail_stash(*args, **kwargs):
+        raise RuntimeError("stash failed")
+
+    monkeypatch.setattr(transaction, "preserve_stash", fail_stash)
+
+    with pytest.raises(RuntimeError, match="stash failed"):
+        transaction.install_local(
+            InstallRequest(str(source), stash=True),
+            paths=paths,
+        )
+
+    assert managed.read_text(encoding="utf-8") == "CUSTOM = True\n"
+    assert list(paths.projects.glob(".wire.stage-*")) == []
+    assert list(paths.projects.glob(".wire.replace-*")) == []
