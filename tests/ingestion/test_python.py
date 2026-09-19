@@ -121,3 +121,43 @@ def test_module_dunder_main_represents_module_operation(gateway):
     assert gateway("demo info value") == "info:value"
     assert gateway.ops["demo"][None].__wrapped__ is __main__
     assert gateway.ops["demo"]["info"].__wrapped__ is info
+
+
+def test_transparent_module_exposes_children_at_command_root(gateway):
+    from types import ModuleType
+
+    module = ModuleType("demo.transparent")
+
+    def ping():
+        return "pong"
+
+    module.ping = ping
+
+    from gway.ingestion.python import ingest_module
+
+    ingest_module(gateway, module, transparent=True)
+
+    assert gateway("ping") == "pong"
+    assert gateway.ops.resolve("demo.transparent.ping") is None
+
+
+def test_transparent_module_does_not_apply_module_main_family_semantics(gateway):
+    from types import ModuleType
+
+    module = ModuleType("demo.transparent")
+
+    def __main__(value):
+        return f"main:{value}"
+
+    def info(value):
+        return f"info:{value}"
+
+    module.__main__ = __main__
+    module.info = info
+
+    from gway.ingestion.python import ingest_module
+
+    ingest_module(gateway, module, transparent=True)
+
+    assert gateway("info value") == "info:value"
+    assert gateway.ops.resolve("demo.transparent") is None
