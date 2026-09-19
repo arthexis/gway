@@ -220,21 +220,40 @@ def _service_definitions(root, project, names):
 
 
 def _converge_services(request, paths, project, root):
-    names = _selected_service_names(request, paths, project)
-    if not names:
-        return []
-
     from .backends import get as get_backend
 
-    backend = get_backend(request.backend)
-    services = _service_definitions(root, project, names)
-    return backend.install_units(
-        project,
-        services,
-        state_root=_unit_state_root(paths),
-        system=request.system,
-        name=request.name,
-    )
+    state_root = _unit_state_root(paths)
+    if request.services:
+        backend_name = request.backend or "systemd"
+        backend = get_backend(backend_name)
+        services = _service_definitions(root, project, request.services)
+        return backend.install_units(
+            project,
+            services,
+            state_root=state_root,
+            system=request.system,
+            name=request.name,
+        )
+
+    records = UnitState(state_root).get(project)
+    results = []
+    grouped = {}
+    for record in records:
+        grouped.setdefault(record.backend, []).append(record)
+
+    for backend_name, backend_records in grouped.items():
+        backend = get_backend(backend_name)
+        names = tuple(record.service for record in backend_records)
+        services = _service_definitions(root, project, names)
+        results.extend(
+            backend.install_units(
+                project,
+                services,
+                state_root=state_root,
+                system=request.system,
+            )
+        )
+    return results
 
 
 def _paths_and_state(request, *, paths=None, state=None):
@@ -477,11 +496,12 @@ def uninstall_local(request, *, paths=None, state=None):
         grouped = {}
         for record in records:
             grouped.setdefault(record.backend, []).append(record)
-        for backend_name in grouped:
+        for backend_name, backend_records in grouped.items():
             backend = get_backend(backend_name)
             backend.uninstall_units(
                 request.project,
                 state_root=_unit_state_root(selected),
+                records=backend_records,
             )
 
     destination = selected.projects / request.project
