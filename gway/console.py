@@ -18,6 +18,7 @@ def cli_main():
     parser.add_argument("-d", "--debug", action="store_true")
     parser.add_argument("-i", "--interactive", action="store_true")
     parser.add_argument("-j", "--json", action="store_true")
+    parser.add_argument("-L", "--log-level")
     parser.add_argument("-r", "--recipe")
     parser.add_argument("-t", "--timed", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -31,6 +32,7 @@ def cli_main():
         timed=args.timed,
         verbose=args.verbose,
         silent=args.silent,
+        log_level=args.log_level,
     )
 
     if args.recipe:
