@@ -108,3 +108,19 @@ def test_dash_tuple_result_prefixes_inline_positionals(gateway):
     gateway.combine = gateway.wrap("combine_values", combine)
 
     assert gateway("pair - combine C") == ("A", "B", "C")
+
+
+def test_chain_prefix_then_explicit_then_named_completion(gateway):
+    gateway.context["fourth"] = "D"
+
+    def pair():
+        return ("A", "B")
+
+    def combine(first, second, third, fourth):
+        return first, second, third, fourth
+
+    gateway.pair = gateway.wrap("get_pair", pair)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    with gateway.chain("pair") as __:
+        assert __("combine", "C") == ("A", "B", "C", "D")
