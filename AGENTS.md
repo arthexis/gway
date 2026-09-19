@@ -710,8 +710,16 @@ Every entry is routed through the same `Gateway.ingest()` API used for manual
 ingestion, so declarative configuration does not introduce a separate ingestion
 implementation.
 
-For Django entries, an explicit `name` on the ingestion table wins. Otherwise
-`[project].name`, when declared, becomes the Django mount name:
+For Django entries, mount-name precedence is:
+
+```text
+explicit [[ingest]].name
+→ [project].name
+→ resolved Django project directory basename
+→ unnamed mount
+```
+
+An explicit ingestion-table name therefore wins:
 
 ```toml
 [[ingest]]
@@ -720,8 +728,22 @@ kind = "django"
 name = "backend"
 ```
 
-If neither location provides a name, the Django project is mounted unnamed:
-apps/models are available, but management commands are not indexed or exposed.
+If no explicit or project name is declared and the source resolves to a
+conventional Django project directory, GWAY uses that directory's basename.
+A `manage.py` source uses its parent directory name. Thus:
+
+```toml
+[ingest]
+django = "."
+```
+
+inside `/projects/arthexis/gway.toml` mounts Django as `arthexis` and enables
+project-scoped management commands.
+
+Settings-module sources such as `config.settings` do not derive a project name
+from module text. If no configured name is available for such a source, the
+Django project remains unnamed: apps/models are available, but management
+commands are not indexed or exposed.
 
 A concise single-source-per-kind shorthand is also accepted:
 
