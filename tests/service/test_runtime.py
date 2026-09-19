@@ -7,7 +7,10 @@ from gway.service.runtime import ProcessBackend
 from gway.service.state import ProcessRecord, ServiceState, process_token
 
 
-def test_process_backend_resolves_project_python_cwd_and_environment(tmp_path):
+def test_process_backend_resolves_project_python_cwd_and_environment(
+    tmp_path,
+    service_factory,
+):
     output = tmp_path / "service-output.txt"
     script = tmp_path / "write_env.py"
     script.write_text(
@@ -16,10 +19,8 @@ def test_process_backend_resolves_project_python_cwd_and_environment(tmp_path):
         "os.getcwd() + '\\n' + os.environ['SERVICE_VALUE'], encoding='utf-8')\n",
         encoding="utf-8",
     )
-    service = Service(
-        project="demo",
-        name="writer",
-        root=tmp_path,
+    service = service_factory(
+        "writer",
         command=(
             "{python}",
             str(script),
@@ -110,11 +111,10 @@ def test_durable_state_allows_later_backend_to_manage_service(tmp_path, service_
 def test_stale_pid_record_is_removed_without_signalling_unowned_process(
     tmp_path,
     monkeypatch,
+    service_factory,
 ):
-    service = Service(
-        project="demo",
-        name="stale",
-        root=tmp_path,
+    service = service_factory(
+        "stale",
         command=("{python}", "-c", "pass"),
     )
     state_root = tmp_path / "state"
