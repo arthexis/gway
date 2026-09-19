@@ -37,6 +37,8 @@ def process_token(pid):
     # contain spaces/parentheses, so split only after its final ')'.
     try:
         tail = text[text.rindex(")") + 2 :].split()
+        if tail[0] == "Z":
+            return None
         return tail[19]
     except (ValueError, IndexError):
         return None
