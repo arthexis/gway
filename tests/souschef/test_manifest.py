@@ -21,6 +21,7 @@ def test_invalid_duration_is_rejected(value):
 def test_job_normalizes_paths_triggers_and_default_timeout(tmp_path):
     jobs = jobs_from_data(
         {
+            "project": {"name": "demo"},
             "sous-chef": {
                 "recover": {
                     "recipe": "recipes/recover.rx",
@@ -35,6 +36,8 @@ def test_job_normalizes_paths_triggers_and_default_timeout(tmp_path):
 
     assert len(jobs) == 1
     job = jobs[0]
+    assert job.project == "demo"
+    assert job.identity == ("demo", "recover")
     assert job.name == "recover"
     assert job.root == tmp_path.resolve()
     assert job.recipe == (tmp_path / "recipes/recover.rx").resolve()
@@ -48,6 +51,7 @@ def test_job_normalizes_paths_triggers_and_default_timeout(tmp_path):
 def test_job_allows_explicit_timeout(tmp_path):
     job = jobs_from_data(
         {
+            "project": {"name": "demo"},
             "sous-chef": {
                 "build": {
                     "recipe": "recipes/build.rx",
@@ -66,6 +70,7 @@ def test_down_target_remains_opaque_for_future_target_types(tmp_path):
     target = "https://example.com/health"
     job = jobs_from_data(
         {
+            "project": {"name": "demo"},
             "sous-chef": {
                 "recover": {
                     "recipe": "recover.rx",
@@ -85,6 +90,7 @@ def test_absolute_paths_are_preserved(tmp_path):
 
     job = jobs_from_data(
         {
+            "project": {"name": "demo"},
             "sous-chef": {
                 "job": {
                     "recipe": str(recipe),
@@ -113,20 +119,29 @@ def test_absolute_paths_are_preserved(tmp_path):
 def test_invalid_job_declarations_are_rejected(tmp_path, job, message):
     with pytest.raises(ValueError, match=message):
         jobs_from_data(
-            {"sous-chef": {"demo": job}},
+            {
+                "project": {"name": "demo"},
+                "sous-chef": {"demo": job},
+            },
             root=tmp_path,
         )
 
 
 def test_sous_chef_section_must_be_a_table(tmp_path):
     with pytest.raises(ValueError, match="must be a table"):
-        jobs_from_data({"sous-chef": []}, root=tmp_path)
+        jobs_from_data(
+            {"project": {"name": "demo"}, "sous-chef": []},
+            root=tmp_path,
+        )
 
 
 
 def test_hyphenated_sous_chef_toml_section_loads(tmp_path):
     manifest = tmp_path / "gway.toml"
     manifest.write_text(
+        "[project]\n"
+        "name = 'demo'\n"
+        "\n"
         "[sous-chef.cleanup]\n"
         "recipe = 'recipes/cleanup.rx'\n"
         "every = '1h'\n"
