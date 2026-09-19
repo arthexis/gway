@@ -1,4 +1,7 @@
 from pathlib import Path
+import sys
+
+from gway.console import cli_main
 
 def test_builtin_env_is_ingested_at_command_root(gateway, monkeypatch):
     monkeypatch.setenv("GWAY_TEST_ENV", "present")
@@ -102,3 +105,10 @@ def test_builtin_path_methods_become_semantic_operations(gateway, tmp_path):
     assert matches == [first]
     assert gateway.ops.resolve("path.glob") is not None
     assert gateway.ops["glob"]["path"] is gateway.ops.resolve("glob path")
+
+
+def test_cli_invokes_path_builtin_without_internal_gway_prefix(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(sys, "argv", ["gway", "path", str(tmp_path)])
+
+    assert cli_main() == 0
+    assert capsys.readouterr().out.strip() == str(tmp_path)
