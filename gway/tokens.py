@@ -102,14 +102,33 @@ def tokenize(text: str) -> list[Token]:
     return tokens
 
 
-def chunk(tokens):
-    """Split tokens on standalone unquoted stage separators."""
+def statements(tokens):
+    """Split tokens on standalone unquoted statement separators."""
     chunks = []
     current = []
 
     for token in tokens:
         value = token_value(token)
-        if not is_literal(token) and value in {"-", ";"}:
+        if not is_literal(token) and value == ";":
+            if current:
+                chunks.append(current)
+                current = []
+        else:
+            current.append(token)
+
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def chunk(tokens):
+    """Split tokens on standalone unquoted positional pipeline separators."""
+    chunks = []
+    current = []
+
+    for token in tokens:
+        value = token_value(token)
+        if not is_literal(token) and value == "-":
             if current:
                 chunks.append(current)
                 current = []
