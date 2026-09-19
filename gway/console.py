@@ -26,13 +26,17 @@ def cli_main():
     parser.add_argument("-e", "--expression")
     args, unknown = parser.parse_known_args()
 
+    if args.log_level is not None:
+        from . import log as gway_log
+
+        gway_log.config(level=args.log_level)
+
     runtime = Gateway(
         debug=args.debug,
         interactive=args.interactive,
         timed=args.timed,
         verbose=args.verbose,
         silent=args.silent,
-        log_level=args.log_level,
     )
 
     if args.recipe:
