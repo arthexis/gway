@@ -4,8 +4,8 @@ import argparse
 import json
 from .gateway import Gateway, gw
 from .recipes import load_recipe
-from .dispatch import dispatch_stage
-from .tokens import Token, is_literal, token_value
+from .dispatch import dispatch_sequence
+from .tokens import Token, chunk, is_literal, token_value
 
 
 def parse_recipe_context(tokens):
@@ -76,24 +76,16 @@ def cli_main():
 
 
 def process(command_sources, *, gw_instance=None, **context):
-    """Execute recipe/CLI stages through the unified dispatcher."""
+    """Execute recipe/CLI sources through the shared stage sequence executor."""
     runtime = gw_instance or Gateway(context=context)
     if context:
         runtime.context.update(context)
 
-    results = []
-    last_result = None
-
+    stages = []
     for entry in command_sources:
         tokens = list(entry.get("tokens", [])) if isinstance(entry, dict) else list(entry)
-        if not tokens:
-            continue
+        stages.extend(chunk(tokens))
 
-        if results:
-            result = dispatch_stage(runtime, tokens, pipeline=last_result)
-        else:
-            result = dispatch_stage(runtime, tokens)
-        results.append(result)
-        last_result = result
-
-    return results, last_result
+    if not stages:
+        return [], None
+    return dispatch_sequence(runtime, stages)
