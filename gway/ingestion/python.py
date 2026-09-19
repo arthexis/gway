@@ -113,6 +113,7 @@ def _module_entry_operation(source, root):
         metadata=metadata,
     )
 
+
 def _receiver_subject(source, root, name, child):
     """Return the semantic receiver for one unbound instance method."""
     if not inspect.isclass(source):
