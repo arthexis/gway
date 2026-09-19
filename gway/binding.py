@@ -2,7 +2,9 @@
 
 import inspect
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import get_args, get_origin
 
 from .sigil import Sigil
 from .tokens import Token, is_literal, token_value
@@ -27,6 +29,52 @@ class _PipelineValue:
     value: object
 
 
+def _sequence_annotation(annotation):
+    origin = get_origin(annotation)
+    target = origin or annotation
+    return target in {list, tuple, set, frozenset, Sequence}
+
+
+def _sequence_element_annotation(annotation):
+    arguments = get_args(annotation)
+    return arguments[0] if arguments else str
+
+
+def _convert_scalar(value, annotation):
+    if annotation in (inspect.Parameter.empty, str):
+        return value
+    if annotation is bool and isinstance(value, str):
+        return value.lower() in {"1", "true", "yes", "on"}
+    if annotation in (int, float):
+        return annotation(value)
+    return value
+
+
+def _convert_sequence(value, annotation):
+    origin = get_origin(annotation)
+    target = origin or annotation
+    element_annotation = _sequence_element_annotation(annotation)
+
+    if isinstance(value, str):
+        values = [part.strip() for part in value.split(",")]
+        if any(not part for part in values):
+            raise ValueError("sequence arguments cannot contain empty items")
+    else:
+        values = list(value)
+
+    converted = [
+        _convert_scalar(item, element_annotation)
+        for item in values
+    ]
+    if target is list:
+        return converted
+    if target is set:
+        return set(converted)
+    if target is frozenset:
+        return frozenset(converted)
+    return tuple(converted)
+
+
 def convert_argument(token, parameter, runtime):
     """Convert one explicit token according to literal, sigil, and annotation rules."""
     literal = is_literal(token)
@@ -39,13 +87,9 @@ def convert_argument(token, parameter, runtime):
     if isinstance(value, str) and Sigil._pattern.search(value):
         value = runtime.resolve(value)
 
-    if annotation in (inspect.Parameter.empty, str):
-        return value
-    if annotation is bool and isinstance(value, str):
-        return value.lower() in {"1", "true", "yes", "on"}
-    if annotation in (int, float):
-        return annotation(value)
-    return value
+    if _sequence_annotation(annotation):
+        return _convert_sequence(value, annotation)
+    return _convert_scalar(value, annotation)
 
 
 def _positional_parameters(signature):
@@ -77,13 +121,29 @@ def _is_boolean_parameter(parameter):
     )
 
 
+def _singular_name(name):
+    if name.endswith("ies") and len(name) > 3:
+        return name[:-3] + "y"
+    if name.endswith(("xes", "zes", "ches", "shes", "ses")) and len(name) > 2:
+        return name[:-2]
+    if name.endswith("s") and not name.endswith("ss") and len(name) > 1:
+        return name[:-1]
+    return None
+
+
 def _option_details(signature, token):
-    """Return (name, parameter, negated) for one long option token."""
+    """Return (name, parameter, negated, singular) for one long option token."""
     raw = token[2:]
     key = raw.replace("-", "_")
     parameter = signature.parameters.get(key)
     if parameter is not None:
-        return key, parameter, False
+        return key, parameter, False, False
+
+    for name, candidate in signature.parameters.items():
+        if not _sequence_annotation(candidate.annotation):
+            continue
+        if _singular_name(name) == key:
+            return name, candidate, False, True
 
     if raw.startswith("no-"):
         candidate = raw[3:].replace("-", "_")
@@ -92,9 +152,9 @@ def _option_details(signature, token):
             candidate_parameter is not None
             and _is_boolean_parameter(candidate_parameter)
         ):
-            return candidate, candidate_parameter, True
+            return candidate, candidate_parameter, True, False
 
-    return key, None, False
+    return key, None, False, False
 
 
 def _variadic_keyword_parameter(signature):
@@ -224,7 +284,7 @@ def pipeline_boundary(
             continue
 
         if not literal_mode and not is_literal(raw) and token.startswith("--"):
-            key, parameter, negated = _option_details(signature, token)
+            key, parameter, negated, singular = _option_details(signature, token)
             if parameter is None:
                 if _variadic_keyword_parameter(signature) is None:
                     return None
@@ -307,7 +367,7 @@ def bind_arguments(
             continue
 
         if not literal_mode and not is_literal(item) and token.startswith("--"):
-            key, keyword_parameter, negated = _option_details(signature, token)
+            key, keyword_parameter, negated, singular = _option_details(signature, token)
             if keyword_parameter is None:
                 variadic_keywords = _variadic_keyword_parameter(signature)
                 if variadic_keywords is None:
@@ -341,11 +401,24 @@ def bind_arguments(
             if isinstance(value_item, _PipelineValue):
                 keywords[key] = value_item.value
             else:
-                keywords[key] = convert_argument(
+                converted = convert_argument(
                     value_item,
                     keyword_parameter,
                     runtime,
                 )
+                if singular and len(converted) != 1:
+                    raise TypeError(
+                        f"{token} accepts exactly one item; use "
+                        f"--{key.replace('_', '-')} for multiple items"
+                    )
+                keywords[key] = converted
+            if singular and isinstance(value_item, _PipelineValue):
+                value = keywords[key]
+                if len(value) != 1:
+                    raise TypeError(
+                        f"{token} accepts exactly one item; use "
+                        f"--{key.replace('_', '-')} for multiple items"
+                    )
             filled.add(key)
             index += 2
             continue
