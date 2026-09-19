@@ -197,7 +197,7 @@ def project_entrypoints(manifest):
 
     data = toml.load(manifest)
     project = data.get("project") if isinstance(data, dict) else None
-    values = project.get("aliases", ()) if isinstance(project, dict) else ()
+    values = project.get("aliases") if isinstance(project, dict) else None
     if values is None:
         return ()
     if not isinstance(values, list):
@@ -208,7 +208,7 @@ def project_entrypoints(manifest):
         try:
             alias = validate_name(value)
         except ValueError as exc:
-            raise ValueError(f"Invalid project alias: {exc}") from exc
+            raise ValueError(f"Invalid project entrypoint: {exc}") from exc
         if alias not in aliases:
             aliases.append(alias)
     return tuple(aliases)
@@ -267,7 +267,7 @@ def discover_managed_projects(runtime):
                 continue
             if alias in discovered:
                 raise RuntimeError(
-                    f"Installed project alias {alias!r} conflicts with "
+                    f"Installed project entrypoint {alias!r} conflicts with "
                     "an installed project name"
                 )
             owner = entrypoints.get(alias)
