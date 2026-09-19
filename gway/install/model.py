@@ -53,7 +53,7 @@ class InstallRequest:
     system: bool = False
     services: tuple[str, ...] = ()
     name: str | None = None
-    backend: str = "systemd"
+    backend: str | None = None
 
     def __post_init__(self):
         if not isinstance(self.source, str) or not self.source.strip():
@@ -71,11 +71,14 @@ class InstallRequest:
             if name not in names:
                 names.append(name)
         object.__setattr__(self, "services", tuple(names))
-        if not isinstance(self.backend, str) or not self.backend.strip():
-            raise ValueError("--backend must be a non-empty string")
-        from .backends import get as get_backend
+        if self.backend is not None:
+            if not isinstance(self.backend, str) or not self.backend.strip():
+                raise ValueError("--backend must be a non-empty string")
+            from .backends import get as get_backend
 
-        get_backend(self.backend)
+            get_backend(self.backend)
+            if not self.services:
+                raise ValueError("--backend requires at least one selected service")
 
         if self.name is not None:
             validate_name(self.name.removesuffix(".service"))
