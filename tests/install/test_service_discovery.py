@@ -79,10 +79,15 @@ def test_service_identity_is_project_scoped(
     monkeypatch.chdir(outside)
     fresh = Gateway()
 
-    assert set(fresh._services) == {
+    assert {
+        identity
+        for identity in fresh._services
+        if identity[0] != "gway"
+    } == {
         ("alpha", "worker"),
         ("beta", "worker"),
     }
+    assert ("gway", "sous-chef") in fresh._services
     assert fresh._services[("alpha", "worker")].root != (
         fresh._services[("beta", "worker")].root
     )
@@ -113,7 +118,7 @@ def test_project_without_services_does_not_invoke_service_parser(
 
     assert calls == []
     assert fresh._service_catalogs == {}
-    assert fresh._services == {}
+    assert set(fresh._services) == {("gway", "sous-chef")}
 
 
 
