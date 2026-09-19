@@ -35,7 +35,7 @@ def test_recipe_executor_uses_canonical_recipe_evaluator(tmp_path):
         "from pathlib import Path\n"
         f"def mark():\n    Path({str(output)!r}).write_text('done', encoding='utf-8')\n"
         "    return 'ok'\n",
-        "mark",
+        "success mark",
     )
     job = make_job(tmp_path, "success")
     executor = RecipeExecutor()
@@ -51,7 +51,7 @@ def test_recipe_failure_does_not_stop_later_scheduler_work(tmp_path):
         tmp_path,
         "fail",
         "def explode():\n    raise RuntimeError('boom')\n",
-        "explode",
+        "fail explode",
     )
     output = tmp_path / "after.txt"
     write_recipe(
@@ -60,7 +60,7 @@ def test_recipe_failure_does_not_stop_later_scheduler_work(tmp_path):
         "from pathlib import Path\n"
         f"def mark():\n    Path({str(output)!r}).write_text('after', encoding='utf-8')\n"
         "    return 'after'\n",
-        "mark",
+        "after mark",
     )
     failed = make_job(tmp_path, "fail")
     after = make_job(tmp_path, "after")
@@ -85,7 +85,7 @@ def test_timed_out_recipe_is_terminated_and_scheduler_continues(tmp_path):
         "slow",
         "import time\n"
         "def wait():\n    time.sleep(30)\n",
-        "wait",
+        "slow wait",
     )
     output = tmp_path / "after-timeout.txt"
     write_recipe(
@@ -94,7 +94,7 @@ def test_timed_out_recipe_is_terminated_and_scheduler_continues(tmp_path):
         "from pathlib import Path\n"
         f"def mark():\n    Path({str(output)!r}).write_text('ok', encoding='utf-8')\n"
         "    return 'ok'\n",
-        "mark",
+        "after mark",
     )
     slow = make_job(tmp_path, "slow", timeout=0.2)
     after = make_job(tmp_path, "after", timeout=5)
