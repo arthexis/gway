@@ -1,9 +1,9 @@
 """Unified command resolution and dispatch for GWAY runtimes."""
 
 from .adaptation import adapt_pipeline
-from .binding import bind_arguments
+from .binding import bind_arguments, pipeline_boundary
 from .ingestion.base import expand_path
-from .tokens import chunk, token_value, tokenize
+from .tokens import statements, token_value, tokenize
 
 _MISSING = object()
 
@@ -139,6 +139,93 @@ def dispatch_stage(
     return func(*bound.args, **bound.kwargs)
 
 
+
+def dispatch_pipeline(
+    runtime,
+    tokens,
+    *,
+    pipeline=_MISSING,
+    args=(),
+    kwargs=None,
+):
+    """Execute one statement, transferring raw results only across dash pipes."""
+    remaining = list(tokens)
+    if not remaining:
+        raise ValueError("Gateway command cannot be empty")
+
+    results = []
+    current = pipeline
+    first = True
+
+    while remaining:
+        stage_args = args if first else ()
+        stage_kwargs = kwargs if first else None
+        func, arguments, _ = resolve_operation(runtime, remaining, pipeline=current)
+
+        initial_args = tuple(stage_args)
+        initial_kwargs = {} if stage_kwargs is None else dict(stage_kwargs)
+        if current is not _MISSING:
+            adapted = adapt_pipeline(
+                runtime,
+                func,
+                current,
+                args=initial_args,
+                kwargs=initial_kwargs,
+            )
+            initial_args = adapted.args
+            initial_kwargs = adapted.kwargs
+
+        boundary = pipeline_boundary(
+            func,
+            arguments,
+            initial_args=initial_args,
+            initial_kwargs=initial_kwargs,
+        )
+        operation_size = len(remaining) - len(arguments)
+
+        if boundary is None:
+            stage = remaining
+            remaining = []
+        else:
+            if stage_args or stage_kwargs:
+                raise TypeError("Native arguments require a single operation")
+            stage = remaining[: operation_size + boundary]
+            remaining = arguments[boundary + 1 :]
+
+        result = dispatch_stage(
+            runtime,
+            stage,
+            pipeline=current,
+            args=stage_args,
+            kwargs=stage_kwargs,
+        )
+        results.append(result)
+        current = result
+        first = False
+
+    return results, current
+
+
+def dispatch_program(runtime, statement_list, *, args=(), kwargs=None):
+    """Execute statements without raw transfer across statement boundaries."""
+    statement_list = [list(statement) for statement in statement_list if statement]
+    if not statement_list:
+        raise ValueError("Gateway command cannot be empty")
+    if (args or kwargs) and len(statement_list) != 1:
+        raise TypeError("Native arguments require a single statement")
+
+    results = []
+    last = None
+    for index, statement in enumerate(statement_list):
+        produced, last = dispatch_pipeline(
+            runtime,
+            statement,
+            args=args if index == 0 else (),
+            kwargs=kwargs if index == 0 else None,
+        )
+        results.extend(produced)
+    return results, last
+
 def dispatch_sequence(
     runtime,
     stages,
@@ -180,14 +267,14 @@ def dispatch_sequence(
 
 
 def dispatch(runtime, command, *args, **kwargs):
-    """Execute one or more command stages through the unified dispatcher."""
+    """Execute one or more statements through the unified dispatcher."""
     tokens = tokenize(command) if isinstance(command, str) else list(command)
     if not tokens:
         raise ValueError("Gateway command cannot be empty")
 
-    _, result = dispatch_sequence(
+    _, result = dispatch_program(
         runtime,
-        chunk(tokens),
+        statements(tokens),
         args=args,
         kwargs=kwargs,
     )
