@@ -65,18 +65,22 @@ def test_repeated_unchanged_local_install_is_noop(tmp_path):
     assert len(InstallState(paths.state).all()) == 1
 
 
-def test_changed_local_source_requires_reconciliation_when_upgrade_enabled(tmp_path):
+def test_changed_local_source_is_reconciled_when_upgrade_enabled(tmp_path):
     source = _project(tmp_path, "wire")
     paths = install_paths(root=tmp_path / "data")
-    transaction.install_local(InstallRequest(str(source)), paths=paths)
+    first = transaction.install_local(InstallRequest(str(source)), paths=paths)
     (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match="replacement reconciliation"):
-        transaction.install_local(InstallRequest(str(source)), paths=paths)
+    second = transaction.install_local(InstallRequest(str(source)), paths=paths)
 
+    assert second.name == first.name
+    assert second.install_path == first.install_path
+    assert second.fingerprint != first.fingerprint
     assert (paths.projects / "wire" / "module.py").read_text(
         encoding="utf-8"
-    ) == "VALUE = 1\n"
+    ) == "VALUE = 2\n"
+    assert InstallState(paths.state).get("wire") == second
+    assert list(paths.projects.glob(".wire.replace-*")) == []
 
 
 def test_no_upgrade_leaves_existing_installation_unchanged(tmp_path):
@@ -264,3 +268,130 @@ def test_uninstall_refuses_registry_path_outside_managed_projects(tmp_path):
         )
 
     assert marker.read_text(encoding="utf-8") == "safe"
+
+
+
+def test_changed_local_source_replacement_is_atomic_on_state_failure(tmp_path):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    state = InstallState(paths.state)
+    first = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+        state=state,
+    )
+    original_fingerprint = first.fingerprint
+    (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    class FailingReplacementState:
+        def get(self, name, *, scope="user"):
+            return state.get(name, scope=scope)
+
+        def put(self, installation):
+            raise RuntimeError("replacement state write failed")
+
+    with pytest.raises(RuntimeError, match="replacement state write failed"):
+        transaction.install_local(
+            InstallRequest(str(source)),
+            paths=paths,
+            state=FailingReplacementState(),
+        )
+
+    assert (paths.projects / "wire" / "module.py").read_text(
+        encoding="utf-8"
+    ) == "VALUE = 1\n"
+    assert state.get("wire").fingerprint == original_fingerprint
+    assert list(paths.projects.glob(".wire.replace-*")) == []
+    assert list(paths.projects.glob(".wire.stage-*")) == []
+
+
+def test_missing_managed_copy_is_repaired_even_with_no_upgrade(tmp_path):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    first = transaction.install_local(InstallRequest(str(source)), paths=paths)
+    transaction._remove_path(first.install_path)
+
+    repaired = transaction.install_local(
+        InstallRequest(str(source), upgrade=False),
+        paths=paths,
+    )
+
+    assert repaired.install_path.is_dir()
+    assert (repaired.install_path / "module.py").read_text(
+        encoding="utf-8"
+    ) == "VALUE = 1\n"
+    assert InstallState(paths.state).get("wire") == repaired
+
+
+def test_identical_content_from_new_source_updates_provenance_without_swap(tmp_path):
+    first_source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    first = transaction.install_local(
+        InstallRequest(str(first_source)),
+        paths=paths,
+    )
+
+    second_source = tmp_path / "alternate" / "wire"
+    second_source.mkdir(parents=True)
+    (second_source / "gway.toml").write_text(
+        "[project]\nname = 'wire'\n",
+        encoding="utf-8",
+    )
+    (second_source / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    second = transaction.install_local(
+        InstallRequest(str(second_source)),
+        paths=paths,
+    )
+
+    assert second.fingerprint == first.fingerprint
+    assert second.source == str(second_source.resolve())
+    assert second.install_path == first.install_path
+    assert second.installed_at == first.installed_at
+    assert list(paths.projects.glob(".wire.replace-*")) == []
+
+
+def test_managed_tree_drift_blocks_even_an_unchanged_reinstall(tmp_path):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+    )
+    managed_file = installed.install_path / "module.py"
+    managed_file.write_text("CUSTOM = True\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="local modifications"):
+        transaction.install_local(
+            InstallRequest(str(source)),
+            paths=paths,
+        )
+
+    assert managed_file.read_text(encoding="utf-8") == "CUSTOM = True\n"
+    assert InstallState(paths.state).get("wire") == installed
+
+
+def test_managed_tree_drift_blocks_source_upgrade_before_swap(tmp_path):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+    )
+    (installed.install_path / "module.py").write_text(
+        "CUSTOM = True\n",
+        encoding="utf-8",
+    )
+    (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="local modifications"):
+        transaction.install_local(
+            InstallRequest(str(source)),
+            paths=paths,
+        )
+
+    assert (installed.install_path / "module.py").read_text(
+        encoding="utf-8"
+    ) == "CUSTOM = True\n"
+    assert list(paths.projects.glob(".wire.replace-*")) == []
+    assert list(paths.projects.glob(".wire.stage-*")) == []
