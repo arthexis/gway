@@ -37,5 +37,12 @@ class Results(collections.ChainMap):
     def last(self):
         return self.history[-1] if self.history else None
 
+    def subject(self, value, default=None):
+        """Return the most recent semantic subject bound to this exact value."""
+        for subject, candidate in reversed(tuple(self.maps[0].items())):
+            if candidate is value:
+                return subject
+        return default
+
     def get_results(self):
         return self.maps[0]
