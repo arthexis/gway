@@ -22,7 +22,28 @@ def _expand_candidate(runtime, candidate):
     return expanded
 
 
-def resolve_operation(runtime, tokens):
+def _semantic_pipeline_operation(runtime, tokens, pipeline):
+    """Resolve a bare operation against the semantic subject of a pipeline value."""
+    subject = runtime.results.subject(pipeline)
+    if subject is None:
+        return None
+
+    expand_path(runtime, (subject,))
+    values = [token_value(token) for token in tokens]
+    for size in range(len(values), 0, -1):
+        candidates = (
+            " ".join(values[:size]),
+            "_".join(token.replace("-", "_") for token in values[:size]),
+            ".".join(token.replace("-", "_") for token in values[:size]),
+        )
+        for candidate in candidates:
+            value = runtime.ops.resolve_pair(candidate, subject)
+            if callable(value):
+                return value, tokens[size:], candidate
+    return None
+
+
+def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
     """Resolve the longest leading token sequence to an executable operation."""
     values = [token_value(token) for token in tokens]
     for size in range(len(values), 0, -1):
@@ -50,6 +71,11 @@ def resolve_operation(runtime, tokens):
             if callable(obj) and getattr(obj, "__gway_operation__", None) is not None:
                 return obj, tokens[size:], candidate
 
+    if pipeline is not _MISSING:
+        semantic = _semantic_pipeline_operation(runtime, tokens, pipeline)
+        if semantic is not None:
+            return semantic
+
     raise LookupError(f"Unable to resolve operation: {' '.join(values)}")
 
 
@@ -67,7 +93,7 @@ def dispatch_stage(
     if not tokens:
         raise ValueError("Gateway command cannot be empty")
 
-    func, arguments, _ = resolve_operation(runtime, tokens)
+    func, arguments, _ = resolve_operation(runtime, tokens, pipeline=pipeline)
 
     if (args or kwargs) and arguments:
         raise TypeError(
