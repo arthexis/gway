@@ -161,3 +161,21 @@ def test_transparent_module_does_not_apply_module_main_family_semantics(gateway)
 
     assert gateway("info value") == "info:value"
     assert gateway.ops.resolve("demo.transparent") is None
+
+
+def test_class_factory_and_instance_methods_use_generic_semantic_subject(gateway):
+    class Device:
+        def __init__(self, serial):
+            self.serial = serial
+
+        def label(self, prefix):
+            return f"{prefix}:{self.serial}"
+
+    ingest_python(gateway, Device, path=("device",))
+
+    created = gateway("device ABC")
+    assert isinstance(created, Device)
+    assert gateway.results["device"] is created
+
+    assert gateway("label device unit") == "unit:ABC"
+    assert gateway.ops["label"]["device"] is gateway.ops.resolve("device.label")
