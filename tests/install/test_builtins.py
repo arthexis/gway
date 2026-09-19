@@ -112,3 +112,62 @@ def test_uninstall_builtin_is_idempotent(gateway, tmp_path, monkeypatch):
     monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
 
     assert gateway("uninstall missing") is None
+
+
+
+def test_install_builtin_refuses_dirty_managed_copy_by_default(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = _project(tmp_path, "wire")
+    data = tmp_path / "data"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
+    installed = gateway(f"install {source}")
+    managed = installed.install_path / "module.py"
+    managed.write_text("CUSTOM = True\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="local modifications"):
+        gateway(f"install {source}")
+
+    assert managed.read_text(encoding="utf-8") == "CUSTOM = True\n"
+
+
+def test_install_builtin_force_repairs_dirty_managed_copy(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = _project(tmp_path, "wire")
+    data = tmp_path / "data"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
+    installed = gateway(f"install {source}")
+    managed = installed.install_path / "module.py"
+    managed.write_text("CUSTOM = True\n", encoding="utf-8")
+
+    gateway(f"install {source} --force")
+
+    assert managed.read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert not (data / "stashes").exists()
+
+
+def test_install_builtin_stash_preserves_dirty_managed_copy(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = _project(tmp_path, "wire")
+    data = tmp_path / "data"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
+    installed = gateway(f"install {source}")
+    managed = installed.install_path / "module.py"
+    managed.write_text("CUSTOM = True\n", encoding="utf-8")
+
+    gateway(f"install {source} --stash")
+
+    stashes = list((data / "stashes" / "wire").iterdir())
+    assert len(stashes) == 1
+    assert (stashes[0] / "tree" / "module.py").read_text(
+        encoding="utf-8"
+    ) == "CUSTOM = True\n"
+    assert managed.read_text(encoding="utf-8") == "VALUE = 1\n"
