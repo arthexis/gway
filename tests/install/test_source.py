@@ -100,3 +100,17 @@ def test_fingerprint_tracks_symlink_target_without_following_it(tmp_path):
     link.symlink_to(second.name)
 
     assert fingerprint(root) != initial
+
+
+
+@pytest.mark.parametrize("name", ["../escape", "nested/name", "nested\\name", ".."])
+def test_project_name_rejects_unsafe_path_components(tmp_path, name):
+    root = tmp_path / "unsafe"
+    root.mkdir()
+    (root / "gway.toml").write_text(
+        f"[project]\nname = {name!r}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Invalid \[project\]\.name"):
+        project_name(root)
