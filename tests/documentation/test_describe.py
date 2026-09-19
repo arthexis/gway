@@ -92,7 +92,7 @@ def test_describe_bound_gway_operation_prefers_existing_provenance(gateway):
     assert documentation.source_kind == "python"
     assert documentation.path == ("demo", "connect")
     assert documentation.metadata["object"] is connect
-    assert documentation.operation == "connect"
+    assert documentation.operation == "demo.connect"
     assert documentation.subject == "demo"
     assert documentation.signature == inspect.signature(connect)
     assert documentation.parameter("host").description == (
