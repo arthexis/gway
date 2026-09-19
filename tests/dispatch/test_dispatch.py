@@ -235,14 +235,35 @@ def test_plural_subject_resolution_uses_shared_inflection(
     assert resolution.cardinality is Cardinality.MANY
 
 
-def test_plural_inference_does_not_singularize_double_s_subject(gateway):
+def test_singular_subject_ending_in_double_s_stays_one(gateway):
     def inspect_glass():
         return "glass"
 
-    gateway.wrap("inspect_glass", inspect_glass)
+    wrapped = gateway.wrap("inspect_glass", inspect_glass)
+    resolution = resolve_operation(gateway, ["inspect", "glass"])
 
-    with pytest.raises(LookupError, match="Unable to resolve operation"):
-        resolve_operation(gateway, ["inspect", "glass"] + ["s"])
+    assert resolution.callable is wrapped
+    assert resolution.subject == "glass"
+    assert resolution.cardinality is Cardinality.ONE
+
+
+def test_one_token_plural_subject_resolves_singular_selector(gateway):
+    def select_charger(identity):
+        return identity
+
+    wrapped = gateway.wrap(
+        "charger",
+        select_charger,
+        op="charger",
+        sub="charger",
+    )
+
+    resolution = resolve_operation(gateway, ["chargers", "CHG001"])
+
+    assert resolution.callable is wrapped
+    assert [str(token) for token in resolution.arguments] == ["CHG001"]
+    assert resolution.subject == "charger"
+    assert resolution.cardinality is Cardinality.MANY
 
 
 def test_exact_plural_subject_wins_over_inferred_singular(gateway):
