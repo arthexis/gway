@@ -98,3 +98,35 @@ def test_help_preserves_receiver_adjusted_signature(gateway):
 
     assert output.startswith("device label(prefix: str)")
     assert "self" not in output
+
+
+
+def test_builtin_install_help_explains_reconciliation_policy(gateway):
+    output = gateway("help install --verbose")
+
+    assert "Converge one local or Git project installation" in output
+    assert "Replace an existing installation" in output
+    assert "Discard drift in a dirty managed installation" in output
+    assert "Preserve a dirty managed installation" in output
+
+
+def test_builtin_test_run_help_explains_execution_filters(gateway):
+    output = gateway("help test run --verbose")
+
+    assert "Run tests through pytest" in output
+    assert "Pytest -k expression" in output
+    assert "last failures" in output
+
+
+def test_builtin_log_config_help_explains_logger_target(gateway):
+    output = gateway("help log config --verbose")
+
+    assert "Logging threshold name or numeric value" in output
+    assert "parent Gway logger" in output
+
+
+def test_callable_log_level_has_subject_specific_summary(gateway):
+    output = gateway("help log debug")
+
+    assert "Log a DEBUG diagnostic" in output
+    assert "callable and truth-testable" not in output
