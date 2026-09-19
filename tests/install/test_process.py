@@ -1,13 +1,9 @@
-import time
-
 from gway import Gateway
 from gway.install.systemd import UnitState
 from gway.service.state import ServiceState
 
 
 def test_process_backend_install_persists_without_starting(
-    tmp_path,
-    monkeypatch,
     install_declared_service,
     install_environment,
 ):
@@ -25,8 +21,6 @@ def test_process_backend_install_persists_without_starting(
 
 
 def test_process_backend_lifecycle_works_from_fresh_gateway(
-    tmp_path,
-    monkeypatch,
     install_declared_service,
     install_environment,
 ):
@@ -51,8 +45,6 @@ def test_process_backend_lifecycle_works_from_fresh_gateway(
 
 
 def test_uninstall_stops_running_process_backend_service(
-    tmp_path,
-    monkeypatch,
     install_declared_service,
     install_environment,
 ):
@@ -71,8 +63,6 @@ def test_uninstall_stops_running_process_backend_service(
 
 
 def test_switching_from_systemd_to_process_removes_old_unit(
-    tmp_path,
-    monkeypatch,
     fake_systemd,
     install_declared_service,
     install_environment,
@@ -82,7 +72,7 @@ def test_switching_from_systemd_to_process_removes_old_unit(
     source, _ = install_declared_service(backend="systemd")
     assert (units / "demo-worker.service").is_file()
 
-    gateway(f"install {source} --service worker --backend process")
+    Gateway()(f"install {source} --service worker --backend process")
 
     assert not (units / "demo-worker.service").exists()
     assert (("disable", "--now", "demo-worker.service"), False, False) in calls
