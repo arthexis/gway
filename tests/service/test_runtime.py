@@ -28,8 +28,6 @@ def test_process_backend_resolves_project_python_cwd_and_environment(tmp_path):
         working_directory="{project}",
         environment={"SERVICE_VALUE": "{project}/value"},
     )
-    backend = ProcessBackend()
-
     backend = ProcessBackend(state_root=tmp_path / "state")
 
     started = backend.start(service)
