@@ -27,8 +27,8 @@ def test_pipeline_precedes_explicit_native_arguments():
     adapted = apply_plan(filter_items, plan, marker, args=("active",))
 
     assert plan.rule == "positional"
-    assert plan.parameter == "status"
-    assert adapted.args == ("active", marker)
+    assert plan.parameter == "items"
+    assert adapted.args == (marker, "active")
 
 
 def test_pipeline_preserves_native_keyword_arguments():
@@ -145,3 +145,34 @@ def test_pipeline_positional_value_precedes_named_context(gateway):
 
     assert adapted.args == (raw,)
     assert wrapped(*adapted.args, **adapted.kwargs) is raw
+
+
+def test_tuple_pipeline_expands_into_positional_prefix():
+    def consume(first, second, third):
+        return first, second, third
+
+    adapted = adapt_pipeline(
+        None,
+        consume,
+        ("A", "B"),
+        args=("C",),
+    )
+
+    assert adapted.args == ("A", "B", "C")
+    assert adapted.kwargs == {}
+
+
+def test_list_pipeline_remains_one_positional_value():
+    value = ["A", "B"]
+
+    def consume(items, status):
+        return items, status
+
+    adapted = adapt_pipeline(
+        None,
+        consume,
+        value,
+        args=("active",),
+    )
+
+    assert adapted.args == (value, "active")
