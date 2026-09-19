@@ -71,14 +71,34 @@ error = _module_levels["error"]
 critical = _module_levels["critical"]
 exception = _module_levels["exception"]
 
+debug.__doc__ = "Log a DEBUG diagnostic when that level is enabled."
+info.__doc__ = "Log an INFO diagnostic when that level is enabled."
+warning.__doc__ = "Log a WARNING diagnostic when that level is enabled."
+warn.__doc__ = warning.__doc__
+error.__doc__ = "Log an ERROR diagnostic when that level is enabled."
+critical.__doc__ = "Log a CRITICAL diagnostic when that level is enabled."
+exception.__doc__ = (
+    "Log an ERROR diagnostic with the current exception traceback."
+)
+
 
 def __main__(message, *args, level=_logging.INFO, **kwargs):
-    """Log a message at an explicit level, defaulting to INFO."""
+    """Log one message through the Gway logger.
+
+    Args:
+        message: Logging format string or message object.
+        level: Logging level name or numeric value; defaults to INFO.
+    """
     return _gway_logger.log(_coerce_level(level), message, *args, **kwargs)
 
 
 def config(level=None, logger=None):
-    """Inspect or configure one Python logger."""
+    """Inspect or configure one Python logger.
+
+    Args:
+        level: Logging threshold name or numeric value to apply. When omitted, configuration is only inspected.
+        logger: Logger name to target. When omitted, configure the parent Gway logger.
+    """
     target = _logging.getLogger(logger) if logger else _gway_logger
     if level is not None:
         target.setLevel(_coerce_level(level))
