@@ -28,6 +28,7 @@ class Gateway(Resolver):
         silent=False,
         interactive=False,
         timed=False,
+        cache=None,
         **values,
     ):
         self.name = name
@@ -37,7 +38,7 @@ class Gateway(Resolver):
 
         from .cache import Cache
 
-        self.cache = Cache()
+        self.cache = cache if isinstance(cache, Cache) else Cache(cache)
         self.debug_enabled = bool(debug)
         self._verbose = False
         self._silent = False
