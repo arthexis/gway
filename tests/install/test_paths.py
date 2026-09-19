@@ -1,4 +1,4 @@
-from gway.install import data_root, install_paths
+from gway.install import bin_root, data_root, install_paths
 
 
 def test_user_data_root_uses_xdg_data_home(tmp_path):
@@ -50,6 +50,7 @@ def test_install_paths_are_durable_and_lazy(tmp_path):
     assert paths.root == root.resolve()
     assert paths.projects == root.resolve() / "projects"
     assert paths.stashes == root.resolve() / "stashes"
+    assert paths.launchers == root.resolve() / "launchers"
     assert paths.state == root.resolve() / "state.sqlite"
     assert paths.scope == "user"
     assert not root.exists()
@@ -59,3 +60,35 @@ def test_system_install_paths_report_system_scope(tmp_path):
     paths = install_paths(system=True, root=tmp_path / "system-data")
 
     assert paths.scope == "system"
+
+
+
+def test_user_bin_root_uses_local_bin_by_default(tmp_path):
+    home = tmp_path / "home"
+
+    assert bin_root(
+        environ={},
+        platform="linux",
+        home=home,
+    ) == home / ".local" / "bin"
+
+
+def test_system_bin_root_uses_usr_local_bin_by_default(tmp_path):
+    assert bin_root(
+        system=True,
+        environ={},
+        platform="linux",
+        home=tmp_path / "home",
+    ).as_posix() == "/usr/local/bin"
+
+
+def test_bin_root_overrides_are_scope_specific(tmp_path):
+    user = tmp_path / "user-bin"
+    system = tmp_path / "system-bin"
+    environ = {
+        "GWAY_BIN_DIR": str(user),
+        "GWAY_SYSTEM_BIN_DIR": str(system),
+    }
+
+    assert bin_root(environ=environ, platform="linux") == user
+    assert bin_root(system=True, environ=environ, platform="linux") == system
