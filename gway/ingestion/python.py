@@ -1,5 +1,6 @@
 """Recursive ingestion for already-imported Python sources."""
 
+from importlib import import_module
 from pathlib import Path
 
 from .base import IngestedOperation, normalize_path, register_operations
@@ -71,9 +72,13 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
     return register_operations(gateway, operations)
 
 
-def ingest_name(gateway, name, **kwargs):
-    """Import and ingest a fully qualified Python module/package name."""
-    raise NotImplementedError("Python name ingestion is not implemented yet")
+def ingest_name(gateway, name, *, path=None, **kwargs):
+    """Import and recursively ingest a fully qualified Python module/package name."""
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Python import name must be a non-empty string")
+
+    module = import_module(name)
+    return ingest_python(gateway, module, path=path, **kwargs)
 
 
 def ingest_path(gateway, path, **kwargs):
