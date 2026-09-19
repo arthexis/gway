@@ -193,3 +193,34 @@ def test_unknown_backend_fails_before_install_mutation(
         gateway(f"install {source} --service web --backend unknown")
 
     assert not (data / "projects" / "demo").exists()
+
+
+
+def test_service_lifecycle_routes_to_systemd_backend(
+    tmp_path,
+    monkeypatch,
+    fake_systemd,
+    make_service_project,
+    install_environment,
+):
+    source = make_service_project(
+        worker_command="import time; time.sleep(30)",
+    )
+    monkeypatch.chdir(tmp_path)
+    _, calls = fake_systemd
+
+    Gateway()(
+        f"install {source} --service worker --backend systemd"
+    )
+
+    runtime = Gateway()
+    started = runtime("service start demo worker")
+    status = runtime("service status demo worker")
+    stopped = runtime("service stop demo worker")
+
+    assert started["running"] is True
+    assert status["running"] is True
+    assert stopped["running"] is False
+    assert (("start", "demo-worker.service"), False, True) in calls
+    assert (("is-active", "demo-worker.service"), False, False) in calls
+    assert (("stop", "demo-worker.service"), False, False) in calls
