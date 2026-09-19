@@ -70,8 +70,8 @@ Then verify the actual runtime directly. Prefer concrete executions such as:
 ```bash
 python -c "import gway; print(gway.__file__)"
 gway --help
-gway gway env PATH
-python -c "from gway import gw; print(gw('gway env PATH'))"
+gway env PATH
+python -c "from gway import gw; print(gw('env PATH'))"
 ```
 
 When a user asks whether a feature works, how a command behaves, or whether a
