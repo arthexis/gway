@@ -171,21 +171,17 @@ def _valid_installation(record, paths):
     return (installed / "gway.toml").is_file()
 
 
-def discover_installations(runtime, *, system=False):
-    """Remember valid Gway-managed projects without importing project code."""
+def discover_installations(*, system=False):
+    """Return valid Gway-managed installation records for one scope."""
     from .install import InstallState, install_paths
 
     paths = install_paths(system=system)
     state = InstallState(paths.state)
-    discovered = []
-
-    for record in state.all(scope=paths.scope):
-        if not _valid_installation(record, paths):
-            continue
-        remember_object(runtime, record, (record.name,))
-        discovered.append(record)
-
-    return discovered
+    return [
+        record
+        for record in state.all(scope=paths.scope)
+        if _valid_installation(record, paths)
+    ]
 
 
 def discover_managed_projects(runtime):
@@ -193,11 +189,14 @@ def discover_managed_projects(runtime):
     discovered = {}
     for system in (False, True):
         try:
-            records = discover_installations(runtime, system=system)
+            records = discover_installations(system=system)
         except (OSError, PermissionError):
             continue
         for record in records:
-            discovered.setdefault(record.name, record)
+            if record.name in discovered:
+                continue
+            discovered[record.name] = record
+            remember_object(runtime, record, (record.name,))
 
     runtime._installed = discovered
     return discovered
