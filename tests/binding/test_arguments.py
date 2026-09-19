@@ -35,3 +35,18 @@ def test_missing_required_arguments_are_left_for_semantic_binding(gateway):
     bound = bind_arguments(inspect_charger, [], runtime=gateway)
     assert bound.args == ()
     assert bound.kwargs == {}
+
+
+def test_variadic_positional_arguments_receive_sigil_resolution(gateway):
+    gateway.context["path"] = "/tmp/example"
+
+    def operation(*parts):
+        return parts
+
+    bound = bind_arguments(
+        operation,
+        [Token("[path]")],
+        runtime=gateway,
+    )
+
+    assert bound.args == ("/tmp/example",)
