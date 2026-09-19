@@ -3,7 +3,7 @@
 import os as _os
 from pathlib import Path as path
 
-from . import log, toml
+from . import log, test, toml
 from .install import install, uninstall
 
 
