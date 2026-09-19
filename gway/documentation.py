@@ -1,0 +1,137 @@
+"""Structured documentation metadata for Python callables."""
+
+import inspect
+import re
+from dataclasses import dataclass
+
+
+_ARGS_HEADER = re.compile(r"^\s*(?:Args|Arguments|Parameters):\s*$")
+_PARAMETER = re.compile(
+    r"^\s{2,}([*]{0,2}[A-Za-z_]\w*)(?:\s*\([^)]*\))?\s*:\s*(.*)$"
+)
+
+
+@dataclass(frozen=True)
+class ParameterDocumentation:
+    """Mechanical and descriptive information for one callable parameter."""
+
+    name: str
+    kind: inspect._ParameterKind
+    required: bool
+    default: object
+    annotation: object
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class CallableDocumentation:
+    """Structured documentation extracted from one Python callable."""
+
+    callable: object
+    summary: str
+    docstring: str
+    signature: inspect.Signature | None
+    parameters: tuple[ParameterDocumentation, ...]
+
+    def parameter(self, name):
+        """Return documentation for one parameter by name, if present."""
+        return next(
+            (parameter for parameter in self.parameters if parameter.name == name),
+            None,
+        )
+
+
+def _parameter_descriptions(docstring):
+    """Parse optional Args/Arguments/Parameters entries from a docstring."""
+    if not docstring:
+        return {}
+
+    lines = docstring.splitlines()
+    descriptions = {}
+    index = 0
+
+    while index < len(lines):
+        if not _ARGS_HEADER.match(lines[index]):
+            index += 1
+            continue
+
+        index += 1
+        current = None
+        pieces = []
+        while index < len(lines):
+            line = lines[index]
+            match = _PARAMETER.match(line)
+            if match:
+                if current is not None:
+                    descriptions[current] = " ".join(pieces).strip()
+                current = match.group(1).lstrip("*")
+                pieces = [match.group(2).strip()] if match.group(2).strip() else []
+                index += 1
+                continue
+
+            if current is not None and (not line.strip() or line[:1].isspace()):
+                if line.strip():
+                    pieces.append(line.strip())
+                index += 1
+                continue
+            break
+
+        if current is not None:
+            descriptions[current] = " ".join(pieces).strip()
+        if descriptions:
+            break
+
+    return descriptions
+
+
+def _signature(callable_obj):
+    """Return an inspect signature when the callable exposes one."""
+    try:
+        return inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return None
+
+
+def describe(callable_obj):
+    """Return structured help metadata for a Python callable.
+
+    The function signature is authoritative for parameter mechanics. Optional
+    parameter prose is read from conventional Args, Arguments, or Parameters
+    docstring sections when present.
+    """
+    if not callable(callable_obj):
+        raise TypeError("documentation target must be callable")
+
+    docstring = inspect.getdoc(callable_obj) or ""
+    summary = docstring.splitlines()[0].strip() if docstring else ""
+    descriptions = _parameter_descriptions(docstring)
+    signature = _signature(callable_obj)
+
+    parameters = ()
+    if signature is not None:
+        parameters = tuple(
+            ParameterDocumentation(
+                name=parameter.name,
+                kind=parameter.kind,
+                required=(
+                    parameter.default is inspect.Parameter.empty
+                    and parameter.kind
+                    not in (
+                        inspect.Parameter.VAR_POSITIONAL,
+                        inspect.Parameter.VAR_KEYWORD,
+                    )
+                ),
+                default=parameter.default,
+                annotation=parameter.annotation,
+                description=descriptions.get(parameter.name) or None,
+            )
+            for parameter in signature.parameters.values()
+        )
+
+    return CallableDocumentation(
+        callable=callable_obj,
+        summary=summary,
+        docstring=docstring,
+        signature=signature,
+        parameters=parameters,
+    )
