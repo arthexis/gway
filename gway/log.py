@@ -27,7 +27,7 @@ def _coerce_level(level):
     return numeric
 
 
-class Level:
+class _Level:
     """A logging level that is both callable and truth-testable."""
 
     def __init__(self, target, level, *, exc_info=False):
@@ -48,21 +48,21 @@ class Level:
         return _logging.getLevelName(self.level)
 
 
-def levels(target):
+def _levels(target):
     """Return the standard callable/boolean level objects for one logger."""
-    warning = Level(target, _logging.WARNING)
+    warning = _Level(target, _logging.WARNING)
     return {
-        "debug": Level(target, _logging.DEBUG),
-        "info": Level(target, _logging.INFO),
+        "debug": _Level(target, _logging.DEBUG),
+        "info": _Level(target, _logging.INFO),
         "warning": warning,
         "warn": warning,
-        "error": Level(target, _logging.ERROR),
-        "critical": Level(target, _logging.CRITICAL),
-        "exception": Level(target, _logging.ERROR, exc_info=True),
+        "error": _Level(target, _logging.ERROR),
+        "critical": _Level(target, _logging.CRITICAL),
+        "exception": _Level(target, _logging.ERROR, exc_info=True),
     }
 
 
-_module_levels = levels(_gway_logger)
+_module_levels = _levels(_gway_logger)
 debug = _module_levels["debug"]
 info = _module_levels["info"]
 warning = _module_levels["warning"]
