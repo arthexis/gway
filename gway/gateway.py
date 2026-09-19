@@ -82,9 +82,16 @@ class Gateway(Resolver):
 
         from .ingestion.python import ingest_python
         from .service.controller import Controller
+        from .souschef.controller import Controller as SousChefController
+        from .souschef.service import register as register_souschef_service
+
+        register_souschef_service(self)
 
         self._service_controller = Controller(self)
         ingest_python(self, self._service_controller, path=("service",))
+
+        self._souschef_controller = SousChefController(self)
+        ingest_python(self, self._souschef_controller, path=("sous", "chef"))
 
     def _clear_context(self, **values):
         """Clear accumulated semantic context.
