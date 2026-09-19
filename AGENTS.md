@@ -564,27 +564,35 @@ bundle for the next stage. Outside a raw chain, numeric and asterisk sigils keep
 their ordinary semantic meaning.
 
 Within a raw chain, an exact non-literal sigil containing a constant integer
-selects that element from the original positional bundle and consumes it:
+selects that element from the original positional bundle:
 
 ```text
 triple - combine [2] [0] [1]
 ```
 
 uses the original third, first, then second tuple element. Indexing follows
-normal Python/GWAY sequence indexing, including negative indices. A consumed
-slot cannot be selected again.
+normal Python/GWAY sequence indexing, including negative indices.
 
-An exact `[*]` sigil consumes and splices all still-unconsumed positional
-values at that point:
+All numeric selectors in one stage are evaluated against the same immutable
+snapshot. Repeating a selector duplicates that source value in the call while
+marking its source slot consumed only once for purposes of the remaining pool:
+
+```text
+triple - combine [1] [1] [1]
+```
+
+An exact `[*]` sigil splices all values whose original source indices were
+not referenced by any numeric selector in that stage:
 
 ```text
 pair - combine manual [*]
 ```
 
-If no `[*]` appears, all still-unconsumed positional values retain the normal
+If no `[*]` appears, all unselected positional values retain the normal
 chain behavior and are inserted as a prefix before explicit positional
-arguments. Selectors are evaluated left-to-right; once `[*]` consumes the
-remaining pool, later numeric selectors for those values are invalid.
+arguments. Numeric selection is computed for the whole stage before placement,
+so a selector may appear before or after `[*]` without changing which source
+values belong to the remaining pool.
 
 Single-quoted forms such as `'[0]'` remain literal text and do not act as
 chain selectors.
