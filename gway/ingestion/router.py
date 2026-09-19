@@ -1,40 +1,46 @@
 """Ingestion routing across source kinds."""
 
 import os
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path, PureWindowsPath
 from types import ModuleType
 
 
-def _is_explicit_path_string(source):
-    """Return whether string syntax explicitly identifies a filesystem location."""
+def _is_path_string(source):
+    """Return whether an explicit ingest string denotes a filesystem source."""
     if not isinstance(source, str) or not source:
         return False
 
-    # Shell/home rooted forms are explicit even though '~' is expanded later.
-    if source == "~" or source.startswith(("~/", "~\\")):
+    # Existing filesystem entries are path sources even when their spelling is
+    # otherwise ambiguous, such as an extensionless bare filename like README.
+    if Path(source).expanduser().exists():
         return True
 
-    # Explicit current/parent roots are paths; incidental dots are not.
-    if source in {".", ".."} or source.startswith(("./", "../", ".\\", "..\\")):
+    # Path separators make relative intent explicit even when the target does
+    # not exist yet. Support both separator spellings independent of host OS.
+    if "/" in source or "\\" in source:
         return True
 
-    # Recognize absolute syntax independently of the host platform so routing
-    # itself is deterministic for POSIX, drive-rooted, and UNC spellings.
-    return (
-        PurePosixPath(source).is_absolute()
-        or PureWindowsPath(source).is_absolute()
-    )
+    # Shell/home syntax is path intent even without a separator.
+    if source.startswith("~"):
+        return True
+
+    # Windows drive-qualified spellings such as C:README are path-shaped even
+    # when they are drive-relative rather than absolute.
+    if PureWindowsPath(source).drive:
+        return True
+
+    return False
 
 
 def _is_pathlike(source):
     """Return whether ingest() should delegate this source to ingest_path()."""
     if isinstance(source, os.PathLike):
         return True
-    return _is_explicit_path_string(source)
+    return _is_path_string(source)
 
 
 def ingest(gateway, source, **kwargs):
-    """Route an ingestion source to the appropriate ingestor."""
+    """Route an explicitly requested ingestion source to its ingestor."""
     if _is_pathlike(source):
         return ingest_path(gateway, source, **kwargs)
 
