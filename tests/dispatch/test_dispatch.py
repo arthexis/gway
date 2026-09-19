@@ -122,16 +122,16 @@ def test_semicolon_starts_new_statement_without_raw_pipeline(gateway):
 
 
 def test_semicolon_statement_still_sees_published_semantic_context(gateway):
-    def get_items():
+    def get_report():
         return {"items": ["A", "B"]}
 
     def count_items(items):
         return len(items)
 
-    gateway.get_items = gateway.wrap("get_items", get_items)
+    gateway.get_report = gateway.wrap("get_report", get_report)
     gateway.count_items = gateway.wrap("count_items", count_items)
 
-    assert dispatch(gateway, "get_items ; count_items") == 2
+    assert dispatch(gateway, "get_report ; count_items") == 2
 
 
 def test_greedy_final_string_consumes_dash_and_double_dash_until_statement_end(gateway):
