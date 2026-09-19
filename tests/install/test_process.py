@@ -1,0 +1,117 @@
+import time
+
+from gway import Gateway
+from gway.install.systemd import UnitState
+from gway.service.state import ServiceState
+
+
+def test_process_backend_install_persists_without_starting(
+    tmp_path,
+    monkeypatch,
+    make_service_project,
+    install_environment,
+):
+    source = make_service_project(
+        worker_command="import time; time.sleep(30)",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    gateway = Gateway()
+    installed = gateway(
+        f"install {source} --service worker --backend process"
+    )
+
+    records = UnitState(install_environment.data / "systemd").get("demo")
+    assert [(record.service, record.backend) for record in records] == [
+        ("worker", "process")
+    ]
+    assert ServiceState(install_environment.data / "services").get(
+        "demo",
+        "worker",
+    ) is None
+    assert installed.install_path.is_dir()
+
+
+def test_process_backend_lifecycle_works_from_fresh_gateway(
+    tmp_path,
+    monkeypatch,
+    make_service_project,
+    install_environment,
+):
+    source = make_service_project(
+        worker_command="import time; time.sleep(30)",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    installer = Gateway()
+    installer(f"install {source} --service worker --backend process")
+
+    first = Gateway()
+    started = first("service start demo worker")
+    try:
+        assert started["running"] is True
+        assert isinstance(started["pid"], int)
+
+        second = Gateway()
+        status = second("service status demo worker")
+        assert status["running"] is True
+        assert status["pid"] == started["pid"]
+
+        stopped = second("service stop demo worker")
+        assert stopped["running"] is False
+        assert stopped["pid"] is None
+    finally:
+        first("service stop demo worker")
+
+
+def test_uninstall_stops_running_process_backend_service(
+    tmp_path,
+    monkeypatch,
+    make_service_project,
+    install_environment,
+):
+    source = make_service_project(
+        worker_command="import time; time.sleep(30)",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    gateway = Gateway()
+    gateway(f"install {source} --service worker --backend process")
+    started = Gateway()("service start demo worker")
+    assert started["running"] is True
+
+    removed = Gateway()("uninstall demo")
+
+    assert removed.name == "demo"
+    assert UnitState(install_environment.data / "systemd").get("demo") == []
+    assert ServiceState(install_environment.data / "services").get(
+        "demo",
+        "worker",
+    ) is None
+
+
+def test_switching_from_systemd_to_process_removes_old_unit(
+    tmp_path,
+    monkeypatch,
+    fake_systemd,
+    make_service_project,
+    install_environment,
+):
+    source = make_service_project(
+        worker_command="import time; time.sleep(30)",
+    )
+    monkeypatch.chdir(tmp_path)
+    units, calls = fake_systemd
+
+    gateway = Gateway()
+    gateway(f"install {source} --service worker --backend systemd")
+    assert (units / "demo-worker.service").is_file()
+
+    gateway(f"install {source} --service worker --backend process")
+
+    assert not (units / "demo-worker.service").exists()
+    assert (("disable", "--now", "demo-worker.service"), False, False) in calls
+    records = UnitState(install_environment.data / "systemd").get("demo")
+    assert [(record.service, record.backend) for record in records] == [
+        ("worker", "process")
+    ]
