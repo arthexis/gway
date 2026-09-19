@@ -1,7 +1,9 @@
 import logging
+import sys
 
 import gway.log as gway_log
 from gway import Gateway
+from gway.console import cli_main
 
 
 def test_gateway_instances_use_unique_child_loggers():
@@ -144,3 +146,43 @@ def test_log_exposes_standard_levels_and_config(gateway):
         "config",
     ):
         assert subject in family
+
+
+def test_cli_log_level_controls_gway_logger_hierarchy(monkeypatch, caplog):
+    previous = gway_log.logger.level
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["gway", "-L", "DEBUG", "log", "debug", "cli-debug"],
+    )
+    try:
+        with caplog.at_level(logging.DEBUG):
+            assert cli_main() == 0
+
+        assert any(
+            record.getMessage() == "cli-debug"
+            and record.levelno == logging.DEBUG
+            for record in caplog.records
+        )
+    finally:
+        gway_log.logger.setLevel(previous)
+
+
+def test_cli_silent_suppresses_result_without_changing_log_level(
+    monkeypatch,
+    capsys,
+):
+    previous = gway_log.logger.level
+    gway_log.logger.setLevel(logging.WARNING)
+    monkeypatch.setenv("GWAY_SILENT_RESULT", "visible")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["gway", "--silent", "env", "GWAY_SILENT_RESULT"],
+    )
+    try:
+        assert cli_main() == 0
+        assert capsys.readouterr().out == ""
+        assert gway_log.logger.level == logging.WARNING
+    finally:
+        gway_log.logger.setLevel(previous)
