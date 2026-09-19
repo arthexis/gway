@@ -156,7 +156,10 @@ class Activation:
         for _, backup in self.backups:
             backup = Path(backup)
             if backup.exists() or backup.is_symlink():
-                backup.unlink()
+                try:
+                    backup.unlink()
+                except OSError:
+                    pass
         self.active = False
 
 
@@ -165,6 +168,9 @@ def activate(project, project_path, paths):
     validate_name(project)
     desired = scripts(project_path)
     previous = _read_index(paths, project)
+
+    if not desired and not previous:
+        return Activation(project, paths, previous, [], [], active=False)
 
     paths.bin.mkdir(parents=True, exist_ok=True)
     backups = []
