@@ -1,5 +1,6 @@
 """Public GWAY core interface."""
 
+from .cache import Cache
 from .gateway import Gateway, gw
 from .operations import Operations, Subjects
 from .console import cli_main, process
@@ -8,6 +9,7 @@ from .sigil import Sigil, Resolver, Spool, __
 from .structs import Results
 
 __all__ = [
+    "Cache",
     "Gateway",
     "Operations",
     "Subjects",
