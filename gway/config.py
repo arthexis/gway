@@ -281,6 +281,10 @@ def discover_managed_projects(runtime):
 
     runtime._installed = discovered
     runtime._installed_entrypoints = entrypoints
+
+    from .service.discovery import discover as discover_services
+
+    discover_services(runtime, discovered.values())
     return discovered
 
 
