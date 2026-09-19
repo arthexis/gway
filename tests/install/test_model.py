@@ -109,3 +109,14 @@ def test_install_request_backend_requires_service_selection():
             "arthexis/gway",
             backend="systemd",
         )
+
+
+
+def test_process_backend_rejects_systemd_unit_name_override():
+    with pytest.raises(ValueError, match="systemd backend"):
+        InstallRequest(
+            "arthexis/gway",
+            services=("worker",),
+            backend="process",
+            name="custom-worker",
+        )
