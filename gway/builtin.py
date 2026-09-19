@@ -3,6 +3,7 @@
 import os as _os
 
 from . import logging
+from .logging import *
 
 
 def env(name, default=None):

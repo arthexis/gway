@@ -13,6 +13,15 @@ from logging import (
     warning,
 )
 
+__all__ = [
+    "critical",
+    "error",
+    "exception",
+    "info",
+    "logger",
+    "warning",
+]
+
 logger = _get_logger("gway")
 logger.setLevel(_NOTSET)
 _instances = _count()

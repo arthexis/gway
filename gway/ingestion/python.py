@@ -74,6 +74,18 @@ def discover_python(source, *, path=None):
     return discovered
 
 
+def _register_callable(gateway, record, operation):
+    """Register one callable identity once and alias any additional paths."""
+    if record.operation is None:
+        wrapped = register_operation(gateway, operation)
+        record.operation = wrapped
+        record.registered = True
+        return wrapped
+
+    gateway.ops.register_alias(operation.name, record.operation)
+    return None
+
+
 def ingest_python(gateway, source, *, path=None, **kwargs):
     """Expand one imported Python object namespace and register direct callables."""
     root = normalize_path(path) if path is not None else _default_path(source)
@@ -88,7 +100,7 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
 
     wrapped = []
 
-    if callable(source) and not source_record.registered:
+    if callable(source):
         operation = IngestedOperation(
             root,
             source,
@@ -96,8 +108,9 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
             kind="python",
             metadata={"object": source},
         )
-        wrapped.append(register_operation(gateway, operation))
-        source_record.registered = True
+        registered = _register_callable(gateway, source_record, operation)
+        if registered is not None:
+            wrapped.append(registered)
 
     for name, child in _public_members(source):
         child_path = (*root, name)
@@ -107,7 +120,7 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
             child_path,
             expander=ingest_python,
         )
-        if callable(child) and not child_record.registered:
+        if callable(child):
             operation = IngestedOperation(
                 child_path,
                 child,
@@ -115,8 +128,9 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
                 kind="python",
                 metadata={"object": child},
             )
-            wrapped.append(register_operation(gateway, operation))
-            child_record.registered = True
+            registered = _register_callable(gateway, child_record, operation)
+            if registered is not None:
+                wrapped.append(registered)
 
     source_record.expanded = True
     return wrapped

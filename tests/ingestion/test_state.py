@@ -72,3 +72,19 @@ def test_jiti_updates_only_requested_branch_state(gateway, make_ping_node):
     assert gateway._ingested[id(child)].expanded is True
     assert gateway._ingested[id(leaf)].expanded is True
     assert gateway._ingested[id(sibling)].expanded is False
+
+
+def test_repeated_callable_identity_registers_additional_paths_as_aliases(gateway):
+    shared = lambda: "pong"
+    first = SimpleNamespace(ping=shared)
+    second = SimpleNamespace(ping=shared)
+
+    ingest_python(gateway, first, path=("first",))
+    ingest_python(gateway, second, path=("second",))
+
+    first_op = gateway.ops.resolve("first.ping")
+    second_op = gateway.ops.resolve("second.ping")
+
+    assert first_op is second_op
+    assert gateway("first ping") == "pong"
+    assert gateway("second ping") == "pong"

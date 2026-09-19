@@ -44,9 +44,31 @@ def test_logging_namespace_is_lazy_builtin(gateway, caplog):
     assert any(record.getMessage() == "hello" for record in caplog.records)
 
 
-def test_logging_namespace_exposes_selected_stdlib_functions(gateway):
-    gateway("gway logging warning warning-message")
+def test_logging_functions_are_direct_builtins(gateway, caplog):
+    with caplog.at_level(logging.INFO):
+        assert gateway("gway info hello") is None
 
-    for name in ("info", "warning", "error", "critical", "exception"):
-        operation = gateway.ops.resolve(f"gway.logging.{name}")
-        assert operation is not None
+    assert gateway.ops.resolve("gway.info") is not None
+    assert any(record.getMessage() == "hello" for record in caplog.records)
+
+
+def test_logging_exports_are_shared_between_direct_and_namespaced_builtins(gateway):
+    gateway("gway logging warning namespaced")
+    direct = gateway.ops.resolve("gway.warning")
+    namespaced = gateway.ops.resolve("gway.logging.warning")
+
+    assert direct is namespaced
+    assert direct.__wrapped__ is gway_logging.warning
+
+
+def test_logging_module_public_surface_excludes_internal_helpers():
+    assert set(gway_logging.__all__) == {
+        "critical",
+        "error",
+        "exception",
+        "info",
+        "logger",
+        "warning",
+    }
+    assert "_child" not in gway_logging.__all__
+    assert "_level" not in gway_logging.__all__

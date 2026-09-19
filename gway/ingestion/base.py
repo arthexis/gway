@@ -28,6 +28,7 @@ class IngestedObject:
     value: object
     paths: set[tuple[str, ...]] = field(default_factory=set)
     registered: bool = False
+    operation: object = None
     expanded: bool = False
     expander: object = None
 
