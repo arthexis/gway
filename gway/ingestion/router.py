@@ -5,23 +5,24 @@ from pathlib import Path, PureWindowsPath
 from types import ModuleType
 
 
+def has_path_syntax(source):
+    """Return whether a string explicitly spells filesystem path intent."""
+    if not isinstance(source, str) or not source:
+        return False
+    if "/" in source or "\\" in source:
+        return True
+    if source.startswith("~"):
+        return True
+    if PureWindowsPath(source).drive:
+        return True
+    return False
+
+
 def _is_path_string(source):
     """Return whether an explicit ingest string denotes a filesystem source."""
     if not isinstance(source, str) or not source:
         return False
-
-    # Path separators make relative intent explicit even when the target does
-    # not exist yet. Support both separator spellings independent of host OS.
-    if "/" in source or "\\" in source:
-        return True
-
-    # Shell/home syntax is path intent even without a separator.
-    if source.startswith("~"):
-        return True
-
-    # Windows drive-qualified spellings such as C:README are path-shaped even
-    # when they are drive-relative rather than absolute.
-    if PureWindowsPath(source).drive:
+    if has_path_syntax(source):
         return True
 
     # A bare spelling has no syntactic path marker. Inside explicit ingest(),
