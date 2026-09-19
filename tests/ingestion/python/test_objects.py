@@ -1,0 +1,182 @@
+from types import SimpleNamespace
+
+from gway.ingestion.python import discover_python, ingest_python
+
+
+def test_ingest_plain_function(gateway):
+    def ping():
+        return "pong"
+
+    wrapped = ingest_python(gateway, ping)
+
+    assert len(wrapped) == 1
+    assert gateway.ops.resolve("ping")() == "pong"
+
+
+def test_ingest_instance_expands_only_direct_public_methods(gateway, make_ping_node):
+    class Client:
+        def start(self, service):
+            return f"start:{service}"
+
+    client = Client()
+    client.child = make_ping_node()
+    ingest_python(gateway, client, path=("client",))
+
+    assert gateway("client start arthexis") == "start:arthexis"
+    assert gateway.ops.resolve("client.child.ping") is None
+
+
+def test_ingest_class_discovers_direct_public_methods(gateway):
+    class Tools:
+        @staticmethod
+        def ping():
+            return "pong"
+
+    ingest_python(gateway, Tools, path=("tools",))
+
+    assert gateway("tools ping") == "pong"
+
+
+def test_nested_object_hierarchy_expands_one_level_at_a_time(gateway, make_ping_node):
+    service = make_ping_node("running")
+    system = SimpleNamespace(service=service)
+    root = SimpleNamespace(system=system)
+
+    ingest_python(gateway, root, path=("root",))
+    assert gateway.ops.resolve("root.system.service.ping") is None
+
+    ingest_python(gateway, system, path=("root", "system"))
+    assert gateway.ops.resolve("root.system.service.ping") is None
+
+    ingest_python(gateway, service, path=("root", "system", "service"))
+    assert gateway("root system service ping") == "running"
+
+
+def test_callable_object_itself_is_registered(gateway):
+    class Greeter:
+        def __call__(self, name):
+            return f"hello:{name}"
+
+    greeter = Greeter()
+    ingest_python(gateway, greeter, path=("greet",))
+
+    assert gateway("greet Rafael") == "hello:Rafael"
+
+
+def test_private_members_are_skipped(gateway):
+    class Client:
+        def public(self):
+            return "public"
+
+        def _private(self):
+            return "private"
+
+    ingest_python(gateway, Client(), path=("client",))
+
+    assert gateway("client public") == "public"
+    assert gateway.ops.resolve("client._private") is None
+
+
+def test_discover_python_is_one_level_only(make_ping_node):
+    root = SimpleNamespace(child=make_ping_node())
+    root.run = lambda: "run"
+
+    names = {item.name for item in discover_python(root, path=("root",))}
+
+    assert "root.run" in names
+    assert "root.child.ping" not in names
+
+
+def test_discovered_operations_preserve_python_provenance():
+    class Client:
+        def status(self):
+            return "ok"
+
+    client = Client()
+    discovered = discover_python(client, path=("client",))
+    status = next(item for item in discovered if item.name == "client.status")
+
+    assert status.source is client
+    assert status.kind == "python"
+    assert status.metadata["object"].__self__ is client
+
+
+def test_module_dunder_main_represents_module_operation(gateway):
+    from types import ModuleType
+
+    module = ModuleType("demo")
+
+    def __main__(value):
+        return f"main:{value}"
+
+    def info(value):
+        return f"info:{value}"
+
+    module.__main__ = __main__
+    module.info = info
+
+    ingest_python(gateway, module, path=("demo",))
+
+    assert gateway("demo value") == "main:value"
+    assert gateway("demo info value") == "info:value"
+    assert gateway.ops["demo"][None].__wrapped__ is __main__
+    assert gateway.ops["demo"]["info"].__wrapped__ is info
+
+
+def test_transparent_module_exposes_children_at_command_root(gateway):
+    from types import ModuleType
+
+    module = ModuleType("demo.transparent")
+
+    def ping():
+        return "pong"
+
+    module.ping = ping
+
+    from gway.ingestion.python import ingest_module
+
+    ingest_module(gateway, module, transparent=True)
+
+    assert gateway("ping") == "pong"
+    assert gateway.ops.resolve("demo.transparent.ping") is None
+
+
+def test_transparent_module_does_not_apply_module_main_family_semantics(gateway):
+    from types import ModuleType
+
+    module = ModuleType("demo.transparent")
+
+    def __main__(value):
+        return f"main:{value}"
+
+    def info(value):
+        return f"info:{value}"
+
+    module.__main__ = __main__
+    module.info = info
+
+    from gway.ingestion.python import ingest_module
+
+    ingest_module(gateway, module, transparent=True)
+
+    assert gateway("info value") == "info:value"
+    assert gateway.ops.resolve("demo.transparent") is None
+
+
+def test_class_factory_and_instance_methods_use_generic_semantic_subject(gateway):
+    class Device:
+        def __init__(self, serial):
+            self.serial = serial
+
+        def label(self, prefix):
+            return f"{prefix}:{self.serial}"
+
+    ingest_python(gateway, Device, path=("device",))
+
+    created = gateway("device ABC")
+    assert isinstance(created, Device)
+    assert gateway.results["device"] is created
+
+    assert gateway("label device unit") == "unit:ABC"
+    assert gateway("device XYZ - label unit") == "unit:XYZ"
+    assert gateway.ops["label"]["device"] is gateway.ops.resolve("device.label")
