@@ -191,3 +191,33 @@ def fake_systemd(tmp_path, monkeypatch):
 
     monkeypatch.setattr(systemd, "_systemctl", call)
     return units, calls
+
+
+
+@pytest.fixture
+def install_declared_service(
+    tmp_path,
+    monkeypatch,
+    make_service_project,
+):
+    """Install one representative declared service through a chosen backend."""
+    def install(
+        *,
+        backend,
+        service="worker",
+        worker_command="import time; time.sleep(30)",
+        name=None,
+    ):
+        source = make_service_project(worker_command=worker_command)
+        monkeypatch.chdir(tmp_path)
+        command = (
+            f"install {source} --service {service} --backend {backend}"
+        )
+        if name is not None:
+            command += f" --name {name}"
+        installed = Gateway()(command)
+        return source, installed
+
+    from gway import Gateway
+
+    return install
