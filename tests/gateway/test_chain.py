@@ -204,3 +204,17 @@ def test_chain_rejects_numeric_selector_after_star_consumes_pool(gateway):
 
     with pytest.raises(ValueError, match="already been consumed"):
         gateway("pair - combine [*] [0]")
+
+
+def test_manual_chain_supports_numeric_and_star_selectors(gateway):
+    def triple():
+        return ("A", "B", "C")
+
+    def combine(first, second, third, fourth):
+        return first, second, third, fourth
+
+    gateway.triple = gateway.wrap("get_triple", triple)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    with gateway.chain("triple") as __:
+        assert __("combine X [2] [*]") == ("X", "C", "A", "B")
