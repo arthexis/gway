@@ -178,21 +178,7 @@ def test_chain_numeric_then_star_consumes_remaining_values(gateway):
     assert gateway("triple - combine [2] [*]") == ("C", "A", "B")
 
 
-def test_chain_rejects_reusing_consumed_numeric_slot(gateway):
-    def pair():
-        return ("A", "B")
-
-    def combine(first, second):
-        return first, second
-
-    gateway.pair = gateway.wrap("get_pair", pair)
-    gateway.combine = gateway.wrap("combine_values", combine)
-
-    with pytest.raises(ValueError, match="already been consumed"):
-        gateway("pair - combine [0] [0]")
-
-
-def test_chain_rejects_numeric_selector_after_star_consumes_pool(gateway):
+def test_chain_repeated_numeric_selector_duplicates_snapshot_value(gateway):
     def pair():
         return ("A", "B")
 
@@ -202,8 +188,33 @@ def test_chain_rejects_numeric_selector_after_star_consumes_pool(gateway):
     gateway.pair = gateway.wrap("get_pair", pair)
     gateway.combine = gateway.wrap("combine_values", combine)
 
-    with pytest.raises(ValueError, match="already been consumed"):
-        gateway("pair - combine [*] [0]")
+    assert gateway("pair - combine [1] [1]") == ("A", "B", "B")
+
+
+def test_repeated_numeric_selector_consumes_source_slot_only_once(gateway):
+    def triple():
+        return ("A", "B", "C")
+
+    def combine(first, second, third, fourth, fifth):
+        return first, second, third, fourth, fifth
+
+    gateway.triple = gateway.wrap("get_triple", triple)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    assert gateway("triple - combine [1] [1] [1]") == ("A", "C", "B", "B", "B")
+
+
+def test_numeric_selector_after_star_uses_same_snapshot(gateway):
+    def triple():
+        return ("A", "B", "C")
+
+    def combine(first, second, third):
+        return first, second, third
+
+    gateway.triple = gateway.wrap("get_triple", triple)
+    gateway.combine = gateway.wrap("combine_values", combine)
+
+    assert gateway("triple - combine [*] [1]") == ("A", "C", "B")
 
 
 def test_manual_chain_supports_numeric_and_star_selectors(gateway):
