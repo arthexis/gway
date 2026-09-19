@@ -3,7 +3,18 @@ from pathlib import Path
 import pytest
 
 
-def test_gateway_executes_recipe_from_path_object(gateway, tmp_path):
+@pytest.mark.parametrize(
+    "reference",
+    [
+        pytest.param(lambda path: path, id="path-object"),
+        pytest.param(str, id="string-path"),
+    ],
+)
+def test_gateway_executes_recipe_from_explicit_path_reference(
+    gateway,
+    tmp_path,
+    reference,
+):
     def echo(value):
         return value
 
@@ -11,18 +22,7 @@ def test_gateway_executes_recipe_from_path_object(gateway, tmp_path):
     recipe = tmp_path / "simple.rx"
     recipe.write_text("echo hello\n", encoding="utf-8")
 
-    assert gateway(recipe) == "hello"
-
-
-def test_gateway_executes_recipe_from_explicit_string_path(gateway, tmp_path):
-    def echo(value):
-        return value
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-    recipe = tmp_path / "simple.rx"
-    recipe.write_text("echo hello\n", encoding="utf-8")
-
-    assert gateway(str(recipe)) == "hello"
+    assert gateway(reference(recipe)) == "hello"
 
 
 def test_bare_existing_recipe_is_fallback_when_operation_is_missing(
