@@ -44,3 +44,14 @@ def test_sigil_default_resolves_at_call_time(gateway):
         return serial
 
     assert gateway.wrap("create_charger", create_charger)() == "ABC"
+
+
+def test_semantic_completion_preserves_explicit_none_result(gateway):
+    gateway.results.insert("charger", None)
+
+    def inspect_charger(charger="fallback"):
+        return charger
+
+    wrapped = gateway.wrap("inspect_charger", inspect_charger)
+
+    assert wrapped() is None
