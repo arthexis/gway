@@ -898,6 +898,30 @@ gway install https://example.com/project.git --ref v1.2.3
 gway uninstall project
 ```
 
+
+GWAY itself follows this same contract. The repository declares:
+
+```toml
+[project]
+name = "gway"
+
+[install.scripts]
+gway = "gway:cli_main"
+```
+
+and the bare source identity `gway` resolves to the Repository URL published
+in GWAY's Python package metadata. Therefore self-install is ordinary source
+resolution plus ordinary Git installation:
+
+```text
+gway install gway
+gway install gway --ref gateway-rebuild
+```
+
+There is no `--self` path or separate self-update implementation. The running
+process finishes with its already-loaded code; activation swaps the durable
+launcher for future invocations.
+
 Local filesystem intent wins before GitHub shorthand resolution. An existing
 path is always treated as local, and explicit relative spellings such as
 `./repo` or `../repo` are never reinterpreted as GitHub repositories.
@@ -907,7 +931,11 @@ without `.git`, GitHub SSH shorthand, generic `ssh://`, `git://`,
 `file://`, and HTTP(S) URLs ending in `.git` are also accepted Git sources.
 
 Git support uses the system `git` executable and introduces no third-party
-Python runtime dependency. Each canonical repository has a mirror under the
+Python runtime dependency. Install metadata needed for `[project]` and
+`[install.scripts]` has a narrow stdlib fallback on Python 3.10, so
+self-install does not make `tomli` a core dependency. Full declarative
+ingestion TOML parsing remains optional on Python 3.10 and is only invoked when
+a manifest actually declares `[ingest]` or `[[ingest]]`. Each canonical repository has a mirror under the
 general GWAY cache `git` namespace. Every install refreshes that mirror,
 resolves the requested `--ref` (branch, tag, or commit) to an immutable commit
 SHA, and materializes a detached content snapshot keyed by that SHA. Snapshot
@@ -935,9 +963,27 @@ ignoring incidental VCS/tool-cache internals such as `.git` and
 Installation never writes into or mutates the source tree. GWAY stages a full
 managed copy beneath the selected durable `projects/` directory, validates
 that the staged project still has the expected identity and fingerprint, then
-atomically activates the staged directory. Only after activation succeeds is
-the authoritative SQLite installation record written. If that state write
-fails, activation is rolled back.
+atomically activates the staged directory.
+
+Projects may declare command activation through `[install.scripts]`. Each
+entry maps one command name to a `module:callable` target. GWAY creates an
+executable launcher that prepends the durable managed project to `sys.path`
+and invokes that target with the same Python interpreter running the installer.
+User launchers default to `~/.local/bin`; system launchers default to
+`/usr/local/bin`. `GWAY_BIN_DIR` and `GWAY_SYSTEM_BIN_DIR` override those
+locations.
+
+Launcher ownership is recorded under durable `launchers/` metadata. Project
+directory replacement, launcher replacement, and SQLite state update form one
+logical transaction: launcher activation is rolled back if state persistence
+fails, and uninstall restores launchers if project/state removal fails. GWAY
+will not overwrite or remove an unrelated executable that it does not own,
+except that the currently executing same-name project launcher may be replaced
+during its own installation.
+
+Only after project and launcher activation succeed is the authoritative SQLite
+installation record finalized. If any later state write fails, both the
+launcher and project activation are rolled back.
 
 Repeating an unchanged local install is a no-op and returns the existing
 installation record. If the local source has changed, the default
@@ -1002,8 +1048,13 @@ uses the platform data directory (`$XDG_DATA_HOME/gway` or
 ```text
 projects/
 stashes/
+launchers/
 state.sqlite
 ```
+
+Launcher executables live in the scope's bin directory rather than inside the
+managed project tree. This keeps generated activation state out of source
+fingerprints and allows a stable command path to survive project replacement.
 
 The SQLite registry is authoritative durable state and records project name,
 source identity, requested ref, resolved revision, fingerprint, install path,
