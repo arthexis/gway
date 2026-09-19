@@ -6,10 +6,29 @@ from .binding import BoundCall, Literal
 from .sigil import Sigil, Spool
 
 
-def complete_arguments(runtime, subject, func, args=(), kwargs=None) -> BoundCall:
+_MISSING = object()
+
+
+def complete_arguments(
+    runtime,
+    subject,
+    func,
+    args=(),
+    kwargs=None,
+    *,
+    receiver=None,
+) -> BoundCall:
     """Complete explicit Python arguments with semantic context and defaults."""
     kwargs = {} if kwargs is None else kwargs
     signature = inspect.signature(func)
+    args = tuple(args)
+
+    if receiver is not None:
+        value = runtime.find_value(receiver, _MISSING)
+        if value is _MISSING:
+            raise TypeError(f"missing semantic receiver: {receiver}")
+        args = (value, *args)
+
     bound = signature.bind_partial(*args, **kwargs)
 
     call_args = []
