@@ -440,3 +440,68 @@ def test_singular_cardinality_checks_only_first_two_lazy_results(
         gateway("connected charger")
 
     assert lazy.slices == [slice(None, 2, None)]
+
+
+
+def test_plural_collection_does_not_implicitly_feed_singular_model_operation(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+    chargers = [Charger("CHG001"), Charger("CHG002")]
+
+    def charging(self):
+        return chargers
+
+    @classmethod
+    def reset(cls, charger):
+        raise AssertionError("reset must not be invoked for a charger collection")
+
+    type(manager).charging = charging
+    Charger.reset = reset
+    gateway.ingest(Charger)
+
+    with pytest.raises(TypeError, match="Collection of charger"):
+        gateway("charging chargers - reset")
+
+
+def test_plural_collection_can_feed_operation_that_explicitly_accepts_collection(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+    chargers = [Charger("CHG001"), Charger("CHG002")]
+
+    def charging(self):
+        return chargers
+
+    @classmethod
+    def summarize(cls, chargers):
+        return [charger.serial for charger in chargers]
+
+    type(manager).charging = charging
+    Charger.summarize = summarize
+    gateway.ingest(Charger)
+
+    assert gateway("charging chargers - summarize") == ["CHG001", "CHG002"]
+
+
+def test_plural_collection_can_feed_annotated_collection_parameter(
+    gateway,
+    django_orm,
+):
+    Charger, manager = django_orm
+    chargers = [Charger("CHG001"), Charger("CHG002")]
+
+    def charging(self):
+        return chargers
+
+    @classmethod
+    def summarize(cls, items: list):
+        return [charger.serial for charger in items]
+
+    type(manager).charging = charging
+    Charger.summarize = summarize
+    gateway.ingest(Charger)
+
+    assert gateway("charging chargers - summarize") == ["CHG001", "CHG002"]
