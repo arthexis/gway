@@ -48,8 +48,9 @@ def test_pipeline_preserves_native_keyword_arguments():
     assert adapted.kwargs == {"title": "Fleet"}
 
 
-def test_consumer_semantic_subject_is_preferred(gateway):
+def test_pipeline_uses_first_available_positional_regardless_of_subject_name(gateway):
     marker = object()
+    gateway.results.insert("chargers", marker)
 
     def summarize(prefix, chargers):
         return prefix, chargers
@@ -58,27 +59,13 @@ def test_consumer_semantic_subject_is_preferred(gateway):
     plan = plan_pipeline(gateway, wrapped, marker)
     adapted = apply_plan(wrapped, plan, marker)
 
-    assert plan.rule == "consumer_subject"
-    assert plan.parameter == "chargers"
-    assert plan.consumer_subject == "chargers"
-    assert adapted.kwargs == {"chargers": marker}
-
-
-def test_producer_subject_name_is_used_when_consumer_subject_does_not_match(gateway):
-    marker = object()
-    gateway.results.insert("chargers", marker)
-
-    def summarize(prefix, chargers):
-        return prefix, chargers
-
-    plan = plan_pipeline(gateway, summarize, marker)
-
-    assert plan.rule == "producer_subject"
-    assert plan.parameter == "chargers"
+    assert plan.rule == "positional"
+    assert plan.parameter == "prefix"
     assert plan.producer_subject == "chargers"
+    assert adapted.args == (marker,)
 
 
-def test_compatible_annotation_precedes_positional_fallback():
+def test_pipeline_does_not_route_by_annotation():
     marker = ["A"]
 
     def summarize(prefix: str, items: list):
@@ -87,21 +74,9 @@ def test_compatible_annotation_precedes_positional_fallback():
     plan = plan_pipeline(None, summarize, marker)
     adapted = apply_plan(summarize, plan, marker)
 
-    assert plan.rule == "annotation"
-    assert plan.parameter == "items"
-    assert adapted.kwargs == {"items": marker}
-
-
-def test_union_annotation_can_match_pipeline_value():
-    marker = ["A"]
-
-    def summarize(prefix: str, items: list | tuple):
-        return prefix, items
-
-    plan = plan_pipeline(None, summarize, marker)
-
-    assert plan.rule == "annotation"
-    assert plan.parameter == "items"
+    assert plan.rule == "positional"
+    assert plan.parameter == "prefix"
+    assert adapted.args == (marker,)
 
 
 def test_explicit_keyword_is_not_overwritten_by_adaptation(gateway):
@@ -133,7 +108,7 @@ def test_pipeline_rejects_consumer_without_available_parameter():
     def report(*, title):
         return title
 
-    with pytest.raises(TypeError, match="no available parameter"):
+    with pytest.raises(TypeError, match="no available positional parameter"):
         plan_pipeline(None, report, object(), kwargs={"title": "Fleet"})
 
 
@@ -156,3 +131,17 @@ def test_pipeline_can_satisfy_semantic_method_receiver(gateway):
     assert plan == AdaptationPlan("receiver", None, "device", "device")
     assert adapted.args == ()
     assert adapted.kwargs == {}
+
+
+def test_pipeline_positional_value_precedes_named_context(gateway):
+    raw = ["pipeline"]
+    gateway.context["chargers"] = ["context"]
+
+    def consume(chargers):
+        return chargers
+
+    wrapped = gateway.wrap("consume_report", consume)
+    adapted = adapt_pipeline(gateway, wrapped, raw)
+
+    assert adapted.args == (raw,)
+    assert wrapped(*adapted.args, **adapted.kwargs) is raw
