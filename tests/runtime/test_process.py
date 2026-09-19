@@ -25,7 +25,10 @@ def test_process_chains_through_explicit_pipeline(gateway):
         return f"inspect:{charger}"
     gateway.get_charger = gateway.wrap("get_charger", get_charger)
     gateway.inspect_charger = gateway.wrap("inspect_charger", inspect_charger)
-    results, last = process([["get_charger"], ["inspect_charger"]], gw_instance=gateway)
+    results, last = process(
+        [["get_charger", "-", "inspect_charger"]],
+        gw_instance=gateway,
+    )
     assert results == ["CHG001", "inspect:CHG001"]
     assert last == "inspect:CHG001"
 
@@ -43,7 +46,7 @@ def test_process_pipeline_does_not_require_matching_published_subject(gateway):
     gateway.consume_items = gateway.wrap("consume_items", consume_items)
 
     results, last = process(
-        [["get_report"], ["consume_items"]],
+        [["get_report", "-", "consume_items"]],
         gw_instance=gateway,
     )
 
@@ -51,7 +54,7 @@ def test_process_pipeline_does_not_require_matching_published_subject(gateway):
     assert last is report
 
 
-def test_process_chains_original_mapping_object(gateway):
+def test_process_newline_can_resolve_published_mapping_semantically(gateway):
     report = {"chargers": 3}
 
     def get_report():
