@@ -1,16 +1,7 @@
-from types import SimpleNamespace
-
 import pytest
 
 import gway.ingestion.django as django_ingestor
 from gway.ingestion.base import find_ingested
-
-
-def _app(label, models):
-    return SimpleNamespace(
-        label=label,
-        get_models=lambda: list(models),
-    )
 
 
 def test_direct_model_ingestion_exposes_manager_operations_on_model_subject(
@@ -68,11 +59,9 @@ def test_direct_model_instance_ingestion_exposes_bound_methods_and_context(
 
 def test_project_indexed_model_expands_manager_surface_on_first_resolution(
     gateway,
-    django_project,
-    django_setup,
+    django_mount,
     django_orm,
 ):
-    root, _ = django_project()
     Charger, _ = django_orm
     django_setup(_app("energy", [Charger]))
 
@@ -230,19 +219,16 @@ def test_natural_key_selector_uses_app_qualified_model_subject(
 
 def test_project_indexed_natural_key_selector_gets_short_subject_alias(
     gateway,
-    django_project,
-    django_setup,
+    django_mount,
     django_orm,
 ):
-    root, _ = django_project()
     Charger, manager = django_orm
 
     def get_by_natural_key(identity):
         return Charger(identity)
 
     manager.get_by_natural_key = get_by_natural_key
-    django_setup(_app("energy", [Charger]))
-    django_ingestor.ingest_project(gateway, root)
+    django_mount(Charger)
 
     selected = gateway("charger CHG002")
 
@@ -252,19 +238,16 @@ def test_project_indexed_natural_key_selector_gets_short_subject_alias(
 
 def test_composite_natural_key_selector_binds_all_positional_parts(
     gateway,
-    django_project,
-    django_setup,
+    django_mount,
     django_orm,
 ):
-    root, _ = django_project()
     Charger, manager = django_orm
 
     def get_by_natural_key(site, identity):
         return Charger(f"{site}:{identity}")
 
     manager.get_by_natural_key = get_by_natural_key
-    django_setup(_app("energy", [Charger]))
-    django_ingestor.ingest_project(gateway, root)
+    django_mount(Charger)
 
     selected = gateway("charger MTY CHG003")
 
@@ -273,11 +256,9 @@ def test_composite_natural_key_selector_binds_all_positional_parts(
 
 def test_natural_key_selection_can_pipe_into_model_operation(
     gateway,
-    django_project,
-    django_setup,
+    django_mount,
     django_orm,
 ):
-    root, _ = django_project()
     Charger, manager = django_orm
 
     def get_by_natural_key(identity):
@@ -289,22 +270,18 @@ def test_natural_key_selection_can_pipe_into_model_operation(
 
     manager.get_by_natural_key = get_by_natural_key
     Charger.reset = reset
-    django_setup(_app("energy", [Charger]))
-    django_ingestor.ingest_project(gateway, root)
+    django_mount(Charger)
 
     assert gateway("charger CHG004 - reset --hard") == ("CHG004", True)
 
 
 def test_model_without_natural_key_is_not_directly_selectable(
     gateway,
-    django_project,
-    django_setup,
+    django_mount,
     django_orm,
 ):
-    root, _ = django_project()
     Charger, _ = django_orm
-    django_setup(_app("energy", [Charger]))
-    django_ingestor.ingest_project(gateway, root)
+    django_mount(Charger)
 
     with pytest.raises(LookupError, match="Unable to resolve operation"):
         gateway("charger CHG005")
@@ -510,11 +487,9 @@ def test_plural_collection_can_feed_annotated_collection_parameter(
 
 def test_django_natural_key_and_cardinality_work_together_end_to_end(
     gateway,
-    django_project,
-    django_setup,
+    django_mount,
     django_orm,
 ):
-    root, _ = django_project()
     Charger, manager = django_orm
     fleet = [Charger("CHG001"), Charger("CHG002")]
 
@@ -535,8 +510,7 @@ def test_django_natural_key_and_cardinality_work_together_end_to_end(
     type(manager).connected = connected
     Charger.reset = reset
 
-    django_setup(_app("energy", [Charger]))
-    django_ingestor.ingest_project(gateway, root)
+    django_mount(Charger)
 
     selected = gateway("charger CHG001")
     assert selected is fleet[0]
@@ -555,11 +529,9 @@ def test_django_natural_key_and_cardinality_work_together_end_to_end(
 
 def test_django_composite_natural_key_and_plural_query_can_coexist(
     gateway,
-    django_project,
-    django_setup,
+    django_mount,
     django_orm,
 ):
-    root, _ = django_project()
     Charger, manager = django_orm
     fleet = [
         Charger("MTY:CHG001"),
@@ -580,8 +552,7 @@ def test_django_composite_natural_key_and_plural_query_can_coexist(
     manager.get_by_natural_key = get_by_natural_key
     type(manager).connected = connected
 
-    django_setup(_app("energy", [Charger]))
-    django_ingestor.ingest_project(gateway, root)
+    django_mount(Charger)
 
     assert gateway("charger MTY CHG002").serial == "MTY:CHG002"
     assert [charger.serial for charger in gateway("connected chargers")] == [
@@ -592,11 +563,9 @@ def test_django_composite_natural_key_and_plural_query_can_coexist(
 
 def test_plural_query_result_cannot_flow_into_singular_domain_action_end_to_end(
     gateway,
-    django_project,
-    django_setup,
+    django_mount,
     django_orm,
 ):
-    root, _ = django_project()
     Charger, manager = django_orm
     fleet = [Charger("CHG001"), Charger("CHG002")]
 
@@ -610,8 +579,7 @@ def test_plural_query_result_cannot_flow_into_singular_domain_action_end_to_end(
     type(manager).connected = connected
     Charger.reset = reset
 
-    django_setup(_app("energy", [Charger]))
-    django_ingestor.ingest_project(gateway, root)
+    django_mount(Charger)
 
     with pytest.raises(TypeError, match="Collection of charger"):
         gateway("connected chargers - reset")
@@ -619,11 +587,9 @@ def test_plural_query_result_cannot_flow_into_singular_domain_action_end_to_end(
 
 def test_plural_query_result_can_flow_into_explicit_collection_consumer_end_to_end(
     gateway,
-    django_project,
-    django_setup,
+    django_mount,
     django_orm,
 ):
-    root, _ = django_project()
     Charger, manager = django_orm
     fleet = [Charger("CHG001"), Charger("CHG002")]
 
@@ -637,8 +603,7 @@ def test_plural_query_result_can_flow_into_explicit_collection_consumer_end_to_e
     type(manager).connected = connected
     Charger.summarize = summarize
 
-    django_setup(_app("energy", [Charger]))
-    django_ingestor.ingest_project(gateway, root)
+    django_mount(Charger)
 
     assert gateway("connected chargers - summarize") == (
         "CHG001",
