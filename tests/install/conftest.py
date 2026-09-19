@@ -199,6 +199,7 @@ def install_declared_service(
     tmp_path,
     monkeypatch,
     make_service_project,
+    install_environment,
 ):
     """Install one representative declared service through a chosen backend."""
     def install(
