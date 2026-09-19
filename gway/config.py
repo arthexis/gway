@@ -1,6 +1,7 @@
 """Project-local GWAY manifest discovery and ingestion bootstrap."""
 
 from pathlib import Path
+import warnings
 
 from . import toml
 from .ingestion.base import remember_object
@@ -233,6 +234,10 @@ def project_entrypoints(manifest):
     project's operations.
     """
     from .install.model import validate_name
+
+    manifest = Path(manifest)
+    if not manifest.is_file():
+        return ()
 
     data = toml.load(manifest)
     project = data.get("project") if isinstance(data, dict) else None
