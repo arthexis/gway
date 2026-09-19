@@ -1,11 +1,16 @@
-"""Recursive ingestion for already-imported Python sources."""
+"""Incremental one-level ingestion for Python sources."""
 
 from importlib import import_module
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import sys
 
-from .base import IngestedOperation, normalize_path, register_operations
+from .base import (
+    IngestedOperation,
+    normalize_path,
+    register_operation,
+    remember_object,
+)
 
 
 def _default_path(source):
@@ -22,7 +27,7 @@ def _default_path(source):
 
 
 def _public_members(source):
-    """Yield reachable public attributes, ignoring attributes that cannot be read."""
+    """Yield direct public attributes, ignoring attributes that cannot be read."""
     try:
         names = dir(source)
     except Exception:
@@ -39,43 +44,76 @@ def _public_members(source):
 
 
 def discover_python(source, *, path=None):
-    """Discover callable Python values reachable from an imported source."""
+    """Describe callable values in exactly one Python namespace level."""
     root = normalize_path(path) if path is not None else _default_path(source)
     discovered = []
-    expanded = set()
 
-    def walk(value, current_path):
-        if callable(value):
+    if callable(source):
+        discovered.append(
+            IngestedOperation(
+                root,
+                source,
+                source=source,
+                kind="python",
+                metadata={"object": source},
+            )
+        )
+
+    for name, child in _public_members(source):
+        if callable(child):
             discovered.append(
                 IngestedOperation(
-                    current_path,
-                    value,
+                    (*root, name),
+                    child,
                     source=source,
                     kind="python",
-                    metadata={"object": value},
+                    metadata={"object": child},
                 )
             )
 
-        identity = id(value)
-        if identity in expanded:
-            return
-        expanded.add(identity)
-
-        for name, child in _public_members(value):
-            walk(child, (*current_path, name))
-
-    walk(source, root)
     return discovered
 
 
 def ingest_python(gateway, source, *, path=None, **kwargs):
-    """Recursively ingest an imported module/package, class, function, or object."""
-    operations = discover_python(source, path=path)
-    return register_operations(gateway, operations)
+    """Expand one imported Python object namespace and register direct callables."""
+    root = normalize_path(path) if path is not None else _default_path(source)
+    source_record = remember_object(gateway, source, root)
+    if source_record.expanded:
+        return []
+
+    wrapped = []
+
+    if callable(source) and not source_record.registered:
+        operation = IngestedOperation(
+            root,
+            source,
+            source=source,
+            kind="python",
+            metadata={"object": source},
+        )
+        wrapped.append(register_operation(gateway, operation))
+        source_record.registered = True
+
+    for name, child in _public_members(source):
+        child_path = (*root, name)
+        child_record = remember_object(gateway, child, child_path)
+        if callable(child) and not child_record.registered:
+            operation = IngestedOperation(
+                child_path,
+                child,
+                source=source,
+                kind="python",
+                metadata={"object": child},
+            )
+            wrapped.append(register_operation(gateway, operation))
+            child_record.registered = True
+
+    source_record.expanded = True
+    return wrapped
 
 
 def ingest_name(gateway, name, *, path=None, **kwargs):
-    """Import and recursively ingest a fully qualified Python module/package name."""
+    """Import and incrementally ingest a fully qualified Python module/package name."""
     if not isinstance(name, str) or not name.strip():
         raise ValueError("Python import name must be a non-empty string")
 
@@ -121,6 +159,6 @@ def _load_path(path, *, name=None):
 
 
 def ingest_path(gateway, path, *, name=None, root=None, **kwargs):
-    """Load and recursively ingest Python from a module file or package path."""
+    """Load and incrementally ingest Python from a module file or package path."""
     module = _load_path(path, name=name)
     return ingest_python(gateway, module, path=root, **kwargs)

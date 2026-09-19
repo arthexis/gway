@@ -21,6 +21,29 @@ def canonical_name(path):
     return ".".join(normalize_path(path))
 
 
+@dataclass
+class IngestedObject:
+    """Gateway-local state for one object encountered during ingestion."""
+
+    value: object
+    paths: set[tuple[str, ...]] = field(default_factory=set)
+    registered: bool = False
+    expanded: bool = False
+
+
+def remember_object(gateway, value, path):
+    """Remember an object by identity and record another path that reaches it."""
+    path = normalize_path(path)
+    state = gateway._ingested
+    identity = id(value)
+    record = state.get(identity)
+    if record is None:
+        record = IngestedObject(value=value)
+        state[identity] = record
+    record.paths.add(path)
+    return record
+
+
 @dataclass(frozen=True)
 class IngestedOperation:
     """Description of one callable discovered by an ingestor."""

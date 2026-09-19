@@ -32,6 +32,7 @@ class Gateway(Resolver):
         self.name = name
         self.logger = logging.getLogger(name)
         self.ops, self.subs = registry_views()
+        self._ingested = {}
         self.debug_enabled = bool(debug)
         self.verbose_enabled = bool(verbose)
         self.silent_enabled = bool(silent)
