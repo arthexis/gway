@@ -29,19 +29,41 @@ class IngestedObject:
     paths: set[tuple[str, ...]] = field(default_factory=set)
     registered: bool = False
     expanded: bool = False
+    expander: object = None
 
 
-def remember_object(gateway, value, path):
+def remember_object(gateway, value, path, *, expander=None):
     """Remember an object by identity and record another path that reaches it."""
     path = normalize_path(path)
     state = gateway._ingested
     identity = id(value)
     record = state.get(identity)
     if record is None:
-        record = IngestedObject(value=value)
+        record = IngestedObject(value=value, expander=expander)
         state[identity] = record
+    elif record.expander is None and expander is not None:
+        record.expander = expander
     record.paths.add(path)
     return record
+
+
+def find_ingested(gateway, path):
+    """Return the remembered object reachable at an exact ingestion path."""
+    path = normalize_path(path)
+    for record in gateway._ingested.values():
+        if path in record.paths:
+            return record
+    return None
+
+
+def expand_path(gateway, path):
+    """Expand one known but unexpanded ingestion path, if possible."""
+    path = normalize_path(path)
+    record = find_ingested(gateway, path)
+    if record is None or record.expanded or not callable(record.expander):
+        return False
+    record.expander(gateway, record.value, path=path)
+    return True
 
 
 @dataclass(frozen=True)
@@ -62,11 +84,7 @@ class IngestedOperation:
 
         object.__setattr__(self, "path", path)
         object.__setattr__(self, "aliases", tuple(self.aliases))
-        object.__setattr__(
-            self,
-            "metadata",
-            MappingProxyType(dict(self.metadata)),
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
     @property
     def name(self):

@@ -77,7 +77,12 @@ def discover_python(source, *, path=None):
 def ingest_python(gateway, source, *, path=None, **kwargs):
     """Expand one imported Python object namespace and register direct callables."""
     root = normalize_path(path) if path is not None else _default_path(source)
-    source_record = remember_object(gateway, source, root)
+    source_record = remember_object(
+        gateway,
+        source,
+        root,
+        expander=ingest_python,
+    )
     if source_record.expanded:
         return []
 
@@ -96,7 +101,12 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
 
     for name, child in _public_members(source):
         child_path = (*root, name)
-        child_record = remember_object(gateway, child, child_path)
+        child_record = remember_object(
+            gateway,
+            child,
+            child_path,
+            expander=ingest_python,
+        )
         if callable(child) and not child_record.registered:
             operation = IngestedOperation(
                 child_path,

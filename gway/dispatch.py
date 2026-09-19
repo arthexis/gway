@@ -2,9 +2,19 @@
 
 from .adaptation import adapt_pipeline
 from .binding import bind_arguments
+from .ingestion.base import expand_path
 from .tokens import chunk, token_value, tokenize
 
 _MISSING = object()
+
+
+def _expand_candidate(runtime, candidate):
+    """JIT-expand known ingestion branches along one hierarchical candidate."""
+    path = tuple(part for part in candidate.replace(" ", ".").split(".") if part)
+    expanded = False
+    for size in range(1, len(path) + 1):
+        expanded = expand_path(runtime, path[:size]) or expanded
+    return expanded
 
 
 def resolve_operation(runtime, tokens):
@@ -21,8 +31,11 @@ def resolve_operation(runtime, tokens):
             if callable(value):
                 return value, tokens[size:], candidate
 
-            # Temporary attribute fallback for wrapped operations exposed directly
-            # on Gateway. Executable discovery otherwise belongs to runtime.ops.
+            if _expand_candidate(runtime, candidate):
+                value = runtime.ops.resolve(candidate)
+                if callable(value):
+                    return value, tokens[size:], candidate
+
             obj = runtime
             try:
                 for part in candidate.replace(" ", ".").split("."):
