@@ -15,6 +15,7 @@ class ProcessBackend:
 
     def __init__(self, *, state_root=None, installations=None):
         self.installations = installations or {}
+        self._processes = {}
         self.state_root = (
             Path(state_root).expanduser().resolve()
             if state_root is not None
@@ -109,6 +110,7 @@ class ProcessBackend:
             stderr=subprocess.DEVNULL,
             start_new_session=(os.name != "nt"),
         )
+        self._processes[service.identity] = process
         record = new_record(
             service,
             process.pid,
@@ -122,6 +124,14 @@ class ProcessBackend:
     def stop(self, service):
         """Stop one matching process owned by durable Gway service state."""
         state = self._state(service)
+        local = self._processes.get(service.identity)
+        if local is not None:
+            returncode = local.poll()
+            if returncode is not None:
+                self._processes.pop(service.identity, None)
+                state.remove(service.project, service.name)
+                return self._stopped(service)
+
         record = state.get(service.project, service.name)
         if record is None:
             return self._stopped(service)
@@ -130,18 +140,28 @@ class ProcessBackend:
             state.remove(service.project, service.name)
             return self._stopped(service)
 
-        try:
-            os.kill(record.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
+        local = self._processes.get(service.identity)
+        if local is not None and local.poll() is None:
+            local.terminate()
+            try:
+                local.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                local.kill()
+                local.wait(timeout=5)
+        else:
+            try:
+                os.kill(record.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
 
-        if not self._wait_gone(record.pid):
+        if local is None and not self._wait_gone(record.pid):
             try:
                 os.kill(record.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             self._wait_gone(record.pid)
 
+        self._processes.pop(service.identity, None)
         state.remove(service.project, service.name)
         return self._stopped(service)
 
