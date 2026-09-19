@@ -40,6 +40,12 @@ def _is_pathlike(source):
 def ingest(gateway, source, **kwargs):
     """Route an explicitly requested ingestion source to its ingestor."""
     kind = kwargs.pop("kind", None)
+
+    from .url import ingest_url, is_url
+
+    if is_url(source):
+        return ingest_url(gateway, source, **kwargs)
+
     if kind == "django":
         from .django import ingest_orm, ingest_project, source_kind
 
