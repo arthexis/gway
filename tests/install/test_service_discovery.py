@@ -114,3 +114,45 @@ def test_project_without_services_does_not_invoke_service_parser(
     assert calls == []
     assert fresh._service_catalogs == {}
     assert fresh._services == {}
+
+
+
+def test_service_process_is_manageable_from_fresh_gateway(
+    gateway,
+    make_project,
+    install_environment,
+    tmp_path,
+    monkeypatch,
+):
+    source = make_project("arthexis")
+    (source / "gway.toml").write_text(
+        "[project]\n"
+        "name = 'arthexis'\n"
+        "\n"
+        "[services.sleeper]\n"
+        "command = ['{python}', '-c', 'import time; time.sleep(30)']\n"
+        "working_directory = '{project}'\n",
+        encoding="utf-8",
+    )
+    gateway(f"install {source}")
+
+    outside = tmp_path / "outside-service-runtime"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+
+    first = Gateway()
+    started = first("service start arthexis sleeper")
+    assert started["running"] is True
+
+    second = Gateway()
+    try:
+        status = second("service status arthexis sleeper")
+
+        assert status["running"] is True
+        assert status["pid"] == started["pid"]
+
+        stopped = second("service stop arthexis sleeper")
+        assert stopped["running"] is False
+        assert stopped["pid"] is None
+    finally:
+        first("service stop arthexis sleeper")
