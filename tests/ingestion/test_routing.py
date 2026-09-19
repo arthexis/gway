@@ -186,3 +186,28 @@ def test_direct_command_resolution_does_not_discover_same_named_file(
 
     with pytest.raises(LookupError):
         gateway("README")
+
+
+def test_explicit_ingest_prefers_existing_bare_path_over_import_name(
+    monkeypatch,
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "json"
+    source.write_text("local\n")
+    seen = {"path": None, "imported": False}
+
+    def fake_path(runtime, path, **kwargs):
+        seen["path"] = path
+        return "filesystem"
+
+    def fake_name(runtime, name, **kwargs):
+        seen["imported"] = True
+        return "python-name"
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("gway.ingestion.router.ingest_path", fake_path)
+    monkeypatch.setattr(python_ingestor, "ingest_name", fake_name)
+
+    assert ingest(gateway, "json") == "filesystem"
+    assert seen == {"path": "json", "imported": False}
