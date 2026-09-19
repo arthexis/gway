@@ -8,6 +8,7 @@ import sys
 import pytest
 
 from gway.install import install_paths
+import gway.install.systemd as systemd
 
 
 @dataclass(frozen=True)
@@ -131,3 +132,43 @@ def managed_paths(tmp_path):
         platform=sys.platform,
         home=tmp_path / "home",
     )
+
+
+
+@pytest.fixture
+def make_service_project(tmp_path):
+    """Create an installable project with two representative services."""
+    def make(name="demo"):
+        root = tmp_path / f"service-{name}"
+        root.mkdir()
+        (root / "gway.toml").write_text(
+            f"[project]\n"
+            f"name = {name!r}\n"
+            "\n"
+            "[services.web]\n"
+            "command = ['{python}', '-c', 'print(\"web\")']\n"
+            "restart = 'on-failure'\n"
+            "restart_sec = 5\n"
+            "\n"
+            "[services.worker]\n"
+            "command = ['{python}', '-c', 'print(\"worker\")']\n",
+            encoding="utf-8",
+        )
+        return root
+
+    return make
+
+
+@pytest.fixture
+def fake_systemd(tmp_path, monkeypatch):
+    """Capture systemctl calls while materializing units under tmp_path."""
+    units = tmp_path / "units"
+    calls = []
+    monkeypatch.setattr(systemd, "unit_root", lambda **kwargs: units)
+
+    def call(*args, system=False, check=True):
+        calls.append((args, system, check))
+        return None
+
+    monkeypatch.setattr(systemd, "_systemctl", call)
+    return units, calls
