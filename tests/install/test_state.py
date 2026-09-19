@@ -83,3 +83,19 @@ def test_state_remove_is_idempotent(tmp_path):
     assert state.remove("wire") is True
     assert state.remove("wire") is False
     assert state.get("wire") is None
+
+
+
+def test_state_rejects_newer_schema_version(tmp_path):
+    path = tmp_path / "state.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA user_version = 99")
+
+    state = InstallState(path)
+
+    try:
+        state.all()
+    except RuntimeError as exc:
+        assert "newer than this GWAY version" in str(exc)
+    else:
+        raise AssertionError("newer installation state schema should be rejected")
