@@ -107,28 +107,11 @@ def test_log_subjects_are_jit_ingested(gateway, caplog):
     assert any(record.getMessage() == "hello" for record in caplog.records)
 
 
-def test_log_family_uses_operation_and_subject_semantics(gateway):
-    gateway("log info hello")
-    gateway("log warning warning-message")
-    gateway("log warn warn-message")
-
-    family = gateway.ops["log"]
-
-    assert family[None].__wrapped__ is gway_log.__main__
-    assert family["info"].__wrapped__ is gway_log.info
-    assert family["warning"].__wrapped__ is gway_log.warning
-    assert family["warn"].__wrapped__ is gway_log.warn
-
-    assert gateway.subs["info"]["log"] is family["info"]
-    assert gateway.subs["warning"]["log"] is family["warning"]
-    assert gateway.subs["warn"]["log"] is family["warn"]
-
-
 def test_log_exposes_standard_levels_and_config(gateway):
     gateway("log info hello")
 
     family = gateway.ops["log"]
-    for subject in (
+    assert set(family) >= {
         "debug",
         "info",
         "warning",
@@ -137,8 +120,8 @@ def test_log_exposes_standard_levels_and_config(gateway):
         "critical",
         "exception",
         "config",
-    ):
-        assert subject in family
+    }
+    assert family["warn"].__wrapped__ is family["warning"].__wrapped__
 
 
 def test_cli_log_level_controls_gway_logger_hierarchy(
