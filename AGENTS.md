@@ -37,6 +37,84 @@ Install the package in editable mode:
 python -m pip install -e .
 ```
 
+## Local agent validation
+
+Agents working on GWAY should install the active branch into their local
+execution environment whenever that environment permits it. Treat the local
+editable install as the preferred way to answer questions about current GWAY
+behavior and to prove requested changes before relying only on code inspection
+or remote CI.
+
+A good working layout is a stable checkout directory dedicated to the active
+branch, for example:
+
+```text
+/mnt/data/gway-gateway-rebuild
+```
+
+or, in a normal developer environment:
+
+```text
+~/src/gway
+```
+
+Install from the repository root:
+
+```bash
+cd /mnt/data/gway-gateway-rebuild
+python -m pip install -e .
+```
+
+Then verify the actual runtime directly. Prefer concrete executions such as:
+
+```bash
+python -c "import gway; print(gway.__file__)"
+gway --help
+gway gway env PATH
+python -c "from gway import gw; print(gw('gway env PATH'))"
+```
+
+When a user asks whether a feature works, how a command behaves, or whether a
+change solved a problem, agents should run the relevant GWAY command or Python
+call locally whenever possible and report the observed result. Direct runs are
+especially valuable for dispatch, ingestion, sigils, recipes, chaining,
+argument binding, publication, and notebook-style embedding.
+
+Keep the editable install pointed at the same checkout being modified. After
+changing source files in an editable install, a reinstall is normally not
+needed; rerun the relevant command/tests directly. Reinstall only when package
+metadata, build configuration, interpreter environment, or the checkout path
+changes.
+
+Some sandboxed or CI-like agent environments cannot reach PyPI. In those
+environments, the normal editable install may fail while pip tries to create an
+isolated build environment and download build requirements. If setuptools and
+wheel are already available locally, use:
+
+```bash
+python -m pip install --no-build-isolation -e .
+```
+
+This is the preferred no-network workaround. Do not mistake a build-isolation
+dependency download failure for a GWAY runtime failure.
+
+If the repository is not already present locally, materialize or download the
+active branch into a writable checkout directory first, then install from that
+directory. Prefer the exact branch under development rather than an older PyPI
+release, because validation should reflect the code the user is asking about.
+
+Remote CI remains important for supported-version coverage, but it complements
+rather than replaces direct local execution. The ideal validation sequence is:
+
+```text
+edit
+  -> direct local GWAY run
+  -> focused local tests
+  -> full local tests when practical
+  -> remote CI
+```
+
+
 The CLI entry point is `gway`. With no operation or expression it prints
 help.
 
