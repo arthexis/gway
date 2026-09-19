@@ -37,6 +37,11 @@ def complete_arguments(
     for name, parameter in signature.parameters.items():
         if name in bound.arguments:
             value = bound.arguments[name]
+        elif parameter.kind in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        ):
+            value = parameter.default
         else:
             value = runtime.find_value(name, _MISSING)
             if value is _MISSING:
