@@ -111,3 +111,78 @@ def test_ingest_routes_imported_module_to_module_ingestion(monkeypatch, gateway)
 
     assert ingest(gateway, module) == "python-module"
     assert seen == {"runtime": gateway, "value": module}
+
+
+def test_ingest_routes_bare_existing_filename_to_path(monkeypatch, gateway, tmp_path):
+    source = tmp_path / "README"
+    source.write_text("hello\n")
+    seen = {}
+
+    def fake(runtime, path, **kwargs):
+        seen["path"] = path
+        return "filesystem"
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("gway.ingestion.router.ingest_path", fake)
+
+    assert ingest(gateway, "README") == "filesystem"
+    assert seen["path"] == "README"
+
+
+def test_ingest_routes_relative_path_syntax_without_requiring_existence(
+    monkeypatch,
+    gateway,
+):
+    seen = {}
+
+    def fake(runtime, path, **kwargs):
+        seen["path"] = path
+        return "filesystem"
+
+    monkeypatch.setattr("gway.ingestion.router.ingest_path", fake)
+
+    assert ingest(gateway, "folder/README") == "filesystem"
+    assert seen["path"] == "folder/README"
+
+
+def test_ingest_routes_relative_path_object_even_without_separator(
+    monkeypatch,
+    gateway,
+):
+    seen = {}
+
+    def fake(runtime, path, **kwargs):
+        seen["path"] = path
+        return "filesystem"
+
+    monkeypatch.setattr("gway.ingestion.router.ingest_path", fake)
+
+    source = Path("README")
+    assert ingest(gateway, source) == "filesystem"
+    assert seen["path"] == source
+
+
+def test_ingest_bare_missing_name_remains_python_import(monkeypatch, gateway):
+    seen = {}
+
+    def fake(runtime, name, **kwargs):
+        seen["name"] = name
+        return "python-name"
+
+    monkeypatch.setattr(python_ingestor, "ingest_name", fake)
+
+    assert ingest(gateway, "definitely_missing_local_entry") == "python-name"
+    assert seen["name"] == "definitely_missing_local_entry"
+
+
+def test_direct_command_resolution_does_not_discover_same_named_file(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "README"
+    source.write_text("ignored\n")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(LookupError):
+        gateway("README")
