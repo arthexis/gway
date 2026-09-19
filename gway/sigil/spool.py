@@ -1,5 +1,7 @@
 """Ordered sigil alternatives."""
 
+from collections.abc import Sequence, Set
+
 from .value import Sigil
 
 
@@ -13,11 +15,16 @@ class Spool:
                 self._add_flat(item)
 
     def _add_flat(self, item):
-        if isinstance(item, (list, tuple, set)):
+        if isinstance(item, Set) and not isinstance(item, (str, bytes, bytearray)):
+            raise TypeError("Spool alternatives must preserve order")
+        if (
+            isinstance(item, Sequence)
+            and not isinstance(item, (str, bytes, bytearray, Sigil))
+        ):
             for sub in item:
                 self._add_flat(sub)
-        else:
-            self.sigils.append(item if isinstance(item, Sigil) else Sigil(item))
+            return
+        self.sigils.append(item if isinstance(item, Sigil) else Sigil(item))
 
     def resolve(self, resolver=None):
         if resolver is None:
@@ -28,7 +35,7 @@ class Spool:
         for sigil in self:
             try:
                 return sigil.resolve(resolver)
-            except Exception as exc:
+            except KeyError as exc:
                 last_exc = exc
 
         if last_exc:
