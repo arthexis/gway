@@ -25,6 +25,13 @@ class InstallState:
 
     @staticmethod
     def _ensure_schema(connection):
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        if version > _SCHEMA_VERSION:
+            raise RuntimeError(
+                "Installation state schema is newer than this GWAY version: "
+                f"{version} > {_SCHEMA_VERSION}"
+            )
+
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS installations (
@@ -40,7 +47,8 @@ class InstallState:
             )
             """
         )
-        connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
+        if version < _SCHEMA_VERSION:
+            connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
 
     @staticmethod
     def _from_row(row):
@@ -61,8 +69,7 @@ class InstallState:
         """Return one installation without creating state when none exists."""
         if not self.path.is_file():
             return None
-        with sqlite3.connect(self.path) as connection:
-            connection.row_factory = sqlite3.Row
+        with self._connect() as connection:
             row = connection.execute(
                 """
                 SELECT name, scope, source, requested_ref, resolved_revision,
@@ -89,8 +96,7 @@ class InstallState:
             values = (scope,)
         query += " ORDER BY name, scope"
 
-        with sqlite3.connect(self.path) as connection:
-            connection.row_factory = sqlite3.Row
+        with self._connect() as connection:
             rows = connection.execute(query, values).fetchall()
         return [self._from_row(row) for row in rows]
 
