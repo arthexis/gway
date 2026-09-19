@@ -1,6 +1,7 @@
 import pytest
 
 from gway.sigil import Sigil
+from gway.sigil.resolver import Environment, Resolver
 
 
 def test_context_lookup(gateway):
@@ -39,3 +40,28 @@ def test_gateway_modulo_resolves_sigil_instance(gateway):
 def test_gateway_modulo_resolves_sigil_text(gateway):
     gateway.context["site"] = "MTY"
     assert gateway % "[site]" == "MTY"
+
+
+def test_environment_normalization_belongs_to_environment_source(monkeypatch):
+    monkeypatch.setenv("SITE", "environment")
+
+    resolver = Resolver([("config", Environment())])
+
+    assert resolver.find_value("site") == "environment"
+
+
+def test_source_names_do_not_change_resolution_behavior():
+    resolver = Resolver([("env", {"site": "literal"})])
+
+    assert resolver.find_value("site") == "literal"
+
+
+def test_gway_prefix_is_ordinary_semantic_data(gateway):
+    gateway.context["gway"] = {"site": "MTY"}
+
+    assert gateway.resolve("[gway site]") == "MTY"
+
+
+def test_resolver_does_not_fall_back_to_its_own_attributes(gateway):
+    with pytest.raises(KeyError):
+        gateway.resolve("[resolve]")
