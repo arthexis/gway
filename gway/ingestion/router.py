@@ -1,21 +1,36 @@
 """Ingestion routing across source kinds."""
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import ModuleType
 
 
+def _is_explicit_path_string(source):
+    """Return whether string syntax explicitly identifies a filesystem location."""
+    if not isinstance(source, str) or not source:
+        return False
+
+    # Shell/home rooted forms are explicit even though '~' is expanded later.
+    if source == "~" or source.startswith(("~/", "~\\")):
+        return True
+
+    # Explicit current/parent roots are paths; incidental dots are not.
+    if source in {".", ".."} or source.startswith(("./", "../", ".\\", "..\\")):
+        return True
+
+    # Recognize absolute syntax independently of the host platform so routing
+    # itself is deterministic for POSIX, drive-rooted, and UNC spellings.
+    return (
+        PurePosixPath(source).is_absolute()
+        or PureWindowsPath(source).is_absolute()
+    )
+
+
 def _is_pathlike(source):
+    """Return whether ingest() should delegate this source to ingest_path()."""
     if isinstance(source, os.PathLike):
         return True
-    if not isinstance(source, str):
-        return False
-    return (
-        source.startswith((".", "/", "~"))
-        or os.sep in source
-        or (os.altsep is not None and os.altsep in source)
-        or Path(source).exists()
-    )
+    return _is_explicit_path_string(source)
 
 
 def ingest(gateway, source, **kwargs):
