@@ -280,6 +280,40 @@ Nested relative recipe references resolve from the directory containing the
 current recipe, not from the process working directory. Recursive recipe cycles
 are rejected with a recipe call-stack error.
 
+### Recipe companion scripts
+
+Before any recipe statement is resolved, GWAY looks beside the resolved recipe
+for a Python file with the same stem and a `.py` suffix:
+
+```text
+recipes/
+    deploy.rx
+    deploy.py
+```
+
+Executing `deploy.rx` first ingests `deploy.py` into the same Gateway. The
+lookup is anchored to the recipe's own directory, never to the caller's current
+working directory. Nested recipes independently discover companions beside
+their own resolved paths.
+
+Companions use ordinary Python path-ingestion semantics rather than a special
+transparent namespace. Thus `deploy.py` exposes its public callable surface
+under the normal `deploy` ingestion root, and the recipe can use operations
+such as:
+
+```text
+deploy prepare charger
+deploy execute
+```
+
+A missing companion is simply ignored. An existing companion that fails to
+import aborts recipe execution before the first recipe statement runs.
+
+Each resolved companion path is ingested at most once per Gateway instance.
+This avoids replaying Python module import side effects when the same recipe is
+executed repeatedly while keeping all companion operations available to later
+recipes and commands through the shared runtime.
+
 Top-level headings can still be selected as recipe sections by the loader:
 
 ```text
