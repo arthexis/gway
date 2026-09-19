@@ -208,3 +208,178 @@ def test_missing_django_dependency_has_clear_error(monkeypatch):
 
     with pytest.raises(ModuleNotFoundError, match="requires Django"):
         django_ingestor._load_django()
+
+
+
+class _FakeModelBase:
+    pass
+
+
+class _FakeManagerBase:
+    pass
+
+
+def _orm_fixture():
+    class Charger(_FakeModelBase):
+        _meta = SimpleNamespace(
+            app_label="energy",
+            model_name="charger",
+        )
+
+        @classmethod
+        def describe(cls):
+            return "charger-model"
+
+        def save(self):
+            return self
+
+        def custom(self, value):
+            return f"{self.serial}:{value}"
+
+        def __init__(self, serial="ABC"):
+            self.serial = serial
+
+    class ChargerManager(_FakeManagerBase):
+        model = Charger
+
+        def all(self):
+            return ["all"]
+
+        def filter(self, **criteria):
+            return criteria
+
+        def create(self, **values):
+            return Charger(**values)
+
+    manager = ChargerManager()
+    Charger._default_manager = manager
+    return Charger, manager
+
+
+def test_direct_model_ingestion_exposes_manager_operations_on_model_subject(
+    gateway,
+    monkeypatch,
+):
+    Charger, _ = _orm_fixture()
+    monkeypatch.setattr(
+        django_ingestor,
+        "_django_types",
+        lambda: (_FakeModelBase, _FakeManagerBase),
+    )
+
+    gateway.ingest(Charger)
+
+    assert gateway("filter charger --status online") == {"status": "online"}
+    operation = gateway.ops.resolve("energy.charger.filter")
+    assert operation is not None
+    assert operation.__gway_source_kind__ == "django-manager"
+    assert operation.__gway_subject__ == "charger"
+
+
+def test_direct_model_ingestion_exposes_class_methods_on_model_subject(
+    gateway,
+    monkeypatch,
+):
+    Charger, _ = _orm_fixture()
+    monkeypatch.setattr(
+        django_ingestor,
+        "_django_types",
+        lambda: (_FakeModelBase, _FakeManagerBase),
+    )
+
+    gateway.ingest(Charger)
+
+    assert gateway("describe charger") == "charger-model"
+    assert gateway.ops.resolve("energy.charger.describe") is not None
+
+
+def test_direct_manager_ingestion_infers_its_model_subject(
+    gateway,
+    monkeypatch,
+):
+    _, manager = _orm_fixture()
+    monkeypatch.setattr(
+        django_ingestor,
+        "_django_types",
+        lambda: (_FakeModelBase, _FakeManagerBase),
+    )
+
+    gateway.ingest(manager)
+
+    assert gateway("all charger") == ["all"]
+    assert gateway.ops.resolve("energy.charger.all") is not None
+
+
+def test_direct_model_instance_ingestion_exposes_bound_methods_and_context(
+    gateway,
+    monkeypatch,
+):
+    Charger, _ = _orm_fixture()
+    monkeypatch.setattr(
+        django_ingestor,
+        "_django_types",
+        lambda: (_FakeModelBase, _FakeManagerBase),
+    )
+    charger = Charger("CHG001")
+
+    gateway.ingest(charger)
+
+    assert gateway.context["charger"] is charger
+    assert gateway("custom charger test") == "CHG001:test"
+    assert gateway.ops.resolve("energy.charger.custom") is not None
+
+
+def test_project_indexed_model_expands_manager_surface_on_first_resolution(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    root, _ = _project(tmp_path)
+    Charger, _ = _orm_fixture()
+    app = _app("energy", [Charger])
+    registry = SimpleNamespace(get_app_configs=lambda: (app,))
+
+    monkeypatch.setattr(
+        django_ingestor,
+        "_setup_project",
+        lambda *args, **kwargs: registry,
+    )
+
+    django_ingestor.ingest_project(gateway, root)
+
+    assert gateway.ops.resolve("energy.charger.filter") is None
+    assert gateway("filter charger --site MTY") == {"site": "MTY"}
+    assert gateway.ops.resolve("energy.charger.filter") is not None
+
+
+def test_django_orm_sources_are_detected_without_explicit_kind(
+    gateway,
+    monkeypatch,
+):
+    Charger, manager = _orm_fixture()
+    monkeypatch.setattr(
+        django_ingestor,
+        "_django_types",
+        lambda: (_FakeModelBase, _FakeManagerBase),
+    )
+
+    assert django_ingestor.source_kind(Charger) == "model"
+    assert django_ingestor.source_kind(Charger()) == "instance"
+    assert django_ingestor.source_kind(manager) == "manager"
+
+
+def test_model_operations_retain_app_qualified_canonical_paths(
+    gateway,
+    monkeypatch,
+):
+    Charger, _ = _orm_fixture()
+    monkeypatch.setattr(
+        django_ingestor,
+        "_django_types",
+        lambda: (_FakeModelBase, _FakeManagerBase),
+    )
+
+    gateway.ingest(Charger)
+
+    assert gateway.ops.resolve("energy.charger.filter") is not None
+    assert gateway.ops.resolve_pair("filter", "charger") is not None
