@@ -13,6 +13,8 @@ class InstallPaths:
     root: Path
     projects: Path
     stashes: Path
+    launchers: Path
+    bin: Path
     state: Path
     scope: str
 
@@ -51,6 +53,30 @@ def data_root(*, system=False, environ=None, platform=None, home=None):
     return home / ".local" / "share" / "gway"
 
 
+def bin_root(*, system=False, environ=None, platform=None, home=None):
+    """Return the activation bin directory for one installation scope."""
+    environ = os.environ if environ is None else environ
+    platform = sys.platform if platform is None else platform
+    home = Path.home() if home is None else Path(home)
+
+    override_name = "GWAY_SYSTEM_BIN_DIR" if system else "GWAY_BIN_DIR"
+    override = environ.get(override_name)
+    if override:
+        return Path(override).expanduser()
+
+    if platform.startswith("win"):
+        base = environ.get("PROGRAMDATA" if system else "LOCALAPPDATA")
+        if base:
+            return Path(base) / "gway" / "bin"
+        if system:
+            return Path("C:/ProgramData/gway/bin")
+        return home / "AppData" / "Local" / "gway" / "bin"
+
+    if system:
+        return Path("/usr/local/bin")
+    return home / ".local" / "bin"
+
+
 def install_paths(*, system=False, root=None, **kwargs):
     """Return all durable paths for one installation scope."""
     selected = (
@@ -58,10 +84,13 @@ def install_paths(*, system=False, root=None, **kwargs):
         if root is None
         else Path(root).expanduser()
     ).resolve()
+    selected_bin = bin_root(system=system, **kwargs).resolve()
     return InstallPaths(
         root=selected,
         projects=selected / "projects",
         stashes=selected / "stashes",
+        launchers=selected / "launchers",
+        bin=selected_bin,
         state=selected / "state.sqlite",
         scope="system" if system else "user",
     )
