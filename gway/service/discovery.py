@@ -6,8 +6,13 @@ from .manifest import load
 
 
 def declares_services(manifest):
-    """Return whether one manifest declares any service table."""
-    for raw in Path(manifest).read_text(encoding="utf-8").splitlines():
+    """Return whether one legacy manifest declares any service table."""
+    try:
+        lines = Path(manifest).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+
+    for raw in lines:
         line = raw.split("#", 1)[0].strip()
         if line == "[services]" or line.startswith("[services."):
             return True
@@ -15,7 +20,7 @@ def declares_services(manifest):
 
 
 def discover(runtime, installations):
-    """Index service catalogs from selected managed installations."""
+    """Index legacy service catalogs from selected managed installations."""
     catalogs = {}
     services = {}
 
