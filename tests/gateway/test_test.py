@@ -68,7 +68,7 @@ def test_test_namespace_is_available_through_gateway(gateway, tmp_path):
     root = tmp_path / "tests"
     _write(root / "install" / "test_install.py", "def test_install():\n    pass\n")
 
-    assert gateway("test count install", root=str(root)) == 1
+    assert gateway("test count", "install", root=str(root)) == 1
     assert gateway.ops.resolve("test.count") is not None
 
 
