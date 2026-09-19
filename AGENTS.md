@@ -126,6 +126,7 @@ Current global options are:
 -d, --debug
 -i, --interactive
 -j, --json
+-L, --log-level LEVEL
 -r, --recipe PATH
 -t, --timed
 -v, --verbose
@@ -179,6 +180,73 @@ CLI/recipe conversion belongs to the binding boundary.
 
 With `--interactive`, missing required arguments are prompted for before
 semantic completion.
+
+
+## Operation documentation
+
+Treat a callable's Python signature as the primary mechanical interface and keep
+it easy to scan. Do not make signatures noisy merely to satisfy documentation
+machinery.
+
+Use docstrings for human-oriented meaning. Every public GWAY-owned operation
+should have a concise first-line summary. Longer prose is optional.
+
+When a parameter needs explanation beyond what its name, type annotation, and
+default already communicate, document it in an `Args:` section:
+
+```python
+def install(source, upgrade=True, force=False):
+    """Install a project into GWAY-managed storage.
+
+    Args:
+        source: Local path, Git URL, or known project identity.
+        force: Replace a dirty managed installation and discard its local changes.
+    """
+```
+
+Parameter entries are deliberately optional. In the example above,
+`upgrade` needs no prose if its name and default are sufficiently clear.
+Do not add filler descriptions merely to make every parameter appear in the
+docstring.
+
+GWAY documentation combines information from three sources:
+
+```text
+GWAY provenance   -> canonical path, operation/subject, source metadata
+Python signature  -> parameter names, kinds, defaults, requiredness, annotations
+Docstring prose   -> summary, long description, optional parameter explanations
+```
+
+The signature remains authoritative for mechanics. A docstring parameter entry
+must explain meaning, not redefine its type, default, or requiredness. Type
+annotations are useful when they clarify the Python interface but are not
+required for documentation.
+
+The preferred parameter section for GWAY-owned code is `Args:`, using
+`name: description` entries. Documentation ingestion is intentionally
+tolerant and may also understand common `Arguments:` and `Parameters:`
+sections from imported Python code.
+
+Undocumented parameters remain fully supported. Verbose help and interactive
+guidance fall back to mechanical signature information whenever prose is
+absent. Documentation quality checks must therefore never require prose for
+every parameter.
+
+Normal help is intentionally compact:
+
+```text
+gway help log config
+```
+
+Verbose help includes the full docstring and parameter details:
+
+```text
+gway -v help log config
+```
+
+Interactive mode uses the same metadata. `-i` keeps prompts terse, while
+`-i -v` shows available parameter prose and mechanical facts before asking
+for each missing required value.
 
 ## Quoting
 
