@@ -1,7 +1,7 @@
 """Scoped manual command chains for embedded GWAY use."""
 
-from .dispatch import dispatch_stage
-from .tokens import chunk, tokenize
+from .dispatch import dispatch_pipeline
+from .tokens import statements, tokenize
 
 
 class Chain:
@@ -36,19 +36,23 @@ class Chain:
             raise RuntimeError("Chain commands require an active with block")
 
         tokens = tokenize(command) if isinstance(command, str) else list(command)
-        commands = chunk(tokens)
-        if len(commands) != 1:
+        statement_list = statements(tokens)
+        if len(statement_list) != 1:
             raise ValueError(
-                "A chain call accepts one command stage; call the chain again for the next stage"
+                "A chain call accepts one statement; call the chain again for the next statement"
             )
 
-        result = dispatch_stage(
+        produced, result = dispatch_pipeline(
             self.gateway,
-            commands[0],
+            statement_list[0],
             pipeline=self.last,
             args=args,
             kwargs=kwargs,
         )
+        if len(produced) != 1:
+            raise ValueError(
+                "A chain call accepts one command stage; call the chain again for the next stage"
+            )
         self.last = result
         self.history.append(result)
         return result
