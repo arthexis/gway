@@ -1,5 +1,6 @@
 # file: gway/gateway.py
 
+import inspect
 import os
 import threading
 
@@ -159,7 +160,7 @@ class Gateway(Resolver):
 
         return ingest_path(self, path, **kwargs)
 
-    def wrap(self, func_name, func_obj, *, op=None, sub=None):
+    def wrap(self, func_name, func_obj, *, op=None, sub=None, receiver=None):
         """Normalize a Python callable to GWAY context and result conventions."""
         if not callable(func_obj):
             raise TypeError(f"{func_name!r} is not callable")
@@ -173,6 +174,7 @@ class Gateway(Resolver):
                 func_obj,
                 args=args,
                 kwargs=kwargs,
+                receiver=receiver,
             )
             result = invoke(
                 self,
@@ -186,6 +188,11 @@ class Gateway(Resolver):
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
         wrapped.__doc__ = getattr(func_obj, "__doc__", None)
         wrapped.__wrapped__ = func_obj
+        if receiver is not None:
+            signature = inspect.signature(func_obj)
+            parameters = tuple(signature.parameters.values())
+            if parameters:
+                wrapped.__signature__ = signature.replace(parameters=parameters[1:])
         wrapped.__gway_operation__ = op or func_name
         wrapped.__gway_subject__ = subject
         self.ops.register(func_name, wrapped, op=op, sub=sub)
