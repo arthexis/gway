@@ -176,44 +176,76 @@ def install_units(
     previous = {record.service: record for record in state.get(project)}
     selected = {service.name for service in services}
 
-    # Remove units no longer selected by the converged install request.
-    for service_name, record in previous.items():
-        if service_name in selected:
-            continue
-        _systemctl("disable", record.unit, system=record.system, check=False)
+    previous_files = {}
+    for record in previous.values():
+        path = target_root / record.unit
         try:
-            (target_root / record.unit).unlink()
+            previous_files[record.unit] = path.read_bytes()
         except FileNotFoundError:
-            pass
+            previous_files[record.unit] = None
 
     records = []
-    for service in services:
-        previous_record = previous.get(service.name)
-        if name is not None:
-            filename = unit_name(project, service.name, name=name)
-        elif previous_record is not None:
-            filename = previous_record.unit
-        else:
-            filename = unit_name(project, service.name)
-        path = target_root / filename
-        path.write_text(
-            render(service, unit=filename, system=system),
-            encoding="utf-8",
-        )
-        records.append(
-            UnitRecord(
-                project=project,
-                service=service.name,
-                unit=filename,
-                system=system,
-            )
-        )
+    try:
+        # Remove units no longer selected by the converged install request.
+        for service_name, record in previous.items():
+            if service_name in selected:
+                continue
+            _systemctl("disable", record.unit, system=record.system, check=False)
+            try:
+                (target_root / record.unit).unlink()
+            except FileNotFoundError:
+                pass
 
-    _systemctl("daemon-reload", system=system)
-    for record in records:
-        _systemctl("enable", record.unit, system=system)
-    state.put(project, records)
-    return records
+        for service in services:
+            previous_record = previous.get(service.name)
+            if name is not None:
+                filename = unit_name(project, service.name, name=name)
+            elif previous_record is not None:
+                filename = previous_record.unit
+            else:
+                filename = unit_name(project, service.name)
+            path = target_root / filename
+            path.write_text(
+                render(service, unit=filename, system=system),
+                encoding="utf-8",
+            )
+            records.append(
+                UnitRecord(
+                    project=project,
+                    service=service.name,
+                    unit=filename,
+                    system=system,
+                )
+            )
+
+        _systemctl("daemon-reload", system=system)
+        for record in records:
+            _systemctl("enable", record.unit, system=system)
+        state.put(project, records)
+        return records
+    except Exception:
+        for record in records:
+            _systemctl("disable", record.unit, system=system, check=False)
+            if record.unit not in previous_files:
+                try:
+                    (target_root / record.unit).unlink()
+                except FileNotFoundError:
+                    pass
+        for unit, content in previous_files.items():
+            path = target_root / unit
+            if content is None:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+        state.put(project, previous.values())
+        _systemctl("daemon-reload", system=system, check=False)
+        for record in previous.values():
+            _systemctl("enable", record.unit, system=record.system, check=False)
+        raise
 
 
 def uninstall_units(project, *, state_root, root=None):
