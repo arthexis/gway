@@ -1,4 +1,4 @@
-from gway.souschef import Job, Scheduler, StateStore, TriggerEngine
+from gway.souschef import Scheduler, StateStore, TriggerEngine
 
 
 class Clock:
@@ -12,19 +12,9 @@ class Clock:
         self.value += seconds
 
 
-def make_job(tmp_path, name, **kwargs):
-    return Job(
-        project="demo",
-        name=name,
-        root=tmp_path,
-        recipe=tmp_path / f"{name}.rx",
-        **kwargs,
-    )
-
-
-def test_every_is_immediately_due_then_waits_for_interval(tmp_path):
+def test_every_is_immediately_due_then_waits_for_interval(tmp_path, job_factory):
     clock = Clock()
-    job = make_job(tmp_path, "hourly", every=3600)
+    job = job_factory("hourly", every=3600)
     scheduler = Scheduler([job], executor=lambda current: current.name)
     engine = TriggerEngine(
         [job],
@@ -46,9 +36,9 @@ def test_every_is_immediately_due_then_waits_for_interval(tmp_path):
     assert engine.evaluate_job(job) == ("every",)
 
 
-def test_every_state_survives_engine_restart(tmp_path):
+def test_every_state_survives_engine_restart(tmp_path, job_factory):
     clock = Clock()
-    job = make_job(tmp_path, "hourly", every=60)
+    job = job_factory("hourly", every=60)
     state_root = tmp_path / "state"
     scheduler = Scheduler([job], executor=lambda current: None)
     engine = TriggerEngine(
@@ -71,10 +61,10 @@ def test_every_state_survives_engine_restart(tmp_path):
     assert restarted.evaluate_job(job) == ()
 
 
-def test_watch_baselines_then_fires_on_change(tmp_path):
+def test_watch_baselines_then_fires_on_change(tmp_path, job_factory):
     watched = tmp_path / "settings.toml"
     watched.write_text("one", encoding="utf-8")
-    job = make_job(tmp_path, "watcher", watch=watched)
+    job = job_factory("watcher", watch=watched)
     scheduler = Scheduler([job], executor=lambda current: None)
     engine = TriggerEngine(
         [job],
@@ -92,10 +82,10 @@ def test_watch_baselines_then_fires_on_change(tmp_path):
     assert engine.evaluate_job(job) == ()
 
 
-def test_watch_state_survives_restart(tmp_path):
+def test_watch_state_survives_restart(tmp_path, job_factory):
     watched = tmp_path / "settings.toml"
     watched.write_text("one", encoding="utf-8")
-    job = make_job(tmp_path, "watcher", watch=watched)
+    job = job_factory("watcher", watch=watched)
     state_root = tmp_path / "state"
 
     first = TriggerEngine(
@@ -116,18 +106,14 @@ def test_watch_state_survives_restart(tmp_path):
     assert restarted.evaluate_job(job) == ("watch",)
 
 
-def test_down_fires_once_per_down_transition(tmp_path):
+def test_down_fires_once_per_down_transition(tmp_path, job_factory):
     running = {"value": True}
 
     def status(project, service):
         assert (project, service) == ("arthexis", "web-local")
         return {"running": running["value"]}
 
-    job = make_job(
-        tmp_path,
-        "recover",
-        down="arthexis/web-local",
-    )
+    job = job_factory("recover", down="arthexis/web-local")
     scheduler = Scheduler([job], executor=lambda current: None)
     engine = TriggerEngine(
         [job],
@@ -149,11 +135,11 @@ def test_down_fires_once_per_down_transition(tmp_path):
     assert engine.evaluate_job(job) == ("down",)
 
 
-def test_missing_service_counts_as_down(tmp_path):
+def test_missing_service_counts_as_down(tmp_path, job_factory):
     def missing(project, service):
         raise LookupError("missing")
 
-    job = make_job(tmp_path, "recover", down="demo/missing")
+    job = job_factory("recover", down="demo/missing")
     scheduler = Scheduler([job], executor=lambda current: None)
     engine = TriggerEngine(
         [job],
@@ -165,18 +151,14 @@ def test_missing_service_counts_as_down(tmp_path):
     assert engine.evaluate_job(job) == ("down",)
 
 
-def test_future_url_down_target_is_not_interpreted_as_service(tmp_path):
+def test_future_url_down_target_is_not_interpreted_as_service(tmp_path, job_factory):
     calls = []
 
     def status(project, service):
         calls.append((project, service))
         return {"running": False}
 
-    job = make_job(
-        tmp_path,
-        "website",
-        down="https://example.com/health",
-    )
+    job = job_factory("website", down="https://example.com/health")
     engine = TriggerEngine(
         [job],
         scheduler=Scheduler([job], executor=lambda current: None),
@@ -188,18 +170,12 @@ def test_future_url_down_target_is_not_interpreted_as_service(tmp_path):
     assert calls == []
 
 
-def test_simultaneous_triggers_coalesce_into_one_pending_run(tmp_path):
+def test_simultaneous_triggers_coalesce_into_one_pending_run(tmp_path, job_factory):
     clock = Clock()
     watched = tmp_path / "watched.txt"
     watched.write_text("one", encoding="utf-8")
     running = {"value": True}
-    job = make_job(
-        tmp_path,
-        "combined",
-        every=60,
-        watch=watched,
-        down="demo/service",
-    )
+    job = job_factory("combined", every=60, watch=watched, down="demo/service")
     scheduler = Scheduler([job], executor=lambda current: None)
     engine = TriggerEngine(
         [job],
@@ -226,8 +202,8 @@ def test_simultaneous_triggers_coalesce_into_one_pending_run(tmp_path):
     assert result.reasons == ("every", "watch", "down")
 
 
-def test_pending_job_is_restored_after_restart(tmp_path):
-    job = make_job(tmp_path, "hourly", every=60)
+def test_pending_job_is_restored_after_restart(tmp_path, job_factory):
+    job = job_factory("hourly", every=60)
     state_root = tmp_path / "state"
     first_scheduler = Scheduler([job], executor=lambda current: None)
     first = TriggerEngine(
@@ -252,10 +228,10 @@ def test_pending_job_is_restored_after_restart(tmp_path):
     assert StateStore(state_root).get(*job.identity).pending is False
 
 
-def test_run_state_records_success_and_failure(tmp_path):
+def test_run_state_records_success_and_failure(tmp_path, job_factory):
     clock = Clock()
-    success = make_job(tmp_path, "success", every=60)
-    failure = make_job(tmp_path, "failure", every=60)
+    success = job_factory("success", every=60)
+    failure = job_factory("failure", every=60)
 
     def execute(job):
         if job is failure:
@@ -290,9 +266,9 @@ def test_run_state_records_success_and_failure(tmp_path):
 
 
 
-def test_interrupted_active_job_is_restored_after_restart(tmp_path):
+def test_interrupted_active_job_is_restored_after_restart(tmp_path, job_factory):
     clock = Clock()
-    job = make_job(tmp_path, "hourly", every=60)
+    job = job_factory("hourly", every=60)
     state_root = tmp_path / "state"
     scheduler = Scheduler([job], executor=lambda current: None)
     engine = TriggerEngine(
