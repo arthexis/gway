@@ -28,8 +28,7 @@ def install(
     force: bool = False,
     stash: bool = False,
     system: bool = False,
-    service: str | None = None,
-    services: str | None = None,
+    services: tuple[str, ...] = (),
     name: str | None = None,
 ):
     """Converge one local or Git project installation toward requested state.
@@ -41,8 +40,8 @@ def install(
         force: Discard drift in a dirty managed installation before reconciliation.
         stash: Preserve a dirty managed installation before reconciliation.
         system: Use system-wide data and launcher locations instead of user locations.
-        service: Install one declared service as a systemd unit.
-        services: Comma-separated declared services to install as systemd units.
+        services: Declared services to install as systemd units. Gway also infers
+            the singular --service form for exactly one item.
         name: Override the systemd unit name when exactly one service is selected.
     """
     request = InstallRequest(
@@ -52,7 +51,6 @@ def install(
         force=force,
         stash=stash,
         system=system,
-        service=service,
         services=services,
         name=name,
     )
