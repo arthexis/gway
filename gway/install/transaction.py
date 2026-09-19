@@ -350,6 +350,7 @@ def install_materialized(
             try:
                 _converge_services(request, selected, name, destination)
             except Exception:
+                registry.put(existing)
                 launcher.rollback()
                 raise
             launcher.commit()
@@ -397,6 +398,10 @@ def install_materialized(
             stored = registry.put(record)
             _converge_services(request, selected, name, destination)
         except Exception:
+            if existing is None:
+                registry.remove(name, scope=selected.scope)
+            else:
+                registry.put(existing)
             if launcher is not None:
                 launcher.rollback()
             if destination.exists() or destination.is_symlink():
