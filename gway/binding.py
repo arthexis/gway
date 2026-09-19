@@ -70,6 +70,17 @@ def _variadic_parameter(signature):
     )
 
 
+def _variadic_keyword_parameter(signature):
+    return next(
+        (
+            parameter
+            for parameter in signature.parameters.values()
+            if parameter.kind is inspect.Parameter.VAR_KEYWORD
+        ),
+        None,
+    )
+
+
 def _greedy_parameter(signature):
     """Return the final positional string parameter when it can own a free-form tail."""
     if _variadic_parameter(signature) is not None:
@@ -189,7 +200,22 @@ def pipeline_boundary(
             key = token[2:].replace("-", "_")
             parameter = signature.parameters.get(key)
             if parameter is None:
-                return None
+                if _variadic_keyword_parameter(signature) is None:
+                    return None
+                if index + 1 < len(tokens):
+                    next_raw = tokens[index + 1]
+                    next_value = token_value(next_raw)
+                    if (
+                        is_literal(next_raw)
+                        or (
+                            not next_value.startswith("--")
+                            and next_value != "-"
+                        )
+                    ):
+                        index += 2
+                        continue
+                index += 1
+                continue
             filled.add(key)
             if parameter.annotation is bool or isinstance(parameter.default, bool):
                 index += 1
@@ -258,7 +284,27 @@ def bind_arguments(
             key = token[2:].replace("-", "_")
             keyword_parameter = signature.parameters.get(key)
             if keyword_parameter is None:
-                raise TypeError(f"Unknown argument --{key.replace('_', '-')}")
+                variadic_keywords = _variadic_keyword_parameter(signature)
+                if variadic_keywords is None:
+                    raise TypeError(f"Unknown argument --{key.replace('_', '-')}")
+                if index + 1 < len(stream):
+                    value_item = stream[index + 1]
+                    if isinstance(value_item, _PipelineValue):
+                        keywords[key] = value_item.value
+                        index += 2
+                        continue
+                    next_value = token_value(value_item)
+                    if is_literal(value_item) or not next_value.startswith("--"):
+                        keywords[key] = convert_argument(
+                            value_item,
+                            variadic_keywords,
+                            runtime,
+                        )
+                        index += 2
+                        continue
+                keywords[key] = True
+                index += 1
+                continue
             if (
                 keyword_parameter.annotation is bool
                 or isinstance(keyword_parameter.default, bool)
