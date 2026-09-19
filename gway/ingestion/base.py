@@ -1,0 +1,72 @@
+"""Source-agnostic primitives for GWAY ingestion."""
+
+from dataclasses import dataclass, field
+from types import MappingProxyType
+
+
+def normalize_path(path):
+    """Return an ingestion path as a non-empty tuple of string segments."""
+    if isinstance(path, str):
+        parts = tuple(part for part in path.replace("/", ".").split(".") if part)
+    else:
+        parts = tuple(str(part) for part in path if str(part))
+
+    if not parts:
+        raise ValueError("Ingested operation path cannot be empty")
+    return parts
+
+
+def canonical_name(path):
+    """Return the dotted canonical name for an ingestion path."""
+    return ".".join(normalize_path(path))
+
+
+@dataclass(frozen=True)
+class IngestedOperation:
+    """Description of one callable discovered by an ingestor."""
+
+    path: tuple[str, ...]
+    callable: object
+    source: object = None
+    kind: str | None = None
+    aliases: tuple[str, ...] = ()
+    metadata: object = field(default_factory=dict)
+
+    def __post_init__(self):
+        path = normalize_path(self.path)
+        if not callable(self.callable):
+            raise TypeError(f"{canonical_name(path)!r} is not callable")
+
+        object.__setattr__(self, "path", path)
+        object.__setattr__(self, "aliases", tuple(self.aliases))
+        object.__setattr__(
+            self,
+            "metadata",
+            MappingProxyType(dict(self.metadata)),
+        )
+
+    @property
+    def name(self):
+        return canonical_name(self.path)
+
+
+def register_operation(gateway, operation):
+    """Wrap and register one discovered callable on a Gateway."""
+    if not isinstance(operation, IngestedOperation):
+        raise TypeError("operation must be an IngestedOperation")
+
+    wrapped = gateway.wrap(operation.name, operation.callable)
+    wrapped.__gway_source__ = operation.source
+    wrapped.__gway_source_kind__ = operation.kind
+    wrapped.__gway_path__ = operation.path
+    wrapped.__gway_metadata__ = operation.metadata
+
+    for alias in operation.aliases:
+        gateway.ops.register_alias(alias, wrapped)
+
+    return wrapped
+
+
+def register_operations(gateway, operations):
+    """Register a sequence of discovered operations and return the wrapped callables."""
+    return [register_operation(gateway, operation) for operation in operations]
