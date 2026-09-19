@@ -60,7 +60,11 @@ class ProcessBackend:
         return environment
 
     def _state(self, service):
-        root = self.state_root or (service.root.parent.parent / "services")
+        root = (
+            self.state_root
+            or getattr(service, "state_root", None)
+            or (service.root.parent.parent / "services")
+        )
         return ServiceState(root)
 
     def _project_fingerprint(self, service):
