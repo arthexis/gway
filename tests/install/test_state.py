@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 from gway.install import Installation, InstallState
 
 
@@ -85,7 +87,6 @@ def test_state_remove_is_idempotent(tmp_path):
     assert state.get("wire") is None
 
 
-
 def test_state_rejects_newer_schema_version(tmp_path):
     path = tmp_path / "state.sqlite"
     with sqlite3.connect(path) as connection:
@@ -93,9 +94,5 @@ def test_state_rejects_newer_schema_version(tmp_path):
 
     state = InstallState(path)
 
-    try:
+    with pytest.raises(RuntimeError, match="newer than this GWAY version"):
         state.all()
-    except RuntimeError as exc:
-        assert "newer than this GWAY version" in str(exc)
-    else:
-        raise AssertionError("newer installation state schema should be rejected")
