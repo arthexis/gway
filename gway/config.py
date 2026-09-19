@@ -186,8 +186,13 @@ def discover_installations(*, system=False):
 
 
 
-def project_aliases(manifest):
-    """Return validated aliases declared by one project manifest."""
+def project_entrypoints(manifest):
+    """Return validated lazy entrypoint names declared by one project manifest.
+
+    Project aliases are discovery hints only: they trigger expansion of the
+    owning installed project, but never become semantic aliases for the
+    project's operations.
+    """
     from .install.model import validate_name
 
     data = toml.load(manifest)
@@ -228,11 +233,18 @@ def expand_installed_project(runtime, installation, *, path=None):
 
     loaded = load_ingestions(runtime, manifest)
     record.expanded = True
+
+    requested = tuple(path) if path is not None else (installation.name,)
+    if requested != (installation.name,):
+        # A shortcut only bootstraps the project. Once its real ingestion
+        # surface exists, release the shortcut path so the actual app/model
+        # branch owns that namespace.
+        record.paths.discard(requested)
     return loaded
 
 
 def discover_managed_projects(runtime):
-    """Remember installed user/system projects and declared lazy aliases."""
+    """Remember installed projects and their lazy bootstrap entrypoints."""
     discovered = {}
     for system in (False, True):
         try:
@@ -242,7 +254,7 @@ def discover_managed_projects(runtime):
         for record in records:
             discovered.setdefault(record.name, record)
 
-    aliases = {}
+    entrypoints = {}
     for name, record in discovered.items():
         branch = remember_object(
             runtime,
@@ -250,7 +262,7 @@ def discover_managed_projects(runtime):
             (name,),
             expander=expand_installed_project,
         )
-        for alias in project_aliases(record.install_path / "gway.toml"):
+        for alias in project_entrypoints(record.install_path / "gway.toml"):
             if alias == name:
                 continue
             if alias in discovered:
@@ -258,17 +270,17 @@ def discover_managed_projects(runtime):
                     f"Installed project alias {alias!r} conflicts with "
                     "an installed project name"
                 )
-            owner = aliases.get(alias)
+            owner = entrypoints.get(alias)
             if owner is not None and owner != name:
                 raise RuntimeError(
                     f"Installed project alias {alias!r} is declared by "
                     f"both {owner!r} and {name!r}"
                 )
-            aliases[alias] = name
+            entrypoints[alias] = name
             branch.paths.add((alias,))
 
     runtime._installed = discovered
-    runtime._installed_aliases = aliases
+    runtime._installed_entrypoints = entrypoints
     return discovered
 
 
