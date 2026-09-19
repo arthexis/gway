@@ -220,3 +220,28 @@ def render(callable_obj, *, verbose=False):
                     lines.append(f"    Default: {default}")
 
     return "\n".join(lines)
+
+
+def render_parameter(callable_obj, name):
+    """Render verbose help for one parameter of a callable."""
+    documentation = describe(callable_obj)
+    parameter = documentation.parameter(name)
+    if parameter is None:
+        return ""
+
+    lines = [parameter.name]
+    if parameter.description:
+        lines.append(f"  {parameter.description}")
+
+    annotation = _annotation_name(parameter.annotation)
+    if annotation:
+        lines.append(f"  Type: {annotation}")
+
+    if parameter.required:
+        lines.append("  Required")
+    else:
+        default = _default_text(parameter.default)
+        if default is not None:
+            lines.append(f"  Default: {default}")
+
+    return "\n".join(lines)
