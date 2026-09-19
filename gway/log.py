@@ -18,13 +18,13 @@ def _coerce_level(level):
     if not isinstance(level, str) or not level.strip():
         raise ValueError("log level must be a name or integer")
     value = level.strip().upper()
-    numeric = _logging.getLevelNamesMapping().get(value)
-    if numeric is None:
-        try:
-            return int(value)
-        except ValueError as exc:
-            raise ValueError(f"Unknown log level: {level}") from exc
-    return numeric
+    try:
+        return int(value)
+    except ValueError:
+        numeric = _logging.getLevelName(value)
+        if isinstance(numeric, int):
+            return numeric
+        raise ValueError(f"Unknown log level: {level}")
 
 
 class _Level:
