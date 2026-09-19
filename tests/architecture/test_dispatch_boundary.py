@@ -5,7 +5,6 @@ from gway import Gateway
 
 def test_dispatch_module_owns_operation_resolution():
     assert callable(dispatch.resolve_operation)
-    assert not hasattr(console, "_resolve_operation")
 
 
 def test_gateway_call_delegates_to_dispatch_module():

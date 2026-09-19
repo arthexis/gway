@@ -497,6 +497,24 @@ runtime dependencies.
 
 ## Testing
 
+Prefer tests of current supported behavior and architecture contracts. Do not
+add tombstone tests whose only purpose is to assert that a removed API, module,
+alias, compatibility shim, legacy helper, or historical implementation detail
+continues to be absent. Once obsolete code is deleted, its absence is not a
+feature that needs permanent test coverage.
+
+This does not prohibit negative tests for current behavior. Tests should still
+verify meaningful present-day constraints, such as rejecting invalid input,
+refusing unsupported paths, preserving security boundaries, or ensuring that
+plain context values are not executable operations. The distinction is that a
+negative test should protect a current contract, not memorialize deleted code.
+
+When removing an API or compatibility layer, remove tests dedicated only to
+that retired surface as part of the same cleanup. Test the replacement/current
+contract positively instead of adding assertions such as `not hasattr(...)`,
+`find_spec(...) is None`, or checks for old names solely because they used to
+exist.
+
 Install pytest and run the complete suite:
 
 ```bash
