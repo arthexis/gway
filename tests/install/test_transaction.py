@@ -186,3 +186,81 @@ def test_uninstall_reconciles_stale_record_when_managed_copy_is_missing(tmp_path
 
     assert removed == installed
     assert InstallState(paths.state).get("wire") is None
+
+
+
+def test_install_rolls_back_activation_when_state_write_fails(tmp_path):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+
+    class FailingState:
+        def get(self, name, *, scope="user"):
+            return None
+
+        def put(self, installation):
+            raise RuntimeError("state write failed")
+
+    with pytest.raises(RuntimeError, match="state write failed"):
+        transaction.install_local(
+            InstallRequest(str(source)),
+            paths=paths,
+            state=FailingState(),
+        )
+
+    assert not (paths.projects / "wire").exists()
+    assert list(paths.projects.glob(".wire.stage-*")) == []
+
+
+def test_uninstall_restores_live_directory_when_state_remove_fails(
+    tmp_path,
+    monkeypatch,
+):
+    source = _project(tmp_path, "wire")
+    paths = install_paths(root=tmp_path / "data")
+    state = InstallState(paths.state)
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=paths,
+        state=state,
+    )
+
+    def fail_remove(name, *, scope="user"):
+        raise RuntimeError("state remove failed")
+
+    monkeypatch.setattr(state, "remove", fail_remove)
+
+    with pytest.raises(RuntimeError, match="state remove failed"):
+        transaction.uninstall_local(
+            UninstallRequest("wire"),
+            paths=paths,
+            state=state,
+        )
+
+    assert installed.install_path.is_dir()
+    assert (installed.install_path / "module.py").is_file()
+    assert state.get("wire") == installed
+
+
+def test_uninstall_refuses_registry_path_outside_managed_projects(tmp_path):
+    paths = install_paths(root=tmp_path / "data")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("safe", encoding="utf-8")
+    state = InstallState(paths.state)
+    state.put(
+        transaction.Installation(
+            name="wire",
+            source=str(tmp_path / "source"),
+            install_path=outside,
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="outside the managed"):
+        transaction.uninstall_local(
+            UninstallRequest("wire"),
+            paths=paths,
+            state=state,
+        )
+
+    assert marker.read_text(encoding="utf-8") == "safe"
