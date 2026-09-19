@@ -5,6 +5,7 @@ import pytest
 
 import gway.ingestion.python as python_ingestor
 import gway.ingestion.proc as proc_ingestor
+import gway.ingestion.django as django_ingestor
 from gway.ingestion import ingest, ingest_path
 
 
@@ -211,3 +212,75 @@ def test_explicit_ingest_prefers_existing_bare_path_over_import_name(
 
     assert ingest(gateway, "json") == "filesystem"
     assert seen == {"path": "json", "imported": False}
+
+
+
+def test_ingest_path_routes_manage_py_to_django_before_python(
+    monkeypatch,
+    gateway,
+    tmp_path,
+):
+    manage = tmp_path / "manage.py"
+    manage.write_text("print('manage')\n", encoding="utf-8")
+    seen = {}
+
+    def fake(runtime, source, **kwargs):
+        seen["source"] = source
+        seen["kwargs"] = kwargs
+        return "django-project"
+
+    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
+
+    assert ingest_path(gateway, manage, name="project") == "django-project"
+    assert seen == {
+        "source": manage,
+        "kwargs": {"name": "project"},
+    }
+
+
+def test_ingest_path_routes_directory_with_manage_py_to_django(
+    monkeypatch,
+    gateway,
+    tmp_path,
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "manage.py").write_text("print('manage')\n", encoding="utf-8")
+    seen = {}
+
+    def fake(runtime, source, **kwargs):
+        seen["source"] = source
+        return "django-project"
+
+    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
+
+    assert ingest_path(gateway, project) == "django-project"
+    assert seen["source"] == project
+
+
+def test_explicit_django_kind_routes_settings_module_to_django(
+    monkeypatch,
+    gateway,
+):
+    seen = {}
+
+    def fake(runtime, source, **kwargs):
+        seen["source"] = source
+        seen["kwargs"] = kwargs
+        return "django-settings"
+
+    monkeypatch.setattr(django_ingestor, "ingest_project", fake)
+
+    assert (
+        ingest(
+            gateway,
+            "project.settings",
+            kind="django",
+            name="project",
+        )
+        == "django-settings"
+    )
+    assert seen == {
+        "source": "project.settings",
+        "kwargs": {"name": "project"},
+    }
