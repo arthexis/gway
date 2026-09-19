@@ -258,6 +258,41 @@ def project_entrypoints(manifest):
     return tuple(aliases)
 
 
+def _script_aliases(runtime, project, command):
+    """Return safe aliases for one installed project's standard script."""
+    aliases = [f"{project}.{command}"]
+    owners = getattr(runtime, "_script_owners", {}).get(command, ())
+    if len(owners) == 1:
+        aliases.append(command)
+    return tuple(aliases)
+
+
+def load_project_scripts(runtime, root, project):
+    """Expose [project.scripts] as callable Gway operations."""
+    from .ingestion.base import IngestedOperation, register_operation
+    from .project import resolve_target, scripts
+
+    wrapped = []
+    for command, target in scripts(root).items():
+        callable_ = resolve_target(root, target)
+        operation = IngestedOperation(
+            (project, command),
+            callable_,
+            source=Path(root),
+            kind="project-script",
+            aliases=_script_aliases(runtime, project, command),
+            op=command,
+            sub=project,
+            metadata={
+                "project": project,
+                "script": command,
+                "target": target,
+            },
+        )
+        wrapped.append(register_operation(runtime, operation))
+    return wrapped
+
+
 def expand_installed_project(runtime, installation, *, path=None):
     """Load one installed project's declarative ingestion exactly once."""
     record = remember_object(
@@ -270,7 +305,13 @@ def expand_installed_project(runtime, installation, *, path=None):
         return []
 
     manifest = installation.install_path / "gway.toml"
-    loaded = load_ingestions(runtime, manifest) if manifest.is_file() else []
+    loaded = load_project_scripts(
+        runtime,
+        installation.install_path,
+        installation.name,
+    )
+    if manifest.is_file():
+        loaded.extend(load_ingestions(runtime, manifest))
     record.expanded = True
 
     requested = tuple(path) if path is not None else (installation.name,)
@@ -292,6 +333,17 @@ def discover_managed_projects(runtime):
             continue
         for record in records:
             discovered.setdefault(record.name, record)
+
+    from .project import project_scripts
+
+    script_owners = {}
+    for name, record in discovered.items():
+        for command in project_scripts(record.install_path):
+            script_owners.setdefault(command, []).append(name)
+    runtime._script_owners = {
+        command: tuple(owners)
+        for command, owners in script_owners.items()
+    }
 
     entrypoints = {}
     for name, record in discovered.items():
@@ -338,6 +390,19 @@ def bootstrap(runtime, *, start=None):
         return None
 
     runtime._project_path = manifest
+    if manifest.name == "pyproject.toml":
+        data = toml.load(manifest)
+        project_data = data.get("project") if isinstance(data, dict) else None
+        project_name = project_data.get("name") if isinstance(project_data, dict) else None
+        if isinstance(project_name, str) and project_name.strip():
+            runtime._script_owners = {
+                command: (project_name,)
+                for command in __import__(
+                    "gway.project", fromlist=["project_scripts"]
+                ).project_scripts(manifest.parent)
+            }
+            load_project_scripts(runtime, manifest.parent, project_name)
+
     legacy = _legacy_manifest(manifest)
     runtime._manifest_path = legacy or manifest
 
