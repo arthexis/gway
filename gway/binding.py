@@ -1,10 +1,15 @@
 """Argument binding and value conversion for GWAY callables."""
 
 import inspect
+import re
 from dataclasses import dataclass
 
 from .sigil import Sigil
 from .tokens import Token, is_literal, token_value
+
+
+_NO_PIPELINE = object()
+_CHAIN_SELECTOR = re.compile(r"^\[\s*(\*|[+-]?\d+)\s*\]$")
 
 
 class Literal(str):
@@ -15,6 +20,11 @@ class Literal(str):
 class BoundCall:
     args: tuple
     kwargs: dict
+
+
+@dataclass(frozen=True)
+class _PipelineValue:
+    value: object
 
 
 def convert_argument(token, parameter, runtime):
@@ -85,6 +95,71 @@ def _initial_filled(signature, initial_args=(), initial_kwargs=None):
     return set(bound.arguments)
 
 
+def _pipeline_bundle(value):
+    return tuple(value) if isinstance(value, tuple) else (value,)
+
+
+def _chain_selector(token):
+    if is_literal(token):
+        return None
+    value = token_value(token)
+    if not isinstance(value, str):
+        return None
+    match = _CHAIN_SELECTOR.fullmatch(value)
+    return match.group(1) if match else None
+
+
+def _normalize_pipeline_index(index, size):
+    original = index
+    if index < 0:
+        index += size
+    if index < 0 or index >= size:
+        raise IndexError(f"Pipeline result index {original} is out of range")
+    return index
+
+
+def _compose_pipeline_positionals(positionals, pipeline):
+    """Place and consume chain-local [n] and [*] selectors."""
+    bundle = _pipeline_bundle(pipeline)
+    consumed = set()
+    composed = []
+    saw_star = False
+
+    def remaining():
+        return [
+            _PipelineValue(value)
+            for index, value in enumerate(bundle)
+            if index not in consumed
+        ]
+
+    for token in positionals:
+        selector = _chain_selector(token)
+        if selector is None:
+            composed.append(token)
+            continue
+
+        if selector == "*":
+            if saw_star:
+                raise ValueError("Chain positional selector [*] may appear only once")
+            saw_star = True
+            composed.extend(remaining())
+            consumed.update(range(len(bundle)))
+            continue
+
+        index = _normalize_pipeline_index(int(selector), len(bundle))
+        if index in consumed:
+            raise ValueError(
+                f"Pipeline result index {selector} has already been consumed"
+            )
+        composed.append(_PipelineValue(bundle[index]))
+        consumed.add(index)
+
+    if not saw_star:
+        composed = [*remaining(), *composed]
+
+    return composed
+
+
 def pipeline_boundary(
     func,
     tokens,
@@ -145,13 +220,12 @@ def bind_arguments(
     interactive=False,
     initial_args=(),
     initial_kwargs=None,
+    pipeline=_NO_PIPELINE,
 ) -> BoundCall:
     """Bind command tokens after any already-supplied native arguments."""
     signature = inspect.signature(func)
     keywords = {} if initial_kwargs is None else dict(initial_kwargs)
-    converted_positional = list(initial_args)
-    filled = _initial_filled(signature, initial_args, keywords)
-    greedy = _greedy_parameter(signature)
+    positional = []
     tokens = list(tokens)
     index = 0
     literal_mode = False
@@ -170,7 +244,6 @@ def bind_arguments(
             parameter = signature.parameters.get(key)
             if parameter is None:
                 raise TypeError(f"Unknown argument --{key.replace('_', '-')}")
-            filled.add(key)
             if parameter.annotation is bool or isinstance(parameter.default, bool):
                 keywords[key] = True
                 index += 1
@@ -181,22 +254,43 @@ def bind_arguments(
             index += 2
             continue
 
+        positional.append(raw)
+        index += 1
+
+    if pipeline is not _NO_PIPELINE:
+        positional = _compose_pipeline_positionals(positional, pipeline)
+
+    converted_positional = list(initial_args)
+    filled = _initial_filled(signature, converted_positional, keywords)
+    greedy = _greedy_parameter(signature)
+    index = 0
+
+    while index < len(positional):
+        item = positional[index]
         parameter = _next_positional(signature, filled)
 
+        if isinstance(item, _PipelineValue):
+            converted_positional.append(item.value)
+            if parameter is not None and parameter.kind is not inspect.Parameter.VAR_POSITIONAL:
+                filled.add(parameter.name)
+            index += 1
+            continue
+
         if greedy is not None and parameter is greedy:
-            parts = [
-                convert_argument(item, greedy, runtime)
-                for item in tokens[index:]
-            ]
-            converted_positional.append(" ".join(str(part) for part in parts))
-            filled.add(greedy.name)
-            index = len(tokens)
-            break
+            tail = positional[index:]
+            if all(not isinstance(part, _PipelineValue) for part in tail):
+                parts = [
+                    convert_argument(part, greedy, runtime)
+                    for part in tail
+                ]
+                converted_positional.append(" ".join(str(part) for part in parts))
+                filled.add(greedy.name)
+                break
 
         if parameter is None:
-            converted_positional.append(token_value(raw))
+            converted_positional.append(token_value(item))
         else:
-            converted_positional.append(convert_argument(raw, parameter, runtime))
+            converted_positional.append(convert_argument(item, parameter, runtime))
             if parameter.kind is not inspect.Parameter.VAR_POSITIONAL:
                 filled.add(parameter.name)
         index += 1
