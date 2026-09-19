@@ -26,13 +26,16 @@ class Gateway(Resolver):
         debug=False,
         verbose=False,
         silent=False,
+        log_level=None,
         interactive=False,
         timed=False,
         cache=None,
         **values,
     ):
         self.name = name
-        self.logger = gway_log._child(name)
+        self.logger = gway_log._child(name, level=log_level)
+        for level_name, level in gway_log.levels(self.logger).items():
+            setattr(self, level_name, level)
         self.ops, self.subs = registry_views()
         self._ingested = {}
 
@@ -40,10 +43,8 @@ class Gateway(Resolver):
 
         self.cache = cache if isinstance(cache, Cache) else Cache(cache)
         self.debug_enabled = bool(debug)
-        self._verbose = False
-        self._silent = False
-        self.verbose = verbose
-        self.silent = silent
+        self.verbose = bool(verbose)
+        self.silent = bool(silent)
         self.interactive_enabled = bool(interactive)
         self.timed_enabled = bool(timed)
 
@@ -59,6 +60,8 @@ class Gateway(Resolver):
             self.context.update(context)
         if values:
             self.context.update({key: value for key, value in values.items() if value is not None})
+        self.context["verbose"] = self.verbose
+        self.context["silent"] = self.silent
 
         super().__init__([
             ("results", self.results),
@@ -100,36 +103,6 @@ class Gateway(Resolver):
     def __next__(self):
         """Advance the current iterator result."""
         return self.next()
-
-    @property
-    def verbose(self):
-        """Whether this runtime emits informational logging."""
-        return self._verbose
-
-    @verbose.setter
-    def verbose(self, value):
-        self._verbose = bool(value)
-        self._apply_logger_level()
-
-    @property
-    def silent(self):
-        """Whether this runtime suppresses all logging output."""
-        return self._silent
-
-    @silent.setter
-    def silent(self, value):
-        self._silent = bool(value)
-        self._apply_logger_level()
-
-    def _apply_logger_level(self):
-        logger = self.__dict__.get("logger")
-        if logger is not None:
-            logger.setLevel(
-                gway_log._level(
-                    verbose=self.__dict__.get("_verbose", False),
-                    silent=self.__dict__.get("_silent", False),
-                )
-            )
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command through the unified dispatcher."""
