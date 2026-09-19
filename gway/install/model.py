@@ -84,6 +84,8 @@ class InstallRequest:
             validate_name(self.name.removesuffix(".service"))
             if len(self.services) != 1:
                 raise ValueError("--name requires exactly one selected service")
+            if self.backend not in {None, "systemd"}:
+                raise ValueError("--name is supported only by the systemd backend")
 
     @property
     def scope(self):
