@@ -22,7 +22,6 @@ def test_process_backend_install_persists_without_starting(
 
 def test_process_backend_lifecycle_works_from_fresh_gateway(
     install_declared_service,
-    install_environment,
 ):
     install_declared_service(backend="process")
 
