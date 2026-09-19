@@ -1,4 +1,4 @@
-"""Public install/uninstall operation contracts."""
+"""Public install/uninstall operations."""
 
 from pathlib import Path
 
@@ -14,8 +14,8 @@ def install(
     stash: bool = False,
     system: bool = False,
 ):
-    """Describe a convergent project installation request."""
-    return InstallRequest(
+    """Converge one local project installation toward the requested state."""
+    request = InstallRequest(
         source=str(source),
         ref=ref,
         upgrade=upgrade,
@@ -24,10 +24,18 @@ def install(
         system=system,
     )
 
+    from .transaction import install_local
+
+    return install_local(request)
+
 
 def uninstall(project, *, system: bool = False):
-    """Describe an idempotent project removal request."""
-    return UninstallRequest(
+    """Converge one managed project toward absence."""
+    request = UninstallRequest(
         project=str(project),
         system=system,
     )
+
+    from .transaction import uninstall_local
+
+    return uninstall_local(request)
