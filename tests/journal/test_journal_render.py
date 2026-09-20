@@ -144,8 +144,7 @@ def test_render_public_dispatch_accepts_rollback_flag(gateway, tmp_path):
 
     assert result == destination
     assert (
-        gateway.journal.require_open("deploy").entries[0].state
-        is MutationState.APPLIED
+        gateway.journal.require_open("deploy").entries[0].state is MutationState.APPLIED
     )
 
 
