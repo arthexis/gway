@@ -192,6 +192,15 @@ class Controller:
             raise RuntimeError(
                 f"Service backend {record.backend!r} has no runtime adapter"
             )
+        if record.command:
+            definition = replace(
+                definition,
+                launchable=replace(
+                    definition.launchable,
+                    command=tuple(record.command),
+                ),
+            )
+
         policy = {}
         if record.restart is not None:
             policy["restart"] = record.restart
