@@ -153,14 +153,22 @@ class Gateway(Resolver):
         if not open_journals:
             return None
 
+        rollback_errors = []
         for name in open_journals:
             self.info(
                 "uncommitted rollback journal %r detected at execution boundary",
                 name,
             )
-            self.journal.rollback(name)
+            try:
+                self.journal.rollback(name)
+            except Exception as exception:
+                rollback_errors.append(exception)
 
-        raise UncommittedJournalError(open_journals)
+        boundary_error = UncommittedJournalError(open_journals)
+        boundary_error.rollback_errors = tuple(rollback_errors)
+        if rollback_errors:
+            raise boundary_error from rollback_errors[0]
+        raise boundary_error
 
     def _commit_journal(self, name):
         """Commit one named rollback journal and discard its rollback material."""
