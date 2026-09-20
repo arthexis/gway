@@ -31,7 +31,7 @@ __all__ = [
 ]
 
 
-def __main__(*, poll=1.0):
+def __main__(*, poll: float = 1.0):
     """Run Sous Chef in the foreground until interrupted."""
     from ..gateway import Gateway
 
