@@ -8,7 +8,7 @@ from gway.install.source import fingerprint, local_source, named_source, project
 def _project(tmp_path, name="demo"):
     root = tmp_path / name
     root.mkdir()
-    (root / "gway.toml").write_text(
+    (root / "pyproject.toml").write_text(
         f"[project]\nname = {name!r}\n",
         encoding="utf-8",
     )
@@ -27,24 +27,24 @@ def test_local_source_requires_existing_directory(tmp_path):
         local_source(file)
 
 
-def test_project_name_reads_required_manifest_identity(tmp_path):
+def test_project_name_reads_required_metadata_identity(tmp_path):
     root = _project(tmp_path, "wire")
 
     assert project_name(root) == "wire"
 
 
-def test_project_name_requires_gway_manifest(tmp_path):
+def test_project_name_requires_pyproject(tmp_path):
     root = tmp_path / "plain"
     root.mkdir()
 
-    with pytest.raises(ValueError, match="requires gway.toml"):
+    with pytest.raises(ValueError, match="requires pyproject.toml"):
         project_name(root)
 
 
 def test_project_name_requires_non_empty_name(tmp_path):
     root = tmp_path / "plain"
     root.mkdir()
-    (root / "gway.toml").write_text("[project]\nname = ''\n", encoding="utf-8")
+    (root / "pyproject.toml").write_text("[project]\nname = ''\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="non-empty"):
         project_name(root)
@@ -107,7 +107,7 @@ def test_fingerprint_tracks_symlink_target_without_following_it(tmp_path):
 def test_project_name_rejects_unsafe_path_components(tmp_path, name):
     root = tmp_path / "unsafe"
     root.mkdir()
-    (root / "gway.toml").write_text(
+    (root / "pyproject.toml").write_text(
         f"[project]\nname = {name!r}\n",
         encoding="utf-8",
     )
