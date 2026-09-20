@@ -373,8 +373,7 @@ def test_failed_execution_boundary_logs_automatic_recovery(
     messages = [record.getMessage() for record in caplog.records]
     assert (
         "execution failed with open rollback journal 'deploy'; "
-        "rolling back automatically"
-        in messages
+        "rolling back automatically" in messages
     )
     assert "rolling back journal 'deploy'" in messages
     assert "rolled back journal 'deploy'" in messages
