@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
 import stat
 import tempfile
+import sys
 from typing import Any
+
+from .host import run_as_identity
 
 
 class SnapshotError(RuntimeError):
@@ -36,8 +40,8 @@ def _file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def fingerprint_path(path: str | os.PathLike[str]) -> dict[str, Any]:
-    """Return a deterministic rollback-safety fingerprint for one path."""
+def _fingerprint_local(path: str | os.PathLike[str]) -> dict[str, Any]:
+    """Return a deterministic rollback-safety fingerprint using local access."""
     target = Path(path)
     try:
         info = target.lstat()
@@ -62,21 +66,12 @@ def fingerprint_path(path: str | os.PathLike[str]) -> dict[str, Any]:
     elif kind == "directory":
         children = []
         for child in sorted(target.iterdir(), key=lambda value: value.name):
-            nested = fingerprint_path(child)
+            nested = _fingerprint_local(child)
             nested["path"] = child.name
             children.append(nested)
         fingerprint["children"] = children
 
     return fingerprint
-
-
-def verify_fingerprint(expected: dict[str, Any]) -> None:
-    """Raise when a path has drifted from an expected applied-state fingerprint."""
-    current = fingerprint_path(str(expected["path"]))
-    if current != expected:
-        raise DriftError(
-            f"Rollback conflict: {expected['path']} changed after GWay applied it"
-        )
 
 
 def _kind(mode: int) -> str:
@@ -166,11 +161,11 @@ def _remove_existing(path: Path) -> None:
     raise SnapshotError(f"cannot remove unsupported filesystem object: {path}")
 
 
-def capture_path(
+def _capture_local(
     path: str | os.PathLike[str],
     storage: str | os.PathLike[str],
 ) -> dict[str, Any]:
-    """Capture one path and metadata into journal-owned storage."""
+    """Capture one path and metadata using local filesystem access."""
     target = Path(path)
     storage_path = Path(storage)
     storage_path.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -266,15 +261,19 @@ def _restore_symlink(path: Path, snapshot: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def restore_path(
+def _restore_local(
     snapshot: dict[str, Any],
     storage: str | os.PathLike[str],
     *,
     expected: dict[str, Any] | None = None,
 ) -> Path:
-    """Restore one captured path, optionally refusing to overwrite drifted state."""
+    """Restore one captured path using local filesystem access."""
     if expected is not None:
-        verify_fingerprint(expected)
+        current = _fingerprint_local(str(expected["path"]))
+        if current != expected:
+            raise DriftError(
+                f"Rollback conflict: {expected['path']} changed after GWay applied it"
+            )
     path = Path(str(snapshot["path"]))
 
     if not bool(snapshot.get("existed")):
@@ -303,3 +302,170 @@ def restore_path(
         return path
 
     raise SnapshotError(f"unsupported snapshot type: {kind}")
+
+
+_PRIVILEGED_ENTRY = (
+    "from gway.snapshot import _privileged_main; "
+    "_privileged_main()"
+)
+
+
+def _describe_local(path: str | os.PathLike[str]) -> dict[str, Any]:
+    target = Path(path)
+    try:
+        info = target.lstat()
+    except FileNotFoundError:
+        return {"path": str(target), "existed": False}
+
+    kind = _kind(info.st_mode)
+    result: dict[str, Any] = {
+        "path": str(target),
+        "existed": True,
+        "type": kind,
+        **_metadata(target, follow_symlinks=False),
+    }
+    if kind == "symlink":
+        result["target"] = os.readlink(target)
+    return result
+
+
+def _json_as_identity(identity, action: str, path: Path) -> dict[str, Any]:
+    completed = run_as_identity(
+        identity,
+        sys.executable,
+        "-c",
+        _PRIVILEGED_ENTRY,
+        action,
+        path,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def _capture_as_identity(
+    path: str | os.PathLike[str],
+    storage: str | os.PathLike[str],
+    identity,
+) -> dict[str, Any]:
+    target = Path(path)
+    storage_path = Path(storage)
+    storage_path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    storage_path.chmod(0o700)
+
+    snapshot = _json_as_identity(identity, "describe", target)
+    if not bool(snapshot.get("existed")):
+        return snapshot
+
+    archive = storage_path / "archive.tar"
+    with archive.open("wb") as stream:
+        run_as_identity(
+            identity,
+            "tar",
+            "-C",
+            target.parent,
+            "-cpf",
+            "-",
+            "--",
+            target.name,
+            stdout=stream,
+        )
+    archive.chmod(0o600)
+    snapshot["snapshot"] = archive.name
+    return snapshot
+
+
+def capture_path(
+    path: str | os.PathLike[str],
+    storage: str | os.PathLike[str],
+    *,
+    identity=None,
+) -> dict[str, Any]:
+    """Capture one path, falling back to its execution identity when required."""
+    if identity is None or not identity.privileged:
+        return _capture_local(path, storage)
+    try:
+        return _capture_local(path, storage)
+    except PermissionError:
+        return _capture_as_identity(path, storage, identity)
+
+
+def fingerprint_path(
+    path: str | os.PathLike[str],
+    *,
+    identity=None,
+) -> dict[str, Any]:
+    """Return a deterministic fingerprint under the requested identity."""
+    if identity is None or not identity.privileged:
+        return _fingerprint_local(path)
+    try:
+        return _fingerprint_local(path)
+    except PermissionError:
+        return _json_as_identity(identity, "fingerprint", Path(path))
+
+
+def verify_fingerprint(expected: dict[str, Any], *, identity=None) -> None:
+    """Raise when a path has drifted from an expected applied-state fingerprint."""
+    current = fingerprint_path(str(expected["path"]), identity=identity)
+    if current != expected:
+        raise DriftError(
+            f"Rollback conflict: {expected['path']} changed after GWay applied it"
+        )
+
+
+def _restore_as_identity(
+    snapshot: dict[str, Any],
+    storage: str | os.PathLike[str],
+    identity,
+    *,
+    expected: dict[str, Any] | None = None,
+) -> Path:
+    path = Path(str(snapshot["path"]))
+    if expected is not None:
+        verify_fingerprint(expected, identity=identity)
+
+    run_as_identity(identity, "rm", "-rf", "--", path)
+    if bool(snapshot.get("existed")):
+        archive = Path(storage) / str(snapshot["snapshot"])
+        with archive.open("rb") as stream:
+            run_as_identity(
+                identity,
+                "tar",
+                "-C",
+                path.parent,
+                "-xpf",
+                "-",
+                stdin=stream,
+            )
+    return path
+
+
+def restore_path(
+    snapshot: dict[str, Any],
+    storage: str | os.PathLike[str],
+    *,
+    expected: dict[str, Any] | None = None,
+    identity=None,
+) -> Path:
+    """Restore one captured path under an optional execution identity."""
+    if identity is not None and identity.privileged:
+        return _restore_as_identity(
+            snapshot,
+            storage,
+            identity,
+            expected=expected,
+        )
+    return _restore_local(snapshot, storage, expected=expected)
+
+
+def _privileged_main() -> None:
+    """Internal subprocess entry point for identity-scoped inspection."""
+    action = sys.argv[1]
+    path = Path(sys.argv[2])
+    if action == "describe":
+        value = _describe_local(path)
+    elif action == "fingerprint":
+        value = _fingerprint_local(path)
+    else:
+        raise ValueError(f"Unknown privileged snapshot action: {action}")
+    sys.stdout.write(json.dumps(value, sort_keys=True))
