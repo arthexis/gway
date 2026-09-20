@@ -283,8 +283,7 @@ def test_systemctl_timeout_raises_structured_operation_error(monkeypatch, caplog
     messages = [record.getMessage() for record in caplog.records]
     assert "systemd restart gway-demo.service [system]: starting" in messages
     assert (
-        "systemd restart gway-demo.service [system]: timed out after 0.01s"
-        in messages
+        "systemd restart gway-demo.service [system]: timed out after 0.01s" in messages
     )
     assert "systemd restart gway-demo.service [system]: complete" not in messages
 
@@ -448,9 +447,7 @@ def test_timeout_aborts_later_forward_systemd_operations(
 
     assert exc_info.value.timeout == 77
     forward = [
-        (action, unit, timeout)
-        for action, unit, check, timeout in observed
-        if check
+        (action, unit, timeout) for action, unit, check, timeout in observed if check
     ]
     assert forward == [
         ("daemon-reload", None, 77),
