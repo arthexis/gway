@@ -25,12 +25,6 @@ def install_units(
         for record in previous_all
         if record.backend == BACKEND
     }
-    foreign = [
-        record
-        for record in previous_all
-        if record.backend != BACKEND
-    ]
-
     records = []
     for service in services:
         previous_record = previous.get(service.name)
@@ -53,7 +47,13 @@ def install_units(
             )
         )
 
-    state.put(project, [*foreign, *records])
+    selected = {record.service for record in records}
+    retained = [
+        record
+        for record in previous_all
+        if record.service not in selected
+    ]
+    state.put(project, [*retained, *records])
     return records
 
 
