@@ -54,6 +54,11 @@ class Controller:
             "project": definition.project,
             "service": definition.name,
             "description": definition.description,
+            "launchable": {
+                "name": definition.launchable.name,
+                "kind": definition.launchable.kind,
+                "command": list(definition.launchable.command),
+            },
             "command": list(definition.command),
             "working_directory": definition.working_directory,
             "writable_paths": list(definition.writable_paths),
