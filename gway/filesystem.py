@@ -83,18 +83,30 @@ class Filesystem:
             self.runtime.journal.mark_applied(rollback, entry.sequence)
         return result
 
-    def move(self, source, to, sudo=False, **options):
+    def move(self, source, to, sudo=False, rollback=None, **options):
         """Move a file or directory to another path."""
         source = _path(self.runtime, source)
         destination = _path(self.runtime, to)
         identity = _identity(sudo=sudo, options=options)
+        target = _destination(source, destination)
+
+        entry = None
+        if rollback is not None:
+            entry = self.runtime.journal.prepare_paths(
+                rollback,
+                operation="move",
+                paths=(source, target),
+            )
 
         if not identity.privileged:
-            return _move_local(source, destination)
+            result = _move_local(source, destination)
+        else:
+            run_as_identity(identity, "mv", source, target)
+            result = target
 
-        target = _destination(source, destination)
-        run_as_identity(identity, "mv", source, target)
-        return target
+        if entry is not None:
+            self.runtime.journal.mark_applied(rollback, entry.sequence)
+        return result
 
     def link(self, source, to, sudo=False, rollback=None, **options):
         """Create a symbolic link to an existing source."""
