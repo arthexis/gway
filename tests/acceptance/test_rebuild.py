@@ -192,3 +192,189 @@ def test_environment_overrides_pyproject_semantic_variable(
     runtime = Gateway()
 
     assert runtime.resolve("[region]") == "production"
+
+
+def _install_project(runtime, root, name, *, script=None, package_main=None):
+    root.mkdir()
+    metadata = ["[project]\n", f"name = {name!r}\n"]
+    if script is not None:
+        command, target = script
+        metadata.extend(
+            [
+                "[project.scripts]\n",
+                f"{command} = {target!r}\n",
+            ]
+        )
+    (root / "pyproject.toml").write_text(
+        "".join(metadata),
+        encoding="utf-8",
+    )
+
+    if script is not None:
+        _, target = script
+        module_name = target.split(":", 1)[0]
+        module = root / f"{module_name}.py"
+        module.write_text(
+            "def main(value='ok'):\n"
+            "    return value\n",
+            encoding="utf-8",
+        )
+
+    if package_main is not None:
+        package = root / package_main
+        package.mkdir()
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "__main__.py").write_text(
+            "import sys\n"
+            "ARGS = sys.argv[1:]\n",
+            encoding="utf-8",
+        )
+
+    return runtime(f"install {root}")
+
+
+def test_unique_installed_script_resolves_bare_before_project_expansion(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+
+    _install_project(
+        Gateway(),
+        tmp_path / "source",
+        "acme",
+        script=("hello", "entry:main"),
+    )
+
+    outside = tmp_path / "outside-script"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    runtime = Gateway()
+    record = find_ingested(runtime, ("acme",))
+
+    assert record is not None
+    assert ("hello",) in record.paths
+    assert record.expanded is False
+
+    assert runtime("hello Ada") == "Ada"
+
+    assert record.expanded is True
+    assert runtime.ops.resolve("acme.hello") is not None
+
+
+def test_unique_installed_package_main_resolves_bare_lazily(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+
+    _install_project(
+        Gateway(),
+        tmp_path / "source",
+        "acme",
+        package_main="worker",
+    )
+
+    outside = tmp_path / "outside-main"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    runtime = Gateway()
+    record = find_ingested(runtime, ("acme",))
+
+    assert record is not None
+    assert ("worker",) in record.paths
+    assert record.expanded is False
+
+    result = runtime("worker alpha beta")
+
+    assert result["ARGS"] == ["alpha", "beta"]
+    assert record.expanded is True
+    assert runtime.ops.resolve("acme.worker") is not None
+
+
+def test_duplicate_installed_script_names_require_project_qualification(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+
+    installer = Gateway()
+    _install_project(
+        installer,
+        tmp_path / "one",
+        "one",
+        script=("hello", "entry:main"),
+    )
+    _install_project(
+        installer,
+        tmp_path / "two",
+        "two",
+        script=("hello", "entry:main"),
+    )
+
+    outside = tmp_path / "outside-duplicate-script"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    runtime = Gateway()
+
+    assert find_ingested(runtime, ("hello",)) is None
+
+    import pytest
+
+    with pytest.raises(LookupError):
+        runtime("hello")
+
+    assert runtime("one hello first") == "first"
+
+    with pytest.raises(LookupError):
+        runtime("hello")
+
+    assert runtime("two hello second") == "second"
+
+
+def test_duplicate_installed_package_mains_require_project_qualification(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+
+    installer = Gateway()
+    _install_project(
+        installer,
+        tmp_path / "one",
+        "one",
+        package_main="worker",
+    )
+    _install_project(
+        installer,
+        tmp_path / "two",
+        "two",
+        package_main="worker",
+    )
+
+    outside = tmp_path / "outside-duplicate-main"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    runtime = Gateway()
+
+    assert find_ingested(runtime, ("worker",)) is None
+
+    import pytest
+
+    with pytest.raises(LookupError):
+        runtime("worker")
+
+    assert runtime("one worker first")["ARGS"] == ["first"]
+
+    with pytest.raises(LookupError):
+        runtime("worker")
+
+    assert runtime("two worker second")["ARGS"] == ["second"]
