@@ -112,7 +112,9 @@ def test_transfer_without_rollback_logs_debug(
     getattr(gateway, operation)(str(source), to=str(destination))
 
     messages = [record.getMessage() for record in caplog.records]
-    assert f"rollback-capable {operation} executed without journal" in messages
+    assert (
+        f"rollback-capable {operation} executed without journal" in messages
+    )
 
 
 def test_remove_without_rollback_logs_debug(gateway, tmp_path, caplog):
