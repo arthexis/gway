@@ -72,7 +72,7 @@ def test_mark_applied_requires_unapplied_entry(tmp_path):
     applied = journals.mark_applied("deploy", 1)
 
     assert applied.state is MutationState.APPLIED
-    with pytest.raises(JournalError, match="not prepared"):
+    with pytest.raises(JournalError, match="not mutated"):
         journals.mark_applied("deploy", 1)
 
 
