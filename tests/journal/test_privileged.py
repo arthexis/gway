@@ -211,3 +211,35 @@ def test_unprivileged_snapshot_path_never_invokes_host_boundary(
         snapshot.fingerprint_path(target, identity=ExecutionIdentity())["type"]
         == "file"
     )
+
+
+def test_privileged_capture_failure_prevents_forward_mutation(
+    gateway,
+    tmp_path,
+    host_calls,
+    monkeypatch,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+
+    def fail_capture(*args, **kwargs):
+        raise PermissionError("cannot snapshot transaction target")
+
+    monkeypatch.setattr(snapshot, "capture_path", fail_capture)
+
+    try:
+        gateway.copy(
+            str(source),
+            to=str(destination),
+            sudo=True,
+            rollback="deploy",
+        )
+    except PermissionError as error:
+        assert "cannot snapshot" in str(error)
+    else:
+        raise AssertionError("rollback capture failure must abort the mutation")
+
+    assert host_calls == []
+    entry = gateway.journal.require_open("deploy").entries[0]
+    assert entry.state.value == "prepared"
