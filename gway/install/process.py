@@ -1,7 +1,7 @@
 """Portable Gway-managed service installation backend."""
 
 from ..service.runtime import ProcessBackend
-from .service_state import ServiceInstallRecord, ServiceInstallState
+from .servicestate import ServiceInstallRecord, ServiceInstallState
 
 
 BACKEND = "process"
