@@ -17,7 +17,7 @@ def test_sous_chef_entrypoint_is_normal_gway_operation():
     runtime = Gateway()
 
     launchable = runtime.launchables["sous.chef"]
-    service = runtime._services[("gway", "sous-chef")]
+    service = runtime._service_presets[("gway", "sous-chef")]
 
     assert isinstance(launchable, Launchable)
     assert launchable.kind == "operation"
