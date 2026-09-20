@@ -145,16 +145,16 @@ def test_named_service_identity_allows_multiple_invocations(monkeypatch):
 
 
 def test_installed_service_record_preserves_launchable_invocation(tmp_path):
-    from gway.install.systemd import UnitRecord, UnitState
+    from gway.install.service_state import ServiceInstallRecord, ServiceInstallState
 
-    state = UnitState(tmp_path / "state")
+    state = ServiceInstallState(tmp_path / "state")
     state.put(
         "demo",
         [
-            UnitRecord(
+            ServiceInstallRecord(
                 project="demo",
                 service="urgent",
-                unit="demo-urgent.service",
+                backend_id="demo-urgent.service",
                 backend="process",
                 restart="on-failure",
                 attempts=3,
