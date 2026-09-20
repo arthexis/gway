@@ -85,15 +85,12 @@ def install_units(
         for record in previous_all
         if record.backend == "systemd"
     }
-    foreign = [
-        record
-        for record in previous_all
-        if record.backend != "systemd"
-    ]
     selected = {service.name for service in services}
 
     previous_files = {}
     for record in previous.values():
+        if record.service not in selected:
+            continue
         path = target_root / record.backend_id
         try:
             previous_files[record.backend_id] = path.read_bytes()
@@ -102,16 +99,6 @@ def install_units(
 
     records = []
     try:
-        # Remove units no longer selected by the converged install request.
-        for service_name, record in previous.items():
-            if service_name in selected:
-                continue
-            _systemctl("disable", record.backend_id, system=record.system, check=False)
-            try:
-                (target_root / record.backend_id).unlink()
-            except FileNotFoundError:
-                pass
-
         for service in services:
             previous_record = previous.get(service.name)
             if previous_record is not None:
@@ -140,7 +127,12 @@ def install_units(
         _systemctl("daemon-reload", system=system)
         for record in records:
             _systemctl("enable", record.backend_id, system=system)
-        state.put(project, [*foreign, *records])
+        retained = [
+            record
+            for record in previous_all
+            if record.service not in selected
+        ]
+        state.put(project, [*retained, *records])
         return records
     except Exception:
         for record in records:
