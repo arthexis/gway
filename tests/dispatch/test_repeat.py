@@ -211,10 +211,8 @@ def test_standalone_repeat_replays_previous_statement_in_same_program(gateway):
     assert calls == [1, 2, 3]
 
 
-def test_repeat_limit_rolls_back_named_journal(gateway, tmp_path):
-    source = tmp_path / "source.txt"
-    source.write_text("source", encoding="utf-8")
-    destination = tmp_path / "destination.txt"
+def test_repeat_limit_rolls_back_named_journal(gateway, rollback_paths):
+    source, destination = rollback_paths
 
     def mutate_and_probe():
         if not destination.exists():
@@ -231,10 +229,8 @@ def test_repeat_limit_rolls_back_named_journal(gateway, tmp_path):
     assert gateway.journal.get("deploy") is None
 
 
-def test_successful_repeat_does_not_trigger_rollback(gateway, tmp_path):
-    source = tmp_path / "source.txt"
-    source.write_text("source", encoding="utf-8")
-    destination = tmp_path / "destination.txt"
+def test_successful_repeat_does_not_trigger_rollback(gateway, rollback_paths):
+    source, destination = rollback_paths
     calls = []
 
     def mutate_and_probe():
@@ -258,11 +254,9 @@ def test_successful_repeat_does_not_trigger_rollback(gateway, tmp_path):
 
 def test_repeat_failure_preserves_primary_when_rollback_is_incomplete(
     gateway,
-    tmp_path,
+    rollback_paths,
 ):
-    source = tmp_path / "source.txt"
-    source.write_text("source", encoding="utf-8")
-    destination = tmp_path / "destination.txt"
+    source, destination = rollback_paths
 
     def mutate_drift_and_probe():
         if not destination.exists():
@@ -302,10 +296,8 @@ def test_repeat_failure_preserves_missing_journal_as_recovery_context(gateway):
     assert "not open" in str(recovery)
 
 
-def test_repeat_operation_exception_triggers_rollback(gateway, tmp_path):
-    source = tmp_path / "source.txt"
-    source.write_text("source", encoding="utf-8")
-    destination = tmp_path / "destination.txt"
+def test_repeat_operation_exception_triggers_rollback(gateway, rollback_paths):
+    source, destination = rollback_paths
 
     def mutate():
         gateway.copy(str(source), to=str(destination), rollback="deploy")
