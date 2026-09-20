@@ -1,3 +1,4 @@
+from gway.gateway import Gateway
 from gway.install.systemd import render
 from gway.launchable import Launchable
 from gway.service.model import Service
@@ -64,3 +65,32 @@ def test_service_attempts_must_be_non_negative(tmp_path):
         assert "attempts" in str(exc)
     else:
         raise AssertionError("negative attempts should fail")
+
+
+def test_service_install_overrides_retry_policy(monkeypatch):
+    runtime = Gateway()
+    captured = {}
+
+    class Backend:
+        @staticmethod
+        def install_units(project, services, **kwargs):
+            captured["project"] = project
+            captured["service"] = tuple(services)[0]
+            captured["kwargs"] = kwargs
+            return ["installed"]
+
+    monkeypatch.setattr("gway.install.backends.get", lambda name: Backend)
+
+    result = runtime._service_controller.install(
+        "gway",
+        "sous-chef",
+        restart="always",
+        attempts=6,
+        restart_sec=1.5,
+    )
+
+    installed = captured["service"]
+    assert result == ["installed"]
+    assert installed.restart == "always"
+    assert installed.attempts == 6
+    assert installed.restart_sec == 1.5
