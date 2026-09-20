@@ -6,8 +6,8 @@ import sys
 import time
 
 
-def supervise(command, *, attempts=3, restart_sec=5.0):
-    """Run a command, retrying failed exits up to attempts times."""
+def supervise(command, *, restart="on-failure", attempts=3, restart_sec=5.0):
+    """Run a command, applying the configured restart policy."""
     command = tuple(command)
     if not command:
         raise ValueError("supervisor requires a command")
@@ -36,7 +36,11 @@ def supervise(command, *, attempts=3, restart_sec=5.0):
         while True:
             child = subprocess.Popen(command)
             returncode = child.wait()
-            if stopping or returncode == 0 or remaining <= 0:
+            retry = (
+                restart == "always"
+                or (restart == "on-failure" and returncode != 0)
+            )
+            if stopping or not retry or remaining <= 0:
                 return returncode
             remaining -= 1
             if restart_sec:
@@ -49,11 +53,15 @@ def supervise(command, *, attempts=3, restart_sec=5.0):
 def main(argv=None):
     """Run the internal portable supervisor command line."""
     argv = list(sys.argv[1:] if argv is None else argv)
+    restart = "on-failure"
     attempts = 3
     restart_sec = 5.0
 
     while argv:
         token = argv.pop(0)
+        if token == "--restart":
+            restart = argv.pop(0)
+            continue
         if token == "--attempts":
             attempts = int(argv.pop(0))
             continue
@@ -68,6 +76,7 @@ def main(argv=None):
         raise ValueError("supervisor requires a command after --")
     return supervise(
         argv,
+        restart=restart,
         attempts=attempts,
         restart_sec=restart_sec,
     )
