@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from gway.install import install_paths
-import gway.install.systemd as systemd
+import gway.install.service.systemd as systemd
 
 
 @dataclass(frozen=True)
