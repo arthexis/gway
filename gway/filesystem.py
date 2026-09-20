@@ -88,6 +88,7 @@ class Filesystem:
             result = target
 
         if entry is not None:
+            self.runtime.journal.mark_mutated(rollback, entry.sequence)
             self.runtime.journal.mark_applied(rollback, entry.sequence)
         return result
 
@@ -122,6 +123,7 @@ class Filesystem:
             result = target
 
         if entry is not None:
+            self.runtime.journal.mark_mutated(rollback, entry.sequence)
             self.runtime.journal.mark_applied(rollback, entry.sequence)
         return result
 
@@ -168,6 +170,7 @@ class Filesystem:
             result = target
 
         if entry is not None:
+            self.runtime.journal.mark_mutated(rollback, entry.sequence)
             self.runtime.journal.mark_applied(rollback, entry.sequence)
         return result
 
@@ -202,5 +205,6 @@ class Filesystem:
             result = path
 
         if entry is not None:
+            self.runtime.journal.mark_mutated(rollback, entry.sequence)
             self.runtime.journal.mark_applied(rollback, entry.sequence)
         return result
