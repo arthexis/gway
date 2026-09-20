@@ -207,11 +207,14 @@ class JournalManager:
     @staticmethod
     def _entry(journal: Journal, sequence: int) -> JournalEntry:
         try:
-            return journal.entries[int(sequence) - 1]
-        except (IndexError, ValueError):
+            index = int(sequence) - 1
+        except (TypeError, ValueError):
+            index = -1
+        if index < 0 or index >= len(journal.entries):
             raise JournalError(
                 f"Rollback journal {journal.name!r} has no entry {sequence}"
-            ) from None
+            )
+        return journal.entries[index]
 
     def commit(self, name: str) -> None:
         """Commit a non-empty journal and discard its persisted state."""
