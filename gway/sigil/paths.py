@@ -2,6 +2,8 @@
 
 from collections.abc import Mapping, Sequence
 
+from ..semantic import AmbiguousKeyError, resolve_mapping_key
+
 
 def follow_path(value, parts, lookup=None, resolve_text=None):
     for part in parts:
@@ -24,8 +26,14 @@ def follow_path(value, parts, lookup=None, resolve_text=None):
                 raise KeyError(f"Path segment '{part}' not found")
 
         if isinstance(value, Mapping):
-            if part in value:
-                value = value[part]
+            try:
+                key = resolve_mapping_key(value, part)
+            except AmbiguousKeyError:
+                raise
+            except KeyError:
+                key = None
+            if key is not None:
+                value = value[key]
                 continue
 
             if isinstance(part, str):
@@ -36,19 +44,6 @@ def follow_path(value, parts, lookup=None, resolve_text=None):
 
                 if numeric_part is not None and numeric_part in value:
                     value = value[numeric_part]
-                    continue
-
-                normalized = part.lower().replace("-", "_")
-                sentinel = object()
-                resolved = sentinel
-                for key, candidate in value.items():
-                    if not isinstance(key, str):
-                        continue
-                    if key.lower().replace("-", "_") == normalized:
-                        resolved = candidate
-                        break
-                if resolved is not sentinel:
-                    value = resolved
                     continue
 
         idx = None
