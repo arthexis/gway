@@ -189,6 +189,24 @@ class JournalManager:
         self._persist(journal)
         return entry
 
+    def update_entry_data(
+        self,
+        name: str,
+        sequence: int,
+        data: dict[str, object],
+    ) -> JournalEntry:
+        """Replace one PREPARED entry's persisted mutation data."""
+        journal = self.require_open(name)
+        entry = self._entry(journal, sequence)
+        if entry.state is not MutationState.PREPARED:
+            raise JournalError(
+                f"Rollback journal {name!r} entry {sequence} is "
+                f"{entry.state.value}, not prepared"
+            )
+        entry.data = dict(data)
+        self._persist(journal)
+        return entry
+
     def mark_applied(self, name: str, sequence: int) -> JournalEntry:
         journal = self.require_open(name)
         entry = self._entry(journal, sequence)
