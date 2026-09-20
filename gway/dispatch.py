@@ -273,7 +273,7 @@ def _check_options(runtime, tokens):
     tokens = list(tokens)
     checks = []
     rollback = None
-    unless = None
+    unless = _MISSING
     index = 1
 
     while index < len(tokens):
@@ -296,7 +296,7 @@ def _check_options(runtime, tokens):
             continue
 
         if not literal_option and option == "--unless":
-            if unless is not None:
+            if unless is not _MISSING:
                 raise TypeError("check accepts only one --unless condition")
             if index + 1 >= len(tokens):
                 raise TypeError("Expected a boolean condition after --unless")
@@ -345,7 +345,7 @@ def _execute_check(runtime, tokens, result):
     checks, rollback, unless = _check_options(runtime, tokens)
 
     try:
-        if unless is not None:
+        if unless is not _MISSING:
             if not isinstance(unless, bool):
                 raise CheckError("check --unless requires a boolean condition")
             if unless:
