@@ -367,9 +367,7 @@ def test_check_unless_is_position_independent(gateway):
     gateway.context["feature_disabled"] = True
 
     assert (
-        gateway(
-            "probe - check --status healthy --unless [feature_disabled] --ready"
-        )
+        gateway("probe - check --status healthy --unless [feature_disabled] --ready")
         is result
     )
 
