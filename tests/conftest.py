@@ -1,4 +1,5 @@
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -34,3 +35,16 @@ def run_cli(monkeypatch, capsys):
         return status, captured.out, captured.err
 
     return run
+
+
+@pytest.fixture
+def host_calls(monkeypatch):
+    """Capture commands sent through the shared privileged host boundary."""
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append((tuple(argv), kwargs))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("gway.host.subprocess.run", fake_run)
+    return calls
