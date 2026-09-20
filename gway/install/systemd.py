@@ -20,6 +20,9 @@ class UnitRecord:
     unit: str
     system: bool = False
     backend: str = "systemd"
+    restart: str | None = None
+    attempts: int | None = None
+    restart_sec: float | None = None
 
 
 class UnitState:
@@ -44,6 +47,9 @@ class UnitState:
                 unit=item["unit"],
                 system=bool(item.get("system", False)),
                 backend=item.get("backend", "systemd"),
+                restart=item.get("restart"),
+                attempts=item.get("attempts"),
+                restart_sec=item.get("restart_sec"),
             )
             for item in data
         ]
@@ -230,6 +236,9 @@ def install_units(
                     unit=filename,
                     system=system,
                     backend="systemd",
+                    restart=service.restart,
+                    attempts=service.attempts,
+                    restart_sec=service.restart_sec,
                 )
             )
 
