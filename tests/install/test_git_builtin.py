@@ -123,7 +123,7 @@ def test_github_shorthand_routes_through_git_materialization(
 
     materialized = tmp_path / "materialized"
     materialized.mkdir()
-    (materialized / "gway.toml").write_text(
+    (materialized / "pyproject.toml").write_text(
         "[project]\nname = 'gway'\n",
         encoding="utf-8",
     )
