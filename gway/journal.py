@@ -349,20 +349,27 @@ class JournalManager:
         from .snapshot import restore_path
 
         identity = ExecutionIdentity.from_dict(entry.data.get("identity"))
-        self.verify_applied(name, sequence)
-
-        storage = self.entry_storage(name, sequence)
         snapshots = [dict(value) for value in entry.data.get("paths") or []]
-        for snapshot in reversed(snapshots):
-            relative_storage = snapshot.get("storage")
-            if relative_storage is None:
+        expected = [dict(value) for value in entry.data.get("expected") or []]
+        if len(expected) != len(snapshots):
+            raise JournalError(
+                f"Rollback journal {name!r} entry {sequence} has incomplete "
+                "post-mutation fingerprints"
+            )
+        for snapshot in snapshots:
+            if snapshot.get("storage") is None:
                 raise JournalError(
                     f"Rollback journal {name!r} entry {sequence} snapshot "
                     "has no storage location"
                 )
+
+        self.verify_applied(name, sequence)
+
+        storage = self.entry_storage(name, sequence)
+        for snapshot in reversed(snapshots):
             restore_path(
                 snapshot,
-                storage / str(relative_storage),
+                storage / str(snapshot["storage"]),
                 identity=identity,
             )
 
