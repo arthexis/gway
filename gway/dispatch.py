@@ -1,5 +1,6 @@
 """Unified command resolution and dispatch for GWAY runtimes."""
 
+import ast
 import os
 from dataclasses import dataclass
 from collections.abc import Mapping
@@ -12,6 +13,144 @@ from .recipes import execute_recipe, parse_recipe_context, recipe_path
 from .tokens import is_literal, statements, token_value, tokenize
 
 _MISSING = object()
+
+
+class CheckError(RuntimeError):
+    """Raised when an atomic check does not satisfy its assertions."""
+
+
+def _check_stage(tokens):
+    """Split one check control stage from a following dash pipeline."""
+    stage = []
+    remaining = []
+    for index, token in enumerate(tokens):
+        if index and not is_literal(token) and token_value(token) == "-":
+            remaining = list(tokens[index + 1 :])
+            break
+        stage.append(token)
+    return stage, remaining
+
+
+def _check_expected(runtime, token):
+    """Resolve one expected check value with lightweight literal coercion."""
+    raw = token_value(token)
+    if is_literal(token):
+        return raw
+
+    resolved = runtime.resolve(raw)
+    if resolved is not raw and resolved != raw:
+        return resolved
+
+    lowered = raw.casefold()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    if lowered in {"none", "null"}:
+        return None
+
+    try:
+        return ast.literal_eval(raw)
+    except (ValueError, SyntaxError):
+        return raw
+
+
+def _check_options(runtime, tokens):
+    """Parse atomic check assertions from raw control-stage tokens."""
+    tokens = list(tokens)
+    checks = []
+    index = 1
+
+    while index < len(tokens):
+        option = token_value(tokens[index])
+        if is_literal(tokens[index]) or not option.startswith("--"):
+            raise TypeError(f"Unexpected check argument {option!r}")
+
+        if option in {"--true", "--false"}:
+            checks.append(("boolean", option == "--true", None))
+            index += 1
+            continue
+
+        if option == "--is":
+            if index + 1 >= len(tokens):
+                raise TypeError("Expected a value after --is")
+            checks.append(("is", _check_expected(runtime, tokens[index + 1]), None))
+            index += 2
+            continue
+
+        inverted = option.startswith("--no-")
+        name = option[5:] if inverted else option[2:]
+        if not name:
+            raise TypeError(f"Invalid check argument {option!r}")
+
+        expected = _MISSING
+        if index + 1 < len(tokens):
+            next_token = tokens[index + 1]
+            next_raw = token_value(next_token)
+            if is_literal(next_token) or (
+                not next_raw.startswith("--") and next_raw != "-"
+            ):
+                expected = _check_expected(runtime, next_token)
+                index += 1
+
+        checks.append(("mapping", name.replace("-", "_"), (inverted, expected)))
+        index += 1
+
+    if not checks:
+        raise TypeError("check requires at least one assertion")
+    return checks
+
+
+def _execute_check(runtime, tokens, result):
+    """Apply atomic assertions to one result and return it unchanged."""
+    checks = _check_options(runtime, tokens)
+
+    for kind, value, detail in checks:
+        if kind == "boolean":
+            if not isinstance(result, bool):
+                raise CheckError("check --true/--false requires a boolean result")
+            if result is not value:
+                raise CheckError(f"check expected result to be {str(value).lower()}")
+            continue
+
+        if kind == "is":
+            if result != value:
+                raise CheckError(
+                    f"check expected result to equal {value!r}; got {result!r}"
+                )
+            continue
+
+        if not isinstance(result, Mapping):
+            raise CheckError(
+                f"check --{value} requires a mapping result; got "
+                f"{type(result).__name__}"
+            )
+
+        inverted, expected = detail
+        present = value in result
+        if expected is _MISSING:
+            passed = not present if inverted else present
+            if not passed:
+                expectation = "absent" if inverted else "present"
+                raise CheckError(f"check expected key {value!r} to be {expectation}")
+            continue
+
+        matches = present and result[value] == expected
+        passed = not matches if inverted else matches
+        if not passed:
+            if inverted:
+                raise CheckError(
+                    f"check expected key {value!r} not to equal {expected!r}"
+                )
+            actual = result[value] if present else _MISSING
+            if actual is _MISSING:
+                raise CheckError(f"check expected key {value!r} to be present")
+            raise CheckError(
+                f"check expected key {value!r} to equal {expected!r}; "
+                f"got {actual!r}"
+            )
+
+    return result
 
 
 @dataclass(frozen=True)
@@ -359,6 +498,18 @@ def dispatch_pipeline(
     while remaining:
         stage_args = args if first else ()
         stage_kwargs = kwargs if first else None
+
+        if not is_literal(remaining[0]) and token_value(remaining[0]) == "check":
+            if stage_args or stage_kwargs:
+                raise TypeError("Native arguments are not supported for check")
+            stage, remaining = _check_stage(remaining)
+            if current is _MISSING:
+                current = runtime.results.last
+            result = _execute_check(runtime, stage, current)
+            results.append(result)
+            current = result
+            first = False
+            continue
 
         recipe = _resolve_recipe_stage(
             runtime,
