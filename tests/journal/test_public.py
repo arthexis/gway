@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from gway.journal import JournalError
+from gway.journal import JournalError, RollbackError
 
 
 def test_public_commit_closes_transaction(gateway, tmp_path):
@@ -155,3 +155,39 @@ def test_journaled_move_logs_transaction_debug(gateway, tmp_path, caplog):
         message.startswith("transaction snapshot capture path=")
         for message in messages
     )
+
+
+def test_incomplete_rollback_logs_each_failure_and_summary_at_error(
+    gateway,
+    tmp_path,
+    caplog,
+):
+    caplog.set_level(logging.ERROR, logger="gway")
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+
+    gateway.copy(str(source), to=str(first), rollback="deploy")
+    gateway.copy(str(source), to=str(second), rollback="deploy")
+
+    first.write_text("external first", encoding="utf-8")
+    second.write_text("external second", encoding="utf-8")
+
+    with pytest.raises(RollbackError):
+        gateway(["rollback", "deploy"])
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        message.startswith(
+            "rollback failure journal=deploy sequence=2 operation=copy:"
+        )
+        for message in messages
+    )
+    assert any(
+        message.startswith(
+            "rollback failure journal=deploy sequence=1 operation=copy:"
+        )
+        for message in messages
+    )
+    assert "rollback journal 'deploy' incomplete: 2 of 2 entries failed" in messages
