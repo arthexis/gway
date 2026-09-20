@@ -70,9 +70,7 @@ def test_recipe_check_failure_rolls_back_once_before_boundary(
 
     recipe = tmp_path / "deploy.rx"
     recipe.write_text(
-        "mutate\n"
-        "read status\n"
-        "check --status healthy --rollback deploy\n",
+        "mutate\nread status\ncheck --status healthy --rollback deploy\n",
         encoding="utf-8",
     )
 
