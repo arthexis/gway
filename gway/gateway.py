@@ -41,6 +41,7 @@ class Gateway(Resolver):
         from .launchable import Launchables
 
         self.launchables = Launchables()
+        self._services = {}
         self._ingested = {}
 
         from .cache import Cache
