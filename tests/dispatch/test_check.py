@@ -231,3 +231,15 @@ def test_checked_semantic_key_is_retrievable_after_publication(gateway):
     assert gateway("probe - check --status-code 200") is result
     assert gateway.resolve("[status_code]") == 200
     assert gateway.resolve("[STATUS-CODE]") == 200
+
+
+def test_checked_semantic_key_can_bind_later_consumer_parameter(gateway):
+    result = {"Status Code": 200}
+    _producer(gateway, result)
+
+    def consume_status(status_code):
+        return status_code
+
+    gateway.consume_status = gateway.wrap("consume_status", consume_status)
+
+    assert gateway("probe ; check --status-code 200 ; consume_status") == 200
