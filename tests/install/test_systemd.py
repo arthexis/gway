@@ -497,3 +497,39 @@ def test_failed_runtime_restart_skips_status_probe(
     assert observed == [
         ("restart", "gway-sous-chef.service", True, 66.0),
     ]
+
+
+def test_systemd_uninstall_routes_through_central_runner_with_timeout(
+    tmp_path,
+    monkeypatch,
+):
+    observed = []
+    state_root = tmp_path / "state"
+    unit_root = tmp_path / "units"
+    services = _named_sous_services("worker")
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        observed.append((operation.action, operation.unit, check, timeout))
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+
+    systemd.install_units(
+        "gway",
+        services,
+        state_root=state_root,
+        root=unit_root,
+    )
+    observed.clear()
+
+    systemd.uninstall_units(
+        "gway",
+        state_root=state_root,
+        root=unit_root,
+        timeout=73,
+    )
+
+    assert observed == [
+        ("disable", "gway-worker.service", False, 73),
+        ("daemon-reload", None, False, 73),
+    ]
