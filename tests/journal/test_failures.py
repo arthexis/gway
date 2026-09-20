@@ -1,6 +1,11 @@
 import pytest
 
-from gway.journal import RollbackError, RollbackFailure
+from gway.journal import (
+    RollbackError,
+    RollbackFailure,
+    attach_rollback_error,
+    rollback_error_for,
+)
 
 
 def test_rollback_failure_preserves_original_exception():
@@ -72,3 +77,70 @@ def test_rollback_error_can_format_without_attempt_count():
 def test_rollback_error_requires_at_least_one_failure():
     with pytest.raises(ValueError, match="requires at least one failure"):
         RollbackError("deploy", [])
+
+
+def test_attach_rollback_error_preserves_primary_exception_identity():
+    primary = RuntimeError("validation failed")
+    rollback_error = RollbackError(
+        "deploy",
+        [
+            RollbackFailure(
+                "deploy",
+                2,
+                "render",
+                PermissionError("restore denied"),
+            )
+        ],
+        attempted=2,
+    )
+
+    returned = attach_rollback_error(primary, rollback_error)
+
+    assert returned is primary
+    assert rollback_error_for(primary) is rollback_error
+
+
+def test_rollback_error_for_returns_none_without_recovery_failure():
+    primary = RuntimeError("validation failed")
+
+    assert rollback_error_for(primary) is None
+
+
+def test_rollback_after_failure_returns_original_when_recovery_succeeds(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+    primary = RuntimeError("validation failed")
+
+    gateway.copy(str(source), to=str(destination), rollback="deploy")
+
+    returned = gateway.journal.rollback_after_failure("deploy", primary)
+
+    assert returned is primary
+    assert rollback_error_for(primary) is None
+    assert gateway.journal.get("deploy") is None
+    assert not destination.exists()
+
+
+def test_rollback_after_failure_attaches_recovery_error_without_replacing_primary(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+    primary = RuntimeError("validation failed")
+
+    gateway.copy(str(source), to=str(destination), rollback="deploy")
+    destination.write_text("external change", encoding="utf-8")
+
+    returned = gateway.journal.rollback_after_failure("deploy", primary)
+    recovery = rollback_error_for(primary)
+
+    assert returned is primary
+    assert isinstance(recovery, RollbackError)
+    assert recovery.failures[0].sequence == 1
+    assert gateway.journal.require_open("deploy").entries[0].state.value == "applied"
