@@ -355,7 +355,10 @@ def test_incomplete_rollback_preserves_snapshot_material_for_retry(
 
     assert journal_dir.exists()
     assert second_storage.exists()
-    assert gateway.journal.require_open("deploy").entries[1].state is MutationState.APPLIED
+    assert (
+        gateway.journal.require_open("deploy").entries[1].state
+        is MutationState.APPLIED
+    )
 
 
 def test_retry_only_attempts_unresolved_entries_and_closes_when_complete(
