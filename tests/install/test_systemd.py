@@ -207,7 +207,10 @@ def test_service_runtime_timeout_flag_reaches_action_and_status_probe(
     ]
 
 
-def test_checked_systemctl_failure_raises_structured_operation_error(monkeypatch, caplog):
+def test_checked_systemctl_failure_raises_structured_operation_error(
+    monkeypatch,
+    caplog,
+):
     def run(command, **kwargs):
         raise systemd.subprocess.CalledProcessError(
             5,
@@ -279,7 +282,10 @@ def test_systemctl_timeout_raises_structured_operation_error(monkeypatch, caplog
 
     messages = [record.getMessage() for record in caplog.records]
     assert "systemd restart gway-demo.service [system]: starting" in messages
-    assert "systemd restart gway-demo.service [system]: timed out after 0.01s" in messages
+    assert (
+        "systemd restart gway-demo.service [system]: timed out after 0.01s"
+        in messages
+    )
     assert "systemd restart gway-demo.service [system]: complete" not in messages
 
 
