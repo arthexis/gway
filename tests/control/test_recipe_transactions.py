@@ -97,9 +97,7 @@ def test_nested_recipe_shares_journal_with_outer_check(
     outer = tmp_path / "outer.rx"
     inner.write_text("mutate\n", encoding="utf-8")
     outer.write_text(
-        "./inner.rx\n"
-        "read status\n"
-        "check --status healthy --rollback deploy\n",
+        "./inner.rx\nread status\ncheck --status healthy --rollback deploy\n",
         encoding="utf-8",
     )
 
