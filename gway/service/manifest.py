@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .. import toml
 from ..install.model import validate_name
+from ..launchable import Launchable
 from .model import Catalog, Service
 
 
@@ -85,10 +86,18 @@ def service_from_data(project, root, name, data):
     if not isinstance(autostart, bool):
         raise ValueError(f"[services.{name}].autostart must be a boolean")
 
+    launchable = Launchable.command_target(
+        name,
+        command,
+        root=root,
+        metadata={"project": project, "service": name, "source": "legacy-manifest"},
+    )
+
     return Service(
         project=project,
         name=name,
         root=root,
+        launchable=launchable,
         description=_string(
             data.get("description"),
             f"[services.{name}].description",
