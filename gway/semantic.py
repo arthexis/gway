@@ -14,9 +14,7 @@ class AmbiguousKeyError(KeyError):
         self.requested = requested
         self.matches = tuple(matches)
         rendered = ", ".join(repr(value) for value in self.matches)
-        super().__init__(
-            f"Semantic key {requested!r} is ambiguous; matched {rendered}"
-        )
+        super().__init__(f"Semantic key {requested!r} is ambiguous; matched {rendered}")
 
 
 def normalize_key(value):
