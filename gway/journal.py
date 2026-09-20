@@ -221,7 +221,11 @@ class JournalManager:
         snapshots = []
         for index, path in enumerate(captured_paths):
             relative_storage = Path("paths") / f"{index:06d}"
-            snapshot = capture_path(path, storage / relative_storage)
+            snapshot = capture_path(
+                path,
+                storage / relative_storage,
+                identity=normalized_identity,
+            )
             snapshot["storage"] = str(relative_storage)
             snapshots.append(snapshot)
 
@@ -279,11 +283,17 @@ class JournalManager:
             )
 
         if entry.kind == "filesystem" and "paths" in entry.data:
+            from .identity import ExecutionIdentity
             from .snapshot import fingerprint_path
 
+            identity = ExecutionIdentity.from_dict(entry.data.get("identity"))
             paths = list(entry.data.get("paths") or [])
             entry.data["expected"] = [
-                fingerprint_path(str(snapshot["path"])) for snapshot in paths
+                fingerprint_path(
+                    str(snapshot["path"]),
+                    identity=identity,
+                )
+                for snapshot in paths
             ]
 
         entry.state = MutationState.APPLIED
@@ -300,10 +310,12 @@ class JournalManager:
                 f"{entry.state.value}, not applied"
             )
         if entry.kind == "filesystem" and "expected" in entry.data:
+            from .identity import ExecutionIdentity
             from .snapshot import verify_fingerprint
 
+            identity = ExecutionIdentity.from_dict(entry.data.get("identity"))
             for expected in entry.data.get("expected") or []:
-                verify_fingerprint(dict(expected))
+                verify_fingerprint(dict(expected), identity=identity)
         return entry
 
     def mark_rolled_back(self, name: str, sequence: int) -> JournalEntry:
