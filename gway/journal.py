@@ -244,8 +244,33 @@ class JournalManager:
                 f"Rollback journal {name!r} entry {sequence} is "
                 f"{entry.state.value}, not prepared"
             )
+
+        if entry.kind == "filesystem":
+            from .snapshot import fingerprint_path
+
+            paths = list(entry.data.get("paths") or [])
+            entry.data["expected"] = [
+                fingerprint_path(str(snapshot["path"])) for snapshot in paths
+            ]
+
         entry.state = MutationState.APPLIED
         self._persist(journal)
+        return entry
+
+    def verify_applied(self, name: str, sequence: int) -> JournalEntry:
+        """Verify that an applied filesystem entry has not drifted."""
+        journal = self.require_open(name)
+        entry = self._entry(journal, sequence)
+        if entry.state is not MutationState.APPLIED:
+            raise JournalError(
+                f"Rollback journal {name!r} entry {sequence} is "
+                f"{entry.state.value}, not applied"
+            )
+        if entry.kind == "filesystem":
+            from .snapshot import verify_fingerprint
+
+            for expected in entry.data.get("expected") or []:
+                verify_fingerprint(dict(expected))
         return entry
 
     def mark_rolled_back(self, name: str, sequence: int) -> JournalEntry:
