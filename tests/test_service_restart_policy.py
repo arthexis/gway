@@ -82,8 +82,9 @@ def test_service_install_overrides_retry_policy(monkeypatch):
     monkeypatch.setattr("gway.install.backends.get", lambda name: Backend)
 
     result = runtime._service_controller.install(
-        "gway",
-        "sous-chef",
+        "sous",
+        "chef",
+        "daemon",
         restart="always",
         attempts=6,
         restart_sec=1.5,
