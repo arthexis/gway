@@ -10,7 +10,7 @@ def test_public_commit_closes_transaction(gateway, tmp_path):
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination.txt"
 
-    gateway(
+    result = gateway(
         [
             "copy",
             str(source),
@@ -18,10 +18,11 @@ def test_public_commit_closes_transaction(gateway, tmp_path):
             str(destination),
             "--rollback",
             "deploy",
+            ";",
+            "commit",
+            "deploy",
         ]
     )
-
-    result = gateway(["commit", "deploy"])
 
     assert result == "deploy"
     assert destination.read_text(encoding="utf-8") == "source"
@@ -34,7 +35,7 @@ def test_public_rollback_restores_transaction(gateway, tmp_path):
     destination = tmp_path / "destination.txt"
     destination.write_text("before", encoding="utf-8")
 
-    gateway(
+    result = gateway(
         [
             "copy",
             str(source),
@@ -42,10 +43,11 @@ def test_public_rollback_restores_transaction(gateway, tmp_path):
             str(destination),
             "--rollback",
             "deploy",
+            ";",
+            "rollback",
+            "deploy",
         ]
     )
-
-    result = gateway(["rollback", "deploy"])
 
     assert result == "deploy"
     assert destination.read_text(encoding="utf-8") == "before"
