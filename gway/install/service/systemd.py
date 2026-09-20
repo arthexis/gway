@@ -5,6 +5,7 @@ from pathlib import Path
 import shlex
 import subprocess
 
+from ... import log as gway_log
 from ...service.runtime import ProcessBackend
 from .state import ServiceInstallRecord, ServiceInstallState
 
@@ -69,12 +70,27 @@ class _SystemdOperation:
 
 
 def _run_systemctl_operation(operation, *, check=True):
-    return subprocess.run(
+    scope = "system" if operation.system else "user"
+    target = operation.unit or "(global)"
+    gway_log.info(
+        "systemd %s %s [%s]: starting",
+        operation.action,
+        target,
+        scope,
+    )
+    result = subprocess.run(
         operation.command,
         check=check,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    gway_log.info(
+        "systemd %s %s [%s]: complete",
+        operation.action,
+        target,
+        scope,
+    )
+    return result
 
 
 def _systemctl(*args, system=False, check=True):
