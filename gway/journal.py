@@ -245,7 +245,7 @@ class JournalManager:
                 f"{entry.state.value}, not prepared"
             )
 
-        if entry.kind == "filesystem":
+        if entry.kind == "filesystem" and "paths" in entry.data:
             from .snapshot import fingerprint_path
 
             paths = list(entry.data.get("paths") or [])
@@ -266,7 +266,7 @@ class JournalManager:
                 f"Rollback journal {name!r} entry {sequence} is "
                 f"{entry.state.value}, not applied"
             )
-        if entry.kind == "filesystem":
+        if entry.kind == "filesystem" and "expected" in entry.data:
             from .snapshot import verify_fingerprint
 
             for expected in entry.data.get("expected") or []:
