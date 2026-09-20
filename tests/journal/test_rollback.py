@@ -263,3 +263,28 @@ def test_rollback_entry_rejects_incomplete_expected_fingerprints_before_restore(
 
     assert restored == []
     assert entry.state is MutationState.APPLIED
+
+
+def test_rollback_entry_calls_restore_in_reverse_snapshot_order(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+
+    gateway.move(str(source), to=str(destination), rollback="deploy")
+    entry = gateway.journal.require_open("deploy").entries[0]
+    restored = []
+
+    def record_restore(snapshot, storage, *, identity=None, expected=None):
+        restored.append(str(snapshot["path"]))
+        return snapshot["path"]
+
+    monkeypatch.setattr("gway.snapshot.restore_path", record_restore)
+
+    gateway.journal.rollback_entry("deploy", entry.sequence)
+
+    assert restored == [str(destination), str(source)]
+    assert entry.state is MutationState.ROLLED_BACK
