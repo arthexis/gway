@@ -43,7 +43,7 @@ def test_systemd_renders_service_install_retry_overrides(tmp_path):
         restart_sec=2.0,
     )
 
-    unit = render(definition, unit="demo-worker.service")
+    unit = render(definition)
 
     assert "Restart=no" in unit
     assert "--restart always" in unit
