@@ -52,6 +52,7 @@ def install_units(
                 restart=service.restart,
                 attempts=service.attempts,
                 restart_sec=service.restart_sec,
+                command=tuple(service.launchable.command),
             )
         )
 
