@@ -1,21 +1,14 @@
-"""Built-in service declaration for Sous Chef."""
+"""Built-in service policy for the Sous Chef daemon operation."""
 
 from pathlib import Path
 
 from ..install.paths import data_root
-from ..launchable import Launchable
 from ..service.model import Service
 
 
-def definition():
-    """Return the built-in gway/sous-chef service definition."""
+def definition(launchable):
+    """Return service policy for the normal Sous Chef daemon launchable."""
     project_root = Path(__file__).resolve().parents[2]
-    launchable = Launchable.command_target(
-        "sous-chef",
-        ("{python}", "-m", "gway.souschef.daemon"),
-        root=project_root,
-        metadata={"builtin": "sous-chef"},
-    )
     return Service(
         project="gway",
         name="sous-chef",
@@ -30,7 +23,16 @@ def definition():
 
 
 def register(runtime):
-    """Register the built-in Sous Chef service on one Gateway."""
-    service = definition()
+    """Attach service lifecycle policy to the Sous Chef daemon operation."""
+    from . import daemon
+
+    runtime.wrap(
+        "sous.chef.daemon",
+        daemon.run,
+        op="daemon",
+        sub="chef",
+    )
+    launchable = runtime.launchables["sous.chef.daemon"]
+    service = definition(launchable)
     runtime._services[service.identity] = service
     return service
