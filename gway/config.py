@@ -18,6 +18,21 @@ def find_manifest(start=None):
     return None
 
 
+
+def project_variables(data):
+    """Return semantic variables declared under [tool.gway.variables]."""
+    if not isinstance(data, dict):
+        return {}
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    variables = gway.get("variables") if isinstance(gway, dict) else None
+    if variables is None:
+        return {}
+    if not isinstance(variables, dict):
+        raise ValueError("[tool.gway.variables] must be a table")
+    return dict(variables)
+
+
 def _valid_installation(record, paths):
     """Return whether one registry record still names a managed project tree."""
     expected = (paths.projects / record.name).resolve()
@@ -184,6 +199,10 @@ def bootstrap(runtime, *, start=None):
     from . import toml
 
     data = toml.load(manifest)
+    variables = project_variables(data)
+    if variables:
+        runtime.append_source(variables, name="pyproject")
+
     project_data = data.get("project") if isinstance(data, dict) else None
     project_name = (
         project_data.get("name")
