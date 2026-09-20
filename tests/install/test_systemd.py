@@ -1,7 +1,7 @@
 import pytest
 
 from gway import Gateway
-from gway.install.servicestate import ServiceInstallState
+from gway.install.service.state import ServiceInstallState
 
 
 def test_service_install_systemd_materializes_unit(
