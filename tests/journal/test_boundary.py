@@ -2,7 +2,11 @@ import logging
 
 import pytest
 
-from gway.journal import RollbackError, UncommittedJournalError
+from gway.journal import (
+    RollbackError,
+    UncommittedJournalError,
+    rollback_error_for,
+)
 from gway.recipes import execute_recipe
 
 
@@ -256,6 +260,120 @@ def test_uncommitted_boundary_detection_logs_at_info(
     messages = [record.getMessage() for record in caplog.records]
     assert (
         "uncommitted rollback journal 'deploy' detected at execution boundary"
+        in messages
+    )
+    assert "rolling back journal 'deploy'" in messages
+    assert "rolled back journal 'deploy'" in messages
+
+
+def test_failed_execution_auto_rolls_back_and_preserves_primary(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+    primary = RuntimeError("validation failed")
+
+    def fail_after_mutation():
+        gateway.copy(str(source), to=str(destination), rollback="deploy")
+        raise primary
+
+    gateway.fail_after_mutation = gateway.wrap(
+        "fail_after_mutation",
+        fail_after_mutation,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        gateway(["fail_after_mutation"])
+
+    assert raised.value is primary
+    assert rollback_error_for(primary) is None
+    assert not destination.exists()
+    assert gateway.journal.get("deploy") is None
+    assert gateway.execution_depth == 0
+
+
+def test_failed_execution_with_incomplete_recovery_keeps_primary(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+    primary = RuntimeError("validation failed")
+
+    def fail_after_drift():
+        gateway.copy(str(source), to=str(destination), rollback="deploy")
+        destination.write_text("external change", encoding="utf-8")
+        raise primary
+
+    gateway.fail_after_drift = gateway.wrap(
+        "fail_after_drift",
+        fail_after_drift,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        gateway(["fail_after_drift"])
+
+    assert raised.value is primary
+    recovery = rollback_error_for(primary)
+    assert isinstance(recovery, RollbackError)
+    assert recovery.failures[0].sequence == 1
+    assert destination.read_text(encoding="utf-8") == "external change"
+    assert gateway.journal.require_open("deploy").entries[0].state.value == "applied"
+    assert gateway.execution_depth == 0
+
+
+def test_failed_execution_closes_prepared_only_journal(
+    gateway,
+):
+    primary = RuntimeError("prepare failed")
+
+    def prepare_then_fail():
+        gateway.journal.prepare("deploy")
+        raise primary
+
+    gateway.prepare_then_fail = gateway.wrap(
+        "prepare_then_fail",
+        prepare_then_fail,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        gateway(["prepare_then_fail"])
+
+    assert raised.value is primary
+    assert rollback_error_for(primary) is None
+    assert gateway.journal.get("deploy") is None
+
+
+def test_failed_execution_boundary_logs_automatic_recovery(
+    gateway,
+    tmp_path,
+    caplog,
+):
+    caplog.set_level(logging.INFO, logger="gway")
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+    primary = RuntimeError("validation failed")
+
+    def fail_after_mutation():
+        gateway.copy(str(source), to=str(destination), rollback="deploy")
+        raise primary
+
+    gateway.fail_after_mutation_log = gateway.wrap(
+        "fail_after_mutation_log",
+        fail_after_mutation,
+    )
+
+    with pytest.raises(RuntimeError):
+        gateway(["fail_after_mutation_log"])
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert (
+        "execution failed with open rollback journal 'deploy'; "
+        "rolling back automatically"
         in messages
     )
     assert "rolling back journal 'deploy'" in messages
