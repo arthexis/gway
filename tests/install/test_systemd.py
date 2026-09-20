@@ -1,7 +1,7 @@
 import pytest
 
-from gway import Gateway
 import gway.install.service.systemd as systemd
+from gway import Gateway
 from gway.install.service import ServiceInstallState
 
 
