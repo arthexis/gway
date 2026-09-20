@@ -23,6 +23,7 @@ class UnitRecord:
     restart: str | None = None
     attempts: int | None = None
     restart_sec: float | None = None
+    command: tuple[str, ...] = ()
 
 
 class UnitState:
@@ -50,6 +51,7 @@ class UnitState:
                 restart=item.get("restart"),
                 attempts=item.get("attempts"),
                 restart_sec=item.get("restart_sec"),
+                command=tuple(item.get("command", ())),
             )
             for item in data
         ]
@@ -230,6 +232,7 @@ def install_units(
                     restart=service.restart,
                     attempts=service.attempts,
                     restart_sec=service.restart_sec,
+                    command=tuple(service.launchable.command),
                 )
             )
 
