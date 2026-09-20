@@ -164,7 +164,9 @@ class Renderer:
         destination = _destination(self.runtime, to, resolved_template)
 
         entry = None
-        if rollback is not None:
+        if rollback is None:
+            self.runtime.debug("rollback-capable render executed without journal")
+        else:
             entry = self.runtime.journal.prepare_path(
                 rollback,
                 operation="render",
