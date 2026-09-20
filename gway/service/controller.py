@@ -160,7 +160,9 @@ class Controller:
             else system
         )
         paths = install_paths(system=use_system)
-        records = ServiceInstallState(paths.root / "services-installed").get(definition.project)
+        records = ServiceInstallState(
+            paths.root / "services-installed"
+        ).get(definition.project)
         record = next(
             (
                 current
