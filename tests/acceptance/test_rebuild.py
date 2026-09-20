@@ -194,7 +194,15 @@ def test_environment_overrides_pyproject_semantic_variable(
     assert runtime.resolve("[region]") == "production"
 
 
-def _install_project(runtime, root, name, *, script=None, package_main=None):
+def _install_project(
+    runtime,
+    root,
+    name,
+    *,
+    script=None,
+    package_main=None,
+    system=False,
+):
     root.mkdir()
     metadata = ["[project]\n", f"name = {name!r}\n"]
     if script is not None:
@@ -230,7 +238,10 @@ def _install_project(runtime, root, name, *, script=None, package_main=None):
             encoding="utf-8",
         )
 
-    return runtime(f"install {root}")
+    command = f"install {root}"
+    if system:
+        command += " --system"
+    return runtime(command)
 
 
 def test_unique_installed_script_resolves_bare_before_project_expansion(
@@ -303,6 +314,14 @@ def test_duplicate_installed_script_names_require_project_qualification(
     monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("GWAY_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("GWAY_BIN_DIR", str(tmp_path / "bin"))
+    monkeypatch.setenv(
+        "GWAY_SYSTEM_DATA_DIR",
+        str(tmp_path / "system-data"),
+    )
+    monkeypatch.setenv(
+        "GWAY_SYSTEM_BIN_DIR",
+        str(tmp_path / "system-bin"),
+    )
 
     installer = Gateway()
     _install_project(
@@ -316,6 +335,7 @@ def test_duplicate_installed_script_names_require_project_qualification(
         tmp_path / "two",
         "two",
         script=("hello", "entry:main"),
+        system=True,
     )
 
     outside = tmp_path / "outside-duplicate-script"
