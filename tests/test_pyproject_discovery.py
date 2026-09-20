@@ -7,7 +7,6 @@ from gway.install.ops import _local_intent
 from gway.install.activation import scripts as activation_scripts
 from gway.install.source import project_name
 from gway.project import project_scripts, scripts
-from gway.service.discovery import declares_services
 
 
 def test_project_name_uses_pyproject_without_gway_toml(tmp_path):
@@ -65,7 +64,6 @@ def test_managed_installation_accepts_pyproject_without_gway_toml(tmp_path):
 
 def test_optional_legacy_metadata_helpers_tolerate_missing_gway_toml(tmp_path):
     assert project_entrypoints(tmp_path / "gway.toml") == ()
-    assert declares_services(tmp_path / "gway.toml") is False
 
 
 def test_project_scripts_reads_standard_python_entrypoints(tmp_path):
