@@ -1,197 +1,21 @@
-"""Project-local GWAY manifest discovery and ingestion bootstrap."""
+"""Convention-driven project discovery and ingestion bootstrap."""
 
 from pathlib import Path
-import warnings
 
-from . import toml
 from .ingestion.base import remember_object
-from .ingestion.router import has_path_syntax
 
 
 def find_manifest(start=None):
-    """Return the nearest standard project metadata file.
-
-    pyproject.toml is preferred. Legacy gway.toml remains discoverable during
-    its deprecation window so existing projects continue to bootstrap.
-    """
+    """Return the nearest pyproject.toml, if any."""
     root = Path.cwd() if start is None else Path(start)
     root = root.expanduser().resolve()
     if root.is_file():
         root = root.parent
-
     for directory in (root, *root.parents):
-        pyproject = directory / "pyproject.toml"
-        if pyproject.is_file():
-            return pyproject
-
-        legacy = directory / "gway.toml"
-        if legacy.is_file():
-            warnings.warn(
-                "gway.toml is deprecated; use pyproject.toml for project metadata",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return legacy
+        manifest = directory / "pyproject.toml"
+        if manifest.is_file():
+            return manifest
     return None
-
-
-def _legacy_manifest(project_file):
-    """Return a sibling legacy Gway manifest when one still exists."""
-    project_file = Path(project_file)
-    legacy = (
-        project_file
-        if project_file.name == "gway.toml"
-        else project_file.with_name("gway.toml")
-    )
-    if not legacy.is_file():
-        return None
-    if legacy != project_file:
-        warnings.warn(
-            "gway.toml is deprecated; migrate Gway-specific overrides away from it",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    return legacy
-
-
-def _project_name(data):
-    project = data.get("project")
-    if not isinstance(project, dict):
-        return None
-    name = project.get("name")
-    return name if isinstance(name, str) and name.strip() else None
-
-
-def _canonical_entries(value):
-    if not isinstance(value, list):
-        return None
-
-    entries = []
-    for index, entry in enumerate(value):
-        if not isinstance(entry, dict):
-            raise ValueError(f"[[ingest]] entry {index + 1} must be a table")
-        if "source" not in entry:
-            raise ValueError(f"[[ingest]] entry {index + 1} requires source")
-        source = entry.get("source")
-        if not isinstance(source, str) or not source.strip():
-            raise ValueError(
-                f"[[ingest]] entry {index + 1} source must be a non-empty string"
-            )
-        entries.append(dict(entry))
-    return entries
-
-
-def _shorthand_entries(value, *, project_name=None):
-    if not isinstance(value, dict):
-        return None
-
-    entries = []
-    for kind, source in value.items():
-        if not isinstance(kind, str) or not kind.strip():
-            raise ValueError("[ingest] keys must be non-empty ingestor names")
-        if not isinstance(source, str) or not source.strip():
-            raise ValueError(
-                f"[ingest].{kind} must be a non-empty source string"
-            )
-        entry = {"kind": kind, "source": source}
-        if kind == "django" and project_name is not None:
-            entry["name"] = project_name
-        entries.append(entry)
-    return entries
-
-
-def ingestion_entries(data):
-    """Return normalized declarative ingestion entries from manifest data."""
-    if not isinstance(data, dict):
-        raise ValueError("gway.toml root must be a table")
-
-    value = data.get("ingest")
-    if value is None:
-        return []
-
-    project_name = _project_name(data)
-    entries = _canonical_entries(value)
-    if entries is None:
-        entries = _shorthand_entries(value, project_name=project_name)
-    if entries is None:
-        raise ValueError("[ingest] must be a table or [[ingest]] array")
-
-    for entry in entries:
-        if (
-            entry.get("kind") == "django"
-            and "name" not in entry
-            and project_name is not None
-        ):
-            entry["name"] = project_name
-    return entries
-
-
-def _source_from_manifest(source, directory):
-    """Resolve filesystem-shaped declaration sources from manifest directory."""
-    if not isinstance(source, str):
-        return source
-
-    from .ingestion.url import is_url
-
-    if is_url(source):
-        return source
-
-    candidate = Path(source).expanduser()
-    manifest_candidate = candidate
-    if not candidate.is_absolute():
-        manifest_candidate = directory / candidate
-
-    if has_path_syntax(source) or manifest_candidate.exists():
-        return manifest_candidate.resolve()
-    return source
-
-
-def _django_name_from_source(source):
-    """Infer a declarative Django mount name from a concrete project path."""
-    if not isinstance(source, Path):
-        return None
-
-    path = source.expanduser().resolve()
-    if path.is_file() and path.name == "manage.py":
-        return path.parent.name or None
-    if path.is_dir() and (path / "manage.py").is_file():
-        return path.name or None
-    return None
-
-
-def load_ingestions(runtime, manifest):
-    """Load declarative ingestion entries into one Gateway."""
-    manifest = Path(manifest).expanduser().resolve()
-    manifest = Path(manifest)
-    if not manifest.is_file():
-        return ()
-
-    data = toml.load(manifest)
-    entries = ingestion_entries(data)
-
-    loaded = []
-    for entry in entries:
-        options = dict(entry)
-        source = options.pop("source")
-        source = _source_from_manifest(source, manifest.parent)
-
-        if options.get("kind") == "django" and "name" not in options:
-            inferred = _django_name_from_source(source)
-            if inferred is not None:
-                options["name"] = inferred
-
-        loaded.append(runtime.ingest(source, **options))
-    return loaded
-
-
-def _declares_ingestion(manifest):
-    """Return whether a manifest contains an ingestion table declaration."""
-    for raw in Path(manifest).read_text(encoding="utf-8").splitlines():
-        line = raw.split("#", 1)[0].strip()
-        if line in {"[ingest]", "[[ingest]]"}:
-            return True
-    return False
-
 
 
 def _valid_installation(record, paths):
@@ -201,13 +25,10 @@ def _valid_installation(record, paths):
         installed = record.install_path.expanduser().resolve()
     except (OSError, RuntimeError):
         return False
-    if installed != expected:
-        return False
-    if not installed.is_dir():
-        return False
-    return any(
-        (installed / filename).is_file()
-        for filename in ("pyproject.toml", "gway.toml")
+    return (
+        installed == expected
+        and installed.is_dir()
+        and (installed / "pyproject.toml").is_file()
     )
 
 
@@ -222,40 +43,6 @@ def discover_installations(*, system=False):
         for record in state.all(scope=paths.scope)
         if _valid_installation(record, paths)
     ]
-
-
-
-
-def project_entrypoints(manifest):
-    """Return validated lazy entrypoint names declared by one project manifest.
-
-    Project aliases are discovery hints only: they trigger expansion of the
-    owning installed project, but never become semantic aliases for the
-    project's operations.
-    """
-    from .install.model import validate_name
-
-    manifest = Path(manifest)
-    if not manifest.is_file():
-        return ()
-
-    data = toml.load(manifest)
-    project = data.get("project") if isinstance(data, dict) else None
-    values = project.get("aliases") if isinstance(project, dict) else None
-    if values is None:
-        return ()
-    if not isinstance(values, list):
-        raise ValueError("[project].aliases must be an array of names")
-
-    aliases = []
-    for value in values:
-        try:
-            alias = validate_name(value)
-        except ValueError as exc:
-            raise ValueError(f"Invalid project entrypoint: {exc}") from exc
-        if alias not in aliases:
-            aliases.append(alias)
-    return tuple(aliases)
 
 
 def _script_aliases(runtime, project, command):
@@ -282,6 +69,7 @@ def load_project_scripts(runtime, root, project):
             sub=project,
             metadata={
                 "project": project,
+                "root": Path(root),
                 "script": command,
                 "target": target,
             },
@@ -291,7 +79,7 @@ def load_project_scripts(runtime, root, project):
 
 
 def load_project_main_packages(runtime, root):
-    """Expose conventional package __main__.py entrypoints from a project tree."""
+    """Expose conventional package __main__ entrypoints from a project tree."""
     from .project import import_project_module, main_packages
 
     wrapped = []
@@ -302,7 +90,7 @@ def load_project_main_packages(runtime, root):
 
 
 def expand_installed_project(runtime, installation, *, path=None):
-    """Load one installed project's declarative ingestion exactly once."""
+    """Load one installed project's conventional execution surface once."""
     record = remember_object(
         runtime,
         installation,
@@ -312,28 +100,20 @@ def expand_installed_project(runtime, installation, *, path=None):
     if record.expanded:
         return []
 
-    manifest = installation.install_path / "gway.toml"
     loaded = load_project_scripts(
         runtime,
         installation.install_path,
         installation.name,
     )
-    loaded.extend(load_project_main_packages(runtime, installation.install_path))
-    if manifest.is_file():
-        loaded.extend(load_ingestions(runtime, manifest))
+    loaded.extend(
+        load_project_main_packages(runtime, installation.install_path)
+    )
     record.expanded = True
-
-    requested = tuple(path) if path is not None else (installation.name,)
-    if requested != (installation.name,):
-        # A shortcut only bootstraps the project. Once its real ingestion
-        # surface exists, release the shortcut path so the actual app/model
-        # branch owns that namespace.
-        record.paths.discard(requested)
     return loaded
 
 
 def discover_managed_projects(runtime):
-    """Remember installed projects and their lazy bootstrap entrypoints."""
+    """Remember installed projects and their lazy conventional entrypoints."""
     discovered = {}
     for system in (False, True):
         try:
@@ -354,33 +134,15 @@ def discover_managed_projects(runtime):
         for command, owners in script_owners.items()
     }
 
-    entrypoints = {}
     for name, record in discovered.items():
-        branch = remember_object(
+        remember_object(
             runtime,
             record,
             (name,),
             expander=expand_installed_project,
         )
-        for alias in project_entrypoints(record.install_path / "gway.toml"):
-            if alias == name:
-                continue
-            if alias in discovered:
-                raise RuntimeError(
-                    f"Installed project entrypoint {alias!r} conflicts with "
-                    "an installed project name"
-                )
-            owner = entrypoints.get(alias)
-            if owner is not None and owner != name:
-                raise RuntimeError(
-                    f"Installed project alias {alias!r} is declared by "
-                    f"both {owner!r} and {name!r}"
-                )
-            entrypoints[alias] = name
-            branch.paths.add((alias,))
 
     runtime._installed = discovered
-    runtime._installed_entrypoints = entrypoints
 
     from .souschef.discovery import discover as discover_souschef
 
@@ -389,7 +151,7 @@ def discover_managed_projects(runtime):
 
 
 def bootstrap(runtime, *, start=None):
-    """Discover managed projects and apply the nearest local project manifest."""
+    """Discover managed and local pyproject-based execution surfaces."""
     discover_managed_projects(runtime)
 
     manifest = find_manifest(start)
@@ -397,39 +159,39 @@ def bootstrap(runtime, *, start=None):
         return None
 
     runtime._project_path = manifest
-    if manifest.name == "pyproject.toml":
-        data = toml.load(manifest)
-        project_data = data.get("project") if isinstance(data, dict) else None
-        project_name = project_data.get("name") if isinstance(project_data, dict) else None
-        if isinstance(project_name, str) and project_name.strip():
-            from .project import project_scripts
 
-            owners = {
-                command: list(projects)
-                for command, projects in getattr(runtime, "_script_owners", {}).items()
-            }
-            for command in project_scripts(manifest.parent):
-                owners.setdefault(command, [])
-                if project_name not in owners[command]:
-                    owners[command].append(project_name)
-            runtime._script_owners = {
-                command: tuple(projects)
-                for command, projects in owners.items()
-            }
-            load_project_scripts(runtime, manifest.parent, project_name)
-            load_project_main_packages(runtime, manifest.parent)
+    from . import toml
 
-    legacy = _legacy_manifest(manifest)
-    runtime._manifest_path = legacy or manifest
+    data = toml.load(manifest)
+    project_data = data.get("project") if isinstance(data, dict) else None
+    project_name = (
+        project_data.get("name")
+        if isinstance(project_data, dict)
+        else None
+    )
+    if isinstance(project_name, str) and project_name.strip():
+        from .project import project_scripts
 
-    if legacy is not None and _declares_ingestion(legacy):
-        load_ingestions(runtime, legacy)
+        owners = {
+            command: list(projects)
+            for command, projects in getattr(runtime, "_script_owners", {}).items()
+        }
+        for command in project_scripts(manifest.parent):
+            owners.setdefault(command, [])
+            if project_name not in owners[command]:
+                owners[command].append(project_name)
+        runtime._script_owners = {
+            command: tuple(projects)
+            for command, projects in owners.items()
+        }
+        load_project_scripts(runtime, manifest.parent, project_name)
+        load_project_main_packages(runtime, manifest.parent)
 
     from .souschef.discovery import discover as discover_souschef
 
     discover_souschef(
         runtime,
         getattr(runtime, "_installed", {}).values(),
-        local_manifest=legacy,
+        local_manifest=manifest,
     )
     return manifest
