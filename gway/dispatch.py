@@ -20,6 +20,13 @@ class CheckError(RuntimeError):
     """Raised when an atomic check does not satisfy its assertions."""
 
 
+def _rollback_control_failure(runtime, rollback, primary):
+    """Attempt one named rollback while preserving a control failure."""
+    if rollback is not None:
+        runtime.journal.rollback_after_failure(rollback, primary)
+    return primary
+
+
 def _check_stage(tokens):
     """Split one check control stage from a following dash pipeline."""
     stage = []
@@ -60,6 +67,7 @@ def _check_options(runtime, tokens):
     """Parse atomic check assertions from raw control-stage tokens."""
     tokens = list(tokens)
     checks = []
+    rollback = None
     index = 1
 
     while index < len(tokens):
@@ -78,6 +86,22 @@ def _check_options(runtime, tokens):
             if index + 1 >= len(tokens):
                 raise TypeError("Expected a value after --is")
             checks.append(("is", _check_expected(runtime, tokens[index + 1]), None))
+            index += 2
+            continue
+
+        if not literal_option and option == "--rollback":
+            if rollback is not None:
+                raise TypeError("check accepts only one --rollback journal")
+            if index + 1 >= len(tokens):
+                raise TypeError("Expected a journal name after --rollback")
+            rollback_token = tokens[index + 1]
+            rollback_raw = token_value(rollback_token)
+            if (
+                not is_literal(rollback_token)
+                and rollback_raw.startswith("--")
+            ):
+                raise TypeError("Expected a journal name after --rollback")
+            rollback = str(rollback_raw)
             index += 2
             continue
 
@@ -101,63 +125,74 @@ def _check_options(runtime, tokens):
 
     if not checks:
         raise TypeError("check requires at least one assertion")
-    return checks
+    return checks, rollback
 
 
 def _execute_check(runtime, tokens, result):
     """Apply atomic assertions to one result and return it unchanged."""
-    checks = _check_options(runtime, tokens)
+    checks, rollback = _check_options(runtime, tokens)
 
-    for kind, value, detail in checks:
-        if kind == "boolean":
-            if not isinstance(result, bool):
-                raise CheckError("check --true/--false requires a boolean result")
-            if result is not value:
-                raise CheckError(f"check expected result to be {str(value).lower()}")
-            continue
+    try:
+        for kind, value, detail in checks:
+            if kind == "boolean":
+                if not isinstance(result, bool):
+                    raise CheckError("check --true/--false requires a boolean result")
+                if result is not value:
+                    raise CheckError(
+                        f"check expected result to be {str(value).lower()}"
+                    )
+                continue
 
-        if kind == "is":
-            if result != value:
+            if kind == "is":
+                if result != value:
+                    raise CheckError(
+                        f"check expected result to equal {value!r}; got {result!r}"
+                    )
+                continue
+
+            if not isinstance(result, Mapping):
                 raise CheckError(
-                    f"check expected result to equal {value!r}; got {result!r}"
+                    f"check --{value} requires a mapping result; "
+                    f"got {type(result).__name__}"
                 )
-            continue
 
-        if not isinstance(result, Mapping):
-            raise CheckError(
-                f"check --{value} requires a mapping result; got {type(result).__name__}"
-            )
+            inverted, expected = detail
+            try:
+                actual_key = resolve_mapping_key(result, value)
+            except AmbiguousKeyError as exception:
+                raise CheckError(str(exception)) from exception
+            except KeyError:
+                actual_key = _MISSING
 
-        inverted, expected = detail
-        try:
-            actual_key = resolve_mapping_key(result, value)
-        except AmbiguousKeyError as exception:
-            raise CheckError(str(exception)) from exception
-        except KeyError:
-            actual_key = _MISSING
+            present = actual_key is not _MISSING
+            if expected is _MISSING:
+                passed = not present if inverted else present
+                if not passed:
+                    expectation = "absent" if inverted else "present"
+                    raise CheckError(
+                        f"check expected key {value!r} to be {expectation}"
+                    )
+                continue
 
-        present = actual_key is not _MISSING
-        if expected is _MISSING:
-            passed = not present if inverted else present
+            actual = result[actual_key] if present else _MISSING
+            matches = present and actual == expected
+            passed = not matches if inverted else matches
             if not passed:
-                expectation = "absent" if inverted else "present"
-                raise CheckError(f"check expected key {value!r} to be {expectation}")
-            continue
-
-        actual = result[actual_key] if present else _MISSING
-        matches = present and actual == expected
-        passed = not matches if inverted else matches
-        if not passed:
-            if inverted:
+                if inverted:
+                    raise CheckError(
+                        f"check expected key {value!r} not to equal {expected!r}"
+                    )
+                if actual is _MISSING:
+                    raise CheckError(
+                        f"check expected key {value!r} to be present"
+                    )
                 raise CheckError(
-                    f"check expected key {value!r} not to equal {expected!r}"
+                    f"check expected key {value!r} to equal {expected!r}; "
+                    f"got {actual!r}"
                 )
-            if actual is _MISSING:
-                raise CheckError(f"check expected key {value!r} to be present")
-            raise CheckError(
-                f"check expected key {value!r} to equal {expected!r}; "
-                f"got {actual!r}"
-            )
+    except CheckError as primary:
+        _rollback_control_failure(runtime, rollback, primary)
+        raise
 
     return result
 
