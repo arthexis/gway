@@ -95,17 +95,6 @@ class Launchable:
             metadata={} if metadata is None else metadata,
         )
 
-    @classmethod
-    def command_target(cls, name, command, *, root=None, metadata=None):
-        """Create a launchable around an already normalized command."""
-        return cls(
-            name=name,
-            kind="command",
-            command=tuple(command),
-            root=root,
-            target=tuple(command),
-            metadata={} if metadata is None else metadata,
-        )
 
 
 class Launchables(Mapping):
