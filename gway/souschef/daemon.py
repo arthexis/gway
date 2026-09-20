@@ -34,11 +34,3 @@ def run(*, poll=1.0):
         stop.wait(poll)
     return 0
 
-
-def __main__():
-    """Run Sous Chef as a module/service entrypoint."""
-    return run()
-
-
-if __name__ == "__main__":
-    raise SystemExit(__main__())
