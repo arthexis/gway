@@ -5,7 +5,7 @@ import stat
 import pytest
 
 from gway.journal import JournalManager
-from gway.journal_fs import SnapshotError, capture_path, restore_path
+from gway.snapshot import SnapshotError, capture_path, restore_path
 
 
 def _set_times(path: Path, *, atime_ns: int, mtime_ns: int, follow_symlinks=True):
@@ -159,12 +159,7 @@ def test_entry_storage_is_scoped_to_journal_mutation(tmp_path):
     second = journals.prepare("deploy")
 
     assert journals.entry_storage("deploy", first.sequence) == (
-        tmp_path
-        / "rollback"
-        / "session"
-        / "deploy"
-        / "entries"
-        / "000001"
+        tmp_path / "rollback" / "session" / "deploy" / "entries" / "000001"
     )
     assert journals.entry_storage("deploy", second.sequence).name == "000002"
 
