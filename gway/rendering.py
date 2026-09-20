@@ -169,6 +169,7 @@ class Renderer:
                 rollback,
                 operation="render",
                 path=destination,
+                identity=identity,
             )
 
         result = atomic_write_text(
