@@ -2,11 +2,13 @@
 
 import ast
 import os
+import time
 from dataclasses import dataclass
 from collections.abc import Mapping
 
 from .adaptation import adapt_pipeline
 from .binding import bind_arguments, pipeline_boundary
+from .execution import Execution, Stage, Statement
 from .ingestion.base import expand_path
 from .operations import Cardinality, singularize, subject_cardinality
 from .recipes import execute_recipe, parse_recipe_context, recipe_path
@@ -18,6 +20,202 @@ _MISSING = object()
 
 class CheckError(RuntimeError):
     """Raised when an atomic check does not satisfy its assertions."""
+
+
+class RepeatLimitError(RuntimeError):
+    """Raised when a conditional repeat cannot reach its terminal state."""
+
+
+def _repeat_stage(tokens):
+    """Split one repeat control stage from a following dash pipeline."""
+    stage = []
+    remaining = []
+    for index, token in enumerate(tokens):
+        if index and not is_literal(token) and token_value(token) == "-":
+            remaining = list(tokens[index + 1 :])
+            break
+        stage.append(token)
+    return stage, remaining
+
+
+def _repeat_options(tokens):
+    """Parse repeat target and control options from raw tokens."""
+    target = None
+    times = None
+    while_gate = None
+    until_gate = None
+    interval = 0.0
+    maximum = None
+    rollback = None
+
+    index = 1
+    tokens = list(tokens)
+    if index < len(tokens) and not token_value(tokens[index]).startswith("--"):
+        target = tokens[index]
+        index += 1
+
+    while index < len(tokens):
+        option = token_value(tokens[index])
+        if option not in {
+            "--times",
+            "--while",
+            "--until",
+            "--interval",
+            "--max",
+            "--rollback",
+        }:
+            raise TypeError(f"Unknown repeat argument {option}")
+        if index + 1 >= len(tokens):
+            raise TypeError(f"Expected a value after {option}")
+        value = tokens[index + 1]
+        raw = token_value(value)
+        if option == "--times":
+            times = int(raw)
+            if times < 0:
+                raise ValueError("--times must be non-negative")
+        elif option == "--while":
+            while_gate = value
+        elif option == "--until":
+            until_gate = value
+        elif option == "--interval":
+            interval = float(raw)
+            if interval < 0:
+                raise ValueError("--interval must be non-negative")
+        elif option == "--max":
+            maximum = int(raw)
+            if maximum < 1:
+                raise ValueError("--max must be at least 1")
+        elif option == "--rollback":
+            if rollback is not None:
+                raise TypeError("repeat accepts only one --rollback journal")
+            rollback = str(raw)
+        index += 2
+
+    if while_gate is not None and until_gate is not None:
+        raise ValueError("repeat accepts only one of --while or --until")
+    if times is not None and (while_gate is not None or until_gate is not None):
+        raise ValueError("--times cannot be combined with --while or --until")
+    if times is None and while_gate is None and until_gate is None:
+        times = 1
+
+    return {
+        "target": target,
+        "times": times,
+        "while_gate": while_gate,
+        "until_gate": until_gate,
+        "interval": interval,
+        "maximum": maximum,
+        "rollback": rollback,
+    }
+
+
+def _gate_value(runtime, gate, result):
+    """Evaluate one repeat gate and require an actual bool."""
+    raw = token_value(gate)
+    lowered = raw.lower()
+    if lowered in {"true", "false"}:
+        if not isinstance(result, bool):
+            raise TypeError("repeat literal gates require a boolean replay result")
+        return result is (lowered == "true")
+
+    resolved = runtime.resolve(raw)
+    if isinstance(resolved, bool):
+        return resolved
+    if resolved is not raw and resolved != raw:
+        if not isinstance(resolved, bool):
+            raise TypeError("repeat gate sigils must resolve to bool")
+        return resolved
+
+    try:
+        value = dispatch_stage(runtime, [gate], pipeline=result)
+    except (LookupError, TypeError):
+        value = dispatch_stage(runtime, [gate])
+
+    if not isinstance(value, bool):
+        raise TypeError("repeat operation gates must return bool")
+    return value
+
+
+def _repeat_target(runtime, statement, target):
+    """Resolve repeat target semantics without retaining old callables."""
+    if target is not None:
+        token = target
+
+        def replay():
+            produced, result = dispatch_pipeline(runtime, [token])
+            return result
+
+        return replay
+
+    if statement is not None:
+        if statement.stages:
+            prefix = Statement(statement.index, list(statement.stages))
+
+            def replay():
+                return prefix.replay(runtime)
+
+            return replay
+
+        execution = getattr(runtime, "execution", None)
+        if (
+            execution is not None
+            and statement.index > 0
+            and statement.index <= len(execution.statements) - 1
+        ):
+            previous_statement = execution.statements[statement.index - 1]
+
+            def replay():
+                return previous_statement.replay(runtime)
+
+            return replay
+
+    previous = getattr(runtime, "previous_execution", None)
+    if previous is None or previous.last is None:
+        raise LookupError("repeat requires a previous operation")
+    stage = previous.last
+
+    def replay():
+        return stage.replay(runtime)
+
+    return replay
+
+
+def _execute_repeat(runtime, tokens, *, statement=None):
+    """Execute repeat control flow against semantic replay targets."""
+    options = _repeat_options(tokens)
+    replay = _repeat_target(runtime, statement, options["target"])
+    times = options["times"]
+    interval = options["interval"]
+    rollback = options["rollback"]
+
+    if times is not None:
+        result = None
+        for index in range(times):
+            result = replay()
+            if interval and index + 1 < times:
+                time.sleep(interval)
+        return result
+
+    maximum = options["maximum"] or 100
+    gate = options["until_gate"] or options["while_gate"]
+    until = options["until_gate"] is not None
+    result = None
+
+    for index in range(maximum):
+        result = replay()
+        state = _gate_value(runtime, gate, result)
+        terminal = state if until else not state
+        if terminal:
+            return result
+        if interval and index + 1 < maximum:
+            time.sleep(interval)
+
+    mode = "until" if until else "while"
+    primary = RepeatLimitError(
+        f"repeat --{mode} did not reach its terminal state within {maximum} attempts"
+    )
+    _rollback_control_failure(runtime, rollback, primary)
+    raise primary
 
 
 def _rollback_control_failure(runtime, rollback, primary):
@@ -528,6 +726,7 @@ def dispatch_pipeline(
     pipeline=_MISSING,
     args=(),
     kwargs=None,
+    statement=None,
 ):
     """Execute one statement, transferring raw results only across dash pipes."""
     remaining = list(tokens)
@@ -540,7 +739,18 @@ def dispatch_pipeline(
 
     while remaining:
         stage_args = args if first else ()
+        stage_source = list(remaining)
         stage_kwargs = kwargs if first else None
+
+        if not is_literal(remaining[0]) and token_value(remaining[0]) == "repeat":
+            if stage_args or stage_kwargs:
+                raise TypeError("Native arguments are not supported for repeat")
+            stage, remaining = _repeat_stage(remaining)
+            result = _execute_repeat(runtime, stage, statement=statement)
+            results.append(result)
+            current = result
+            first = False
+            continue
 
         if not is_literal(remaining[0]) and token_value(remaining[0]) == "check":
             if stage_args or stage_kwargs:
@@ -574,6 +784,21 @@ def dispatch_pipeline(
                     pipeline=current,
                 )
             results.append(result)
+            if statement is not None:
+                consumed = len(stage_source) - len(remaining)
+                recipe_tokens = tuple(stage_source[:consumed])
+                statement.append(
+                    Stage(
+                        tokens=recipe_tokens,
+                        operation=str(path),
+                        arguments=tuple(recipe_arguments),
+                        incoming=None if current is _MISSING else current,
+                        outgoing=result,
+                        statement=statement.index,
+                        has_incoming=current is not _MISSING,
+                        kind="recipe",
+                    )
+                )
             current = result
             first = False
             continue
@@ -586,14 +811,28 @@ def dispatch_pipeline(
             kwargs=stage_kwargs,
         )
 
+        incoming = current
+        resolution = resolve_operation(runtime, stage, pipeline=incoming)
         result = dispatch_stage(
             runtime,
             stage,
-            pipeline=current,
+            pipeline=incoming,
             args=stage_args,
             kwargs=stage_kwargs,
         )
         results.append(result)
+        if statement is not None:
+            statement.append(
+                Stage(
+                    tokens=tuple(stage),
+                    operation=resolution.candidate,
+                    arguments=tuple(resolution.arguments),
+                    incoming=None if incoming is _MISSING else incoming,
+                    outgoing=result,
+                    statement=statement.index,
+                    has_incoming=incoming is not _MISSING,
+                )
+            )
         current = result
         first = False
 
@@ -607,6 +846,7 @@ def dispatch_program(
     pipeline=_MISSING,
     args=(),
     kwargs=None,
+    execution=None,
 ):
     """Execute statements within one nested execution scope."""
     with runtime.execution_scope():
@@ -616,15 +856,21 @@ def dispatch_program(
         if (args or kwargs) and len(statement_list) != 1:
             raise TypeError("Native arguments require a single statement")
 
+        execution = Execution() if execution is None else execution
+        if runtime.execution is not execution:
+            runtime.previous_execution = runtime.execution
+        runtime.execution = execution
         results = []
         last = None
-        for index, statement in enumerate(statement_list):
+        for index, statement_tokens in enumerate(statement_list):
+            statement = execution.statement()
             produced, last = dispatch_pipeline(
                 runtime,
-                statement,
+                statement_tokens,
                 pipeline=pipeline if index == 0 else _MISSING,
                 args=args if index == 0 else (),
                 kwargs=kwargs if index == 0 else None,
+                statement=statement,
             )
             results.extend(produced)
         return results, last
