@@ -60,7 +60,7 @@ class Controller:
                 "kind": definition.launchable.kind,
                 "command": list(definition.launchable.command),
             },
-            "command": list(definition.command),
+            "command": list(definition.launchable.command),
             "working_directory": definition.working_directory,
             "writable_paths": list(definition.writable_paths),
             "profiles": list(definition.profiles),
