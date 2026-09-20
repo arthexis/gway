@@ -118,7 +118,10 @@ def _gate_value(runtime, gate, result):
             raise TypeError("repeat literal gates require a boolean replay result")
         return result is (lowered == "true")
 
-    resolved = runtime.resolve(raw)
+    try:
+        resolved = runtime.resolve(raw)
+    except KeyError:
+        resolved = raw
     if isinstance(resolved, bool):
         return resolved
     if resolved is not raw and resolved != raw:
@@ -183,39 +186,43 @@ def _repeat_target(runtime, statement, target):
 def _execute_repeat(runtime, tokens, *, statement=None):
     """Execute repeat control flow against semantic replay targets."""
     options = _repeat_options(tokens)
-    replay = _repeat_target(runtime, statement, options["target"])
-    times = options["times"]
-    interval = options["interval"]
     rollback = options["rollback"]
 
-    if times is not None:
-        result = None
-        for index in range(times):
-            result = replay()
-            if interval and index + 1 < times:
-                time.sleep(interval)
-        return result
+    try:
+        replay = _repeat_target(runtime, statement, options["target"])
+        times = options["times"]
+        interval = options["interval"]
 
-    maximum = options["maximum"] or 100
-    gate = options["until_gate"] or options["while_gate"]
-    until = options["until_gate"] is not None
-    result = None
-
-    for index in range(maximum):
-        result = replay()
-        state = _gate_value(runtime, gate, result)
-        terminal = state if until else not state
-        if terminal:
+        if times is not None:
+            result = None
+            for index in range(times):
+                result = replay()
+                if interval and index + 1 < times:
+                    time.sleep(interval)
             return result
-        if interval and index + 1 < maximum:
-            time.sleep(interval)
 
-    mode = "until" if until else "while"
-    primary = RepeatLimitError(
-        f"repeat --{mode} did not reach its terminal state within {maximum} attempts"
-    )
-    _rollback_control_failure(runtime, rollback, primary)
-    raise primary
+        maximum = options["maximum"] or 100
+        gate = options["until_gate"] or options["while_gate"]
+        until = options["until_gate"] is not None
+        result = None
+
+        for index in range(maximum):
+            result = replay()
+            state = _gate_value(runtime, gate, result)
+            terminal = state if until else not state
+            if terminal:
+                return result
+            if interval and index + 1 < maximum:
+                time.sleep(interval)
+
+        mode = "until" if until else "while"
+        raise RepeatLimitError(
+            f"repeat --{mode} did not reach its terminal state "
+            f"within {maximum} attempts"
+        )
+    except Exception as primary:
+        _rollback_control_failure(runtime, rollback, primary)
+        raise
 
 
 def _rollback_control_failure(runtime, rollback, primary):
