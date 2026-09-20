@@ -417,7 +417,11 @@ def test_timeout_aborts_later_forward_systemd_operations(
 
     def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
         observed.append((operation.action, operation.unit, check, timeout))
-        if operation.action == "enable" and operation.unit == "gway-worker.service" and check:
+        if (
+            operation.action == "enable"
+            and operation.unit == "gway-worker.service"
+            and check
+        ):
             raise systemd._SystemdOperationError(
                 operation,
                 "worker enable timed out",
