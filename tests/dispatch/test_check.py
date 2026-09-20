@@ -1,6 +1,7 @@
 import pytest
 
 from gway.dispatch import CheckError
+from gway.journal import JournalError, RollbackError, rollback_error_for
 
 
 def _producer(gateway, value, name="probe"):
@@ -241,3 +242,103 @@ def test_checked_semantic_key_can_bind_later_consumer_parameter(gateway):
     gateway.consume_status = gateway.wrap("consume_status", consume_status)
 
     assert gateway("probe ; check --status-code 200 ; consume_status") == 200
+
+
+def test_check_failure_rolls_back_named_journal(gateway, tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+
+    def mutate_and_fail_check():
+        gateway.copy(str(source), to=str(destination), rollback="deploy")
+        return False
+
+    gateway.mutate_and_fail_check = gateway.wrap(
+        "mutate_and_fail_check",
+        mutate_and_fail_check,
+    )
+
+    with pytest.raises(CheckError) as raised:
+        gateway("mutate_and_fail_check - check --true --rollback deploy")
+
+    assert rollback_error_for(raised.value) is None
+    assert not destination.exists()
+    assert gateway.journal.get("deploy") is None
+
+
+def test_successful_check_does_not_trigger_rollback(gateway, tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+
+    def mutate_and_pass_check():
+        gateway.copy(str(source), to=str(destination), rollback="deploy")
+        return True
+
+    gateway.mutate_and_pass_check = gateway.wrap(
+        "mutate_and_pass_check",
+        mutate_and_pass_check,
+    )
+
+    result = gateway(
+        "mutate_and_pass_check - check --true --rollback deploy ; commit deploy"
+    )
+
+    assert result == "deploy"
+    assert destination.read_text(encoding="utf-8") == "source"
+    assert gateway.journal.get("deploy") is None
+
+
+def test_check_failure_preserves_primary_when_rollback_is_incomplete(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+
+    def mutate_drift_and_fail_check():
+        gateway.copy(str(source), to=str(destination), rollback="deploy")
+        destination.write_text("external", encoding="utf-8")
+        return False
+
+    gateway.mutate_drift_and_fail_check = gateway.wrap(
+        "mutate_drift_and_fail_check",
+        mutate_drift_and_fail_check,
+    )
+
+    with pytest.raises(CheckError) as raised:
+        gateway("mutate_drift_and_fail_check - check --true --rollback deploy")
+
+    recovery = rollback_error_for(raised.value)
+    assert isinstance(recovery, RollbackError)
+    assert recovery.journal == "deploy"
+    assert destination.read_text(encoding="utf-8") == "external"
+    assert gateway.journal.require_open("deploy").entries[0].state.value == "applied"
+
+
+def test_check_failure_preserves_missing_journal_as_recovery_context(gateway):
+    _producer(gateway, False)
+
+    with pytest.raises(CheckError) as raised:
+        gateway("probe - check --true --rollback missing")
+
+    recovery = rollback_error_for(raised.value)
+    assert isinstance(recovery, JournalError)
+    assert "not open" in str(recovery)
+
+
+def test_quoted_rollback_flag_checks_literal_mapping_field(gateway):
+    result = {"rollback": "armed"}
+    _producer(gateway, result)
+
+    assert gateway("probe - check '--rollback' armed") is result
+
+
+def test_check_rejects_duplicate_rollback_controls(gateway):
+    _producer(gateway, False)
+
+    with pytest.raises(TypeError, match="only one --rollback"):
+        gateway(
+            "probe - check --true --rollback first --rollback second"
+        )
