@@ -122,7 +122,7 @@ def test_chain_failure_finalizes_once_with_primary(gateway, monkeypatch):
     calls = _record_finalization(gateway, monkeypatch)
     primary = RuntimeError("chain failed")
 
-    def fail():
+    def fail(*args):
         raise primary
 
     gateway.fail_chain = gateway.wrap("fail_chain", fail)
