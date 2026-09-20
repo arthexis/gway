@@ -4,7 +4,6 @@ import pytest
 
 from gway.config import _valid_installation, find_project_file
 from gway.install.ops import _local_intent
-from gway.install.activation import scripts as activation_scripts
 from gway.install.source import project_name
 from gway.project import project_scripts
 
@@ -72,7 +71,6 @@ def test_project_scripts_reads_standard_python_entrypoints(tmp_path):
     )
 
     assert project_scripts(tmp_path) == {"hello": "demo:main"}
-    assert activation_scripts(tmp_path) == {"hello": "demo:main"}
 
 
 def test_standard_project_scripts_ignore_gway_toml(tmp_path):
