@@ -28,11 +28,11 @@ def test_systemd_renders_default_retry_policy(tmp_path):
 
     unit = render(definition, unit="demo-worker.service")
 
-    assert "Restart=on-failure" in unit
-    assert "RestartSec=5" in unit
-    # Initial launch plus three automatic retries.
-    assert "StartLimitBurst=4" in unit
-    assert "StartLimitIntervalSec=60" in unit
+    assert "Restart=no" in unit
+    assert "gway.service.supervisor" in unit
+    assert "--restart on-failure" in unit
+    assert "--attempts 3" in unit
+    assert "--restart-sec 5.0" in unit
 
 
 def test_systemd_renders_service_install_retry_overrides(tmp_path):
@@ -45,9 +45,10 @@ def test_systemd_renders_service_install_retry_overrides(tmp_path):
 
     unit = render(definition, unit="demo-worker.service")
 
-    assert "Restart=always" in unit
-    assert "RestartSec=2" in unit
-    assert "StartLimitBurst=8" in unit
+    assert "Restart=no" in unit
+    assert "--restart always" in unit
+    assert "--attempts 7" in unit
+    assert "--restart-sec 2.0" in unit
 
 
 def test_service_attempts_must_be_non_negative(tmp_path):
