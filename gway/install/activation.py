@@ -10,7 +10,7 @@ import tempfile
 import uuid
 
 from .model import validate_name
-from ..project import scripts
+from ..project import project_scripts
 
 
 _MARKER = "# gway-managed-launcher:"
@@ -134,7 +134,7 @@ class Activation:
 def activate(project, project_path, paths):
     """Converge declared launchers and return a rollback/commit handle."""
     validate_name(project)
-    desired = scripts(project_path)
+    desired = project_scripts(project_path)
     previous = _read_index(paths, project)
 
     if not desired and not previous:
