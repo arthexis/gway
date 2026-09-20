@@ -189,6 +189,45 @@ class JournalManager:
         self._persist(journal)
         return entry
 
+    def prepare_paths(
+        self,
+        name: str,
+        *,
+        operation: str,
+        paths: list[str | Path] | tuple[str | Path, ...],
+    ) -> JournalEntry:
+        """Prepare one filesystem mutation by capturing all affected paths."""
+        from .snapshot import capture_path
+
+        captured_paths = list(paths)
+        if not captured_paths:
+            raise ValueError("filesystem mutation requires at least one path")
+
+        entry = self.prepare(
+            name,
+            kind="filesystem",
+            data={
+                "operation": operation,
+                "paths": [],
+            },
+        )
+        storage = self.entry_storage(name, entry.sequence)
+        snapshots = []
+        for index, path in enumerate(captured_paths):
+            relative_storage = Path("paths") / f"{index:06d}"
+            snapshot = capture_path(path, storage / relative_storage)
+            snapshot["storage"] = str(relative_storage)
+            snapshots.append(snapshot)
+
+        return self.update_entry_data(
+            name,
+            entry.sequence,
+            {
+                "operation": operation,
+                "paths": snapshots,
+            },
+        )
+
     def prepare_path(
         self,
         name: str,
