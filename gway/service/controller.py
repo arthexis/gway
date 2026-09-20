@@ -157,9 +157,9 @@ class Controller:
             "autostart": definition.autostart,
         }
 
-    def _installed_backend(self, definition, *, system=False):
+    def _installed_target(self, definition, *, system=False):
         if self.backend is not None:
-            return self.backend
+            return self.backend, definition
 
         from ..install.backends import get as get_backend
         from ..install.paths import install_paths
@@ -184,7 +184,7 @@ class Controller:
             None,
         )
         if record is None:
-            return self._fallback
+            return self._fallback, definition
 
         backend = get_backend(record.backend)
         runtime = getattr(backend, "runtime", None)
@@ -192,10 +192,23 @@ class Controller:
             raise RuntimeError(
                 f"Service backend {record.backend!r} has no runtime adapter"
             )
-        return runtime(
-            record=record,
-            installations=getattr(self.gateway, "_installed", {}),
-            state_root=paths.root / "services",
+        policy = {}
+        if record.restart is not None:
+            policy["restart"] = record.restart
+        if record.attempts is not None:
+            policy["attempts"] = record.attempts
+        if record.restart_sec is not None:
+            policy["restart_sec"] = record.restart_sec
+        if policy:
+            definition = replace(definition, **policy)
+
+        return (
+            runtime(
+                record=record,
+                installations=getattr(self.gateway, "_installed", {}),
+                state_root=paths.root / "services",
+            ),
+            definition,
         )
 
     def install(
@@ -248,10 +261,11 @@ class Controller:
     ):
         """Start any resolvable operation/recipe under service supervision."""
         definition = self._definition(target, name=name)
-        return self._installed_backend(
+        backend, definition = self._installed_target(
             definition,
             system=system,
-        ).start(definition)
+        )
+        return backend.start(definition)
 
     def stop(
         self,
@@ -261,10 +275,11 @@ class Controller:
     ):
         """Stop service supervision for an operation/recipe invocation."""
         definition = self._definition(target, name=name)
-        return self._installed_backend(
+        backend, definition = self._installed_target(
             definition,
             system=system,
-        ).stop(definition)
+        )
+        return backend.stop(definition)
 
     def restart(
         self,
@@ -274,10 +289,11 @@ class Controller:
     ):
         """Restart service supervision for an operation/recipe invocation."""
         definition = self._definition(target, name=name)
-        return self._installed_backend(
+        backend, definition = self._installed_target(
             definition,
             system=system,
-        ).restart(definition)
+        )
+        return backend.restart(definition)
 
     def status(
         self,
@@ -287,7 +303,8 @@ class Controller:
     ):
         """Return service status for an operation/recipe invocation."""
         definition = self._definition(target, name=name)
-        return self._installed_backend(
+        backend, definition = self._installed_target(
             definition,
             system=system,
-        ).status(definition)
+        )
+        return backend.status(definition)
