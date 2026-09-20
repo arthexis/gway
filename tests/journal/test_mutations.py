@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from gway.journal import MutationState
+from gway.journal import MutationState, UncommittedJournalError
 from gway.snapshot import restore_path
 
 
@@ -24,25 +24,20 @@ def test_copy_with_rollback_restores_existing_destination(gateway, tmp_path):
     destination = tmp_path / "target.txt"
     destination.write_text("old", encoding="utf-8")
 
-    result = gateway(
-        [
-            "copy",
-            str(source),
-            "--to",
-            str(destination),
-            "--rollback",
-            "deploy",
-        ]
-    )
+    with pytest.raises(UncommittedJournalError):
+        gateway(
+            [
+                "copy",
+                str(source),
+                "--to",
+                str(destination),
+                "--rollback",
+                "deploy",
+            ]
+        )
 
-    assert result == destination
-    assert destination.read_text(encoding="utf-8") == "new"
-    entry = _entry(gateway)
-    assert entry.state is MutationState.APPLIED
-    assert entry.data["operation"] == "copy"
-
-    _restore(gateway, entry)
     assert destination.read_text(encoding="utf-8") == "old"
+    assert gateway.journal.get("deploy") is None
 
 
 def test_copy_with_rollback_removes_new_destination_on_restore(gateway, tmp_path):
