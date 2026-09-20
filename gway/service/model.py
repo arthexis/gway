@@ -61,23 +61,3 @@ class Service:
         """Return the durable project/service identity."""
         return self.project, self.name
 
-
-@dataclass(frozen=True)
-class Catalog:
-    """Normalized service declarations for one managed project."""
-
-    project: str
-    root: Path
-    services: tuple[Service, ...] = ()
-    profile_file: str | None = None
-
-    def __post_init__(self):
-        object.__setattr__(self, "root", Path(self.root).expanduser().resolve())
-        object.__setattr__(self, "services", tuple(self.services))
-
-    def get(self, name):
-        """Return one service declaration by name, or None."""
-        return next(
-            (service for service in self.services if service.name == name),
-            None,
-        )
