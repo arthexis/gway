@@ -1,12 +1,14 @@
-"""Gateway-bound public service operations."""
+"""Gateway-bound service lifecycle operations for generic launchables."""
 
 from dataclasses import replace
+from pathlib import Path
 
+from .model import Service
 from .runtime import ProcessBackend
 
 
 class Controller:
-    """Public service lifecycle facade bound to one Gateway runtime."""
+    """Service lifecycle facade over ordinary Gway operations and recipes."""
 
     def __init__(self, gateway, *, backend=None):
         self.gateway = gateway
@@ -15,19 +17,98 @@ class Controller:
             installations=getattr(gateway, "_installed", {}),
         )
 
+    @staticmethod
+    def _service_name(launchable):
+        """Return the default stable service identity for one launchable."""
+        return launchable.name.replace(".", "-")
+
+    def _project_identity(self, launchable):
+        """Infer project identity/root from launchable and current runtime."""
+        metadata = launchable.metadata
+        project = metadata.get("project")
+        root = launchable.root
+
+        if root is None:
+            project_file = getattr(self.gateway, "_project_path", None)
+            if project_file is not None:
+                root = Path(project_file).parent
+
+        if root is None:
+            root = Path.cwd()
+
+        if project:
+            return str(project), Path(root).expanduser().resolve()
+
+        try:
+            from ..project import project_name
+            project = project_name(root)
+        except Exception:
+            project = None
+
+        if not project:
+            project = "gway"
+        return str(project), Path(root).expanduser().resolve()
+
+    def _preset(self, launchable):
+        """Return optional built-in policy associated with a launchable."""
+        matches = [
+            service
+            for service in self.gateway._services.values()
+            if service.launchable.name == launchable.name
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    def _definition(
+        self,
+        target,
+        *,
+        name=None,
+        restart=None,
+        attempts=None,
+        restart_sec=None,
+    ):
+        """Resolve an arbitrary invocation into service policy."""
+        from ..launchable import resolve_launchable
+
+        launchable = resolve_launchable(self.gateway, target)
+        preset = self._preset(launchable)
+        if preset is not None:
+            definition = replace(preset, launchable=launchable)
+        else:
+            project, root = self._project_identity(launchable)
+            definition = Service.from_launchable(
+                project,
+                name or self._service_name(launchable),
+                root,
+                launchable,
+            )
+
+        policy = {}
+        if name is not None:
+            policy["name"] = name
+        if restart is not None:
+            policy["restart"] = restart
+        if attempts is not None:
+            policy["attempts"] = attempts
+        if restart_sec is not None:
+            policy["restart_sec"] = restart_sec
+        return replace(definition, **policy) if policy else definition
+
     def _service(self, project, service):
+        """Return a named preset service, primarily for compatibility/introspection."""
         try:
             return self.gateway._services[(project, service)]
         except KeyError as exc:
             raise LookupError(
-                f"Unknown service {project!r}/{service!r}"
+                f"Unknown named service {project!r}/{service!r}"
             ) from exc
 
     def list(self, project=None):
-        """List discovered service definitions.
+        """List named service presets.
 
-        Args:
-            project: Optional project identity used to filter services.
+        Ordinary operations and recipes are serviceable without appearing here.
         """
         services = self.gateway._services.values()
         if project is not None:
@@ -42,6 +123,7 @@ class Controller:
                 "service": service.name,
                 "description": service.description,
                 "launchable": service.launchable.kind,
+                "target": service.launchable.name,
                 "profiles": list(service.profiles),
             }
             for service in sorted(
@@ -50,9 +132,9 @@ class Controller:
             )
         ]
 
-    def inspect(self, project, service):
-        """Return one discovered service definition."""
-        definition = self._service(project, service)
+    def inspect(self, *target):
+        """Inspect service policy inferred for an operation or recipe invocation."""
+        definition = self._definition(target)
         return {
             "project": definition.project,
             "service": definition.name,
@@ -62,7 +144,6 @@ class Controller:
                 "kind": definition.launchable.kind,
                 "command": list(definition.launchable.command),
             },
-            "command": list(definition.launchable.command),
             "working_directory": definition.working_directory,
             "writable_paths": list(definition.writable_paths),
             "profiles": list(definition.profiles),
@@ -73,21 +154,23 @@ class Controller:
             "autostart": definition.autostart,
         }
 
-    def _installed_backend(self, definition):
+    def _installed_backend(self, definition, *, system=False):
         if self.backend is not None:
             return self.backend
-
-        installation = getattr(self.gateway, "_installed", {}).get(
-            definition.project
-        )
-        if installation is None:
-            return self._fallback
 
         from ..install.backends import get as get_backend
         from ..install.paths import install_paths
         from ..install.systemd import UnitState
 
-        paths = install_paths(system=installation.scope == "system")
+        installation = getattr(self.gateway, "_installed", {}).get(
+            definition.project
+        )
+        use_system = (
+            installation.scope == "system"
+            if installation is not None
+            else system
+        )
+        paths = install_paths(system=use_system)
         records = UnitState(paths.root / "systemd").get(definition.project)
         record = next(
             (
@@ -112,12 +195,9 @@ class Controller:
             state_root=paths.root / "services",
         )
 
-
     def install(
         self,
-        project,
-        service,
-        *,
+        *target,
         backend="systemd",
         system=False,
         name=None,
@@ -125,28 +205,24 @@ class Controller:
         attempts=None,
         restart_sec=None,
     ):
-        """Install supervision for one service launchable.
+        """Install supervision for any resolvable Gway operation or recipe.
 
         Args:
-            project: Owning project identity.
-            service: Service identity.
+            target: Operation/recipe invocation to supervise.
             backend: Supervision backend, normally systemd.
             system: Install as a system service instead of a user service.
-            name: Optional backend-specific service name.
+            name: Optional service identity override.
             restart: Restart policy override.
             attempts: Automatic retry attempts after failure.
             restart_sec: Delay between restart attempts in seconds.
         """
-        definition = self._service(project, service)
-        policy = {}
-        if restart is not None:
-            policy["restart"] = restart
-        if attempts is not None:
-            policy["attempts"] = attempts
-        if restart_sec is not None:
-            policy["restart_sec"] = restart_sec
-        if policy:
-            definition = replace(definition, **policy)
+        definition = self._definition(
+            target,
+            name=name,
+            restart=restart,
+            attempts=attempts,
+            restart_sec=restart_sec,
+        )
 
         from ..install.backends import get as get_backend
         from ..install.paths import install_paths
@@ -154,29 +230,61 @@ class Controller:
         selected = get_backend(backend)
         paths = install_paths(system=system)
         return selected.install_units(
-            project,
+            definition.project,
             (definition,),
             state_root=paths.root / "systemd",
             system=system,
-            name=name,
+            name=None,
         )
 
-    def start(self, project, service):
-        """Start one discovered service through its installed backend."""
-        definition = self._service(project, service)
-        return self._installed_backend(definition).start(definition)
+    def start(
+        self,
+        *target,
+        system=False,
+        name=None,
+    ):
+        """Start any resolvable operation/recipe under service supervision."""
+        definition = self._definition(target, name=name)
+        return self._installed_backend(
+            definition,
+            system=system,
+        ).start(definition)
 
-    def stop(self, project, service):
-        """Stop one discovered service through its installed backend."""
-        definition = self._service(project, service)
-        return self._installed_backend(definition).stop(definition)
+    def stop(
+        self,
+        *target,
+        system=False,
+        name=None,
+    ):
+        """Stop service supervision for an operation/recipe invocation."""
+        definition = self._definition(target, name=name)
+        return self._installed_backend(
+            definition,
+            system=system,
+        ).stop(definition)
 
-    def restart(self, project, service):
-        """Restart one discovered service through its installed backend."""
-        definition = self._service(project, service)
-        return self._installed_backend(definition).restart(definition)
+    def restart(
+        self,
+        *target,
+        system=False,
+        name=None,
+    ):
+        """Restart service supervision for an operation/recipe invocation."""
+        definition = self._definition(target, name=name)
+        return self._installed_backend(
+            definition,
+            system=system,
+        ).restart(definition)
 
-    def status(self, project, service):
-        """Return runtime status through the service's installed backend."""
-        definition = self._service(project, service)
-        return self._installed_backend(definition).status(definition)
+    def status(
+        self,
+        *target,
+        system=False,
+        name=None,
+    ):
+        """Return service status for an operation/recipe invocation."""
+        definition = self._definition(target, name=name)
+        return self._installed_backend(
+            definition,
+            system=system,
+        ).status(definition)
