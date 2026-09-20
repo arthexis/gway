@@ -3,7 +3,6 @@
 from importlib import import_module
 from pathlib import Path
 import sys
-import warnings
 
 from .install.manifest import load as load_manifest
 from .install.model import validate_name
@@ -54,44 +53,10 @@ def project_scripts(project):
     return result
 
 
-def legacy_scripts(project):
-    """Return deprecated [install.scripts] declarations, when present."""
-    project = Path(project).expanduser().resolve()
-    manifest = project / "gway.toml"
-    if not manifest.is_file():
-        return {}
-
-    data = load_manifest(manifest)
-    install = data.get("install") if isinstance(data, dict) else None
-    values = install.get("scripts") if isinstance(install, dict) else None
-    if values is None:
-        return {}
-    if not isinstance(values, dict):
-        raise ValueError("[install.scripts] must be a TOML table")
-
-    warnings.warn(
-        "[install.scripts] in gway.toml is deprecated; use "
-        "[project.scripts] in pyproject.toml",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    result = {}
-    for command, target in values.items():
-        validate_name(command)
-        result[command] = _target(target, command=command)
-    return result
-
 
 def scripts(project):
-    """Return project launchables, preferring standard Python metadata."""
-    standard = project_scripts(project)
-    legacy = legacy_scripts(project)
-    if not legacy:
-        return standard
-
-    # Standard Python metadata wins when both formats declare the same command.
-    return {**legacy, **standard}
-
+    """Return standard Python project launchables."""
+    return project_scripts(project)
 
 def resolve_target(project, target):
     """Import and return a console-script callable from a project checkout."""
