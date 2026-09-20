@@ -78,14 +78,31 @@ def load_project_scripts(runtime, root, project):
     return wrapped
 
 
-def load_project_main_packages(runtime, root):
+def load_project_main_packages(runtime, root, project=None):
     """Expose conventional package __main__ entrypoints from a project tree."""
+    from dataclasses import replace
+
     from .project import import_project_module, main_packages
 
+    root = Path(root).expanduser().resolve()
     wrapped = []
     for name in main_packages(root):
         module = import_project_module(root, name)
         wrapped.extend(runtime.ingest(module, path=tuple(name.split("."))))
+
+        launchable = runtime.launchables.resolve(name)
+        if launchable is not None:
+            metadata = dict(launchable.metadata)
+            metadata["root"] = root
+            if project is not None:
+                metadata["project"] = project
+            runtime.launchables.register(
+                replace(
+                    launchable,
+                    root=root,
+                    metadata=metadata,
+                )
+            )
     return wrapped
 
 
@@ -106,7 +123,11 @@ def expand_installed_project(runtime, installation, *, path=None):
         installation.name,
     )
     loaded.extend(
-        load_project_main_packages(runtime, installation.install_path)
+        load_project_main_packages(
+            runtime,
+            installation.install_path,
+            installation.name,
+        )
     )
     record.expanded = True
     return loaded
@@ -185,7 +206,11 @@ def bootstrap(runtime, *, start=None):
             for command, projects in owners.items()
         }
         load_project_scripts(runtime, manifest.parent, project_name)
-        load_project_main_packages(runtime, manifest.parent)
+        load_project_main_packages(
+            runtime,
+            manifest.parent,
+            project_name,
+        )
 
     from .souschef.discovery import discover as discover_souschef
 
