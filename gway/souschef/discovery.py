@@ -1,15 +1,13 @@
 """Discovery of Sous Chef jobs from standard project metadata."""
 
-from pathlib import Path
-
-from .manifest import load
+from .project_file import load
 
 
-def declares_jobs(manifest):
+def declares_jobs(project_file):
     """Return whether pyproject declares [tool.gway.sous-chef] jobs."""
     try:
         from .. import toml
-        data = toml.load(manifest)
+        data = toml.load(project_file)
     except (OSError, ValueError):
         return False
 
@@ -19,15 +17,15 @@ def declares_jobs(manifest):
     return isinstance(jobs, dict) and bool(jobs)
 
 
-def discover(runtime, installations=(), *, local_manifest=None):
+def discover(runtime, installations=(), *, local_project_file=None):
     """Discover project-owned Sous Chef jobs without executing them."""
     jobs = {}
 
     for installation in installations:
-        manifest = installation.install_path / "pyproject.toml"
-        if not declares_jobs(manifest):
+        project_file = installation.install_path / "pyproject.toml"
+        if not declares_jobs(project_file):
             continue
-        for job in load(manifest):
+        for job in load(project_file):
             existing = jobs.get(job.identity)
             if existing is not None and existing != job:
                 raise RuntimeError(
@@ -35,8 +33,8 @@ def discover(runtime, installations=(), *, local_manifest=None):
                 )
             jobs[job.identity] = job
 
-    if local_manifest is not None and declares_jobs(local_manifest):
-        for job in load(local_manifest):
+    if local_project_file is not None and declares_jobs(local_project_file):
+        for job in load(local_project_file):
             jobs[job.identity] = job
 
     runtime._souschef_jobs = jobs
