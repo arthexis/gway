@@ -145,7 +145,7 @@ def test_named_service_identity_allows_multiple_invocations(monkeypatch):
 
 
 def test_installed_service_record_preserves_launchable_invocation(tmp_path):
-    from gway.install.servicestate import ServiceInstallRecord, ServiceInstallState
+    from gway.install.service.state import ServiceInstallRecord, ServiceInstallState
 
     state = ServiceInstallState(tmp_path / "state")
     state.put(
