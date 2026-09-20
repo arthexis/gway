@@ -178,3 +178,56 @@ def test_check_returns_original_value_to_following_pipeline_stage(gateway):
     gateway.consume = gateway.wrap("consume", consume)
 
     assert gateway("probe - check --status healthy - consume") == "healthy"
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "status_code",
+        "status-code",
+        "status code",
+        "StatusCode",
+        "STATUS_CODE",
+    ],
+)
+def test_check_named_keys_use_semantic_matching(gateway, key):
+    result = {key: 200}
+    _producer(gateway, result)
+
+    assert gateway("probe - check --status-code 200") is result
+
+
+def test_check_quoted_no_prefix_checks_literal_no_field(gateway):
+    result = {"No Error": True}
+    _producer(gateway, result)
+
+    assert gateway("probe - check '--no-error' true") is result
+
+
+def test_check_unquoted_no_prefix_still_inverts_semantic_field(gateway):
+    result = {"No Error": True}
+    _producer(gateway, result)
+
+    assert gateway("probe - check --no-no-error") is result
+
+
+def test_check_rejects_ambiguous_semantic_mapping_keys(gateway):
+    _producer(
+        gateway,
+        {
+            "status-code": 200,
+            "status_code": 500,
+        },
+    )
+
+    with pytest.raises(CheckError, match="ambiguous"):
+        gateway("probe - check --status-code 200")
+
+
+def test_checked_semantic_key_is_retrievable_after_publication(gateway):
+    result = {"Status Code": 200}
+    _producer(gateway, result)
+
+    assert gateway("probe - check --status-code 200") is result
+    assert gateway.resolve("[status_code]") == 200
+    assert gateway.resolve("[STATUS-CODE]") == 200
