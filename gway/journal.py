@@ -132,6 +132,7 @@ class MutationState(str, Enum):
     """Lifecycle state for one logical mutation entry."""
 
     PREPARED = "prepared"
+    MUTATED = "mutated"
     APPLIED = "applied"
     ROLLED_BACK = "rolled_back"
 
@@ -382,13 +383,34 @@ class JournalManager:
         self._persist(journal)
         return entry
 
-    def mark_applied(self, name: str, sequence: int) -> JournalEntry:
+    def mark_mutated(self, name: str, sequence: int) -> JournalEntry:
+        """Record that the forward mutation completed before post-state sealing."""
         journal = self.require_open(name)
         entry = self._entry(journal, sequence)
         if entry.state is not MutationState.PREPARED:
             raise JournalError(
                 f"Rollback journal {name!r} entry {sequence} is "
                 f"{entry.state.value}, not prepared"
+            )
+        entry.state = MutationState.MUTATED
+        debug(
+            "transaction mutated journal=%s sequence=%s operation=%s",
+            name,
+            sequence,
+            entry.data.get("operation"),
+        )
+        self._persist(journal)
+        return entry
+
+    def mark_applied(self, name: str, sequence: int) -> JournalEntry:
+        journal = self.require_open(name)
+        entry = self._entry(journal, sequence)
+        if entry.state is MutationState.PREPARED:
+            entry = self.mark_mutated(name, sequence)
+        elif entry.state is not MutationState.MUTATED:
+            raise JournalError(
+                f"Rollback journal {name!r} entry {sequence} is "
+                f"{entry.state.value}, not mutated"
             )
 
         if entry.kind == "filesystem" and "paths" in entry.data:
@@ -449,6 +471,11 @@ class JournalManager:
         """Restore one APPLIED logical mutation after verifying all of its paths."""
         journal = self.require_open(name)
         entry = self._entry(journal, sequence)
+        if entry.state is MutationState.MUTATED:
+            raise JournalError(
+                f"Rollback journal {name!r} entry {sequence} cannot be rolled back "
+                "safely because its post-mutation fingerprint is unavailable"
+            )
         if entry.state is not MutationState.APPLIED:
             raise JournalError(
                 f"Rollback journal {name!r} entry {sequence} is "
@@ -517,7 +544,7 @@ class JournalManager:
         pending = [
             entry
             for entry in reversed(journal.entries)
-            if entry.state is MutationState.APPLIED
+            if entry.state in {MutationState.APPLIED, MutationState.MUTATED}
         ]
         failures = []
         for entry in pending:
@@ -575,6 +602,11 @@ class JournalManager:
     def commit(self, name: str) -> None:
         """Commit a non-empty journal and discard its persisted state."""
         journal = self.require_open(name)
+        if any(entry.state is MutationState.MUTATED for entry in journal.entries):
+            raise JournalError(
+                f"Rollback journal {journal.name!r} has unsealed mutations "
+                "and cannot be committed"
+            )
         if not journal.applied_entries:
             raise JournalError(
                 f"Rollback journal {journal.name!r} has no applied mutations to commit"
@@ -586,9 +618,12 @@ class JournalManager:
     def close_rolled_back(self, name: str) -> None:
         """Close a journal after all applied entries have been restored."""
         journal = self.require_open(name)
-        if any(entry.state is MutationState.APPLIED for entry in journal.entries):
+        if any(
+            entry.state in {MutationState.APPLIED, MutationState.MUTATED}
+            for entry in journal.entries
+        ):
             raise JournalError(
-                f"Rollback journal {journal.name!r} still has applied mutations"
+                f"Rollback journal {journal.name!r} still has unresolved mutations"
             )
         journal.state = JournalState.ROLLED_BACK
         self._discard(journal.name)
