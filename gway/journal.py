@@ -330,6 +330,52 @@ class JournalManager:
         self._persist(journal)
         return entry
 
+    def rollback_entry(self, name: str, sequence: int) -> JournalEntry:
+        """Restore one APPLIED logical mutation after verifying all of its paths."""
+        journal = self.require_open(name)
+        entry = self._entry(journal, sequence)
+        if entry.state is not MutationState.APPLIED:
+            raise JournalError(
+                f"Rollback journal {name!r} entry {sequence} is "
+                f"{entry.state.value}, not applied"
+            )
+        if entry.kind != "filesystem":
+            raise JournalError(
+                f"Rollback journal {name!r} entry {sequence} has unsupported "
+                f"kind {entry.kind!r}"
+            )
+
+        from .identity import ExecutionIdentity
+        from .snapshot import restore_path
+
+        identity = ExecutionIdentity.from_dict(entry.data.get("identity"))
+        self.verify_applied(name, sequence)
+
+        storage = self.entry_storage(name, sequence)
+        snapshots = [dict(value) for value in entry.data.get("paths") or []]
+        for snapshot in reversed(snapshots):
+            relative_storage = snapshot.get("storage")
+            if relative_storage is None:
+                raise JournalError(
+                    f"Rollback journal {name!r} entry {sequence} snapshot "
+                    "has no storage location"
+                )
+            restore_path(
+                snapshot,
+                storage / str(relative_storage),
+                identity=identity,
+            )
+
+        return self.mark_rolled_back(name, sequence)
+
+    def rollback(self, name: str) -> None:
+        """Restore all APPLIED journal entries in LIFO order and close the journal."""
+        journal = self.require_open(name)
+        for entry in reversed(journal.entries):
+            if entry.state is MutationState.APPLIED:
+                self.rollback_entry(name, entry.sequence)
+        self.close_rolled_back(name)
+
     @staticmethod
     def _entry(journal: Journal, sequence: int) -> JournalEntry:
         try:
