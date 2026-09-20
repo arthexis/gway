@@ -277,8 +277,7 @@ def test_repeat_failure_preserves_primary_when_rollback_is_incomplete(
 
     with pytest.raises(RepeatLimitError) as raised:
         gateway(
-            "mutate_drift_and_probe ; "
-            "repeat --until true --max 1 --rollback deploy"
+            "mutate_drift_and_probe ; repeat --until true --max 1 --rollback deploy"
         )
 
     recovery = rollback_error_for(raised.value)
