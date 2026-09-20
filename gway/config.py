@@ -5,16 +5,16 @@ from pathlib import Path
 from .ingestion.base import remember_object
 
 
-def find_manifest(start=None):
+def find_project_file(start=None):
     """Return the nearest pyproject.toml, if any."""
     root = Path.cwd() if start is None else Path(start)
     root = root.expanduser().resolve()
     if root.is_file():
         root = root.parent
     for directory in (root, *root.parents):
-        manifest = directory / "pyproject.toml"
-        if manifest.is_file():
-            return manifest
+        project_file = directory / "pyproject.toml"
+        if project_file.is_file():
+            return project_file
     return None
 
 
@@ -190,15 +190,15 @@ def bootstrap(runtime, *, start=None):
     """Discover managed and local pyproject-based execution surfaces."""
     discover_managed_projects(runtime)
 
-    manifest = find_manifest(start)
-    if manifest is None:
+    project_file = find_project_file(start)
+    if project_file is None:
         return None
 
-    runtime._project_path = manifest
+    runtime._project_path = project_file
 
     from . import toml
 
-    data = toml.load(manifest)
+    data = toml.load(project_file)
     variables = project_variables(data)
     if variables:
         runtime.append_source(variables, name="pyproject")
@@ -216,7 +216,7 @@ def bootstrap(runtime, *, start=None):
             command: list(projects)
             for command, projects in getattr(runtime, "_script_owners", {}).items()
         }
-        for command in project_scripts(manifest.parent):
+        for command in project_scripts(project_file.parent):
             owners.setdefault(command, [])
             if project_name not in owners[command]:
                 owners[command].append(project_name)
@@ -224,10 +224,10 @@ def bootstrap(runtime, *, start=None):
             command: tuple(projects)
             for command, projects in owners.items()
         }
-        load_project_scripts(runtime, manifest.parent, project_name)
+        load_project_scripts(runtime, project_file.parent, project_name)
         load_project_main_packages(
             runtime,
-            manifest.parent,
+            project_file.parent,
             project_name,
         )
 
@@ -236,6 +236,6 @@ def bootstrap(runtime, *, start=None):
     discover_souschef(
         runtime,
         getattr(runtime, "_installed", {}).values(),
-        local_manifest=manifest,
+        local_project_file=project_file,
     )
-    return manifest
+    return project_file
