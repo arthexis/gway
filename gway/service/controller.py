@@ -1,5 +1,7 @@
 """Gateway-bound public service operations."""
 
+from dataclasses import replace
+
 from .runtime import ProcessBackend
 
 
@@ -66,6 +68,7 @@ class Controller:
             "profiles": list(definition.profiles),
             "environment": dict(definition.environment),
             "restart": definition.restart,
+            "attempts": definition.attempts,
             "restart_sec": definition.restart_sec,
             "autostart": definition.autostart,
         }
@@ -107,6 +110,55 @@ class Controller:
             record=record,
             installations=getattr(self.gateway, "_installed", {}),
             state_root=paths.root / "services",
+        )
+
+
+    def install(
+        self,
+        project,
+        service,
+        *,
+        backend="systemd",
+        system=False,
+        name=None,
+        restart=None,
+        attempts=None,
+        restart_sec=None,
+    ):
+        """Install supervision for one service launchable.
+
+        Args:
+            project: Owning project identity.
+            service: Service identity.
+            backend: Supervision backend, normally systemd.
+            system: Install as a system service instead of a user service.
+            name: Optional backend-specific service name.
+            restart: Restart policy override.
+            attempts: Automatic retry attempts after failure.
+            restart_sec: Delay between restart attempts in seconds.
+        """
+        definition = self._service(project, service)
+        policy = {}
+        if restart is not None:
+            policy["restart"] = restart
+        if attempts is not None:
+            policy["attempts"] = attempts
+        if restart_sec is not None:
+            policy["restart_sec"] = restart_sec
+        if policy:
+            definition = replace(definition, **policy)
+
+        from ..install.backends import get as get_backend
+        from ..install.paths import install_paths
+
+        selected = get_backend(backend)
+        paths = install_paths(system=system)
+        return selected.install_units(
+            project,
+            (definition,),
+            state_root=paths.root / "systemd",
+            system=system,
+            name=name,
         )
 
     def start(self, project, service):
