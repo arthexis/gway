@@ -1,5 +1,6 @@
 """Systemd unit materialization for Gway service launchables."""
 
+from dataclasses import dataclass
 from pathlib import Path
 import shlex
 import subprocess
@@ -27,17 +28,58 @@ def unit_name(project, service):
     return f"{raw}.service"
 
 
-def _systemctl(*args, system=False, check=True):
-    command = ["systemctl"]
-    if not system:
-        command.append("--user")
-    command.extend(args)
+@dataclass(frozen=True)
+class _SystemdOperation:
+    """Structured identity for one concrete systemctl subprocess."""
+
+    action: str
+    unit: str | None
+    arguments: tuple[str, ...]
+    system: bool = False
+
+    @property
+    def command(self):
+        command = ["systemctl"]
+        if not self.system:
+            command.append("--user")
+        command.extend((self.action, *self.arguments))
+        return command
+
+    @classmethod
+    def from_call(cls, args, *, system=False):
+        args = tuple(args)
+        if not args:
+            raise ValueError("systemctl operation requires an action")
+        action = args[0]
+        arguments = args[1:]
+        unit = next(
+            (
+                value
+                for value in reversed(arguments)
+                if isinstance(value, str) and not value.startswith("-")
+            ),
+            None,
+        )
+        return cls(
+            action=action,
+            unit=unit,
+            arguments=arguments,
+            system=system,
+        )
+
+
+def _run_systemctl_operation(operation, *, check=True):
     return subprocess.run(
-        command,
+        operation.command,
         check=check,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
+
+def _systemctl(*args, system=False, check=True):
+    operation = _SystemdOperation.from_call(args, system=system)
+    return _run_systemctl_operation(operation, check=check)
 
 
 def render(service, *, system=False):
