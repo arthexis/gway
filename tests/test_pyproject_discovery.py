@@ -116,3 +116,38 @@ def test_gateway_bootstrap_exposes_project_script_as_operation(tmp_path, monkeyp
 
     assert runtime("hello Ada") == "hello Ada"
     assert runtime("demo hello Ada") == "hello Ada"
+
+
+def test_pyproject_semantic_variables_are_available_to_sigils(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\n'
+        'name = "demo"\n'
+        '[tool.gway.variables]\n'
+        'region = "local"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    assert runtime.resolve("[region]") == "local"
+
+
+def test_environment_overrides_pyproject_semantic_variables(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\n'
+        'name = "demo"\n'
+        '[tool.gway.variables]\n'
+        'region = "local"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("REGION", "production")
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    assert runtime.resolve("[region]") == "production"
