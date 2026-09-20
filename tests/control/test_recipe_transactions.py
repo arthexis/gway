@@ -45,10 +45,7 @@ def test_recipe_check_success_commits_named_journal(
 
     recipe = tmp_path / "deploy.rx"
     recipe.write_text(
-        "mutate\n"
-        "read status\n"
-        "check --status healthy --rollback deploy\n"
-        "commit deploy\n",
+        "mutate\nread status\ncheck --status healthy --rollback deploy\ncommit deploy\n",
         encoding="utf-8",
     )
 
@@ -121,8 +118,7 @@ def test_recipe_unless_true_skips_failed_check_and_allows_commit(
 
     recipe = tmp_path / "optional.rx"
     recipe.write_text(
-        "mutate\n"
-        "read status\n"
+        "mutate\nread status\n"
         "check --status healthy --unless [feature_disabled] --rollback deploy\n"
         "commit deploy\n",
         encoding="utf-8",
@@ -152,10 +148,7 @@ def test_recipe_repeat_intermediate_failures_do_not_rollback(
 
     recipe = tmp_path / "repeat-success.rx"
     recipe.write_text(
-        "mutate\n"
-        "probe\n"
-        "repeat --until true --max 5 --rollback deploy\n"
-        "commit deploy\n",
+        "mutate\nprobe\nrepeat --until true --max 5 --rollback deploy\ncommit deploy\n",
         encoding="utf-8",
     )
 
@@ -182,9 +175,7 @@ def test_recipe_repeat_exhaustion_rolls_back_once_before_boundary(
 
     recipe = tmp_path / "repeat-failure.rx"
     recipe.write_text(
-        "mutate\n"
-        "probe\n"
-        "repeat --until true --max 2 --rollback deploy\n",
+        "mutate\nprobe\nrepeat --until true --max 2 --rollback deploy\n",
         encoding="utf-8",
     )
 
@@ -215,9 +206,7 @@ def test_recipe_repeat_while_success_preserves_journal_until_commit(
 
     recipe = tmp_path / "repeat-while.rx"
     recipe.write_text(
-        "mutate\n"
-        "pending\n"
-        "repeat --while true --max 5 --rollback deploy\n"
+        "mutate\npending\nrepeat --while true --max 5 --rollback deploy\n"
         "commit deploy\n",
         encoding="utf-8",
     )
@@ -241,9 +230,7 @@ def test_incomplete_control_rollback_is_retried_by_boundary_and_keeps_primary(
 
     recipe = tmp_path / "drift.rx"
     recipe.write_text(
-        "mutate\n"
-        "read status\n"
-        "check --status healthy --rollback deploy\n",
+        "mutate\nread status\ncheck --status healthy --rollback deploy\n",
         encoding="utf-8",
     )
 
