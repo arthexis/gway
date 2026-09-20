@@ -55,35 +55,35 @@ def _target(value, field):
 
 
 def job_from_data(project, name, data, *, root):
-    """Normalize one [sous-chef.<name>] table."""
+    """Normalize one [tool.gway.sous-chef.<name>] table."""
     validate_name(name)
     if not isinstance(data, dict):
-        raise ValueError(f"[sous-chef.{name}] must be a table")
+        raise ValueError(f"[tool.gway.sous-chef.{name}] must be a table")
 
     unknown = sorted(set(data) - _FIELDS)
     if unknown:
         raise ValueError(
-            f"[sous-chef.{name}] has unknown fields: {', '.join(unknown)}"
+            f"[tool.gway.sous-chef.{name}] has unknown fields: {', '.join(unknown)}"
         )
 
-    recipe = _path(root, data.get("recipe"), f"[sous-chef.{name}].recipe")
+    recipe = _path(root, data.get("recipe"), f"[tool.gway.sous-chef.{name}].recipe")
     every = (
-        duration(data["every"], f"[sous-chef.{name}].every")
+        duration(data["every"], f"[tool.gway.sous-chef.{name}].every")
         if "every" in data
         else None
     )
     watch = (
-        _path(root, data["watch"], f"[sous-chef.{name}].watch")
+        _path(root, data["watch"], f"[tool.gway.sous-chef.{name}].watch")
         if "watch" in data
         else None
     )
     down = (
-        _target(data["down"], f"[sous-chef.{name}].down")
+        _target(data["down"], f"[tool.gway.sous-chef.{name}].down")
         if "down" in data
         else None
     )
     timeout = (
-        duration(data["timeout"], f"[sous-chef.{name}].timeout")
+        duration(data["timeout"], f"[tool.gway.sous-chef.{name}].timeout")
         if "timeout" in data
         else float(DEFAULT_TIMEOUT)
     )
@@ -117,7 +117,7 @@ def jobs_from_data(data, *, root):
     if jobs is None:
         jobs = {}
     if not isinstance(jobs, dict):
-        raise ValueError("[sous-chef] must be a table")
+        raise ValueError("[tool.gway.sous-chef] must be a table")
 
     return tuple(
         job_from_data(project, name, value, root=root)
