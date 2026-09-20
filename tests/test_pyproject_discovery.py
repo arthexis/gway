@@ -6,7 +6,7 @@ from gway.config import _valid_installation, find_manifest
 from gway.install.ops import _local_intent
 from gway.install.activation import scripts as activation_scripts
 from gway.install.source import project_name
-from gway.project import project_scripts, scripts
+from gway.project import project_scripts
 
 
 def test_project_name_uses_pyproject_without_gway_toml(tmp_path):
@@ -91,7 +91,7 @@ def test_standard_project_scripts_ignore_gway_toml(tmp_path):
         encoding="utf-8",
     )
 
-    assert scripts(tmp_path) == {"hello": "demo:new_main"}
+    assert project_scripts(tmp_path) == {"hello": "demo:new_main"}
 
 
 def test_gateway_bootstrap_exposes_project_script_as_operation(tmp_path, monkeypatch):
