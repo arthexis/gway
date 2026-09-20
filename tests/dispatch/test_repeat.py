@@ -224,10 +224,7 @@ def test_repeat_limit_rolls_back_named_journal(gateway, tmp_path):
     gateway.mutate_and_probe = gateway.wrap("mutate_and_probe", mutate_and_probe)
 
     with pytest.raises(RepeatLimitError) as raised:
-        gateway(
-            "mutate_and_probe ; "
-            "repeat --until true --max 2 --rollback deploy"
-        )
+        gateway("mutate_and_probe ; repeat --until true --max 2 --rollback deploy")
 
     assert rollback_error_for(raised.value) is None
     assert not destination.exists()
