@@ -44,9 +44,11 @@ class Gateway(Resolver):
         self._service_presets = {}
         self._ingested = {}
 
-        from .cache import Cache
+        from .cache import Cache, default_root
+        from .journal import JournalManager
 
         self.cache = cache if isinstance(cache, Cache) else Cache(cache)
+        self.journal = JournalManager(default_root() / "rollback")
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
@@ -82,6 +84,12 @@ class Gateway(Resolver):
         from .ingestion.python import ingest_module
 
         ingest_module(self, builtin, transparent=True)
+
+        from .rendering import Renderer
+
+        self._renderer = Renderer(self)
+        self.render = self.wrap("render", self._renderer.render)
+
         self.clear = self.wrap("clear", self._clear_context)
         self.help = self.wrap("help", self._help)
 
