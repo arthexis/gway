@@ -189,7 +189,8 @@ def _restore_symlink(path: Path, snapshot: dict[str, Any]) -> None:
     try:
         os.symlink(str(snapshot["target"]), temporary)
         _apply_metadata(temporary, snapshot, follow_symlinks=False)
-        _remove_existing(path)
+        if path.is_dir() and not path.is_symlink():
+            _remove_existing(path)
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -210,7 +211,8 @@ def restore_path(
     storage_path = Path(storage)
 
     if kind == "file":
-        _remove_existing(path)
+        if path.is_dir() and not path.is_symlink():
+            _remove_existing(path)
         _restore_file(path, storage_path / str(snapshot["snapshot"]), snapshot)
         return path
 
