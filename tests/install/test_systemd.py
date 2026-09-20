@@ -123,3 +123,25 @@ def test_systemd_operation_identity_preserves_scope_options_and_unit():
         "--now",
         "gway-demo.service",
     ]
+
+
+def test_systemctl_reports_progress_with_action_unit_and_scope(monkeypatch, caplog):
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((list(command), kwargs))
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd.subprocess, "run", run)
+    caplog.set_level("INFO", logger="gway")
+
+    systemd._systemctl("daemon-reload", system=False)
+    systemd._systemctl("restart", "gway-demo.service", system=True)
+
+    assert calls[0][0] == ["systemctl", "--user", "daemon-reload"]
+    assert calls[1][0] == ["systemctl", "restart", "gway-demo.service"]
+    messages = [record.getMessage() for record in caplog.records]
+    assert "systemd daemon-reload (global) [user]: starting" in messages
+    assert "systemd daemon-reload (global) [user]: complete" in messages
+    assert "systemd restart gway-demo.service [system]: starting" in messages
+    assert "systemd restart gway-demo.service [system]: complete" in messages
