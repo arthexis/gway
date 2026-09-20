@@ -24,15 +24,20 @@ class JournalError(RuntimeError):
 class UncommittedJournalError(JournalError):
     """Raised when an outer execution ends with unresolved rollback journals."""
 
-    def __init__(self, journals):
+    def __init__(self, journals, *, rollback_errors=()):
         self.journals = tuple(str(name) for name in journals)
+        self.rollback_errors = tuple(rollback_errors)
         if not self.journals:
             raise ValueError("UncommittedJournalError requires at least one journal")
         names = ", ".join(repr(name) for name in self.journals)
+        recovery = (
+            "automatic rollback was incomplete"
+            if self.rollback_errors
+            else "changes were rolled back automatically"
+        )
         super().__init__(
             f"Execution ended with uncommitted rollback journal"
-            f"{'s' if len(self.journals) != 1 else ''}: {names}; "
-            "changes were rolled back automatically"
+            f"{'s' if len(self.journals) != 1 else ''}: {names}; {recovery}"
         )
 
 
