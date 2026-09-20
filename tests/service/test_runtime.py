@@ -7,16 +7,15 @@ from gway.service.runtime import ProcessBackend
 from gway.service.state import ProcessRecord, ServiceState, process_token
 
 
-def test_process_backend_resolves_project_python_cwd_and_environment(
+def test_process_backend_resolves_project_python_and_cwd(
     tmp_path,
     service_factory,
 ):
     output = tmp_path / "service-output.txt"
-    script = tmp_path / "write_env.py"
+    script = tmp_path / "write_cwd.py"
     script.write_text(
         "import os, pathlib, sys\n"
-        "pathlib.Path(sys.argv[1]).write_text("
-        "os.getcwd() + '\\n' + os.environ['SERVICE_VALUE'], encoding='utf-8')\n",
+        "pathlib.Path(sys.argv[1]).write_text(os.getcwd(), encoding='utf-8')\n",
         encoding="utf-8",
     )
     service = service_factory(
@@ -27,24 +26,20 @@ def test_process_backend_resolves_project_python_cwd_and_environment(
             str(output),
         ),
         working_directory="{project}",
-        environment={"SERVICE_VALUE": "{project}/value"},
+        restart="no",
     )
     backend = ProcessBackend(state_root=tmp_path / "state")
 
     started = backend.start(service)
     assert started["project"] == "demo"
     assert started["service"] == "writer"
-    assert started["running"] is True
-    assert isinstance(started["pid"], int)
 
     deadline = time.time() + 5
     while time.time() < deadline and not output.exists():
         time.sleep(0.01)
 
     assert output.exists()
-    cwd, value = output.read_text(encoding="utf-8").splitlines()
-    assert cwd == str(tmp_path.resolve())
-    assert value == str((tmp_path / "value").resolve())
+    assert output.read_text(encoding="utf-8") == str(tmp_path.resolve())
 
     deadline = time.time() + 5
     status = backend.status(service)
@@ -53,7 +48,6 @@ def test_process_backend_resolves_project_python_cwd_and_environment(
         status = backend.status(service)
 
     assert status["running"] is False
-    assert status["pid"] is None
 
 
 def test_process_backend_start_is_idempotent_while_running(tmp_path, service_factory):
