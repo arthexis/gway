@@ -67,6 +67,11 @@ def _script_aliases(runtime, project, command):
     return (command,) if owners == (project,) else ()
 
 
+def _main_alias(runtime, project, name):
+    """Return whether one installed project uniquely owns a package main."""
+    owners = getattr(runtime, "_main_owners", {}).get(name, ())
+    return owners == (project,)
+
 
 def _script_callable(root, command, target):
     """Resolve a project script, deferring only circular self-imports."""
@@ -119,7 +124,13 @@ def load_project_scripts(runtime, root, project):
     return wrapped
 
 
-def load_project_main_packages(runtime, root, project=None):
+def load_project_main_packages(
+    runtime,
+    root,
+    project=None,
+    *,
+    qualified=False,
+):
     """Expose conventional package __main__ entrypoints from a project tree."""
     from dataclasses import replace
 
@@ -129,9 +140,25 @@ def load_project_main_packages(runtime, root, project=None):
     wrapped = []
     for name in main_packages(root):
         module = import_project_module(root, name)
-        wrapped.extend(runtime.ingest(module, path=tuple(name.split("."))))
+        package_path = tuple(name.split("."))
+        path = (
+            (project, *package_path)
+            if qualified and project is not None
+            else package_path
+        )
+        wrapped.extend(runtime.ingest(module, path=path))
 
-        launchable = runtime.launchables.resolve(name)
+        canonical = ".".join(path)
+        operation = runtime.ops.resolve(canonical)
+        if (
+            qualified
+            and project is not None
+            and operation is not None
+            and _main_alias(runtime, project, name)
+        ):
+            runtime.ops.register_alias(name, operation)
+
+        launchable = runtime.launchables.resolve(canonical)
         if launchable is not None:
             metadata = dict(launchable.metadata)
             metadata["root"] = root
@@ -145,7 +172,6 @@ def load_project_main_packages(runtime, root, project=None):
                 )
             )
     return wrapped
-
 
 def expand_installed_project(runtime, installation, *, path=None):
     """Load one installed project's conventional execution surface once."""
@@ -168,6 +194,7 @@ def expand_installed_project(runtime, installation, *, path=None):
             runtime,
             installation.install_path,
             installation.name,
+            qualified=True,
         )
     )
     record.expanded = True
@@ -185,24 +212,48 @@ def discover_managed_projects(runtime):
         for record in records:
             discovered.setdefault(record.name, record)
 
-    from .project import project_scripts
+    from .project import main_packages, project_scripts
 
     script_owners = {}
+    main_owners = {}
     for name, record in discovered.items():
         for command in project_scripts(record.install_path):
             script_owners.setdefault(command, []).append(name)
+        for package in main_packages(record.install_path):
+            main_owners.setdefault(package, []).append(name)
+
     runtime._script_owners = {
         command: tuple(owners)
         for command, owners in script_owners.items()
     }
+    runtime._main_owners = {
+        package: tuple(owners)
+        for package, owners in main_owners.items()
+    }
 
+    project_names = set(discovered)
     for name, record in discovered.items():
-        remember_object(
+        project_record = remember_object(
             runtime,
             record,
             (name,),
             expander=expand_installed_project,
         )
+
+        for command, owners in runtime._script_owners.items():
+            if owners != (name,):
+                continue
+            if command in project_names and command != name:
+                continue
+            project_record.paths.add((command,))
+
+        for package, owners in runtime._main_owners.items():
+            if owners != (name,):
+                continue
+            parts = tuple(package.split("."))
+            if parts[0] in project_names and parts[0] != name:
+                continue
+            project_record.paths.add(parts)
 
     runtime._installed = discovered
 
@@ -210,7 +261,6 @@ def discover_managed_projects(runtime):
 
     discover_souschef(runtime, discovered.values())
     return discovered
-
 
 def bootstrap(runtime, *, start=None):
     """Discover managed and local pyproject-based execution surfaces."""
