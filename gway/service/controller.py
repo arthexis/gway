@@ -39,6 +39,7 @@ class Controller:
                 "project": service.project,
                 "service": service.name,
                 "description": service.description,
+                "launchable": service.launchable.kind,
                 "profiles": list(service.profiles),
             }
             for service in sorted(
