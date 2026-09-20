@@ -145,3 +145,45 @@ def test_systemctl_reports_progress_with_action_unit_and_scope(monkeypatch, capl
     assert "systemd daemon-reload (global) [user]: complete" in messages
     assert "systemd restart gway-demo.service [system]: starting" in messages
     assert "systemd restart gway-demo.service [system]: complete" in messages
+
+
+def test_systemctl_uses_bounded_default_timeout(monkeypatch):
+    captured = {}
+
+    def run(command, **kwargs):
+        captured["command"] = list(command)
+        captured["kwargs"] = dict(kwargs)
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd.subprocess, "run", run)
+
+    systemd._systemctl("restart", "gway-demo.service", system=True)
+
+    assert captured["command"] == ["systemctl", "restart", "gway-demo.service"]
+    assert captured["kwargs"]["timeout"] == systemd.SYSTEMCTL_TIMEOUT
+    assert systemd.SYSTEMCTL_TIMEOUT == 40.0
+
+
+def test_systemctl_timeout_propagates_without_complete_progress(monkeypatch, caplog):
+    def run(command, **kwargs):
+        raise systemd.subprocess.TimeoutExpired(
+            command,
+            kwargs["timeout"],
+        )
+
+    monkeypatch.setattr(systemd.subprocess, "run", run)
+    caplog.set_level("INFO", logger="gway")
+
+    with pytest.raises(systemd.subprocess.TimeoutExpired) as exc_info:
+        systemd._run_systemctl_operation(
+            systemd._SystemdOperation.from_call(
+                ("restart", "gway-demo.service"),
+                system=True,
+            ),
+            timeout=0.01,
+        )
+
+    assert exc_info.value.timeout == 0.01
+    messages = [record.getMessage() for record in caplog.records]
+    assert "systemd restart gway-demo.service [system]: starting" in messages
+    assert "systemd restart gway-demo.service [system]: complete" not in messages
