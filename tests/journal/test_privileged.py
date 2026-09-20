@@ -1,7 +1,6 @@
 import json
 from types import SimpleNamespace
 
-
 from gway.identity import ExecutionIdentity
 import gway.snapshot as snapshot
 
@@ -208,4 +207,7 @@ def test_unprivileged_snapshot_path_never_invokes_host_boundary(
     )
 
     assert captured["type"] == "file"
-    assert snapshot.fingerprint_path(target, identity=ExecutionIdentity())["type"] == "file"
+    assert (
+        snapshot.fingerprint_path(target, identity=ExecutionIdentity())["type"]
+        == "file"
+    )
