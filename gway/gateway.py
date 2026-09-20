@@ -143,12 +143,24 @@ class Gateway(Resolver):
                 self._finalize_execution(primary)
 
     def _finalize_execution(self, primary=None):
-        """Finalize one outermost execution.
+        """Resolve leaked journals after a successful outermost execution."""
+        if primary is not None:
+            return None
 
-        R8A establishes this boundary hook. Later R8 chunks add transaction
-        cleanup while preserving any primary execution failure.
-        """
-        return None
+        from .journal import UncommittedJournalError
+
+        open_journals = self.journal.open_names()
+        if not open_journals:
+            return None
+
+        for name in open_journals:
+            self.info(
+                "uncommitted rollback journal %r detected at execution boundary",
+                name,
+            )
+            self.journal.rollback(name)
+
+        raise UncommittedJournalError(open_journals)
 
     def _commit_journal(self, name):
         """Commit one named rollback journal and discard its rollback material."""
