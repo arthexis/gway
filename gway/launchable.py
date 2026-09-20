@@ -44,7 +44,7 @@ class Launchable:
         )
 
     @classmethod
-    def operation(cls, name, *, root=None, metadata=None):
+    def operation(cls, name, *, arguments=(), root=None, metadata=None):
         """Create a launchable that re-enters Gway through one operation."""
         parts = tuple(
             part
@@ -56,20 +56,40 @@ class Launchable:
         return cls(
             name=".".join(parts),
             kind="operation",
-            command=("{python}", "-m", "gway", *parts),
+            command=(
+                "{python}",
+                "-m",
+                "gway",
+                *parts,
+                *(str(argument) for argument in arguments),
+            ),
             root=root,
             target=".".join(parts),
             metadata={} if metadata is None else metadata,
         )
 
     @classmethod
-    def recipe(cls, path, *, name=None, root=None, metadata=None):
+    def recipe(
+        cls,
+        path,
+        *,
+        arguments=(),
+        name=None,
+        root=None,
+        metadata=None,
+    ):
         """Create a launchable that re-enters Gway through one recipe path."""
         path = Path(path).expanduser().resolve()
         return cls(
             name=name or path.stem,
             kind="recipe",
-            command=("{python}", "-m", "gway", str(path)),
+            command=(
+                "{python}",
+                "-m",
+                "gway",
+                str(path),
+                *(str(argument) for argument in arguments),
+            ),
             root=root or path.parent,
             target=path,
             metadata={} if metadata is None else metadata,
@@ -100,15 +120,36 @@ class Launchables(Mapping):
         self._items[launchable.name] = launchable
         return launchable
 
-    def operation(self, name, *, root=None, metadata=None):
+    def operation(
+        self,
+        name,
+        *,
+        arguments=(),
+        root=None,
+        metadata=None,
+    ):
         return self.register(
-            Launchable.operation(name, root=root, metadata=metadata)
+            Launchable.operation(
+                name,
+                arguments=arguments,
+                root=root,
+                metadata=metadata,
+            )
         )
 
-    def recipe(self, path, *, name=None, root=None, metadata=None):
+    def recipe(
+        self,
+        path,
+        *,
+        arguments=(),
+        name=None,
+        root=None,
+        metadata=None,
+    ):
         return self.register(
             Launchable.recipe(
                 path,
+                arguments=arguments,
                 name=name,
                 root=root,
                 metadata=metadata,
