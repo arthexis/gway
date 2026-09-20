@@ -66,7 +66,9 @@ class Filesystem:
         target = _destination(source, destination)
 
         entry = None
-        if rollback is not None:
+        if rollback is None:
+            self.runtime.debug("rollback-capable copy executed without journal")
+        else:
             entry = self.runtime.journal.prepare_path(
                 rollback,
                 operation="copy",
@@ -92,7 +94,9 @@ class Filesystem:
         target = _destination(source, destination)
 
         entry = None
-        if rollback is not None:
+        if rollback is None:
+            self.runtime.debug("rollback-capable move executed without journal")
+        else:
             entry = self.runtime.journal.prepare_paths(
                 rollback,
                 operation="move",
@@ -131,7 +135,9 @@ class Filesystem:
             raise FileExistsError(target)
 
         entry = None
-        if rollback is not None:
+        if rollback is None:
+            self.runtime.debug("rollback-capable link executed without journal")
+        else:
             entry = self.runtime.journal.prepare_path(
                 rollback,
                 operation="link",
@@ -155,7 +161,9 @@ class Filesystem:
         identity = _identity(sudo=sudo, options=options)
 
         entry = None
-        if rollback is not None:
+        if rollback is None:
+            self.runtime.debug("rollback-capable remove executed without journal")
+        else:
             entry = self.runtime.journal.prepare_path(
                 rollback,
                 operation="remove",
