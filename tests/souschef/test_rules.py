@@ -22,14 +22,14 @@ def test_job_normalizes_paths_triggers_and_default_timeout(tmp_path):
     jobs = jobs_from_data(
         {
             "project": {"name": "demo"},
-            "sous-chef": {
+            "tool": {"gway": {"sous-chef": {
                 "recover": {
                     "recipe": "recipes/recover.rx",
                     "every": "1h",
                     "watch": "config/settings.toml",
                     "down": "arthexis/web-local",
                 }
-            }
+            }}}
         },
         root=tmp_path,
     )
@@ -52,12 +52,12 @@ def test_job_allows_explicit_timeout(tmp_path):
     job = jobs_from_data(
         {
             "project": {"name": "demo"},
-            "sous-chef": {
+            "tool": {"gway": {"sous-chef": {
                 "build": {
                     "recipe": "recipes/build.rx",
                     "timeout": "5m",
                 }
-            }
+            }}}
         },
         root=tmp_path,
     )[0]
@@ -71,12 +71,12 @@ def test_down_target_remains_opaque_for_future_target_types(tmp_path):
     job = jobs_from_data(
         {
             "project": {"name": "demo"},
-            "sous-chef": {
+            "tool": {"gway": {"sous-chef": {
                 "recover": {
                     "recipe": "recover.rx",
                     "down": target,
                 }
-            }
+            }}}
         },
         root=tmp_path,
     )[0]
@@ -91,12 +91,12 @@ def test_absolute_paths_are_preserved(tmp_path):
     job = jobs_from_data(
         {
             "project": {"name": "demo"},
-            "sous-chef": {
+            "tool": {"gway": {"sous-chef": {
                 "job": {
                     "recipe": str(recipe),
                     "watch": str(watch),
                 }
-            }
+            }}}
         },
         root=tmp_path / "other",
     )[0]
@@ -121,7 +121,7 @@ def test_invalid_job_declarations_are_rejected(tmp_path, job, message):
         jobs_from_data(
             {
                 "project": {"name": "demo"},
-                "sous-chef": {"demo": job},
+                "tool": {"gway": {"sous-chef": {"demo": job},
             },
             root=tmp_path,
         )
@@ -130,19 +130,22 @@ def test_invalid_job_declarations_are_rejected(tmp_path, job, message):
 def test_sous_chef_section_must_be_a_table(tmp_path):
     with pytest.raises(ValueError, match="must be a table"):
         jobs_from_data(
-            {"project": {"name": "demo"}, "sous-chef": []},
+            {
+                "project": {"name": "demo"},
+                "tool": {"gway": {"sous-chef": []}},
+            },
             root=tmp_path,
         )
 
 
 
 def test_hyphenated_sous_chef_toml_section_loads(tmp_path):
-    manifest = tmp_path / "gway.toml"
+    manifest = tmp_path / "pyproject.toml"
     manifest.write_text(
         "[project]\n"
         "name = 'demo'\n"
         "\n"
-        "[sous-chef.cleanup]\n"
+        "[tool.gway.sous-chef.cleanup]\n"
         "recipe = 'recipes/cleanup.rx'\n"
         "every = '1h'\n"
         "timeout = '10m'\n",
