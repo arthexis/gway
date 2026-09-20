@@ -1,9 +1,6 @@
 import json
-from pathlib import Path
-import shutil
 from types import SimpleNamespace
 
-import pytest
 
 from gway.identity import ExecutionIdentity
 import gway.snapshot as snapshot
