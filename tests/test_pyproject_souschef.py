@@ -19,7 +19,7 @@ def test_sous_chef_jobs_are_discovered_from_pyproject(tmp_path):
     )
 
     runtime = SimpleNamespace()
-    jobs = discover(runtime, (), local_manifest=manifest)
+    jobs = discover(runtime, (), local_project_file=manifest)
 
     job = jobs[("demo", "nightly")]
     assert job.recipe == recipe.resolve()
@@ -43,7 +43,7 @@ def test_sous_chef_ignores_legacy_gway_toml(tmp_path):
     jobs = discover(
         runtime,
         (),
-        local_manifest=tmp_path / "pyproject.toml",
+        local_project_file=tmp_path / "pyproject.toml",
     )
 
     assert jobs == {}
