@@ -14,6 +14,7 @@ from .log import debug, error, info
 
 
 _JOURNAL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_ROLLBACK_ERROR_ATTR = "_gway_rollback_error"
 
 
 class JournalError(RuntimeError):
@@ -65,6 +66,24 @@ class RollbackError(JournalError):
             )
         details = "\n".join(f"  {failure}" for failure in self.failures)
         return f"{summary}\n{details}"
+
+
+def rollback_error_for(exception: BaseException) -> RollbackError | None:
+    """Return rollback recovery failure attached to a primary exception."""
+    value = getattr(exception, _ROLLBACK_ERROR_ATTR, None)
+    return value if isinstance(value, RollbackError) else None
+
+
+def attach_rollback_error(
+    primary: BaseException,
+    rollback_error: RollbackError,
+) -> BaseException:
+    """Attach rollback failure context while preserving the primary exception."""
+    setattr(primary, _ROLLBACK_ERROR_ATTR, rollback_error)
+    add_note = getattr(primary, "add_note", None)
+    if callable(add_note):
+        add_note(f"Rollback recovery also failed:\n{rollback_error}")
+    return primary
 
 
 class JournalState(str, Enum):
@@ -443,6 +462,18 @@ class JournalManager:
             )
 
         return self.mark_rolled_back(name, sequence)
+
+    def rollback_after_failure(
+        self,
+        name: str,
+        primary: BaseException,
+    ) -> BaseException:
+        """Attempt rollback while preserving a forward failure as primary."""
+        try:
+            self.rollback(name)
+        except RollbackError as rollback_error:
+            attach_rollback_error(primary, rollback_error)
+        return primary
 
     def rollback(self, name: str) -> None:
         """Attempt every APPLIED journal entry in LIFO order."""
