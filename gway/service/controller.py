@@ -149,7 +149,7 @@ class Controller:
 
         from ..install.backends import get as get_backend
         from ..install.paths import install_paths
-        from ..install.systemd import UnitState
+        from ..install.service_state import ServiceInstallState
 
         installation = getattr(self.gateway, "_installed", {}).get(
             definition.project
@@ -160,7 +160,7 @@ class Controller:
             else system
         )
         paths = install_paths(system=use_system)
-        records = UnitState(paths.root / "systemd").get(definition.project)
+        records = ServiceInstallState(paths.root / "services-installed").get(definition.project)
         record = next(
             (
                 current
