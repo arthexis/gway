@@ -1,9 +1,7 @@
 """Service lifecycle policy layered over generic launchables."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType
-
 from ..launchable import Launchable
 
 
@@ -17,13 +15,9 @@ class Service:
     launchable: Launchable
     description: str | None = None
     working_directory: str | None = None
-    writable_paths: tuple[str, ...] = ()
-    profiles: tuple[str, ...] = ()
-    environment: object = field(default_factory=dict)
     restart: str = "on-failure"
     attempts: int = 3
     restart_sec: float = 5.0
-    autostart: bool = False
     state_root: Path | None = None
 
     def __post_init__(self):
@@ -40,19 +34,12 @@ class Service:
             raise ValueError(f"Unsupported service restart policy: {self.restart!r}")
         if self.restart_sec < 0:
             raise ValueError("Service restart_sec cannot be negative")
-        object.__setattr__(self, "writable_paths", tuple(self.writable_paths))
-        object.__setattr__(self, "profiles", tuple(self.profiles))
         if self.state_root is not None:
             object.__setattr__(
                 self,
                 "state_root",
                 Path(self.state_root).expanduser().resolve(),
             )
-        object.__setattr__(
-            self,
-            "environment",
-            MappingProxyType(dict(self.environment)),
-        )
 
     @classmethod
     def from_launchable(cls, project, name, root, launchable, **policy):
