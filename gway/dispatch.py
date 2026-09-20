@@ -273,6 +273,7 @@ def _check_options(runtime, tokens):
     tokens = list(tokens)
     checks = []
     rollback = None
+    unless = None
     index = 1
 
     while index < len(tokens):
@@ -291,6 +292,15 @@ def _check_options(runtime, tokens):
             if index + 1 >= len(tokens):
                 raise TypeError("Expected a value after --is")
             checks.append(("is", _check_expected(runtime, tokens[index + 1]), None))
+            index += 2
+            continue
+
+        if not literal_option and option == "--unless":
+            if unless is not None:
+                raise TypeError("check accepts only one --unless condition")
+            if index + 1 >= len(tokens):
+                raise TypeError("Expected a boolean condition after --unless")
+            unless = _check_expected(runtime, tokens[index + 1])
             index += 2
             continue
 
@@ -327,14 +337,20 @@ def _check_options(runtime, tokens):
 
     if not checks:
         raise TypeError("check requires at least one assertion")
-    return checks, rollback
+    return checks, rollback, unless
 
 
 def _execute_check(runtime, tokens, result):
     """Apply atomic assertions to one result and return it unchanged."""
-    checks, rollback = _check_options(runtime, tokens)
+    checks, rollback, unless = _check_options(runtime, tokens)
 
     try:
+        if unless is not None:
+            if not isinstance(unless, bool):
+                raise CheckError("check --unless requires a boolean condition")
+            if unless:
+                return result
+
         for kind, value, detail in checks:
             if kind == "boolean":
                 if not isinstance(result, bool):
