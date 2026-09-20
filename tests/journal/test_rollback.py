@@ -1,6 +1,6 @@
 import pytest
 
-from gway.journal import JournalError, MutationState
+from gway.journal import JournalError, MutationState, RollbackError
 from gway.snapshot import DriftError
 
 
@@ -118,16 +118,18 @@ def test_whole_journal_failure_preserves_open_journal_and_applied_entry(
 
     second.write_text("external change", encoding="utf-8")
 
-    with pytest.raises(DriftError):
+    with pytest.raises(RollbackError) as raised:
         gateway.journal.rollback("deploy")
 
     journal = gateway.journal.require_open("deploy")
     assert [entry.state for entry in journal.entries] == [
-        MutationState.APPLIED,
+        MutationState.ROLLED_BACK,
         MutationState.APPLIED,
     ]
-    assert first.exists()
+    assert not first.exists()
     assert second.read_text(encoding="utf-8") == "external change"
+    assert [failure.sequence for failure in raised.value.failures] == [2]
+    assert isinstance(raised.value.failures[0].error, DriftError)
 
 
 def test_whole_journal_failure_after_later_entry_restored_preserves_progress(
@@ -144,7 +146,7 @@ def test_whole_journal_failure_after_later_entry_restored_preserves_progress(
 
     first.write_text("external change", encoding="utf-8")
 
-    with pytest.raises(DriftError):
+    with pytest.raises(RollbackError) as raised:
         gateway.journal.rollback("deploy")
 
     journal = gateway.journal.require_open("deploy")
@@ -154,6 +156,8 @@ def test_whole_journal_failure_after_later_entry_restored_preserves_progress(
     ]
     assert first.read_text(encoding="utf-8") == "external change"
     assert not second.exists()
+    assert [failure.sequence for failure in raised.value.failures] == [1]
+    assert isinstance(raised.value.failures[0].error, DriftError)
 
 
 def test_rollback_entry_rejects_non_applied_entry(gateway):
@@ -291,3 +295,40 @@ def test_rollback_entry_calls_restore_in_reverse_snapshot_order(
 
     assert restored == [str(destination), str(source)]
     assert entry.state is MutationState.ROLLED_BACK
+
+
+def test_whole_journal_collects_multiple_entry_failures_in_lifo_order(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    third = tmp_path / "third.txt"
+
+    gateway.copy(str(source), to=str(first), rollback="deploy")
+    gateway.copy(str(source), to=str(second), rollback="deploy")
+    gateway.copy(str(source), to=str(third), rollback="deploy")
+
+    first.write_text("external first", encoding="utf-8")
+    third.write_text("external third", encoding="utf-8")
+
+    with pytest.raises(RollbackError) as raised:
+        gateway.journal.rollback("deploy")
+
+    error = raised.value
+    assert error.attempted == 3
+    assert [failure.sequence for failure in error.failures] == [3, 1]
+    assert [failure.operation for failure in error.failures] == ["copy", "copy"]
+    assert all(isinstance(failure.error, DriftError) for failure in error.failures)
+
+    journal = gateway.journal.require_open("deploy")
+    assert [entry.state for entry in journal.entries] == [
+        MutationState.APPLIED,
+        MutationState.ROLLED_BACK,
+        MutationState.APPLIED,
+    ]
+    assert first.read_text(encoding="utf-8") == "external first"
+    assert not second.exists()
+    assert third.read_text(encoding="utf-8") == "external third"
