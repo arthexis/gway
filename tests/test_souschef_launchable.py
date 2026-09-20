@@ -46,21 +46,44 @@ def test_sous_chef_service_definition_wraps_existing_launchable(tmp_path):
 
 def test_sous_chef_daemon_operation_runs_in_foreground(monkeypatch):
     runtime = Gateway()
-    calls = []
+    events = []
 
-    def foreground_run(*, poll=1.0):
-        calls.append(poll)
-        return "stopped"
+    class StopAfterOneWait:
+        def __init__(self):
+            self.stopped = False
+
+        def is_set(self):
+            return self.stopped
+
+        def set(self):
+            self.stopped = True
+
+        def wait(self, poll):
+            events.append(("wait", poll))
+            self.stopped = True
+
+    class Scheduler:
+        def drain(self):
+            events.append(("drain", None))
+
+    class Engine:
+        def __init__(self, *args, **kwargs):
+            self.scheduler = Scheduler()
+
+        def evaluate(self):
+            events.append(("evaluate", None))
 
     from gway.souschef import daemon
 
-    wrapped = runtime.ops.resolve("sous.chef.daemon")
-    wrapped.__wrapped__ = foreground_run
-    monkeypatch.setattr(daemon, "run", foreground_run)
+    monkeypatch.setattr(daemon.threading, "Event", StopAfterOneWait)
+    monkeypatch.setattr(daemon, "TriggerEngine", Engine)
+    monkeypatch.setattr(daemon.signal, "signal", lambda *args: None)
 
-    # Re-register exactly as normal operation registration does; direct
-    # invocation must synchronously return the daemon function's result.
-    runtime.wrap("foreground.sous.chef", foreground_run)
+    result = runtime("sous chef daemon --poll 0.25")
 
-    assert runtime("foreground sous chef --poll 0.25") == "stopped"
-    assert calls == [0.25]
+    assert result == 0
+    assert events == [
+        ("evaluate", None),
+        ("drain", None),
+        ("wait", 0.25),
+    ]
