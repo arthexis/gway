@@ -113,7 +113,7 @@ def convert_argument(token, parameter, runtime):
     value = token_value(token)
     annotation = parameter.annotation
 
-    if literal:
+    if literal or annotation is Literal:
         return Literal(value)
 
     if isinstance(value, str) and Sigil._pattern.search(value):
