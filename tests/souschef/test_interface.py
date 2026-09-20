@@ -57,21 +57,31 @@ def test_multiword_sous_chef_path_wins_over_sous_operation(tmp_path, monkeypatch
     assert listed[0]["project"] == "demo"
 
 
-def test_builtin_sous_chef_service_is_registered(tmp_path, monkeypatch):
+def test_builtin_sous_chef_service_preset_targets_package_entrypoint(
+    tmp_path,
+    monkeypatch,
+):
     gateway = fresh_gateway(tmp_path, monkeypatch)
 
-    service = gateway("service inspect gway sous-chef")
+    service = gateway("service inspect sous chef")
 
     assert service["project"] == "gway"
     assert service["service"] == "sous-chef"
     assert service["description"] == "Gway single-worker recipe scheduler"
-    assert service["command"] == [
-        "{python}",
-        "-m",
-        "gway.souschef.daemon",
-    ]
+    assert service["launchable"] == {
+        "name": "sous.chef",
+        "kind": "operation",
+        "command": [
+            "{python}",
+            "-m",
+            "gway",
+            "sous",
+            "chef",
+        ],
+    }
     assert service["working_directory"] == "{project}"
     assert service["restart"] == "on-failure"
+    assert service["attempts"] == 3
     assert service["restart_sec"] == 5.0
 
 
@@ -81,6 +91,6 @@ def test_builtin_service_uses_gway_data_for_runtime_state(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
 
     gateway = Gateway()
-    service = gateway._services[("gway", "sous-chef")]
+    service = gateway._service_presets[("gway", "sous-chef")]
 
     assert service.state_root == (data / "services").resolve()
