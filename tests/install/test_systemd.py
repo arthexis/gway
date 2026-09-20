@@ -33,6 +33,7 @@ def test_service_install_systemd_honors_name_override(
     tmp_path,
     monkeypatch,
     fake_systemd,
+    install_environment,
 ):
     monkeypatch.chdir(tmp_path)
     units, _ = fake_systemd
@@ -49,6 +50,7 @@ def test_service_lifecycle_routes_to_installed_systemd_backend(
     tmp_path,
     monkeypatch,
     fake_systemd,
+    install_environment,
 ):
     monkeypatch.chdir(tmp_path)
     _, calls = fake_systemd
