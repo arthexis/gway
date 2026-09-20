@@ -187,3 +187,55 @@ def test_systemctl_timeout_propagates_without_complete_progress(monkeypatch, cap
     messages = [record.getMessage() for record in caplog.records]
     assert "systemd restart gway-demo.service [system]: starting" in messages
     assert "systemd restart gway-demo.service [system]: complete" not in messages
+
+
+def test_service_install_timeout_flag_reaches_each_systemd_operation(
+    tmp_path,
+    monkeypatch,
+    install_environment,
+):
+    monkeypatch.chdir(tmp_path)
+    units = tmp_path / "units"
+    observed = []
+
+    monkeypatch.setattr(systemd, "unit_root", lambda **kwargs: units)
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        observed.append((operation.action, operation.unit, check, timeout))
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+
+    Gateway()("service install --backend systemd --timeout 55 sous chef")
+
+    assert ("daemon-reload", None, True, 55.0) in observed
+    assert ("enable", "gway-sous-chef.service", True, 55.0) in observed
+
+
+def test_service_runtime_timeout_flag_reaches_action_and_status_probe(
+    tmp_path,
+    monkeypatch,
+    install_environment,
+):
+    monkeypatch.chdir(tmp_path)
+    units = tmp_path / "units"
+    observed = []
+
+    monkeypatch.setattr(systemd, "unit_root", lambda **kwargs: units)
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        observed.append((operation.action, operation.unit, check, timeout))
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+
+    runtime = Gateway()
+    runtime("service install --backend systemd sous chef")
+    observed.clear()
+
+    runtime("service restart --timeout 65 sous chef")
+
+    assert observed == [
+        ("restart", "gway-sous-chef.service", True, 65.0),
+        ("is-active", "gway-sous-chef.service", False, 65.0),
+    ]
