@@ -105,7 +105,8 @@ def capture_path(path: str | os.PathLike[str], storage: str | os.PathLike[str]) 
     """Capture one path and metadata into journal-owned storage."""
     target = Path(path)
     storage_path = Path(storage)
-    storage_path.mkdir(parents=True, exist_ok=True)
+    storage_path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    storage_path.chmod(0o700)
 
     try:
         info = target.lstat()
@@ -126,6 +127,7 @@ def capture_path(path: str | os.PathLike[str], storage: str | os.PathLike[str]) 
     if kind == "file":
         backup = storage_path / "data"
         shutil.copyfile(target, backup, follow_symlinks=False)
+        backup.chmod(0o600)
         snapshot["snapshot"] = backup.name
     elif kind == "directory":
         backup = storage_path / "tree"
