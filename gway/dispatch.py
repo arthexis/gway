@@ -414,25 +414,26 @@ def dispatch_program(
     args=(),
     kwargs=None,
 ):
-    """Execute statements without raw transfer across statement boundaries."""
-    statement_list = [list(statement) for statement in statement_list if statement]
-    if not statement_list:
-        raise ValueError("Gateway command cannot be empty")
-    if (args or kwargs) and len(statement_list) != 1:
-        raise TypeError("Native arguments require a single statement")
+    """Execute statements within one nested execution scope."""
+    with runtime.execution_scope():
+        statement_list = [list(statement) for statement in statement_list if statement]
+        if not statement_list:
+            raise ValueError("Gateway command cannot be empty")
+        if (args or kwargs) and len(statement_list) != 1:
+            raise TypeError("Native arguments require a single statement")
 
-    results = []
-    last = None
-    for index, statement in enumerate(statement_list):
-        produced, last = dispatch_pipeline(
-            runtime,
-            statement,
-            pipeline=pipeline if index == 0 else _MISSING,
-            args=args if index == 0 else (),
-            kwargs=kwargs if index == 0 else None,
-        )
-        results.extend(produced)
-    return results, last
+        results = []
+        last = None
+        for index, statement in enumerate(statement_list):
+            produced, last = dispatch_pipeline(
+                runtime,
+                statement,
+                pipeline=pipeline if index == 0 else _MISSING,
+                args=args if index == 0 else (),
+                kwargs=kwargs if index == 0 else None,
+            )
+            results.extend(produced)
+        return results, last
 
 
 def dispatch_sequence(
@@ -486,11 +487,10 @@ def dispatch(runtime, command, *args, **kwargs):
     if not tokens:
         raise ValueError("Gateway command cannot be empty")
 
-    with runtime.execution_scope():
-        _, result = dispatch_program(
-            runtime,
-            statements(tokens),
-            args=args,
-            kwargs=kwargs,
-        )
-        return result
+    _, result = dispatch_program(
+        runtime,
+        statements(tokens),
+        args=args,
+        kwargs=kwargs,
+    )
+    return result
