@@ -48,3 +48,12 @@ def host_calls(monkeypatch):
 
     monkeypatch.setattr("gway.host.subprocess.run", fake_run)
     return calls
+
+
+@pytest.fixture
+def rollback_paths(tmp_path):
+    """Return a source file and absent destination for rollback tests."""
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+    return source, destination
