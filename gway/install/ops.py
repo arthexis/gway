@@ -31,9 +31,6 @@ def install(
     force: bool = False,
     stash: bool = False,
     system: bool = False,
-    services: tuple[str, ...] = (),
-    name: str | None = None,
-    backend: str | None = None,
 ):
     """Converge one local or Git project installation toward requested state.
 
@@ -44,11 +41,6 @@ def install(
         force: Discard drift in a dirty managed installation before reconciliation.
         stash: Preserve a dirty managed installation before reconciliation.
         system: Use system-wide data and launcher locations instead of user locations.
-        services: Declared services to install as systemd units. Gway also infers
-            the singular --service form for exactly one item.
-        name: Override the backend service name when exactly one service is selected.
-        backend: Service installation backend. Omitted means preserve an existing
-            backend or use "systemd" for newly selected services.
     """
     request = InstallRequest(
         source=str(source),
@@ -57,9 +49,6 @@ def install(
         force=force,
         stash=stash,
         system=system,
-        services=services,
-        name=name,
-        backend=backend,
     )
 
     from .transaction import install_local, install_materialized
