@@ -76,3 +76,45 @@ def test_none_is_a_resolved_semantic_value(gateway):
 
 def test_literal_raise_default_is_not_internal_control_value(gateway):
     assert gateway.resolve("[missing]", default="_raise") == "_raise"
+
+
+@pytest.mark.parametrize(
+    "requested",
+    [
+        "status_code",
+        "status-code",
+        "status code",
+        "StatusCode",
+        "STATUS_CODE",
+    ],
+)
+def test_resolver_semantic_mapping_keys_ignore_case_and_separators(
+    gateway,
+    requested,
+):
+    gateway.context["Status Code"] = 200
+
+    assert gateway.resolve(f"[{requested}]") == 200
+
+
+def test_resolver_nested_mapping_path_uses_semantic_key_matching(gateway):
+    gateway.context["service"] = {
+        "Health Status": {
+            "Status-Code": 200,
+        }
+    }
+
+    assert gateway.resolve("[service health_status status_code]") == 200
+    assert gateway.resolve("[service HealthStatus STATUS-CODE]") == 200
+
+
+def test_resolver_rejects_ambiguous_semantic_mapping_keys(gateway):
+    gateway.context.update(
+        {
+            "status-code": 200,
+            "status_code": 500,
+        }
+    )
+
+    with pytest.raises(KeyError, match="ambiguous"):
+        gateway.resolve("[status code]")
