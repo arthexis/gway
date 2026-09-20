@@ -2,6 +2,7 @@ from gway.gateway import Gateway
 from gway.install.service.systemd import render
 from gway.launchable import Launchable
 from gway.service.model import Service
+from gway.service.runtime import ProcessBackend
 
 
 def service(tmp_path, **policy):
@@ -80,7 +81,7 @@ def test_service_install_overrides_retry_policy(monkeypatch):
             captured["kwargs"] = kwargs
             return ["installed"]
 
-    monkeypatch.setattr("gway.install.backends.get", lambda name: Backend)
+    monkeypatch.setattr("gway.install.service.get", lambda name: Backend)
 
     result = runtime._service_controller.install(
         "sous",
