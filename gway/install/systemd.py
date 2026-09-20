@@ -100,9 +100,9 @@ def unit_root(*, system=False, home=None):
     return home / ".config" / "systemd" / "user"
 
 
-def unit_name(project, service, *, name=None):
+def unit_name(project, service):
     """Return one safe .service unit filename."""
-    raw = name or f"{project}-{service}"
+    raw = f"{project}-{service}"
     raw = str(raw).strip()
     if raw.endswith(".service"):
         raw = raw[:-8]
