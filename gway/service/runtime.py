@@ -70,16 +70,9 @@ class ProcessBackend:
         value = service.working_directory or "{project}"
         return Path(cls._expand(service, value)).expanduser().resolve()
 
-    @classmethod
-    def _environment(cls, service):
-        environment = os.environ.copy()
-        environment.update(
-            {
-                name: cls._expand(service, value)
-                for name, value in service.environment.items()
-            }
-        )
-        return environment
+    @staticmethod
+    def _environment(service):
+        return os.environ.copy()
 
     def _state(self, service):
         root = (
@@ -92,9 +85,6 @@ class ProcessBackend:
     def _project_fingerprint(self, service):
         installation = self.installations.get(service.project)
         return getattr(installation, "fingerprint", None)
-
-    def _record(self, service):
-        return self._state(service).get(service.project, service.name)
 
     @staticmethod
     def _wait_gone(pid, timeout=5):
