@@ -124,7 +124,7 @@ def _systemctl(*args, system=False, check=True):
     )
 
 
-def render(service, *, unit, system=False):
+def render(service, *, system=False):
     """Render one Gway service launchable as a systemd unit."""
     backend = ProcessBackend()
     command = backend._supervised_command(service)
@@ -204,7 +204,7 @@ def install_units(
                 filename = unit_name(project, service.name)
             path = target_root / filename
             path.write_text(
-                render(service, unit=filename, system=system),
+                render(service, system=system),
                 encoding="utf-8",
             )
             records.append(
