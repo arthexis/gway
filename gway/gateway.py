@@ -44,6 +44,8 @@ class Gateway(Resolver):
         self.launchables = Launchables()
         self._service_presets = {}
         self._ingested = {}
+        self.execution = None
+        self.previous_execution = None
 
         from .cache import Cache, default_root
         from .journal import JournalManager
