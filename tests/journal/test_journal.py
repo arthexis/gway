@@ -65,7 +65,7 @@ def test_prepare_appends_monotonic_entries(tmp_path):
     assert [first.sequence, second.sequence, third.sequence] == [1, 2, 3]
 
 
-def test_mark_applied_requires_prepared_entry(tmp_path):
+def test_mark_applied_requires_unapplied_entry(tmp_path):
     journals = manager(tmp_path)
     journals.prepare("deploy")
 
@@ -152,7 +152,7 @@ def test_close_rolled_back_requires_no_applied_mutations(tmp_path):
     journals.prepare("deploy")
     journals.mark_applied("deploy", 1)
 
-    with pytest.raises(JournalError, match="still has applied mutations"):
+    with pytest.raises(JournalError, match="still has unresolved mutations"):
         journals.close_rolled_back("deploy")
 
     journals.mark_rolled_back("deploy", 1)
