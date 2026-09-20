@@ -89,7 +89,7 @@ def main_packages(project):
 
     discovered = {}
 
-    def walk(source_root, directory, parts=()):
+    def walk(directory, parts=()):
         try:
             children = tuple(directory.iterdir())
         except OSError:
@@ -107,11 +107,12 @@ def main_packages(project):
                     ".".join(child_parts),
                     child.resolve(),
                 )
-            walk(source_root, child, child_parts)
+            walk(child, child_parts)
 
     for source_root in roots:
-        walk(source_root, source_root)
+        walk(source_root)
     return discovered
+
 
 def import_project_module(project, name):
     """Import one module with the project's conventional source roots visible."""
