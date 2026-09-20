@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from gway.config import _valid_installation, find_manifest
+from gway.config import _valid_installation, find_project_file
 from gway.install.ops import _local_intent
 from gway.install.activation import scripts as activation_scripts
 from gway.install.source import project_name
@@ -28,7 +28,7 @@ def test_project_name_rejects_gway_toml_only_project(tmp_path):
         project_name(tmp_path)
 
 
-def test_find_manifest_prefers_pyproject(tmp_path):
+def test_find_project_file_prefers_pyproject(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text('[project]\nname = "demo"\n', encoding="utf-8")
     (tmp_path / "gway.toml").write_text(
@@ -36,7 +36,7 @@ def test_find_manifest_prefers_pyproject(tmp_path):
         encoding="utf-8",
     )
 
-    assert find_manifest(tmp_path) == pyproject
+    assert find_project_file(tmp_path) == pyproject
 
 
 def test_local_intent_recognizes_pyproject_project(tmp_path):
