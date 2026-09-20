@@ -5,8 +5,6 @@ on:
     branches:
       - gateway-rebuild
   pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
