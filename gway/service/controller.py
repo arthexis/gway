@@ -211,12 +211,12 @@ class Controller:
     def install(
         self,
         *target,
-        backend="systemd",
-        system=False,
-        name=None,
-        restart=None,
-        attempts=None,
-        restart_sec=None,
+        backend: str = "systemd",
+        system: bool = False,
+        name: str = None,
+        restart: str = None,
+        attempts: int = None,
+        restart_sec: float = None,
     ):
         """Install supervision for any resolvable Gway operation or recipe.
 
