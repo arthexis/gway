@@ -8,6 +8,75 @@ from .install.manifest import load as load_manifest
 from .install.model import validate_name
 
 
+def _source_roots(project):
+    """Return conventional import roots for one Python project."""
+    project = Path(project).expanduser().resolve()
+    roots = []
+    src = project / "src"
+    if src.is_dir():
+        roots.append(src)
+    roots.append(project)
+    return tuple(roots)
+
+
+def _module_origin(module):
+    """Return the filesystem origin of an imported module/package."""
+    path = getattr(module, "__file__", None)
+    if path is None:
+        return None
+    try:
+        return Path(path).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+
+
+def _belongs_to_roots(module, roots):
+    """Return whether an imported module belongs to one project."""
+    origin = _module_origin(module)
+    if origin is None:
+        return False
+    for root in roots:
+        try:
+            origin.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _evict_foreign_module(name, roots):
+    """Drop a cached top-level module tree owned by another project."""
+    top = name.split(".", 1)[0]
+    existing = sys.modules.get(top)
+    if existing is None or _belongs_to_roots(existing, roots):
+        return
+
+    for module_name in tuple(sys.modules):
+        if module_name == top or module_name.startswith(f"{top}."):
+            sys.modules.pop(module_name, None)
+
+
+def _import_from_project(project, name):
+    """Import a module using this project's roots, not stale global cache."""
+    roots = _source_roots(project)
+    _evict_foreign_module(name, roots)
+
+    inserted = []
+    for root in reversed(roots):
+        text = str(root)
+        if text not in sys.path:
+            sys.path.insert(0, text)
+            inserted.append(text)
+    try:
+        return import_module(name)
+    finally:
+        for text in inserted:
+            try:
+                sys.path.remove(text)
+            except ValueError:
+                pass
+
+
 def _target(value, *, command):
     if not isinstance(value, str):
         raise ValueError(
@@ -58,21 +127,9 @@ def resolve_target(project, target):
     project = Path(project).expanduser().resolve()
     module_name, attribute = target.split(":", 1)
 
-    inserted = False
-    project_text = str(project)
-    if project_text not in sys.path:
-        sys.path.insert(0, project_text)
-        inserted = True
-    try:
-        value = import_module(module_name)
-        for part in attribute.split("."):
-            value = getattr(value, part)
-    finally:
-        if inserted:
-            try:
-                sys.path.remove(project_text)
-            except ValueError:
-                pass
+    value = _import_from_project(project, module_name)
+    for part in attribute.split("."):
+        value = getattr(value, part)
 
     if not callable(value):
         raise TypeError(f"Project script target is not callable: {target}")
@@ -116,24 +173,4 @@ def main_packages(project):
 
 def import_project_module(project, name):
     """Import one module with the project's conventional source roots visible."""
-    project = Path(project).expanduser().resolve()
-    roots = []
-    src = project / "src"
-    if src.is_dir():
-        roots.append(src)
-    roots.append(project)
-
-    inserted = []
-    for root in reversed(roots):
-        text = str(root)
-        if text not in sys.path:
-            sys.path.insert(0, text)
-            inserted.append(text)
-    try:
-        return import_module(name)
-    finally:
-        for text in inserted:
-            try:
-                sys.path.remove(text)
-            except ValueError:
-                pass
+    return _import_from_project(project, name)
