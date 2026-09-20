@@ -486,10 +486,11 @@ def dispatch(runtime, command, *args, **kwargs):
     if not tokens:
         raise ValueError("Gateway command cannot be empty")
 
-    _, result = dispatch_program(
-        runtime,
-        statements(tokens),
-        args=args,
-        kwargs=kwargs,
-    )
-    return result
+    with runtime.execution_scope():
+        _, result = dispatch_program(
+            runtime,
+            statements(tokens),
+            args=args,
+            kwargs=kwargs,
+        )
+        return result
