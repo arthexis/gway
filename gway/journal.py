@@ -88,15 +88,33 @@ class RollbackError(JournalError):
         return f"{summary}\n{details}"
 
 
-def rollback_error_for(exception: BaseException) -> RollbackError | None:
+class RollbackRecoveryError(JournalError):
+    """Aggregate rollback failures spanning multiple journals."""
+
+    def __init__(self, errors):
+        self.errors = tuple(errors)
+        if not self.errors:
+            raise ValueError("RollbackRecoveryError requires at least one error")
+        self.journals = tuple(error.journal for error in self.errors)
+        details = "\n".join(f"  {error}" for error in self.errors)
+        super().__init__(
+            f"Rollback recovery incomplete for {len(self.errors)} journals:\n{details}"
+        )
+
+
+def rollback_error_for(
+    exception: BaseException,
+) -> RollbackError | RollbackRecoveryError | None:
     """Return rollback recovery failure attached to a primary exception."""
     value = getattr(exception, _ROLLBACK_ERROR_ATTR, None)
-    return value if isinstance(value, RollbackError) else None
+    if isinstance(value, (RollbackError, RollbackRecoveryError)):
+        return value
+    return None
 
 
 def attach_rollback_error(
     primary: BaseException,
-    rollback_error: RollbackError,
+    rollback_error: RollbackError | RollbackRecoveryError,
 ) -> BaseException:
     """Attach rollback failure context while preserving the primary exception."""
     setattr(primary, _ROLLBACK_ERROR_ATTR, rollback_error)
