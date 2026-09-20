@@ -1,4 +1,4 @@
-"""Systemd unit materialization for declared Gway services."""
+"""Systemd unit materialization for Gway service launchables."""
 
 from dataclasses import asdict, dataclass
 import json
@@ -125,16 +125,10 @@ def _systemctl(*args, system=False, check=True):
 
 
 def render(service, *, unit, system=False):
-    """Render one declared Gway service as a systemd unit."""
+    """Render one Gway service launchable as a systemd unit."""
     backend = ProcessBackend()
     command = backend._supervised_command(service)
     cwd = backend._cwd(service)
-    environment = backend._environment(service)
-    declared_environment = {
-        key: environment[key]
-        for key in service.environment
-    }
-
     lines = [
         "[Unit]",
         f"Description={service.description or service.project + '/' + service.name}",
@@ -144,10 +138,6 @@ def render(service, *, unit, system=False):
         f"WorkingDirectory={cwd}",
         "ExecStart=" + " ".join(shlex.quote(part) for part in command),
     ]
-    for key, value in sorted(declared_environment.items()):
-        escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
-        lines.append(f'Environment="{key}={escaped}"')
-
     lines.append("Restart=no")
 
     lines.extend([
@@ -165,13 +155,10 @@ def install_units(
     *,
     state_root,
     system=False,
-    name=None,
     root=None,
 ):
     """Write and enable selected service units, replacing prior mappings."""
     services = list(services)
-    if name is not None and len(services) != 1:
-        raise ValueError("--name requires exactly one selected service")
 
     target_root = unit_root(system=system) if root is None else Path(root)
     target_root.mkdir(parents=True, exist_ok=True)
@@ -211,9 +198,7 @@ def install_units(
 
         for service in services:
             previous_record = previous.get(service.name)
-            if name is not None:
-                filename = unit_name(project, service.name, name=name)
-            elif previous_record is not None:
+            if previous_record is not None:
                 filename = previous_record.unit
             else:
                 filename = unit_name(project, service.name)
