@@ -189,6 +189,35 @@ class JournalManager:
         self._persist(journal)
         return entry
 
+    def prepare_path(
+        self,
+        name: str,
+        *,
+        operation: str,
+        path: str | Path,
+    ) -> JournalEntry:
+        """Prepare one filesystem mutation by capturing a single path."""
+        from .snapshot import capture_path
+
+        entry = self.prepare(
+            name,
+            kind="filesystem",
+            data={
+                "operation": operation,
+                "path": str(path),
+            },
+        )
+        storage = self.entry_storage(name, entry.sequence)
+        snapshot = capture_path(path, storage)
+        return self.update_entry_data(
+            name,
+            entry.sequence,
+            {
+                "operation": operation,
+                "paths": [snapshot],
+            },
+        )
+
     def update_entry_data(
         self,
         name: str,
