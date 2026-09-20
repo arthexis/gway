@@ -1,5 +1,6 @@
 # file: gway/gateway.py
 
+from contextlib import contextmanager
 import inspect
 import threading
 
@@ -49,6 +50,7 @@ class Gateway(Resolver):
 
         self.cache = cache if isinstance(cache, Cache) else Cache(cache)
         self.journal = JournalManager(default_root() / "rollback")
+        self._execution_depth = 0
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
@@ -118,6 +120,35 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    @property
+    def execution_depth(self):
+        """Return the current nested GWay execution depth."""
+        return self._execution_depth
+
+    @contextmanager
+    def execution_scope(self):
+        """Own one nested execution scope and finalize only at the outer boundary."""
+        outermost = self._execution_depth == 0
+        self._execution_depth += 1
+        primary = None
+        try:
+            yield outermost
+        except BaseException as exception:
+            primary = exception
+            raise
+        finally:
+            self._execution_depth -= 1
+            if outermost:
+                self._finalize_execution(primary)
+
+    def _finalize_execution(self, primary=None):
+        """Finalize one outermost execution.
+
+        R8A establishes this boundary hook. Later R8 chunks add transaction
+        cleanup while preserving any primary execution failure.
+        """
+        return None
 
     def _commit_journal(self, name):
         """Commit one named rollback journal and discard its rollback material."""
