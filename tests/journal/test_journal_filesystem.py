@@ -164,7 +164,10 @@ def test_entry_storage_is_scoped_to_journal_mutation(tmp_path):
     assert journals.entry_storage("deploy", second.sequence).name == "000002"
 
 
-@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO unsupported on this platform")
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo"),
+    reason="FIFO unsupported on this platform",
+)
 def test_capture_rejects_unsupported_filesystem_object(tmp_path):
     path = tmp_path / "pipe"
     os.mkfifo(path)
