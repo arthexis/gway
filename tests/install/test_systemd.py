@@ -82,3 +82,31 @@ def test_unknown_service_backend_fails_without_state(
         install_environment.data / "services-installed"
     )
     assert state.get("gway") == []
+
+
+def test_systemd_service_install_preserves_other_named_instances(
+    tmp_path,
+    monkeypatch,
+    fake_systemd,
+    install_environment,
+):
+    monkeypatch.chdir(tmp_path)
+    units, _ = fake_systemd
+    runtime = Gateway()
+
+    runtime("service install --backend systemd --name first sous chef")
+    runtime("service install --backend systemd --name second sous chef")
+
+    assert (units / "gway-first.service").is_file()
+    assert (units / "gway-second.service").is_file()
+
+    state = ServiceInstallState(
+        install_environment.data / "services-installed"
+    )
+    assert [
+        (record.service, record.backend)
+        for record in state.get("gway")
+    ] == [
+        ("first", "systemd"),
+        ("second", "systemd"),
+    ]
