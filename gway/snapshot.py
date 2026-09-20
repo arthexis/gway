@@ -8,11 +8,12 @@ import os
 from pathlib import Path
 import shutil
 import stat
-import tempfile
 import sys
+import tempfile
 from typing import Any
 
 from .host import run_as_identity
+from .log import debug
 
 
 class SnapshotError(RuntimeError):
@@ -386,7 +387,13 @@ def capture_path(
 ) -> dict[str, Any]:
     """Capture one path, falling back to its execution identity when required."""
     if identity is None or not identity.privileged:
+        debug("transaction snapshot capture path=%s identity=local", path)
         return _capture_local(path, storage)
+    debug(
+        "transaction snapshot capture path=%s identity=%s",
+        path,
+        identity.user,
+    )
     return _capture_as_identity(path, storage, identity)
 
 
@@ -449,12 +456,18 @@ def restore_path(
 ) -> Path:
     """Restore one captured path under an optional execution identity."""
     if identity is not None and identity.privileged:
+        debug(
+            "transaction restore path=%s identity=%s",
+            snapshot["path"],
+            identity.user,
+        )
         return _restore_as_identity(
             snapshot,
             storage,
             identity,
             expected=expected,
         )
+    debug("transaction restore path=%s identity=local", snapshot["path"])
     return _restore_local(snapshot, storage, expected=expected)
 
 
