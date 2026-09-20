@@ -94,3 +94,45 @@ def test_service_install_overrides_retry_policy(monkeypatch):
     assert installed.restart == "always"
     assert installed.attempts == 6
     assert installed.restart_sec == 1.5
+
+
+def test_process_backend_wraps_command_with_retry_supervisor(tmp_path):
+    definition = service(tmp_path)
+    command = __import__(
+        "gway.service.runtime",
+        fromlist=["ProcessBackend"],
+    ).ProcessBackend._supervised_command(definition)
+
+    assert command[:4] == [
+        command[0],
+        "-m",
+        "gway.service.supervisor",
+        "--restart",
+    ]
+    assert command[4:10] == [
+        "on-failure",
+        "--attempts",
+        "3",
+        "--restart-sec",
+        "5.0",
+        "--",
+    ]
+    assert command[-4:] == [
+        "-m",
+        "gway",
+        "demo",
+        "worker",
+    ]
+
+
+def test_process_backend_can_disable_retries(tmp_path):
+    definition = service(
+        tmp_path,
+        restart="no",
+        attempts=3,
+    )
+    from gway.service.runtime import ProcessBackend
+
+    assert ProcessBackend._supervised_command(definition) == (
+        ProcessBackend._command(definition)
+    )
