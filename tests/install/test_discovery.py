@@ -28,6 +28,7 @@ def test_fresh_gateway_discovers_managed_user_installation(
 
 
 def test_installed_project_expands_project_script_lazily(
+    install_environment,
     gateway,
     make_project,
     tmp_path,
@@ -93,6 +94,7 @@ def test_discovery_skips_stale_or_unsafe_installation_records(
 
 
 def test_user_installation_wins_over_system_installation(
+    install_environment,
     gateway,
     make_project,
     tmp_path,
@@ -122,6 +124,7 @@ def test_user_installation_wins_over_system_installation(
 
 
 def test_uninstall_removes_project_from_future_gateway_bootstrap(
+    install_environment,
     gateway,
     make_project,
     tmp_path,
@@ -146,6 +149,7 @@ def test_uninstall_removes_project_from_future_gateway_bootstrap(
 
 
 def test_system_installation_remains_discoverable_after_user_uninstall(
+    install_environment,
     gateway,
     make_project,
     tmp_path,
