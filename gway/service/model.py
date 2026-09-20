@@ -62,6 +62,17 @@ class Service:
             MappingProxyType(dict(self.environment)),
         )
 
+    @classmethod
+    def from_launchable(cls, project, name, root, launchable, **policy):
+        """Attach service lifecycle policy to an existing launchable."""
+        return cls(
+            project=project,
+            name=name,
+            root=root,
+            launchable=launchable,
+            **policy,
+        )
+
     @property
     def identity(self):
         """Return the durable project/service identity."""
