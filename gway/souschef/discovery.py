@@ -1,6 +1,6 @@
 """Discovery of Sous Chef jobs from standard project metadata."""
 
-from .project_file import load
+from .manifest import load
 
 
 def declares_jobs(project_file):
