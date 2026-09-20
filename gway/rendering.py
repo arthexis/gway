@@ -9,7 +9,6 @@ import uuid
 from .binding import Literal
 from .host import run_as_identity
 from .identity import execution_identity
-from .snapshot import capture_path
 from .recipes import _recipe_base as recipe_base
 
 
@@ -166,26 +165,10 @@ class Renderer:
 
         entry = None
         if rollback is not None:
-            entry = self.runtime.journal.prepare(
+            entry = self.runtime.journal.prepare_path(
                 rollback,
-                kind="filesystem",
-                data={
-                    "operation": "render",
-                    "path": str(destination),
-                },
-            )
-            storage = self.runtime.journal.entry_storage(
-                rollback,
-                entry.sequence,
-            )
-            snapshot = capture_path(destination, storage)
-            self.runtime.journal.update_entry_data(
-                rollback,
-                entry.sequence,
-                {
-                    "operation": "render",
-                    "paths": [snapshot],
-                },
+                operation="render",
+                path=destination,
             )
 
         result = atomic_write_text(
