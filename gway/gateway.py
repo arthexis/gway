@@ -82,6 +82,19 @@ class Gateway(Resolver):
         from .ingestion.python import ingest_module
 
         ingest_module(self, builtin, transparent=True)
+
+        from .filesystem import Filesystem
+        from .rendering import Renderer
+
+        self._filesystem = Filesystem(self)
+        self.copy = self.wrap("copy", self._filesystem.copy)
+        self.move = self.wrap("move", self._filesystem.move)
+        self.link = self.wrap("link", self._filesystem.link)
+        self.remove = self.wrap("remove", self._filesystem.remove)
+
+        self._renderer = Renderer(self)
+        self.render = self.wrap("render", self._renderer.render)
+
         self.clear = self.wrap("clear", self._clear_context)
         self.help = self.wrap("help", self._help)
 
