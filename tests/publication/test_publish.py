@@ -58,3 +58,11 @@ def test_generic_mapping_result_is_merged_into_context(gateway):
 
     assert gateway.results["charger"] is result
     assert gateway.context["serial"] == "CHG001"
+
+
+def test_subjectless_mapping_result_is_merged_into_context(gateway):
+    result = {"Status Code": 200}
+
+    assert publish(gateway, None, result) is result
+    assert gateway.results[-1] is result
+    assert gateway.context["Status Code"] == 200
