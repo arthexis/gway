@@ -1,7 +1,6 @@
 import pytest
 
 from gway import Gateway
-from gway.launchable import Launchable
 from gway.service.model import Service
 
 
