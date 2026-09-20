@@ -167,3 +167,67 @@ class Launchables(Mapping):
 
     def __len__(self):
         return len(self._items)
+
+
+def _canonical_operation_launchable(runtime, resolution):
+    """Return the registered launchable that owns one resolved callable."""
+    path = getattr(resolution.callable, "__gway_path__", None)
+    if path:
+        found = runtime.launchables.resolve(".".join(path))
+        if found is not None:
+            return found
+
+    candidate = str(resolution.candidate).replace(" ", ".")
+    found = runtime.launchables.resolve(candidate)
+    if found is not None:
+        return found
+
+    operation = getattr(resolution.callable, "__gway_operation__", None)
+    subject = getattr(resolution.callable, "__gway_subject__", None)
+    for launchable in runtime.launchables.values():
+        metadata = launchable.metadata
+        if launchable.kind != "operation":
+            continue
+        if metadata.get("operation") != operation:
+            continue
+        if metadata.get("subject") != subject:
+            continue
+        return launchable
+    return None
+
+
+def resolve_launchable(runtime, target):
+    """Resolve an operation or recipe invocation without executing it."""
+    from .dispatch import resolve_operation
+    from .recipes import recipe_path
+    from .tokens import token_value, tokenize
+
+    tokens = tokenize(target) if isinstance(target, str) else list(target)
+    if not tokens:
+        raise ValueError("Service target cannot be empty")
+
+    first = token_value(tokens[0])
+    recipe = recipe_path(runtime, first, allow_bare=True)
+    if recipe is not None and recipe.is_file():
+        return Launchable.recipe(
+            recipe,
+            arguments=tuple(token_value(item) for item in tokens[1:]),
+            metadata={"recipe": str(recipe.resolve())},
+        )
+
+    resolution = resolve_operation(runtime, tokens)
+    base = _canonical_operation_launchable(runtime, resolution)
+    if base is None:
+        raise LookupError(
+            f"Resolved operation has no launchable: {resolution.candidate}"
+        )
+
+    arguments = tuple(token_value(item) for item in resolution.arguments)
+    if not arguments:
+        return base
+    return Launchable.operation(
+        base.name,
+        arguments=arguments,
+        root=base.root,
+        metadata=dict(base.metadata),
+    )
