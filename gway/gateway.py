@@ -143,14 +143,21 @@ class Gateway(Resolver):
                 self._finalize_execution(primary)
 
     def _finalize_execution(self, primary=None):
-        """Resolve leaked journals after a successful outermost execution."""
-        if primary is not None:
-            return None
-
+        """Resolve open journals at the outermost execution boundary."""
         from .journal import UncommittedJournalError
 
         open_journals = self.journal.open_names()
         if not open_journals:
+            return None
+
+        if primary is not None:
+            for name in open_journals:
+                self.info(
+                    "execution failed with open rollback journal %r; "
+                    "rolling back automatically",
+                    name,
+                )
+                self.journal.rollback_after_failure(name, primary)
             return None
 
         rollback_errors = []
