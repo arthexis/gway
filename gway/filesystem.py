@@ -113,6 +113,9 @@ class Filesystem:
             if target.is_symlink() and target.resolve() == source.resolve():
                 return target
 
+        if target.exists() or target.is_symlink():
+            raise FileExistsError(target)
+
         entry = None
         if rollback is not None:
             entry = self.runtime.journal.prepare_path(
