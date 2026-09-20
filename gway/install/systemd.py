@@ -5,7 +5,7 @@ import shlex
 import subprocess
 
 from ..service.runtime import ProcessBackend
-from .service_state import ServiceInstallRecord, ServiceInstallState
+from .servicestate import ServiceInstallRecord, ServiceInstallState
 
 
 def unit_root(*, system=False, home=None):
