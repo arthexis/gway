@@ -20,6 +20,53 @@ class JournalError(RuntimeError):
     """Base error for rollback journal lifecycle violations."""
 
 
+@dataclass(frozen=True)
+class RollbackFailure:
+    """One failed journal entry restoration with its original exception."""
+
+    journal: str
+    sequence: int
+    operation: str | None
+    error: BaseException
+
+    def __str__(self) -> str:
+        operation = self.operation or "unknown"
+        return f"entry {self.sequence} {operation}: {self.error}"
+
+
+class RollbackError(JournalError):
+    """Aggregate error describing an incomplete rollback attempt."""
+
+    def __init__(
+        self,
+        journal: str,
+        failures: list[RollbackFailure] | tuple[RollbackFailure, ...],
+        *,
+        attempted: int | None = None,
+    ) -> None:
+        self.journal = str(journal)
+        self.failures = tuple(failures)
+        self.attempted = attempted
+        if not self.failures:
+            raise ValueError("RollbackError requires at least one failure")
+        super().__init__(self._message())
+
+    def _message(self) -> str:
+        failed = len(self.failures)
+        if self.attempted is None:
+            summary = (
+                f"Rollback journal {self.journal!r} incomplete: "
+                f"{failed} entr{'y' if failed == 1 else 'ies'} failed"
+            )
+        else:
+            summary = (
+                f"Rollback journal {self.journal!r} incomplete: "
+                f"{failed} of {self.attempted} entries failed"
+            )
+        details = "\n".join(f"  {failure}" for failure in self.failures)
+        return f"{summary}\n{details}"
+
+
 class JournalState(str, Enum):
     """Lifecycle state for one named rollback journal."""
 
