@@ -10,6 +10,9 @@ from ...service.runtime import ProcessBackend
 from .state import ServiceInstallRecord, ServiceInstallState
 
 
+SYSTEMCTL_TIMEOUT = 40.0
+
+
 def unit_root(*, system=False, home=None):
     """Return the systemd unit directory for one installation scope."""
     if system:
@@ -69,7 +72,12 @@ class _SystemdOperation:
         )
 
 
-def _run_systemctl_operation(operation, *, check=True):
+def _run_systemctl_operation(
+    operation,
+    *,
+    check=True,
+    timeout=SYSTEMCTL_TIMEOUT,
+):
     scope = "system" if operation.system else "user"
     target = operation.unit or "(global)"
     gway_log.info(
@@ -83,6 +91,7 @@ def _run_systemctl_operation(operation, *, check=True):
         check=check,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        timeout=timeout,
     )
     gway_log.info(
         "systemd %s %s [%s]: complete",
