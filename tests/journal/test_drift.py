@@ -15,7 +15,7 @@ def _guarded_restore(gateway, entry, name="deploy"):
     expected = entry.data["expected"][0]
     return restore_path(
         snapshot,
-        gateway.journal.entry_storage(name, entry.sequence),
+        gateway.journal.entry_storage(name, entry.sequence) / snapshot["storage"],
         expected=expected,
     )
 
