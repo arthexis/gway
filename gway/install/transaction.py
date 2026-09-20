@@ -287,18 +287,6 @@ def install_materialized(
             except Exception:
                 launcher.rollback()
                 raise
-            try:
-                _converge_services(
-                request,
-                selected,
-                name,
-                destination,
-                installation=stored,
-            )
-            except Exception:
-                registry.put(existing)
-                launcher.rollback()
-                raise
             launcher.commit()
             return stored
 
