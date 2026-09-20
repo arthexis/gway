@@ -332,3 +332,93 @@ def test_whole_journal_collects_multiple_entry_failures_in_lifo_order(
     assert first.read_text(encoding="utf-8") == "external first"
     assert not second.exists()
     assert third.read_text(encoding="utf-8") == "external third"
+
+
+def test_incomplete_rollback_preserves_snapshot_material_for_retry(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+
+    gateway.copy(str(source), to=str(first), rollback="deploy")
+    gateway.copy(str(source), to=str(second), rollback="deploy")
+
+    journal_dir = gateway.journal._directory("deploy")
+    second_storage = gateway.journal.entry_storage("deploy", 2)
+    second.write_text("external change", encoding="utf-8")
+
+    with pytest.raises(RollbackError):
+        gateway.journal.rollback("deploy")
+
+    assert journal_dir.exists()
+    assert second_storage.exists()
+    assert gateway.journal.require_open("deploy").entries[1].state is MutationState.APPLIED
+
+
+def test_retry_only_attempts_unresolved_entries_and_closes_when_complete(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+
+    gateway.copy(str(source), to=str(first), rollback="deploy")
+    gateway.copy(str(source), to=str(second), rollback="deploy")
+
+    second.write_text("external change", encoding="utf-8")
+
+    with pytest.raises(RollbackError):
+        gateway.journal.rollback("deploy")
+
+    journal = gateway.journal.require_open("deploy")
+    assert [entry.state for entry in journal.entries] == [
+        MutationState.ROLLED_BACK,
+        MutationState.APPLIED,
+    ]
+
+    original = gateway.journal.rollback_entry
+    attempted = []
+
+    def record_attempt(name, sequence):
+        attempted.append(sequence)
+        return original(name, sequence)
+
+    monkeypatch.setattr(gateway.journal, "rollback_entry", record_attempt)
+
+    second.write_text("source", encoding="utf-8")
+    gateway.journal.rollback("deploy")
+
+    assert attempted == [2]
+    assert gateway.journal.get("deploy") is None
+    assert not first.exists()
+    assert not second.exists()
+
+
+def test_retry_error_attempt_count_only_includes_unresolved_entries(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+
+    gateway.copy(str(source), to=str(first), rollback="deploy")
+    gateway.copy(str(source), to=str(second), rollback="deploy")
+
+    second.write_text("external change", encoding="utf-8")
+
+    with pytest.raises(RollbackError):
+        gateway.journal.rollback("deploy")
+
+    with pytest.raises(RollbackError) as retry:
+        gateway.journal.rollback("deploy")
+
+    assert retry.value.attempted == 1
+    assert [failure.sequence for failure in retry.value.failures] == [2]
