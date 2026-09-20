@@ -97,6 +97,8 @@ class Gateway(Resolver):
         self._renderer = Renderer(self)
         self.render = self.wrap("render", self._renderer.render)
 
+        self.commit = self.wrap("commit", self._commit_journal)
+        self.rollback = self.wrap("rollback", self._rollback_journal)
         self.clear = self.wrap("clear", self._clear_context)
         self.help = self.wrap("help", self._help)
 
@@ -116,6 +118,18 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    def _commit_journal(self, name):
+        """Commit one named rollback journal and discard its rollback material."""
+        self.journal.commit(name)
+        self.info("committed rollback journal %r", name)
+        return name
+
+    def _rollback_journal(self, name):
+        """Roll back one named journal and discard it after full success."""
+        self.journal.rollback(name)
+        self.info("rolled back journal %r", name)
+        return name
 
     def _clear_context(self, **values):
         """Clear accumulated semantic context.
