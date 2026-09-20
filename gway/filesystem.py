@@ -58,18 +58,30 @@ class Filesystem:
     def __init__(self, runtime):
         self.runtime = runtime
 
-    def copy(self, source, to, sudo=False, **options):
+    def copy(self, source, to, sudo=False, rollback=None, **options):
         """Copy a file or directory to another path."""
         source = _path(self.runtime, source)
         destination = _path(self.runtime, to)
         identity = _identity(sudo=sudo, options=options)
+        target = _destination(source, destination)
+
+        entry = None
+        if rollback is not None:
+            entry = self.runtime.journal.prepare_path(
+                rollback,
+                operation="copy",
+                path=target,
+            )
 
         if not identity.privileged:
-            return _copy_local(source, destination)
+            result = _copy_local(source, destination)
+        else:
+            run_as_identity(identity, "cp", "-a", source, target)
+            result = target
 
-        target = _destination(source, destination)
-        run_as_identity(identity, "cp", "-a", source, target)
-        return target
+        if entry is not None:
+            self.runtime.journal.mark_applied(rollback, entry.sequence)
+        return result
 
     def move(self, source, to, sudo=False, **options):
         """Move a file or directory to another path."""
@@ -84,7 +96,7 @@ class Filesystem:
         run_as_identity(identity, "mv", source, target)
         return target
 
-    def link(self, source, to, sudo=False, **options):
+    def link(self, source, to, sudo=False, rollback=None, **options):
         """Create a symbolic link to an existing source."""
         source = _path(self.runtime, source)
         destination = _path(self.runtime, to)
@@ -94,24 +106,53 @@ class Filesystem:
         if not identity.privileged:
             if not source.exists():
                 raise FileNotFoundError(source)
-            return _link_local(source, destination)
+            if target.is_symlink() and target.resolve() == source.resolve():
+                return target
+        else:
+            run_as_identity(identity, "test", "-e", source)
+            if target.is_symlink() and target.resolve() == source.resolve():
+                return target
 
-        run_as_identity(identity, "test", "-e", source)
-        if target.is_symlink() and target.resolve() == source.resolve():
-            return target
-        run_as_identity(identity, "ln", "-s", source, target)
-        return target
+        entry = None
+        if rollback is not None:
+            entry = self.runtime.journal.prepare_path(
+                rollback,
+                operation="link",
+                path=target,
+            )
 
-    def remove(self, path, sudo=False, **options):
+        if not identity.privileged:
+            result = _link_local(source, destination)
+        else:
+            run_as_identity(identity, "ln", "-s", source, target)
+            result = target
+
+        if entry is not None:
+            self.runtime.journal.mark_applied(rollback, entry.sequence)
+        return result
+
+    def remove(self, path, sudo=False, rollback=None, **options):
         """Remove a file, symlink, or empty directory."""
         path = _path(self.runtime, path)
         identity = _identity(sudo=sudo, options=options)
 
-        if not identity.privileged:
-            return _remove_local(path)
+        entry = None
+        if rollback is not None:
+            entry = self.runtime.journal.prepare_path(
+                rollback,
+                operation="remove",
+                path=path,
+            )
 
-        if path.is_dir() and not path.is_symlink():
-            run_as_identity(identity, "rmdir", path)
+        if not identity.privileged:
+            result = _remove_local(path)
         else:
-            run_as_identity(identity, "rm", "-f", path)
-        return path
+            if path.is_dir() and not path.is_symlink():
+                run_as_identity(identity, "rmdir", path)
+            else:
+                run_as_identity(identity, "rm", "-f", path)
+            result = path
+
+        if entry is not None:
+            self.runtime.journal.mark_applied(rollback, entry.sequence)
+        return result
