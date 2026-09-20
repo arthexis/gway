@@ -1,7 +1,7 @@
 """Portable Gway-managed service installation backend."""
 
 from ..service.runtime import ProcessBackend
-from .systemd import UnitRecord, UnitState
+from .service_state import ServiceInstallRecord, ServiceInstallState
 
 
 BACKEND = "process"
@@ -18,7 +18,7 @@ def install_units(
     """Persist process-backed service ownership without starting services."""
     services = list(services)
 
-    state = UnitState(state_root)
+    state = ServiceInstallState(state_root)
     previous_all = state.get(project)
     previous = {
         record.service: record
@@ -35,15 +35,15 @@ def install_units(
     for service in services:
         previous_record = previous.get(service.name)
         runtime_name = (
-            previous_record.unit
+            previous_record.backend_id
             if previous_record is not None
             else service.name
         )
         records.append(
-            UnitRecord(
+            ServiceInstallRecord(
                 project=project,
                 service=service.name,
-                unit=runtime_name,
+                backend_id=runtime_name,
                 system=system,
                 backend=BACKEND,
                 restart=service.restart,
@@ -68,7 +68,7 @@ def uninstall_units(
     process_state_root=None,
 ):
     """Stop and remove process-backed service ownership records."""
-    state = UnitState(state_root)
+    state = ServiceInstallState(state_root)
     all_records = state.get(project)
     records = (
         [record for record in all_records if record.backend == BACKEND]
@@ -88,11 +88,11 @@ def uninstall_units(
         if service is not None:
             backend.stop(service)
 
-    removed = {(record.backend, record.service, record.unit) for record in records}
+    removed = {(record.backend, record.service, record.backend_id) for record in records}
     remaining = [
         record
         for record in all_records
-        if (record.backend, record.service, record.unit) not in removed
+        if (record.backend, record.service, record.backend_id) not in removed
     ]
     state.put(project, remaining)
     return records
