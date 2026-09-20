@@ -1,6 +1,8 @@
 import pytest
 
 from gway import Gateway
+from gway.launchable import Launchable
+from gway.service.model import Service
 
 
 class FakeBackend:
@@ -8,7 +10,7 @@ class FakeBackend:
         self.calls = []
 
     def _result(self, action, service):
-        self.calls.append((action, service.identity))
+        self.calls.append((action, service.identity, service.launchable.name))
         return {
             "project": service.project,
             "service": service.name,
@@ -29,97 +31,82 @@ class FakeBackend:
 
 
 @pytest.fixture
-def service_gateway(service_factory):
+def service_gateway():
     gateway = Gateway()
-    alpha = service_factory(
-        "worker",
-        project="arthexis",
-        command=("{python}", "-m", "worker"),
-        description="Worker",
-        profiles=("Control",),
-    )
-    beta = service_factory(
-        "beat",
-        project="arthexis",
-        command=("{python}", "-m", "beat"),
-        description="Beat",
-    )
-    gateway._services = {
-        alpha.identity: alpha,
-        beta.identity: beta,
-    }
+    gateway.wrap("worker", lambda: "worked")
     backend = FakeBackend()
     gateway._service_controller.backend = backend
     return gateway, backend
 
 
-def test_service_list_uses_project_owned_identity(service_gateway):
-    gateway, _ = service_gateway
+def test_service_list_contains_named_presets():
+    gateway = Gateway()
 
-    assert gateway("service list") == [
-        {
-            "project": "arthexis",
-            "service": "beat",
-            "description": "Beat",
-            "profiles": [],
-        },
-        {
-            "project": "arthexis",
-            "service": "worker",
-            "description": "Worker",
-            "profiles": ["Control"],
-        },
-    ]
-
-
-def test_service_list_can_filter_one_project(service_gateway, service_factory):
-    gateway, _ = service_gateway
-    other = service_factory(
-        "worker",
-        project="wire",
-        command=("{python}", "-m", "worker"),
-    )
-    gateway._services[other.identity] = other
-
-    listed = gateway("service list --project wire")
+    listed = gateway("service list")
 
     assert listed == [
         {
-            "project": "wire",
-            "service": "worker",
-            "description": None,
-            "profiles": [],
+            "project": "gway",
+            "service": "sous-chef",
+            "description": "Gway single-worker recipe scheduler",
+            "launchable": "operation",
+            "target": "sous.chef",
         }
     ]
 
 
-def test_service_inspect_returns_normalized_definition(service_gateway):
+def test_service_list_can_filter_presets_by_project():
+    gateway = Gateway()
+    gateway.wrap("demo worker", lambda: None)
+    launchable = gateway.launchables["demo.worker"]
+    preset = Service.from_launchable(
+        "demo",
+        "worker",
+        launchable.root or ".",
+        launchable,
+        description="Demo worker",
+    )
+    gateway._service_presets[preset.identity] = preset
+
+    assert gateway("service list --project demo") == [
+        {
+            "project": "demo",
+            "service": "worker",
+            "description": "Demo worker",
+            "launchable": "operation",
+            "target": "demo.worker",
+        }
+    ]
+
+
+def test_service_inspect_materializes_policy_for_any_operation(service_gateway):
     gateway, _ = service_gateway
 
-    inspected = gateway("service inspect arthexis worker")
+    inspected = gateway("service inspect worker")
 
-    assert inspected["project"] == "arthexis"
+    assert inspected["project"] == "gway"
     assert inspected["service"] == "worker"
-    assert inspected["command"] == ["{python}", "-m", "worker"]
-    assert inspected["profiles"] == ["Control"]
+    assert inspected["launchable"]["name"] == "worker"
+    assert inspected["restart"] == "on-failure"
+    assert inspected["attempts"] == 3
 
 
 @pytest.mark.parametrize("action", ["start", "stop", "restart", "status"])
 def test_service_lifecycle_commands_delegate_to_backend(service_gateway, action):
     gateway, backend = service_gateway
 
-    result = gateway(f"service {action} arthexis worker")
+    result = gateway(f"service {action} worker")
 
     assert result == {
-        "project": "arthexis",
+        "project": "gway",
         "service": "worker",
         "action": action,
     }
-    assert backend.calls == [(action, ("arthexis", "worker"))]
+    assert backend.calls == [(action, ("gway", "worker"), "worker")]
 
 
-def test_unknown_service_has_clear_error(service_gateway):
+def test_unknown_service_target_has_clear_resolution_error(service_gateway):
     gateway, _ = service_gateway
 
-    with pytest.raises(LookupError, match="Unknown service"):
-        gateway("service start arthexis missing")
+    with pytest.raises(LookupError):
+        gateway("service start missing-operation")
