@@ -390,7 +390,11 @@ def test_checked_failure_aborts_later_forward_systemd_operations(
 
     def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
         observed.append((operation.action, operation.unit, check, timeout))
-        if operation.action == "enable" and operation.unit == "gway-worker.service" and check:
+        if (
+            operation.action == "enable"
+            and operation.unit == "gway-worker.service"
+            and check
+        ):
             raise systemd._SystemdOperationError(
                 operation,
                 "worker enable failed",
@@ -449,7 +453,11 @@ def test_timeout_aborts_later_forward_systemd_operations(
         )
 
     assert exc_info.value.timeout == 77
-    forward = [(action, unit, timeout) for action, unit, check, timeout in observed if check]
+    forward = [
+        (action, unit, timeout)
+        for action, unit, check, timeout in observed
+        if check
+    ]
     assert forward == [
         ("daemon-reload", None, 77),
         ("enable", "gway-web.service", 77),
