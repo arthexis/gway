@@ -9,7 +9,7 @@ import uuid
 from .binding import Literal
 from .host import run_as_identity
 from .identity import execution_identity
-from .journal_fs import capture_path
+from .snapshot import capture_path
 from .recipes import _recipe_base as recipe_base
 
 
