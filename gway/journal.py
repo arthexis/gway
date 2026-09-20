@@ -266,7 +266,9 @@ class JournalManager:
     def open_names(self) -> tuple[str, ...]:
         names = set(self._journals)
         if self.session_root.is_dir():
-            names.update(path.name for path in self.session_root.iterdir() if path.is_dir())
+            names.update(
+                path.name for path in self.session_root.iterdir() if path.is_dir()
+            )
         open_names = []
         for name in sorted(names):
             journal = self.get(name)
