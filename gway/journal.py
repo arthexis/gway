@@ -102,19 +102,15 @@ class RollbackRecoveryError(JournalError):
         )
 
 
-def rollback_error_for(
-    exception: BaseException,
-) -> RollbackError | RollbackRecoveryError | None:
+def rollback_error_for(exception: BaseException) -> JournalError | None:
     """Return rollback recovery failure attached to a primary exception."""
     value = getattr(exception, _ROLLBACK_ERROR_ATTR, None)
-    if isinstance(value, (RollbackError, RollbackRecoveryError)):
-        return value
-    return None
+    return value if isinstance(value, JournalError) else None
 
 
 def attach_rollback_error(
     primary: BaseException,
-    rollback_error: RollbackError | RollbackRecoveryError,
+    rollback_error: JournalError,
 ) -> BaseException:
     """Attach rollback failure context while preserving the primary exception."""
     setattr(primary, _ROLLBACK_ERROR_ATTR, rollback_error)
@@ -509,7 +505,7 @@ class JournalManager:
         """Attempt rollback while preserving a forward failure as primary."""
         try:
             self.rollback(name)
-        except RollbackError as rollback_error:
+        except JournalError as rollback_error:
             attach_rollback_error(primary, rollback_error)
         return primary
 
