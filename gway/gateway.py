@@ -144,24 +144,43 @@ class Gateway(Resolver):
 
     def _finalize_execution(self, primary=None):
         """Resolve open journals at the outermost execution boundary."""
-        from .journal import UncommittedJournalError
+        from .journal import (
+            RollbackError,
+            RollbackRecoveryError,
+            UncommittedJournalError,
+            attach_rollback_error,
+        )
 
         open_journals = self.journal.open_names()
         if not open_journals:
             return None
 
+        cleanup_order = tuple(reversed(open_journals))
+
         if primary is not None:
-            for name in open_journals:
+            rollback_errors = []
+            for name in cleanup_order:
                 self.info(
                     "execution failed with open rollback journal %r; "
                     "rolling back automatically",
                     name,
                 )
-                self.journal.rollback_after_failure(name, primary)
+                try:
+                    self.journal.rollback(name)
+                except RollbackError as exception:
+                    rollback_errors.append(exception)
+
+            if len(rollback_errors) == 1:
+                attach_rollback_error(primary, rollback_errors[0])
+            elif rollback_errors:
+                attach_rollback_error(
+                    primary,
+                    RollbackRecoveryError(rollback_errors),
+                )
             return None
 
         rollback_errors = []
-        for name in open_journals:
+        for name in cleanup_order:
             self.info(
                 "uncommitted rollback journal %r detected at execution boundary",
                 name,
