@@ -10,6 +10,8 @@ import re
 import shutil
 import uuid
 
+from .log import debug, info
+
 
 _JOURNAL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -175,11 +177,18 @@ class JournalManager:
         if journal is None:
             journal = Journal(name=name)
             self._journals[name] = journal
+            info("opened rollback journal %r", name)
         elif journal.state is not JournalState.OPEN:
             raise JournalError(
                 f"Rollback journal {name!r} is {journal.state.value}, not open"
             )
 
+        debug(
+            "transaction prepare journal=%s kind=%s sequence=%s",
+            name,
+            kind,
+            len(journal.entries) + 1,
+        )
         entry = JournalEntry(
             sequence=len(journal.entries) + 1,
             kind=str(kind),
@@ -378,10 +387,12 @@ class JournalManager:
     def rollback(self, name: str) -> None:
         """Restore all APPLIED journal entries in LIFO order and close the journal."""
         journal = self.require_open(name)
+        info("rolling back journal %r", journal.name)
         for entry in reversed(journal.entries):
             if entry.state is MutationState.APPLIED:
                 self.rollback_entry(name, entry.sequence)
         self.close_rolled_back(name)
+        info("rolled back journal %r", name)
 
     @staticmethod
     def _entry(journal: Journal, sequence: int) -> JournalEntry:
@@ -403,6 +414,7 @@ class JournalManager:
                 f"Rollback journal {journal.name!r} has no applied mutations to commit"
             )
         journal.state = JournalState.COMMITTED
+        info("committed rollback journal %r", journal.name)
         self._discard(journal.name)
 
     def close_rolled_back(self, name: str) -> None:
