@@ -244,10 +244,8 @@ def test_checked_semantic_key_can_bind_later_consumer_parameter(gateway):
     assert gateway("probe ; check --status-code 200 ; consume_status") == 200
 
 
-def test_check_failure_rolls_back_named_journal(gateway, tmp_path):
-    source = tmp_path / "source.txt"
-    source.write_text("source", encoding="utf-8")
-    destination = tmp_path / "destination.txt"
+def test_check_failure_rolls_back_named_journal(gateway, rollback_paths):
+    source, destination = rollback_paths
 
     def mutate_and_fail_check():
         gateway.copy(str(source), to=str(destination), rollback="deploy")
@@ -266,10 +264,8 @@ def test_check_failure_rolls_back_named_journal(gateway, tmp_path):
     assert gateway.journal.get("deploy") is None
 
 
-def test_successful_check_does_not_trigger_rollback(gateway, tmp_path):
-    source = tmp_path / "source.txt"
-    source.write_text("source", encoding="utf-8")
-    destination = tmp_path / "destination.txt"
+def test_successful_check_does_not_trigger_rollback(gateway, rollback_paths):
+    source, destination = rollback_paths
 
     def mutate_and_pass_check():
         gateway.copy(str(source), to=str(destination), rollback="deploy")
@@ -291,11 +287,9 @@ def test_successful_check_does_not_trigger_rollback(gateway, tmp_path):
 
 def test_check_failure_preserves_primary_when_rollback_is_incomplete(
     gateway,
-    tmp_path,
+    rollback_paths,
 ):
-    source = tmp_path / "source.txt"
-    source.write_text("source", encoding="utf-8")
-    destination = tmp_path / "destination.txt"
+    source, destination = rollback_paths
 
     def mutate_drift_and_fail_check():
         gateway.copy(str(source), to=str(destination), rollback="deploy")
@@ -396,10 +390,8 @@ def test_quoted_unless_flag_checks_literal_mapping_field(gateway):
     assert gateway("probe - check '--unless' true") is result
 
 
-def test_check_unless_true_does_not_trigger_rollback(gateway, tmp_path):
-    source = tmp_path / "source.txt"
-    source.write_text("source", encoding="utf-8")
-    destination = tmp_path / "destination.txt"
+def test_check_unless_true_does_not_trigger_rollback(gateway, rollback_paths):
+    source, destination = rollback_paths
 
     def mutate():
         gateway.copy(str(source), to=str(destination), rollback="deploy")
@@ -418,10 +410,11 @@ def test_check_unless_true_does_not_trigger_rollback(gateway, tmp_path):
     assert gateway.journal.get("deploy") is None
 
 
-def test_check_unless_false_keeps_normal_rollback_behavior(gateway, tmp_path):
-    source = tmp_path / "source.txt"
-    source.write_text("source", encoding="utf-8")
-    destination = tmp_path / "destination.txt"
+def test_check_unless_false_keeps_normal_rollback_behavior(
+    gateway,
+    rollback_paths,
+):
+    source, destination = rollback_paths
 
     def mutate():
         gateway.copy(str(source), to=str(destination), rollback="deploy")
