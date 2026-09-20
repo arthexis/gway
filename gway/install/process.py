@@ -13,13 +13,10 @@ def install_units(
     *,
     state_root,
     system=False,
-    name=None,
     root=None,
 ):
     """Persist process-backed service ownership without starting services."""
     services = list(services)
-    if name is not None and len(services) != 1:
-        raise ValueError("--name requires exactly one selected service")
 
     state = UnitState(state_root)
     previous_all = state.get(project)
@@ -38,9 +35,9 @@ def install_units(
     for service in services:
         previous_record = previous.get(service.name)
         runtime_name = (
-            name
-            if name is not None
-            else previous_record.unit if previous_record is not None else service.name
+            previous_record.unit
+            if previous_record is not None
+            else service.name
         )
         records.append(
             UnitRecord(
