@@ -30,6 +30,7 @@ def test_process_service_install_persists_without_starting(
 def test_process_service_lifecycle_works_from_fresh_gateway(
     tmp_path,
     monkeypatch,
+    install_environment,
 ):
     monkeypatch.chdir(tmp_path)
     Gateway()("service install --backend process sous chef")
