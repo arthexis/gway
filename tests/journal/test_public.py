@@ -152,8 +152,7 @@ def test_journaled_move_logs_transaction_debug(gateway, tmp_path, caplog):
         for message in messages
     )
     assert any(
-        message.startswith("transaction snapshot capture path=")
-        for message in messages
+        message.startswith("transaction snapshot capture path=") for message in messages
     )
 
 
