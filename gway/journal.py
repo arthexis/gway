@@ -195,19 +195,25 @@ class JournalManager:
         *,
         operation: str,
         paths: list[str | Path] | tuple[str | Path, ...],
+        identity=None,
     ) -> JournalEntry:
         """Prepare one filesystem mutation by capturing all affected paths."""
+        from .identity import ExecutionIdentity
         from .snapshot import capture_path
 
         captured_paths = list(paths)
         if not captured_paths:
             raise ValueError("filesystem mutation requires at least one path")
 
+        normalized_identity = (
+            identity if isinstance(identity, ExecutionIdentity) else ExecutionIdentity()
+        )
         entry = self.prepare(
             name,
             kind="filesystem",
             data={
                 "operation": operation,
+                "identity": normalized_identity.as_dict(),
                 "paths": [],
             },
         )
@@ -224,6 +230,7 @@ class JournalManager:
             entry.sequence,
             {
                 "operation": operation,
+                "identity": normalized_identity.as_dict(),
                 "paths": snapshots,
             },
         )
@@ -234,27 +241,14 @@ class JournalManager:
         *,
         operation: str,
         path: str | Path,
+        identity=None,
     ) -> JournalEntry:
         """Prepare one filesystem mutation by capturing a single path."""
-        from .snapshot import capture_path
-
-        entry = self.prepare(
+        return self.prepare_paths(
             name,
-            kind="filesystem",
-            data={
-                "operation": operation,
-                "path": str(path),
-            },
-        )
-        storage = self.entry_storage(name, entry.sequence)
-        snapshot = capture_path(path, storage)
-        return self.update_entry_data(
-            name,
-            entry.sequence,
-            {
-                "operation": operation,
-                "paths": [snapshot],
-            },
+            operation=operation,
+            paths=(path,),
+            identity=identity,
         )
 
     def update_entry_data(
