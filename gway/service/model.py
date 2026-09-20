@@ -36,15 +36,7 @@ class Service:
             raise TypeError("Service attempts must be an integer")
         if self.attempts < 0:
             raise ValueError("Service attempts cannot be negative")
-        if self.restart not in {
-            "on-failure",
-            "always",
-            "no",
-            "on-success",
-            "on-abnormal",
-            "on-abort",
-            "on-watchdog",
-        }:
+        if self.restart not in {"on-failure", "always", "no"}:
             raise ValueError(f"Unsupported service restart policy: {self.restart!r}")
         if self.restart_sec < 0:
             raise ValueError("Service restart_sec cannot be negative")
