@@ -127,7 +127,7 @@ def install_units(
                 ServiceInstallRecord(
                     project=project,
                     service=service.name,
-                    unit=filename,
+                    backend_id=filename,
                     system=system,
                     backend="systemd",
                     restart=service.restart,
