@@ -122,3 +122,24 @@ def test_uninstall_reconciles_stale_record_when_managed_copy_is_missing(
 
     assert removed == installed
     assert InstallState(managed_paths.state).get("wire") is None
+
+
+def test_project_install_does_not_touch_service_installation(
+    make_project,
+    managed_paths,
+    monkeypatch,
+):
+    source = make_project("wire")
+
+    def unexpected_backend(name):
+        raise AssertionError("project install must not resolve service backends")
+
+    monkeypatch.setattr("gway.install.service.get", unexpected_backend)
+
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=managed_paths,
+    )
+
+    assert installed.name == "wire"
+    assert installed.install_path.is_dir()
