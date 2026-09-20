@@ -445,12 +445,40 @@ class JournalManager:
         return self.mark_rolled_back(name, sequence)
 
     def rollback(self, name: str) -> None:
-        """Restore all APPLIED journal entries in LIFO order and close the journal."""
+        """Attempt every APPLIED journal entry in LIFO order."""
         journal = self.require_open(name)
         info("rolling back journal %r", journal.name)
-        for entry in reversed(journal.entries):
-            if entry.state is MutationState.APPLIED:
+
+        pending = [
+            entry
+            for entry in reversed(journal.entries)
+            if entry.state is MutationState.APPLIED
+        ]
+        failures = []
+        for entry in pending:
+            try:
                 self.rollback_entry(name, entry.sequence)
+            except Exception as error:
+                failures.append(
+                    RollbackFailure(
+                        journal=journal.name,
+                        sequence=entry.sequence,
+                        operation=(
+                            str(entry.data.get("operation"))
+                            if entry.data.get("operation") is not None
+                            else None
+                        ),
+                        error=error,
+                    )
+                )
+
+        if failures:
+            raise RollbackError(
+                journal.name,
+                failures,
+                attempted=len(pending),
+            )
+
         self.close_rolled_back(name)
         info("rolled back journal %r", name)
 
