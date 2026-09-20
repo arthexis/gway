@@ -142,3 +142,36 @@ def test_named_service_identity_allows_multiple_invocations(monkeypatch):
     assert [item.name for item in captured] == ["urgent", "bulk"]
     assert captured[0].launchable.command[-2:] == ("--queue", "urgent")
     assert captured[1].launchable.command[-2:] == ("--queue", "bulk")
+
+
+def test_installed_service_record_preserves_launchable_invocation(tmp_path):
+    from gway.install.systemd import UnitRecord, UnitState
+
+    state = UnitState(tmp_path / "state")
+    state.put(
+        "demo",
+        [
+            UnitRecord(
+                project="demo",
+                service="urgent",
+                unit="demo-urgent.service",
+                backend="process",
+                restart="on-failure",
+                attempts=3,
+                restart_sec=5.0,
+                command=(
+                    "{python}",
+                    "-m",
+                    "gway",
+                    "worker",
+                    "--queue",
+                    "urgent",
+                ),
+            )
+        ],
+    )
+
+    restored = state.get("demo")[0]
+
+    assert restored.command[-2:] == ("--queue", "urgent")
+    assert restored.attempts == 3
