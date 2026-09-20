@@ -358,9 +358,7 @@ def test_check_unless_false_runs_other_assertions(gateway):
     gateway.context["feature_disabled"] = False
 
     with pytest.raises(CheckError, match="'status'.*'healthy'.*'disabled'"):
-        gateway(
-            "probe - check --unless [feature_disabled] --status healthy"
-        )
+        gateway("probe - check --unless [feature_disabled] --status healthy")
 
 
 def test_check_unless_is_position_independent(gateway):
@@ -390,9 +388,7 @@ def test_check_rejects_duplicate_unless_controls(gateway):
     gateway.context.update({"one": False, "two": False})
 
     with pytest.raises(TypeError, match="only one --unless"):
-        gateway(
-            "probe - check --unless [one] --status healthy --unless [two]"
-        )
+        gateway("probe - check --unless [one] --status healthy --unless [two]")
 
 
 def test_quoted_unless_flag_checks_literal_mapping_field(gateway):
