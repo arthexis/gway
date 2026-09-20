@@ -69,10 +69,10 @@ def _script_aliases(runtime, project, command):
 def load_project_scripts(runtime, root, project):
     """Expose [project.scripts] as callable Gway operations."""
     from .ingestion.base import IngestedOperation, register_operation
-    from .project import resolve_target, scripts
+    from .project import project_scripts, resolve_target
 
     wrapped = []
-    for command, target in scripts(root).items():
+    for command, target in project_scripts(root).items():
         callable_ = resolve_target(root, target)
         operation = IngestedOperation(
             (project, command),
