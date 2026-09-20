@@ -125,7 +125,7 @@ def _systemctl(*args, system=False, check=True):
 def render(service, *, unit, system=False):
     """Render one declared Gway service as a systemd unit."""
     backend = ProcessBackend()
-    command = backend._command(service)
+    command = backend._supervised_command(service)
     cwd = backend._cwd(service)
     environment = backend._environment(service)
     declared_environment = {
@@ -136,8 +136,6 @@ def render(service, *, unit, system=False):
     lines = [
         "[Unit]",
         f"Description={service.description or service.project + '/' + service.name}",
-        f"StartLimitBurst={service.attempts + 1}",
-        f"StartLimitIntervalSec={max(60, int((service.attempts + 1) * service.restart_sec * 2))}",
         "",
         "[Service]",
         "Type=simple",
@@ -148,14 +146,7 @@ def render(service, *, unit, system=False):
         escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
         lines.append(f'Environment="{key}={escaped}"')
 
-    if service.restart:
-        restart = service.restart
-        if restart == "on-failure":
-            lines.append("Restart=on-failure")
-        elif restart in {"always", "no", "on-success", "on-abnormal", "on-abort", "on-watchdog"}:
-            lines.append(f"Restart={restart}")
-    if service.restart_sec is not None:
-        lines.append(f"RestartSec={service.restart_sec:g}")
+    lines.append("Restart=no")
 
     lines.extend([
         "",
