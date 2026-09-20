@@ -6,7 +6,7 @@ from gway.dispatch import resolve_operation
 def test_gway_can_ingest_itself_without_recursive_expansion(gateway):
     wrapped = gateway.ingest(gway)
 
-    assert wrapped
+    assert wrapped == []
     assert gateway.ops.resolve("gway.Gateway") is not None
     assert gateway.ops.resolve("gway.gw") is not None
     assert gateway.ops.resolve("gway.Gateway.wrap") is None
