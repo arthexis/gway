@@ -13,7 +13,6 @@ from .paths import install_paths
 from .source import fingerprint, local_source, project_name
 from .stash import preserve as preserve_stash
 from .state import InstallState
-from .systemd import UnitState
 
 
 def _is_within(path, parent):
@@ -184,143 +183,6 @@ def _desired_changed(
     )
 
 
-def _unit_state_root(paths):
-    return paths.root / "systemd"
-
-
-def _selected_service_names(request, paths, project):
-    if request.services:
-        return tuple(request.services)
-    return tuple(
-        record.service
-        for record in UnitState(_unit_state_root(paths)).get(project)
-    )
-
-
-def _service_definitions(root, project, names):
-    """Reject legacy install-time service declarations.
-
-    Services are no longer sourced from project manifests. Service lifecycle
-    now attaches to generic launchables and is resolved by the service layer.
-    """
-    names = tuple(names)
-    if not names:
-        return ()
-    raise ValueError(
-        "Install-time declared services are no longer supported; "
-        "use Gway service operations with launchable operations or recipes"
-    )
-
-
-def _remove_backend_records(
-    paths,
-    project,
-    root,
-    records,
-    *,
-    installation=None,
-):
-    from .backends import get as get_backend
-
-    records = list(records)
-    if not records:
-        return []
-
-    definitions = _service_definitions(
-        root,
-        project,
-        tuple(record.service for record in records),
-    )
-    grouped = {}
-    for record in records:
-        grouped.setdefault(record.backend, []).append(record)
-
-    removed = []
-    installations = (
-        {project: installation}
-        if installation is not None
-        else {}
-    )
-    for backend_name, backend_records in grouped.items():
-        backend = get_backend(backend_name)
-        names = {record.service for record in backend_records}
-        services = tuple(
-            service
-            for service in definitions
-            if service.name in names
-        )
-        removed.extend(
-            backend.uninstall_units(
-                project,
-                state_root=_unit_state_root(paths),
-                records=backend_records,
-                services=services,
-                installations=installations,
-                process_state_root=paths.root / "services",
-            )
-        )
-    return removed
-
-
-def _converge_services(
-    request,
-    paths,
-    project,
-    root,
-    *,
-    installation=None,
-):
-    from .backends import get as get_backend
-
-    state_root = _unit_state_root(paths)
-    if request.services:
-        backend_name = request.backend or "systemd"
-        existing_records = UnitState(state_root).get(project)
-        desired = set(request.services)
-        obsolete = [
-            record
-            for record in existing_records
-            if record.backend != backend_name or record.service not in desired
-        ]
-        _remove_backend_records(
-            paths,
-            project,
-            root,
-            obsolete,
-            installation=installation,
-        )
-
-        backend = get_backend(backend_name)
-        services = _service_definitions(root, project, request.services)
-        return backend.install_units(
-            project,
-            services,
-            state_root=state_root,
-            system=request.system,
-            name=request.name,
-        )
-
-    records = UnitState(state_root).get(project)
-    results = []
-    grouped = {}
-    for record in records:
-        grouped.setdefault(record.backend, []).append(record)
-
-    for backend_name, backend_records in grouped.items():
-        backend = get_backend(backend_name)
-        names = tuple(record.service for record in backend_records)
-        services = _service_definitions(root, project, names)
-        results.extend(
-            backend.install_units(
-                project,
-                services,
-                state_root=state_root,
-                system=request.system,
-            )
-        )
-    return results
-
-
 def _paths_and_state(request, *, paths=None, state=None):
     selected = install_paths(system=request.system) if paths is None else paths
     registry = InstallState(selected.state) if state is None else state
@@ -351,11 +213,6 @@ def install_materialized(
     validate_name(name)
     desired_fingerprint = fingerprint(source)
     destination = selected.projects / name
-
-    # Validate explicit or previously materialized service selections before
-    # mutating the managed installation.
-    selected_names = _selected_service_names(request, selected, name)
-    _service_definitions(source, name, selected_names)
 
     if _is_within(selected.root, source):
         raise ValueError(
@@ -404,17 +261,6 @@ def install_materialized(
         )
         if same:
             launcher = activate_project(name, destination, selected)
-            try:
-                _converge_services(
-                    request,
-                    selected,
-                    name,
-                    destination,
-                    installation=existing,
-                )
-            except Exception:
-                launcher.rollback()
-                raise
             launcher.commit()
             return existing
 
@@ -498,13 +344,6 @@ def install_materialized(
             launcher = activate_project(name, destination, selected)
             stored = registry.put(record)
             state_written = True
-            _converge_services(
-                    request,
-                    selected,
-                    name,
-                    destination,
-                    installation=existing,
-                )
         except Exception:
             if state_written:
                 if existing is None:
@@ -574,15 +413,6 @@ def uninstall_local(request, *, paths=None, state=None):
 
     destination = selected.projects / request.project
 
-    records = UnitState(_unit_state_root(selected)).get(request.project)
-    if records:
-        _remove_backend_records(
-            selected,
-            request.project,
-            destination,
-            records,
-            installation=existing,
-        )
     _expected_destination(existing, destination)
 
     tombstone = None
