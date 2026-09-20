@@ -85,7 +85,6 @@ def test_service_install_overrides_retry_policy(monkeypatch):
     result = runtime._service_controller.install(
         "sous",
         "chef",
-        "daemon",
         restart="always",
         attempts=6,
         restart_sec=1.5,
