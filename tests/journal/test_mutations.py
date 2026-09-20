@@ -12,7 +12,10 @@ def _entry(gateway, name="deploy", index=0):
 
 def _restore(gateway, entry, name="deploy"):
     snapshot = entry.data["paths"][0]
-    restore_path(snapshot, gateway.journal.entry_storage(name, entry.sequence))
+    restore_path(
+        snapshot,
+        gateway.journal.entry_storage(name, entry.sequence) / snapshot["storage"],
+    )
 
 
 def test_copy_with_rollback_restores_existing_destination(gateway, tmp_path):
@@ -53,6 +56,7 @@ def test_copy_with_rollback_removes_new_destination_on_restore(gateway, tmp_path
     assert entry.data["paths"][0] == {
         "path": str(destination),
         "existed": False,
+        "storage": "paths/000000",
     }
 
     _restore(gateway, entry)
