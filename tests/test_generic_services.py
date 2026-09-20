@@ -41,7 +41,7 @@ def test_service_install_preserves_target_arguments_after_separator(monkeypatch)
             captured["kwargs"] = kwargs
             return ["installed"]
 
-    monkeypatch.setattr("gway.install.backends.get", lambda name: Backend)
+    monkeypatch.setattr("gway.install.service.get", lambda name: Backend)
 
     result = runtime(
         "service install --backend process --attempts 5 "
@@ -73,7 +73,7 @@ def test_service_install_accepts_recipe_path(tmp_path, monkeypatch):
             captured["service"] = tuple(services)[0]
             return ["installed"]
 
-    monkeypatch.setattr("gway.install.backends.get", lambda name: Backend)
+    monkeypatch.setattr("gway.install.service.get", lambda name: Backend)
 
     result = runtime(
         f"service install --backend process -- {recipe}"
@@ -128,7 +128,7 @@ def test_named_service_identity_allows_multiple_invocations(monkeypatch):
             captured.append(tuple(services)[0])
             return ["installed"]
 
-    monkeypatch.setattr("gway.install.backends.get", lambda name: Backend)
+    monkeypatch.setattr("gway.install.service.get", lambda name: Backend)
 
     runtime(
         "service install --backend process --name urgent "
