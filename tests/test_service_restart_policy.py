@@ -138,3 +138,42 @@ def test_process_backend_can_disable_retries(tmp_path):
     assert ProcessBackend._supervised_command(definition) == (
         ProcessBackend._command(definition)
     )
+
+
+def test_supervisor_attempts_means_retry_count(monkeypatch):
+    from gway.service import supervisor
+
+    launches = []
+
+    class Process:
+        def __init__(self, returncode):
+            self.returncode = returncode
+
+        def wait(self):
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+        def send_signal(self, signum):
+            return None
+
+    results = iter([1, 1, 1, 1])
+
+    def popen(command):
+        launches.append(tuple(command))
+        return Process(next(results))
+
+    monkeypatch.setattr(supervisor.subprocess, "Popen", popen)
+    monkeypatch.setattr(supervisor.time, "sleep", lambda value: None)
+    monkeypatch.setattr(supervisor.signal, "signal", lambda *args: None)
+    monkeypatch.setattr(supervisor.signal, "getsignal", lambda signum: None)
+
+    result = supervisor.supervise(
+        ("python", "-m", "demo"),
+        attempts=3,
+        restart_sec=0,
+    )
+
+    assert result == 1
+    assert len(launches) == 4
