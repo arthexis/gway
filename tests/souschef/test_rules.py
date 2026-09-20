@@ -5,6 +5,19 @@ import pytest
 from gway.souschef import DEFAULT_TIMEOUT, duration, jobs_from_data, load
 
 
+def _data(name, job):
+    return {
+        "project": {"name": "demo"},
+        "tool": {
+            "gway": {
+                "sous-chef": {
+                    name: job,
+                }
+            }
+        },
+    }
+
+
 def test_duration_parses_compact_units():
     assert duration("30s", "field") == 30.0
     assert duration("5m", "field") == 300.0
@@ -20,17 +33,15 @@ def test_invalid_duration_is_rejected(value):
 
 def test_job_normalizes_paths_triggers_and_default_timeout(tmp_path):
     jobs = jobs_from_data(
-        {
-            "project": {"name": "demo"},
-            "tool": {"gway": {"sous-chef": {
-                "recover": {
-                    "recipe": "recipes/recover.rx",
-                    "every": "1h",
-                    "watch": "config/settings.toml",
-                    "down": "arthexis/web-local",
-                }
-            }}}
-        },
+        _data(
+            "recover",
+            {
+                "recipe": "recipes/recover.rx",
+                "every": "1h",
+                "watch": "config/settings.toml",
+                "down": "arthexis/web-local",
+            },
+        ),
         root=tmp_path,
     )
 
@@ -50,15 +61,13 @@ def test_job_normalizes_paths_triggers_and_default_timeout(tmp_path):
 
 def test_job_allows_explicit_timeout(tmp_path):
     job = jobs_from_data(
-        {
-            "project": {"name": "demo"},
-            "tool": {"gway": {"sous-chef": {
-                "build": {
-                    "recipe": "recipes/build.rx",
-                    "timeout": "5m",
-                }
-            }}}
-        },
+        _data(
+            "build",
+            {
+                "recipe": "recipes/build.rx",
+                "timeout": "5m",
+            },
+        ),
         root=tmp_path,
     )[0]
 
@@ -69,15 +78,13 @@ def test_job_allows_explicit_timeout(tmp_path):
 def test_down_target_remains_opaque_for_future_target_types(tmp_path):
     target = "https://example.com/health"
     job = jobs_from_data(
-        {
-            "project": {"name": "demo"},
-            "tool": {"gway": {"sous-chef": {
-                "recover": {
-                    "recipe": "recover.rx",
-                    "down": target,
-                }
-            }}}
-        },
+        _data(
+            "recover",
+            {
+                "recipe": "recover.rx",
+                "down": target,
+            },
+        ),
         root=tmp_path,
     )[0]
 
@@ -89,15 +96,13 @@ def test_absolute_paths_are_preserved(tmp_path):
     watch = (tmp_path / "watched.txt").resolve()
 
     job = jobs_from_data(
-        {
-            "project": {"name": "demo"},
-            "tool": {"gway": {"sous-chef": {
-                "job": {
-                    "recipe": str(recipe),
-                    "watch": str(watch),
-                }
-            }}}
-        },
+        _data(
+            "job",
+            {
+                "recipe": str(recipe),
+                "watch": str(watch),
+            },
+        ),
         root=tmp_path / "other",
     )[0]
 
@@ -118,13 +123,7 @@ def test_absolute_paths_are_preserved(tmp_path):
 )
 def test_invalid_job_declarations_are_rejected(tmp_path, job, message):
     with pytest.raises(ValueError, match=message):
-        jobs_from_data(
-            {
-                "project": {"name": "demo"},
-                "tool": {"gway": {"sous-chef": {"demo": job},
-            },
-            root=tmp_path,
-        )
+        jobs_from_data(_data("demo", job), root=tmp_path)
 
 
 def test_sous_chef_section_must_be_a_table(tmp_path):
@@ -138,10 +137,9 @@ def test_sous_chef_section_must_be_a_table(tmp_path):
         )
 
 
-
-def test_hyphenated_sous_chef_toml_section_loads(tmp_path):
-    manifest = tmp_path / "pyproject.toml"
-    manifest.write_text(
+def test_hyphenated_sous_chef_pyproject_section_loads(tmp_path):
+    project_file = tmp_path / "pyproject.toml"
+    project_file.write_text(
         "[project]\n"
         "name = 'demo'\n"
         "\n"
@@ -152,7 +150,7 @@ def test_hyphenated_sous_chef_toml_section_loads(tmp_path):
         encoding="utf-8",
     )
 
-    jobs = load(manifest)
+    jobs = load(project_file)
 
     assert len(jobs) == 1
     assert jobs[0].name == "cleanup"
