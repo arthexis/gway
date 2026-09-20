@@ -18,10 +18,9 @@ class InstallEnvironment:
     cache: Path
     bin: Path
 
-
 @pytest.fixture
 def make_project(tmp_path):
-    """Create small installable GWAY projects without repeating manifest setup."""
+    """Create small installable GWAY projects without repeating project metadata setup."""
     counter = {"value": 0}
 
     def make(name="demo", *, launcher=False, root=None):
@@ -58,7 +57,6 @@ def make_project(tmp_path):
 
     return make
 
-
 @pytest.fixture
 def git():
     """Run Git commands with failures surfaced as test setup errors."""
@@ -77,7 +75,6 @@ def git():
         return result.stdout.strip()
 
     return run
-
 
 @pytest.fixture
 def make_git_repository(tmp_path, git):
@@ -109,7 +106,6 @@ def make_git_repository(tmp_path, git):
 
     return make
 
-
 @pytest.fixture
 def install_environment(tmp_path, monkeypatch):
     """Isolate durable data, cache, and launcher activation for builtin tests."""
@@ -123,7 +119,6 @@ def install_environment(tmp_path, monkeypatch):
     monkeypatch.setenv("GWAY_BIN_DIR", str(environment.bin))
     return environment
 
-
 @pytest.fixture
 def managed_paths(tmp_path):
     """Return explicit managed paths for direct transaction tests."""
@@ -133,7 +128,6 @@ def managed_paths(tmp_path):
         platform=sys.platform,
         home=tmp_path / "home",
     )
-
 
 
 @pytest.fixture
@@ -162,5 +156,3 @@ def fake_systemd(tmp_path, monkeypatch):
 
     monkeypatch.setattr(systemd, "_systemctl", call)
     return units, calls
-
-
