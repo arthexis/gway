@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from gway.config import _valid_installation, find_manifest, project_entrypoints
+from gway.config import _valid_installation, find_manifest
 from gway.install.ops import _local_intent
 from gway.install.activation import scripts as activation_scripts
 from gway.install.source import project_name
@@ -18,14 +18,14 @@ def test_project_name_uses_pyproject_without_gway_toml(tmp_path):
     assert project_name(tmp_path) == "demo"
 
 
-def test_project_name_keeps_legacy_gway_toml_during_deprecation(tmp_path):
+def test_project_name_rejects_gway_toml_only_project(tmp_path):
     (tmp_path / "gway.toml").write_text(
         '[project]\nname = "legacy"\n',
         encoding="utf-8",
     )
 
-    with pytest.warns(DeprecationWarning, match="gway.toml is deprecated"):
-        assert project_name(tmp_path) == "legacy"
+    with pytest.raises(ValueError, match="requires pyproject.toml"):
+        project_name(tmp_path)
 
 
 def test_find_manifest_prefers_pyproject(tmp_path):
@@ -62,10 +62,6 @@ def test_managed_installation_accepts_pyproject_without_gway_toml(tmp_path):
     assert _valid_installation(record, paths) is True
 
 
-def test_optional_legacy_metadata_helpers_tolerate_missing_gway_toml(tmp_path):
-    assert project_entrypoints(tmp_path / "gway.toml") == ()
-
-
 def test_project_scripts_reads_standard_python_entrypoints(tmp_path):
     (tmp_path / "pyproject.toml").write_text(
         '[project]\n'
@@ -79,7 +75,7 @@ def test_project_scripts_reads_standard_python_entrypoints(tmp_path):
     assert activation_scripts(tmp_path) == {"hello": "demo:main"}
 
 
-def test_standard_project_scripts_override_legacy_duplicates(tmp_path):
+def test_standard_project_scripts_ignore_gway_toml(tmp_path):
     (tmp_path / "pyproject.toml").write_text(
         '[project]\n'
         'name = "demo"\n'
@@ -91,18 +87,11 @@ def test_standard_project_scripts_override_legacy_duplicates(tmp_path):
         '[project]\n'
         'name = "demo"\n'
         '[install.scripts]\n'
-        'hello = "demo:old_main"\n'
         'legacy = "demo:legacy_main"\n',
         encoding="utf-8",
     )
 
-    with pytest.warns(DeprecationWarning, match=r"\[install\.scripts\]"):
-        discovered = scripts(tmp_path)
-
-    assert discovered == {
-        "hello": "demo:new_main",
-        "legacy": "demo:legacy_main",
-    }
+    assert scripts(tmp_path) == {"hello": "demo:new_main"}
 
 
 def test_gateway_bootstrap_exposes_project_script_as_operation(tmp_path, monkeypatch):
