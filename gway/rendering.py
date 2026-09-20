@@ -167,6 +167,11 @@ class Renderer:
         if rollback is None:
             self.runtime.debug("rollback-capable render executed without journal")
         else:
+            self.runtime.debug(
+                "transaction mutation journal=%s operation=render path=%s",
+                rollback,
+                destination,
+            )
             entry = self.runtime.journal.prepare_path(
                 rollback,
                 operation="render",
