@@ -39,11 +39,11 @@ def recipe_factory():
 def souschef_project():
     """Create the minimal local project used by command-surface tests."""
     def write(root):
-        (root / "gway.toml").write_text(
+        (root / "pyproject.toml").write_text(
             "[project]\n"
             "name = 'demo'\n"
             "\n"
-            "[sous-chef.cleanup]\n"
+            "[tool.gway.sous-chef.cleanup]\n"
             "recipe = 'cleanup.rx'\n"
             "every = '1h'\n"
             "timeout = '5m'\n",
