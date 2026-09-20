@@ -301,10 +301,7 @@ def _check_options(runtime, tokens):
                 raise TypeError("Expected a journal name after --rollback")
             rollback_token = tokens[index + 1]
             rollback_raw = token_value(rollback_token)
-            if (
-                not is_literal(rollback_token)
-                and rollback_raw.startswith("--")
-            ):
+            if not is_literal(rollback_token) and rollback_raw.startswith("--"):
                 raise TypeError("Expected a journal name after --rollback")
             rollback = str(rollback_raw)
             index += 2
@@ -387,9 +384,7 @@ def _execute_check(runtime, tokens, result):
                         f"check expected key {value!r} not to equal {expected!r}"
                     )
                 if actual is _MISSING:
-                    raise CheckError(
-                        f"check expected key {value!r} to be present"
-                    )
+                    raise CheckError(f"check expected key {value!r} to be present")
                 raise CheckError(
                     f"check expected key {value!r} to equal {expected!r}; "
                     f"got {actual!r}"
