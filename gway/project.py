@@ -85,7 +85,7 @@ def resolve_target(project, target):
 
 
 def main_packages(project):
-    """Return import names and paths for conventional package __main__.py files."""
+    """Return conventional package entrypoints without scanning non-packages."""
     project = Path(project).expanduser().resolve()
     roots = [project]
     src = project / "src"
@@ -93,32 +93,30 @@ def main_packages(project):
         roots.insert(0, src)
 
     discovered = {}
+
+    def walk(source_root, directory, parts=()):
+        try:
+            children = tuple(directory.iterdir())
+        except OSError:
+            return
+
+        for child in children:
+            if not child.is_dir() or not child.name.isidentifier():
+                continue
+            if not (child / "__init__.py").is_file():
+                continue
+
+            child_parts = (*parts, child.name)
+            if (child / "__main__.py").is_file():
+                discovered.setdefault(
+                    ".".join(child_parts),
+                    child.resolve(),
+                )
+            walk(source_root, child, child_parts)
+
     for source_root in roots:
-        for main in source_root.rglob("__main__.py"):
-            package = main.parent
-            try:
-                relative = package.relative_to(source_root)
-            except ValueError:
-                continue
-
-            parts = relative.parts
-            if not parts or not all(part.isidentifier() for part in parts):
-                continue
-
-            current = source_root
-            conventional = True
-            for part in parts:
-                current = current / part
-                if not (current / "__init__.py").is_file():
-                    conventional = False
-                    break
-            if not conventional:
-                continue
-
-            name = ".".join(parts)
-            discovered.setdefault(name, package.resolve())
+        walk(source_root, source_root)
     return discovered
-
 
 def import_project_module(project, name):
     """Import one module with the project's conventional source roots visible."""
