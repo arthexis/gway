@@ -4,6 +4,7 @@ import pytest
 
 from gway.journal import (
     RollbackError,
+    RollbackRecoveryError,
     UncommittedJournalError,
     rollback_error_for,
 )
@@ -377,3 +378,175 @@ def test_failed_execution_boundary_logs_automatic_recovery(
     )
     assert "rolling back journal 'deploy'" in messages
     assert "rolled back journal 'deploy'" in messages
+
+
+def test_success_boundary_rolls_back_multiple_journals_in_reverse_open_order(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    order = []
+
+    original = gateway.journal.rollback
+
+    def record_rollback(name):
+        order.append(name)
+        return original(name)
+
+    monkeypatch.setattr(gateway.journal, "rollback", record_rollback)
+
+    def leak_two():
+        gateway.copy(str(source), to=str(first), rollback="alpha")
+        gateway.copy(str(source), to=str(second), rollback="beta")
+        return "done"
+
+    gateway.leak_two = gateway.wrap("leak_two", leak_two)
+
+    with pytest.raises(UncommittedJournalError) as raised:
+        gateway(["leak_two"])
+
+    assert raised.value.journals == ("alpha", "beta")
+    assert raised.value.rollback_errors == ()
+    assert order == ["beta", "alpha"]
+    assert not first.exists()
+    assert not second.exists()
+    assert gateway.journal.open_names() == ()
+
+
+def test_success_boundary_attempts_all_journals_when_one_rollback_fails(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+
+    def leak_two_with_drift():
+        gateway.copy(str(source), to=str(first), rollback="alpha")
+        gateway.copy(str(source), to=str(second), rollback="beta")
+        first.write_text("external alpha", encoding="utf-8")
+        return "done"
+
+    gateway.leak_two_with_drift = gateway.wrap(
+        "leak_two_with_drift",
+        leak_two_with_drift,
+    )
+
+    with pytest.raises(UncommittedJournalError) as raised:
+        gateway(["leak_two_with_drift"])
+
+    error = raised.value
+    assert error.journals == ("alpha", "beta")
+    assert len(error.rollback_errors) == 1
+    assert error.rollback_errors[0].journal == "alpha"
+    assert gateway.journal.open_names() == ("alpha",)
+    assert first.read_text(encoding="utf-8") == "external alpha"
+    assert not second.exists()
+
+
+def test_failed_execution_aggregates_recovery_failures_across_journals(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    primary = RuntimeError("forward failed")
+
+    def fail_with_two_drifted_journals():
+        gateway.copy(str(source), to=str(first), rollback="alpha")
+        gateway.copy(str(source), to=str(second), rollback="beta")
+        first.write_text("external alpha", encoding="utf-8")
+        second.write_text("external beta", encoding="utf-8")
+        raise primary
+
+    gateway.fail_with_two_drifted_journals = gateway.wrap(
+        "fail_with_two_drifted_journals",
+        fail_with_two_drifted_journals,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        gateway(["fail_with_two_drifted_journals"])
+
+    assert raised.value is primary
+    recovery = rollback_error_for(primary)
+    assert isinstance(recovery, RollbackRecoveryError)
+    assert recovery.journals == ("beta", "alpha")
+    assert [error.journal for error in recovery.errors] == ["beta", "alpha"]
+    assert gateway.journal.open_names() == ("alpha", "beta")
+    assert first.read_text(encoding="utf-8") == "external alpha"
+    assert second.read_text(encoding="utf-8") == "external beta"
+
+
+def test_failed_execution_recovers_all_journals_even_if_one_fails(
+    gateway,
+    tmp_path,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    primary = RuntimeError("forward failed")
+
+    def fail_with_one_drift():
+        gateway.copy(str(source), to=str(first), rollback="alpha")
+        gateway.copy(str(source), to=str(second), rollback="beta")
+        first.write_text("external alpha", encoding="utf-8")
+        raise primary
+
+    gateway.fail_with_one_drift = gateway.wrap(
+        "fail_with_one_drift",
+        fail_with_one_drift,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        gateway(["fail_with_one_drift"])
+
+    assert raised.value is primary
+    recovery = rollback_error_for(primary)
+    assert isinstance(recovery, RollbackError)
+    assert recovery.journal == "alpha"
+    assert gateway.journal.open_names() == ("alpha",)
+    assert first.read_text(encoding="utf-8") == "external alpha"
+    assert not second.exists()
+
+
+def test_multi_journal_boundary_logs_follow_reverse_open_order(
+    gateway,
+    tmp_path,
+    caplog,
+):
+    caplog.set_level(logging.INFO, logger="gway")
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+
+    def leak_two():
+        gateway.copy(str(source), to=str(first), rollback="alpha")
+        gateway.copy(str(source), to=str(second), rollback="beta")
+        return "done"
+
+    gateway.leak_two_for_logs = gateway.wrap(
+        "leak_two_for_logs",
+        leak_two,
+    )
+
+    with pytest.raises(UncommittedJournalError):
+        gateway(["leak_two_for_logs"])
+
+    boundary_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if "detected at execution boundary" in record.getMessage()
+    ]
+    assert boundary_messages == [
+        "uncommitted rollback journal 'beta' detected at execution boundary",
+        "uncommitted rollback journal 'alpha' detected at execution boundary",
+    ]
