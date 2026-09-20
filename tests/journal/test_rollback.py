@@ -17,7 +17,10 @@ def test_rollback_entry_restores_single_path_and_marks_entry(gateway, tmp_path):
 
     assert restored.state is MutationState.ROLLED_BACK
     assert destination.read_text(encoding="utf-8") == "old"
-    assert gateway.journal.require_open("deploy").entries[0].state is MutationState.ROLLED_BACK
+    assert (
+        gateway.journal.require_open("deploy").entries[0].state
+        is MutationState.ROLLED_BACK
+    )
 
 
 def test_rollback_entry_verifies_all_move_paths_before_restoring_any(
