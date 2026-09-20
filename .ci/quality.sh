@@ -3,7 +3,7 @@ set -euo pipefail
 
 mode="${1:---check}"
 shift || true
-paths=("${@:-.}")
+paths=("${@:-gway}" "tests")
 
 case "$mode" in
   --check)
