@@ -188,3 +188,30 @@ def test_rollback_entry_requires_snapshot_storage_metadata(gateway, tmp_path):
 
     with pytest.raises(JournalError, match="no storage location"):
         gateway.journal.rollback_entry("deploy", entry.sequence)
+
+
+def test_rollback_entry_uses_persisted_execution_identity(
+    gateway,
+    tmp_path,
+    host_calls,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+
+    gateway.copy(
+        str(source),
+        to=str(destination),
+        sudo=True,
+        rollback="deploy",
+    )
+    entry = gateway.journal.require_open("deploy").entries[0]
+
+    gateway.journal.rollback_entry("deploy", entry.sequence)
+
+    assert entry.state is MutationState.ROLLED_BACK
+    assert entry.data["identity"] == {"user": "root"}
+    assert host_calls[-1] == (
+        ("sudo", "rm", "-rf", "--", str(destination)),
+        {"check": True},
+    )
