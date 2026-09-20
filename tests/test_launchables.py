@@ -40,18 +40,6 @@ def test_recipe_execution_indexes_recipe_launchable(tmp_path):
     )
 
 
-def test_legacy_service_command_becomes_command_launchable(tmp_path):
-    service = Service(
-        project="demo",
-        name="worker",
-        root=tmp_path,
-        command=("{python}", "-m", "demo"),
-    )
-
-    assert service.launchable.kind == "command"
-    assert service.launchable.command == service.command
-
-
 def test_service_can_wrap_operation_launchable(tmp_path):
     launchable = Launchable.operation("demo.worker", root=tmp_path)
     service = Service.from_launchable(
@@ -63,7 +51,6 @@ def test_service_can_wrap_operation_launchable(tmp_path):
     )
 
     assert service.launchable is launchable
-    assert service.command == launchable.command
     assert service.restart == "on-failure"
 
 
