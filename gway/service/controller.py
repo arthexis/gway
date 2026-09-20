@@ -147,9 +147,9 @@ class Controller:
         if self.backend is not None:
             return self.backend, definition
 
-        from ..install.backends import get as get_backend
+        from ..install.service import get as get_backend
         from ..install.paths import install_paths
-        from ..install.servicestate import ServiceInstallState
+        from ..install.service.state import ServiceInstallState
 
         installation = getattr(self.gateway, "_installed", {}).get(
             definition.project
@@ -237,7 +237,7 @@ class Controller:
             restart_sec=restart_sec,
         )
 
-        from ..install.backends import get as get_backend
+        from ..install.service import get as get_backend
         from ..install.paths import install_paths
 
         selected = get_backend(backend)
