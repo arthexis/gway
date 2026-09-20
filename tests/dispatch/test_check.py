@@ -127,9 +127,7 @@ def test_check_multiple_mapping_assertions_are_conjunctive(gateway):
     _producer(gateway, result)
 
     assert (
-        gateway(
-            "probe - check --ready --status healthy --code 200 --no-error"
-        )
+        gateway("probe - check --ready --status healthy --code 200 --no-error")
         is result
     )
 
@@ -205,10 +203,10 @@ def test_check_quoted_no_prefix_checks_literal_no_field(gateway):
 
 
 def test_check_unquoted_no_prefix_still_inverts_semantic_field(gateway):
-    result = {"No Error": True}
-    _producer(gateway, result)
+    _producer(gateway, {"No Error": True})
 
-    assert gateway("probe - check --no-no-error") is result
+    with pytest.raises(CheckError, match="'no-error'.*absent"):
+        gateway("probe - check --no-no-error")
 
 
 def test_check_rejects_ambiguous_semantic_mapping_keys(gateway):
