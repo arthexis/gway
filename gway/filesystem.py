@@ -69,6 +69,11 @@ class Filesystem:
         if rollback is None:
             self.runtime.debug("rollback-capable copy executed without journal")
         else:
+            self.runtime.debug(
+                "transaction mutation journal=%s operation=copy path=%s",
+                rollback,
+                target,
+            )
             entry = self.runtime.journal.prepare_path(
                 rollback,
                 operation="copy",
@@ -97,6 +102,12 @@ class Filesystem:
         if rollback is None:
             self.runtime.debug("rollback-capable move executed without journal")
         else:
+            self.runtime.debug(
+                "transaction mutation journal=%s operation=move source=%s target=%s",
+                rollback,
+                source,
+                target,
+            )
             entry = self.runtime.journal.prepare_paths(
                 rollback,
                 operation="move",
@@ -138,6 +149,11 @@ class Filesystem:
         if rollback is None:
             self.runtime.debug("rollback-capable link executed without journal")
         else:
+            self.runtime.debug(
+                "transaction mutation journal=%s operation=link path=%s",
+                rollback,
+                target,
+            )
             entry = self.runtime.journal.prepare_path(
                 rollback,
                 operation="link",
@@ -164,6 +180,11 @@ class Filesystem:
         if rollback is None:
             self.runtime.debug("rollback-capable remove executed without journal")
         else:
+            self.runtime.debug(
+                "transaction mutation journal=%s operation=remove path=%s",
+                rollback,
+                path,
+            )
             entry = self.runtime.journal.prepare_path(
                 rollback,
                 operation="remove",
