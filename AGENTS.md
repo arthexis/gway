@@ -392,6 +392,42 @@ deploy charger
 inspect charger
 ```
 
+### Recipe controls and transactions
+
+The complete user-facing recipe contract lives in `docs/RECIPES.md`. Keep
+that document synchronized whenever recipe parsing, `check`, `repeat`,
+semantic mapping lookup, companion loading, or rollback behavior changes.
+
+Important current invariants:
+
+- Recipe newlines and semicolons preserve named semantic context but do not
+  transfer the previous raw result positionally.
+- A standalone dash transfers the previous raw result.
+- Mapping lookup is semantic: case, spaces, dashes, and underscores are
+  equivalent. Ambiguous normalized keys are errors.
+- `check` is transparent on success and can validate booleans, whole-result
+  equality, and semantic mapping fields.
+- `check --unless BOOL` is evaluated before assertions. True skips the
+  assertions; false evaluates them normally; non-booleans fail.
+- `repeat` uses replayable execution records. Standalone repeat replays the
+  previous operation, while repeat inside a pipeline replays the completed
+  prefix of the current statement.
+- `check --rollback NAME` and `repeat --rollback NAME` trigger rollback only
+  on terminal control failure. Successful controls leave the journal open for
+  explicit commit.
+- Nested recipes share journals. Only the outer execution boundary performs
+  automatic leak cleanup.
+- A successful outer invocation may not silently retain an open journal. It
+  automatically attempts rollback and raises `UncommittedJournalError`.
+- When recovery also fails, preserve the original control/forward exception as
+  primary and attach rollback recovery context.
+- Rollback-aware mutation state is `PREPARED -> MUTATED -> APPLIED ->
+  ROLLED_BACK`. Never discard or blindly restore a `MUTATED` entry whose
+  post-mutation fingerprint could not be sealed.
+
+Do not copy recipe syntax from older branches or from aspirational documents
+without checking the current parser and tests first.
+
 ## Gateway wrapping and execution
 
 `Gateway.wrap(name, callable)` is the normalization entry point for Python
@@ -755,77 +791,46 @@ Single-quoted forms such as `'[0]'` remain literal text and do not act as
 chain selectors.
 
 
-## Declarative project ingestion
+## Project discovery and configuration
 
-Each new `Gateway` searches from the current directory upward for the nearest
-`gway.toml`. When present, GWAY processes declarative ingestion entries before
-the caller executes commands. Relative filesystem sources are resolved from the
-directory containing the manifest rather than from the process working
-directory.
+Each new `Gateway` discovers the nearest `pyproject.toml` by searching from
+the current directory upward. The current bootstrap does not use a separate
+`gway.toml` manifest.
 
-The canonical form is an array of ingestion tables:
+Standard Python packaging metadata is the primary project contract:
 
 ```toml
 [project]
 name = "arthexis"
 
-[[ingest]]
-source = "./manage.py"
-kind = "django"
+[project.scripts]
+arthexis = "arthexis:main"
 ```
 
-Every entry is routed through the same `Gateway.ingest()` API used for manual
-ingestion, so declarative configuration does not introduce a separate ingestion
-implementation.
+Local `[project.scripts]` entries and conventional executable package
+`__main__` surfaces are exposed through the same operation registry used by
+manually ingested callables.
 
-For Django entries, mount-name precedence is:
-
-```text
-explicit [[ingest]].name
-→ [project].name
-→ resolved Django project directory basename
-→ unnamed mount
-```
-
-An explicit ingestion-table name therefore wins:
+GWAY-specific semantic variables belong under:
 
 ```toml
-[[ingest]]
-source = "./manage.py"
-kind = "django"
-name = "backend"
+[tool.gway.variables]
+site = "MTY"
+role = "Watchtower"
 ```
 
-If no explicit or project name is declared and the source resolves to a
-conventional Django project directory, GWAY uses that directory's basename.
-A `manage.py` source uses its parent directory name. Thus:
+Those variables are appended as a resolver source and therefore participate in
+ordinary semantic completion rather than a separate recipe configuration
+system.
 
-```toml
-[ingest]
-django = "."
-```
+Managed installations are discovered from GWAY's durable installation registry.
+Their project scripts and executable package-main surfaces are remembered
+lazily and expanded through normal operation resolution. Durable installation
+state is separate from disposable cache state.
 
-inside `/projects/arthexis/gway.toml` mounts Django as `arthexis` and enables
-project-scoped management commands.
-
-Settings-module sources such as `config.settings` do not derive a project name
-from module text. If no configured name is available for such a source, the
-Django project remains unnamed: apps/models are available, but management
-commands are not indexed or exposed.
-
-A concise single-source-per-kind shorthand is also accepted:
-
-```toml
-[project]
-name = "arthexis"
-
-[ingest]
-django = "./manage.py"
-```
-
-The manifest bootstrap affects only declared ingestion sources. Other
-`gway.toml` sections remain available for their own project concerns and are
-not interpreted by the ingestion bootstrap.
+Sous Chef discovery may also consume local or installed project metadata, but
+project bootstrap should continue to prefer standard Python metadata and
+inference over adding a second manifest language.
 
 ## Django ingestion
 
