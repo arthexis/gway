@@ -14,8 +14,7 @@ class Service:
     project: str
     name: str
     root: Path
-    command: tuple[str, ...] = ()
-    launchable: Launchable | None = None
+    launchable: Launchable
     description: str | None = None
     working_directory: str | None = None
     writable_paths: tuple[str, ...] = ()
@@ -30,24 +29,8 @@ class Service:
         root = Path(self.root).expanduser().resolve()
         object.__setattr__(self, "root", root)
 
-        launchable = self.launchable
-        command = tuple(self.command)
-        if launchable is None:
-            if not command:
-                raise ValueError("Service requires a launchable or command")
-            launchable = Launchable.command_target(
-                self.name,
-                command,
-                root=root,
-                metadata={"project": self.project, "service": self.name},
-            )
-        elif command and tuple(launchable.command) != command:
-            raise ValueError(
-                "Service command must match its launchable command"
-            )
-
-        object.__setattr__(self, "launchable", launchable)
-        object.__setattr__(self, "command", tuple(launchable.command))
+        if not isinstance(self.launchable, Launchable):
+            raise TypeError("Service launchable must be a Launchable")
         object.__setattr__(self, "writable_paths", tuple(self.writable_paths))
         object.__setattr__(self, "profiles", tuple(self.profiles))
         if self.state_root is not None:
