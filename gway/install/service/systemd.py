@@ -331,6 +331,7 @@ def uninstall_units(
     services=(),
     installations=None,
     process_state_root=None,
+    timeout=SYSTEMCTL_TIMEOUT,
 ):
     """Disable and remove persisted systemd units owned by one project."""
     state = ServiceInstallState(state_root)
@@ -346,13 +347,23 @@ def uninstall_units(
     for record in records:
         target_root = unit_root(system=record.system) if root is None else Path(root)
         _systemctl(
-            "disable", "--now", record.backend_id, system=record.system, check=False
+            "disable",
+            "--now",
+            record.backend_id,
+            system=record.system,
+            check=False,
+            timeout=timeout,
         )
         try:
             (target_root / record.backend_id).unlink()
         except FileNotFoundError:
             pass
-        _systemctl("daemon-reload", system=record.system, check=False)
+        _systemctl(
+            "daemon-reload",
+            system=record.system,
+            check=False,
+            timeout=timeout,
+        )
 
     removed = {
         (record.backend, record.service, record.backend_id) for record in records
