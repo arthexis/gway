@@ -28,26 +28,29 @@ class Controller:
         project = metadata.get("project")
         root = launchable.root
 
-        if root is None:
-            project_file = getattr(self.gateway, "_project_path", None)
-            if project_file is not None:
-                root = Path(project_file).parent
-
-        if root is None:
-            root = Path.cwd()
-
         if project:
+            if root is None:
+                project_file = getattr(self.gateway, "_project_path", None)
+                root = (
+                    Path(project_file).parent
+                    if project_file is not None
+                    else Path.cwd()
+                )
             return str(project), Path(root).expanduser().resolve()
 
+        if root is None:
+            # Rootless launchables are Gway-owned builtins/controllers rather
+            # than project-ingested operations.
+            root = Path(__file__).resolve().parents[2]
+            return "gway", root
+
         try:
-            from ..project import project_name
+            from ..install.source import project_name
             project = project_name(root)
         except Exception:
             project = None
 
-        if not project:
-            project = "gway"
-        return str(project), Path(root).expanduser().resolve()
+        return str(project or "gway"), Path(root).expanduser().resolve()
 
     def _preset(self, launchable):
         """Return optional built-in policy associated with a launchable."""
