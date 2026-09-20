@@ -200,7 +200,13 @@ def install_units(
         return records
     except Exception:
         for record in records:
-            _systemctl("disable", record.backend_id, system=system, check=False, timeout=timeout)
+            _systemctl(
+                "disable",
+                record.backend_id,
+                system=system,
+                check=False,
+                timeout=timeout,
+            )
             if record.backend_id not in previous_files:
                 try:
                     (target_root / record.backend_id).unlink()
@@ -219,7 +225,13 @@ def install_units(
         state.put(project, previous_all)
         _systemctl("daemon-reload", system=system, check=False, timeout=timeout)
         for record in previous.values():
-            _systemctl("enable", record.backend_id, system=record.system, check=False, timeout=timeout)
+            _systemctl(
+                "enable",
+                record.backend_id,
+                system=record.system,
+                check=False,
+                timeout=timeout,
+            )
         raise
 
 
