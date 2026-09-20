@@ -18,8 +18,9 @@ discovered as executable GWAY operations.
 
 There is no separate ``gway.toml`` project manifest. GWAY-specific TOML is
 reserved for policy that cannot be inferred from Python or packaging metadata
-and lives under ``[tool.gway]`` in ``pyproject.toml``. For example, Sous Chef
-schedules use ``[tool.gway.sous-chef.<job>]``.
+and lives under ``[tool.gway]`` in ``pyproject.toml``. For example, semantic
+variables use ``[tool.gway.variables]`` and Sous Chef schedules use
+``[tool.gway.sous-chef.<job>]``.
 
 Services do not require declarations. Any resolvable GWAY operation or recipe
 can be installed or run under service supervision.
