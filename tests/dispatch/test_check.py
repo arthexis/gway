@@ -340,3 +340,109 @@ def test_check_rejects_duplicate_rollback_controls(gateway):
 
     with pytest.raises(TypeError, match="only one --rollback"):
         gateway("probe - check --true --rollback first --rollback second")
+
+
+def test_check_unless_true_skips_other_assertions(gateway):
+    result = {"status": "disabled"}
+    _producer(gateway, result)
+    gateway.context["feature_disabled"] = True
+
+    assert (
+        gateway(
+            "probe - check --unless [feature_disabled] --status healthy --ready"
+        )
+        is result
+    )
+
+
+def test_check_unless_false_runs_other_assertions(gateway):
+    _producer(gateway, {"status": "disabled"})
+    gateway.context["feature_disabled"] = False
+
+    with pytest.raises(CheckError, match="'status'.*'healthy'.*'disabled'"):
+        gateway(
+            "probe - check --unless [feature_disabled] --status healthy"
+        )
+
+
+def test_check_unless_is_position_independent(gateway):
+    result = {"status": "disabled"}
+    _producer(gateway, result)
+    gateway.context["feature_disabled"] = True
+
+    assert (
+        gateway(
+            "probe - check --status healthy --unless [feature_disabled] --ready"
+        )
+        is result
+    )
+
+
+@pytest.mark.parametrize("condition", ["yes", 1, None])
+def test_check_unless_requires_actual_boolean(gateway, condition):
+    _producer(gateway, {"status": "healthy"})
+    gateway.context["feature_disabled"] = condition
+
+    with pytest.raises(CheckError, match="requires a boolean condition"):
+        gateway("probe - check --unless [feature_disabled] --status healthy")
+
+
+def test_check_rejects_duplicate_unless_controls(gateway):
+    _producer(gateway, {"status": "healthy"})
+    gateway.context.update({"one": False, "two": False})
+
+    with pytest.raises(TypeError, match="only one --unless"):
+        gateway(
+            "probe - check --unless [one] --status healthy --unless [two]"
+        )
+
+
+def test_quoted_unless_flag_checks_literal_mapping_field(gateway):
+    result = {"unless": True}
+    _producer(gateway, result)
+
+    assert gateway("probe - check '--unless' true") is result
+
+
+def test_check_unless_true_does_not_trigger_rollback(gateway, tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+
+    def mutate():
+        gateway.copy(str(source), to=str(destination), rollback="deploy")
+        return {"status": "disabled"}
+
+    gateway.mutate = gateway.wrap("mutate", mutate)
+    gateway.context["feature_disabled"] = True
+
+    result = gateway(
+        "mutate - check --status healthy --unless [feature_disabled] "
+        "--rollback deploy ; commit deploy"
+    )
+
+    assert result == "deploy"
+    assert destination.read_text(encoding="utf-8") == "source"
+    assert gateway.journal.get("deploy") is None
+
+
+def test_check_unless_false_keeps_normal_rollback_behavior(gateway, tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+
+    def mutate():
+        gateway.copy(str(source), to=str(destination), rollback="deploy")
+        return {"status": "disabled"}
+
+    gateway.mutate = gateway.wrap("mutate", mutate)
+    gateway.context["feature_disabled"] = False
+
+    with pytest.raises(CheckError, match="'status'.*'healthy'.*'disabled'"):
+        gateway(
+            "mutate - check --unless [feature_disabled] --status healthy "
+            "--rollback deploy"
+        )
+
+    assert not destination.exists()
+    assert gateway.journal.get("deploy") is None
