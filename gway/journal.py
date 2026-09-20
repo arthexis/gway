@@ -114,6 +114,12 @@ class JournalManager:
     def _manifest(self, name: str) -> Path:
         return self._directory(name) / "manifest.json"
 
+    def entry_storage(self, name: str, sequence: int) -> Path:
+        """Return private storage assigned to one journal mutation entry."""
+        journal = self.require_open(name)
+        entry = self._entry(journal, sequence)
+        return self._directory(journal.name) / "entries" / f"{entry.sequence:06d}"
+
     def _persist(self, journal: Journal) -> None:
         directory = self._directory(journal.name)
         directory.mkdir(parents=True, exist_ok=True)
