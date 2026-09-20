@@ -1,4 +1,4 @@
-"""Built-in service policy for the Sous Chef daemon operation."""
+"""Built-in service policy for the Sous Chef package entrypoint."""
 
 from pathlib import Path
 
@@ -7,7 +7,7 @@ from ..service.model import Service
 
 
 def definition(launchable):
-    """Return service policy for the normal Sous Chef daemon launchable."""
+    """Return service policy for the normal Sous Chef launchable."""
     project_root = Path(__file__).resolve().parents[2]
     return Service(
         project="gway",
@@ -21,16 +21,16 @@ def definition(launchable):
 
 
 def register(runtime):
-    """Attach service lifecycle policy to the Sous Chef daemon operation."""
-    from . import daemon
+    """Attach service lifecycle policy to the Sous Chef package entrypoint."""
+    from . import __main__
 
     runtime.wrap(
-        "sous.chef.daemon",
-        daemon.run,
-        op="daemon",
-        sub="chef",
+        "sous.chef",
+        __main__,
+        op="chef",
+        sub="sous",
     )
-    launchable = runtime.launchables["sous.chef.daemon"]
+    launchable = runtime.launchables["sous.chef"]
     service = definition(launchable)
     runtime._services[service.identity] = service
     return service
