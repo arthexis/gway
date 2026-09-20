@@ -198,25 +198,18 @@ def _selected_service_names(request, paths, project):
 
 
 def _service_definitions(root, project, names):
+    """Reject legacy install-time service declarations.
+
+    Services are no longer sourced from project manifests. Service lifecycle
+    now attaches to generic launchables and is resolved by the service layer.
+    """
     names = tuple(names)
     if not names:
         return ()
-
-    from ..service.manifest import load as load_services
-
-    manifest = Path(root) / "gway.toml"
-    catalog = load_services(manifest)
-    if catalog.project != project:
-        raise RuntimeError(
-            f"Service manifest project mismatch: {catalog.project!r} != {project!r}"
-        )
-    available = {service.name: service for service in catalog.services}
-    missing = [name for name in names if name not in available]
-    if missing:
-        raise ValueError(
-            f"Unknown service(s) for {project!r}: {', '.join(missing)}"
-        )
-    return tuple(available[name] for name in names)
+    raise ValueError(
+        "Install-time declared services are no longer supported; "
+        "use Gway service operations with launchable operations or recipes"
+    )
 
 
 def _remove_backend_records(
