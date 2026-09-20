@@ -342,3 +342,150 @@ def test_systemd_diagnostics_are_bounded():
 
     assert rendered.endswith("...<truncated>")
     assert len(rendered) < len(text)
+
+
+def _named_sous_services(*names):
+    runtime = Gateway()
+    return [
+        runtime._service_controller._definition(("sous", "chef"), name=name)
+        for name in names
+    ]
+
+
+def test_systemd_install_reconciliation_runs_forward_operations_in_order(
+    tmp_path,
+    monkeypatch,
+):
+    observed = []
+    services = _named_sous_services("web", "worker", "beat")
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        observed.append((operation.action, operation.unit, check, timeout))
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+
+    systemd.install_units(
+        "gway",
+        services,
+        state_root=tmp_path / "state",
+        root=tmp_path / "units",
+        timeout=55,
+    )
+
+    assert observed == [
+        ("daemon-reload", None, True, 55),
+        ("enable", "gway-web.service", True, 55),
+        ("enable", "gway-worker.service", True, 55),
+        ("enable", "gway-beat.service", True, 55),
+    ]
+
+
+def test_checked_failure_aborts_later_forward_systemd_operations(
+    tmp_path,
+    monkeypatch,
+):
+    observed = []
+    services = _named_sous_services("web", "worker", "beat")
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        observed.append((operation.action, operation.unit, check, timeout))
+        if operation.action == "enable" and operation.unit == "gway-worker.service" and check:
+            raise systemd._SystemdOperationError(
+                operation,
+                "worker enable failed",
+                returncode=1,
+                stderr="boom",
+            )
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+
+    with pytest.raises(systemd._SystemdOperationError) as exc_info:
+        systemd.install_units(
+            "gway",
+            services,
+            state_root=tmp_path / "state",
+            root=tmp_path / "units",
+            timeout=40,
+        )
+
+    assert exc_info.value.unit == "gway-worker.service"
+    forward = [(action, unit) for action, unit, check, _ in observed if check]
+    assert forward == [
+        ("daemon-reload", None),
+        ("enable", "gway-web.service"),
+        ("enable", "gway-worker.service"),
+    ]
+    assert ("enable", "gway-beat.service") not in forward
+
+
+def test_timeout_aborts_later_forward_systemd_operations(
+    tmp_path,
+    monkeypatch,
+):
+    observed = []
+    services = _named_sous_services("web", "worker", "beat")
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        observed.append((operation.action, operation.unit, check, timeout))
+        if operation.action == "enable" and operation.unit == "gway-worker.service" and check:
+            raise systemd._SystemdOperationError(
+                operation,
+                "worker enable timed out",
+                timeout=timeout,
+            )
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+
+    with pytest.raises(systemd._SystemdOperationError) as exc_info:
+        systemd.install_units(
+            "gway",
+            services,
+            state_root=tmp_path / "state",
+            root=tmp_path / "units",
+            timeout=77,
+        )
+
+    assert exc_info.value.timeout == 77
+    forward = [(action, unit, timeout) for action, unit, check, timeout in observed if check]
+    assert forward == [
+        ("daemon-reload", None, 77),
+        ("enable", "gway-web.service", 77),
+        ("enable", "gway-worker.service", 77),
+    ]
+
+
+def test_failed_runtime_restart_skips_status_probe(
+    tmp_path,
+    monkeypatch,
+    install_environment,
+):
+    monkeypatch.chdir(tmp_path)
+    units = tmp_path / "units"
+    observed = []
+    monkeypatch.setattr(systemd, "unit_root", lambda **kwargs: units)
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        observed.append((operation.action, operation.unit, check, timeout))
+        if operation.action == "restart":
+            raise systemd._SystemdOperationError(
+                operation,
+                "restart failed",
+                returncode=1,
+            )
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+
+    runtime = Gateway()
+    runtime("service install --backend systemd sous chef")
+    observed.clear()
+
+    with pytest.raises(systemd._SystemdOperationError):
+        runtime("service restart --timeout 66 sous chef")
+
+    assert observed == [
+        ("restart", "gway-sous-chef.service", True, 66.0),
+    ]
