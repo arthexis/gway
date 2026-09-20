@@ -9,7 +9,7 @@ import uuid
 from .binding import Literal
 from .host import run_as_identity
 from .identity import execution_identity
-from .recipes import recipe_base
+from .recipes import _recipe_base as recipe_base
 
 
 def _ends_with_separator(value):
