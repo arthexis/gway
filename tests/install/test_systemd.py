@@ -168,49 +168,40 @@ def test_service_install_timeout_flag_reaches_each_systemd_operation(
     tmp_path,
     monkeypatch,
     install_environment,
+    record_systemd_operations,
 ):
     monkeypatch.chdir(tmp_path)
     units = tmp_path / "units"
-    observed = []
-
     monkeypatch.setattr(systemd, "unit_root", lambda **kwargs: units)
-
-    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
-        observed.append((operation.action, operation.unit, check, timeout))
-        return type("Result", (), {"returncode": 0})()
-
-    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
 
     Gateway()("service install --backend systemd --timeout 55 sous chef")
 
-    assert ("daemon-reload", None, True, 55.0) in observed
-    assert ("enable", "gway-sous-chef.service", True, 55.0) in observed
+    assert ("daemon-reload", None, True, 55.0) in record_systemd_operations
+    assert (
+        "enable",
+        "gway-sous-chef.service",
+        True,
+        55.0,
+    ) in record_systemd_operations
 
 
 def test_service_runtime_timeout_flag_reaches_action_and_status_probe(
     tmp_path,
     monkeypatch,
     install_environment,
+    record_systemd_operations,
 ):
     monkeypatch.chdir(tmp_path)
     units = tmp_path / "units"
-    observed = []
-
     monkeypatch.setattr(systemd, "unit_root", lambda **kwargs: units)
-
-    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
-        observed.append((operation.action, operation.unit, check, timeout))
-        return type("Result", (), {"returncode": 0})()
-
-    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
 
     runtime = Gateway()
     runtime("service install --backend systemd sous chef")
-    observed.clear()
+    record_systemd_operations.clear()
 
     runtime("service restart --timeout 65 sous chef")
 
-    assert observed == [
+    assert record_systemd_operations == [
         ("restart", "gway-sous-chef.service", True, 65.0),
         ("is-active", "gway-sous-chef.service", False, 65.0),
     ]
@@ -354,16 +345,9 @@ def _named_sous_services(*names):
 
 def test_systemd_install_reconciliation_runs_forward_operations_in_order(
     tmp_path,
-    monkeypatch,
+    record_systemd_operations,
 ):
-    observed = []
     services = _named_sous_services("web", "worker", "beat")
-
-    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
-        observed.append((operation.action, operation.unit, check, timeout))
-        return type("Result", (), {"returncode": 0})()
-
-    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
 
     systemd.install_units(
         "gway",
@@ -373,7 +357,7 @@ def test_systemd_install_reconciliation_runs_forward_operations_in_order(
         timeout=55,
     )
 
-    assert observed == [
+    assert record_systemd_operations == [
         ("daemon-reload", None, True, 55),
         ("enable", "gway-web.service", True, 55),
         ("enable", "gway-worker.service", True, 55),
@@ -501,18 +485,11 @@ def test_failed_runtime_restart_skips_status_probe(
 
 def test_systemd_uninstall_routes_through_central_runner_with_timeout(
     tmp_path,
-    monkeypatch,
+    record_systemd_operations,
 ):
-    observed = []
     state_root = tmp_path / "state"
     unit_root = tmp_path / "units"
     services = _named_sous_services("worker")
-
-    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
-        observed.append((operation.action, operation.unit, check, timeout))
-        return type("Result", (), {"returncode": 0})()
-
-    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
 
     systemd.install_units(
         "gway",
@@ -520,7 +497,7 @@ def test_systemd_uninstall_routes_through_central_runner_with_timeout(
         state_root=state_root,
         root=unit_root,
     )
-    observed.clear()
+    record_systemd_operations.clear()
 
     systemd.uninstall_units(
         "gway",
@@ -529,7 +506,7 @@ def test_systemd_uninstall_routes_through_central_runner_with_timeout(
         timeout=73,
     )
 
-    assert observed == [
+    assert record_systemd_operations == [
         ("disable", "gway-worker.service", False, 73),
         ("daemon-reload", None, False, 73),
     ]
