@@ -56,7 +56,7 @@ class Controller:
         """Return optional built-in policy associated with a launchable."""
         matches = [
             service
-            for service in self.gateway._services.values()
+            for service in self.gateway._service_presets.values()
             if service.launchable.name == launchable.name
         ]
         if len(matches) == 1:
@@ -99,21 +99,12 @@ class Controller:
             policy["restart_sec"] = restart_sec
         return replace(definition, **policy) if policy else definition
 
-    def _service(self, project, service):
-        """Return a named preset service, primarily for compatibility/introspection."""
-        try:
-            return self.gateway._services[(project, service)]
-        except KeyError as exc:
-            raise LookupError(
-                f"Unknown named service {project!r}/{service!r}"
-            ) from exc
-
     def list(self, project=None):
         """List named service presets.
 
         Ordinary operations and recipes are serviceable without appearing here.
         """
-        services = self.gateway._services.values()
+        services = self.gateway._service_presets.values()
         if project is not None:
             services = (
                 service
@@ -127,7 +118,6 @@ class Controller:
                 "description": service.description,
                 "launchable": service.launchable.kind,
                 "target": service.launchable.name,
-                "profiles": list(service.profiles),
             }
             for service in sorted(
                 services,
@@ -148,13 +138,9 @@ class Controller:
                 "command": list(definition.launchable.command),
             },
             "working_directory": definition.working_directory,
-            "writable_paths": list(definition.writable_paths),
-            "profiles": list(definition.profiles),
-            "environment": dict(definition.environment),
             "restart": definition.restart,
             "attempts": definition.attempts,
             "restart_sec": definition.restart_sec,
-            "autostart": definition.autostart,
         }
 
     def _installed_target(self, definition, *, system=False):
