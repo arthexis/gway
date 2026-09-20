@@ -277,3 +277,60 @@ def test_failed_companion_import_prevents_recipe_execution(gateway, tmp_path):
 
     with pytest.raises(RuntimeError, match="companion boom"):
         gateway(recipe)
+
+
+def test_recipe_context_resolves_sigil_before_install_like_operation(gateway, tmp_path):
+    captured = {}
+
+    def install_project(*, role="Watchtower"):
+        captured["role"] = role
+        return role
+
+    gateway.install_project = gateway.wrap("install_project", install_project)
+    recipe = tmp_path / "bootstrap.rx"
+    recipe.write_text(
+        "install project --role [role|Watchtower]\n",
+        encoding="utf-8",
+    )
+
+    assert gateway(f"{recipe} --role Satellite") == "Satellite"
+    assert captured["role"] == "Satellite"
+
+
+def test_recipe_context_uses_inline_fallback_before_install_like_operation(
+    gateway,
+    tmp_path,
+):
+    captured = {}
+
+    def install_project(*, role="Watchtower"):
+        captured["role"] = role
+        return role
+
+    gateway.install_project = gateway.wrap("install_project", install_project)
+    recipe = tmp_path / "bootstrap-fallback.rx"
+    recipe.write_text(
+        "install project --role [role|Watchtower]\n",
+        encoding="utf-8",
+    )
+
+    assert gateway(recipe) == "Watchtower"
+    assert captured["role"] == "Watchtower"
+
+
+def test_explicit_install_like_argument_wins_over_recipe_context(gateway, tmp_path):
+    captured = {}
+
+    def install_project(*, role="Watchtower"):
+        captured["role"] = role
+        return role
+
+    gateway.install_project = gateway.wrap("install_project", install_project)
+    recipe = tmp_path / "bootstrap-explicit.rx"
+    recipe.write_text(
+        "install project --role Control\n",
+        encoding="utf-8",
+    )
+
+    assert gateway(f"{recipe} --role Satellite") == "Control"
+    assert captured["role"] == "Control"
