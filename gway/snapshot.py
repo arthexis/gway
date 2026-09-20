@@ -353,7 +353,10 @@ def _capture_as_identity(
     storage_path.mkdir(parents=True, exist_ok=True, mode=0o700)
     storage_path.chmod(0o700)
 
-    snapshot = _json_as_identity(identity, "describe", target)
+    try:
+        snapshot = _describe_local(target)
+    except PermissionError:
+        snapshot = _json_as_identity(identity, "describe", target)
     if not bool(snapshot.get("existed")):
         return snapshot
 
@@ -384,10 +387,7 @@ def capture_path(
     """Capture one path, falling back to its execution identity when required."""
     if identity is None or not identity.privileged:
         return _capture_local(path, storage)
-    try:
-        return _capture_local(path, storage)
-    except PermissionError:
-        return _capture_as_identity(path, storage, identity)
+    return _capture_as_identity(path, storage, identity)
 
 
 def fingerprint_path(
