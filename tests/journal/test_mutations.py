@@ -2,7 +2,13 @@ import os
 
 import pytest
 
-from gway.journal import MutationState, UncommittedJournalError
+from gway.journal import (
+    JournalError,
+    MutationState,
+    RollbackError,
+    UncommittedJournalError,
+    rollback_error_for,
+)
 from gway.snapshot import restore_path
 
 
@@ -235,3 +241,49 @@ def test_multiple_filesystem_mutations_share_monotonic_journal_sequence(
         "remove",
     ]
     assert all(entry.state is MutationState.APPLIED for entry in journal.entries)
+
+
+def test_post_mutation_fingerprint_failure_retains_unsealed_journal(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("new", encoding="utf-8")
+    destination = tmp_path / "target.txt"
+    primary = OSError("fingerprint failed")
+
+    def fail_fingerprint(*args, **kwargs):
+        raise primary
+
+    monkeypatch.setattr("gway.snapshot.fingerprint_path", fail_fingerprint)
+
+    with pytest.raises(OSError) as raised:
+        gateway(
+            [
+                "copy",
+                str(source),
+                "--to",
+                str(destination),
+                "--rollback",
+                "deploy",
+            ]
+        )
+
+    assert raised.value is primary
+    assert destination.read_text(encoding="utf-8") == "new"
+
+    journal = gateway.journal.require_open("deploy")
+    entry = journal.entries[0]
+    assert entry.state is MutationState.MUTATED
+
+    recovery = rollback_error_for(primary)
+    assert isinstance(recovery, RollbackError)
+    assert recovery.journal == "deploy"
+    assert recovery.failures[0].sequence == 1
+    assert "post-mutation fingerprint is unavailable" in str(
+        recovery.failures[0].error
+    )
+
+    with pytest.raises(JournalError, match="unsealed mutations"):
+        gateway.journal.commit("deploy")
