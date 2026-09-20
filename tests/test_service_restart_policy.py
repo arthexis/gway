@@ -26,7 +26,7 @@ def test_service_restart_defaults(tmp_path):
 def test_systemd_renders_default_retry_policy(tmp_path):
     definition = service(tmp_path)
 
-    unit = render(definition, unit="demo-worker.service")
+    unit = render(definition)
 
     assert "Restart=no" in unit
     assert "gway.service.supervisor" in unit
