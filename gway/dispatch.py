@@ -10,6 +10,7 @@ from .binding import bind_arguments, pipeline_boundary
 from .ingestion.base import expand_path
 from .operations import Cardinality, singularize, subject_cardinality
 from .recipes import execute_recipe, parse_recipe_context, recipe_path
+from .semantic import AmbiguousKeyError, resolve_mapping_key
 from .tokens import is_literal, statements, token_value, tokenize
 
 _MISSING = object()
@@ -62,23 +63,25 @@ def _check_options(runtime, tokens):
     index = 1
 
     while index < len(tokens):
-        option = token_value(tokens[index])
-        if is_literal(tokens[index]) or not option.startswith("--"):
+        option_token = tokens[index]
+        option = token_value(option_token)
+        literal_option = is_literal(option_token)
+        if not option.startswith("--"):
             raise TypeError(f"Unexpected check argument {option!r}")
 
-        if option in {"--true", "--false"}:
+        if not literal_option and option in {"--true", "--false"}:
             checks.append(("boolean", option == "--true", None))
             index += 1
             continue
 
-        if option == "--is":
+        if not literal_option and option == "--is":
             if index + 1 >= len(tokens):
                 raise TypeError("Expected a value after --is")
             checks.append(("is", _check_expected(runtime, tokens[index + 1]), None))
             index += 2
             continue
 
-        inverted = option.startswith("--no-")
+        inverted = not literal_option and option.startswith("--no-")
         name = option[5:] if inverted else option[2:]
         if not name:
             raise TypeError(f"Invalid check argument {option!r}")
@@ -93,7 +96,7 @@ def _check_options(runtime, tokens):
                 expected = _check_expected(runtime, next_token)
                 index += 1
 
-        checks.append(("mapping", name.replace("-", "_"), (inverted, expected)))
+        checks.append(("mapping", name, (inverted, expected)))
         index += 1
 
     if not checks:
@@ -127,7 +130,14 @@ def _execute_check(runtime, tokens, result):
             )
 
         inverted, expected = detail
-        present = value in result
+        try:
+            actual_key = resolve_mapping_key(result, value)
+        except AmbiguousKeyError as exception:
+            raise CheckError(str(exception)) from exception
+        except KeyError:
+            actual_key = _MISSING
+
+        present = actual_key is not _MISSING
         if expected is _MISSING:
             passed = not present if inverted else present
             if not passed:
@@ -135,14 +145,14 @@ def _execute_check(runtime, tokens, result):
                 raise CheckError(f"check expected key {value!r} to be {expectation}")
             continue
 
-        matches = present and result[value] == expected
+        actual = result[actual_key] if present else _MISSING
+        matches = present and actual == expected
         passed = not matches if inverted else matches
         if not passed:
             if inverted:
                 raise CheckError(
                     f"check expected key {value!r} not to equal {expected!r}"
                 )
-            actual = result[value] if present else _MISSING
             if actual is _MISSING:
                 raise CheckError(f"check expected key {value!r} to be present")
             raise CheckError(
