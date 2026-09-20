@@ -1,6 +1,7 @@
 import pytest
 
 from gway import Gateway
+import gway.install.service.systemd as systemd
 from gway.install.service import ServiceInstallState
 
 
@@ -98,4 +99,27 @@ def test_systemd_service_install_preserves_other_named_instances(
     assert [(record.service, record.backend) for record in state.get("gway")] == [
         ("first", "systemd"),
         ("second", "systemd"),
+    ]
+
+
+def test_systemd_operation_identity_preserves_scope_options_and_unit():
+    reload = systemd._SystemdOperation.from_call(("daemon-reload",), system=False)
+    disable = systemd._SystemdOperation.from_call(
+        ("disable", "--now", "gway-demo.service"),
+        system=True,
+    )
+
+    assert reload.action == "daemon-reload"
+    assert reload.unit is None
+    assert reload.arguments == ()
+    assert reload.command == ["systemctl", "--user", "daemon-reload"]
+
+    assert disable.action == "disable"
+    assert disable.unit == "gway-demo.service"
+    assert disable.arguments == ("--now", "gway-demo.service")
+    assert disable.command == [
+        "systemctl",
+        "disable",
+        "--now",
+        "gway-demo.service",
     ]
