@@ -16,8 +16,6 @@ def definition(launchable):
         launchable=launchable,
         description="Gway single-worker recipe scheduler",
         working_directory="{project}",
-        restart="on-failure",
-        restart_sec=5.0,
         state_root=data_root() / "services",
     )
 
