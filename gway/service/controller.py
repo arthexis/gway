@@ -243,7 +243,7 @@ class Controller:
         return selected.install_units(
             definition.project,
             (definition,),
-            state_root=paths.root / "systemd",
+            state_root=paths.root / "services-installed",
             system=system,
         )
 
