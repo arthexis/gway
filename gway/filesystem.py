@@ -71,6 +71,7 @@ class Filesystem:
                 rollback,
                 operation="copy",
                 path=target,
+                identity=identity,
             )
 
         if not identity.privileged:
@@ -96,6 +97,7 @@ class Filesystem:
                 rollback,
                 operation="move",
                 paths=(source, target),
+                identity=identity,
             )
 
         if not identity.privileged:
@@ -134,6 +136,7 @@ class Filesystem:
                 rollback,
                 operation="link",
                 path=target,
+                identity=identity,
             )
 
         if not identity.privileged:
@@ -157,6 +160,7 @@ class Filesystem:
                 rollback,
                 operation="remove",
                 path=path,
+                identity=identity,
             )
 
         if not identity.privileged:
