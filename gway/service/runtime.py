@@ -47,6 +47,25 @@ class ProcessBackend:
         ]
 
     @classmethod
+    def _supervised_command(cls, service):
+        command = cls._command(service)
+        if service.restart == "no" or service.attempts <= 0:
+            return command
+        return [
+            cls._python(service),
+            "-m",
+            "gway.service.supervisor",
+            "--restart",
+            service.restart,
+            "--attempts",
+            str(service.attempts),
+            "--restart-sec",
+            str(service.restart_sec),
+            "--",
+            *command,
+        ]
+
+    @classmethod
     def _cwd(cls, service):
         value = service.working_directory or "{project}"
         return Path(cls._expand(service, value)).expanduser().resolve()
@@ -106,7 +125,7 @@ class ProcessBackend:
                 return self.status(service)
             state.remove(service.project, service.name)
 
-        command = self._command(service)
+        command = self._supervised_command(service)
         cwd = self._cwd(service)
         process = subprocess.Popen(
             command,
