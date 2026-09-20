@@ -50,3 +50,26 @@ def test_process_service_lifecycle_works_from_fresh_gateway(
         assert stopped["running"] is False
     finally:
         first("service stop sous chef")
+
+
+def test_process_service_install_preserves_other_named_instances(
+    tmp_path,
+    monkeypatch,
+    install_environment,
+):
+    monkeypatch.chdir(tmp_path)
+    runtime = Gateway()
+
+    runtime("service install --backend process --name first sous chef")
+    runtime("service install --backend process --name second sous chef")
+
+    state = ServiceInstallState(
+        install_environment.data / "services-installed"
+    )
+    assert [
+        (record.service, record.backend)
+        for record in state.get("gway")
+    ] == [
+        ("first", "process"),
+        ("second", "process"),
+    ]
