@@ -207,15 +207,26 @@ def resolve_launchable(runtime, target):
         raise ValueError("Service target cannot be empty")
 
     first = token_value(tokens[0])
-    recipe = recipe_path(runtime, first, allow_bare=True)
-    if recipe is not None and recipe.is_file():
+    explicit_recipe = recipe_path(runtime, first, allow_bare=False)
+    if explicit_recipe is not None and explicit_recipe.is_file():
         return Launchable.recipe(
-            recipe,
+            explicit_recipe,
             arguments=tuple(token_value(item) for item in tokens[1:]),
-            metadata={"recipe": str(recipe.resolve())},
+            metadata={"recipe": str(explicit_recipe.resolve())},
         )
 
-    resolution = resolve_operation(runtime, tokens)
+    try:
+        resolution = resolve_operation(runtime, tokens)
+    except LookupError:
+        bare_recipe = recipe_path(runtime, first, allow_bare=True)
+        if bare_recipe is None or not bare_recipe.is_file():
+            raise
+        return Launchable.recipe(
+            bare_recipe,
+            arguments=tuple(token_value(item) for item in tokens[1:]),
+            metadata={"recipe": str(bare_recipe.resolve())},
+        )
+
     base = _canonical_operation_launchable(runtime, resolution)
     if base is None:
         raise LookupError(
