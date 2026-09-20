@@ -102,9 +102,9 @@ def _run_systemctl_operation(
     return result
 
 
-def _systemctl(*args, system=False, check=True):
+def _systemctl(*args, system=False, check=True, timeout=SYSTEMCTL_TIMEOUT):
     operation = _SystemdOperation.from_call(args, system=system)
-    return _run_systemctl_operation(operation, check=check)
+    return _run_systemctl_operation(operation, check=check, timeout=timeout)
 
 
 def render(service, *, system=False):
@@ -141,6 +141,7 @@ def install_units(
     state_root,
     system=False,
     root=None,
+    timeout=SYSTEMCTL_TIMEOUT,
 ):
     """Write and enable selected service units as additive upserts."""
     services = list(services)
@@ -191,15 +192,15 @@ def install_units(
                 )
             )
 
-        _systemctl("daemon-reload", system=system)
+        _systemctl("daemon-reload", system=system, timeout=timeout)
         for record in records:
-            _systemctl("enable", record.backend_id, system=system)
+            _systemctl("enable", record.backend_id, system=system, timeout=timeout)
         retained = [record for record in previous_all if record.service not in selected]
         state.put(project, [*retained, *records])
         return records
     except Exception:
         for record in records:
-            _systemctl("disable", record.backend_id, system=system, check=False)
+            _systemctl("disable", record.backend_id, system=system, check=False, timeout=timeout)
             if record.backend_id not in previous_files:
                 try:
                     (target_root / record.backend_id).unlink()
@@ -216,9 +217,9 @@ def install_units(
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(content)
         state.put(project, previous_all)
-        _systemctl("daemon-reload", system=system, check=False)
+        _systemctl("daemon-reload", system=system, check=False, timeout=timeout)
         for record in previous.values():
-            _systemctl("enable", record.backend_id, system=record.system, check=False)
+            _systemctl("enable", record.backend_id, system=record.system, check=False, timeout=timeout)
         raise
 
 
@@ -269,8 +270,9 @@ def uninstall_units(
 class RuntimeBackend:
     """Manage one installed service through systemd."""
 
-    def __init__(self, record):
+    def __init__(self, record, *, timeout=SYSTEMCTL_TIMEOUT):
         self.record = record
+        self.timeout = timeout
 
     def _status(self, service):
         result = _systemctl(
@@ -278,6 +280,7 @@ class RuntimeBackend:
             self.record.backend_id,
             system=self.record.system,
             check=False,
+            timeout=self.timeout,
         )
         running = getattr(result, "returncode", 1) == 0
         return {
@@ -291,19 +294,33 @@ class RuntimeBackend:
 
     def start(self, service):
         """Start one installed systemd service."""
-        _systemctl("start", self.record.backend_id, system=self.record.system)
+        _systemctl(
+            "start",
+            self.record.backend_id,
+            system=self.record.system,
+            timeout=self.timeout,
+        )
         return self._status(service)
 
     def stop(self, service):
         """Stop one installed systemd service."""
         _systemctl(
-            "stop", self.record.backend_id, system=self.record.system, check=False
+            "stop",
+            self.record.backend_id,
+            system=self.record.system,
+            check=False,
+            timeout=self.timeout,
         )
         return self._status(service)
 
     def restart(self, service):
         """Restart one installed systemd service."""
-        _systemctl("restart", self.record.backend_id, system=self.record.system)
+        _systemctl(
+            "restart",
+            self.record.backend_id,
+            system=self.record.system,
+            timeout=self.timeout,
+        )
         return self._status(service)
 
     def status(self, service):
@@ -311,6 +328,6 @@ class RuntimeBackend:
         return self._status(service)
 
 
-def runtime(*, record, **kwargs):
+def runtime(*, record, timeout=SYSTEMCTL_TIMEOUT, **kwargs):
     """Return the systemd runtime adapter for one installed service."""
-    return RuntimeBackend(record)
+    return RuntimeBackend(record, timeout=timeout)
