@@ -42,7 +42,7 @@ def test_render_with_rollback_records_applied_snapshot_for_existing_file(
 
     restore_path(
         snapshot,
-        gateway.journal.entry_storage("deploy", entry.sequence),
+        gateway.journal.entry_storage("deploy", entry.sequence) / snapshot["storage"],
     )
     assert destination.read_text(encoding="utf-8") == "old\n"
 
@@ -64,6 +64,7 @@ def test_render_with_rollback_records_absent_destination(gateway, tmp_path):
     assert snapshot == {
         "path": str(destination),
         "existed": False,
+        "storage": "paths/000000",
     }
 
     restore_path(
