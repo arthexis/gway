@@ -1,4 +1,4 @@
-"""Discovery of Sous Chef jobs from Gway project manifests."""
+"""Discovery of Sous Chef jobs from standard project metadata."""
 
 from pathlib import Path
 
@@ -6,16 +6,17 @@ from .manifest import load
 
 
 def declares_jobs(manifest):
-    """Return whether a manifest declares a [sous-chef] job table."""
+    """Return whether pyproject declares [tool.gway.sous-chef] jobs."""
     try:
-        lines = Path(manifest).read_text(encoding="utf-8").splitlines()
-    except OSError:
+        from .. import toml
+        data = toml.load(manifest)
+    except (OSError, ValueError):
         return False
-    for raw in lines:
-        line = raw.split("#", 1)[0].strip()
-        if line == "[sous-chef]" or line.startswith("[sous-chef."):
-            return True
-    return False
+
+    tool = data.get("tool") if isinstance(data, dict) else None
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    jobs = gway.get("sous-chef") if isinstance(gway, dict) else None
+    return isinstance(jobs, dict) and bool(jobs)
 
 
 def discover(runtime, installations=(), *, local_manifest=None):
@@ -23,7 +24,7 @@ def discover(runtime, installations=(), *, local_manifest=None):
     jobs = {}
 
     for installation in installations:
-        manifest = installation.install_path / "gway.toml"
+        manifest = installation.install_path / "pyproject.toml"
         if not declares_jobs(manifest):
             continue
         for job in load(manifest):
@@ -36,8 +37,6 @@ def discover(runtime, installations=(), *, local_manifest=None):
 
     if local_manifest is not None and declares_jobs(local_manifest):
         for job in load(local_manifest):
-            # The nearest local manifest is the active project view and wins
-            # over a managed copy of that same project/job.
             jobs[job.identity] = job
 
     runtime._souschef_jobs = jobs
