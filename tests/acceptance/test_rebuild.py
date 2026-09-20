@@ -41,12 +41,33 @@ def test_pyproject_only_project_exposes_scripts_package_main_and_variables(
 
 
 def test_managed_project_expands_standard_script_only_when_used(
-    make_project,
-    install_environment,
     tmp_path,
     monkeypatch,
 ):
-    source = make_project("tool", launcher=True)
+    data = tmp_path / "data"
+    cache = tmp_path / "cache"
+    bin_dir = tmp_path / "bin"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(cache))
+    monkeypatch.setenv("GWAY_BIN_DIR", str(bin_dir))
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "pyproject.toml").write_text(
+        "[project]\n"
+        "name = 'tool'\n"
+        "[project.scripts]\n"
+        "tool = 'tool:main'\n",
+        encoding="utf-8",
+    )
+    package = source / "tool"
+    package.mkdir()
+    (package / "__init__.py").write_text(
+        "def main():\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+
     installed = Gateway()(f"install {source}")
 
     outside = tmp_path / "outside"
