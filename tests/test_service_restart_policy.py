@@ -1,5 +1,5 @@
 from gway.gateway import Gateway
-from gway.install.systemd import render
+from gway.install.service.systemd import render
 from gway.launchable import Launchable
 from gway.service.model import Service
 
