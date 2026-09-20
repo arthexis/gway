@@ -245,7 +245,6 @@ class Controller:
             (definition,),
             state_root=paths.root / "systemd",
             system=system,
-            name=None,
         )
 
     def start(
