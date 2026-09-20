@@ -139,7 +139,7 @@ def fake_systemd(tmp_path, monkeypatch):
     active = set()
     monkeypatch.setattr(systemd, "unit_root", lambda **kwargs: units)
 
-    def call(*args, system=False, check=True):
+    def call(*args, system=False, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
         calls.append((args, system, check))
         action = args[0] if args else None
         unit = args[-1] if len(args) > 1 else None
@@ -155,3 +155,16 @@ def fake_systemd(tmp_path, monkeypatch):
 
     monkeypatch.setattr(systemd, "_systemctl", call)
     return units, calls
+
+
+@pytest.fixture
+def record_systemd_operations(monkeypatch):
+    """Record structured systemd operations routed through the central runner."""
+    observed = []
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        observed.append((operation.action, operation.unit, check, timeout))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+    return observed

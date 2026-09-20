@@ -109,10 +109,10 @@ def test_render_write_failure_leaves_entry_prepared(
     destination = tmp_path / "target.conf"
     destination.write_text("old\n", encoding="utf-8")
 
-    def fail_write(destination, content):
+    def fail_write(destination, content, *, identity=None):
         raise OSError("simulated write failure")
 
-    monkeypatch.setattr("gway.rendering._write_atomic", fail_write)
+    monkeypatch.setattr("gway.rendering.atomic_write_text", fail_write)
 
     with pytest.raises(OSError, match="simulated write failure"):
         gateway.render(

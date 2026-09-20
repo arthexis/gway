@@ -18,6 +18,15 @@ class Controller:
         )
 
     @staticmethod
+    def _timeout(value):
+        if value is None:
+            return None
+        timeout = float(value)
+        if timeout <= 0:
+            raise ValueError("service timeout must be greater than zero")
+        return timeout
+
+    @staticmethod
     def _service_name(launchable):
         """Return the default stable service identity for one launchable."""
         return launchable.name.replace(".", "-")
@@ -140,7 +149,7 @@ class Controller:
             "restart_sec": definition.restart_sec,
         }
 
-    def _installed_target(self, definition, *, system=False):
+    def _installed_target(self, definition, *, system=False, timeout=None):
         if self.backend is not None:
             return self.backend, definition
 
@@ -188,12 +197,15 @@ class Controller:
         if policy:
             definition = replace(definition, **policy)
 
+        runtime_kwargs = {
+            "record": record,
+            "installations": getattr(self.gateway, "_installed", {}),
+            "state_root": paths.root / "services",
+        }
+        if record.backend == "systemd" and timeout is not None:
+            runtime_kwargs["timeout"] = timeout
         return (
-            runtime(
-                record=record,
-                installations=getattr(self.gateway, "_installed", {}),
-                state_root=paths.root / "services",
-            ),
+            runtime(**runtime_kwargs),
             definition,
         )
 
@@ -206,6 +218,7 @@ class Controller:
         restart: str = None,
         attempts: int = None,
         restart_sec: float = None,
+        timeout: float = None,
     ):
         """Install supervision for any resolvable Gway operation or recipe.
 
@@ -217,6 +230,7 @@ class Controller:
             restart: Restart policy override.
             attempts: Automatic retry attempts after failure.
             restart_sec: Delay between restart attempts in seconds.
+            timeout: Maximum seconds for each systemd operation; defaults to 40.
         """
         definition = self._definition(
             target,
@@ -231,11 +245,16 @@ class Controller:
 
         selected = get_backend(backend)
         paths = install_paths(system=system)
+        timeout = self._timeout(timeout)
+        install_kwargs = {}
+        if backend == "systemd" and timeout is not None:
+            install_kwargs["timeout"] = timeout
         return selected.install_units(
             definition.project,
             (definition,),
             state_root=paths.root / "services-installed",
             system=system,
+            **install_kwargs,
         )
 
     def start(
@@ -243,12 +262,15 @@ class Controller:
         *target,
         system=False,
         name=None,
+        timeout: float = None,
     ):
         """Start any resolvable operation/recipe under service supervision."""
+        timeout = self._timeout(timeout)
         definition = self._definition(target, name=name)
         backend, definition = self._installed_target(
             definition,
             system=system,
+            timeout=timeout,
         )
         return backend.start(definition)
 
@@ -257,12 +279,15 @@ class Controller:
         *target,
         system=False,
         name=None,
+        timeout: float = None,
     ):
         """Stop service supervision for an operation/recipe invocation."""
+        timeout = self._timeout(timeout)
         definition = self._definition(target, name=name)
         backend, definition = self._installed_target(
             definition,
             system=system,
+            timeout=timeout,
         )
         return backend.stop(definition)
 
@@ -271,12 +296,15 @@ class Controller:
         *target,
         system=False,
         name=None,
+        timeout: float = None,
     ):
         """Restart service supervision for an operation/recipe invocation."""
+        timeout = self._timeout(timeout)
         definition = self._definition(target, name=name)
         backend, definition = self._installed_target(
             definition,
             system=system,
+            timeout=timeout,
         )
         return backend.restart(definition)
 
@@ -285,11 +313,14 @@ class Controller:
         *target,
         system=False,
         name=None,
+        timeout: float = None,
     ):
         """Return service status for an operation/recipe invocation."""
+        timeout = self._timeout(timeout)
         definition = self._definition(target, name=name)
         backend, definition = self._installed_target(
             definition,
             system=system,
+            timeout=timeout,
         )
         return backend.status(definition)
