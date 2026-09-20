@@ -348,9 +348,7 @@ def test_check_unless_true_skips_other_assertions(gateway):
     gateway.context["feature_disabled"] = True
 
     assert (
-        gateway(
-            "probe - check --unless [feature_disabled] --status healthy --ready"
-        )
+        gateway("probe - check --unless [feature_disabled] --status healthy --ready")
         is result
     )
 
