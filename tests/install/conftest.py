@@ -30,13 +30,13 @@ def make_project(tmp_path):
         project = base / f"{name}-{counter['value']}"
         project.mkdir(parents=True)
 
-        manifest = [f"[project]\nname = {name!r}\n"]
+        metadata = [f"[project]\nname = {name!r}\n"]
         if launcher:
-            manifest.append(
-                f"\n[install.scripts]\n{name} = {f'{name}:main'!r}\n"
+            metadata.append(
+                f"\n[project.scripts]\n{name} = {f'{name}:main'!r}\n"
             )
-        (project / "gway.toml").write_text(
-            "".join(manifest),
+        (project / "pyproject.toml").write_text(
+            "".join(metadata),
             encoding="utf-8",
         )
 
@@ -91,7 +91,7 @@ def make_git_repository(tmp_path, git):
         git("init", "-b", "main", cwd=source)
         git("config", "user.name", "GWAY Tests", cwd=source)
         git("config", "user.email", "gway@example.test", cwd=source)
-        (source / "gway.toml").write_text(
+        (source / "pyproject.toml").write_text(
             f"[project]\nname = {name!r}\n",
             encoding="utf-8",
         )
@@ -137,35 +137,6 @@ def managed_paths(tmp_path):
 
 
 @pytest.fixture
-def make_service_project(tmp_path):
-    """Create an installable project with two representative services."""
-    def make(
-        name="demo",
-        *,
-        web_command='print("web")',
-        worker_command='print("worker")',
-    ):
-        root = tmp_path / f"service-{name}"
-        root.mkdir()
-        (root / "gway.toml").write_text(
-            f"[project]\n"
-            f"name = {name!r}\n"
-            "\n"
-            "[services.web]\n"
-            f"command = ['{{python}}', '-c', {web_command!r}]\n"
-            "restart = 'on-failure'\n"
-            "restart_sec = 5\n"
-            "\n"
-            "[services.worker]\n"
-            f"command = ['{{python}}', '-c', {worker_command!r}]\n",
-            encoding="utf-8",
-        )
-        return root
-
-    return make
-
-
-@pytest.fixture
 def fake_systemd(tmp_path, monkeypatch):
     """Capture systemctl calls while materializing units under tmp_path."""
     units = tmp_path / "units"
@@ -193,32 +164,3 @@ def fake_systemd(tmp_path, monkeypatch):
     return units, calls
 
 
-
-@pytest.fixture
-def install_declared_service(
-    tmp_path,
-    monkeypatch,
-    make_service_project,
-    install_environment,
-):
-    """Install one representative declared service through a chosen backend."""
-    def install(
-        *,
-        backend,
-        service="worker",
-        worker_command="import time; time.sleep(30)",
-        name=None,
-    ):
-        source = make_service_project(worker_command=worker_command)
-        monkeypatch.chdir(tmp_path)
-        command = (
-            f"install {source} --service {service} --backend {backend}"
-        )
-        if name is not None:
-            command += f" --name {name}"
-        installed = Gateway()(command)
-        return source, installed
-
-    from gway import Gateway
-
-    return install
