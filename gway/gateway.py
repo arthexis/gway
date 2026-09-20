@@ -164,8 +164,10 @@ class Gateway(Resolver):
             except Exception as exception:
                 rollback_errors.append(exception)
 
-        boundary_error = UncommittedJournalError(open_journals)
-        boundary_error.rollback_errors = tuple(rollback_errors)
+        boundary_error = UncommittedJournalError(
+            open_journals,
+            rollback_errors=rollback_errors,
+        )
         if rollback_errors:
             raise boundary_error from rollback_errors[0]
         raise boundary_error
