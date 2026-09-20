@@ -92,25 +92,17 @@ def test_copy_failure_after_snapshot_leaves_prepared_entry(
     assert destination.read_text(encoding="utf-8") == "old"
 
 
-def test_link_with_rollback_restores_previous_symlink(gateway, tmp_path):
-    old_target = tmp_path / "old.txt"
-    new_target = tmp_path / "new.txt"
-    old_target.write_text("old", encoding="utf-8")
-    new_target.write_text("new", encoding="utf-8")
+def test_link_conflict_is_rejected_before_journal_entry(gateway, tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
     destination = tmp_path / "current"
-    destination.symlink_to(old_target)
+    destination.write_text("existing", encoding="utf-8")
 
-    destination.unlink()
-    destination.write_text("temporary", encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        gateway.link(str(source), to=str(destination), rollback="deploy")
 
-    gateway.link(str(new_target), to=str(destination), rollback="deploy")
-
-    entry = _entry(gateway)
-    assert entry.state is MutationState.APPLIED
-    assert entry.data["operation"] == "link"
-
-    _restore(gateway, entry)
-    assert destination.read_text(encoding="utf-8") == "temporary"
+    assert destination.read_text(encoding="utf-8") == "existing"
+    assert gateway.journal.open_names() == ()
 
 
 def test_link_with_rollback_removes_new_link_on_restore(gateway, tmp_path):
