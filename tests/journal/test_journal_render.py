@@ -2,7 +2,7 @@ import pytest
 
 from gway import Gateway
 from gway.journal import MutationState
-from gway.journal_fs import restore_path
+from gway.snapshot import restore_path
 
 
 @pytest.fixture
@@ -143,7 +143,10 @@ def test_render_public_dispatch_accepts_rollback_flag(gateway, tmp_path):
     )
 
     assert result == destination
-    assert gateway.journal.require_open("deploy").entries[0].state is MutationState.APPLIED
+    assert (
+        gateway.journal.require_open("deploy").entries[0].state
+        is MutationState.APPLIED
+    )
 
 
 def test_update_entry_data_requires_prepared_entry(tmp_path):
