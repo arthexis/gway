@@ -122,10 +122,13 @@ class JournalManager:
 
     def _persist(self, journal: Journal) -> None:
         directory = self._directory(journal.name)
-        directory.mkdir(parents=True, exist_ok=True)
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.session_root.chmod(0o700)
+        directory.chmod(0o700)
         temporary = directory / ".manifest.json.tmp"
         payload = json.dumps(journal.as_dict(), indent=2, sort_keys=True) + "\n"
         temporary.write_text(payload, encoding="utf-8")
+        temporary.chmod(0o600)
         temporary.replace(directory / "manifest.json")
 
     def _load(self, name: str) -> Journal | None:
