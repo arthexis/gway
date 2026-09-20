@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from gway.journal import JournalError, MutationState, RollbackError
@@ -393,7 +395,13 @@ def test_retry_only_attempts_unresolved_entries_and_closes_when_complete(
 
     monkeypatch.setattr(gateway.journal, "rollback_entry", record_attempt)
 
+    expected = journal.entries[1].data["expected"][0]
     second.write_text("source", encoding="utf-8")
+    os.chmod(second, int(expected["mode"]))
+    os.utime(
+        second,
+        ns=(second.stat().st_atime_ns, int(expected["mtime_ns"])),
+    )
     gateway.journal.rollback("deploy")
 
     assert attempted == [2]
