@@ -75,7 +75,7 @@ def test_sous_chef_entrypoint_operation_runs_in_foreground(monkeypatch):
     import gway.souschef as souschef
 
     monkeypatch.setattr(souschef.threading, "Event", StopAfterOneWait)
-    monkeypatch.setattr(entrypoint, "TriggerEngine", Engine)
+    monkeypatch.setattr(souschef, "TriggerEngine", Engine)
     monkeypatch.setattr(souschef.signal, "signal", lambda *args: None)
 
     result = runtime("sous chef --poll 0.25")
