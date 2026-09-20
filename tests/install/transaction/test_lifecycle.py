@@ -21,7 +21,7 @@ def test_local_install_stages_copy_and_records_managed_project(
     assert installed.install_path == destination
     assert installed.fingerprint.startswith("sha256:")
     assert installed.installed_at is not None
-    assert (destination / "gway.toml").is_file()
+    assert (destination / "pyproject.toml").is_file()
     assert (destination / "module.py").read_text(
         encoding="utf-8"
     ) == "VALUE = 1\n"
