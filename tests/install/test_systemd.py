@@ -239,3 +239,131 @@ def test_service_runtime_timeout_flag_reaches_action_and_status_probe(
         ("restart", "gway-sous-chef.service", True, 65.0),
         ("is-active", "gway-sous-chef.service", False, 65.0),
     ]
+
+
+def test_checked_systemctl_failure_raises_structured_operation_error(monkeypatch, caplog):
+    def run(command, **kwargs):
+        raise systemd.subprocess.CalledProcessError(
+            5,
+            command,
+            output="unit output",
+            stderr="permission denied",
+        )
+
+    monkeypatch.setattr(systemd.subprocess, "run", run)
+    caplog.set_level("INFO", logger="gway")
+
+    operation = systemd._SystemdOperation.from_call(
+        ("enable", "gway-demo.service"),
+        system=True,
+    )
+    with pytest.raises(systemd._SystemdOperationError) as exc_info:
+        systemd._run_systemctl_operation(operation, check=True)
+
+    error = exc_info.value
+    assert error.action == "enable"
+    assert error.unit == "gway-demo.service"
+    assert error.system is True
+    assert error.returncode == 5
+    assert error.timeout is None
+    assert error.stdout == "unit output"
+    assert error.stderr == "permission denied"
+    assert "action=enable" in str(error)
+    assert "scope=system" in str(error)
+    assert "exit=5" in str(error)
+    assert "permission denied" in str(error)
+    assert isinstance(error.__cause__, systemd.subprocess.CalledProcessError)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "systemd enable gway-demo.service [system]: starting" in messages
+    assert "systemd enable gway-demo.service [system]: failed with exit 5" in messages
+    assert "systemd enable gway-demo.service [system]: complete" not in messages
+
+
+def test_systemctl_timeout_raises_structured_operation_error(monkeypatch, caplog):
+    def run(command, **kwargs):
+        raise systemd.subprocess.TimeoutExpired(
+            command,
+            kwargs["timeout"],
+            output=b"partial output",
+            stderr=b"still waiting",
+        )
+
+    monkeypatch.setattr(systemd.subprocess, "run", run)
+    caplog.set_level("INFO", logger="gway")
+
+    operation = systemd._SystemdOperation.from_call(
+        ("restart", "gway-demo.service"),
+        system=True,
+    )
+    with pytest.raises(systemd._SystemdOperationError) as exc_info:
+        systemd._run_systemctl_operation(operation, timeout=0.01)
+
+    error = exc_info.value
+    assert error.action == "restart"
+    assert error.unit == "gway-demo.service"
+    assert error.system is True
+    assert error.returncode is None
+    assert error.timeout == 0.01
+    assert error.stdout == "partial output"
+    assert error.stderr == "still waiting"
+    assert "timed out after 0.01s" in str(error)
+    assert "still waiting" in str(error)
+    assert isinstance(error.__cause__, systemd.subprocess.TimeoutExpired)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "systemd restart gway-demo.service [system]: starting" in messages
+    assert "systemd restart gway-demo.service [system]: timed out after 0.01s" in messages
+    assert "systemd restart gway-demo.service [system]: complete" not in messages
+
+
+def test_check_false_preserves_nonzero_result(monkeypatch):
+    def run(command, **kwargs):
+        return systemd.subprocess.CompletedProcess(
+            command,
+            3,
+            stdout="inactive",
+            stderr="",
+        )
+
+    monkeypatch.setattr(systemd.subprocess, "run", run)
+
+    result = systemd._run_systemctl_operation(
+        systemd._SystemdOperation.from_call(
+            ("is-active", "gway-demo.service"),
+            system=False,
+        ),
+        check=False,
+    )
+
+    assert result.returncode == 3
+    assert result.stdout == "inactive"
+
+
+def test_check_false_timeout_still_raises_structured_operation_error(monkeypatch):
+    def run(command, **kwargs):
+        raise systemd.subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(systemd.subprocess, "run", run)
+
+    with pytest.raises(systemd._SystemdOperationError) as exc_info:
+        systemd._run_systemctl_operation(
+            systemd._SystemdOperation.from_call(
+                ("stop", "gway-demo.service"),
+                system=False,
+            ),
+            check=False,
+            timeout=0.01,
+        )
+
+    assert exc_info.value.timeout == 0.01
+    assert exc_info.value.action == "stop"
+
+
+def test_systemd_diagnostics_are_bounded():
+    text = "x" * 5000
+
+    rendered = systemd._diagnostic_text(text)
+
+    assert rendered.endswith("...<truncated>")
+    assert len(rendered) < len(text)
