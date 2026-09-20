@@ -32,6 +32,41 @@ def unit_name(project, service):
     return f"{raw}.service"
 
 
+class _SystemdOperationError(RuntimeError):
+    """Structured failure for one concrete systemd operation."""
+
+    def __init__(
+        self,
+        operation,
+        message,
+        *,
+        returncode=None,
+        timeout=None,
+        stdout="",
+        stderr="",
+    ):
+        super().__init__(message)
+        self.operation = operation
+        self.action = operation.action
+        self.unit = operation.unit
+        self.system = operation.system
+        self.returncode = returncode
+        self.timeout = timeout
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _diagnostic_text(value, *, limit=4000):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        value = value.decode(errors="replace")
+    text = str(value).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...<truncated>"
+
+
 @dataclass(frozen=True)
 class _SystemdOperation:
     """Structured identity for one concrete systemctl subprocess."""
@@ -86,13 +121,65 @@ def _run_systemctl_operation(
         target,
         scope,
     )
-    result = subprocess.run(
-        operation.command,
-        check=check,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=timeout,
-    )
+    try:
+        result = subprocess.run(
+            operation.command,
+            check=check,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = _diagnostic_text(exc.stdout)
+        stderr = _diagnostic_text(exc.stderr)
+        gway_log.error(
+            "systemd %s %s [%s]: timed out after %ss",
+            operation.action,
+            target,
+            scope,
+            exc.timeout,
+        )
+        message = (
+            f"systemd operation timed out after {exc.timeout}s: "
+            f"action={operation.action} target={target} scope={scope}"
+        )
+        if stderr:
+            message += f": {stderr}"
+        elif stdout:
+            message += f": {stdout}"
+        raise _SystemdOperationError(
+            operation,
+            message,
+            timeout=exc.timeout,
+            stdout=stdout,
+            stderr=stderr,
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        stdout = _diagnostic_text(exc.stdout)
+        stderr = _diagnostic_text(exc.stderr)
+        gway_log.error(
+            "systemd %s %s [%s]: failed with exit %s",
+            operation.action,
+            target,
+            scope,
+            exc.returncode,
+        )
+        message = (
+            "systemd operation failed: "
+            f"action={operation.action} target={target} "
+            f"scope={scope} exit={exc.returncode}"
+        )
+        if stderr:
+            message += f": {stderr}"
+        elif stdout:
+            message += f": {stdout}"
+        raise _SystemdOperationError(
+            operation,
+            message,
+            returncode=exc.returncode,
+            stdout=stdout,
+            stderr=stderr,
+        ) from exc
     gway_log.info(
         "systemd %s %s [%s]: complete",
         operation.action,
