@@ -305,10 +305,7 @@ def _restore_local(
     raise SnapshotError(f"unsupported snapshot type: {kind}")
 
 
-_PRIVILEGED_ENTRY = (
-    "from gway.snapshot import _privileged_main; "
-    "_privileged_main()"
-)
+_PRIVILEGED_ENTRY = "from gway.snapshot import _privileged_main; _privileged_main()"
 
 
 def _describe_local(path: str | os.PathLike[str]) -> dict[str, Any]:
