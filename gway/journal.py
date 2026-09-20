@@ -10,7 +10,7 @@ import re
 import shutil
 import uuid
 
-from .log import debug, info
+from .log import debug, error, info
 
 
 _JOURNAL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -458,26 +458,39 @@ class JournalManager:
         for entry in pending:
             try:
                 self.rollback_entry(name, entry.sequence)
-            except Exception as error:
-                failures.append(
-                    RollbackFailure(
-                        journal=journal.name,
-                        sequence=entry.sequence,
-                        operation=(
-                            str(entry.data.get("operation"))
-                            if entry.data.get("operation") is not None
-                            else None
-                        ),
-                        error=error,
-                    )
+            except Exception as exception:
+                failure = RollbackFailure(
+                    journal=journal.name,
+                    sequence=entry.sequence,
+                    operation=(
+                        str(entry.data.get("operation"))
+                        if entry.data.get("operation") is not None
+                        else None
+                    ),
+                    error=exception,
+                )
+                failures.append(failure)
+                error(
+                    "rollback failure journal=%s sequence=%s operation=%s: %s",
+                    failure.journal,
+                    failure.sequence,
+                    failure.operation or "unknown",
+                    failure.error,
                 )
 
         if failures:
-            raise RollbackError(
+            aggregate = RollbackError(
                 journal.name,
                 failures,
                 attempted=len(pending),
             )
+            error(
+                "rollback journal %r incomplete: %s of %s entries failed",
+                journal.name,
+                len(failures),
+                len(pending),
+            )
+            raise aggregate
 
         self.close_rolled_back(name)
         info("rolled back journal %r", name)
