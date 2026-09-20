@@ -15,10 +15,7 @@ def _local_intent(source):
 
     try:
         path = Path(text).expanduser()
-        return path.exists() and any(
-            (path / filename).is_file()
-            for filename in ("pyproject.toml", "gway.toml")
-        )
+        return path.exists() and (path / "pyproject.toml").is_file()
     except OSError:
         return False
 
