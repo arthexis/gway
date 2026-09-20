@@ -306,6 +306,12 @@ class JournalManager:
             ]
 
         entry.state = MutationState.APPLIED
+        debug(
+            "transaction applied journal=%s sequence=%s operation=%s",
+            name,
+            sequence,
+            entry.data.get("operation"),
+        )
         self._persist(journal)
         return entry
 
@@ -376,6 +382,13 @@ class JournalManager:
 
         storage = self.entry_storage(name, sequence)
         for snapshot in reversed(snapshots):
+            debug(
+                "transaction rollback journal=%s sequence=%s operation=%s path=%s",
+                name,
+                sequence,
+                entry.data.get("operation"),
+                snapshot["path"],
+            )
             restore_path(
                 snapshot,
                 storage / str(snapshot["storage"]),
