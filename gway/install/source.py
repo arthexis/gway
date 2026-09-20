@@ -4,7 +4,6 @@ import hashlib
 from importlib import metadata as importlib_metadata
 import os
 from pathlib import Path
-import warnings
 
 from .manifest import load as load_manifest
 from .model import validate_name
@@ -51,31 +50,14 @@ def local_source(value):
 
 
 def project_metadata(root):
-    """Return the preferred project metadata file for one local project.
-
-    Standard Python packaging metadata is authoritative. Legacy gway.toml
-    remains readable during the deprecation window so existing projects keep
-    working while their Gway-specific overrides move elsewhere.
-    """
+    """Return the standard Python project metadata file."""
     root = local_source(root)
     pyproject = root / "pyproject.toml"
-    if pyproject.is_file():
-        return pyproject
-
-    legacy = root / "gway.toml"
-    if legacy.is_file():
-        warnings.warn(
-            "gway.toml is deprecated; declare project metadata in pyproject.toml",
-            DeprecationWarning,
-            stacklevel=2,
+    if not pyproject.is_file():
+        raise ValueError(
+            f"Install source requires pyproject.toml: {root}"
         )
-        return legacy
-
-    raise ValueError(
-        f"Install source requires pyproject.toml "
-        f"(legacy gway.toml is deprecated): {root}"
-    )
-
+    return pyproject
 
 def project_name(root):
     """Read the required [project].name from standard project metadata."""
