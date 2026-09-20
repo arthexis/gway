@@ -180,15 +180,11 @@ def test_incomplete_rollback_logs_each_failure_and_summary_at_error(
 
     messages = [record.getMessage() for record in caplog.records]
     assert any(
-        message.startswith(
-            "rollback failure journal=deploy sequence=2 operation=copy:"
-        )
+        message.startswith("rollback failure journal=deploy sequence=2 operation=copy:")
         for message in messages
     )
     assert any(
-        message.startswith(
-            "rollback failure journal=deploy sequence=1 operation=copy:"
-        )
+        message.startswith("rollback failure journal=deploy sequence=1 operation=copy:")
         for message in messages
     )
     assert "rollback journal 'deploy' incomplete: 2 of 2 entries failed" in messages
