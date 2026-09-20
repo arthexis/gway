@@ -2,7 +2,10 @@ from gway.identity import ExecutionIdentity
 
 
 def test_execution_identity_round_trips_transaction_metadata():
-    assert ExecutionIdentity.from_dict(ExecutionIdentity().as_dict()) == ExecutionIdentity()
+    assert (
+        ExecutionIdentity.from_dict(ExecutionIdentity().as_dict())
+        == ExecutionIdentity()
+    )
     assert ExecutionIdentity.from_dict({"user": "root"}) == ExecutionIdentity("root")
     assert ExecutionIdentity.from_dict({"user": "www-data"}) == ExecutionIdentity(
         "www-data"
