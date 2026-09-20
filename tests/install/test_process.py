@@ -1,5 +1,5 @@
 from gway import Gateway
-from gway.install.servicestate import ServiceInstallState
+from gway.install.service.state import ServiceInstallState
 from gway.service.state import ServiceState
 
 
