@@ -339,6 +339,4 @@ def test_check_rejects_duplicate_rollback_controls(gateway):
     _producer(gateway, False)
 
     with pytest.raises(TypeError, match="only one --rollback"):
-        gateway(
-            "probe - check --true --rollback first --rollback second"
-        )
+        gateway("probe - check --true --rollback first --rollback second")
