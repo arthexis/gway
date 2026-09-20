@@ -1,7 +1,7 @@
 import pytest
 
 from gway import Gateway
-from gway.journal import MutationState
+from gway.journal import MutationState, UncommittedJournalError
 from gway.snapshot import restore_path
 
 
@@ -132,21 +132,20 @@ def test_render_public_dispatch_accepts_rollback_flag(gateway, tmp_path):
     template.write_text("public\n", encoding="utf-8")
     destination = tmp_path / "target.conf"
 
-    result = gateway(
-        [
-            "render",
-            str(template),
-            "--to",
-            str(destination),
-            "--rollback",
-            "deploy",
-        ]
-    )
+    with pytest.raises(UncommittedJournalError):
+        gateway(
+            [
+                "render",
+                str(template),
+                "--to",
+                str(destination),
+                "--rollback",
+                "deploy",
+            ]
+        )
 
-    assert result == destination
-    assert (
-        gateway.journal.require_open("deploy").entries[0].state is MutationState.APPLIED
-    )
+    assert not destination.exists()
+    assert gateway.journal.get("deploy") is None
 
 
 def test_update_entry_data_requires_prepared_entry(tmp_path):
