@@ -53,11 +53,6 @@ def project_scripts(project):
     return result
 
 
-
-def scripts(project):
-    """Return standard Python project launchables."""
-    return project_scripts(project)
-
 def resolve_target(project, target):
     """Import and return a console-script callable from a project checkout."""
     project = Path(project).expanduser().resolve()
