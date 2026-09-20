@@ -215,3 +215,51 @@ def test_rollback_entry_uses_persisted_execution_identity(
         ("sudo", "rm", "-rf", "--", str(destination)),
         {"check": True},
     )
+
+
+def test_rollback_entry_rejects_incomplete_expected_fingerprints_before_restore(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+
+    entry = gateway.journal.prepare(
+        "deploy",
+        kind="filesystem",
+        data={
+            "operation": "move",
+            "identity": {"user": None},
+            "paths": [
+                {
+                    "path": str(first),
+                    "existed": False,
+                    "storage": "paths/000000",
+                },
+                {
+                    "path": str(second),
+                    "existed": False,
+                    "storage": "paths/000001",
+                },
+            ],
+        },
+    )
+    gateway.journal.mark_applied("deploy", entry.sequence)
+    entry.data["expected"] = entry.data["expected"][:1]
+    gateway.journal._persist(gateway.journal.require_open("deploy"))
+
+    restored = []
+
+    def record_restore(*args, **kwargs):
+        restored.append((args, kwargs))
+
+    monkeypatch.setattr("gway.snapshot.restore_path", record_restore)
+
+    with pytest.raises(JournalError, match="incomplete post-mutation fingerprints"):
+        gateway.journal.rollback_entry("deploy", entry.sequence)
+
+    assert restored == []
+    assert entry.state is MutationState.APPLIED
