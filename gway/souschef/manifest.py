@@ -1,4 +1,4 @@
-"""Parsing for declarative Sous Chef jobs."""
+"""Parsing Sous Chef job policy from pyproject.toml."""
 
 import re
 from pathlib import Path
@@ -103,7 +103,7 @@ def job_from_data(project, name, data, *, root):
 def jobs_from_data(data, *, root):
     """Normalize all Sous Chef jobs from one manifest mapping."""
     if not isinstance(data, dict):
-        raise ValueError("gway.toml root must be a table")
+        raise ValueError("pyproject.toml root must be a table")
 
     project_data = data.get("project")
     if not isinstance(project_data, dict):
@@ -111,7 +111,9 @@ def jobs_from_data(data, *, root):
     project = project_data.get("name")
     validate_name(project)
 
-    jobs = data.get("sous-chef", {})
+    tool = data.get("tool", {})
+    gway = tool.get("gway", {}) if isinstance(tool, dict) else {}
+    jobs = gway.get("sous-chef", {}) if isinstance(gway, dict) else {}
     if jobs is None:
         jobs = {}
     if not isinstance(jobs, dict):
@@ -124,6 +126,6 @@ def jobs_from_data(data, *, root):
 
 
 def load(path):
-    """Load Sous Chef jobs from one gway.toml."""
+    """Load Sous Chef jobs from one pyproject.toml."""
     path = Path(path).expanduser().resolve()
     return jobs_from_data(toml.load(path), root=path.parent)
