@@ -32,5 +32,5 @@ def register(runtime):
     )
     launchable = runtime.launchables["sous.chef"]
     service = definition(launchable)
-    runtime._services[service.identity] = service
+    runtime._service_presets[service.identity] = service
     return service
