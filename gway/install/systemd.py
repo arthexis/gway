@@ -1,95 +1,11 @@
 """Systemd unit materialization for Gway service launchables."""
 
-from dataclasses import asdict, dataclass
-import json
-import os
 from pathlib import Path
 import shlex
 import subprocess
-import tempfile
 
 from ..service.runtime import ProcessBackend
-
-
-@dataclass(frozen=True)
-class UnitRecord:
-    """Persisted mapping from one project service to a systemd unit."""
-
-    project: str
-    service: str
-    unit: str
-    system: bool = False
-    backend: str = "systemd"
-    restart: str | None = None
-    attempts: int | None = None
-    restart_sec: float | None = None
-    command: tuple[str, ...] = ()
-
-
-class UnitState:
-    """Atomic JSON mapping for systemd units owned by installed projects."""
-
-    def __init__(self, root):
-        self.root = Path(root).expanduser().resolve()
-
-    def path(self, project):
-        return self.root / f"{project}.json"
-
-    def get(self, project):
-        path = self.path(project)
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            return []
-        return [
-            UnitRecord(
-                project=item["project"],
-                service=item["service"],
-                unit=item["unit"],
-                system=bool(item.get("system", False)),
-                backend=item.get("backend", "systemd"),
-                restart=item.get("restart"),
-                attempts=item.get("attempts"),
-                restart_sec=item.get("restart_sec"),
-                command=tuple(item.get("command", ())),
-            )
-            for item in data
-        ]
-
-    def put(self, project, records):
-        path = self.path(project)
-        records = list(records)
-        if not records:
-            self.remove(project)
-            return records
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, temporary = tempfile.mkstemp(
-            prefix=f".{project}.",
-            suffix=".tmp",
-            dir=path.parent,
-        )
-        temp = Path(temporary)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                json.dump(
-                    [asdict(record) for record in records],
-                    stream,
-                    indent=2,
-                    sort_keys=True,
-                )
-                stream.write("\n")
-            os.replace(temp, path)
-        finally:
-            if temp.exists():
-                temp.unlink()
-        return records
-
-    def remove(self, project):
-        try:
-            self.path(project).unlink()
-        except FileNotFoundError:
-            return False
-        return True
+from .service_state import ServiceInstallRecord, ServiceInstallState
 
 
 def unit_root(*, system=False, home=None):
@@ -162,7 +78,7 @@ def install_units(
 
     target_root = unit_root(system=system) if root is None else Path(root)
     target_root.mkdir(parents=True, exist_ok=True)
-    state = UnitState(state_root)
+    state = ServiceInstallState(state_root)
     previous_all = state.get(project)
     previous = {
         record.service: record
@@ -178,11 +94,11 @@ def install_units(
 
     previous_files = {}
     for record in previous.values():
-        path = target_root / record.unit
+        path = target_root / record.backend_id
         try:
-            previous_files[record.unit] = path.read_bytes()
+            previous_files[record.backend_id] = path.read_bytes()
         except FileNotFoundError:
-            previous_files[record.unit] = None
+            previous_files[record.backend_id] = None
 
     records = []
     try:
@@ -190,16 +106,16 @@ def install_units(
         for service_name, record in previous.items():
             if service_name in selected:
                 continue
-            _systemctl("disable", record.unit, system=record.system, check=False)
+            _systemctl("disable", record.backend_id, system=record.system, check=False)
             try:
-                (target_root / record.unit).unlink()
+                (target_root / record.backend_id).unlink()
             except FileNotFoundError:
                 pass
 
         for service in services:
             previous_record = previous.get(service.name)
             if previous_record is not None:
-                filename = previous_record.unit
+                filename = previous_record.backend_id
             else:
                 filename = unit_name(project, service.name)
             path = target_root / filename
@@ -208,7 +124,7 @@ def install_units(
                 encoding="utf-8",
             )
             records.append(
-                UnitRecord(
+                ServiceInstallRecord(
                     project=project,
                     service=service.name,
                     unit=filename,
@@ -223,15 +139,15 @@ def install_units(
 
         _systemctl("daemon-reload", system=system)
         for record in records:
-            _systemctl("enable", record.unit, system=system)
+            _systemctl("enable", record.backend_id, system=system)
         state.put(project, [*foreign, *records])
         return records
     except Exception:
         for record in records:
-            _systemctl("disable", record.unit, system=system, check=False)
-            if record.unit not in previous_files:
+            _systemctl("disable", record.backend_id, system=system, check=False)
+            if record.backend_id not in previous_files:
                 try:
-                    (target_root / record.unit).unlink()
+                    (target_root / record.backend_id).unlink()
                 except FileNotFoundError:
                     pass
         for unit, content in previous_files.items():
@@ -247,7 +163,7 @@ def install_units(
         state.put(project, previous_all)
         _systemctl("daemon-reload", system=system, check=False)
         for record in previous.values():
-            _systemctl("enable", record.unit, system=record.system, check=False)
+            _systemctl("enable", record.backend_id, system=record.system, check=False)
         raise
 
 
@@ -262,7 +178,7 @@ def uninstall_units(
     process_state_root=None,
 ):
     """Disable and remove persisted systemd units owned by one project."""
-    state = UnitState(state_root)
+    state = ServiceInstallState(state_root)
     all_records = state.get(project)
     records = (
         [record for record in all_records if record.backend == "systemd"]
@@ -274,18 +190,18 @@ def uninstall_units(
 
     for record in records:
         target_root = unit_root(system=record.system) if root is None else Path(root)
-        _systemctl("disable", "--now", record.unit, system=record.system, check=False)
+        _systemctl("disable", "--now", record.backend_id, system=record.system, check=False)
         try:
-            (target_root / record.unit).unlink()
+            (target_root / record.backend_id).unlink()
         except FileNotFoundError:
             pass
         _systemctl("daemon-reload", system=record.system, check=False)
 
-    removed = {(record.backend, record.service, record.unit) for record in records}
+    removed = {(record.backend, record.service, record.backend_id) for record in records}
     remaining = [
         record
         for record in all_records
-        if (record.backend, record.service, record.unit) not in removed
+        if (record.backend, record.service, record.backend_id) not in removed
     ]
     state.put(project, remaining)
     return records
@@ -301,7 +217,7 @@ class RuntimeBackend:
     def _status(self, service):
         result = _systemctl(
             "is-active",
-            self.record.unit,
+            self.record.backend_id,
             system=self.record.system,
             check=False,
         )
@@ -317,17 +233,17 @@ class RuntimeBackend:
 
     def start(self, service):
         """Start one installed systemd service."""
-        _systemctl("start", self.record.unit, system=self.record.system)
+        _systemctl("start", self.record.backend_id, system=self.record.system)
         return self._status(service)
 
     def stop(self, service):
         """Stop one installed systemd service."""
-        _systemctl("stop", self.record.unit, system=self.record.system, check=False)
+        _systemctl("stop", self.record.backend_id, system=self.record.system, check=False)
         return self._status(service)
 
     def restart(self, service):
         """Restart one installed systemd service."""
-        _systemctl("restart", self.record.unit, system=self.record.system)
+        _systemctl("restart", self.record.backend_id, system=self.record.system)
         return self._status(service)
 
     def status(self, service):
