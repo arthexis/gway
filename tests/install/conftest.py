@@ -139,7 +139,7 @@ def fake_systemd(tmp_path, monkeypatch):
     active = set()
     monkeypatch.setattr(systemd, "unit_root", lambda **kwargs: units)
 
-    def call(*args, system=False, check=True):
+    def call(*args, system=False, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
         calls.append((args, system, check))
         action = args[0] if args else None
         unit = args[-1] if len(args) > 1 else None
