@@ -149,7 +149,7 @@ class Controller:
 
         from ..install.service import get as get_backend
         from ..install.paths import install_paths
-        from ..install.service.state import ServiceInstallState
+        from ..install.service import ServiceInstallState
 
         installation = getattr(self.gateway, "_installed", {}).get(
             definition.project
