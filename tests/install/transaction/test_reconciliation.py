@@ -88,7 +88,7 @@ def test_identical_content_from_new_source_updates_provenance_without_swap(
 
     second_source = tmp_path / "alternate" / "wire"
     second_source.mkdir(parents=True)
-    (second_source / "gway.toml").write_text(
+    (second_source / "pyproject.toml").write_text(
         "[project]\nname = 'wire'\n",
         encoding="utf-8",
     )
