@@ -130,6 +130,8 @@ def render(service, *, unit, system=False):
     lines = [
         "[Unit]",
         f"Description={service.description or service.project + '/' + service.name}",
+        f"StartLimitBurst={service.attempts + 1}",
+        f"StartLimitIntervalSec={max(60, int((service.attempts + 1) * service.restart_sec * 2))}",
         "",
         "[Service]",
         "Type=simple",
