@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from gway.souschef import DEFAULT_TIMEOUT, duration, jobs_from_data, load
