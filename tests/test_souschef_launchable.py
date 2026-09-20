@@ -13,10 +13,10 @@ def test_service_requires_launchable(tmp_path):
         raise AssertionError("Service should require a launchable")
 
 
-def test_sous_chef_daemon_is_normal_gway_operation():
+def test_sous_chef_entrypoint_is_normal_gway_operation():
     runtime = Gateway()
 
-    launchable = runtime.launchables["sous.chef.daemon"]
+    launchable = runtime.launchables["sous.chef"]
     service = runtime._services[("gway", "sous-chef")]
 
     assert isinstance(launchable, Launchable)
@@ -27,14 +27,13 @@ def test_sous_chef_daemon_is_normal_gway_operation():
         "gway",
         "sous",
         "chef",
-        "daemon",
     )
     assert service.launchable is launchable
 
 
 def test_sous_chef_service_definition_wraps_existing_launchable(tmp_path):
     launchable = Launchable.operation(
-        "sous.chef.daemon",
+        "sous.chef",
         root=tmp_path,
     )
 
@@ -44,7 +43,7 @@ def test_sous_chef_service_definition_wraps_existing_launchable(tmp_path):
     assert service.name == "sous-chef"
 
 
-def test_sous_chef_daemon_operation_runs_in_foreground(monkeypatch):
+def test_sous_chef_entrypoint_operation_runs_in_foreground(monkeypatch):
     runtime = Gateway()
     events = []
 
@@ -73,13 +72,13 @@ def test_sous_chef_daemon_operation_runs_in_foreground(monkeypatch):
         def evaluate(self):
             events.append(("evaluate", None))
 
-    from gway.souschef import daemon
+    import gway.souschef as souschef
 
-    monkeypatch.setattr(daemon.threading, "Event", StopAfterOneWait)
-    monkeypatch.setattr(daemon, "TriggerEngine", Engine)
-    monkeypatch.setattr(daemon.signal, "signal", lambda *args: None)
+    monkeypatch.setattr(souschef.threading, "Event", StopAfterOneWait)
+    monkeypatch.setattr(entrypoint, "TriggerEngine", Engine)
+    monkeypatch.setattr(souschef.signal, "signal", lambda *args: None)
 
-    result = runtime("sous chef daemon --poll 0.25")
+    result = runtime("sous chef --poll 0.25")
 
     assert result == 0
     assert events == [
