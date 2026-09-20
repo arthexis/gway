@@ -125,8 +125,7 @@ def _execute_check(runtime, tokens, result):
 
         if not isinstance(result, Mapping):
             raise CheckError(
-                f"check --{value} requires a mapping result; got "
-                f"{type(result).__name__}"
+                f"check --{value} requires a mapping result; got {type(result).__name__}"
             )
 
         inverted, expected = detail
