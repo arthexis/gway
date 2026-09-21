@@ -51,6 +51,8 @@ def _json_value(value, *, path="value"):
     """Validate and normalize one portable reload value."""
     if value is None or isinstance(value, (str, bool, int)):
         return value
+    if isinstance(value, Path):
+        return str(value)
     if isinstance(value, float):
         if not math.isfinite(value):
             raise TypeError(f"{path} must not contain non-finite numbers")
