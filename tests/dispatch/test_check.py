@@ -153,6 +153,20 @@ def test_check_is_coerces_scalar_literals(gateway):
     assert gateway("probe - check --is 200") == 200
 
 
+@pytest.mark.parametrize(
+    ("value", "literal"),
+    [
+        (True, "true"),
+        (False, "false"),
+        (None, "null"),
+    ],
+)
+def test_check_is_coerces_boolean_and_null_literals(gateway, value, literal):
+    _producer(gateway, value)
+
+    assert gateway(f"probe - check --is {literal}") is value
+
+
 def test_check_requires_at_least_one_assertion(gateway):
     _producer(gateway, True)
 
