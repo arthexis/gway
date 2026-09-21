@@ -612,11 +612,7 @@ def test_systemd_install_rollback_continues_after_cleanup_failure(
             timeout=40,
         )
 
-    cleanup = [
-        (action, unit)
-        for action, unit, check, _ in observed
-        if not check
-    ]
+    cleanup = [(action, unit) for action, unit, check, _ in observed if not check]
     assert cleanup == [
         ("disable", "gway-web.service"),
         ("disable", "gway-worker.service"),
@@ -669,11 +665,7 @@ def test_multiple_rollback_failures_preserve_original_forward_exception(
     assert error.returncode == 7
     assert error.stderr == "forward failure"
 
-    cleanup = [
-        (action, unit)
-        for action, unit, check, _ in observed
-        if not check
-    ]
+    cleanup = [(action, unit) for action, unit, check, _ in observed if not check]
     assert cleanup == [
         ("disable", "gway-web.service"),
         ("disable", "gway-worker.service"),
@@ -730,10 +722,7 @@ def test_rollback_failures_are_logged_and_attached_to_original_exception(
     assert error.returncode == 5
 
     notes = getattr(error, "__notes__", [])
-    assert any(
-        "Rollback failure: disable gway-web.service" in note
-        for note in notes
-    )
+    assert any("Rollback failure: disable gway-web.service" in note for note in notes)
 
     messages = [record.getMessage() for record in caplog.records]
     assert any(
