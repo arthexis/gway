@@ -49,7 +49,7 @@ def _write_deployment_recipes(root, source, destination):
     service_failure = recipes / "service-failure.rx"
 
     verify.write_text(
-        "sous chef run probe\n"
+        "sous chef run probe --project demo\n"
         "check --success true\n",
         encoding="utf-8",
     )
@@ -65,7 +65,7 @@ def _write_deployment_recipes(root, source, destination):
     )
     semantic_failure.write_text(
         f"copy {source} --to {destination} --rollback deploy\n"
-        "sous chef run fail\n"
+        "sous chef run fail --project demo\n"
         "check --success true\n"
         "./verify.rx\n"
         "commit deploy\n",
@@ -152,7 +152,6 @@ def test_souschef_semantic_job_failure_stops_recipe_and_rolls_back(
 def test_souschef_service_timeout_stops_recipe_with_operation_identity_and_rollback(
     tmp_path,
     monkeypatch,
-    fake_systemd,
     install_environment,
 ):
     marker = tmp_path / "job-ran.txt"
