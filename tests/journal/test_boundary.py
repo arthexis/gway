@@ -384,21 +384,12 @@ def test_failed_execution_boundary_logs_automatic_recovery(
 def test_success_boundary_rolls_back_multiple_journals_in_reverse_open_order(
     gateway,
     tmp_path,
-    monkeypatch,
+    record_rollbacks,
 ):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     first = tmp_path / "first.txt"
     second = tmp_path / "second.txt"
-    order = []
-
-    original = gateway.journal.rollback
-
-    def record_rollback(name):
-        order.append(name)
-        return original(name)
-
-    monkeypatch.setattr(gateway.journal, "rollback", record_rollback)
 
     def leak_two():
         gateway.copy(str(source), to=str(first), rollback="alpha")
@@ -412,7 +403,7 @@ def test_success_boundary_rolls_back_multiple_journals_in_reverse_open_order(
 
     assert raised.value.journals == ("alpha", "beta")
     assert raised.value.rollback_errors == ()
-    assert order == ["beta", "alpha"]
+    assert record_rollbacks == ["beta", "alpha"]
     assert not first.exists()
     assert not second.exists()
     assert gateway.journal.open_names() == ()
