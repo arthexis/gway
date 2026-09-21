@@ -74,10 +74,25 @@ def recipe_path(runtime, source, *, allow_bare=True):
     if not path.is_absolute():
         path = _recipe_base(runtime) / path
 
+    candidates = [path]
+    if path.suffix == "":
+        candidates.append(path.with_suffix(".rx"))
+    if path.is_dir():
+        candidates.extend(
+            (
+                path / f"{path.name}.rx",
+                path / "__main__.rx",
+            )
+        )
+
     if explicit:
-        return path
-    if allow_bare and path.is_file():
-        return path
+        return next(
+            (candidate for candidate in candidates if candidate.is_file()), path
+        )
+    if allow_bare:
+        return next(
+            (candidate for candidate in candidates if candidate.is_file()), None
+        )
     return None
 
 
