@@ -351,3 +351,78 @@ def test_reload_when_changed_noop_leaves_open_journal_for_later_commit(
     assert gateway(recipe) == "deploy"
     assert destination.read_text(encoding="utf-8") == "source"
     assert gateway.journal.open_names() == ()
+
+
+
+def test_reload_fresh_captures_structural_state_without_semantic_history(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    captured = {}
+
+    def produce():
+        return {"site": "MTY"}
+
+    gateway.produce = gateway.wrap("produce_site", produce)
+
+    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
+        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
+        runtime.suspend_execution(handoff_checkpoint)
+        captured["checkpoint"] = handoff_checkpoint
+        return FakeSuccessor(), handoff_checkpoint
+
+    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+
+    recipe = tmp_path / "fresh.rx"
+    recipe.write_text(
+        "produce\n"
+        "reload --fresh\n"
+        "clear\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReloadTransferred):
+        gateway(recipe)
+
+    checkpoint = captured["checkpoint"]
+    assert checkpoint.mode.value == "fresh"
+    assert checkpoint.context == {}
+    assert checkpoint.result_history == ()
+    assert checkpoint.result_subjects == {}
+    assert checkpoint.result == {"site": "MTY"}
+    assert checkpoint.frames[0]["statements"][0][0]["value"] == "clear"
+
+
+def test_reload_fresh_when_unchanged_is_transparent_noop(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    identity = RuntimeIdentity(
+        resolved_revision="abc123",
+        fingerprint="fp-1",
+        scope="user",
+    )
+    gateway.gway_identity = identity
+    gateway.context["site"] = "MTY"
+    monkeypatch.setattr(
+        "gway.install.identity.managed_gway_identity",
+        lambda: identity,
+    )
+
+    def show(site):
+        return site
+
+    gateway.show = gateway.wrap("show_site", show)
+
+    recipe = tmp_path / "fresh-unchanged.rx"
+    recipe.write_text(
+        "reload --fresh --when changed\n"
+        "show site\n",
+        encoding="utf-8",
+    )
+
+    assert gateway(recipe) == "MTY"
+    assert gateway.context["site"] == "MTY"
