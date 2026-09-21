@@ -126,7 +126,7 @@ def test_move_directory_can_restore_tree(gateway, tmp_path):
     assert not destination.exists()
 
 
-def test_move_failure_after_snapshots_leaves_one_prepared_entry(
+def test_move_failure_after_snapshots_leaves_one_unsealed_entry(
     gateway,
     tmp_path,
     monkeypatch,
@@ -147,7 +147,7 @@ def test_move_failure_after_snapshots_leaves_one_prepared_entry(
     journal = gateway.journal.require_open("deploy")
     assert len(journal.entries) == 1
     entry = journal.entries[0]
-    assert entry.state is MutationState.PREPARED
+    assert entry.state is MutationState.MUTATED
     assert len(entry.data["paths"]) == 2
     assert source.read_text(encoding="utf-8") == "source"
     assert destination.read_text(encoding="utf-8") == "destination"
