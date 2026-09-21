@@ -97,6 +97,44 @@ def test_copy_failure_after_snapshot_leaves_unsealed_entry(
     assert destination.read_text(encoding="utf-8") == "old"
 
 
+def test_partial_copy_failure_preserves_unsealed_journal_at_boundary(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "source.txt"
+    source.write_text("new", encoding="utf-8")
+    destination = tmp_path / "target.txt"
+    primary = OSError("copy failed after write")
+
+    def partial_copy(source, destination):
+        destination.write_text("partial", encoding="utf-8")
+        raise primary
+
+    monkeypatch.setattr("gway.filesystem._copy_local", partial_copy)
+
+    with pytest.raises(OSError) as raised:
+        gateway(
+            [
+                "copy",
+                str(source),
+                "--to",
+                str(destination),
+                "--rollback",
+                "deploy",
+            ]
+        )
+
+    assert raised.value is primary
+    assert destination.read_text(encoding="utf-8") == "partial"
+    entry = gateway.journal.require_open("deploy").entries[0]
+    assert entry.state is MutationState.MUTATED
+    recovery = rollback_error_for(primary)
+    assert isinstance(recovery, RollbackError)
+    assert recovery.failures[0].sequence == 1
+    assert "post-mutation fingerprint is unavailable" in str(recovery.failures[0].error)
+
+
 def test_link_conflict_is_rejected_before_journal_entry(gateway, tmp_path):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
