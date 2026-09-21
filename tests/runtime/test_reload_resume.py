@@ -303,3 +303,85 @@ def test_fresh_resume_context_does_not_restore_pre_reload_values(
     store.save(checkpoint)
 
     assert resume(checkpoint.checkpoint_id, store=store) == "missing"
+
+
+
+def test_restart_resume_reexecutes_top_level_recipe_from_start(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("gway.cache.default_root", lambda: tmp_path / "cache")
+    recipe = tmp_path / "restart.rx"
+    companion = tmp_path / "restart.py"
+    marker = tmp_path / "marker.txt"
+
+    companion.write_text(
+        "from pathlib import Path\n"
+        f"_marker = Path({str(marker)!r})\n"
+        "def start(site):\n"
+        "    previous = _marker.read_text(encoding='utf-8') if _marker.exists() else ''\n"
+        "    _marker.write_text(previous + site, encoding='utf-8')\n"
+        "    return site\n",
+        encoding="utf-8",
+    )
+    recipe.write_text("restart start\n", encoding="utf-8")
+
+    store = ReloadStore(tmp_path / "reload")
+    checkpoint = _handoff_checkpoint(
+        mode="restart",
+        recipe_stack=(str(recipe),),
+        frames=(
+            {
+                "recipe": str(recipe),
+                "context": {"site": "MTY"},
+                "section": None,
+            },
+        ),
+        context={},
+        result=None,
+        result_history=(),
+        result_subjects={},
+        journal_session_id=None,
+        open_journals=(),
+    )
+    store.save(checkpoint)
+
+    assert resume(checkpoint.checkpoint_id, store=store) == "MTY"
+    assert marker.read_text(encoding="utf-8") == "MTY"
+
+
+def test_restart_resume_uses_fresh_rollback_session(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("gway.cache.default_root", lambda: tmp_path / "cache")
+    recipe = tmp_path / "restart-session.rx"
+    companion = tmp_path / "restart-session.py"
+    observed = tmp_path / "session.txt"
+
+    companion.write_text(
+        "from pathlib import Path\n"
+        f"_observed = Path({str(observed)!r})\n"
+        "def remember(runtime=None):\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+    recipe.write_text("clear\n", encoding="utf-8")
+
+    store = ReloadStore(tmp_path / "reload")
+    checkpoint = _handoff_checkpoint(
+        mode="restart",
+        recipe_stack=(str(recipe),),
+        frames=(
+            {
+                "recipe": str(recipe),
+                "context": {},
+                "section": None,
+            },
+        ),
+        journal_session_id=None,
+        open_journals=(),
+    )
+    store.save(checkpoint)
+
+    assert resume(checkpoint.checkpoint_id, store=store) is None
