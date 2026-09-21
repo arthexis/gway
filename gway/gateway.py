@@ -289,16 +289,27 @@ class Gateway(Resolver):
 
         return run(self, recipe_name, **context)
 
-    def _reload(self, timeout: float = 30.0, when: str | None = None):
+    def _reload(
+        self,
+        timeout: float = 30.0,
+        when: str | None = None,
+        fresh: bool = False,
+    ):
         """Reload GWAY in a successor process and continue the active recipe.
 
         Args:
             timeout: Seconds to wait for the successor to adopt the checkpoint.
             when: Reload only when the managed GWAY runtime changed.
+            fresh: Resume with fresh semantic context and result history.
         """
         from .reload import perform_reload
 
-        return perform_reload(self, timeout=timeout, when=when)
+        return perform_reload(
+            self,
+            timeout=timeout,
+            when=when,
+            fresh=fresh,
+        )
 
     def _help(self, *operation: str, verbose=False):
         """Return documentation for one Gway operation.
