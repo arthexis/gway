@@ -379,8 +379,11 @@ class ReloadStore:
 class ReloadTransferred(BaseException):
     """Internal control signal indicating execution moved to a successor."""
 
-    def __init__(self, checkpoint_id):
-        self.checkpoint_id = str(checkpoint_id)
+    def __init__(self, process, checkpoint, journal_root):
+        self.process = process
+        self.checkpoint = checkpoint
+        self.checkpoint_id = str(checkpoint.checkpoint_id)
+        self.journal_root = Path(journal_root)
         super().__init__(self.checkpoint_id)
 
 
@@ -732,13 +735,17 @@ def perform_reload(
             target_identity=target_diagnostic,
         )
     selected = default_resume_command() if command is None else list(command)
-    _, handoff_checkpoint = handoff(
+    process, handoff_checkpoint = handoff(
         runtime,
         checkpoint,
         selected,
         store=store,
     )
-    raise ReloadTransferred(handoff_checkpoint.checkpoint_id)
+    raise ReloadTransferred(
+        process,
+        handoff_checkpoint,
+        runtime.journal.root,
+    )
 
 
 def _restore_runtime(checkpoint):
