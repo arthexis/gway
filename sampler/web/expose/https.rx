@@ -1,0 +1,20 @@
+# Promote an already-reachable HTTP site to HTTPS using Certbot webroot.
+
+ingest nginx --kind proc --sudo
+ingest certbot --kind proc --sudo
+
+certbot certonly
+--webroot
+--webroot-path [acme_webroot|/var/www/gway-acme]
+--domain
+--email
+--cert-name [domain]
+--agree-tos
+--non-interactive
+
+render nginx-https-[name].conf
+--to [nginx_available|/etc/nginx/sites-available]/nginx-[name].conf
+--as root
+
+nginx -t
+nginx -s reload
