@@ -1,0 +1,10 @@
+# Remove disposable resources created by DNS-enabled web exposure.
+# This is cleanup, not transactional rollback: pre-existing state is not restored.
+
+./cleanup-http
+
+dns delete [domain]
+--type A
+--value [public_ipv4]
+--backend [dns_backend|godaddy]
+--zone [zone]

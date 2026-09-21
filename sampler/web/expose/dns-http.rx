@@ -1,0 +1,19 @@
+# Opt-in DNS preparation for the HTTP-01 exposure sampler.
+# This mutates public DNS. Invoke explicitly for a disposable/test hostname.
+
+dns create [domain]
+--type A
+--value [public_ipv4]
+--backend [dns_backend|godaddy]
+--zone [zone]
+
+dns ready [domain]
+--type A
+--value [public_ipv4]
+--backend [dns_backend|godaddy]
+--zone [zone]
+
+repeat
+--until true
+--interval 10
+--max 60

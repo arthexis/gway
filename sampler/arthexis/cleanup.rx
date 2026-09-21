@@ -1,0 +1,11 @@
+# Remove Arthexis exposure and managed installation.
+# Durable application data and secrets are intentionally preserved.
+
+default
+--name arthexis
+--host 127.0.0.1
+--port 8000
+
+../web/expose/cleanup-http
+
+uninstall arthexis

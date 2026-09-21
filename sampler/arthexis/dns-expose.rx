@@ -1,0 +1,10 @@
+# Opt-in public DNS creation before exposing Arthexis.
+# Supply --domain, --zone, --public-ipv4, and --email from the caller.
+
+default
+--name arthexis
+--host 127.0.0.1
+--port 8000
+
+../web/expose/dns-http
+./expose
