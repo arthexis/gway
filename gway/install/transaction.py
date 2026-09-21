@@ -183,6 +183,29 @@ def _paths_and_state(request, *, paths=None, state=None):
     return selected, registry
 
 
+
+def _add_recovery_note(primary, label, error):
+    """Attach recovery diagnostics without replacing the forward failure."""
+    note = f"Install recovery failure during {label}: {error}"
+    add_note = getattr(primary, "add_note", None)
+    if add_note is not None:
+        add_note(note)
+        return
+    notes = list(getattr(primary, "__notes__", ()))
+    notes.append(note)
+    primary.__notes__ = notes
+
+
+def _attempt_recovery(primary, label, action):
+    """Attempt one recovery step independently and retain any failure as context."""
+    try:
+        action()
+    except Exception as error:
+        _add_recovery_note(primary, label, error)
+        return False
+    return True
+
+
 def install_materialized(
     request,
     source,
@@ -270,8 +293,8 @@ def install_materialized(
             launcher = activate_project(name, destination, selected)
             try:
                 stored = registry.put(record)
-            except Exception:
-                launcher.rollback()
+            except Exception as primary:
+                _attempt_recovery(primary, "launcher rollback", launcher.rollback)
                 raise
             launcher.commit()
             return stored
@@ -316,18 +339,38 @@ def install_materialized(
             launcher = activate_project(name, destination, selected)
             stored = registry.put(record)
             state_written = True
-        except Exception:
+        except Exception as primary:
             if state_written:
                 if existing is None:
-                    registry.remove(name, scope=selected.scope)
+                    _attempt_recovery(
+                        primary,
+                        "installation state removal",
+                        lambda: registry.remove(name, scope=selected.scope),
+                    )
                 else:
-                    registry.put(existing)
+                    _attempt_recovery(
+                        primary,
+                        "installation state restoration",
+                        lambda: registry.put(existing),
+                    )
+
             if launcher is not None:
-                launcher.rollback()
+                _attempt_recovery(primary, "launcher rollback", launcher.rollback)
+
             if destination.exists() or destination.is_symlink():
-                _remove_path(destination)
+                _attempt_recovery(
+                    primary,
+                    "replacement project removal",
+                    lambda: _remove_path(destination),
+                )
+
             if backup is not None and (backup.exists() or backup.is_symlink()):
-                os.replace(backup, destination)
+                _attempt_recovery(
+                    primary,
+                    "previous project restoration",
+                    lambda: os.replace(backup, destination),
+                )
+
             activated = False
             raise
 
