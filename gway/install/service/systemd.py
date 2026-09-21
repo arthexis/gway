@@ -221,6 +221,70 @@ def render(service, *, system=False):
     return "\n".join(lines)
 
 
+def _rollback_install_units(
+    project,
+    *,
+    records,
+    previous,
+    previous_all,
+    previous_files,
+    state,
+    target_root,
+    system,
+    timeout,
+):
+    """Best-effort rollback for a failed systemd unit installation."""
+    for record in records:
+        try:
+            _systemctl(
+                "disable",
+                record.backend_id,
+                system=system,
+                check=False,
+                timeout=timeout,
+            )
+        except Exception:
+            pass
+        if record.backend_id not in previous_files:
+            try:
+                (target_root / record.backend_id).unlink()
+            except Exception:
+                pass
+
+    for unit, content in previous_files.items():
+        path = target_root / unit
+        try:
+            if content is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+        except Exception:
+            pass
+
+    try:
+        state.put(project, previous_all)
+    except Exception:
+        pass
+
+    try:
+        _systemctl("daemon-reload", system=system, check=False, timeout=timeout)
+    except Exception:
+        pass
+
+    for record in previous.values():
+        try:
+            _systemctl(
+                "enable",
+                record.backend_id,
+                system=record.system,
+                check=False,
+                timeout=timeout,
+            )
+        except Exception:
+            pass
+
+
 def install_units(
     project,
     services,
@@ -286,51 +350,17 @@ def install_units(
         state.put(project, [*retained, *records])
         return records
     except Exception:
-        for record in records:
-            try:
-                _systemctl(
-                    "disable",
-                    record.backend_id,
-                    system=system,
-                    check=False,
-                    timeout=timeout,
-                )
-            except Exception:
-                pass
-            if record.backend_id not in previous_files:
-                try:
-                    (target_root / record.backend_id).unlink()
-                except Exception:
-                    pass
-        for unit, content in previous_files.items():
-            path = target_root / unit
-            try:
-                if content is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_bytes(content)
-            except Exception:
-                pass
-        try:
-            state.put(project, previous_all)
-        except Exception:
-            pass
-        try:
-            _systemctl("daemon-reload", system=system, check=False, timeout=timeout)
-        except Exception:
-            pass
-        for record in previous.values():
-            try:
-                _systemctl(
-                    "enable",
-                    record.backend_id,
-                    system=record.system,
-                    check=False,
-                    timeout=timeout,
-                )
-            except Exception:
-                pass
+        _rollback_install_units(
+            project,
+            records=records,
+            previous=previous,
+            previous_all=previous_all,
+            previous_files=previous_files,
+            state=state,
+            target_root=target_root,
+            system=system,
+            timeout=timeout,
+        )
         raise
 
 
