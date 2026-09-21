@@ -1,8 +1,0 @@
-[project]
-name = "django-fixture"
-
-[adapter]
-type = "django"
-manage = "manage.py"
-settings = "gway_django_fixture.settings"
-sigils = "gway_django_fixture.sigils:context"

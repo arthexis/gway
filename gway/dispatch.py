@@ -1,0 +1,966 @@
+"""Unified command resolution and dispatch for GWAY runtimes."""
+
+import ast
+import os
+import time
+from dataclasses import dataclass
+from collections.abc import Mapping
+
+from .adaptation import adapt_pipeline
+from .binding import bind_arguments, pipeline_boundary
+from .execution import Execution, Stage, Statement
+from .ingestion.base import expand_path
+from .operations import Cardinality, singularize, subject_cardinality
+from .recipes import execute_recipe, parse_recipe_context, recipe_path
+from .semantic import AmbiguousKeyError, resolve_mapping_key
+from .tokens import is_literal, is_unquoted, statements, token_value, tokenize
+
+_MISSING = object()
+
+
+class CheckError(RuntimeError):
+    """Raised when an atomic check does not satisfy its assertions."""
+
+
+class RepeatLimitError(RuntimeError):
+    """Raised when a conditional repeat cannot reach its terminal state."""
+
+
+def _repeat_stage(tokens):
+    """Split one repeat control stage from a following dash pipeline."""
+    stage = []
+    remaining = []
+    for index, token in enumerate(tokens):
+        if index and is_unquoted(token) and token_value(token) == "-":
+            remaining = list(tokens[index + 1 :])
+            break
+        stage.append(token)
+    return stage, remaining
+
+
+def _repeat_options(tokens):
+    """Parse repeat target and control options from raw tokens."""
+    target = None
+    times = None
+    while_gate = None
+    until_gate = None
+    interval = 0.0
+    maximum = None
+    rollback = None
+
+    index = 1
+    tokens = list(tokens)
+    if index < len(tokens) and not token_value(tokens[index]).startswith("--"):
+        target = tokens[index]
+        index += 1
+
+    while index < len(tokens):
+        option = token_value(tokens[index])
+        if option not in {
+            "--times",
+            "--while",
+            "--until",
+            "--interval",
+            "--max",
+            "--rollback",
+        }:
+            raise TypeError(f"Unknown repeat argument {option}")
+        if index + 1 >= len(tokens):
+            raise TypeError(f"Expected a value after {option}")
+        value = tokens[index + 1]
+        raw = token_value(value)
+        if option == "--times":
+            times = int(raw)
+            if times < 0:
+                raise ValueError("--times must be non-negative")
+        elif option == "--while":
+            while_gate = value
+        elif option == "--until":
+            until_gate = value
+        elif option == "--interval":
+            interval = float(raw)
+            if interval < 0:
+                raise ValueError("--interval must be non-negative")
+        elif option == "--max":
+            maximum = int(raw)
+            if maximum < 1:
+                raise ValueError("--max must be at least 1")
+        elif option == "--rollback":
+            if rollback is not None:
+                raise TypeError("repeat accepts only one --rollback journal")
+            rollback = str(raw)
+        index += 2
+
+    if while_gate is not None and until_gate is not None:
+        raise ValueError("repeat accepts only one of --while or --until")
+    if times is not None and (while_gate is not None or until_gate is not None):
+        raise ValueError("--times cannot be combined with --while or --until")
+    if times is None and while_gate is None and until_gate is None:
+        times = 1
+
+    return {
+        "target": target,
+        "times": times,
+        "while_gate": while_gate,
+        "until_gate": until_gate,
+        "interval": interval,
+        "maximum": maximum,
+        "rollback": rollback,
+    }
+
+
+def _gate_value(runtime, gate, result):
+    """Evaluate one repeat gate and require an actual bool."""
+    raw = token_value(gate)
+    lowered = raw.lower()
+    if lowered in {"true", "false"}:
+        if not isinstance(result, bool):
+            raise TypeError("repeat literal gates require a boolean replay result")
+        return result is (lowered == "true")
+
+    try:
+        resolved = runtime.resolve(raw)
+    except KeyError:
+        resolved = raw
+    if isinstance(resolved, bool):
+        return resolved
+    if resolved is not raw and resolved != raw:
+        if not isinstance(resolved, bool):
+            raise TypeError("repeat gate sigils must resolve to bool")
+        return resolved
+
+    try:
+        resolution = resolve_operation(runtime, [gate], pipeline=result)
+    except LookupError:
+        use_pipeline = False
+    else:
+        try:
+            adapt_pipeline(runtime, resolution.callable, result)
+        except TypeError:
+            use_pipeline = False
+        else:
+            use_pipeline = True
+
+    if use_pipeline:
+        value = dispatch_stage(runtime, [gate], pipeline=result)
+    else:
+        value = dispatch_stage(runtime, [gate])
+
+    if not isinstance(value, bool):
+        raise TypeError("repeat operation gates must return bool")
+    return value
+
+
+def _repeat_target(runtime, statement, target):
+    """Resolve repeat target semantics without retaining old callables."""
+    if target is not None:
+        token = target
+
+        def replay():
+            produced, result = dispatch_pipeline(runtime, [token])
+            return result
+
+        return replay
+
+    if statement is not None:
+        if statement.stages:
+            prefix = Statement(statement.index, list(statement.stages))
+
+            def replay():
+                return prefix.replay(runtime)
+
+            return replay
+
+        execution = getattr(runtime, "execution", None)
+        if (
+            execution is not None
+            and statement.index > 0
+            and statement.index <= len(execution.statements) - 1
+        ):
+            previous_statement = execution.statements[statement.index - 1]
+
+            def replay():
+                return previous_statement.replay(runtime)
+
+            return replay
+
+    previous = getattr(runtime, "previous_execution", None)
+    if previous is None or previous.last is None:
+        raise LookupError("repeat requires a previous operation")
+    stage = previous.last
+
+    def replay():
+        return stage.replay(runtime)
+
+    return replay
+
+
+def _execute_repeat(runtime, tokens, *, statement=None):
+    """Execute repeat control flow against semantic replay targets."""
+    options = _repeat_options(tokens)
+    rollback = options["rollback"]
+
+    try:
+        replay = _repeat_target(runtime, statement, options["target"])
+        times = options["times"]
+        interval = options["interval"]
+
+        if times is not None:
+            result = None
+            for index in range(times):
+                result = replay()
+                if interval and index + 1 < times:
+                    time.sleep(interval)
+            return result
+
+        maximum = options["maximum"] or 100
+        gate = options["until_gate"] or options["while_gate"]
+        until = options["until_gate"] is not None
+        result = None
+
+        for index in range(maximum):
+            result = replay()
+            state = _gate_value(runtime, gate, result)
+            terminal = state if until else not state
+            if terminal:
+                return result
+            if interval and index + 1 < maximum:
+                time.sleep(interval)
+
+        mode = "until" if until else "while"
+        raise RepeatLimitError(
+            f"repeat --{mode} did not reach its terminal state "
+            f"within {maximum} attempts"
+        )
+    except Exception as primary:
+        _rollback_control_failure(runtime, rollback, primary)
+        raise
+
+
+def _rollback_control_failure(runtime, rollback, primary):
+    """Attempt one named rollback while preserving a control failure."""
+    if rollback is not None:
+        runtime.journal.rollback_after_failure(rollback, primary)
+    return primary
+
+
+def _check_stage(tokens):
+    """Split one check control stage from a following dash pipeline."""
+    stage = []
+    remaining = []
+    for index, token in enumerate(tokens):
+        if index and is_unquoted(token) and token_value(token) == "-":
+            remaining = list(tokens[index + 1 :])
+            break
+        stage.append(token)
+    return stage, remaining
+
+
+def _check_expected(runtime, token):
+    """Resolve one expected check value with lightweight literal coercion."""
+    raw = token_value(token)
+    if is_literal(token):
+        return raw
+
+    resolved = runtime.resolve(raw)
+    if resolved is not raw and resolved != raw:
+        return resolved
+
+    lowered = raw.casefold()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    if lowered in {"none", "null"}:
+        return None
+
+    try:
+        return ast.literal_eval(raw)
+    except (ValueError, SyntaxError):
+        return raw
+
+
+def _check_options(runtime, tokens):
+    """Parse atomic check assertions from raw control-stage tokens."""
+    tokens = list(tokens)
+    checks = []
+    rollback = None
+    unless = _MISSING
+    index = 1
+
+    while index < len(tokens):
+        option_token = tokens[index]
+        option = token_value(option_token)
+        literal_option = is_literal(option_token)
+        if not option.startswith("--"):
+            raise TypeError(f"Unexpected check argument {option!r}")
+
+        if not literal_option and option in {"--true", "--false"}:
+            checks.append(("boolean", option == "--true", None))
+            index += 1
+            continue
+
+        if not literal_option and option == "--is":
+            if index + 1 >= len(tokens):
+                raise TypeError("Expected a value after --is")
+            checks.append(("is", _check_expected(runtime, tokens[index + 1]), None))
+            index += 2
+            continue
+
+        if not literal_option and option == "--unless":
+            if unless is not _MISSING:
+                raise TypeError("check accepts only one --unless condition")
+            if index + 1 >= len(tokens):
+                raise TypeError("Expected a boolean condition after --unless")
+            unless = _check_expected(runtime, tokens[index + 1])
+            index += 2
+            continue
+
+        if not literal_option and option == "--rollback":
+            if rollback is not None:
+                raise TypeError("check accepts only one --rollback journal")
+            if index + 1 >= len(tokens):
+                raise TypeError("Expected a journal name after --rollback")
+            rollback_token = tokens[index + 1]
+            rollback_raw = token_value(rollback_token)
+            if not is_literal(rollback_token) and rollback_raw.startswith("--"):
+                raise TypeError("Expected a journal name after --rollback")
+            rollback = str(rollback_raw)
+            index += 2
+            continue
+
+        inverted = not literal_option and option.startswith("--no-")
+        name = option[5:] if inverted else option[2:]
+        if not name:
+            raise TypeError(f"Invalid check argument {option!r}")
+
+        expected = _MISSING
+        if index + 1 < len(tokens):
+            next_token = tokens[index + 1]
+            next_raw = token_value(next_token)
+            if is_literal(next_token) or (
+                not next_raw.startswith("--") and next_raw != "-"
+            ):
+                expected = _check_expected(runtime, next_token)
+                index += 1
+
+        checks.append(("mapping", name, (inverted, expected)))
+        index += 1
+
+    if not checks:
+        raise TypeError("check requires at least one assertion")
+    return checks, rollback, unless
+
+
+def _execute_check(runtime, tokens, result):
+    """Apply atomic assertions to one result and return it unchanged."""
+    checks, rollback, unless = _check_options(runtime, tokens)
+
+    try:
+        if unless is not _MISSING:
+            if not isinstance(unless, bool):
+                raise CheckError("check --unless requires a boolean condition")
+            if unless:
+                return result
+
+        for kind, value, detail in checks:
+            if kind == "boolean":
+                if not isinstance(result, bool):
+                    raise CheckError("check --true/--false requires a boolean result")
+                if result is not value:
+                    raise CheckError(
+                        f"check expected result to be {str(value).lower()}"
+                    )
+                continue
+
+            if kind == "is":
+                if result != value:
+                    raise CheckError(
+                        f"check expected result to equal {value!r}; got {result!r}"
+                    )
+                continue
+
+            if not isinstance(result, Mapping):
+                raise CheckError(
+                    f"check --{value} requires a mapping result; got {type(result).__name__}"
+                )
+
+            inverted, expected = detail
+            try:
+                actual_key = resolve_mapping_key(result, value)
+            except AmbiguousKeyError as exception:
+                raise CheckError(str(exception)) from exception
+            except KeyError:
+                actual_key = _MISSING
+
+            present = actual_key is not _MISSING
+            if expected is _MISSING:
+                passed = not present if inverted else present
+                if not passed:
+                    expectation = "absent" if inverted else "present"
+                    raise CheckError(
+                        f"check expected key {value!r} to be {expectation}"
+                    )
+                continue
+
+            actual = result[actual_key] if present else _MISSING
+            matches = present and actual == expected
+            passed = not matches if inverted else matches
+            if not passed:
+                if inverted:
+                    raise CheckError(
+                        f"check expected key {value!r} not to equal {expected!r}"
+                    )
+                if actual is _MISSING:
+                    raise CheckError(f"check expected key {value!r} to be present")
+                raise CheckError(
+                    f"check expected key {value!r} to equal {expected!r}; "
+                    f"got {actual!r}"
+                )
+    except CheckError as primary:
+        _rollback_control_failure(runtime, rollback, primary)
+        raise
+
+    return result
+
+
+@dataclass(frozen=True)
+class ResolvedOperation:
+    """One resolved callable plus per-invocation semantic subject intent."""
+
+    callable: object
+    arguments: list
+    candidate: str
+    subject: str | None = None
+    cardinality: object = None
+
+    def __iter__(self):
+        yield self.callable
+        yield self.arguments
+        yield self.candidate
+
+
+def _resolved(func, arguments, candidate):
+    subject = getattr(func, "__gway_subject__", None)
+    requested = candidate.replace(" ", ".").split(".")[-1]
+    cardinality = (
+        subject_cardinality(requested, subject) if subject is not None else None
+    )
+    return ResolvedOperation(
+        func,
+        arguments,
+        candidate,
+        subject=subject,
+        cardinality=cardinality,
+    )
+
+
+def _expand_candidate(runtime, candidate):
+    """JIT-expand hierarchical and semantic branches for one candidate."""
+    path = tuple(part for part in candidate.replace(" ", ".").split(".") if part)
+    expanded = False
+    for size in range(1, len(path) + 1):
+        expanded = expand_path(runtime, path[:size]) or expanded
+
+    if len(path) >= 2:
+        semantic_branch = (*path[:-2], path[-1])
+        expanded = expand_path(runtime, semantic_branch) or expanded
+        singular = singularize(path[-1])
+        if singular is not None:
+            singular_branch = (*path[:-2], singular)
+            expanded = expand_path(runtime, singular_branch) or expanded
+
+    return expanded
+
+
+def _semantic_pipeline_operation(runtime, tokens, pipeline):
+    """Resolve a bare operation against the semantic subject of a pipeline value."""
+    subject = runtime.results.subject(pipeline)
+    if subject is None:
+        return None
+
+    expand_path(runtime, (subject,))
+    values = [token_value(token) for token in tokens]
+    for size in range(len(values), 0, -1):
+        candidates = (
+            " ".join(values[:size]),
+            "_".join(token.replace("-", "_") for token in values[:size]),
+            ".".join(token.replace("-", "_") for token in values[:size]),
+        )
+        for candidate in candidates:
+            value = runtime.ops.resolve_pair(candidate, subject)
+            if callable(value):
+                return _resolved(value, tokens[size:], candidate)
+    return None
+
+
+def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
+    """Resolve the longest leading token sequence to an executable operation."""
+    values = [token_value(token) for token in tokens]
+    for size in range(len(values), 0, -1):
+        candidates = (
+            " ".join(values[:size]),
+            "_".join(token.replace("-", "_") for token in values[:size]),
+            ".".join(token.replace("-", "_") for token in values[:size]),
+        )
+        for candidate in candidates:
+            value = runtime.ops.resolve(candidate)
+            if callable(value):
+                return _resolved(value, tokens[size:], candidate)
+
+            if _expand_candidate(runtime, candidate):
+                value = runtime.ops.resolve(candidate)
+                if callable(value):
+                    return _resolved(value, tokens[size:], candidate)
+
+            obj = runtime
+            try:
+                for part in candidate.replace(" ", ".").split("."):
+                    obj = getattr(obj, part)
+            except AttributeError:
+                continue
+            if callable(obj) and getattr(obj, "__gway_operation__", None) is not None:
+                return _resolved(obj, tokens[size:], candidate)
+
+    if pipeline is not _MISSING:
+        semantic = _semantic_pipeline_operation(runtime, tokens, pipeline)
+        if semantic is not None:
+            return semantic
+
+    raise LookupError(f"Unable to resolve operation: {' '.join(values)}")
+
+
+def _enforce_cardinality(resolution, result):
+    """Apply semantic ONE/MANY intent to collection-producing operations."""
+    if resolution.cardinality is None:
+        return result
+
+    kind = getattr(resolution.callable, "__gway_source_kind__", None)
+    if kind != "django-manager":
+        return result
+
+    if resolution.cardinality is Cardinality.MANY:
+        return result
+
+    if isinstance(result, (str, bytes, bytearray, Mapping)):
+        return result
+
+    subject = resolution.subject or "result"
+
+    if hasattr(result, "__getitem__") and hasattr(result, "__iter__"):
+        try:
+            selected = list(result[:2])
+        except (TypeError, KeyError, IndexError):
+            selected = None
+        if selected is not None:
+            if not selected:
+                raise LookupError(f"No {subject} matched the query")
+            if len(selected) > 1:
+                raise LookupError(
+                    f"Expected one {subject}; query matched multiple results. "
+                    f"Use the plural subject to allow multiple results."
+                )
+            return selected[0]
+
+    return result
+
+
+def _invoke_resolved(runtime, resolution, *args, **kwargs):
+    """Invoke one resolved operation and keep published state cardinality-consistent."""
+    subject = resolution.subject
+    results = runtime.results
+    history_size = len(results.history)
+    had_subject = subject is not None and subject in results.maps[0]
+    previous = results.maps[0].get(subject) if had_subject else None
+
+    try:
+        raw = resolution.callable(*args, **kwargs)
+        normalized = _enforce_cardinality(resolution, raw)
+    except Exception:
+        del results.history[history_size:]
+        if subject is not None:
+            if had_subject:
+                results.maps[0][subject] = previous
+            else:
+                results.maps[0].pop(subject, None)
+        raise
+
+    if normalized is not raw and len(results.history) > history_size:
+        results.history[-1] = normalized
+        if subject is not None and results.maps[0].get(subject) is raw:
+            results.maps[0][subject] = normalized
+    return normalized
+
+
+def _recipe_source(token):
+    return token if isinstance(token, os.PathLike) else token_value(token)
+
+
+def _split_recipe_stage(tokens):
+    """Split one recipe invocation from a following raw pipeline."""
+    tokens = list(tokens)
+    for index, token in enumerate(tokens[1:], start=1):
+        if is_unquoted(token) and token_value(token) == "-":
+            return tokens[:index], tokens[index + 1 :]
+    return tokens, []
+
+
+def _resolve_recipe_stage(runtime, tokens, *, pipeline=_MISSING):
+    """Resolve a recipe stage using explicit-path then operation-safe fallback."""
+    if not tokens:
+        return None
+
+    source = _recipe_source(tokens[0])
+    explicit = recipe_path(runtime, source, allow_bare=False)
+    if explicit is not None:
+        stage, remaining = _split_recipe_stage(tokens)
+        return explicit, stage[1:], remaining
+
+    bare = recipe_path(runtime, source, allow_bare=True)
+    if bare is None:
+        return None
+
+    try:
+        resolve_operation(runtime, tokens, pipeline=pipeline)
+    except LookupError:
+        stage, remaining = _split_recipe_stage(tokens)
+        return bare, stage[1:], remaining
+    return None
+
+
+def dispatch_stage(
+    runtime,
+    tokens,
+    *,
+    pipeline=_MISSING,
+    args=(),
+    kwargs=None,
+):
+    """Resolve, bind, and execute one command stage."""
+    kwargs = {} if kwargs is None else dict(kwargs)
+    tokens = list(tokens)
+    if not tokens:
+        raise ValueError("Gateway command cannot be empty")
+
+    resolution = resolve_operation(runtime, tokens, pipeline=pipeline)
+    func, arguments, _ = resolution
+
+    if (args or kwargs) and arguments:
+        raise TypeError(
+            "Native arguments require an operation name without inline arguments"
+        )
+
+    initial_args = tuple(args)
+    initial_kwargs = kwargs
+    if pipeline is not _MISSING:
+        receiver = getattr(func, "__gway_receiver__", None)
+        producer_subject = runtime.results.subject(pipeline)
+        pipeline_is_receiver = receiver is not None and producer_subject == receiver
+
+        if arguments and not pipeline_is_receiver:
+            bound = bind_arguments(
+                func,
+                arguments,
+                runtime=runtime,
+                interactive=runtime.interactive_enabled,
+                initial_args=initial_args,
+                initial_kwargs=initial_kwargs,
+                pipeline=pipeline,
+            )
+            return _invoke_resolved(runtime, resolution, *bound.args, **bound.kwargs)
+
+        adapted = adapt_pipeline(
+            runtime,
+            func,
+            pipeline,
+            args=initial_args,
+            kwargs=initial_kwargs,
+        )
+        initial_args = adapted.args
+        initial_kwargs = adapted.kwargs
+
+    if arguments:
+        bound = bind_arguments(
+            func,
+            arguments,
+            runtime=runtime,
+            interactive=runtime.interactive_enabled,
+            initial_args=initial_args,
+            initial_kwargs=initial_kwargs,
+        )
+        return _invoke_resolved(runtime, resolution, *bound.args, **bound.kwargs)
+
+    if pipeline is not _MISSING:
+        return _invoke_resolved(runtime, resolution, *initial_args, **initial_kwargs)
+
+    if args or kwargs:
+        return _invoke_resolved(runtime, resolution, *args, **kwargs)
+
+    bound = bind_arguments(
+        func,
+        (),
+        runtime=runtime,
+        interactive=runtime.interactive_enabled,
+    )
+    return _invoke_resolved(runtime, resolution, *bound.args, **bound.kwargs)
+
+
+def split_stage(
+    runtime,
+    tokens,
+    *,
+    pipeline=_MISSING,
+    args=(),
+    kwargs=None,
+):
+    """Split the first executable stage from the remaining raw pipeline."""
+    tokens = list(tokens)
+    func, arguments, _ = resolve_operation(runtime, tokens, pipeline=pipeline)
+
+    initial_args = tuple(args)
+    initial_kwargs = {} if kwargs is None else dict(kwargs)
+    if pipeline is not _MISSING:
+        adapted = adapt_pipeline(
+            runtime,
+            func,
+            pipeline,
+            args=initial_args,
+            kwargs=initial_kwargs,
+        )
+        initial_args = adapted.args
+        initial_kwargs = adapted.kwargs
+
+    boundary = pipeline_boundary(
+        func,
+        arguments,
+        initial_args=initial_args,
+        initial_kwargs=initial_kwargs,
+    )
+    if boundary is None:
+        return tokens, []
+
+    if args or kwargs:
+        raise TypeError("Native arguments require a single operation")
+
+    operation_size = len(tokens) - len(arguments)
+    return (
+        tokens[: operation_size + boundary],
+        arguments[boundary + 1 :],
+    )
+
+
+def dispatch_pipeline(
+    runtime,
+    tokens,
+    *,
+    pipeline=_MISSING,
+    args=(),
+    kwargs=None,
+    statement=None,
+):
+    """Execute one statement, transferring raw results only across dash pipes."""
+    remaining = list(tokens)
+    if not remaining:
+        raise ValueError("Gateway command cannot be empty")
+
+    results = []
+    current = pipeline
+    first = True
+
+    while remaining:
+        stage_args = args if first else ()
+        stage_source = list(remaining)
+        stage_kwargs = kwargs if first else None
+
+        if not is_literal(remaining[0]) and token_value(remaining[0]) == "repeat":
+            if stage_args or stage_kwargs:
+                raise TypeError("Native arguments are not supported for repeat")
+            stage, remaining = _repeat_stage(remaining)
+            result = _execute_repeat(runtime, stage, statement=statement)
+            results.append(result)
+            current = result
+            first = False
+            continue
+
+        if not is_literal(remaining[0]) and token_value(remaining[0]) == "check":
+            if stage_args or stage_kwargs:
+                raise TypeError("Native arguments are not supported for check")
+            stage, remaining = _check_stage(remaining)
+            if current is _MISSING:
+                current = runtime.results.last
+            result = _execute_check(runtime, stage, current)
+            results.append(result)
+            current = result
+            first = False
+            continue
+
+        recipe = _resolve_recipe_stage(
+            runtime,
+            remaining,
+            pipeline=current,
+        )
+        if recipe is not None:
+            if stage_args or stage_kwargs:
+                raise TypeError("Native arguments are not supported for recipe stages")
+            path, recipe_arguments, remaining = recipe
+            context = parse_recipe_context(recipe_arguments)
+            if current is _MISSING:
+                _, result = execute_recipe(runtime, path, context=context)
+            else:
+                _, result = execute_recipe(
+                    runtime,
+                    path,
+                    context=context,
+                    pipeline=current,
+                )
+            results.append(result)
+            if statement is not None:
+                consumed = len(stage_source) - len(remaining)
+                recipe_tokens = tuple(stage_source[:consumed])
+                statement.append(
+                    Stage(
+                        tokens=recipe_tokens,
+                        operation=str(path),
+                        arguments=tuple(recipe_arguments),
+                        incoming=None if current is _MISSING else current,
+                        outgoing=result,
+                        statement=statement.index,
+                        has_incoming=current is not _MISSING,
+                        kind="recipe",
+                    )
+                )
+            current = result
+            first = False
+            continue
+
+        stage, remaining = split_stage(
+            runtime,
+            remaining,
+            pipeline=current,
+            args=stage_args,
+            kwargs=stage_kwargs,
+        )
+
+        incoming = current
+        resolution = resolve_operation(runtime, stage, pipeline=incoming)
+        result = dispatch_stage(
+            runtime,
+            stage,
+            pipeline=incoming,
+            args=stage_args,
+            kwargs=stage_kwargs,
+        )
+        results.append(result)
+        if statement is not None:
+            statement.append(
+                Stage(
+                    tokens=tuple(stage),
+                    operation=resolution.candidate,
+                    arguments=tuple(resolution.arguments),
+                    incoming=None if incoming is _MISSING else incoming,
+                    outgoing=result,
+                    statement=statement.index,
+                    has_incoming=incoming is not _MISSING,
+                )
+            )
+        current = result
+        first = False
+
+    return results, current
+
+
+def dispatch_program(
+    runtime,
+    statement_list,
+    *,
+    pipeline=_MISSING,
+    args=(),
+    kwargs=None,
+    execution=None,
+):
+    """Execute statements within one nested execution scope."""
+    with runtime.execution_scope():
+        statement_list = [list(statement) for statement in statement_list if statement]
+        if not statement_list:
+            raise ValueError("Gateway command cannot be empty")
+        if (args or kwargs) and len(statement_list) != 1:
+            raise TypeError("Native arguments require a single statement")
+
+        execution = Execution() if execution is None else execution
+        if runtime.execution is not execution:
+            runtime.previous_execution = runtime.execution
+        runtime.execution = execution
+        results = []
+        last = None
+        for index, statement_tokens in enumerate(statement_list):
+            statement = execution.statement()
+            produced, last = dispatch_pipeline(
+                runtime,
+                statement_tokens,
+                pipeline=pipeline if index == 0 else _MISSING,
+                args=args if index == 0 else (),
+                kwargs=kwargs if index == 0 else None,
+                statement=statement,
+            )
+            results.extend(produced)
+        return results, last
+
+
+def dispatch_sequence(
+    runtime,
+    stages,
+    *,
+    pipeline=_MISSING,
+    args=(),
+    kwargs=None,
+):
+    """Execute an ordered sequence of stages with one shared pipeline contract."""
+    stages = [list(stage) for stage in stages if stage]
+    if not stages:
+        raise ValueError("Gateway command cannot be empty")
+    if (args or kwargs) and len(stages) != 1:
+        raise TypeError("Native arguments require a single operation")
+
+    results = []
+    current = pipeline
+    for index, stage in enumerate(stages):
+        stage_kwargs = kwargs if index == 0 else None
+        stage_args = args if index == 0 else ()
+        if current is _MISSING:
+            result = dispatch_stage(
+                runtime,
+                stage,
+                args=stage_args,
+                kwargs=stage_kwargs,
+            )
+        else:
+            result = dispatch_stage(
+                runtime,
+                stage,
+                pipeline=current,
+                args=stage_args,
+                kwargs=stage_kwargs,
+            )
+        results.append(result)
+        current = result
+    return results, current
+
+
+def dispatch(runtime, command, *args, **kwargs):
+    """Execute one or more statements through the unified dispatcher."""
+    if isinstance(command, str):
+        tokens = tokenize(command)
+    elif isinstance(command, os.PathLike):
+        tokens = [command]
+    else:
+        tokens = list(command)
+    if not tokens:
+        raise ValueError("Gateway command cannot be empty")
+
+    _, result = dispatch_program(
+        runtime,
+        statements(tokens),
+        args=args,
+        kwargs=kwargs,
+    )
+    return result
