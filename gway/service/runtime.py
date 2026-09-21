@@ -108,7 +108,8 @@ class ProcessBackend:
         state = self._state(service)
         current = state.get(service.project, service.name)
         if current is not None:
-            if record_matches(current):
+            local = self._processes.get(service.identity)
+            if record_matches(current, local):
                 return self.status(service)
             state.remove(service.project, service.name)
 
@@ -149,7 +150,7 @@ class ProcessBackend:
         if record is None:
             return self._stopped(service)
 
-        if not record_matches(record):
+        if not record_matches(record, local):
             state.remove(service.project, service.name)
             return self._stopped(service)
 
@@ -196,7 +197,7 @@ class ProcessBackend:
         if record is None:
             return self._stopped(service)
 
-        if not record_matches(record):
+        if not record_matches(record, local):
             state.remove(service.project, service.name)
             return self._stopped(service)
 
