@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
 import shutil
 import subprocess
 
@@ -74,7 +75,7 @@ def _resolve_executable(source):
         path = Path(source).expanduser()
         if not path.is_file():
             raise FileNotFoundError(path)
-        if not path.stat().st_mode:
+        if not os.access(path, os.X_OK):
             raise ValueError(f"Process path is not executable: {path}")
         return path.resolve()
 
