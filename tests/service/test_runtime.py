@@ -2,9 +2,9 @@ import os
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 
 import pytest
-from types import SimpleNamespace
 
 from gway.service.runtime import ProcessBackend
 from gway.service.state import ProcessRecord, ServiceState, process_token, record_matches
@@ -177,7 +177,6 @@ def test_running_service_reports_stale_after_installation_fingerprint_changes(
         backend.stop(service)
 
 
-
 def test_local_process_handle_keeps_record_valid_without_platform_token(
     tmp_path,
     monkeypatch,
@@ -210,7 +209,6 @@ def test_process_token_falls_back_when_procfs_is_unavailable(monkeypatch):
     )
 
     assert process_token(1234) == "ps:Mon Sep 21 12:00:00 2026"
-
 
 
 def test_state_persistence_failure_reaps_spawned_service(
