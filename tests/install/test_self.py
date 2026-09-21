@@ -111,3 +111,117 @@ def test_gway_self_install_crosses_git_install_activation_and_runtime_boundaries
     )
     assert command_result.returncode == 0
     assert command_result.stdout.strip() == "MTY"
+
+
+
+def test_gway_reload_crosses_real_managed_process_boundary(
+    gateway,
+    tmp_path,
+    monkeypatch,
+    git,
+    install_environment,
+):
+    _, remote, _ = _self_remote(tmp_path, git)
+    _route_gway_to(remote, monkeypatch)
+    installed = gateway("install gway --ref selftest")
+    launcher = install_environment.bin / "gway"
+
+    recipe = tmp_path / "reload-acceptance.rx"
+    companion = tmp_path / "reload-acceptance.py"
+    events = tmp_path / "events.txt"
+
+    companion.write_text(
+        "import os\n"
+        "from pathlib import Path\n"
+        f"_events = Path({str(events)!r})\n"
+        "def before():\n"
+        "    with _events.open('a', encoding='utf-8') as stream:\n"
+        "        stream.write(f'before:{os.getpid()}\\n')\n"
+        "    return 'before'\n"
+        "def after():\n"
+        "    with _events.open('a', encoding='utf-8') as stream:\n"
+        "        stream.write(f'after:{os.getpid()}\\n')\n"
+        "    return 'after'\n",
+        encoding="utf-8",
+    )
+    recipe.write_text(
+        "reload-acceptance before\n"
+        "reload\n"
+        "reload-acceptance after\n",
+        encoding="utf-8",
+    )
+
+    outside = tmp_path / "outside-reload"
+    outside.mkdir()
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [str(launcher), "--recipe", str(recipe)],
+        cwd=outside,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    lines = events.read_text(encoding="utf-8").splitlines()
+    assert [line.split(":", 1)[0] for line in lines] == ["before", "after"]
+    before_pid = int(lines[0].split(":", 1)[1])
+    after_pid = int(lines[1].split(":", 1)[1])
+    assert before_pid != after_pid
+    assert installed.install_path.is_dir()
+
+
+def test_gway_reload_real_successor_failure_rolls_back_adopted_journal(
+    gateway,
+    tmp_path,
+    monkeypatch,
+    git,
+    install_environment,
+):
+    _, remote, _ = _self_remote(tmp_path, git)
+    _route_gway_to(remote, monkeypatch)
+    gateway("install gway --ref selftest")
+    launcher = install_environment.bin / "gway"
+
+    source = tmp_path / "source.txt"
+    destination = tmp_path / "destination.txt"
+    recipe = tmp_path / "reload-rollback.rx"
+    companion = tmp_path / "reload-rollback.py"
+    source.write_text("replacement", encoding="utf-8")
+
+    companion.write_text(
+        "def fail():\n"
+        "    raise RuntimeError('successor acceptance failure')\n",
+        encoding="utf-8",
+    )
+    recipe.write_text(
+        f"copy {source} --to {destination} --rollback deploy\n"
+        "reload\n"
+        "reload-rollback fail\n",
+        encoding="utf-8",
+    )
+
+    outside = tmp_path / "outside-rollback"
+    outside.mkdir()
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [str(launcher), "--recipe", str(recipe)],
+        cwd=outside,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "successor acceptance failure" in result.stderr
+    assert not destination.exists()
