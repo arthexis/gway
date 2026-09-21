@@ -87,8 +87,9 @@ def _resolve_executable(source):
 
 def ingest_proc(gateway, executable, *, path=None, sudo=False, **kwargs):
     """Ingest one executable as an argv-preserving Gway operation."""
+    requested = Path(str(executable)).name
     resolved = _resolve_executable(executable)
-    root = normalize_path(path or (resolved.name,))
+    root = normalize_path(path or (requested,))
     callable_ = _callable(resolved, as_user="root" if sudo else None)
     record = remember_object(gateway, callable_, root)
     if record.registered:
