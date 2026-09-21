@@ -108,6 +108,7 @@ class Gateway(Resolver):
         self.help = self.wrap("help", self._help)
         self.wrap("ingest", self.ingest)
         self.recipe = self.wrap("recipe", self._run_bundled_recipe)
+        self.reload = self.wrap("reload", self._reload)
 
         from .config import bootstrap
 
@@ -149,8 +150,13 @@ class Gateway(Resolver):
             if outermost:
                 suspension = self._execution_suspension
                 self._execution_suspension = None
-                if primary is not None or suspension is None:
+                from .reload import ReloadTransferred
+
+                transferred = isinstance(primary, ReloadTransferred)
+                if primary is not None and not transferred:
                     self._finalize_execution(primary)
+                elif suspension is None and not transferred:
+                    self._finalize_execution(None)
                 else:
                     self.info(
                         "execution suspended for reload checkpoint %s with "
@@ -271,6 +277,16 @@ class Gateway(Resolver):
         from .bundled import run
 
         return run(self, recipe_name, **context)
+
+    def _reload(self, timeout: float = 30.0):
+        """Reload GWAY in a successor process and continue the active recipe.
+
+        Args:
+            timeout: Seconds to wait for the successor to adopt the checkpoint.
+        """
+        from .reload import perform_reload
+
+        return perform_reload(self, timeout=timeout)
 
     def _help(self, *operation: str, verbose=False):
         """Return documentation for one Gway operation.
