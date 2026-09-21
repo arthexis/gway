@@ -11,6 +11,7 @@ _DEFAULT_LEVEL = _logging.WARNING
 _DEFAULT_OUTPUT_LEVEL = _logging.INFO
 _DEFAULT_LOG_FILENAME = "gway.log"
 _LOG_RETENTION_DAYS = 30
+_LOG_BACKUP_COUNT = _LOG_RETENTION_DAYS - 1
 _gway_logger = _logging.getLogger("gway")
 _gway_logger.setLevel(_DEFAULT_LEVEL)
 logger = _gway_logger
@@ -61,7 +62,7 @@ def _daily_file_handler(path):
         path,
         when="midnight",
         interval=1,
-        backupCount=_LOG_RETENTION_DAYS,
+        backupCount=_LOG_BACKUP_COUNT,
         encoding="utf-8",
         delay=True,
     )
