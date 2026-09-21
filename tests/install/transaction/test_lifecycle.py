@@ -129,7 +129,6 @@ def test_project_install_does_not_touch_service_installation(
     assert installed.install_path.is_dir()
 
 
-
 def test_install_recovery_restores_previous_project_when_launcher_rollback_fails(
     installed_project,
     managed_paths,
