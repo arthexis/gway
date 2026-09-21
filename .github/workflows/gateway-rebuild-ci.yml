@@ -3,7 +3,7 @@ name: Gateway Rebuild CI
 on:
   push:
     branches:
-      - gateway-rebuild
+      - main
   pull_request:
   workflow_dispatch:
 
