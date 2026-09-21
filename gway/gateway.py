@@ -147,7 +147,7 @@ class Gateway(Resolver):
     def _finalize_execution(self, primary=None):
         """Resolve open journals at the outermost execution boundary."""
         from .journal import (
-            RollbackError,
+            JournalError,
             RollbackRecoveryError,
             UncommittedJournalError,
             attach_rollback_error,
@@ -169,7 +169,7 @@ class Gateway(Resolver):
                 )
                 try:
                     self.journal.rollback(name)
-                except RollbackError as exception:
+                except JournalError as exception:
                     rollback_errors.append(exception)
 
             if len(rollback_errors) == 1:
