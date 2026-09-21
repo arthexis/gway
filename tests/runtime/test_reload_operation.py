@@ -2,6 +2,7 @@ import pytest
 
 from gway.reload import (
     CheckpointState,
+    ReloadError,
     ReloadHandoffError,
     ReloadTransferred,
 )
@@ -151,7 +152,7 @@ def test_reload_transfer_preserves_open_journal_for_successor(
 
 
 def test_reload_requires_active_recipe(gateway):
-    with pytest.raises(Exception, match="active recipe"):
+    with pytest.raises(ReloadError, match="active recipe"):
         gateway("reload")
 
 
