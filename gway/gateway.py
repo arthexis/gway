@@ -229,11 +229,11 @@ class Gateway(Resolver):
             self.context.clear()
         return None
 
-    def _run_bundled_recipe(self, name, **context):
+    def _run_bundled_recipe(self, recipe_name, **context):
         """Run one recipe bundled with the installed Gway package."""
         from .bundled import run
 
-        return run(self, name, **context)
+        return run(self, recipe_name, **context)
 
     def _help(self, *operation: str, verbose=False):
         """Return documentation for one Gway operation.
