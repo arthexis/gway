@@ -178,6 +178,18 @@ def test_recipe_flags_extend_shared_context(gateway, tmp_path):
     assert gateway.context["site"] == "MTY"
 
 
+def test_bare_recipe_flag_sets_boolean_true_in_shared_context(gateway, tmp_path):
+    def show_enabled(enabled):
+        return enabled
+
+    gateway.show_enabled = gateway.wrap("show_enabled", show_enabled)
+    recipe = tmp_path / "enabled.rx"
+    recipe.write_text("show enabled\n", encoding="utf-8")
+
+    assert gateway(f"{recipe} --enabled") is True
+    assert gateway.context["enabled"] is True
+
+
 def test_recipe_ingests_same_stem_python_companion_before_resolution(
     gateway,
     tmp_path,
