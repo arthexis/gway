@@ -374,6 +374,14 @@ class ReloadStore:
         return target
 
 
+class ReloadTransferred(BaseException):
+    """Internal control signal indicating execution moved to a successor."""
+
+    def __init__(self, checkpoint_id):
+        self.checkpoint_id = str(checkpoint_id)
+        super().__init__(self.checkpoint_id)
+
+
 class ReloadHandoffError(ReloadError):
     """Raised when a successor cannot safely adopt a reload checkpoint."""
 
@@ -514,8 +522,26 @@ def capture_reload_checkpoint(
 
 
 def default_resume_command():
-    """Return the current interpreter/module command for internal resume."""
+    """Return the managed GWAY launcher when available, else this interpreter."""
+    from .install.paths import install_paths
+
+    launcher = install_paths().bin / "gway"
+    if launcher.is_file():
+        return [str(launcher)]
     return [sys.executable, "-m", "gway"]
+
+
+def perform_reload(runtime, *, timeout=30.0, store=None, command=None):
+    """Capture, hand off, and stop the old execution after successor adoption."""
+    checkpoint = capture_reload_checkpoint(runtime, timeout=timeout)
+    selected = default_resume_command() if command is None else list(command)
+    _, handoff_checkpoint = handoff(
+        runtime,
+        checkpoint,
+        selected,
+        store=store,
+    )
+    raise ReloadTransferred(handoff_checkpoint.checkpoint_id)
 
 
 def _restore_runtime(checkpoint):
