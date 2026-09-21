@@ -404,7 +404,9 @@ Important current invariants:
   transfer the previous raw result positionally.
 - A standalone dash transfers the previous raw result.
 - Mapping lookup is semantic: case, spaces, dashes, and underscores are
-  equivalent. Ambiguous normalized keys are errors.
+  equivalent. Ambiguous normalized keys are errors across every resolver
+  surface, including sigils, nested paths, implicit argument completion, and
+  `check`; do not catch ambiguity as an ordinary missing-key fallback.
 - `check` is transparent on success and can validate booleans, whole-result
   equality, and semantic mapping fields.
 - `check --unless BOOL` is evaluated before assertions. True skips the
