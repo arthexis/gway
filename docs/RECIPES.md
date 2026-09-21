@@ -59,7 +59,8 @@ An incoming raw value feeds the first statement of the recipe. The final stateme
 
 ## Physical-line continuation
 
-A physical line beginning with -- extends the preceding operation:
+A physical line beginning with `--` extends the preceding operation with more
+options:
 
 ~~~text
 configure charger
@@ -74,9 +75,39 @@ This is one logical operation equivalent to:
 configure charger --serial ABC123 --limit 32 --enabled
 ~~~
 
-Use the compact one-line form when the operation and target are easy to read. Break flags onto continuation lines when that improves reviewability.
+A bare `--` is also the positional-continuation marker. It retains its normal
+end-of-options meaning and makes the next substantive physical line part of the
+same logical operation. The marker may be placed at the end of the current line:
 
-Blank lines and full-line comments are ignored.
+~~~text
+curl --fail --silent --show-error --
+https://[domain|example.com][health_path|/health/]
+~~~
+
+or on its own continuation line:
+
+~~~text
+service install
+--system
+--
+arthexis web
+~~~
+
+Those forms are equivalent to:
+
+~~~text
+curl --fail --silent --show-error -- https://[domain|example.com][health_path|/health/]
+service install --system -- arthexis web
+~~~
+
+Because the retained `--` ends option parsing, tokens on the continued line are
+positional even when they begin with `--`. A single-quoted `'--'` remains
+literal data and does not request physical-line continuation.
+
+The positional marker consumes the next substantive line; blank lines and
+full-line comments remain ignored. Use the compact one-line form when it is easy
+to read, and physical continuation when separating options from positional
+targets makes the recipe clearer.
 
 ## Recipe parameters and semantic context
 
