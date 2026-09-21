@@ -234,55 +234,72 @@ def _rollback_install_units(
     timeout,
 ):
     """Best-effort rollback for a failed systemd unit installation."""
-    for record in records:
+    failures = []
+
+    def attempt(description, action):
         try:
-            _systemctl(
+            action()
+        except Exception as exc:
+            message = f"{description}: {exc}"
+            failures.append(message)
+            gway_log.warning("systemd install rollback failed: %s", message)
+
+    for record in records:
+        attempt(
+            f"disable {record.backend_id}",
+            lambda record=record: _systemctl(
                 "disable",
                 record.backend_id,
                 system=system,
                 check=False,
                 timeout=timeout,
-            )
-        except Exception:
-            pass
+            ),
+        )
         if record.backend_id not in previous_files:
-            try:
-                (target_root / record.backend_id).unlink()
-            except Exception:
-                pass
+            attempt(
+                f"remove generated unit {record.backend_id}",
+                lambda record=record: (target_root / record.backend_id).unlink(),
+            )
 
     for unit, content in previous_files.items():
         path = target_root / unit
-        try:
+
+        def restore(path=path, content=content):
             if content is None:
                 path.unlink(missing_ok=True)
             else:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(content)
-        except Exception:
-            pass
 
-    try:
-        state.put(project, previous_all)
-    except Exception:
-        pass
+        attempt(f"restore unit file {unit}", restore)
 
-    try:
-        _systemctl("daemon-reload", system=system, check=False, timeout=timeout)
-    except Exception:
-        pass
+    attempt(
+        f"restore install state for {project}",
+        lambda: state.put(project, previous_all),
+    )
+    attempt(
+        "daemon-reload",
+        lambda: _systemctl(
+            "daemon-reload",
+            system=system,
+            check=False,
+            timeout=timeout,
+        ),
+    )
 
     for record in previous.values():
-        try:
-            _systemctl(
+        attempt(
+            f"re-enable {record.backend_id}",
+            lambda record=record: _systemctl(
                 "enable",
                 record.backend_id,
                 system=record.system,
                 check=False,
                 timeout=timeout,
-            )
-        except Exception:
-            pass
+            ),
+        )
+
+    return failures
 
 
 def install_units(
@@ -349,8 +366,8 @@ def install_units(
         retained = [record for record in previous_all if record.service not in selected]
         state.put(project, [*retained, *records])
         return records
-    except Exception:
-        _rollback_install_units(
+    except Exception as exc:
+        rollback_failures = _rollback_install_units(
             project,
             records=records,
             previous=previous,
@@ -361,6 +378,8 @@ def install_units(
             system=system,
             timeout=timeout,
         )
+        for failure in rollback_failures:
+            exc.add_note(f"Rollback failure: {failure}")
         raise
 
 
