@@ -476,6 +476,8 @@ def capture_reload_checkpoint(
     mode=ReloadMode.CONTINUE,
     when=None,
     timeout=None,
+    source_identity=None,
+    target_identity=None,
 ):
     """Snapshot the live recipe continuation into one portable checkpoint."""
     frames = list(getattr(runtime, "_recipe_frames", ()) or ())
@@ -509,6 +511,8 @@ def capture_reload_checkpoint(
         mode=ReloadMode(mode),
         when=when,
         timeout=timeout,
+        source_identity=source_identity,
+        target_identity=target_identity,
         recipe_stack=tuple(str(frame.path) for frame in frames),
         frames=tuple(serialized_frames),
         context=dict(runtime.context),
@@ -531,9 +535,55 @@ def default_resume_command():
     return [sys.executable, "-m", "gway"]
 
 
-def perform_reload(runtime, *, timeout=30.0, store=None, command=None):
-    """Capture, hand off, and stop the old execution after successor adoption."""
-    checkpoint = capture_reload_checkpoint(runtime, timeout=timeout)
+def perform_reload(
+    runtime,
+    *,
+    timeout=30.0,
+    when=None,
+    store=None,
+    command=None,
+    installed_identity=None,
+):
+    """Conditionally capture, hand off, and stop after successor adoption."""
+    if when not in {None, "changed"}:
+        raise ReloadError(f"Unknown reload condition: {when!r}")
+
+    source = getattr(runtime, "gway_identity", None)
+    target = installed_identity
+    if when == "changed":
+        if source is None:
+            raise ReloadError(
+                "Cannot evaluate reload --when changed: "
+                "running GWAY identity is unavailable"
+            )
+        if target is None:
+            from .install.identity import managed_gway_identity
+
+            target = managed_gway_identity()
+        if target is None:
+            raise ReloadError(
+                "Cannot evaluate reload --when changed: "
+                "installed GWAY identity is unavailable"
+            )
+        try:
+            unchanged = source.same_runtime(target)
+        except ValueError as exception:
+            raise ReloadError(
+                "Cannot evaluate reload --when changed: "
+                f"{exception}"
+            ) from exception
+        if unchanged:
+            return None
+
+    source_diagnostic = source.diagnostic() if source is not None else None
+    target_diagnostic = target.diagnostic() if target is not None else None
+    checkpoint = capture_reload_checkpoint(
+        runtime,
+        timeout=timeout,
+        when=when,
+        source_identity=source_diagnostic,
+        target_identity=target_diagnostic,
+    )
     selected = default_resume_command() if command is None else list(command)
     _, handoff_checkpoint = handoff(
         runtime,
