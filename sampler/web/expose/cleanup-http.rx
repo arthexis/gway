@@ -3,10 +3,10 @@
 
 ingest nginx --kind proc --sudo
 
-remove [nginx_enabled|/etc/nginx/sites-enabled]/nginx-[name].conf
+remove [nginx_enabled|/etc/nginx/sites-enabled]/[site]
 --as root
 
-remove [nginx_available|/etc/nginx/sites-available]/nginx-[name].conf
+remove [nginx_available|/etc/nginx/sites-available]/[site]
 --as root
 
 nginx -t

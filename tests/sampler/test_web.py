@@ -26,24 +26,24 @@ def test_web_expose_package_has_required_shape():
     assert (root / "https.rx").is_file()
     assert (root / "cleanup.rx").is_file()
     assert (root / "godaddy-setup.rx").is_file()
-    assert (root / "nginx-http-[name].conf").is_file()
-    assert (root / "nginx-https-[name].conf").is_file()
+    assert (root / "nginx-http-[site].conf").is_file()
+    assert (root / "nginx-https-[site].conf").is_file()
 
 
 def test_web_expose_default_composes_http_then_https():
-    assert rendered_commands(sampler_root() / "expose.rx") == ["./http", "./https"]
+    assert rendered_commands(sampler_root() / "expose.rx") == ["./http.rx", "./https.rx"]
 
 
 def test_web_expose_http_bootstraps_acme_and_nginx():
     rendered = rendered_commands(sampler_root() / "http.rx")
 
     assert rendered[:2] == [
-        "ingest nginx --kind proc --sudo",
-        "ingest mkdir --kind proc --sudo",
+        "ingest [nginx_executable|nginx] --kind proc --sudo",
+        "ingest [mkdir_executable|mkdir] --kind proc --sudo",
     ]
     assert "mkdir -p [acme_webroot|/var/www/gway-acme]" in rendered
     assert any(
-        command.startswith("render nginx-http-[name].conf") for command in rendered
+        command.startswith("render nginx-http-[site].conf") for command in rendered
     )
     assert any(command.startswith("link [nginx_available") for command in rendered)
     assert rendered[-2:] == ["nginx -t", "nginx -s reload"]
@@ -54,25 +54,26 @@ def test_web_expose_https_uses_certbot_webroot_before_tls_render():
     rendered = rendered_commands(sampler_root() / "https.rx")
 
     assert rendered[:2] == [
-        "ingest nginx --kind proc --sudo",
-        "ingest certbot --kind proc --sudo",
+        "ingest [nginx_executable|nginx] --kind proc --sudo",
+        "ingest [certbot_executable|certbot] --kind proc --sudo",
     ]
     certbot = next(
         command for command in rendered if command.startswith("certbot certonly")
     )
     assert "--webroot" in certbot
     assert "--webroot-path [acme_webroot|/var/www/gway-acme]" in certbot
-    assert "--domain" in certbot
-    assert "--email" in certbot
+    assert "--domain [domain]" in certbot
+    assert "--email [email]" in certbot
     assert "--cert-name [domain]" in certbot
     assert "--agree-tos" in certbot
     assert "--non-interactive" in certbot
+    assert "--keep-until-expiring" in certbot
     assert not any(command.startswith("dns ") for command in rendered)
 
     render_index = next(
         index
         for index, command in enumerate(rendered)
-        if command.startswith("render nginx-https-[name].conf")
+        if command.startswith("render nginx-https-[site].conf")
     )
     certbot_index = rendered.index(certbot)
     assert certbot_index < render_index
@@ -80,26 +81,28 @@ def test_web_expose_https_uses_certbot_webroot_before_tls_render():
 
 
 def test_web_expose_http_template_matches_certbot_webroot():
-    content = (sampler_root() / "nginx-http-[name].conf").read_text(encoding="utf-8")
+    content = (sampler_root() / "nginx-http-[site].conf").read_text(encoding="utf-8")
 
     assert "listen 80;" in content
+    assert "listen [[::]]:80;" in content
     assert "server_name [domain];" in content
     assert "location ^~ /.well-known/acme-challenge/" in content
     assert "root [acme_webroot|/var/www/gway-acme];" in content
-    assert "proxy_pass http://[host|127.0.0.1]:[port|8000];" in content
+    assert "proxy_pass http://[host]:[port];" in content
     assert "listen 443 ssl;" not in content
 
 
 def test_web_expose_https_template_serves_tls_and_preserves_acme():
-    content = (sampler_root() / "nginx-https-[name].conf").read_text(encoding="utf-8")
+    content = (sampler_root() / "nginx-https-[site].conf").read_text(encoding="utf-8")
 
     assert "listen 80;" in content
     assert "location ^~ /.well-known/acme-challenge/" in content
     assert "return 301 https://$host$request_uri;" in content
     assert "listen 443 ssl;" in content
+    assert "listen [[::]]:443 ssl;" in content
     assert "ssl_certificate /etc/letsencrypt/live/[domain]/fullchain.pem;" in content
     assert "ssl_certificate_key /etc/letsencrypt/live/[domain]/privkey.pem;" in content
-    assert "proxy_pass http://[host|127.0.0.1]:[port|8000];" in content
+    assert "proxy_pass http://[host]:[port];" in content
 
 
 def test_sampler_package_resolves_default_and_children(gateway):
@@ -127,18 +130,18 @@ def test_sampler_templates_resolve_from_recipe_directory(
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
     gateway._recipe_stack = [root / "http.rx"]
-    gateway.context["name"] = "demo"
+    gateway.context["site"] = "demo"
     try:
         renderer = gateway._renderer
         source, resolved = renderer.render.__globals__["_template_source"](
             gateway,
-            "nginx-http-[name].conf",
+            "nginx-http-[site].conf",
         )
     finally:
-        gateway.context.pop("name", None)
+        gateway.context.pop("site", None)
         gateway._recipe_stack = []
 
-    assert source == root / "nginx-http-[name].conf"
+    assert source == root / "nginx-http-[site].conf"
     assert resolved == Path("nginx-http-demo.conf")
 
 
@@ -166,7 +169,7 @@ def test_web_expose_dns_http_is_explicit_provider_neutral_preparation():
 def test_web_expose_default_does_not_mutate_dns():
     rendered = rendered_commands(sampler_root() / "expose.rx")
 
-    assert rendered == ["./http", "./https"]
+    assert rendered == ["./http.rx", "./https.rx"]
     assert "./dns-http" not in rendered
 
 

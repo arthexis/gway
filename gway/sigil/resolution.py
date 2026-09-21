@@ -7,6 +7,7 @@ from ..semantic import AmbiguousKeyError
 from .paths import follow_path
 
 _PATTERN = re.compile(r"\[([^\[\]]+)\]")
+_LITERAL_PATTERN = re.compile(r"\[\[([^\[\]]*)\]\]")
 _MISSING = object()
 
 
@@ -120,12 +121,31 @@ def resolve_single(raw, lookup):
 
 
 def resolve_text(text, lookup):
+    literals = []
+
+    def protect(match):
+        index = len(literals)
+        literals.append(match.group(1))
+        return f"\x00GWAY_LITERAL_BRACKETS_{index}\x00"
+
+    text = _LITERAL_PATTERN.sub(protect, text)
+
+    def restore(value):
+        if not isinstance(value, str):
+            return value
+        for index, literal in enumerate(literals):
+            value = value.replace(
+                f"\x00GWAY_LITERAL_BRACKETS_{index}\x00",
+                f"[{literal}]",
+            )
+        return value
+
     if is_single_sigil(text):
-        return resolve_single(text[1:-1], lookup)
+        return restore(resolve_single(text[1:-1], lookup))
 
     matches = list(_PATTERN.finditer(text))
     if len(matches) == 1 and matches[0].span() == (0, len(text)):
-        return resolve_single(matches[0].group(1), lookup)
+        return restore(resolve_single(matches[0].group(1), lookup))
 
     def replacer(match):
         value = resolve_single(match.group(1), lookup)
@@ -133,4 +153,4 @@ def resolve_text(text, lookup):
             return value
         return json.dumps(value, default=str)
 
-    return _PATTERN.sub(replacer, text)
+    return restore(_PATTERN.sub(replacer, text))

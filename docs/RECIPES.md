@@ -119,6 +119,15 @@ An inline fallback is used when the named value cannot be resolved:
 [role|Watchtower]
 ~~~
 
+Double brackets escape sigil interpretation and produce one literal pair of brackets:
+
+~~~text
+[[site]]     # renders as [site]
+[[::]]       # renders as [::]
+~~~
+
+This is useful when the surrounding language has its own square-bracket syntax, such as IPv6 addresses in Nginx configuration.
+
 The fallback is part of sigil resolution rather than recipe-parameter parsing, so the same form can be used inside ordinary operation arguments.
 
 Single quotes protect literal text from GWAY interpretation:
@@ -629,11 +638,12 @@ A useful rule is:
 > If the recipe has to explain how an operation works, the operation probably needs a better semantic boundary.
 
 
-## Installed recipe bundles
+## Installed sampler recipes
 
-Gway may ship maintained platform recipes that must remain available from an
-installed wheel rather than requiring a source checkout. Run them through the
-generic `recipe` operation:
+Gway ships maintained sampler recipes from the repository's top-level `sampler/`
+directory. The same sampler files are installed with the wheel so they remain
+available without a source checkout. Run them through the generic `recipe`
+operation:
 
 ~~~text
 gway recipe web/expose
@@ -644,7 +654,7 @@ gway recipe web/expose
 --email ops@example.com
 ~~~
 
-The bundled `web/expose` recipe deliberately does not mutate DNS. It composes
+The sampler `web/expose` recipe deliberately does not mutate DNS. It composes
 an HTTP Nginx/ACME-webroot phase and an HTTPS Certbot/TLS phase using generic
 Gway process, render, and filesystem primitives. Existing public DNS must
 already resolve to the host. The executable paths, Nginx directories, and ACME

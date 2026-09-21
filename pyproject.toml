@@ -36,8 +36,12 @@ include-package-data = true
 [tool.setuptools.packages.find]
 include = ["gway*"]
 
-[tool.setuptools.package-data]
-gway = ["bundled/web/expose/*.rx", "bundled/web/expose/*.conf"]
+[tool.setuptools.data-files]
+"share/gway/sampler/web/expose" = [
+    "sampler/web/expose/*.rx",
+    "sampler/web/expose/*.conf",
+]
+"share/gway/sampler/arthexis" = ["sampler/arthexis/*.rx"]
 
 
 [tool.ruff]
