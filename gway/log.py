@@ -2,13 +2,21 @@
 
 from itertools import count as _count
 import logging as _logging
+from logging.handlers import TimedRotatingFileHandler as _TimedRotatingFileHandler
+from pathlib import Path as _Path
+import sys as _sys
 
 
 _DEFAULT_LEVEL = _logging.WARNING
+_DEFAULT_OUTPUT_LEVEL = _logging.INFO
+_DEFAULT_LOG_FILENAME = "gway.log"
+_LOG_RETENTION_DAYS = 30
+_LOG_BACKUP_COUNT = _LOG_RETENTION_DAYS - 1
 _gway_logger = _logging.getLogger("gway")
 _gway_logger.setLevel(_DEFAULT_LEVEL)
 logger = _gway_logger
 _instances = _count()
+_output_handler = None
 
 
 def _coerce_level(level):
@@ -25,6 +33,89 @@ def _coerce_level(level):
         if isinstance(numeric, int):
             return numeric
         raise ValueError(f"Unknown log level: {level}")
+
+
+def default_log_path(*, system=False, root=None, **kwargs):
+    """Return the durable GWAY log path without creating it."""
+    if root is None:
+        from .install.paths import data_root
+
+        root = data_root(system=system, **kwargs)
+    return _Path(root).expanduser() / "logs" / _DEFAULT_LOG_FILENAME
+
+
+def _remove_output_handler():
+    """Detach and close the GWAY-managed persistent or stream handler."""
+    global _output_handler
+    if _output_handler is None:
+        return
+    _gway_logger.removeHandler(_output_handler)
+    _output_handler.close()
+    _output_handler = None
+
+
+def _daily_file_handler(path):
+    """Return a daily rotating log handler with 30 dated backups."""
+    path = _Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handler = _TimedRotatingFileHandler(
+        path,
+        when="midnight",
+        interval=1,
+        backupCount=_LOG_BACKUP_COUNT,
+        encoding="utf-8",
+        delay=True,
+    )
+    handler.suffix = "%Y-%m-%d"
+    return handler
+
+
+def configure_output(
+    *,
+    destination="file",
+    level=_DEFAULT_OUTPUT_LEVEL,
+    system=False,
+    root=None,
+    formatter=None,
+):
+    """Configure GWAY's global log destination."""
+    global _output_handler
+
+    numeric_level = _coerce_level(level)
+    if destination is None:
+        destination = "file"
+
+    _remove_output_handler()
+
+    if isinstance(destination, _Path):
+        handler = _daily_file_handler(destination.expanduser())
+    else:
+        selected = str(destination).strip()
+        lowered = selected.lower()
+        if lowered == "file":
+            handler = _daily_file_handler(
+                default_log_path(system=system, root=root)
+            )
+        elif lowered == "stdout":
+            handler = _logging.StreamHandler(_sys.stdout)
+        elif lowered == "stderr":
+            handler = _logging.StreamHandler(_sys.stderr)
+        else:
+            handler = _daily_file_handler(_Path(selected).expanduser())
+
+    handler.setLevel(numeric_level)
+    handler.setFormatter(
+        formatter
+        or _logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s %(message)s"
+        )
+    )
+    handler._gway_output_handler = True
+    _gway_logger.addHandler(handler)
+    _gway_logger.setLevel(numeric_level)
+    _gway_logger.propagate = False
+    _output_handler = handler
+    return handler
 
 
 class _Level:

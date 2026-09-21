@@ -19,6 +19,7 @@ def cli_main():
     parser.add_argument("-i", "--interactive", action="store_true")
     parser.add_argument("-j", "--json", action="store_true")
     parser.add_argument("-L", "--log-level")
+    parser.add_argument("--logfile")
     parser.add_argument("-r", "--recipe")
     parser.add_argument("-t", "--timed", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -26,10 +27,12 @@ def cli_main():
     parser.add_argument("-e", "--expression")
     args, unknown = parser.parse_known_args()
 
-    if args.log_level is not None:
-        from . import log as gway_log
+    from . import log as gway_log
 
-        gway_log.config(level=args.log_level)
+    log_kwargs = {"destination": args.logfile or "file"}
+    if args.log_level is not None:
+        log_kwargs["level"] = args.log_level
+    gway_log.configure_output(**log_kwargs)
 
     runtime = Gateway(
         debug=args.debug,

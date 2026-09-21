@@ -221,6 +221,98 @@ def render(service, *, system=False):
     return "\n".join(lines)
 
 
+def _add_exception_note(exc, note):
+    """Attach an exception note on Python 3.11+ and emulate it on 3.10."""
+    add_note = getattr(exc, "add_note", None)
+    if add_note is not None:
+        add_note(note)
+        return
+    notes = list(getattr(exc, "__notes__", ()))
+    notes.append(note)
+    exc.__notes__ = notes
+
+
+def _rollback_install_units(
+    project,
+    *,
+    records,
+    previous,
+    previous_all,
+    previous_files,
+    state,
+    target_root,
+    system,
+    timeout,
+):
+    """Best-effort rollback for a failed systemd unit installation."""
+    failures = []
+
+    def attempt(description, action):
+        try:
+            action()
+        except Exception as exc:
+            message = f"{description}: {exc}"
+            failures.append(message)
+            gway_log.warning("systemd install rollback failed: %s", message)
+
+    for record in records:
+        attempt(
+            f"disable {record.backend_id}",
+            lambda record=record: _systemctl(
+                "disable",
+                record.backend_id,
+                system=system,
+                check=False,
+                timeout=timeout,
+            ),
+        )
+        if record.backend_id not in previous_files:
+            attempt(
+                f"remove generated unit {record.backend_id}",
+                lambda record=record: (target_root / record.backend_id).unlink(),
+            )
+
+    for unit, content in previous_files.items():
+        path = target_root / unit
+
+        def restore(path=path, content=content):
+            if content is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+
+        attempt(f"restore unit file {unit}", restore)
+
+    attempt(
+        f"restore install state for {project}",
+        lambda: state.put(project, previous_all),
+    )
+    attempt(
+        "daemon-reload",
+        lambda: _systemctl(
+            "daemon-reload",
+            system=system,
+            check=False,
+            timeout=timeout,
+        ),
+    )
+
+    for record in previous.values():
+        attempt(
+            f"re-enable {record.backend_id}",
+            lambda record=record: _systemctl(
+                "enable",
+                record.backend_id,
+                system=record.system,
+                check=False,
+                timeout=timeout,
+            ),
+        )
+
+    return failures
+
+
 def install_units(
     project,
     services,
@@ -285,40 +377,20 @@ def install_units(
         retained = [record for record in previous_all if record.service not in selected]
         state.put(project, [*retained, *records])
         return records
-    except Exception:
-        for record in records:
-            _systemctl(
-                "disable",
-                record.backend_id,
-                system=system,
-                check=False,
-                timeout=timeout,
-            )
-            if record.backend_id not in previous_files:
-                try:
-                    (target_root / record.backend_id).unlink()
-                except FileNotFoundError:
-                    pass
-        for unit, content in previous_files.items():
-            path = target_root / unit
-            if content is None:
-                try:
-                    path.unlink()
-                except FileNotFoundError:
-                    pass
-            else:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(content)
-        state.put(project, previous_all)
-        _systemctl("daemon-reload", system=system, check=False, timeout=timeout)
-        for record in previous.values():
-            _systemctl(
-                "enable",
-                record.backend_id,
-                system=record.system,
-                check=False,
-                timeout=timeout,
-            )
+    except Exception as exc:
+        rollback_failures = _rollback_install_units(
+            project,
+            records=records,
+            previous=previous,
+            previous_all=previous_all,
+            previous_files=previous_files,
+            state=state,
+            target_root=target_root,
+            system=system,
+            timeout=timeout,
+        )
+        for failure in rollback_failures:
+            exc.add_note(f"Rollback failure: {failure}")
         raise
 
 
