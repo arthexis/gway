@@ -1,5 +1,3 @@
-import pytest
-
 from gway import Gateway
 from gway.install.identity import RuntimeIdentity
 
