@@ -94,6 +94,8 @@ class Resolver:
                         lookup=self._lookup,
                         resolve_text=resolve_text,
                     )
+                except AmbiguousKeyError:
+                    raise
                 except KeyError:
                     pass
 
