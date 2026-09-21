@@ -757,6 +757,7 @@ def dispatch_pipeline(
     args=(),
     kwargs=None,
     statement=None,
+    recipe_frame=None,
 ):
     """Execute one statement, transferring raw results only across dash pipes."""
     remaining = list(tokens)
@@ -776,6 +777,8 @@ def dispatch_pipeline(
             if stage_args or stage_kwargs:
                 raise TypeError("Native arguments are not supported for repeat")
             stage, remaining = _repeat_stage(remaining)
+            if recipe_frame is not None:
+                recipe_frame.set_pipeline_remaining(remaining)
             result = _execute_repeat(runtime, stage, statement=statement)
             results.append(result)
             current = result
@@ -786,6 +789,8 @@ def dispatch_pipeline(
             if stage_args or stage_kwargs:
                 raise TypeError("Native arguments are not supported for check")
             stage, remaining = _check_stage(remaining)
+            if recipe_frame is not None:
+                recipe_frame.set_pipeline_remaining(remaining)
             if current is _MISSING:
                 current = runtime.results.last
             result = _execute_check(runtime, stage, current)
@@ -803,6 +808,8 @@ def dispatch_pipeline(
             if stage_args or stage_kwargs:
                 raise TypeError("Native arguments are not supported for recipe stages")
             path, recipe_arguments, remaining = recipe
+            if recipe_frame is not None:
+                recipe_frame.set_pipeline_remaining(remaining)
             context = parse_recipe_context(recipe_arguments)
             if current is _MISSING:
                 _, result = execute_recipe(runtime, path, context=context)
@@ -840,6 +847,8 @@ def dispatch_pipeline(
             args=stage_args,
             kwargs=stage_kwargs,
         )
+        if recipe_frame is not None:
+            recipe_frame.set_pipeline_remaining(remaining)
 
         incoming = current
         resolution = resolve_operation(runtime, stage, pipeline=incoming)
@@ -877,6 +886,7 @@ def dispatch_program(
     args=(),
     kwargs=None,
     execution=None,
+    recipe_frame=None,
 ):
     """Execute statements within one nested execution scope."""
     with runtime.execution_scope():
@@ -893,6 +903,8 @@ def dispatch_program(
         results = []
         last = None
         for index, statement_tokens in enumerate(statement_list):
+            if recipe_frame is not None:
+                recipe_frame.enter_statement(index)
             statement = execution.statement()
             produced, last = dispatch_pipeline(
                 runtime,
@@ -901,6 +913,7 @@ def dispatch_program(
                 args=args if index == 0 else (),
                 kwargs=kwargs if index == 0 else None,
                 statement=statement,
+                recipe_frame=recipe_frame,
             )
             results.extend(produced)
         return results, last

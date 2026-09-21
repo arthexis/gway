@@ -1,5 +1,6 @@
 """Recipe discovery, loading, and execution for GWAY."""
 
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
 
@@ -8,6 +9,31 @@ from .tokens import is_literal, statements, token_value, tokenize
 
 
 _NO_PIPELINE = object()
+
+
+@dataclass
+class RecipeFrame:
+    """Live resumable cursor for one active recipe invocation."""
+
+    path: Path
+    statements: list[list[object]]
+    statement_index: int = 0
+    pipeline_remaining: list[object] = field(default_factory=list)
+    remaining_statements: list[list[object]] = field(default_factory=list)
+    invocation_context: dict[str, object] = field(default_factory=dict)
+    section: str | None = None
+
+    def enter_statement(self, index):
+        """Advance the cursor before one statement starts executing."""
+        self.statement_index = int(index)
+        self.pipeline_remaining = []
+        self.remaining_statements = [
+            list(statement) for statement in self.statements[index + 1 :]
+        ]
+
+    def set_pipeline_remaining(self, tokens):
+        """Record the unexecuted tail of the current statement."""
+        self.pipeline_remaining = list(tokens)
 
 
 def parse_recipe_context(tokens):
@@ -173,6 +199,11 @@ def execute_recipe(
         raise RuntimeError(f"Recipe cycle: {cycle}")
 
     stack.append(path)
+    frames = getattr(runtime, "_recipe_frames", None)
+    if frames is None:
+        frames = []
+        runtime._recipe_frames = frames
+    frame = None
     try:
         if context:
             runtime.context.update(context)
@@ -186,10 +217,25 @@ def execute_recipe(
         if not statement_list:
             return [], None
 
+        frame = RecipeFrame(
+            path=path,
+            statements=[list(statement) for statement in statement_list],
+            invocation_context=dict(context or {}),
+            section=section,
+        )
+        frames.append(frame)
+
         from .dispatch import dispatch_program
 
         if pipeline is _NO_PIPELINE:
-            return dispatch_program(runtime, statement_list)
-        return dispatch_program(runtime, statement_list, pipeline=pipeline)
+            return dispatch_program(runtime, statement_list, recipe_frame=frame)
+        return dispatch_program(
+            runtime,
+            statement_list,
+            pipeline=pipeline,
+            recipe_frame=frame,
+        )
     finally:
+        if frame is not None and frames and frames[-1] is frame:
+            frames.pop()
         stack.pop()

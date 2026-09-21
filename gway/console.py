@@ -25,6 +25,7 @@ def cli_main():
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-z", "--silent", action="store_true")
     parser.add_argument("-e", "--expression")
+    parser.add_argument("--resume", help=argparse.SUPPRESS)
     args, unknown = parser.parse_known_args()
 
     from . import log as gway_log
@@ -46,20 +47,40 @@ def _run_cli(parser, args, unknown):
         silent=args.silent,
     )
 
-    if args.recipe:
-        _, output = execute_recipe(
-            runtime,
-            args.recipe,
-            context=parse_recipe_context(unknown),
-        )
-    elif args.expression:
-        runtime.context.update(parse_recipe_context(unknown))
-        output = runtime.resolve(args.expression)
-    elif unknown:
-        _, output = process([unknown], gw_instance=runtime)
-    else:
-        parser.print_help()
-        return 0
+    from .reload import ReloadTransferred
+
+    try:
+        if args.resume:
+            if unknown:
+                parser.error("--resume does not accept additional arguments")
+            from .reload import resume
+
+            output = resume(args.resume)
+        elif args.recipe:
+            _, output = execute_recipe(
+                runtime,
+                args.recipe,
+                context=parse_recipe_context(unknown),
+            )
+        elif args.expression:
+            runtime.context.update(parse_recipe_context(unknown))
+            output = runtime.resolve(args.expression)
+        elif unknown:
+            _, output = process([unknown], gw_instance=runtime)
+        else:
+            parser.print_help()
+            return 0
+    except ReloadTransferred as transfer:
+        from .reload import ReloadSuccessorError, supervise_successor
+
+        try:
+            return supervise_successor(
+                transfer.process,
+                transfer.checkpoint,
+                transfer.journal_root,
+            )
+        except ReloadSuccessorError as exception:
+            return exception.returncode if exception.returncode > 0 else 1
 
     if output is not None and not args.silent:
         if args.json:

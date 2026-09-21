@@ -397,6 +397,171 @@ Multiple journals are recovered in reverse opening order.
 
 If a control-triggered rollback succeeds, its journal is already gone when the boundary runs and is not rolled back twice. If recovery is incomplete, the journal remains open and the boundary may make one final recovery attempt.
 
+## Reloading GWAY during a recipe
+
+`reload` replaces the running GWAY process with the currently installed managed
+GWAY runtime while preserving the recipe execution boundary:
+
+~~~text
+upgrade-or-install-step
+reload
+verify
+~~~
+
+A successful reload resumes immediately after the `reload` stage. The old
+process does not execute later recipe statements; it remains only long enough
+to supervise the successor process.
+
+The common self-upgrade pattern is:
+
+~~~text
+install gway
+reload --when changed
+~~~
+
+`--when changed` compares the identity captured by the running managed GWAY
+process at startup with the currently installed managed GWAY identity. If they
+match, reload is a fully transparent no-op: it creates no checkpoint, does not
+touch rollback journals, does not publish a synthetic result, and preserves an
+incoming raw pipeline value. If the identities differ, normal reload handoff
+occurs. If either identity cannot be compared safely, the operation fails
+rather than guessing.
+
+A handoff timeout can be selected explicitly:
+
+~~~text
+reload --timeout 30
+~~~
+
+The timeout covers successor startup through durable adoption of the reload
+checkpoint. Until adoption, the old process remains rollback owner. Failure to
+start, early successor exit, validation failure, or adoption timeout leaves the
+old execution responsible for normal rollback cleanup.
+
+### Continuation state
+
+Ordinary reload preserves the structural and semantic state required to
+continue the active recipe:
+
+- the active nested recipe stack;
+- each recipe's unexecuted statement and pipeline continuation;
+- shared semantic context and published result history;
+- the current raw result needed by a partially completed pipeline;
+- runtime execution flags; and
+- the current rollback-journal session and its still-open journals.
+
+Companion Python files are not serialized. The successor re-ingests the
+companion beside every resumed recipe frame, outermost first, before continuing
+work.
+
+A nested reload continues the nested invocation rather than replaying its
+prefix. For example:
+
+~~~text
+prepare - ./child.rx - finish
+~~~
+
+can reload inside `child.rx` and still return into the pending `finish`
+pipeline stage.
+
+### Fresh continuation
+
+`reload --fresh` keeps the structural continuation but discards accumulated
+semantic state:
+
+~~~text
+reload --fresh
+~~~
+
+Context, result history, and named result subjects are cleared. The raw value
+needed to finish the currently active pipeline is retained so this remains
+valid:
+
+~~~text
+produce - reload --fresh - consume
+~~~
+
+Rollback ownership and recipe/frame structure are still transferred. Fresh
+reload therefore means "continue this execution structurally with fresh
+semantic state", not "start the recipe over".
+
+If `--fresh --when changed` finds no runtime change, it is a transparent
+no-op and does not clear the current process state.
+
+### Restarting the top-level recipe
+
+`reload --restart` abandons the current execution and restarts the outermost
+recipe from statement zero in the successor:
+
+~~~text
+reload --restart
+~~~
+
+Before any executable restart checkpoint is created, GWAY captures the
+top-level invocation parameters and rolls back every currently open journal in
+reverse opening order. If any rollback fails, restart aborts and no successor
+is launched.
+
+The restarted execution preserves the original top-level recipe invocation
+parameters and selected section, but it does not preserve the nested call stack,
+current statement, pipeline value, accumulated semantic context/history, or the
+old rollback session. The successor starts with a new rollback session.
+
+`--fresh` and `--restart` are mutually exclusive. Restart already defines a
+fresh top-level execution.
+
+With `reload --restart --when changed`, the identity comparison happens
+before rollback. An unchanged runtime is therefore a true no-op and leaves the
+current transaction untouched.
+
+### Rollback ownership and successor supervision
+
+Reload does not close the outer transactional execution boundary. Open journals
+survive ordinary and fresh reload and may be committed or rolled back by the
+successor:
+
+~~~text
+copy new.conf /etc/app.conf --rollback deploy
+install gway
+reload --when changed
+verify
+commit deploy
+~~~
+
+The ownership lifecycle is:
+
+~~~text
+PREPARED -> HANDOFF -> ADOPTED -> COMPLETED
+~~~
+
+The old process owns rollback through HANDOFF. The successor claims the
+checkpoint, restores and validates runtime/journal state, then durably
+acknowledges ADOPTED. Only then does the old process stop being the active
+rollback owner.
+
+After adoption, the old process remains as a supervisor until the successor
+exits. A successful successor exit leaves committed state alone. On abnormal
+exit or signal termination, the supervisor reopens the adopted journal session
+and rolls back only journals that are still durably open. Journals already
+committed by the successor are never resurrected.
+
+Restart mode transfers no old journal session, so supervisor recovery does not
+reach back into the abandoned pre-restart transaction.
+
+Executable reload checkpoints are private and ephemeral under the GWAY data
+root:
+
+~~~text
+<GWAY_DATA>/reload/
+    active/
+    failed/
+    history.jsonl
+~~~
+
+Successful execution removes executable checkpoint state. Failed or incomplete
+checkpoints are quarantined as inert diagnostics and are never resumed
+implicitly.
+
 ## Mutation lifecycle and safety
 
 Rollback-aware mutations use a persisted lifecycle:

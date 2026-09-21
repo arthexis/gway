@@ -66,7 +66,7 @@ Recipes use the same dispatcher and context model as the CLI. They are intended
 for readable orchestration rather than as a replacement for Python.
 
 Advanced recipe behavior—including sigils, companion Python files, nested
-recipes, checks, repeat, rollback journals, and execution boundaries—is
+recipes, checks, repeat, rollback journals, reload/process handoff, and execution boundaries—is
 documented in ``docs/RECIPES.md``.
 
 Documentation

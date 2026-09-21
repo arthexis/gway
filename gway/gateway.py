@@ -47,12 +47,17 @@ class Gateway(Resolver):
         self.execution = None
         self.previous_execution = None
 
+        from .install.identity import running_gway_identity
+
+        self.gway_identity = running_gway_identity()
+
         from .cache import Cache, default_root
         from .journal import JournalManager
 
         self.cache = cache if isinstance(cache, Cache) else Cache(cache)
         self.journal = JournalManager(default_root() / "rollback")
         self._execution_depth = 0
+        self._execution_suspension = None
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
@@ -107,6 +112,7 @@ class Gateway(Resolver):
         self.help = self.wrap("help", self._help)
         self.wrap("ingest", self.ingest)
         self.recipe = self.wrap("recipe", self._run_bundled_recipe)
+        self.reload = self.wrap("reload", self._reload)
 
         from .config import bootstrap
 
@@ -134,6 +140,8 @@ class Gateway(Resolver):
     def execution_scope(self):
         """Own one nested execution scope and finalize only at the outer boundary."""
         outermost = self._execution_depth == 0
+        if outermost:
+            self._execution_suspension = None
         self._execution_depth += 1
         primary = None
         try:
@@ -144,7 +152,64 @@ class Gateway(Resolver):
         finally:
             self._execution_depth -= 1
             if outermost:
-                self._finalize_execution(primary)
+                suspension = self._execution_suspension
+                self._execution_suspension = None
+                from .reload import ReloadTransferred
+
+                transferred = isinstance(primary, ReloadTransferred)
+                if transferred and suspension is not None:
+                    self.info(
+                        "execution transferred to reload checkpoint %s with "
+                        "rollback session %s",
+                        suspension.checkpoint_id,
+                        self.journal.session_id,
+                    )
+                elif primary is not None:
+                    self._finalize_execution(primary)
+                elif suspension is None:
+                    self._finalize_execution(None)
+                else:
+                    self.info(
+                        "execution suspended for reload checkpoint %s with "
+                        "rollback session %s",
+                        suspension.checkpoint_id,
+                        self.journal.session_id,
+                    )
+
+    def suspend_execution(self, checkpoint):
+        """Transfer this outer execution boundary to one persisted reload checkpoint."""
+        from .reload import ReloadCheckpoint
+
+        if self._execution_depth <= 0:
+            raise RuntimeError("execution can only be suspended from an active scope")
+        if not isinstance(checkpoint, ReloadCheckpoint):
+            raise TypeError("execution suspension requires a ReloadCheckpoint")
+
+        checkpoint.validated()
+        open_journals = self.journal.open_names()
+        from .reload import ReloadMode
+
+        restarting_clean = (
+            checkpoint.mode is ReloadMode.RESTART
+            and checkpoint.journal_session_id is None
+            and not checkpoint.open_journals
+            and not open_journals
+        )
+        if (
+            not restarting_clean
+            and checkpoint.journal_session_id != self.journal.session_id
+        ):
+            raise ValueError(
+                "reload checkpoint rollback session does not match current execution"
+            )
+
+        if tuple(checkpoint.open_journals) != open_journals:
+            raise ValueError(
+                "reload checkpoint open journals do not match current execution"
+            )
+
+        self._execution_suspension = checkpoint
+        return checkpoint
 
     def _finalize_execution(self, primary=None):
         """Resolve open journals at the outermost execution boundary."""
@@ -234,6 +299,31 @@ class Gateway(Resolver):
         from .bundled import run
 
         return run(self, recipe_name, **context)
+
+    def _reload(
+        self,
+        timeout: float = 30.0,
+        when: str | None = None,
+        fresh: bool = False,
+        restart: bool = False,
+    ):
+        """Reload GWAY in a successor process and continue the active recipe.
+
+        Args:
+            timeout: Seconds to wait for the successor to adopt the checkpoint.
+            when: Reload only when the managed GWAY runtime changed.
+            fresh: Resume with fresh semantic context and result history.
+            restart: Roll back the current run and restart the top-level recipe.
+        """
+        from .reload import perform_reload
+
+        return perform_reload(
+            self,
+            timeout=timeout,
+            when=when,
+            fresh=fresh,
+            restart=restart,
+        )
 
     def _help(self, *operation: str, verbose=False):
         """Return documentation for one Gway operation.
