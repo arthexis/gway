@@ -172,3 +172,48 @@ def test_supervisor_attempts_means_retry_count(monkeypatch):
 
     assert result == 1
     assert len(launches) == 4
+
+
+
+def test_supervisor_does_not_restart_after_stop_during_backoff(monkeypatch):
+    from gway.service import supervisor
+
+    launches = []
+    handlers = {}
+
+    class Process:
+        def __init__(self, returncode):
+            self.returncode = returncode
+
+        def wait(self):
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+        def send_signal(self, signum):
+            return None
+
+    def popen(command):
+        launches.append(tuple(command))
+        return Process(1)
+
+    def install_handler(signum, handler):
+        handlers[signum] = handler
+
+    def sleep(_seconds):
+        handlers[supervisor.signal.SIGTERM](supervisor.signal.SIGTERM, None)
+
+    monkeypatch.setattr(supervisor.subprocess, "Popen", popen)
+    monkeypatch.setattr(supervisor.time, "sleep", sleep)
+    monkeypatch.setattr(supervisor.signal, "signal", install_handler)
+    monkeypatch.setattr(supervisor.signal, "getsignal", lambda signum: None)
+
+    result = supervisor.supervise(
+        ("python", "-m", "demo"),
+        attempts=3,
+        restart_sec=1,
+    )
+
+    assert result == 1
+    assert len(launches) == 1
