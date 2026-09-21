@@ -422,8 +422,13 @@ Important current invariants:
 - When recovery also fails, preserve the original control/forward exception as
   primary and attach rollback recovery context.
 - Rollback-aware mutation state is `PREPARED -> MUTATED -> APPLIED ->
-  ROLLED_BACK`. Never discard or blindly restore a `MUTATED` entry whose
-  post-mutation fingerprint could not be sealed.
+  ROLLED_BACK`. Snapshot while PREPARED, mark MUTATED immediately before the
+  underlying write begins, and mark APPLIED only after the post-state
+  fingerprint is sealed. Never discard or blindly restore a MUTATED entry.
+- The named rollback-journal mutation surface is currently `copy`, `move`,
+  `link`, `remove`, and `render`. Any future operation that advertises a
+  `rollback` argument must use this same lifecycle rather than performing a
+  direct mutation first.
 
 Do not copy recipe syntax from older branches or from aspirational documents
 without checking the current parser and tests first.
