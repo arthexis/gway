@@ -622,3 +622,61 @@ def test_systemd_install_rollback_continues_after_cleanup_failure(
         ("disable", "gway-worker.service"),
         ("daemon-reload", None),
     ]
+
+
+def test_multiple_rollback_failures_preserve_original_forward_exception(
+    tmp_path,
+    monkeypatch,
+):
+    observed = []
+    services = _named_sous_services("web", "worker", "beat")
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        observed.append((operation.action, operation.unit, check, timeout))
+        if (
+            operation.action == "enable"
+            and operation.unit == "gway-beat.service"
+            and check
+        ):
+            raise systemd._SystemdOperationError(
+                operation,
+                "beat enable failed",
+                returncode=7,
+                stderr="forward failure",
+            )
+        if not check and operation.action in {"disable", "daemon-reload"}:
+            raise systemd._SystemdOperationError(
+                operation,
+                "rollback operation failed",
+                timeout=timeout,
+            )
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+
+    with pytest.raises(systemd._SystemdOperationError) as exc_info:
+        systemd.install_units(
+            "gway",
+            services,
+            state_root=tmp_path / "state",
+            root=tmp_path / "units",
+            timeout=41,
+        )
+
+    error = exc_info.value
+    assert error.action == "enable"
+    assert error.unit == "gway-beat.service"
+    assert error.returncode == 7
+    assert error.stderr == "forward failure"
+
+    cleanup = [
+        (action, unit)
+        for action, unit, check, _ in observed
+        if not check
+    ]
+    assert cleanup == [
+        ("disable", "gway-web.service"),
+        ("disable", "gway-worker.service"),
+        ("disable", "gway-beat.service"),
+        ("daemon-reload", None),
+    ]
