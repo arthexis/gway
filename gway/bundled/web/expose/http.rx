@@ -4,12 +4,12 @@ ingest [mkdir_executable|mkdir] --kind proc --sudo
 
 mkdir -p [acme_webroot|/var/www/gway-acme]
 
-render nginx-http-[name].conf
---to [nginx_available|/etc/nginx/sites-available]/nginx-[name].conf
+render nginx-http-[site].conf
+--to [nginx_available|/etc/nginx/sites-available]/nginx-[site].conf
 --as root
 
-link [nginx_available|/etc/nginx/sites-available]/nginx-[name].conf
---to [nginx_enabled|/etc/nginx/sites-enabled]/nginx-[name].conf
+link [nginx_available|/etc/nginx/sites-available]/nginx-[site].conf
+--to [nginx_enabled|/etc/nginx/sites-enabled]/nginx-[site].conf
 --as root
 
 nginx -t
