@@ -86,6 +86,8 @@ class ReloadCheckpoint:
     frames: tuple[dict[str, object], ...] = ()
     context: dict[str, object] = field(default_factory=dict)
     result: object = None
+    result_history: tuple[object, ...] = ()
+    result_subjects: dict[str, object] = field(default_factory=dict)
     flags: dict[str, object] = field(default_factory=dict)
     journal_session_id: str | None = None
     open_journals: tuple[str, ...] = ()
@@ -120,6 +122,8 @@ class ReloadCheckpoint:
 
         _json_value(self.context, path="context")
         _json_value(self.result, path="result")
+        _json_value(list(self.result_history), path="result_history")
+        _json_value(self.result_subjects, path="result_subjects")
         _json_value(self.flags, path="flags")
         _json_value(list(self.frames), path="frames")
         return self
@@ -157,6 +161,14 @@ class ReloadCheckpoint:
             "frames": _json_value(list(self.frames), path="frames"),
             "context": _json_value(self.context, path="context"),
             "result": _json_value(self.result, path="result"),
+            "result_history": _json_value(
+                list(self.result_history),
+                path="result_history",
+            ),
+            "result_subjects": _json_value(
+                self.result_subjects,
+                path="result_subjects",
+            ),
             "flags": _json_value(self.flags, path="flags"),
             "journal_session_id": self.journal_session_id,
             "open_journals": list(self.open_journals),
@@ -186,6 +198,8 @@ class ReloadCheckpoint:
             frames=tuple(dict(item) for item in value.get("frames") or ()),
             context=dict(value.get("context") or {}),
             result=value.get("result"),
+            result_history=tuple(value.get("result_history") or ()),
+            result_subjects=dict(value.get("result_subjects") or {}),
             flags=dict(value.get("flags") or {}),
             journal_session_id=value.get("journal_session_id"),
             open_journals=tuple(
@@ -239,6 +253,9 @@ class ReloadStore:
     def path(self, checkpoint_id):
         return self.active / f"{checkpoint_id}.json"
 
+    def adopted_path(self, checkpoint_id):
+        return self.active / f"{checkpoint_id}.adopted.json"
+
     def save(self, checkpoint):
         """Atomically persist one active executable checkpoint."""
         checkpoint = checkpoint.validated()
@@ -252,6 +269,36 @@ class ReloadStore:
         payload = json.loads(path.read_text(encoding="utf-8"))
         return ReloadCheckpoint.from_dict(payload)
 
+    def adopt(self, checkpoint_id):
+        """Atomically claim one HANDOFF checkpoint for exactly one resumed process."""
+        source = self.path(checkpoint_id)
+        claimed = self.adopted_path(checkpoint_id)
+        self.active.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            source.replace(claimed)
+        except FileNotFoundError:
+            if claimed.exists():
+                raise ReloadError(
+                    f"Reload checkpoint {checkpoint_id!r} is already adopted"
+                )
+            raise
+
+        try:
+            payload = json.loads(claimed.read_text(encoding="utf-8"))
+            checkpoint = ReloadCheckpoint.from_dict(payload)
+            if checkpoint.state is not CheckpointState.HANDOFF:
+                raise ReloadError(
+                    f"Reload checkpoint {checkpoint_id!r} is "
+                    f"{checkpoint.state.value}, not handoff"
+                )
+            adopted = checkpoint.transition(CheckpointState.ADOPTED)
+            self._atomic_json(claimed, adopted.as_dict())
+            return adopted
+        except Exception:
+            if claimed.exists() and not source.exists():
+                claimed.replace(source)
+            raise
+
     def _record(self, receipt):
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.root.chmod(0o700)
@@ -262,20 +309,133 @@ class ReloadStore:
 
     def complete(self, checkpoint):
         """Record success and remove executable resume state."""
-        path = self.path(checkpoint.checkpoint_id)
         self._record(checkpoint.receipt(outcome="completed"))
-        path.unlink(missing_ok=True)
+        self.path(checkpoint.checkpoint_id).unlink(missing_ok=True)
+        self.adopted_path(checkpoint.checkpoint_id).unlink(missing_ok=True)
 
     def quarantine(self, checkpoint, error):
         """Make a failed checkpoint inert while preserving private evidence."""
         source = self.path(checkpoint.checkpoint_id)
+        adopted = self.adopted_path(checkpoint.checkpoint_id)
         target = self.failed / f"{checkpoint.checkpoint_id}.json"
         self.failed.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.failed.chmod(0o700)
         if source.exists():
             source.replace(target)
             target.chmod(0o600)
+        elif adopted.exists():
+            adopted.replace(target)
+            target.chmod(0o600)
         else:
             self._atomic_json(target, checkpoint.as_dict())
         self._record(checkpoint.receipt(outcome="failed", error=error))
         return target
+
+
+def _restore_runtime(checkpoint):
+    """Construct a fresh Gateway and restore portable semantic/runtime state."""
+    from .gateway import Gateway
+    from .journal import JournalManager
+
+    flags = dict(checkpoint.flags)
+    allowed_flags = {
+        "debug": bool(flags.get("debug", False)),
+        "verbose": bool(flags.get("verbose", False)),
+        "silent": bool(flags.get("silent", False)),
+        "interactive": bool(flags.get("interactive", False)),
+        "timed": bool(flags.get("timed", False)),
+    }
+    runtime = Gateway(**allowed_flags)
+    runtime.context.clear()
+    runtime.context.update(checkpoint.context)
+    runtime.context["verbose"] = runtime.verbose
+    runtime.context["silent"] = runtime.silent
+
+    runtime.results.clear()
+    runtime.results.history.extend(checkpoint.result_history)
+    runtime.results.maps[0].update(checkpoint.result_subjects)
+
+    if checkpoint.journal_session_id is not None:
+        runtime.journal = JournalManager(
+            runtime.journal.root,
+            session_id=checkpoint.journal_session_id,
+        )
+        actual = runtime.journal.open_names()
+        if actual != tuple(checkpoint.open_journals):
+            raise ReloadError(
+                "Reload checkpoint journals do not match persisted rollback session: "
+                f"expected {tuple(checkpoint.open_journals)!r}, got {actual!r}"
+            )
+    elif checkpoint.open_journals:
+        raise ReloadError("Reload checkpoint has journals without a journal session")
+    return runtime
+
+
+def _frame_tokens(value):
+    """Restore one serialized token sequence with quote provenance."""
+    from .tokens import Token
+
+    tokens = []
+    for item in value or ():
+        if isinstance(item, str):
+            tokens.append(Token(item))
+            continue
+        data = dict(item)
+        tokens.append(Token(str(data["value"]), data.get("quote")))
+    return tokens
+
+
+def resume_frames(runtime, checkpoint):
+    """Resume deepest-to-outer recipe continuations without replaying prior work."""
+    from .dispatch import _MISSING, dispatch_pipeline, dispatch_program
+    from .recipes import ingest_companion
+    from pathlib import Path
+
+    frames = [dict(frame) for frame in checkpoint.frames]
+    if not frames:
+        return checkpoint.result
+
+    recipe_paths = [Path(str(frame["recipe"])).expanduser().resolve() for frame in frames]
+    runtime._recipe_stack = []
+    for path in recipe_paths:
+        ingest_companion(runtime, path)
+
+    current = checkpoint.result
+    for depth in range(len(frames) - 1, -1, -1):
+        frame = frames[depth]
+        path = recipe_paths[depth]
+        runtime._recipe_stack = recipe_paths[: depth + 1]
+
+        pipeline_tokens = _frame_tokens(frame.get("pipeline"))
+        if pipeline_tokens:
+            _, current = dispatch_pipeline(
+                runtime,
+                pipeline_tokens,
+                pipeline=current,
+            )
+
+        remaining = [
+            _frame_tokens(statement)
+            for statement in frame.get("statements") or ()
+        ]
+        if remaining:
+            _, current = dispatch_program(runtime, remaining)
+
+    runtime._recipe_stack = []
+    return current
+
+
+def resume(checkpoint_id, *, store=None):
+    """Adopt one suspended reload checkpoint and continue its recipe frames."""
+    store = ReloadStore() if store is None else store
+    checkpoint = store.adopt(checkpoint_id)
+    runtime = None
+    try:
+        runtime = _restore_runtime(checkpoint)
+        with runtime.execution_scope():
+            value = resume_frames(runtime, checkpoint)
+        store.complete(checkpoint)
+        return value
+    except BaseException as exception:
+        store.quarantine(checkpoint, exception)
+        raise
