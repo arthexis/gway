@@ -32,8 +32,12 @@ def cli_main():
     log_kwargs = {"destination": args.logfile or "file"}
     if args.log_level is not None:
         log_kwargs["level"] = args.log_level
-    gway_log.configure_output(**log_kwargs)
+    with gway_log.output_scope(**log_kwargs):
+        return _run_cli(parser, args, unknown)
 
+
+def _run_cli(parser, args, unknown):
+    """Execute one parsed CLI invocation within its configured log scope."""
     runtime = Gateway(
         debug=args.debug,
         interactive=args.interactive,
