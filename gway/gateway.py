@@ -53,6 +53,7 @@ class Gateway(Resolver):
         self.cache = cache if isinstance(cache, Cache) else Cache(cache)
         self.journal = JournalManager(default_root() / "rollback")
         self._execution_depth = 0
+        self._execution_suspension = None
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
@@ -134,6 +135,8 @@ class Gateway(Resolver):
     def execution_scope(self):
         """Own one nested execution scope and finalize only at the outer boundary."""
         outermost = self._execution_depth == 0
+        if outermost:
+            self._execution_suspension = None
         self._execution_depth += 1
         primary = None
         try:
@@ -144,7 +147,41 @@ class Gateway(Resolver):
         finally:
             self._execution_depth -= 1
             if outermost:
-                self._finalize_execution(primary)
+                suspension = self._execution_suspension
+                self._execution_suspension = None
+                if primary is not None or suspension is None:
+                    self._finalize_execution(primary)
+                else:
+                    self.info(
+                        "execution suspended for reload checkpoint %s with "
+                        "rollback session %s",
+                        suspension.checkpoint_id,
+                        self.journal.session_id,
+                    )
+
+    def suspend_execution(self, checkpoint):
+        """Transfer this outer execution boundary to one persisted reload checkpoint."""
+        from .reload import ReloadCheckpoint
+
+        if self._execution_depth <= 0:
+            raise RuntimeError("execution can only be suspended from an active scope")
+        if not isinstance(checkpoint, ReloadCheckpoint):
+            raise TypeError("execution suspension requires a ReloadCheckpoint")
+
+        checkpoint.validated()
+        if checkpoint.journal_session_id != self.journal.session_id:
+            raise ValueError(
+                "reload checkpoint rollback session does not match current execution"
+            )
+
+        open_journals = self.journal.open_names()
+        if tuple(checkpoint.open_journals) != open_journals:
+            raise ValueError(
+                "reload checkpoint open journals do not match current execution"
+            )
+
+        self._execution_suspension = checkpoint
+        return checkpoint
 
     def _finalize_execution(self, primary=None):
         """Resolve open journals at the outermost execution boundary."""
