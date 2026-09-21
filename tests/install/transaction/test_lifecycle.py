@@ -68,24 +68,18 @@ def test_local_install_rejects_ref(make_project, managed_paths):
 
 
 def test_uninstall_removes_managed_copy_and_state_but_not_source(
-    make_project,
+    installed_project,
     managed_paths,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-
     removed = transaction.uninstall_local(
         UninstallRequest("wire"),
         paths=managed_paths,
     )
 
-    assert removed == installed
-    assert source.is_dir()
-    assert not installed.install_path.exists()
-    assert InstallState(managed_paths.state).get("wire") is None
+    assert removed == installed_project.installed
+    assert installed_project.source.is_dir()
+    assert not installed_project.destination.exists()
+    assert installed_project.state.get("wire") is None
 
 
 def test_uninstall_is_idempotent_when_project_is_absent(managed_paths):
@@ -100,23 +94,18 @@ def test_uninstall_is_idempotent_when_project_is_absent(managed_paths):
 
 
 def test_uninstall_reconciles_stale_record_when_managed_copy_is_missing(
-    make_project,
+    installed_project,
     managed_paths,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    transaction._remove_path(installed.install_path)
+    transaction._remove_path(installed_project.destination)
 
     removed = transaction.uninstall_local(
         UninstallRequest("wire"),
         paths=managed_paths,
     )
 
-    assert removed == installed
-    assert InstallState(managed_paths.state).get("wire") is None
+    assert removed == installed_project.installed
+    assert installed_project.state.get("wire") is None
 
 
 def test_project_install_does_not_touch_service_installation(
@@ -142,20 +131,17 @@ def test_project_install_does_not_touch_service_installation(
 
 
 def test_install_recovery_restores_previous_project_when_launcher_rollback_fails(
-    make_project,
+    installed_project,
     managed_paths,
     monkeypatch,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    destination = installed.install_path
+    source = installed_project.source
+    installed = installed_project.installed
+    destination = installed_project.destination
+    real_state = installed_project.state
     assert (destination / "module.py").read_text(encoding="utf-8") == "VALUE = 1\n"
 
     (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
-    real_state = InstallState(managed_paths.state)
 
     class FailingState:
         def get(self, name, scope=None):
