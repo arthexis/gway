@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 
 
@@ -26,8 +27,8 @@ class ProcessRecord:
         return self.project, self.service
 
 
-def process_token(pid):
-    """Return a kernel process-identity token when the platform exposes one."""
+def _procfs_process_token(pid):
+    """Return Linux procfs start-time identity when available."""
     stat = Path(f"/proc/{int(pid)}/stat")
     try:
         text = stat.read_text(encoding="utf-8")
@@ -40,9 +41,73 @@ def process_token(pid):
         tail = text[text.rindex(")") + 2 :].split()
         if tail[0] == "Z":
             return None
-        return tail[19]
+        return f"procfs:{tail[19]}"
     except (ValueError, IndexError):
         return None
+
+
+def _windows_process_token(pid):
+    """Return Windows process creation time without third-party dependencies."""
+    if os.name != "nt":
+        return None
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        process = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid))
+        if not process:
+            return None
+        try:
+            creation = wintypes.FILETIME()
+            exit_time = wintypes.FILETIME()
+            kernel = wintypes.FILETIME()
+            user = wintypes.FILETIME()
+            ok = ctypes.windll.kernel32.GetProcessTimes(
+                process,
+                ctypes.byref(creation),
+                ctypes.byref(exit_time),
+                ctypes.byref(kernel),
+                ctypes.byref(user),
+            )
+            if not ok:
+                return None
+            value = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+            return f"windows:{value}"
+        finally:
+            ctypes.windll.kernel32.CloseHandle(process)
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _ps_process_token(pid):
+    """Return portable POSIX process start identity when procfs is unavailable."""
+    if os.name == "nt":
+        return None
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(int(pid))],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "LC_ALL": "C"},
+            timeout=2,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    started = result.stdout.strip()
+    if result.returncode != 0 or not started:
+        return None
+    return f"ps:{started}"
+
+
+def process_token(pid):
+    """Return a portable process start-identity token when available."""
+    return (
+        _procfs_process_token(pid)
+        or _windows_process_token(pid)
+        or _ps_process_token(pid)
+    )
 
 
 def pid_exists(pid):
