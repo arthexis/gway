@@ -462,6 +462,57 @@ def handoff(
         raise
 
 
+def capture_reload_checkpoint(
+    runtime,
+    *,
+    mode=ReloadMode.CONTINUE,
+    when=None,
+    timeout=None,
+):
+    """Snapshot the live recipe continuation into one portable checkpoint."""
+    frames = list(getattr(runtime, "_recipe_frames", ()) or ())
+    if not frames:
+        raise ReloadError("reload requires an active recipe execution")
+
+    serialized_frames = []
+    for frame in frames:
+        serialized_frames.append(
+            {
+                "recipe": str(frame.path),
+                "pipeline": serialize_tokens(frame.pipeline_remaining),
+                "statements": [
+                    serialize_tokens(statement)
+                    for statement in frame.remaining_statements
+                ],
+            }
+        )
+
+    flags = {
+        "debug": runtime.debug_enabled,
+        "verbose": runtime.verbose,
+        "silent": runtime.silent,
+        "interactive": runtime.interactive_enabled,
+        "timed": runtime.timed_enabled,
+    }
+    subjects = dict(runtime.results.maps[0])
+    history = tuple(runtime.results.history)
+
+    return ReloadCheckpoint.create(
+        mode=ReloadMode(mode),
+        when=when,
+        timeout=timeout,
+        recipe_stack=tuple(str(frame.path) for frame in frames),
+        frames=tuple(serialized_frames),
+        context=dict(runtime.context),
+        result=runtime.results.last,
+        result_history=history,
+        result_subjects=subjects,
+        flags=flags,
+        journal_session_id=runtime.journal.session_id,
+        open_journals=runtime.journal.open_names(),
+    )
+
+
 def default_resume_command():
     """Return the current interpreter/module command for internal resume."""
     return [sys.executable, "-m", "gway"]
