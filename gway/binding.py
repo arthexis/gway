@@ -8,7 +8,7 @@ from typing import get_args, get_origin
 
 from .operations import singularize
 from .sigil import Sigil
-from .tokens import Token, is_literal, token_value
+from .tokens import Token, is_literal, is_unquoted, token_value
 
 
 _NO_PIPELINE = object()
@@ -331,7 +331,7 @@ def pipeline_boundary(
         if greedy is not None and parameter is greedy:
             return None
 
-        if not is_literal(raw) and token == "-":
+        if is_unquoted(raw) and token == "-":
             return index
 
         if (
