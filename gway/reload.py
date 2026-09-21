@@ -410,7 +410,7 @@ def recover_adopted_journals(checkpoint, journal_root):
     if checkpoint.mode is ReloadMode.RESTART or checkpoint.journal_session_id is None:
         return ()
 
-    from .journal import JournalManager, attach_rollback_error
+    from .journal import JournalManager
 
     manager = JournalManager(
         journal_root,
