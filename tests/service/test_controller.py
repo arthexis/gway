@@ -111,20 +111,11 @@ def test_unknown_service_target_has_clear_resolution_error(service_gateway):
         gateway("service start missing-operation")
 
 
-@pytest.mark.parametrize("timeout", ["0", "-1"])
-def test_service_timeout_must_be_positive(service_gateway, timeout):
-    gateway, backend = service_gateway
-
-    with pytest.raises(
-        ValueError, match="service timeout must be a finite positive number"
-    ):
-        gateway(f"service restart --timeout {timeout} worker")
-
-    assert backend.calls == []
-
-
-@pytest.mark.parametrize("timeout", ["nan", "inf", "-inf"])
-def test_service_timeout_must_be_finite(service_gateway, timeout):
+@pytest.mark.parametrize("timeout", ["0", "-1", "nan", "inf", "-inf"])
+def test_service_timeout_rejects_non_positive_or_non_finite_values(
+    service_gateway,
+    timeout,
+):
     gateway, backend = service_gateway
 
     with pytest.raises(
