@@ -137,7 +137,6 @@ def test_resume_adopts_existing_rollback_session_and_can_commit(
     source = tmp_path / "source.txt"
     destination = tmp_path / "destination.txt"
     recipe = tmp_path / "deploy.rx"
-    companion = tmp_path / "deploy.py"
     source.write_text("source", encoding="utf-8")
     recipe.write_text("commit deploy\n", encoding="utf-8")
 
