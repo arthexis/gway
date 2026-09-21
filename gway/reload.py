@@ -384,6 +384,17 @@ class ReloadTransferred(BaseException):
         super().__init__(self.checkpoint_id)
 
 
+class ReloadSuccessorError(ReloadError):
+    """Raised when an adopted reload successor exits abnormally."""
+
+    def __init__(self, checkpoint, returncode):
+        self.checkpoint = checkpoint
+        self.returncode = int(returncode)
+        super().__init__(
+            f"Reload successor exited after adoption with code {self.returncode}"
+        )
+
+
 class ReloadHandoffError(ReloadError):
     """Raised when a successor cannot safely adopt a reload checkpoint."""
 
@@ -392,6 +403,53 @@ class ReloadHandoffError(ReloadError):
         self.timeout = timeout
         self.returncode = returncode
         super().__init__(message)
+
+
+def recover_adopted_journals(checkpoint, journal_root):
+    """Roll back only journals still durably open after successor failure."""
+    if checkpoint.mode is ReloadMode.RESTART or checkpoint.journal_session_id is None:
+        return ()
+
+    from .journal import JournalManager, attach_rollback_error
+
+    manager = JournalManager(
+        journal_root,
+        session_id=checkpoint.journal_session_id,
+    )
+    recovered = []
+    errors = []
+    for name in reversed(manager.open_names()):
+        try:
+            manager.rollback(name)
+        except Exception as exception:
+            errors.append(exception)
+        else:
+            recovered.append(name)
+    return tuple(recovered), tuple(errors)
+
+
+def supervise_successor(process, checkpoint, journal_root):
+    """Wait for one adopted successor and recover open journals on hard failure."""
+    returncode = process.wait()
+    if returncode == 0:
+        return 0
+
+    error = ReloadSuccessorError(checkpoint, returncode)
+    recovered = ()
+    failures = ()
+    if checkpoint.mode is not ReloadMode.RESTART:
+        recovered, failures = recover_adopted_journals(checkpoint, journal_root)
+    if failures:
+        from .journal import RollbackRecoveryError, attach_rollback_error
+
+        rollback_error = (
+            failures[0]
+            if len(failures) == 1
+            else RollbackRecoveryError(failures)
+        )
+        attach_rollback_error(error, rollback_error)
+    error.recovered_journals = tuple(recovered)
+    raise error
 
 
 def _stop_successor(process):
