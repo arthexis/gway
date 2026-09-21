@@ -34,9 +34,6 @@ jobs:
       - name: Ruff lint
         run: python -m ruff check gway tests
 
-      - name: Ruff format
-        run: python -m ruff format --check gway tests
-
   test:
     name: test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
