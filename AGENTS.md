@@ -1013,10 +1013,8 @@ without `.git`, GitHub SSH shorthand, generic `ssh://`, `git://`,
 Git support uses the system `git` executable and introduces no third-party
 Python runtime dependency. Install metadata needed for `[project]` and
 `[project.scripts]` has a narrow stdlib fallback on Python 3.10, so
-self-install does not make `tomli` a core dependency. Full declarative
-ingestion TOML parsing remains optional on Python 3.10 and is only invoked when
-a manifest actually declares `[ingest]` or `[[ingest]]`. Each canonical repository has a mirror under the
-general GWAY cache `git` namespace. Every install refreshes that mirror,
+self-install does not make `tomli` a core dependency. Each canonical repository
+has a mirror under the general GWAY cache `git` namespace. Every install refreshes that mirror,
 resolves the requested `--ref` (branch, tag, or commit) to an immutable commit
 SHA, and materializes a detached content snapshot keyed by that SHA. Snapshot
 trees contain no `.git` metadata. Cached snapshot fingerprints are verified
