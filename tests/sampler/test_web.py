@@ -105,10 +105,16 @@ def test_web_expose_https_template_serves_tls_and_preserves_acme():
 def test_sampler_package_resolves_default_and_children(gateway):
     root = sampler_root()
 
-    assert recipe_path(gateway, root, allow_bare=False) == root / "expose.rx"
-    assert recipe_path(gateway, root / "http", allow_bare=False) == root / "http.rx"
-    assert recipe_path(gateway, root / "https", allow_bare=False) == root / "https.rx"
-    assert recipe_path(gateway, root / "cleanup", allow_bare=False) == (
+    assert recipe_path(gateway, root / "expose.rx", allow_bare=False) == (
+        root / "expose.rx"
+    )
+    assert recipe_path(gateway, root / "http.rx", allow_bare=False) == (
+        root / "http.rx"
+    )
+    assert recipe_path(gateway, root / "https.rx", allow_bare=False) == (
+        root / "https.rx"
+    )
+    assert recipe_path(gateway, root / "cleanup.rx", allow_bare=False) == (
         root / "cleanup.rx"
     )
 
