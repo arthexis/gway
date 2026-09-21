@@ -127,6 +127,7 @@ Current global options are:
 -i, --interactive
 -j, --json
 -L, --log-level LEVEL
+--logfile DESTINATION
 -r, --recipe PATH
 -t, --timed
 -v, --verbose
