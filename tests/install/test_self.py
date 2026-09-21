@@ -126,8 +126,8 @@ def test_gway_reload_crosses_real_managed_process_boundary(
     installed = gateway("install gway --ref selftest")
     launcher = install_environment.bin / "gway"
 
-    recipe = tmp_path / "reload-acceptance.rx"
-    companion = tmp_path / "reload-acceptance.py"
+    recipe = tmp_path / "reload_acceptance.rx"
+    companion = tmp_path / "reload_acceptance.py"
     events = tmp_path / "events.txt"
 
     companion.write_text(
@@ -145,9 +145,9 @@ def test_gway_reload_crosses_real_managed_process_boundary(
         encoding="utf-8",
     )
     recipe.write_text(
-        "reload-acceptance before\n"
+        "reload_acceptance before\n"
         "reload\n"
-        "reload-acceptance after\n",
+        "reload_acceptance after\n",
         encoding="utf-8",
     )
 
@@ -190,8 +190,8 @@ def test_gway_reload_real_successor_failure_rolls_back_adopted_journal(
 
     source = tmp_path / "source.txt"
     destination = tmp_path / "destination.txt"
-    recipe = tmp_path / "reload-rollback.rx"
-    companion = tmp_path / "reload-rollback.py"
+    recipe = tmp_path / "reload_rollback.rx"
+    companion = tmp_path / "reload_rollback.py"
     source.write_text("replacement", encoding="utf-8")
 
     companion.write_text(
@@ -202,7 +202,7 @@ def test_gway_reload_real_successor_failure_rolls_back_adopted_journal(
     recipe.write_text(
         f"copy {source} --to {destination} --rollback deploy\n"
         "reload\n"
-        "reload-rollback fail\n",
+        "reload_rollback fail\n",
         encoding="utf-8",
     )
 
