@@ -341,7 +341,7 @@ Or roll back explicitly:
 rollback deploy
 ~~~
 
-A successful commit or rollback closes the journal and discards its stored rollback material.
+A successful commit or rollback closes the journal and discards its stored rollback material. Commit is refused if the journal contains an unsealed `MUTATED` entry or is already in a mixed state after a partial rollback; recovery material must remain available until that rollback is resolved.
 
 ## Control-triggered rollback
 
