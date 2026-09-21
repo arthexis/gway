@@ -354,7 +354,6 @@ class ReloadStore:
         self._record(checkpoint.receipt(outcome="completed"))
         self.path(checkpoint.checkpoint_id).unlink(missing_ok=True)
         self.adopted_path(checkpoint.checkpoint_id).unlink(missing_ok=True)
-        self.clear_acknowledgement(checkpoint.checkpoint_id)
 
     def quarantine(self, checkpoint, error):
         """Make a failed checkpoint inert while preserving private evidence."""
@@ -372,7 +371,6 @@ class ReloadStore:
         else:
             self._atomic_json(target, checkpoint.as_dict())
         self._record(checkpoint.receipt(outcome="failed", error=error))
-        self.clear_acknowledgement(checkpoint.checkpoint_id)
         return target
 
 
@@ -432,6 +430,7 @@ def handoff(
     try:
         while True:
             if store.acknowledged(handoff_checkpoint.checkpoint_id):
+                store.clear_acknowledgement(handoff_checkpoint.checkpoint_id)
                 return process, handoff_checkpoint
 
             returncode = process.poll()
