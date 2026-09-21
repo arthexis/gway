@@ -22,18 +22,6 @@ def _register_status(gateway, status):
     gateway.read_status = gateway.wrap("read_status", read_status)
 
 
-def _record_rollbacks(gateway, monkeypatch):
-    calls = []
-    original = gateway.journal.rollback
-
-    def rollback(name):
-        calls.append(name)
-        return original(name)
-
-    monkeypatch.setattr(gateway.journal, "rollback", rollback)
-    return calls
-
-
 def test_recipe_check_success_commits_named_journal(
     gateway,
     rollback_paths,
@@ -58,12 +46,12 @@ def test_recipe_check_failure_rolls_back_once_before_boundary(
     gateway,
     rollback_paths,
     tmp_path,
-    monkeypatch,
+    record_rollbacks,
 ):
     source, destination = rollback_paths
     _register_mutation(gateway, source, destination)
     _register_status(gateway, "disabled")
-    rollbacks = _record_rollbacks(gateway, monkeypatch)
+    rollbacks = record_rollbacks
 
     recipe = tmp_path / "deploy.rx"
     recipe.write_text(
@@ -83,12 +71,12 @@ def test_nested_recipe_shares_journal_with_outer_check(
     gateway,
     rollback_paths,
     tmp_path,
-    monkeypatch,
+    record_rollbacks,
 ):
     source, destination = rollback_paths
     _register_mutation(gateway, source, destination)
     _register_status(gateway, "disabled")
-    rollbacks = _record_rollbacks(gateway, monkeypatch)
+    rollbacks = record_rollbacks
 
     inner = tmp_path / "inner.rx"
     outer = tmp_path / "outer.rx"
@@ -133,11 +121,11 @@ def test_recipe_repeat_intermediate_failures_do_not_rollback(
     gateway,
     rollback_paths,
     tmp_path,
-    monkeypatch,
+    record_rollbacks,
 ):
     source, destination = rollback_paths
     _register_mutation(gateway, source, destination)
-    rollbacks = _record_rollbacks(gateway, monkeypatch)
+    rollbacks = record_rollbacks
     calls = []
 
     def probe():
@@ -162,11 +150,11 @@ def test_recipe_repeat_exhaustion_rolls_back_once_before_boundary(
     gateway,
     rollback_paths,
     tmp_path,
-    monkeypatch,
+    record_rollbacks,
 ):
     source, destination = rollback_paths
     _register_mutation(gateway, source, destination)
-    rollbacks = _record_rollbacks(gateway, monkeypatch)
+    rollbacks = record_rollbacks
 
     def probe():
         return False
@@ -191,11 +179,11 @@ def test_recipe_repeat_while_success_preserves_journal_until_commit(
     gateway,
     rollback_paths,
     tmp_path,
-    monkeypatch,
+    record_rollbacks,
 ):
     source, destination = rollback_paths
     _register_mutation(gateway, source, destination)
-    rollbacks = _record_rollbacks(gateway, monkeypatch)
+    rollbacks = record_rollbacks
     calls = []
 
     def pending():
@@ -221,12 +209,12 @@ def test_incomplete_control_rollback_is_retried_by_boundary_and_keeps_primary(
     gateway,
     rollback_paths,
     tmp_path,
-    monkeypatch,
+    record_rollbacks,
 ):
     source, destination = rollback_paths
     _register_mutation(gateway, source, destination, drift=True)
     _register_status(gateway, "disabled")
-    rollbacks = _record_rollbacks(gateway, monkeypatch)
+    rollbacks = record_rollbacks
 
     recipe = tmp_path / "drift.rx"
     recipe.write_text(
