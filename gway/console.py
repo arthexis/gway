@@ -70,8 +70,17 @@ def _run_cli(parser, args, unknown):
         else:
             parser.print_help()
             return 0
-    except ReloadTransferred:
-        return 0
+    except ReloadTransferred as transfer:
+        from .reload import ReloadSuccessorError, supervise_successor
+
+        try:
+            return supervise_successor(
+                transfer.process,
+                transfer.checkpoint,
+                transfer.journal_root,
+            )
+        except ReloadSuccessorError as exception:
+            return exception.returncode if exception.returncode > 0 else 1
 
     if output is not None and not args.silent:
         if args.json:
