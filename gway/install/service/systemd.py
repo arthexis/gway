@@ -287,38 +287,50 @@ def install_units(
         return records
     except Exception:
         for record in records:
-            _systemctl(
-                "disable",
-                record.backend_id,
-                system=system,
-                check=False,
-                timeout=timeout,
-            )
+            try:
+                _systemctl(
+                    "disable",
+                    record.backend_id,
+                    system=system,
+                    check=False,
+                    timeout=timeout,
+                )
+            except Exception:
+                pass
             if record.backend_id not in previous_files:
                 try:
                     (target_root / record.backend_id).unlink()
-                except FileNotFoundError:
+                except Exception:
                     pass
         for unit, content in previous_files.items():
             path = target_root / unit
-            if content is None:
-                try:
-                    path.unlink()
-                except FileNotFoundError:
-                    pass
-            else:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(content)
-        state.put(project, previous_all)
-        _systemctl("daemon-reload", system=system, check=False, timeout=timeout)
+            try:
+                if content is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(content)
+            except Exception:
+                pass
+        try:
+            state.put(project, previous_all)
+        except Exception:
+            pass
+        try:
+            _systemctl("daemon-reload", system=system, check=False, timeout=timeout)
+        except Exception:
+            pass
         for record in previous.values():
-            _systemctl(
-                "enable",
-                record.backend_id,
-                system=record.system,
-                check=False,
-                timeout=timeout,
-            )
+            try:
+                _systemctl(
+                    "enable",
+                    record.backend_id,
+                    system=record.system,
+                    check=False,
+                    timeout=timeout,
+                )
+            except Exception:
+                pass
         raise
 
 
