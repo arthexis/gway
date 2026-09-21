@@ -147,6 +147,35 @@ def test_commit_discards_persisted_journal(tmp_path):
     assert not (tmp_path / "rollback" / "session" / "deploy").exists()
 
 
+def test_commit_rejects_partially_rolled_back_journal(tmp_path):
+    journals = manager(tmp_path)
+    journals.prepare("deploy")
+    journals.mark_applied("deploy", 1)
+    journals.prepare("deploy")
+    journals.mark_applied("deploy", 2)
+    journals.mark_rolled_back("deploy", 2)
+
+    with pytest.raises(JournalError, match="partially rolled back"):
+        journals.commit("deploy")
+
+    journal = journals.require_open("deploy")
+    assert [entry.state for entry in journal.entries] == [
+        MutationState.APPLIED,
+        MutationState.ROLLED_BACK,
+    ]
+
+
+def test_mutated_state_is_persisted_before_applied(tmp_path):
+    journals = manager(tmp_path)
+    journals.prepare("deploy")
+
+    journals.mark_mutated("deploy", 1)
+    journals._journals.clear()
+
+    reloaded = journals.require_open("deploy").entries[0]
+    assert reloaded.state is MutationState.MUTATED
+
+
 def test_close_rolled_back_requires_no_applied_mutations(tmp_path):
     journals = manager(tmp_path)
     journals.prepare("deploy")
