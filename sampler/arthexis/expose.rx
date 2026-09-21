@@ -1,0 +1,9 @@
+# Expose an installed Arthexis web service through nginx and HTTPS.
+# Public domain and TLS contact email are supplied by the caller.
+
+default
+--name arthexis
+--host 127.0.0.1
+--port 8000
+
+../web/expose/expose
