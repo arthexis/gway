@@ -105,3 +105,25 @@ def managed_gway_identity(*, system=False, paths=None, state=None):
     if installation is None:
         return None
     return runtime_identity(installation)
+
+
+def running_gway_identity(
+    *,
+    package_root=None,
+    system=False,
+    paths=None,
+    state=None,
+):
+    """Return managed identity only when this process runs from that installation."""
+    identity = managed_gway_identity(system=system, paths=paths, state=state)
+    if identity is None or identity.install_path is None:
+        return None
+
+    running_root = (
+        Path(__file__).resolve().parents[2]
+        if package_root is None
+        else Path(package_root).expanduser().resolve()
+    )
+    if running_root != identity.install_path:
+        return None
+    return identity
