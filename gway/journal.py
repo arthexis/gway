@@ -108,12 +108,26 @@ def rollback_error_for(exception: BaseException) -> JournalError | None:
     return value if isinstance(value, JournalError) else None
 
 
+def _recovery_errors(error: JournalError) -> tuple[JournalError, ...]:
+    """Flatten one recovery error into its component journal errors."""
+    if isinstance(error, RollbackRecoveryError):
+        return tuple(error.errors)
+    return (error,)
+
+
 def attach_rollback_error(
     primary: BaseException,
     rollback_error: JournalError,
 ) -> BaseException:
     """Attach rollback failure context while preserving the primary exception."""
-    setattr(primary, _ROLLBACK_ERROR_ATTR, rollback_error)
+    existing = rollback_error_for(primary)
+    if existing is None:
+        combined = rollback_error
+    else:
+        errors = (*_recovery_errors(existing), *_recovery_errors(rollback_error))
+        combined = RollbackRecoveryError(errors)
+
+    setattr(primary, _ROLLBACK_ERROR_ATTR, combined)
     add_note = getattr(primary, "add_note", None)
     if callable(add_note):
         add_note(f"Rollback recovery also failed:\n{rollback_error}")
