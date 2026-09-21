@@ -138,3 +138,59 @@ def test_project_install_does_not_touch_service_installation(
 
     assert installed.name == "wire"
     assert installed.install_path.is_dir()
+
+
+
+def test_install_recovery_restores_previous_project_when_launcher_rollback_fails(
+    make_project,
+    managed_paths,
+    monkeypatch,
+):
+    source = make_project("wire")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=managed_paths,
+    )
+    destination = installed.install_path
+    assert (destination / "module.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+
+    (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+    real_state = InstallState(managed_paths.state)
+
+    class FailingState:
+        def get(self, name, scope=None):
+            return real_state.get(name, scope=scope)
+
+        def put(self, record):
+            raise OSError("state write failed")
+
+        def remove(self, name, scope=None):
+            return real_state.remove(name, scope=scope)
+
+    class FailingLauncher:
+        def rollback(self):
+            raise RuntimeError("launcher rollback failed")
+
+        def commit(self):
+            raise AssertionError("failed install must not commit launchers")
+
+    monkeypatch.setattr(
+        transaction,
+        "activate_project",
+        lambda name, project, paths: FailingLauncher(),
+    )
+
+    with pytest.raises(OSError, match="state write failed") as raised:
+        transaction.install_local(
+            InstallRequest(str(source)),
+            paths=managed_paths,
+            state=FailingState(),
+        )
+
+    assert (destination / "module.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert real_state.get("wire") == installed
+    assert list(managed_paths.projects.glob(".wire.replace-*")) == []
+    assert any(
+        "launcher rollback" in note and "launcher rollback failed" in note
+        for note in getattr(raised.value, "__notes__", ())
+    )
