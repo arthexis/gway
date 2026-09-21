@@ -22,8 +22,8 @@ class Controller:
         if value is None:
             return None
         timeout = float(value)
-        if timeout <= 0:
-            raise ValueError("service timeout must be greater than zero")
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("service timeout must be a finite positive number")
         return timeout
 
     @staticmethod
