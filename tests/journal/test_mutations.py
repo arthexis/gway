@@ -74,6 +74,7 @@ def test_copy_failure_after_snapshot_leaves_unsealed_entry(
     gateway,
     tmp_path,
     monkeypatch,
+    journal_entry,
 ):
     source = tmp_path / "source.txt"
     source.write_text("new", encoding="utf-8")
@@ -237,6 +238,7 @@ def test_remove_failure_after_snapshot_leaves_unsealed_entry(
     gateway,
     tmp_path,
     monkeypatch,
+    journal_entry,
 ):
     target = tmp_path / "remove.txt"
     target.write_text("keep", encoding="utf-8")
