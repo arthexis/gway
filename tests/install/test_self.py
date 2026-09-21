@@ -59,6 +59,28 @@ def _route_gway_to(remote, monkeypatch):
     monkeypatch.setattr(install_source, "named_source", resolve)
 
 
+def _managed_cli(launcher, cwd, *args, timeout=None):
+    """Run the managed GWAY launcher outside the source checkout."""
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    return subprocess.run(
+        [str(launcher), *map(str, args)],
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        timeout=timeout,
+    )
+
+
+def _outside(tmp_path, name):
+    path = tmp_path / name
+    path.mkdir()
+    return path
+
+
 def test_gway_self_install_crosses_git_install_activation_and_runtime_boundaries(
     gateway,
     tmp_path,
@@ -104,37 +126,19 @@ def test_gway_self_install_crosses_git_install_activation_and_runtime_boundaries
     assert metadata["project"] == "gway"
     assert metadata["scripts"]["gway"] == "gway:cli_main"
 
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    env = os.environ.copy()
-    env.pop("PYTHONPATH", None)
+    outside = _outside(tmp_path, "outside")
 
-    help_result = subprocess.run(
-        [str(launcher), "--help"],
-        cwd=outside,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
+    help_result = _managed_cli(launcher, outside, "--help")
     assert help_result.returncode == 0
     assert "GWAY command-dispatch and composition core" in help_result.stdout
 
-    command_result = subprocess.run(
-        [
-            str(launcher),
-            "--expression",
-            "[site]",
-            "--site",
-            "MTY",
-        ],
-        cwd=outside,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
+    command_result = _managed_cli(
+        launcher,
+        outside,
+        "--expression",
+        "[site]",
+        "--site",
+        "MTY",
     )
     assert command_result.returncode == 0
     assert command_result.stdout.strip() == "MTY"
@@ -178,19 +182,12 @@ def test_gway_reload_crosses_real_managed_process_boundary(
         encoding="utf-8",
     )
 
-    outside = tmp_path / "outside-reload"
-    outside.mkdir()
-    env = os.environ.copy()
-    env.pop("PYTHONPATH", None)
-
-    result = subprocess.run(
-        [str(launcher), "--recipe", str(recipe)],
-        cwd=outside,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
+    outside = _outside(tmp_path, "outside-reload")
+    result = _managed_cli(
+        launcher,
+        outside,
+        "--recipe",
+        recipe,
         timeout=30,
     )
 
@@ -233,19 +230,12 @@ def test_gway_reload_real_successor_failure_rolls_back_adopted_journal(
         encoding="utf-8",
     )
 
-    outside = tmp_path / "outside-rollback"
-    outside.mkdir()
-    env = os.environ.copy()
-    env.pop("PYTHONPATH", None)
-
-    result = subprocess.run(
-        [str(launcher), "--recipe", str(recipe)],
-        cwd=outside,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
+    outside = _outside(tmp_path, "outside-rollback")
+    result = _managed_cli(
+        launcher,
+        outside,
+        "--recipe",
+        recipe,
         timeout=30,
     )
 
@@ -288,19 +278,12 @@ def test_gway_self_upgrade_reload_when_changed_resumes_in_new_revision(
         encoding="utf-8",
     )
 
-    outside = tmp_path / "outside-self-upgrade"
-    outside.mkdir()
-    env = os.environ.copy()
-    env.pop("PYTHONPATH", None)
-
-    result = subprocess.run(
-        [str(launcher), "--recipe", str(recipe)],
-        cwd=outside,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
+    outside = _outside(tmp_path, "outside-self-upgrade")
+    result = _managed_cli(
+        launcher,
+        outside,
+        "--recipe",
+        recipe,
         timeout=30,
     )
 
