@@ -8,6 +8,7 @@ from gway.reload import (
     ReloadCheckpoint,
     ReloadError,
     ReloadStore,
+    _restore_runtime,
     resume,
     serialize_tokens,
 )
@@ -350,38 +351,17 @@ def test_restart_resume_reexecutes_top_level_recipe_from_start(
     assert marker.read_text(encoding="utf-8") == "MTY"
 
 
-def test_restart_resume_uses_fresh_rollback_session(
-    tmp_path,
-    monkeypatch,
-):
+def test_restart_restore_uses_fresh_rollback_session(tmp_path, monkeypatch):
     monkeypatch.setattr("gway.cache.default_root", lambda: tmp_path / "cache")
-    recipe = tmp_path / "restart-session.rx"
-    companion = tmp_path / "restart-session.py"
-    observed = tmp_path / "session.txt"
-
-    companion.write_text(
-        "from pathlib import Path\n"
-        f"_observed = Path({str(observed)!r})\n"
-        "def remember(runtime=None):\n"
-        "    return None\n",
-        encoding="utf-8",
-    )
-    recipe.write_text("clear\n", encoding="utf-8")
-
-    store = ReloadStore(tmp_path / "reload")
-    checkpoint = _handoff_checkpoint(
+    checkpoint = ReloadCheckpoint.create(
         mode="restart",
-        recipe_stack=(str(recipe),),
-        frames=(
-            {
-                "recipe": str(recipe),
-                "context": {},
-                "section": None,
-            },
-        ),
+        recipe_stack=(str(tmp_path / "restart.rx"),),
+        frames=(),
         journal_session_id=None,
         open_journals=(),
     )
-    store.save(checkpoint)
 
-    assert resume(checkpoint.checkpoint_id, store=store) is None
+    runtime = _restore_runtime(checkpoint)
+
+    assert runtime.journal.session_id
+    assert runtime.journal.open_names() == ()
