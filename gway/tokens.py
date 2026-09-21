@@ -28,6 +28,11 @@ def is_literal(token) -> bool:
     return isinstance(token, Token) and token.literal
 
 
+def is_unquoted(token) -> bool:
+    """Return whether a token has no quote provenance and may be structural."""
+    return not isinstance(token, Token) or token.quote is None
+
+
 def tokenize(text: str) -> list[Token]:
     """Split recipe text while preserving single/double quote provenance."""
     tokens: list[Token] = []
@@ -109,7 +114,7 @@ def statements(tokens):
 
     for token in tokens:
         value = token_value(token)
-        if not is_literal(token) and value == ";":
+        if is_unquoted(token) and value == ";":
             if current:
                 chunks.append(current)
                 current = []
@@ -128,7 +133,7 @@ def chunk(tokens):
 
     for token in tokens:
         value = token_value(token)
-        if not is_literal(token) and value == "-":
+        if is_unquoted(token) and value == "-":
             if current:
                 chunks.append(current)
                 current = []
