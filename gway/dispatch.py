@@ -13,7 +13,7 @@ from .ingestion.base import expand_path
 from .operations import Cardinality, singularize, subject_cardinality
 from .recipes import execute_recipe, parse_recipe_context, recipe_path
 from .semantic import AmbiguousKeyError, resolve_mapping_key
-from .tokens import is_literal, statements, token_value, tokenize
+from .tokens import is_literal, is_unquoted, statements, token_value, tokenize
 
 _MISSING = object()
 
@@ -31,7 +31,7 @@ def _repeat_stage(tokens):
     stage = []
     remaining = []
     for index, token in enumerate(tokens):
-        if index and not is_literal(token) and token_value(token) == "-":
+        if index and is_unquoted(token) and token_value(token) == "-":
             remaining = list(tokens[index + 1 :])
             break
         stage.append(token)
@@ -249,7 +249,7 @@ def _check_stage(tokens):
     stage = []
     remaining = []
     for index, token in enumerate(tokens):
-        if index and not is_literal(token) and token_value(token) == "-":
+        if index and is_unquoted(token) and token_value(token) == "-":
             remaining = list(tokens[index + 1 :])
             break
         stage.append(token)
@@ -600,7 +600,7 @@ def _split_recipe_stage(tokens):
     """Split one recipe invocation from a following raw pipeline."""
     tokens = list(tokens)
     for index, token in enumerate(tokens[1:], start=1):
-        if not is_literal(token) and token_value(token) == "-":
+        if is_unquoted(token) and token_value(token) == "-":
             return tokens[:index], tokens[index + 1 :]
     return tokens, []
 
