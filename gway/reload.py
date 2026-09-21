@@ -542,6 +542,68 @@ def default_resume_command():
     return [sys.executable, "-m", "gway"]
 
 
+def _restart_plan(runtime):
+    """Capture top-level recipe invocation needed for a clean restart."""
+    frames = list(getattr(runtime, "_recipe_frames", ()) or ())
+    if not frames:
+        raise ReloadError("reload requires an active recipe execution")
+    top = frames[0]
+    return {
+        "recipe": str(top.path),
+        "context": dict(top.invocation_context),
+        "section": top.section,
+    }
+
+
+def _rollback_for_restart(runtime):
+    """Roll back every open journal newest-first before restart handoff."""
+    for name in reversed(runtime.journal.open_names()):
+        runtime.journal.rollback(name)
+    if runtime.journal.open_names():
+        raise ReloadError("restart rollback did not close every rollback journal")
+
+
+def _restart_checkpoint(
+    runtime,
+    plan,
+    *,
+    timeout,
+    when,
+    source_identity,
+    target_identity,
+):
+    """Build a restart checkpoint only after old transactional state is clean."""
+    flags = {
+        "debug": runtime.debug_enabled,
+        "verbose": runtime.verbose,
+        "silent": runtime.silent,
+        "interactive": runtime.interactive_enabled,
+        "timed": runtime.timed_enabled,
+    }
+    return ReloadCheckpoint.create(
+        mode=ReloadMode.RESTART,
+        when=when,
+        timeout=timeout,
+        source_identity=source_identity,
+        target_identity=target_identity,
+        recipe_stack=(plan["recipe"],),
+        frames=(
+            {
+                "recipe": plan["recipe"],
+                "context": _json_value(plan["context"], path="restart_context"),
+                "section": plan["section"],
+            },
+        ),
+        context={},
+        result=None,
+        result_history=(),
+        result_subjects={},
+        flags=flags,
+        journal_session_id=None,
+        open_journals=(),
+    )
+
+
 def perform_reload(
     runtime,
     *,
@@ -551,10 +613,13 @@ def perform_reload(
     command=None,
     installed_identity=None,
     fresh=False,
+    restart=False,
 ):
     """Conditionally capture, hand off, and stop after successor adoption."""
     if when not in {None, "changed"}:
         raise ReloadError(f"Unknown reload condition: {when!r}")
+    if fresh and restart:
+        raise ReloadError("reload --fresh and --restart are mutually exclusive")
 
     source = getattr(runtime, "gway_identity", None)
     target = installed_identity
@@ -585,14 +650,27 @@ def perform_reload(
 
     source_diagnostic = source.diagnostic() if source is not None else None
     target_diagnostic = target.diagnostic() if target is not None else None
-    checkpoint = capture_reload_checkpoint(
-        runtime,
-        mode=ReloadMode.FRESH if fresh else ReloadMode.CONTINUE,
-        timeout=timeout,
-        when=when,
-        source_identity=source_diagnostic,
-        target_identity=target_diagnostic,
-    )
+
+    if restart:
+        plan = _restart_plan(runtime)
+        _rollback_for_restart(runtime)
+        checkpoint = _restart_checkpoint(
+            runtime,
+            plan,
+            timeout=timeout,
+            when=when,
+            source_identity=source_diagnostic,
+            target_identity=target_diagnostic,
+        )
+    else:
+        checkpoint = capture_reload_checkpoint(
+            runtime,
+            mode=ReloadMode.FRESH if fresh else ReloadMode.CONTINUE,
+            timeout=timeout,
+            when=when,
+            source_identity=source_diagnostic,
+            target_identity=target_diagnostic,
+        )
     selected = default_resume_command() if command is None else list(command)
     _, handoff_checkpoint = handoff(
         runtime,
@@ -670,14 +748,24 @@ def _frame_tokens(value):
 
 
 def resume_frames(runtime, checkpoint):
-    """Resume deepest-to-outer recipe continuations without replaying prior work."""
+    """Resume or restart recipe execution from one adopted checkpoint."""
     from .dispatch import dispatch_pipeline, dispatch_program
-    from .recipes import ingest_companion
+    from .recipes import execute_recipe, ingest_companion
     from pathlib import Path
 
     frames = [dict(frame) for frame in checkpoint.frames]
     if not frames:
         return checkpoint.result
+
+    if checkpoint.mode is ReloadMode.RESTART:
+        frame = frames[0]
+        _, value = execute_recipe(
+            runtime,
+            frame["recipe"],
+            context=dict(frame.get("context") or {}),
+            section=frame.get("section"),
+        )
+        return value
 
     recipe_paths = [Path(str(frame["recipe"])).expanduser().resolve() for frame in frames]
     runtime._recipe_stack = []
