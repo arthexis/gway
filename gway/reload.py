@@ -504,18 +504,25 @@ def capture_reload_checkpoint(
         "interactive": runtime.interactive_enabled,
         "timed": runtime.timed_enabled,
     }
-    subjects = dict(runtime.results.maps[0])
-    history = tuple(runtime.results.history)
+    selected_mode = ReloadMode(mode)
+    if selected_mode is ReloadMode.FRESH:
+        context = {}
+        subjects = {}
+        history = ()
+    else:
+        context = dict(runtime.context)
+        subjects = dict(runtime.results.maps[0])
+        history = tuple(runtime.results.history)
 
     return ReloadCheckpoint.create(
-        mode=ReloadMode(mode),
+        mode=selected_mode,
         when=when,
         timeout=timeout,
         source_identity=source_identity,
         target_identity=target_identity,
         recipe_stack=tuple(str(frame.path) for frame in frames),
         frames=tuple(serialized_frames),
-        context=dict(runtime.context),
+        context=context,
         result=runtime.results.last,
         result_history=history,
         result_subjects=subjects,
@@ -543,6 +550,7 @@ def perform_reload(
     store=None,
     command=None,
     installed_identity=None,
+    fresh=False,
 ):
     """Conditionally capture, hand off, and stop after successor adoption."""
     if when not in {None, "changed"}:
@@ -579,6 +587,7 @@ def perform_reload(
     target_diagnostic = target.diagnostic() if target is not None else None
     checkpoint = capture_reload_checkpoint(
         runtime,
+        mode=ReloadMode.FRESH if fresh else ReloadMode.CONTINUE,
         timeout=timeout,
         when=when,
         source_identity=source_diagnostic,
