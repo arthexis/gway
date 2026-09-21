@@ -42,6 +42,8 @@ def supervise(command, *, restart="on-failure", attempts=3, restart_sec=5.0):
             remaining -= 1
             if restart_sec:
                 time.sleep(float(restart_sec))
+            if stopping:
+                return returncode
     finally:
         for signum, handler in previous.items():
             signal.signal(signum, handler)
