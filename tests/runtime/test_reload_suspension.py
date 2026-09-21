@@ -104,13 +104,18 @@ def test_failed_checkpoint_persistence_leaves_normal_boundary_cleanup(
     source = tmp_path / "source.txt"
     destination = tmp_path / "destination.txt"
     source.write_text("source", encoding="utf-8")
+    store = ReloadStore(tmp_path / "reload")
 
-    with pytest.raises(UncommittedJournalError):
+    def fail_save(checkpoint):
+        raise OSError("checkpoint write failed")
+
+    monkeypatch.setattr(store, "save", fail_save)
+
+    with pytest.raises(OSError, match="checkpoint write failed"):
         with gateway.execution_scope():
             gateway.copy(str(source), to=str(destination), rollback="deploy")
             checkpoint = _checkpoint_for(gateway)
-            with pytest.raises(OSError):
-                raise OSError("checkpoint write failed")
+            store.save(checkpoint)
             gateway.suspend_execution(checkpoint)
 
     assert not destination.exists()
