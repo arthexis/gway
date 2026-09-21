@@ -740,3 +740,14 @@ def test_rollback_failures_are_logged_and_attached_to_original_exception(
         "systemd install rollback failed: disable gway-web.service" in message
         for message in messages
     )
+
+
+def test_exception_note_fallback_supports_python_310_shape():
+    class LegacyError(Exception):
+        add_note = None
+
+    error = LegacyError("forward failure")
+
+    systemd._add_exception_note(error, "Rollback failure: cleanup timed out")
+
+    assert error.__notes__ == ["Rollback failure: cleanup timed out"]
