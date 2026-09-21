@@ -1,5 +1,6 @@
 import pytest
 
+from gway.install.identity import RuntimeIdentity
 from gway.reload import (
     CheckpointState,
     ReloadError,
@@ -169,3 +170,153 @@ def test_transfer_signal_without_suspension_cannot_bypass_boundary_rollback(
 
     assert not destination.exists()
     assert gateway.journal.open_names() == ()
+
+
+
+def test_reload_when_changed_is_transparent_noop_when_identity_matches(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    identity = RuntimeIdentity(
+        resolved_revision="abc123",
+        fingerprint="fp-1",
+        scope="user",
+    )
+    gateway.gway_identity = identity
+    events = []
+
+    def after():
+        events.append("after")
+        return "after"
+
+    gateway.after = gateway.wrap("after", after)
+    monkeypatch.setattr(
+        "gway.reload.managed_gway_identity",
+        lambda: identity,
+        raising=False,
+    )
+
+    recipe = tmp_path / "unchanged.rx"
+    recipe.write_text("reload --when changed\nafter\n", encoding="utf-8")
+
+    assert gateway(recipe) == "after"
+    assert events == ["after"]
+    assert gateway._execution_suspension is None
+
+
+def test_reload_when_changed_transfers_when_revision_differs(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = RuntimeIdentity(
+        resolved_revision="abc123",
+        fingerprint="fp-1",
+        scope="user",
+    )
+    target = RuntimeIdentity(
+        resolved_revision="def456",
+        fingerprint="fp-2",
+        scope="user",
+    )
+    gateway.gway_identity = source
+    captured = {}
+
+    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
+        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
+        runtime.suspend_execution(handoff_checkpoint)
+        captured["checkpoint"] = handoff_checkpoint
+        return FakeSuccessor(), handoff_checkpoint
+
+    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr(
+        "gway.install.identity.managed_gway_identity",
+        lambda: target,
+    )
+
+    recipe = tmp_path / "changed.rx"
+    recipe.write_text("reload --when changed\n", encoding="utf-8")
+
+    with pytest.raises(ReloadTransferred):
+        gateway(recipe)
+
+    checkpoint = captured["checkpoint"]
+    assert checkpoint.when == "changed"
+    assert checkpoint.source_identity == source.diagnostic()
+    assert checkpoint.target_identity == target.diagnostic()
+
+
+def test_reload_when_changed_reloads_on_same_revision_different_fingerprint(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    source = RuntimeIdentity(
+        resolved_revision="abc123",
+        fingerprint="fp-1",
+        scope="user",
+    )
+    target = RuntimeIdentity(
+        resolved_revision="abc123",
+        fingerprint="fp-2",
+        scope="user",
+    )
+    gateway.gway_identity = source
+
+    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
+        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
+        runtime.suspend_execution(handoff_checkpoint)
+        return FakeSuccessor(), handoff_checkpoint
+
+    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr(
+        "gway.install.identity.managed_gway_identity",
+        lambda: target,
+    )
+
+    recipe = tmp_path / "fingerprint-changed.rx"
+    recipe.write_text("reload --when changed\n", encoding="utf-8")
+
+    with pytest.raises(ReloadTransferred):
+        gateway(recipe)
+
+
+def test_reload_when_changed_requires_running_identity(gateway, tmp_path):
+    gateway.gway_identity = None
+    recipe = tmp_path / "missing-running.rx"
+    recipe.write_text("reload --when changed\n", encoding="utf-8")
+
+    with pytest.raises(ReloadError, match="running GWAY identity is unavailable"):
+        gateway(recipe)
+
+
+def test_reload_when_changed_requires_installed_identity(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    gateway.gway_identity = RuntimeIdentity(
+        resolved_revision="abc123",
+        fingerprint="fp-1",
+        scope="user",
+    )
+    monkeypatch.setattr(
+        "gway.install.identity.managed_gway_identity",
+        lambda: None,
+    )
+    recipe = tmp_path / "missing-installed.rx"
+    recipe.write_text("reload --when changed\n", encoding="utf-8")
+
+    with pytest.raises(ReloadError, match="installed GWAY identity is unavailable"):
+        gateway(recipe)
+
+
+def test_reload_rejects_unknown_when_condition(gateway, tmp_path):
+    recipe = tmp_path / "invalid-when.rx"
+    recipe.write_text("reload --when bananas\n", encoding="utf-8")
+
+    with pytest.raises(ReloadError, match="Unknown reload condition"):
+        gateway(recipe)
