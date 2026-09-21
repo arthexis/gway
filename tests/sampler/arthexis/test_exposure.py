@@ -6,8 +6,8 @@ def test_expose_defaults_to_inferred_web_binding(recipe_values):
 
     assert values[0] == [
         "default",
-        "--name",
-        "arthexis",
+        "--site",
+        "arthexis.com",
         "--host",
         "127.0.0.1",
         "--port",

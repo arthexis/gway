@@ -1,5 +1,3 @@
-# Complete HTTP-01 HTTPS exposure workflow.
-# This sampler is intentionally not builtin; invoke it by path.
-
-./http
-./https
+# Complete public exposure without mutating DNS.
+./http.rx
+./https.rx

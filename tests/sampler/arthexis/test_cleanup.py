@@ -6,8 +6,8 @@ def test_cleanup_removes_exposure_before_project(recipe_values):
 
     assert values[0] == [
         "default",
-        "--name",
-        "arthexis",
+        "--site",
+        "arthexis.com",
         "--host",
         "127.0.0.1",
         "--port",

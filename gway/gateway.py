@@ -111,7 +111,7 @@ class Gateway(Resolver):
         self.clear = self.wrap("clear", self._clear_context)
         self.help = self.wrap("help", self._help)
         self.wrap("ingest", self.ingest)
-        self.recipe = self.wrap("recipe", self._run_bundled_recipe)
+        self.recipe = self.wrap("recipe", self._run_sampler_recipe)
         self.reload = self.wrap("reload", self._reload)
 
         from .config import bootstrap
@@ -294,9 +294,9 @@ class Gateway(Resolver):
             self.context.clear()
         return None
 
-    def _run_bundled_recipe(self, recipe_name, **context):
-        """Run one recipe bundled with the installed Gway package."""
-        from .bundled import run
+    def _run_sampler_recipe(self, recipe_name, **context):
+        """Run one maintained sampler recipe."""
+        from .sampler import run
 
         return run(self, recipe_name, **context)
 

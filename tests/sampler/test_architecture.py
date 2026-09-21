@@ -5,19 +5,31 @@ def repository_root():
     return Path(__file__).resolve().parents[2]
 
 
-def test_sampler_remains_a_top_level_repository_concept():
+def test_sampler_has_one_canonical_repository_recipe_root():
     root = repository_root()
     sampler = root / "sampler"
+    recipe_sampler_roots = [
+        path
+        for path in root.rglob("sampler")
+        if path.is_dir() and any(path.rglob("*.rx"))
+    ]
 
     assert sampler.is_dir()
     assert any(sampler.rglob("*.rx"))
     assert sampler.parent == root
-    assert root / "gway" not in sampler.parents
+    assert recipe_sampler_roots == [sampler]
 
 
-def test_sampler_is_not_folded_into_bundled_recipes():
+def test_sampler_is_not_implemented_as_a_bundled_recipe_tree():
     root = repository_root()
-    bundled = root / "gway" / "bundled"
 
-    assert not (bundled / "sampler").exists()
-    assert not any(path.name == "sampler" for path in bundled.rglob("sampler"))
+    assert not (root / "gway" / "bundled").exists()
+    assert not (root / "gway" / "bundled.py").exists()
+
+
+def test_sampler_contains_gway_and_arthexis_recipe_families():
+    root = repository_root() / "sampler"
+
+    assert (root / "web" / "expose" / "expose.rx").is_file()
+    assert (root / "arthexis" / "setup.rx").is_file()
+    assert (root / "arthexis" / "expose.rx").is_file()

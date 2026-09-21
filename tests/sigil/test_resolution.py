@@ -38,3 +38,19 @@ def test_unresolved_inner_sigil_fails(gateway):
     gateway.context["chargers"] = ["A", "B"]
     with pytest.raises(KeyError):
         gateway.resolve("[chargers [missing_index]]")
+
+
+def test_resolve_text_preserves_double_bracket_literals(gateway):
+    gateway.context["port"] = 80
+
+    assert gateway.resolve("listen [[::]]:[port];") == "listen [::]:80;"
+
+
+def test_double_bracket_literal_does_not_resolve_inner_name(gateway):
+    gateway.context["site"] = "Monterrey"
+
+    assert gateway.resolve("[[site]] [site]") == "[site] Monterrey"
+
+
+def test_double_bracket_literal_needs_no_lookup(gateway):
+    assert gateway.resolve("IPv6 [[::1]]") == "IPv6 [::1]"
