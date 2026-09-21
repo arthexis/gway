@@ -37,10 +37,11 @@ def test_bundled_web_recipe_is_available_through_gateway(monkeypatch):
 
 
 def test_bundled_run_accepts_name_in_recipe_context(monkeypatch):
-    runtime = Gateway()
+    runtime = Gateway(context={"name": "old"})
     observed = {}
 
     def fake_execute(runtime_arg, path, *, context):
+        runtime_arg.context.update(context)
         observed.update(runtime=runtime_arg, path=path, context=context)
         return {}, "ok"
 
@@ -50,6 +51,7 @@ def test_bundled_run_accepts_name_in_recipe_context(monkeypatch):
     assert observed["runtime"] is runtime
     assert observed["path"] == resolve("web/expose")
     assert observed["context"]["name"] == "arthexis"
+    assert runtime.context["name"] == "arthexis"
 
 
 def test_web_exposure_recipe_keeps_dns_out_of_default_flow():
