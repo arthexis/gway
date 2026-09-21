@@ -31,8 +31,7 @@ def test_file_output_rotates_daily_with_thirty_backups(tmp_path):
     assert Path(handler.baseFilename) == tmp_path / "logs" / "gway.log"
     assert handler.when == "MIDNIGHT"
     assert handler.interval == 24 * 60 * 60
-    assert handler.backupCount == 30
-    assert handler.suffix == "%Y-%m-%d"
+    # Twenty-nine archives plus the current file keeps at most 30 days.\n    assert handler.backupCount == 29\n    assert handler.suffix == "%Y-%m-%d"
     assert handler.level == logging.INFO
 
 
@@ -51,7 +50,7 @@ def test_file_output_persists_info_without_console_output(tmp_path, capsys):
     assert "INFO gway reconciliation complete" in text
 
 
-@pytest.mark.parametrize(("destination", "stream"), [("stdout", "out"), ("stderr", "err")])
+@pytest.mark.parametrize(\n    ("destination", "stream"),\n    [("stdout", "out"), ("stderr", "err")],\n)
 def test_explicit_stream_destination(destination, stream, capsys):
     gway_log.configure_output(destination=destination, level="INFO")
 
