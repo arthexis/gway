@@ -98,7 +98,7 @@ def test_render_failure_before_snapshot_creates_no_journal(gateway, tmp_path):
     assert gateway.journal.open_names() == ()
 
 
-def test_render_write_failure_leaves_entry_prepared(
+def test_render_write_failure_leaves_entry_unsealed(
     gateway,
     tmp_path,
     monkeypatch,
@@ -123,7 +123,7 @@ def test_render_write_failure_leaves_entry_prepared(
     journal = gateway.journal.require_open("deploy")
     assert len(journal.entries) == 1
     entry = journal.entries[0]
-    assert entry.state is MutationState.PREPARED
+    assert entry.state is MutationState.MUTATED
     assert destination.read_text(encoding="utf-8") == "old\n"
 
 
