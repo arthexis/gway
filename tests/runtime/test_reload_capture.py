@@ -1,7 +1,6 @@
 import pytest
 
 from gway.reload import ReloadError, capture_reload_checkpoint
-from gway.tokens import token_value
 
 
 def _values(serialized):
