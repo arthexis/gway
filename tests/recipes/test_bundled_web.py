@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from gway.bundled import resolve
 from gway.gateway import Gateway
 
