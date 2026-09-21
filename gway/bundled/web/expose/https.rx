@@ -12,8 +12,8 @@ certbot certonly
 --email [email]
 --keep-until-expiring
 
-render nginx-https-[name].conf
---to [nginx_available|/etc/nginx/sites-available]/nginx-[name].conf
+render nginx-https-[site].conf
+--to [nginx_available|/etc/nginx/sites-available]/[site]
 --as root
 
 nginx -t
