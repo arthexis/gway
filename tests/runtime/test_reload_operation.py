@@ -16,6 +16,20 @@ class FakeSuccessor:
         return None
 
 
+def _fake_handoff(captured=None):
+    def handoff(runtime, checkpoint, command, *, store=None, **kwargs):
+        if captured is not None:
+            captured["checkpoint"] = checkpoint
+            captured["command"] = list(command)
+        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
+        runtime.suspend_execution(handoff_checkpoint)
+        if captured is not None:
+            captured["handoff_checkpoint"] = handoff_checkpoint
+        return FakeSuccessor(), handoff_checkpoint
+
+    return handoff
+
+
 def test_public_reload_transfers_and_old_runtime_does_not_continue(
     gateway,
     tmp_path,
@@ -35,14 +49,7 @@ def test_public_reload_transfers_and_old_runtime_does_not_continue(
     gateway.before = gateway.wrap("before", before)
     gateway.after = gateway.wrap("after", after)
 
-    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
-        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
-        runtime.suspend_execution(handoff_checkpoint)
-        captured["checkpoint"] = handoff_checkpoint
-        captured["command"] = list(command)
-        return FakeSuccessor(), handoff_checkpoint
-
-    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
     monkeypatch.setattr(
         "gway.reload.default_resume_command",
         lambda: ["/managed/bin/gway"],
@@ -56,8 +63,9 @@ def test_public_reload_transfers_and_old_runtime_does_not_continue(
 
     assert events == ["before"]
     assert captured["command"] == ["/managed/bin/gway"]
-    assert captured["checkpoint"].frames[0]["statements"][0][0]["value"] == "after"
-    assert raised.value.checkpoint_id == captured["checkpoint"].checkpoint_id
+    checkpoint = captured["handoff_checkpoint"]
+    assert checkpoint.frames[0]["statements"][0][0]["value"] == "after"
+    assert raised.value.checkpoint_id == checkpoint.checkpoint_id
 
 
 def test_public_reload_timeout_is_captured_and_passed_to_handoff(
@@ -67,13 +75,7 @@ def test_public_reload_timeout_is_captured_and_passed_to_handoff(
 ):
     captured = {}
 
-    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
-        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
-        runtime.suspend_execution(handoff_checkpoint)
-        captured["timeout"] = checkpoint.timeout
-        return FakeSuccessor(), handoff_checkpoint
-
-    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
     monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
 
     recipe = tmp_path / "reload.rx"
@@ -82,7 +84,7 @@ def test_public_reload_timeout_is_captured_and_passed_to_handoff(
     with pytest.raises(ReloadTransferred):
         gateway(recipe)
 
-    assert captured["timeout"] == 7.5
+    assert captured["checkpoint"].timeout == 7.5
 
 
 def test_reload_handoff_failure_rolls_back_and_does_not_run_following_statement(
@@ -130,12 +132,7 @@ def test_reload_transfer_preserves_open_journal_for_successor(
 ):
     source, destination = rollback_paths
 
-    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
-        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
-        runtime.suspend_execution(handoff_checkpoint)
-        return FakeSuccessor(), handoff_checkpoint
-
-    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.handoff", _fake_handoff())
     monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
 
     recipe = tmp_path / "reload-journal.rx"
@@ -229,13 +226,7 @@ def test_reload_when_changed_transfers_when_revision_differs(
     gateway.gway_identity = source
     captured = {}
 
-    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
-        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
-        runtime.suspend_execution(handoff_checkpoint)
-        captured["checkpoint"] = handoff_checkpoint
-        return FakeSuccessor(), handoff_checkpoint
-
-    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
     monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
@@ -248,7 +239,7 @@ def test_reload_when_changed_transfers_when_revision_differs(
     with pytest.raises(ReloadTransferred):
         gateway(recipe)
 
-    checkpoint = captured["checkpoint"]
+    checkpoint = captured["handoff_checkpoint"]
     assert checkpoint.when == "changed"
     assert checkpoint.source_identity == source.diagnostic()
     assert checkpoint.target_identity == target.diagnostic()
@@ -271,12 +262,7 @@ def test_reload_when_changed_reloads_on_same_revision_different_fingerprint(
     )
     gateway.gway_identity = source
 
-    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
-        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
-        runtime.suspend_execution(handoff_checkpoint)
-        return FakeSuccessor(), handoff_checkpoint
-
-    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.handoff", _fake_handoff())
     monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
@@ -458,13 +444,7 @@ def test_reload_restart_rolls_back_open_journals_before_handoff(
 
     monkeypatch.setattr(gateway.journal, "rollback", rollback)
 
-    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
-        captured["checkpoint"] = checkpoint
-        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
-        runtime.suspend_execution(handoff_checkpoint)
-        return FakeSuccessor(), handoff_checkpoint
-
-    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
     monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
 
     recipe = tmp_path / "restart.rx"
