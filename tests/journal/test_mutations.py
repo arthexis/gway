@@ -12,10 +12,6 @@ from gway.journal import (
 from gway.snapshot import restore_path
 
 
-def _entry(gateway, name="deploy", index=0):
-    return gateway.journal.require_open(name).entries[index]
-
-
 def _restore(gateway, entry, name="deploy"):
     snapshot = entry.data["paths"][0]
     restore_path(
@@ -46,14 +42,14 @@ def test_copy_with_rollback_restores_existing_destination(gateway, tmp_path):
     assert gateway.journal.get("deploy") is None
 
 
-def test_copy_with_rollback_removes_new_destination_on_restore(gateway, tmp_path):
+def test_copy_with_rollback_removes_new_destination_on_restore(gateway, tmp_path, journal_entry):
     source = tmp_path / "source.txt"
     source.write_text("new", encoding="utf-8")
     destination = tmp_path / "target.txt"
 
     gateway.copy(str(source), to=str(destination), rollback="deploy")
 
-    entry = _entry(gateway)
+    entry = journal_entry()
     assert entry.data["paths"][0] == {
         "path": str(destination),
         "existed": False,
@@ -92,7 +88,7 @@ def test_copy_failure_after_snapshot_leaves_unsealed_entry(
     with pytest.raises(OSError, match="copy failed"):
         gateway.copy(str(source), to=str(destination), rollback="deploy")
 
-    entry = _entry(gateway)
+    entry = journal_entry()
     assert entry.state is MutationState.MUTATED
     assert destination.read_text(encoding="utf-8") == "old"
 
@@ -148,14 +144,14 @@ def test_link_conflict_is_rejected_before_journal_entry(gateway, tmp_path):
     assert gateway.journal.open_names() == ()
 
 
-def test_link_with_rollback_removes_new_link_on_restore(gateway, tmp_path):
+def test_link_with_rollback_removes_new_link_on_restore(gateway, tmp_path, journal_entry):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "linked.txt"
 
     gateway.link(str(source), to=str(destination), rollback="deploy")
 
-    entry = _entry(gateway)
+    entry = journal_entry()
     assert destination.is_symlink()
     _restore(gateway, entry)
     assert not destination.exists()
@@ -178,6 +174,7 @@ def test_link_failure_after_snapshot_leaves_unsealed_entry(
     gateway,
     tmp_path,
     monkeypatch,
+    journal_entry,
 ):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
@@ -191,17 +188,17 @@ def test_link_failure_after_snapshot_leaves_unsealed_entry(
     with pytest.raises(OSError, match="link failed"):
         gateway.link(str(source), to=str(destination), rollback="deploy")
 
-    assert _entry(gateway).state is MutationState.MUTATED
+    assert journal_entry().state is MutationState.MUTATED
 
 
-def test_remove_with_rollback_restores_file(gateway, tmp_path):
+def test_remove_with_rollback_restores_file(gateway, tmp_path, journal_entry):
     target = tmp_path / "remove.txt"
     target.write_text("keep", encoding="utf-8")
 
     gateway.remove(str(target), rollback="deploy")
 
     assert not target.exists()
-    entry = _entry(gateway)
+    entry = journal_entry()
     assert entry.state is MutationState.APPLIED
     assert entry.data["operation"] == "remove"
 
@@ -209,7 +206,7 @@ def test_remove_with_rollback_restores_file(gateway, tmp_path):
     assert target.read_text(encoding="utf-8") == "keep"
 
 
-def test_remove_with_rollback_restores_symlink(gateway, tmp_path):
+def test_remove_with_rollback_restores_symlink(gateway, tmp_path, journal_entry):
     source = tmp_path / "source.txt"
     source.write_text("keep", encoding="utf-8")
     target = tmp_path / "link.txt"
@@ -217,20 +214,20 @@ def test_remove_with_rollback_restores_symlink(gateway, tmp_path):
 
     gateway.remove(str(target), rollback="deploy")
 
-    entry = _entry(gateway)
+    entry = journal_entry()
     _restore(gateway, entry)
 
     assert target.is_symlink()
     assert os.readlink(target) == str(source)
 
 
-def test_remove_with_rollback_restores_empty_directory(gateway, tmp_path):
+def test_remove_with_rollback_restores_empty_directory(gateway, tmp_path, journal_entry):
     target = tmp_path / "empty"
     target.mkdir()
 
     gateway.remove(str(target), rollback="deploy")
 
-    entry = _entry(gateway)
+    entry = journal_entry()
     _restore(gateway, entry)
 
     assert target.is_dir()
@@ -252,7 +249,7 @@ def test_remove_failure_after_snapshot_leaves_unsealed_entry(
     with pytest.raises(OSError, match="remove failed"):
         gateway.remove(str(target), rollback="deploy")
 
-    assert _entry(gateway).state is MutationState.MUTATED
+    assert journal_entry().state is MutationState.MUTATED
     assert target.read_text(encoding="utf-8") == "keep"
 
 
