@@ -4,7 +4,7 @@ import time
 from types import SimpleNamespace
 
 from gway.service.runtime import ProcessBackend
-from gway.service.state import ProcessRecord, ServiceState, process_token
+from gway.service.state import ProcessRecord, ServiceState, process_token, record_matches
 
 
 def test_process_backend_resolves_project_python_and_cwd(
@@ -184,3 +184,36 @@ def test_running_service_reports_stale_after_installation_fingerprint_changes(
         assert status["stale"] is True
     finally:
         backend.stop(service)
+
+
+
+def test_local_process_handle_keeps_record_valid_without_platform_token(
+    tmp_path,
+    monkeypatch,
+    service_factory,
+):
+    service = service_factory()
+    backend = ProcessBackend(state_root=tmp_path / "state")
+    monkeypatch.setattr("gway.service.state.process_token", lambda _pid: None)
+
+    started = backend.start(service)
+    try:
+        record = ServiceState(tmp_path / "state").get("demo", "sleeper")
+        assert record is not None
+        assert record.process_token is None
+        assert started["running"] is True
+        assert backend.status(service)["running"] is True
+        assert record_matches(record, backend._processes[service.identity]) is True
+    finally:
+        backend.stop(service)
+
+
+def test_process_token_falls_back_when_procfs_is_unavailable(monkeypatch):
+    monkeypatch.setattr("gway.service.state._procfs_process_token", lambda _pid: None)
+    monkeypatch.setattr("gway.service.state._windows_process_token", lambda _pid: None)
+    monkeypatch.setattr(
+        "gway.service.state._ps_process_token",
+        lambda _pid: "ps:Mon Sep 21 12:00:00 2026",
+    )
+
+    assert process_token(1234) == "ps:Mon Sep 21 12:00:00 2026"
