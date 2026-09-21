@@ -462,3 +462,25 @@ Prefer Python when the work needs arbitrary branching, implementation-specific a
 A useful rule is:
 
 > If the recipe has to explain how an operation works, the operation probably needs a better semantic boundary.
+
+
+## Installed recipe bundles
+
+Gway may ship maintained platform recipes that must remain available from an
+installed wheel rather than requiring a source checkout. Run them through the
+generic `recipe` operation:
+
+~~~text
+gway recipe web/expose
+--name arthexis
+--domain arthexis.com
+--host 127.0.0.1
+--port 8888
+--email ops@example.com
+~~~
+
+The bundled `web/expose` recipe deliberately does not mutate DNS. It composes
+an HTTP Nginx/ACME-webroot phase and an HTTPS Certbot/TLS phase using generic
+Gway process, render, and filesystem primitives. Existing public DNS must
+already resolve to the host. The executable paths, Nginx directories, and ACME
+webroot can be overridden through recipe context when host conventions differ.
