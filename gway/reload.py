@@ -371,6 +371,19 @@ def _restore_runtime(checkpoint):
     return runtime
 
 
+def serialize_tokens(tokens):
+    """Serialize lexical tokens without losing quote provenance."""
+    from .tokens import token_value
+
+    return [
+        {
+            "value": token_value(token),
+            "quote": getattr(token, "quote", None),
+        }
+        for token in tokens
+    ]
+
+
 def _frame_tokens(value):
     """Restore one serialized token sequence with quote provenance."""
     from .tokens import Token
@@ -387,7 +400,7 @@ def _frame_tokens(value):
 
 def resume_frames(runtime, checkpoint):
     """Resume deepest-to-outer recipe continuations without replaying prior work."""
-    from .dispatch import _MISSING, dispatch_pipeline, dispatch_program
+    from .dispatch import dispatch_pipeline, dispatch_program
     from .recipes import ingest_companion
     from pathlib import Path
 
