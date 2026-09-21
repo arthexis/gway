@@ -17,8 +17,8 @@ def test_bundled_web_recipe_is_available_through_gateway(monkeypatch):
     runtime = Gateway()
     observed = {}
 
-    def fake_run(runtime_arg, name, **context):
-        observed.update(name=name, context=context)
+    def fake_run(runtime_arg, recipe_name, **context):
+        observed.update(name=recipe_name, context=context)
         assert runtime_arg is runtime
         return "ok"
 
