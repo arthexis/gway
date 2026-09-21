@@ -25,7 +25,9 @@ def test_semantic_key_normalization_is_shared_across_surfaces(gateway, requested
     result = {"Status Code": 200}
     _producer(gateway, result)
 
-    assert gateway(f"probe_semantic - check --{requested.replace(' ', '-')} 200") is result
+    assert (
+        gateway(f"probe_semantic - check --{requested.replace(' ', '-')} 200") is result
+    )
     assert gateway.resolve(f"[{requested}]") == 200
 
     def consume_status(status_code):
