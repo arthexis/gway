@@ -25,6 +25,7 @@ def cli_main():
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-z", "--silent", action="store_true")
     parser.add_argument("-e", "--expression")
+    parser.add_argument("--resume", help=argparse.SUPPRESS)
     args, unknown = parser.parse_known_args()
 
     from . import log as gway_log
@@ -46,7 +47,13 @@ def _run_cli(parser, args, unknown):
         silent=args.silent,
     )
 
-    if args.recipe:
+    if args.resume:
+        if unknown:
+            parser.error("--resume does not accept additional arguments")
+        from .reload import resume
+
+        output = resume(args.resume)
+    elif args.recipe:
         _, output = execute_recipe(
             runtime,
             args.recipe,
