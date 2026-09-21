@@ -21,6 +21,33 @@ def _self_remote(tmp_path, git):
     return root, remote, revision
 
 
+
+def _self_upgrade_remote(tmp_path, git):
+    """Create a self-GWAY remote with distinct A and B revisions."""
+    root = Path(__file__).resolve().parents[2]
+    source = tmp_path / "gway-upgrade-source"
+    git("clone", root, source)
+    git("config", "user.name", "GWAY Tests", cwd=source)
+    git("config", "user.email", "gway@example.test", cwd=source)
+
+    marker = source / "gway" / "_self_upgrade_marker.py"
+    marker.write_text('VERSION = "A"\n', encoding="utf-8")
+    git("add", "gway/_self_upgrade_marker.py", cwd=source)
+    git("commit", "-m", "self upgrade marker A", cwd=source)
+    revision_a = git("rev-parse", "HEAD", cwd=source)
+    git("branch", "upgrade-a", revision_a, cwd=source)
+
+    marker.write_text('VERSION = "B"\n', encoding="utf-8")
+    git("add", "gway/_self_upgrade_marker.py", cwd=source)
+    git("commit", "-m", "self upgrade marker B", cwd=source)
+    revision_b = git("rev-parse", "HEAD", cwd=source)
+    git("branch", "upgrade-b", revision_b, cwd=source)
+
+    remote = tmp_path / "gway-upgrade.git"
+    git("clone", "--bare", source, remote)
+    return remote, revision_a, revision_b
+
+
 def _route_gway_to(remote, monkeypatch):
     original = install_source.named_source
 
@@ -225,3 +252,63 @@ def test_gway_reload_real_successor_failure_rolls_back_adopted_journal(
     assert result.returncode != 0
     assert "successor acceptance failure" in result.stderr
     assert not destination.exists()
+
+
+
+def test_gway_self_upgrade_reload_when_changed_resumes_in_new_revision(
+    gateway,
+    tmp_path,
+    git,
+    install_environment,
+):
+    remote, revision_a, revision_b = _self_upgrade_remote(tmp_path, git)
+    source = remote.as_uri()
+
+    installed_a = gateway(f"install {source} --ref upgrade-a")
+    assert installed_a.resolved_revision == revision_a
+
+    launcher = install_environment.bin / "gway"
+    recipe = tmp_path / "self_upgrade.rx"
+    companion = tmp_path / "self_upgrade.py"
+    observed = tmp_path / "observed.txt"
+
+    companion.write_text(
+        "from pathlib import Path\n"
+        f"_observed = Path({str(observed)!r})\n"
+        "def record():\n"
+        "    from gway._self_upgrade_marker import VERSION\n"
+        "    _observed.write_text(VERSION, encoding='utf-8')\n"
+        "    return VERSION\n",
+        encoding="utf-8",
+    )
+    recipe.write_text(
+        f"install {source} --ref upgrade-b\n"
+        "reload --when changed\n"
+        "self_upgrade record\n",
+        encoding="utf-8",
+    )
+
+    outside = tmp_path / "outside-self-upgrade"
+    outside.mkdir()
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [str(launcher), "--recipe", str(recipe)],
+        cwd=outside,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert observed.read_text(encoding="utf-8") == "B"
+
+    state = InstallState(install_environment.data / "state.sqlite")
+    installed_b = state.get("gway")
+    assert installed_b is not None
+    assert installed_b.resolved_revision == revision_b
+    assert installed_b.resolved_revision != installed_a.resolved_revision
