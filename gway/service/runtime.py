@@ -125,14 +125,40 @@ class ProcessBackend:
             start_new_session=(os.name != "nt"),
         )
         self._processes[service.identity] = process
-        record = new_record(
-            service,
-            process.pid,
-            command,
-            cwd,
-            project_fingerprint=self._project_fingerprint(service),
-        )
-        state.put(record)
+        try:
+            record = new_record(
+                service,
+                process.pid,
+                command,
+                cwd,
+                project_fingerprint=self._project_fingerprint(service),
+            )
+            state.put(record)
+        except Exception as primary:
+            self._processes.pop(service.identity, None)
+            cleanup_error = None
+            try:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=5)
+            except Exception as exc:
+                cleanup_error = exc
+
+            if cleanup_error is not None:
+                add_note = getattr(primary, "add_note", None)
+                note = f"Service cleanup failure: {cleanup_error}"
+                if add_note is not None:
+                    add_note(note)
+                else:
+                    notes = list(getattr(primary, "__notes__", ()))
+                    notes.append(note)
+                    primary.__notes__ = notes
+            raise
+
         return self.status(service)
 
     def stop(self, service):
