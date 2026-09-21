@@ -66,6 +66,8 @@ def test_web_exposure_recipe_keeps_dns_out_of_default_flow():
     assert "dns delete" not in combined
     assert "certbot certonly" in combined
     assert "nginx -t" in combined
+    assert "[nginx_available|/etc/nginx/sites-available]/[site]" in http
+    assert "[nginx_enabled|/etc/nginx/sites-enabled]/[site]" in http
 
 
 def test_web_templates_proxy_requested_loopback_context():
