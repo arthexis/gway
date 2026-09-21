@@ -115,7 +115,9 @@ def test_unknown_service_target_has_clear_resolution_error(service_gateway):
 def test_service_timeout_must_be_positive(service_gateway, timeout):
     gateway, backend = service_gateway
 
-    with pytest.raises(ValueError, match="service timeout must be a finite positive number"):
+    with pytest.raises(
+        ValueError, match="service timeout must be a finite positive number"
+    ):
         gateway(f"service restart --timeout {timeout} worker")
 
     assert backend.calls == []
@@ -125,7 +127,9 @@ def test_service_timeout_must_be_positive(service_gateway, timeout):
 def test_service_timeout_must_be_finite(service_gateway, timeout):
     gateway, backend = service_gateway
 
-    with pytest.raises(ValueError, match="service timeout must be a finite positive number"):
+    with pytest.raises(
+        ValueError, match="service timeout must be a finite positive number"
+    ):
         gateway(f"service restart --timeout {timeout} worker")
 
     assert backend.calls == []
@@ -141,7 +145,9 @@ def test_timeout_normalizer_rejects_non_finite_numeric_values(
 ):
     gateway, _ = service_gateway
 
-    with pytest.raises(ValueError, match="service timeout must be a finite positive number"):
+    with pytest.raises(
+        ValueError, match="service timeout must be a finite positive number"
+    ):
         gateway._service_controller._timeout(timeout)
 
 

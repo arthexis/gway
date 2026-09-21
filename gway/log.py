@@ -1,5 +1,6 @@
 """Built-in logging operations and GWAY logger hierarchy."""
 
+from contextlib import contextmanager as _contextmanager
 from itertools import count as _count
 import logging as _logging
 from logging.handlers import TimedRotatingFileHandler as _TimedRotatingFileHandler
@@ -93,9 +94,7 @@ def configure_output(
         selected = str(destination).strip()
         lowered = selected.lower()
         if lowered == "file":
-            handler = _daily_file_handler(
-                default_log_path(system=system, root=root)
-            )
+            handler = _daily_file_handler(default_log_path(system=system, root=root))
         elif lowered == "stdout":
             handler = _logging.StreamHandler(_sys.stdout)
         elif lowered == "stderr":
@@ -106,9 +105,7 @@ def configure_output(
     handler.setLevel(numeric_level)
     handler.setFormatter(
         formatter
-        or _logging.Formatter(
-            "%(asctime)s %(levelname)s %(name)s %(message)s"
-        )
+        or _logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
     )
     handler._gway_output_handler = True
     _gway_logger.addHandler(handler)
@@ -116,6 +113,31 @@ def configure_output(
     _gway_logger.propagate = False
     _output_handler = handler
     return handler
+
+
+@_contextmanager
+def output_scope(**kwargs):
+    """Temporarily configure GWAY output while preserving embedded logger state."""
+    global _output_handler
+
+    previous_handler = _output_handler
+    previous_level = _gway_logger.level
+    previous_propagate = _gway_logger.propagate
+
+    if previous_handler is not None:
+        _gway_logger.removeHandler(previous_handler)
+        _output_handler = None
+
+    try:
+        configure_output(**kwargs)
+        yield _output_handler
+    finally:
+        _remove_output_handler()
+        _gway_logger.setLevel(previous_level)
+        _gway_logger.propagate = previous_propagate
+        if previous_handler is not None:
+            _gway_logger.addHandler(previous_handler)
+            _output_handler = previous_handler
 
 
 class _Level:

@@ -19,9 +19,7 @@ def reset_gway_output_handler():
 
 
 def test_default_log_path_uses_durable_data_root(tmp_path):
-    assert gway_log.default_log_path(root=tmp_path) == (
-        tmp_path / "logs" / "gway.log"
-    )
+    assert gway_log.default_log_path(root=tmp_path) == (tmp_path / "logs" / "gway.log")
 
 
 def test_file_output_rotates_daily_with_thirty_days_total(tmp_path):

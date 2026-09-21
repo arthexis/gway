@@ -40,7 +40,6 @@ def test_cli_expression_resolves_supplied_context():
     assert completed.stdout.strip() == "MTY"
 
 
-
 def test_cli_default_logging_persists_info_without_console_noise(tmp_path):
     env = os.environ.copy()
     env["GWAY_DATA_DIR"] = str(tmp_path)
