@@ -1,6 +1,9 @@
 import os
+import subprocess
 import sys
 import time
+
+import pytest
 from types import SimpleNamespace
 
 from gway.service.runtime import ProcessBackend
@@ -228,7 +231,7 @@ def test_state_persistence_failure_reaps_spawned_service(
     service = service_factory()
     backend = ProcessBackend(state_root=tmp_path / "state")
     spawned = []
-    original_popen = __import__("subprocess").Popen
+    original_popen = subprocess.Popen
 
     class TrackingPopen:
         def __new__(cls, *args, **kwargs):
@@ -243,7 +246,7 @@ def test_state_persistence_failure_reaps_spawned_service(
     monkeypatch.setattr("gway.service.runtime.ServiceState.put", fail_put)
 
     try:
-        with __import__("pytest").raises(OSError, match="state write failed"):
+        with pytest.raises(OSError, match="state write failed"):
             backend.start(service)
 
         assert service.identity not in backend._processes
