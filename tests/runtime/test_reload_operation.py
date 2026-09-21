@@ -4,6 +4,7 @@ from gway.install.identity import RuntimeIdentity
 from gway.recipes import execute_recipe
 from gway.reload import (
     CheckpointState,
+    ReloadCheckpoint,
     ReloadError,
     ReloadHandoffError,
     ReloadTransferred,
@@ -167,7 +168,12 @@ def test_transfer_signal_without_suspension_cannot_bypass_boundary_rollback(
     with pytest.raises(ReloadTransferred):
         with gateway.execution_scope():
             gateway.copy(str(source), to=str(destination), rollback="deploy")
-            raise ReloadTransferred("not-suspended")
+            checkpoint = ReloadCheckpoint.create()
+            raise ReloadTransferred(
+                FakeSuccessor(),
+                checkpoint,
+                gateway.journal.root,
+            )
 
     assert not destination.exists()
     assert gateway.journal.open_names() == ()
