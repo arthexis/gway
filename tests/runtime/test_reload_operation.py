@@ -192,9 +192,8 @@ def test_reload_when_changed_is_transparent_noop_when_identity_matches(
 
     gateway.after = gateway.wrap("after", after)
     monkeypatch.setattr(
-        "gway.reload.managed_gway_identity",
+        "gway.install.identity.managed_gway_identity",
         lambda: identity,
-        raising=False,
     )
 
     recipe = tmp_path / "unchanged.rx"
@@ -320,3 +319,35 @@ def test_reload_rejects_unknown_when_condition(gateway, tmp_path):
 
     with pytest.raises(ReloadError, match="Unknown reload condition"):
         gateway(recipe)
+
+
+
+def test_reload_when_changed_noop_leaves_open_journal_for_later_commit(
+    gateway,
+    rollback_paths,
+    tmp_path,
+    monkeypatch,
+):
+    source_file, destination = rollback_paths
+    identity = RuntimeIdentity(
+        resolved_revision="abc123",
+        fingerprint="fp-1",
+        scope="user",
+    )
+    gateway.gway_identity = identity
+    monkeypatch.setattr(
+        "gway.install.identity.managed_gway_identity",
+        lambda: identity,
+    )
+
+    recipe = tmp_path / "unchanged-journal.rx"
+    recipe.write_text(
+        f"copy {source_file} --to {destination} --rollback deploy\n"
+        "reload --when changed\n"
+        "commit deploy\n",
+        encoding="utf-8",
+    )
+
+    assert gateway(recipe) == "deploy"
+    assert destination.read_text(encoding="utf-8") == "source"
+    assert gateway.journal.open_names() == ()
