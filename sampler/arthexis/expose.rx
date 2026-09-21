@@ -2,7 +2,7 @@
 # Public domain and TLS contact email are supplied by the caller.
 
 default
---name arthexis
+--site arthexis.com
 --host 127.0.0.1
 --port 8000
 
