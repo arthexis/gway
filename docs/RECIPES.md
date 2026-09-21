@@ -320,6 +320,8 @@ remove
 render
 ~~~
 
+These are the rollback-journal mutation surface. Other state-changing subsystems such as project installation, service installation/runtime control, cache/state persistence, and Sous Chef scheduling use their own state/transaction models and do not currently participate in named rollback journals or advertise `--rollback`.
+
 Attach a journal name to each mutation in one logical transaction:
 
 ~~~text
@@ -405,7 +407,7 @@ PREPARED -> MUTATED -> APPLIED -> ROLLED_BACK
 
 PREPARED means pre-mutation state was captured.
 
-MUTATED means the forward filesystem change completed but its post-state fingerprint has not been safely sealed.
+MUTATED means mutation execution has begun but its post-state fingerprint has not been safely sealed. The operation may have completed, failed before changing anything, or failed after a partial change; GWAY therefore treats this state conservatively.
 
 APPLIED means the mutation and expected post-state fingerprint are persisted.
 
