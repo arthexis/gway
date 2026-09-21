@@ -196,3 +196,30 @@ def test_unterminated_single_quote_fails():
 def test_unterminated_double_quote_fails():
     with pytest.raises(ValueError, match="Unterminated double-quoted string"):
         tokenize('echo "oops')
+
+
+def test_double_quoted_dash_does_not_split_stage():
+    assert chunk([Token("echo"), Token("-", "double")]) == [
+        [Token("echo"), Token("-", "double")]
+    ]
+
+
+def test_double_quoted_semicolon_does_not_split_statement():
+    assert statements([Token("echo"), Token(";", "double")]) == [
+        [Token("echo"), Token(";", "double")]
+    ]
+
+
+@pytest.mark.parametrize("value", [";", "-"])
+def test_double_quoted_separator_reaches_operation_as_argument(gateway, value):
+    def echo(argument: str):
+        return argument
+
+    gateway.echo = gateway.wrap("echo_value", echo)
+
+    _, last = process(
+        [[Token("echo"), Token(value, "double")]],
+        gw_instance=gateway,
+    )
+
+    assert last == value
