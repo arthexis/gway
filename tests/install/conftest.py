@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 from gway.install import InstallRequest, InstallState, install_paths
-import gway.install.transaction as transaction
 import gway.install.service.systemd as systemd
+import gway.install.transaction as transaction
 
 
 @dataclass(frozen=True)
@@ -169,7 +169,6 @@ def record_systemd_operations(monkeypatch):
 
     monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
     return observed
-
 
 
 @pytest.fixture
