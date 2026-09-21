@@ -586,3 +586,43 @@ def test_reload_fresh_and_restart_are_rejected_before_rollback(
 
     assert rollbacks == ["deploy"]
     assert not destination.exists()
+
+
+
+def test_reload_when_changed_is_pipeline_transparent_when_unchanged(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    identity = RuntimeIdentity(
+        resolved_revision="abc123",
+        fingerprint="fp-1",
+        scope="user",
+    )
+    gateway.gway_identity = identity
+    monkeypatch.setattr(
+        "gway.install.identity.managed_gway_identity",
+        lambda: identity,
+    )
+
+    def produce():
+        return "pipeline-value"
+
+    def consume(value):
+        return value
+
+    gateway.produce = gateway.wrap("produce_value", produce)
+    gateway.consume = gateway.wrap("consume_value", consume)
+
+    recipe = tmp_path / "unchanged-pipeline.rx"
+    recipe.write_text(
+        "produce - reload --when changed - consume\n",
+        encoding="utf-8",
+    )
+
+    history_before = len(gateway.results.history)
+    assert gateway(recipe) == "pipeline-value"
+    assert gateway.results.history[history_before:] == [
+        "pipeline-value",
+        "pipeline-value",
+    ]
