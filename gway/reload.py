@@ -410,8 +410,11 @@ class ReloadHandoffError(ReloadError):
 
 def recover_adopted_journals(checkpoint, journal_root):
     """Roll back only journals still durably open after successor failure."""
-    if checkpoint.mode is ReloadMode.RESTART or checkpoint.journal_session_id is None:
-        return ()
+    if (
+        ReloadMode(checkpoint.mode) is ReloadMode.RESTART
+        or checkpoint.journal_session_id is None
+    ):
+        return (), ()
 
     from .journal import JournalManager
 
@@ -440,7 +443,7 @@ def supervise_successor(process, checkpoint, journal_root):
     error = ReloadSuccessorError(checkpoint, returncode)
     recovered = ()
     failures = ()
-    if checkpoint.mode is not ReloadMode.RESTART:
+    if ReloadMode(checkpoint.mode) is not ReloadMode.RESTART:
         recovered, failures = recover_adopted_journals(checkpoint, journal_root)
     if failures:
         from .journal import RollbackRecoveryError, attach_rollback_error
