@@ -236,3 +236,70 @@ def test_resume_preserves_single_quoted_literal_token_semantics(tmp_path, monkey
     store.save(checkpoint)
 
     assert resume(checkpoint.checkpoint_id, store=store) == "[site]"
+
+
+
+def test_fresh_resume_discards_context_history_and_subjects_but_keeps_pipeline(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("gway.cache.default_root", lambda: tmp_path / "cache")
+    recipe = tmp_path / "fresh.rx"
+    companion = tmp_path / "fresh.py"
+    observed = tmp_path / "observed.txt"
+
+    companion.write_text(
+        "from pathlib import Path\n"
+        f"_observed = Path({str(observed)!r})\n"
+        "def consume(value):\n"
+        "    _observed.write_text(value, encoding='utf-8')\n"
+        "    return value\n"
+        "def inspect(runtime=None):\n"
+        "    return 'unused'\n",
+        encoding="utf-8",
+    )
+    recipe.write_text("fresh consume\n", encoding="utf-8")
+
+    store = ReloadStore(tmp_path / "reload")
+    checkpoint = _handoff_checkpoint(
+        mode="fresh",
+        recipe_stack=(str(recipe),),
+        frames=(_frame(recipe, pipeline=tokenize("fresh consume")),),
+        context={},
+        result="pipeline-value",
+        result_history=(),
+        result_subjects={},
+    )
+    store.save(checkpoint)
+
+    assert resume(checkpoint.checkpoint_id, store=store) == "pipeline-value"
+    assert observed.read_text(encoding="utf-8") == "pipeline-value"
+
+
+def test_fresh_resume_context_does_not_restore_pre_reload_values(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("gway.cache.default_root", lambda: tmp_path / "cache")
+    recipe = tmp_path / "fresh-context.rx"
+    companion = tmp_path / "fresh-context.py"
+    companion.write_text(
+        "def read(site='missing'):\n"
+        "    return site\n",
+        encoding="utf-8",
+    )
+    recipe.write_text("fresh-context read\n", encoding="utf-8")
+
+    store = ReloadStore(tmp_path / "reload")
+    checkpoint = _handoff_checkpoint(
+        mode="fresh",
+        recipe_stack=(str(recipe),),
+        frames=(_frame(recipe, "fresh-context read"),),
+        context={},
+        result="old-result",
+        result_history=(),
+        result_subjects={},
+    )
+    store.save(checkpoint)
+
+    assert resume(checkpoint.checkpoint_id, store=store) == "missing"
