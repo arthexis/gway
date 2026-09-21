@@ -53,33 +53,23 @@ def test_process_backend_resolves_project_python_and_cwd(
     assert status["running"] is False
 
 
-def test_process_backend_start_is_idempotent_while_running(tmp_path, service_factory):
-    service = service_factory()
-    backend = ProcessBackend(state_root=tmp_path / "state")
+def test_process_backend_start_is_idempotent_while_running(running_service):
+    service, backend, first = running_service
 
-    first = backend.start(service)
-    try:
-        second = backend.start(service)
+    second = backend.start(service)
 
-        assert first["running"] is True
-        assert second["running"] is True
-        assert second["pid"] == first["pid"]
-    finally:
-        backend.stop(service)
+    assert first["running"] is True
+    assert second["running"] is True
+    assert second["pid"] == first["pid"]
 
 
-def test_process_backend_restart_replaces_process(tmp_path, service_factory):
-    service = service_factory()
-    backend = ProcessBackend(state_root=tmp_path / "state")
+def test_process_backend_restart_replaces_process(running_service):
+    service, backend, first = running_service
 
-    first = backend.start(service)
-    try:
-        restarted = backend.restart(service)
+    restarted = backend.restart(service)
 
-        assert restarted["running"] is True
-        assert restarted["pid"] != first["pid"]
-    finally:
-        backend.stop(service)
+    assert restarted["running"] is True
+    assert restarted["pid"] != first["pid"]
 
 
 def test_durable_state_allows_later_backend_to_manage_service(
@@ -147,19 +137,17 @@ def test_stale_pid_record_is_removed_without_signalling_unowned_process(
 
 
 def test_process_record_uses_kernel_start_token_when_available(
-    tmp_path, service_factory
+    tmp_path,
+    running_service,
 ):
-    service = service_factory()
-    backend = ProcessBackend(state_root=tmp_path / "state")
+    _, _, started = running_service
+    record = ServiceState(tmp_path / "state").get("demo", "sleeper")
 
-    backend.start(service)
-    try:
-        record = ServiceState(tmp_path / "state").get("demo", "sleeper")
-        assert record is not None
-        if process_token(record.pid) is not None:
-            assert record.process_token == process_token(record.pid)
-    finally:
-        backend.stop(service)
+    assert record is not None
+    assert record.pid == started["pid"]
+    token = process_token(record.pid)
+    if token is not None:
+        assert record.process_token == token
 
 
 def test_running_service_reports_stale_after_installation_fingerprint_changes(
@@ -194,21 +182,23 @@ def test_local_process_handle_keeps_record_valid_without_platform_token(
     tmp_path,
     monkeypatch,
     service_factory,
+    process_backend,
 ):
     service = service_factory()
-    backend = ProcessBackend(state_root=tmp_path / "state")
     monkeypatch.setattr("gway.service.state.process_token", lambda _pid: None)
 
-    started = backend.start(service)
+    started = process_backend.start(service)
     try:
         record = ServiceState(tmp_path / "state").get("demo", "sleeper")
         assert record is not None
         assert record.process_token is None
         assert started["running"] is True
-        assert backend.status(service)["running"] is True
-        assert record_matches(record, backend._processes[service.identity]) is True
+        assert process_backend.status(service)["running"] is True
+        assert (
+            record_matches(record, process_backend._processes[service.identity]) is True
+        )
     finally:
-        backend.stop(service)
+        process_backend.stop(service)
 
 
 def test_process_token_falls_back_when_procfs_is_unavailable(monkeypatch):
