@@ -607,6 +607,11 @@ class JournalManager:
                 f"Rollback journal {journal.name!r} has unsealed mutations "
                 "and cannot be committed"
             )
+        if any(entry.state is MutationState.ROLLED_BACK for entry in journal.entries):
+            raise JournalError(
+                f"Rollback journal {journal.name!r} has partially rolled back "
+                "mutations and cannot be committed"
+            )
         if not journal.applied_entries:
             raise JournalError(
                 f"Rollback journal {journal.name!r} has no applied mutations to commit"
