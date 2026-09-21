@@ -472,7 +472,7 @@ generic `recipe` operation:
 
 ~~~text
 gway recipe web/expose
---name arthexis
+--site arthexis.com
 --domain arthexis.com
 --host 127.0.0.1
 --port 8888

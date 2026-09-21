@@ -1,4 +1,4 @@
-from gway.bundled import resolve
+from gway.bundled import resolve, run
 from gway.gateway import Gateway
 
 
@@ -26,14 +26,33 @@ def test_bundled_web_recipe_is_available_through_gateway(monkeypatch):
 
     assert (
         runtime(
-            "recipe web/expose --name arthexis --domain arthexis.com "
+            "recipe web/expose --site arthexis.com --domain arthexis.com "
             "--host 127.0.0.1 --port 8888 --email ops@example.com"
         )
         == "ok"
     )
     assert observed["name"] == "web/expose"
+    assert observed["context"]["site"] == "arthexis.com"
     assert observed["context"]["domain"] == "arthexis.com"
     assert observed["context"]["port"] == "8888"
+
+
+def test_bundled_run_accepts_name_in_recipe_context(monkeypatch):
+    runtime = Gateway(context={"name": "old"})
+    observed = {}
+
+    def fake_execute(runtime_arg, path, *, context):
+        runtime_arg.context.update(context)
+        observed.update(runtime=runtime_arg, path=path, context=context)
+        return {}, "ok"
+
+    monkeypatch.setattr("gway.bundled.execute_recipe", fake_execute)
+
+    assert run(runtime, "web/expose", name="arthexis") == "ok"
+    assert observed["runtime"] is runtime
+    assert observed["path"] == resolve("web/expose")
+    assert observed["context"]["name"] == "arthexis"
+    assert runtime.context["name"] == "arthexis"
 
 
 def test_web_exposure_recipe_keeps_dns_out_of_default_flow():
@@ -47,12 +66,14 @@ def test_web_exposure_recipe_keeps_dns_out_of_default_flow():
     assert "dns delete" not in combined
     assert "certbot certonly" in combined
     assert "nginx -t" in combined
+    assert "[nginx_available|/etc/nginx/sites-available]/[site]" in http
+    assert "[nginx_enabled|/etc/nginx/sites-enabled]/[site]" in http
 
 
 def test_web_templates_proxy_requested_loopback_context():
     root = resolve("web/expose").parent
-    http = (root / "nginx-http-[name].conf").read_text(encoding="utf-8")
-    https = (root / "nginx-https-[name].conf").read_text(encoding="utf-8")
+    http = (root / "nginx-http-[site].conf").read_text(encoding="utf-8")
+    https = (root / "nginx-https-[site].conf").read_text(encoding="utf-8")
 
     assert "proxy_pass http://[host]:[port];" in http
     assert "proxy_pass http://[host]:[port];" in https

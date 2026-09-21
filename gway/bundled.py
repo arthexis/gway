@@ -32,8 +32,8 @@ def resolve(name):
     raise FileNotFoundError(f"Bundled recipe not found: {name}")
 
 
-def run(runtime, name, **context):
+def run(runtime, recipe_name, **context):
     """Execute one installed Gway recipe bundle."""
-    path = resolve(name)
+    path = resolve(recipe_name)
     _, result = execute_recipe(runtime, path, context=context)
     return result
