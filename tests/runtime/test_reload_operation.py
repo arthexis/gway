@@ -426,3 +426,188 @@ def test_reload_fresh_when_unchanged_is_transparent_noop(
 
     assert gateway(recipe) == "MTY"
     assert gateway.context["site"] == "MTY"
+
+
+
+def test_reload_restart_rolls_back_open_journals_before_handoff(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    first_source = tmp_path / "first-source.txt"
+    second_source = tmp_path / "second-source.txt"
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first_source.write_text("first", encoding="utf-8")
+    second_source.write_text("second", encoding="utf-8")
+    order = []
+    captured = {}
+
+    original_rollback = gateway.journal.rollback
+
+    def rollback(name):
+        order.append(name)
+        return original_rollback(name)
+
+    monkeypatch.setattr(gateway.journal, "rollback", rollback)
+
+    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
+        captured["checkpoint"] = checkpoint
+        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
+        runtime.suspend_execution(handoff_checkpoint)
+        return FakeSuccessor(), handoff_checkpoint
+
+    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+
+    recipe = tmp_path / "restart.rx"
+    recipe.write_text(
+        f"copy {first_source} --to {first} --rollback alpha\n"
+        f"copy {second_source} --to {second} --rollback beta\n"
+        "reload --restart\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReloadTransferred):
+        gateway(recipe)
+
+    assert order == ["beta", "alpha"]
+    assert not first.exists()
+    assert not second.exists()
+    checkpoint = captured["checkpoint"]
+    assert checkpoint.mode.value == "restart"
+    assert checkpoint.open_journals == ()
+    assert checkpoint.journal_session_id is None
+    assert checkpoint.context == {}
+    assert checkpoint.result_history == ()
+    assert checkpoint.result_subjects == {}
+
+
+def test_reload_restart_rollback_failure_prevents_handoff(
+    gateway,
+    rollback_paths,
+    tmp_path,
+    monkeypatch,
+):
+    source, destination = rollback_paths
+    called = []
+
+    def fail_rollback(name):
+        raise RuntimeError("rollback failed")
+
+    def forbidden_handoff(*args, **kwargs):
+        called.append(True)
+        raise AssertionError("handoff must not run after rollback failure")
+
+    monkeypatch.setattr(gateway.journal, "rollback", fail_rollback)
+    monkeypatch.setattr("gway.reload.handoff", forbidden_handoff)
+
+    recipe = tmp_path / "restart-fail.rx"
+    recipe.write_text(
+        f"copy {source} --to {destination} --rollback deploy\n"
+        "reload --restart\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="rollback failed"):
+        gateway(recipe)
+
+    assert called == []
+
+
+def test_reload_restart_from_nested_recipe_targets_top_level_invocation(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    captured = {}
+
+    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
+        captured["checkpoint"] = checkpoint
+        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
+        runtime.suspend_execution(handoff_checkpoint)
+        return FakeSuccessor(), handoff_checkpoint
+
+    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+
+    outer = tmp_path / "outer.rx"
+    inner = tmp_path / "inner.rx"
+    outer.write_text("./inner.rx\n", encoding="utf-8")
+    inner.write_text("reload --restart\n", encoding="utf-8")
+
+    with pytest.raises(ReloadTransferred):
+        gateway(str(outer), site="MTY")
+
+    frame = captured["checkpoint"].frames[0]
+    assert frame["recipe"] == str(outer.resolve())
+    assert frame["context"] == {"site": "MTY"}
+
+
+def test_reload_restart_when_unchanged_does_not_rollback(
+    gateway,
+    rollback_paths,
+    tmp_path,
+    monkeypatch,
+):
+    source, destination = rollback_paths
+    identity = RuntimeIdentity(
+        resolved_revision="abc123",
+        fingerprint="fp-1",
+        scope="user",
+    )
+    gateway.gway_identity = identity
+    monkeypatch.setattr(
+        "gway.install.identity.managed_gway_identity",
+        lambda: identity,
+    )
+    rollbacks = []
+    original = gateway.journal.rollback
+
+    def rollback(name):
+        rollbacks.append(name)
+        return original(name)
+
+    monkeypatch.setattr(gateway.journal, "rollback", rollback)
+
+    recipe = tmp_path / "restart-unchanged.rx"
+    recipe.write_text(
+        f"copy {source} --to {destination} --rollback deploy\n"
+        "reload --restart --when changed\n"
+        "commit deploy\n",
+        encoding="utf-8",
+    )
+
+    assert gateway(recipe) == "deploy"
+    assert rollbacks == []
+    assert destination.exists()
+
+
+def test_reload_fresh_and_restart_are_rejected_before_rollback(
+    gateway,
+    rollback_paths,
+    tmp_path,
+    monkeypatch,
+):
+    source, destination = rollback_paths
+    rollbacks = []
+    original = gateway.journal.rollback
+
+    def rollback(name):
+        rollbacks.append(name)
+        return original(name)
+
+    monkeypatch.setattr(gateway.journal, "rollback", rollback)
+
+    recipe = tmp_path / "invalid-modes.rx"
+    recipe.write_text(
+        f"copy {source} --to {destination} --rollback deploy\n"
+        "reload --fresh --restart\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReloadError, match="mutually exclusive"):
+        gateway(recipe)
+
+    assert rollbacks == ["deploy"]
+    assert not destination.exists()
