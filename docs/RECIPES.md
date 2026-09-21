@@ -381,7 +381,7 @@ requests recovery if the control requirement ultimately fails.
 
 Intermediate non-terminal repeat attempts do not trigger rollback. For `repeat`, the named rollback also runs if replay or gate evaluation raises; exhaustion is only one terminal failure mode. A successful check/repeat does not commit or rollback anything; the journal remains open for explicit commit.
 
-When a check assertion or repeat execution fails, its original error remains primary. If rollback also fails, recovery failure is attached as secondary context. Invalid control syntax that fails while options are being parsed is not itself a transactional failure and does not trigger rollback.
+When a check assertion or repeat execution fails, its original error remains primary. If rollback also fails, recovery failure is attached as secondary context. If a later outer-boundary retry also fails, GWAY preserves both recovery failures rather than replacing the earlier one. Invalid control syntax that fails while options are being parsed is not itself a transactional failure and does not trigger rollback.
 
 ## Execution boundaries
 
