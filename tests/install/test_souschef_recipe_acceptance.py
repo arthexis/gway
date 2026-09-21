@@ -166,6 +166,9 @@ def test_souschef_service_timeout_stops_recipe_with_operation_identity_and_rollb
         destination,
     )
 
+    units = tmp_path / "units"
+    monkeypatch.setattr(systemd, "unit_root", lambda **kwargs: units)
+
     runtime = _runtime_for_project(project, monkeypatch)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
