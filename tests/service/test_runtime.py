@@ -217,3 +217,41 @@ def test_process_token_falls_back_when_procfs_is_unavailable(monkeypatch):
     )
 
     assert process_token(1234) == "ps:Mon Sep 21 12:00:00 2026"
+
+
+
+def test_state_persistence_failure_reaps_spawned_service(
+    tmp_path,
+    monkeypatch,
+    service_factory,
+):
+    service = service_factory()
+    backend = ProcessBackend(state_root=tmp_path / "state")
+    spawned = []
+    original_popen = __import__("subprocess").Popen
+
+    class TrackingPopen:
+        def __new__(cls, *args, **kwargs):
+            process = original_popen(*args, **kwargs)
+            spawned.append(process)
+            return process
+
+    def fail_put(self, record):
+        raise OSError("state write failed")
+
+    monkeypatch.setattr("gway.service.runtime.subprocess.Popen", TrackingPopen)
+    monkeypatch.setattr("gway.service.runtime.ServiceState.put", fail_put)
+
+    try:
+        with __import__("pytest").raises(OSError, match="state write failed"):
+            backend.start(service)
+
+        assert service.identity not in backend._processes
+        assert len(spawned) == 1
+        assert spawned[0].poll() is not None
+        assert ServiceState(tmp_path / "state").get("demo", "sleeper") is None
+    finally:
+        for process in spawned:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
