@@ -1,0 +1,20 @@
+# Obtain/reuse the HTTP-01 certificate, then promote Nginx to TLS.
+ingest [nginx_executable|nginx] --kind proc --sudo
+ingest [certbot_executable|certbot] --kind proc --sudo
+
+certbot certonly
+--webroot
+--webroot-path [acme_webroot|/var/www/gway-acme]
+--domain [domain]
+--cert-name [domain]
+--non-interactive
+--agree-tos
+--email [email]
+--keep-until-expiring
+
+render nginx-https-[name].conf
+--to [nginx_available|/etc/nginx/sites-available]/nginx-[name].conf
+--as root
+
+nginx -t
+nginx -s reload
