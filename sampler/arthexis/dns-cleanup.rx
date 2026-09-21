@@ -1,0 +1,5 @@
+# Remove opt-in Arthexis DNS plus normal exposure/install artifacts.
+
+../web/expose/cleanup
+
+uninstall arthexis
