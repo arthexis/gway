@@ -1,7 +1,12 @@
 import pytest
 
 from gway.dispatch import RepeatLimitError
-from gway.journal import JournalError, RollbackError, rollback_error_for
+from gway.journal import (
+    JournalError,
+    RollbackError,
+    RollbackRecoveryError,
+    rollback_error_for,
+)
 
 
 def _counter(gateway, name="probe", *, after=None):
@@ -275,8 +280,10 @@ def test_repeat_failure_preserves_primary_when_rollback_is_incomplete(
         )
 
     recovery = rollback_error_for(raised.value)
-    assert isinstance(recovery, RollbackError)
-    assert recovery.journal == "deploy"
+    assert isinstance(recovery, RollbackRecoveryError)
+    assert len(recovery.errors) == 2
+    assert all(isinstance(error, RollbackError) for error in recovery.errors)
+    assert recovery.journals == ("deploy", "deploy")
     assert destination.read_text(encoding="utf-8") == "external"
     assert gateway.journal.require_open("deploy").entries[0].state.value == "applied"
 
