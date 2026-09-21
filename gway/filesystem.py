@@ -81,6 +81,9 @@ class Filesystem:
                 identity=identity,
             )
 
+        if entry is not None:
+            self.runtime.journal.mark_mutated(rollback, entry.sequence)
+
         if not identity.privileged:
             result = _copy_local(source, destination)
         else:
@@ -88,7 +91,6 @@ class Filesystem:
             result = target
 
         if entry is not None:
-            self.runtime.journal.mark_mutated(rollback, entry.sequence)
             self.runtime.journal.mark_applied(rollback, entry.sequence)
         return result
 
@@ -116,6 +118,9 @@ class Filesystem:
                 identity=identity,
             )
 
+        if entry is not None:
+            self.runtime.journal.mark_mutated(rollback, entry.sequence)
+
         if not identity.privileged:
             result = _move_local(source, destination)
         else:
@@ -123,7 +128,6 @@ class Filesystem:
             result = target
 
         if entry is not None:
-            self.runtime.journal.mark_mutated(rollback, entry.sequence)
             self.runtime.journal.mark_applied(rollback, entry.sequence)
         return result
 
@@ -163,6 +167,9 @@ class Filesystem:
                 identity=identity,
             )
 
+        if entry is not None:
+            self.runtime.journal.mark_mutated(rollback, entry.sequence)
+
         if not identity.privileged:
             result = _link_local(source, destination)
         else:
@@ -170,7 +177,6 @@ class Filesystem:
             result = target
 
         if entry is not None:
-            self.runtime.journal.mark_mutated(rollback, entry.sequence)
             self.runtime.journal.mark_applied(rollback, entry.sequence)
         return result
 
@@ -195,6 +201,9 @@ class Filesystem:
                 identity=identity,
             )
 
+        if entry is not None:
+            self.runtime.journal.mark_mutated(rollback, entry.sequence)
+
         if not identity.privileged:
             result = _remove_local(path)
         else:
@@ -205,6 +214,5 @@ class Filesystem:
             result = path
 
         if entry is not None:
-            self.runtime.journal.mark_mutated(rollback, entry.sequence)
             self.runtime.journal.mark_applied(rollback, entry.sequence)
         return result
