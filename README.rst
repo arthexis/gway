@@ -10,6 +10,12 @@ The framework is intentionally compact. Domain algorithms belong in Python;
 GWAY provides the composition, context, recipe, service, installation, and
 transaction boundaries around them.
 
+A useful architectural boundary is: **GWAY follows the platform; applications
+follow the business.** GWAY owns reusable host/runtime adaptation and composition,
+while application repositories own durable domain concepts and policy. See
+``docs/PLATFORM.md`` for that ownership boundary and ``docs/README.md`` for the
+documentation map.
+
 Quick start
 -----------
 
