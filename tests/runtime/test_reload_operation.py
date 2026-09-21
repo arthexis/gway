@@ -359,13 +359,7 @@ def test_reload_fresh_captures_structural_state_without_semantic_history(
 
     gateway.produce = gateway.wrap("produce_site", produce)
 
-    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
-        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
-        runtime.suspend_execution(handoff_checkpoint)
-        captured["checkpoint"] = handoff_checkpoint
-        return FakeSuccessor(), handoff_checkpoint
-
-    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
     monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
 
     recipe = tmp_path / "fresh.rx"
@@ -379,7 +373,7 @@ def test_reload_fresh_captures_structural_state_without_semantic_history(
     with pytest.raises(ReloadTransferred):
         gateway(recipe)
 
-    checkpoint = captured["checkpoint"]
+    checkpoint = captured["handoff_checkpoint"]
     assert checkpoint.mode.value == "fresh"
     assert checkpoint.context == {}
     assert checkpoint.result_history == ()
@@ -509,13 +503,7 @@ def test_reload_restart_from_nested_recipe_targets_top_level_invocation(
 ):
     captured = {}
 
-    def fake_handoff(runtime, checkpoint, command, *, store=None, **kwargs):
-        captured["checkpoint"] = checkpoint
-        handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
-        runtime.suspend_execution(handoff_checkpoint)
-        return FakeSuccessor(), handoff_checkpoint
-
-    monkeypatch.setattr("gway.reload.handoff", fake_handoff)
+    monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
     monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
 
     outer = tmp_path / "outer.rx"
