@@ -28,6 +28,54 @@ def test_multiline_flags_extend_previous_operation(tmp_path, token_values):
     ]
 
 
+def test_trailing_double_dash_continues_with_positional_line(tmp_path, token_values):
+    path = tmp_path / "positional-inline.rx"
+    path.write_text(
+        "curl --fail --silent --show-error --\n"
+        "https://example.com/health/\n"
+        "echo done\n",
+        encoding="utf-8",
+    )
+    commands, _ = load_recipe(path)
+    assert token_values(commands[0]) == [
+        "curl",
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--",
+        "https://example.com/health/",
+    ]
+    assert token_values(commands[1]) == ["echo", "done"]
+
+
+def test_standalone_double_dash_continues_with_positional_line(tmp_path, token_values):
+    path = tmp_path / "positional-standalone.rx"
+    path.write_text(
+        "service install\n"
+        "--system\n"
+        "--\n"
+        "arthexis web\n",
+        encoding="utf-8",
+    )
+    commands, _ = load_recipe(path)
+    assert token_values(commands[0]) == [
+        "service",
+        "install",
+        "--system",
+        "--",
+        "arthexis",
+        "web",
+    ]
+
+
+def test_literal_double_dash_does_not_continue_next_line(tmp_path, token_values):
+    path = tmp_path / "literal-double-dash.rx"
+    path.write_text("echo '--'\necho next\n", encoding="utf-8")
+    commands, _ = load_recipe(path)
+    assert token_values(commands[0]) == ["echo", "--"]
+    assert token_values(commands[1]) == ["echo", "next"]
+
+
 def test_blank_lines_and_comments_do_not_create_operations(tmp_path, token_values):
     path = tmp_path / "comments.rx"
     path.write_text(
