@@ -1,0 +1,13 @@
+# Configure conventional host-wide GoDaddy DNS credentials.
+# Run under an identity permitted to write the GWAY secret store.
+
+input "GoDaddy key"
+--as godaddy_key
+--secret
+
+input "GoDaddy secret"
+--as godaddy_secret
+--secret
+
+secret write dns godaddy key [godaddy_key]
+secret write dns godaddy secret [godaddy_secret]
