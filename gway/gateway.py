@@ -186,12 +186,23 @@ class Gateway(Resolver):
             raise TypeError("execution suspension requires a ReloadCheckpoint")
 
         checkpoint.validated()
-        if checkpoint.journal_session_id != self.journal.session_id:
+        open_journals = self.journal.open_names()
+        from .reload import ReloadMode
+
+        restarting_clean = (
+            checkpoint.mode is ReloadMode.RESTART
+            and checkpoint.journal_session_id is None
+            and not checkpoint.open_journals
+            and not open_journals
+        )
+        if (
+            not restarting_clean
+            and checkpoint.journal_session_id != self.journal.session_id
+        ):
             raise ValueError(
                 "reload checkpoint rollback session does not match current execution"
             )
 
-        open_journals = self.journal.open_names()
         if tuple(checkpoint.open_journals) != open_journals:
             raise ValueError(
                 "reload checkpoint open journals do not match current execution"
@@ -294,6 +305,7 @@ class Gateway(Resolver):
         timeout: float = 30.0,
         when: str | None = None,
         fresh: bool = False,
+        restart: bool = False,
     ):
         """Reload GWAY in a successor process and continue the active recipe.
 
@@ -301,6 +313,7 @@ class Gateway(Resolver):
             timeout: Seconds to wait for the successor to adopt the checkpoint.
             when: Reload only when the managed GWAY runtime changed.
             fresh: Resume with fresh semantic context and result history.
+            restart: Roll back the current run and restart the top-level recipe.
         """
         from .reload import perform_reload
 
@@ -309,6 +322,7 @@ class Gateway(Resolver):
             timeout=timeout,
             when=when,
             fresh=fresh,
+            restart=restart,
         )
 
     def _help(self, *operation: str, verbose=False):
