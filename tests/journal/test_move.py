@@ -24,7 +24,9 @@ def _restore_move(gateway, entry, name="deploy"):
     )
 
 
-def test_move_records_one_logical_entry_with_two_paths(gateway, tmp_path, journal_entry):
+def test_move_records_one_logical_entry_with_two_paths(
+    gateway, tmp_path, journal_entry
+):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination.txt"
@@ -46,7 +48,9 @@ def test_move_records_one_logical_entry_with_two_paths(gateway, tmp_path, journa
     ]
 
 
-def test_move_to_absent_destination_can_restore_both_sides(gateway, tmp_path, journal_entry):
+def test_move_to_absent_destination_can_restore_both_sides(
+    gateway, tmp_path, journal_entry
+):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination.txt"
@@ -63,7 +67,9 @@ def test_move_to_absent_destination_can_restore_both_sides(gateway, tmp_path, jo
     assert not destination.exists()
 
 
-def test_move_over_existing_file_can_restore_both_sides(gateway, tmp_path, journal_entry):
+def test_move_over_existing_file_can_restore_both_sides(
+    gateway, tmp_path, journal_entry
+):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination.txt"
@@ -81,7 +87,9 @@ def test_move_over_existing_file_can_restore_both_sides(gateway, tmp_path, journ
     assert destination.read_text(encoding="utf-8") == "destination"
 
 
-def test_move_into_directory_snapshots_resolved_target(gateway, tmp_path, journal_entry):
+def test_move_into_directory_snapshots_resolved_target(
+    gateway, tmp_path, journal_entry
+):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination"
