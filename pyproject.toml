@@ -37,7 +37,7 @@ include-package-data = true
 include = ["gway*"]
 
 [tool.setuptools.package-data]
-gway = ["bundled/web/expose/*.rx", "bundled/web/expose/*.conf"]
+gway = ["bundled/web/expose/*.rx", "bundled/web/expose/*.conf", "bundled/sftp/*.rx"]
 
 
 [tool.ruff]

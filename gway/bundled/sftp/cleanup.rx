@@ -1,0 +1,13 @@
+# Reversible SFTP host cleanup contract.
+# S5 implements host teardown, optional DNS removal, and explicit data deletion.
+# Backup data is preserved unless destructive cleanup is explicitly requested.
+#
+# Parameters:
+# --name           service/account name; default: sftp
+# --root           controlled backup root; default: /srv/gway-sftp
+# --user           upload account; default: gway-sftp
+# --group          upload group; default: gway-sftp
+# --port           SSH/SFTP port; default: 22
+# --destination    optional per-client destination/path
+# --preserve-data  preserve backup data; default: true
+# --remove-dns     remove published DNS record; default: false

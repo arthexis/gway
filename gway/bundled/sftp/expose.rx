@@ -1,0 +1,10 @@
+# Public exposure contract for an SFTP host.
+# S4 composes provider-neutral DNS publication.
+# This recipe intentionally has no HTTP, Nginx, ACME, or Certbot dependency.
+#
+# Parameters:
+# --domain         required public DNS name
+# --zone           required DNS zone
+# --public-ipv4    required A-record value
+# --dns-backend    DNS backend; default: godaddy
+# --port           SSH/SFTP port; default: 22
