@@ -36,6 +36,9 @@ include-package-data = true
 [tool.setuptools.packages.find]
 include = ["gway*"]
 
+[tool.setuptools.package-data]
+gway = ["bundled/web/expose/*.rx", "bundled/web/expose/*.conf"]
+
 
 [tool.ruff]
 target-version = "py310"
