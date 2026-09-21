@@ -47,25 +47,30 @@ def _run_cli(parser, args, unknown):
         silent=args.silent,
     )
 
-    if args.resume:
-        if unknown:
-            parser.error("--resume does not accept additional arguments")
-        from .reload import resume
+    from .reload import ReloadTransferred
 
-        output = resume(args.resume)
-    elif args.recipe:
-        _, output = execute_recipe(
-            runtime,
-            args.recipe,
-            context=parse_recipe_context(unknown),
-        )
-    elif args.expression:
-        runtime.context.update(parse_recipe_context(unknown))
-        output = runtime.resolve(args.expression)
-    elif unknown:
-        _, output = process([unknown], gw_instance=runtime)
-    else:
-        parser.print_help()
+    try:
+        if args.resume:
+            if unknown:
+                parser.error("--resume does not accept additional arguments")
+            from .reload import resume
+
+            output = resume(args.resume)
+        elif args.recipe:
+            _, output = execute_recipe(
+                runtime,
+                args.recipe,
+                context=parse_recipe_context(unknown),
+            )
+        elif args.expression:
+            runtime.context.update(parse_recipe_context(unknown))
+            output = runtime.resolve(args.expression)
+        elif unknown:
+            _, output = process([unknown], gw_instance=runtime)
+        else:
+            parser.print_help()
+            return 0
+    except ReloadTransferred:
         return 0
 
     if output is not None and not args.silent:
