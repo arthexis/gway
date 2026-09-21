@@ -1,6 +1,7 @@
 import pytest
 
 from gway.install.identity import RuntimeIdentity
+from gway.recipes import execute_recipe
 from gway.reload import (
     CheckpointState,
     ReloadError,
@@ -537,7 +538,7 @@ def test_reload_restart_from_nested_recipe_targets_top_level_invocation(
     inner.write_text("reload --restart\n", encoding="utf-8")
 
     with pytest.raises(ReloadTransferred):
-        gateway(str(outer), site="MTY")
+        execute_recipe(gateway, outer, context={"site": "MTY"})
 
     frame = captured["checkpoint"].frames[0]
     assert frame["recipe"] == str(outer.resolve())
