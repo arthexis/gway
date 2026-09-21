@@ -8,6 +8,9 @@ from enum import Enum
 import json
 import math
 from pathlib import Path
+import subprocess
+import sys
+import time
 import uuid
 
 from .install.paths import data_root
@@ -256,6 +259,9 @@ class ReloadStore:
     def adopted_path(self, checkpoint_id):
         return self.active / f"{checkpoint_id}.adopted.json"
 
+    def acknowledgement_path(self, checkpoint_id):
+        return self.root / "ack" / f"{checkpoint_id}.json"
+
     def save(self, checkpoint):
         """Atomically persist one active executable checkpoint."""
         checkpoint = checkpoint.validated()
@@ -269,8 +275,8 @@ class ReloadStore:
         payload = json.loads(path.read_text(encoding="utf-8"))
         return ReloadCheckpoint.from_dict(payload)
 
-    def adopt(self, checkpoint_id):
-        """Atomically claim one HANDOFF checkpoint for exactly one resumed process."""
+    def claim(self, checkpoint_id):
+        """Atomically claim one HANDOFF checkpoint without transferring ownership."""
         source = self.path(checkpoint_id)
         claimed = self.adopted_path(checkpoint_id)
         self.active.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -279,7 +285,7 @@ class ReloadStore:
         except FileNotFoundError:
             if claimed.exists():
                 raise ReloadError(
-                    f"Reload checkpoint {checkpoint_id!r} is already adopted"
+                    f"Reload checkpoint {checkpoint_id!r} is already claimed"
                 )
             raise
 
@@ -291,13 +297,49 @@ class ReloadStore:
                     f"Reload checkpoint {checkpoint_id!r} is "
                     f"{checkpoint.state.value}, not handoff"
                 )
-            adopted = checkpoint.transition(CheckpointState.ADOPTED)
-            self._atomic_json(claimed, adopted.as_dict())
-            return adopted
+            return checkpoint
         except Exception:
             if claimed.exists() and not source.exists():
                 claimed.replace(source)
             raise
+
+    def acknowledge(self, checkpoint):
+        """Transfer ownership after the successor has restored runtime state."""
+        if checkpoint.state is not CheckpointState.HANDOFF:
+            raise ReloadError(
+                f"Reload checkpoint {checkpoint.checkpoint_id!r} is "
+                f"{checkpoint.state.value}, not handoff"
+            )
+        adopted = checkpoint.transition(CheckpointState.ADOPTED)
+        claimed = self.adopted_path(checkpoint.checkpoint_id)
+        if not claimed.exists():
+            raise ReloadError(
+                f"Reload checkpoint {checkpoint.checkpoint_id!r} is not claimed"
+            )
+        self._atomic_json(claimed, adopted.as_dict())
+        ack = self.acknowledgement_path(checkpoint.checkpoint_id)
+        self._atomic_json(
+            ack,
+            {
+                "checkpoint_id": checkpoint.checkpoint_id,
+                "state": CheckpointState.ADOPTED.value,
+                "recorded_at": _timestamp(),
+            },
+        )
+        return adopted
+
+    def adopt(self, checkpoint_id):
+        """Claim and immediately acknowledge a HANDOFF checkpoint."""
+        checkpoint = self.claim(checkpoint_id)
+        return self.acknowledge(checkpoint)
+
+    def acknowledged(self, checkpoint_id):
+        """Return whether the successor durably acknowledged ownership."""
+        return self.acknowledgement_path(checkpoint_id).is_file()
+
+    def clear_acknowledgement(self, checkpoint_id):
+        """Remove one non-executable ownership acknowledgement."""
+        self.acknowledgement_path(checkpoint_id).unlink(missing_ok=True)
 
     def _record(self, receipt):
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -312,6 +354,7 @@ class ReloadStore:
         self._record(checkpoint.receipt(outcome="completed"))
         self.path(checkpoint.checkpoint_id).unlink(missing_ok=True)
         self.adopted_path(checkpoint.checkpoint_id).unlink(missing_ok=True)
+        self.clear_acknowledgement(checkpoint.checkpoint_id)
 
     def quarantine(self, checkpoint, error):
         """Make a failed checkpoint inert while preserving private evidence."""
@@ -329,7 +372,100 @@ class ReloadStore:
         else:
             self._atomic_json(target, checkpoint.as_dict())
         self._record(checkpoint.receipt(outcome="failed", error=error))
+        self.clear_acknowledgement(checkpoint.checkpoint_id)
         return target
+
+
+class ReloadHandoffError(ReloadError):
+    """Raised when a successor cannot safely adopt a reload checkpoint."""
+
+    def __init__(self, checkpoint, message, *, timeout=None, returncode=None):
+        self.checkpoint = checkpoint
+        self.timeout = timeout
+        self.returncode = returncode
+        super().__init__(message)
+
+
+def _stop_successor(process):
+    """Best-effort termination of an unacknowledged successor."""
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=1)
+
+
+def handoff(
+    runtime,
+    checkpoint,
+    command,
+    *,
+    store=None,
+    popen=subprocess.Popen,
+    poll_interval=0.01,
+):
+    """Start a successor and retain rollback ownership until it acknowledges."""
+    store = ReloadStore() if store is None else store
+    if checkpoint.state is not CheckpointState.PREPARED:
+        raise ReloadError("reload handoff requires a prepared checkpoint")
+
+    handoff_checkpoint = checkpoint.transition(CheckpointState.HANDOFF)
+    store.save(handoff_checkpoint)
+    runtime.suspend_execution(handoff_checkpoint)
+
+    argv = [*map(str, command), "--resume", handoff_checkpoint.checkpoint_id]
+    process = None
+    try:
+        process = popen(argv)
+    except BaseException as exception:
+        store.quarantine(handoff_checkpoint, exception)
+        raise ReloadHandoffError(
+            handoff_checkpoint,
+            f"Unable to start reload successor: {exception}",
+        ) from exception
+
+    timeout = handoff_checkpoint.timeout or 30.0
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            if store.acknowledged(handoff_checkpoint.checkpoint_id):
+                return process, handoff_checkpoint
+
+            returncode = process.poll()
+            if returncode is not None:
+                error = ReloadHandoffError(
+                    handoff_checkpoint,
+                    f"Reload successor exited before adoption with code {returncode}",
+                    returncode=returncode,
+                )
+                store.quarantine(handoff_checkpoint, error)
+                raise error
+
+            if time.monotonic() >= deadline:
+                _stop_successor(process)
+                error = ReloadHandoffError(
+                    handoff_checkpoint,
+                    f"Reload successor did not adopt checkpoint within {timeout:g}s",
+                    timeout=timeout,
+                )
+                store.quarantine(handoff_checkpoint, error)
+                raise error
+
+            time.sleep(poll_interval)
+    except BaseException:
+        if process is not None and not store.acknowledged(
+            handoff_checkpoint.checkpoint_id
+        ):
+            _stop_successor(process)
+        raise
+
+
+def default_resume_command():
+    """Return the current interpreter/module command for internal resume."""
+    return [sys.executable, "-m", "gway"]
 
 
 def _restore_runtime(checkpoint):
@@ -441,10 +577,11 @@ def resume_frames(runtime, checkpoint):
 def resume(checkpoint_id, *, store=None):
     """Adopt one suspended reload checkpoint and continue its recipe frames."""
     store = ReloadStore() if store is None else store
-    checkpoint = store.adopt(checkpoint_id)
+    checkpoint = store.claim(checkpoint_id)
     runtime = None
     try:
         runtime = _restore_runtime(checkpoint)
+        checkpoint = store.acknowledge(checkpoint)
         with runtime.execution_scope():
             value = resume_frames(runtime, checkpoint)
         store.complete(checkpoint)
