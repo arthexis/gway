@@ -75,4 +75,10 @@ def test_nested_mapping_ambiguity_is_not_silently_resolved(gateway):
     }
 
     with pytest.raises(AmbiguousKeyError):
-        gateway.resolve("[service health status code]")
+        gateway.resolve("[service health_status code]")
+
+    with pytest.raises(AmbiguousKeyError):
+        gateway["service health_status code"]
+
+    with pytest.raises(AmbiguousKeyError):
+        gateway.get("service health_status code")
