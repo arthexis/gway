@@ -680,3 +680,63 @@ def test_multiple_rollback_failures_preserve_original_forward_exception(
         ("disable", "gway-beat.service"),
         ("daemon-reload", None),
     ]
+
+
+def test_rollback_failures_are_logged_and_attached_to_original_exception(
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    services = _named_sous_services("web", "worker")
+
+    def run(operation, *, check=True, timeout=systemd.SYSTEMCTL_TIMEOUT):
+        if (
+            operation.action == "enable"
+            and operation.unit == "gway-worker.service"
+            and check
+        ):
+            raise systemd._SystemdOperationError(
+                operation,
+                "worker enable failed",
+                returncode=5,
+                stderr="forward failure",
+            )
+        if (
+            operation.action == "disable"
+            and operation.unit == "gway-web.service"
+            and not check
+        ):
+            raise systemd._SystemdOperationError(
+                operation,
+                "web cleanup disable timed out",
+                timeout=timeout,
+            )
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
+    caplog.set_level("WARNING", logger="gway")
+
+    with pytest.raises(systemd._SystemdOperationError) as exc_info:
+        systemd.install_units(
+            "gway",
+            services,
+            state_root=tmp_path / "state",
+            root=tmp_path / "units",
+            timeout=40,
+        )
+
+    error = exc_info.value
+    assert error.unit == "gway-worker.service"
+    assert error.returncode == 5
+
+    notes = getattr(error, "__notes__", [])
+    assert any(
+        "Rollback failure: disable gway-web.service" in note
+        for note in notes
+    )
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "systemd install rollback failed: disable gway-web.service" in message
+        for message in messages
+    )
