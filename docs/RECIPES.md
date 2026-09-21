@@ -86,7 +86,7 @@ Arguments supplied after a recipe path become values in the shared Gateway conte
 gway ./deploy.rx --site MTY --role Watchtower --dry-run
 ~~~
 
-A bare recipe flag becomes True; a flag followed by a value stores that value. Dash-separated names normalize to underscore-style context names during recipe argument parsing.
+A bare recipe flag becomes the boolean `True`; a flag followed by a value stores that token as a string. Dash-separated names normalize to underscore-style context names during recipe argument parsing. Operations may still coerce those strings normally when binding them to annotated parameters.
 
 Recipe parameters do not create a separate lexical scope. Internal operations publish normally into the same Gateway runtime.
 
@@ -112,6 +112,14 @@ Sigils resolve named semantic values:
 [status_code]
 [charger serial]
 ~~~
+
+An inline fallback is used when the named value cannot be resolved:
+
+~~~text
+[role|Watchtower]
+~~~
+
+The fallback is part of sigil resolution rather than recipe-parameter parsing, so the same form can be used inside ordinary operation arguments.
 
 Single quotes protect literal text from GWAY interpretation:
 
@@ -186,6 +194,8 @@ Whole-result equality:
 check --is ready
 check --is 200
 ~~~
+
+Unquoted expected values are lightly coerced before comparison: `true` and `false` become booleans, `none` / `null` become `None`, and ordinary Python literal forms such as numbers are parsed as literals. Single quotes force string comparison, so `check --is '200'` compares against the string `"200"`.
 
 ### Mapping checks
 
@@ -285,9 +295,10 @@ repeat --while pending --max 10
 
 The gate may be a boolean-producing operation, a boolean sigil, or the literal true / false form when the replayed operation itself returns a boolean.
 
-Optional delay between attempts:
+Optional delay between attempts applies to both fixed and conditional repeats:
 
 ~~~text
+repeat --times 3 --interval 1
 repeat --until ready --max 10 --interval 1
 ~~~
 
@@ -368,9 +379,9 @@ check/repeat ... --rollback deploy
 
 requests recovery if the control requirement ultimately fails.
 
-Intermediate unsuccessful repeat attempts do not trigger rollback. A successful check/repeat does not commit or rollback anything; the journal remains open for explicit commit.
+Intermediate non-terminal repeat attempts do not trigger rollback. For `repeat`, the named rollback also runs if replay or gate evaluation raises; exhaustion is only one terminal failure mode. A successful check/repeat does not commit or rollback anything; the journal remains open for explicit commit.
 
-When a check or repeat fails, its control error remains primary. If rollback also fails, recovery failure is attached as secondary context.
+When a check assertion or repeat execution fails, its original error remains primary. If rollback also fails, recovery failure is attached as secondary context. Invalid control syntax that fails while options are being parsed is not itself a transactional failure and does not trigger rollback.
 
 ## Execution boundaries
 
