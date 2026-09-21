@@ -103,6 +103,31 @@ def test_gateway_bootstrap_exposes_project_script_as_operation(tmp_path, monkeyp
     assert runtime("demo hello Ada") == "hello Ada"
 
 
+def test_gateway_bootstrap_does_not_import_project_script_dependencies(
+    tmp_path,
+    monkeypatch,
+):
+    (tmp_path / "demo.py").write_text(
+        "import dependency_not_installed_in_gway\n"
+        "def main():\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n[project.scripts]\nhello = "demo:main"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    assert runtime.ops.resolve("hello") is not None
+    with pytest.raises(ModuleNotFoundError, match="dependency_not_installed_in_gway"):
+        runtime("hello")
+
+
 def test_pyproject_semantic_variables_are_available_to_sigils(tmp_path, monkeypatch):
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "demo"\n[tool.gway.variables]\nregion = "local"\n',

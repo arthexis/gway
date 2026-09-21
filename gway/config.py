@@ -1,7 +1,6 @@
 """Convention-driven project discovery and ingestion bootstrap."""
 
 from pathlib import Path
-import sys
 
 from .ingestion.base import remember_object
 
@@ -73,17 +72,8 @@ def _main_alias(runtime, project, name):
 
 
 def _script_callable(root, command, target):
-    """Resolve a project script, deferring only circular self-imports."""
+    """Return a project script callable without importing project dependencies."""
     from .project import resolve_target
-
-    try:
-        return resolve_target(root, target)
-    except AttributeError:
-        module_name = target.split(":", 1)[0]
-        module = sys.modules.get(module_name)
-        spec = getattr(module, "__spec__", None)
-        if module is None or not getattr(spec, "_initializing", False):
-            raise
 
     def invoke(*args, **kwargs):
         callable_ = resolve_target(root, target)
