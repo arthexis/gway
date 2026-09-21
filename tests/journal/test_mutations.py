@@ -74,7 +74,7 @@ def test_copy_without_rollback_creates_no_journal(gateway, tmp_path):
     assert gateway.journal.open_names() == ()
 
 
-def test_copy_failure_after_snapshot_leaves_prepared_entry(
+def test_copy_failure_after_snapshot_leaves_unsealed_entry(
     gateway,
     tmp_path,
     monkeypatch,
@@ -93,7 +93,7 @@ def test_copy_failure_after_snapshot_leaves_prepared_entry(
         gateway.copy(str(source), to=str(destination), rollback="deploy")
 
     entry = _entry(gateway)
-    assert entry.state is MutationState.PREPARED
+    assert entry.state is MutationState.MUTATED
     assert destination.read_text(encoding="utf-8") == "old"
 
 
@@ -136,7 +136,7 @@ def test_idempotent_link_does_not_create_rollback_entry(gateway, tmp_path):
     assert gateway.journal.open_names() == ()
 
 
-def test_link_failure_after_snapshot_leaves_prepared_entry(
+def test_link_failure_after_snapshot_leaves_unsealed_entry(
     gateway,
     tmp_path,
     monkeypatch,
@@ -153,7 +153,7 @@ def test_link_failure_after_snapshot_leaves_prepared_entry(
     with pytest.raises(OSError, match="link failed"):
         gateway.link(str(source), to=str(destination), rollback="deploy")
 
-    assert _entry(gateway).state is MutationState.PREPARED
+    assert _entry(gateway).state is MutationState.MUTATED
 
 
 def test_remove_with_rollback_restores_file(gateway, tmp_path):
@@ -198,7 +198,7 @@ def test_remove_with_rollback_restores_empty_directory(gateway, tmp_path):
     assert target.is_dir()
 
 
-def test_remove_failure_after_snapshot_leaves_prepared_entry(
+def test_remove_failure_after_snapshot_leaves_unsealed_entry(
     gateway,
     tmp_path,
     monkeypatch,
@@ -214,7 +214,7 @@ def test_remove_failure_after_snapshot_leaves_prepared_entry(
     with pytest.raises(OSError, match="remove failed"):
         gateway.remove(str(target), rollback="deploy")
 
-    assert _entry(gateway).state is MutationState.PREPARED
+    assert _entry(gateway).state is MutationState.MUTATED
     assert target.read_text(encoding="utf-8") == "keep"
 
 
