@@ -282,8 +282,8 @@ def test_fresh_resume_context_does_not_restore_pre_reload_values(
     monkeypatch,
 ):
     monkeypatch.setattr("gway.cache.default_root", lambda: tmp_path / "cache")
-    recipe = tmp_path / "fresh-context.rx"
-    companion = tmp_path / "fresh-context.py"
+    recipe = tmp_path / "fresh_context.rx"
+    companion = tmp_path / "fresh_context.py"
     companion.write_text(
         "def read(site='missing'):\n"
         "    return site\n",
