@@ -1,0 +1,5 @@
+# Complete HTTP-01 HTTPS exposure workflow.
+# This sampler is intentionally not builtin; invoke it by path.
+
+./http
+./https

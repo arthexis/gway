@@ -1,0 +1,26 @@
+# Install and start the conventional Arthexis runtime.
+# Pass --system to the recipe caller for a system-wide installation/service scope.
+
+default
+--ref arthexis-rebuild
+
+install arthexis/arthexis
+
+# Expand the installed Django project and prepare its database.
+arthexis migrate
+--noinput
+
+arthexis seed
+
+# Service commands are inferred by Gway from Arthexis project conventions.
+service install -- arthexis web
+
+service install -- arthexis worker
+
+service install -- arthexis beat
+
+service start -- arthexis web
+
+service start -- arthexis worker
+
+service start -- arthexis beat

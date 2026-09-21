@@ -1,0 +1,13 @@
+# Remove nginx resources created by the HTTP/HTTPS exposure sampler.
+# DNS is intentionally not touched here.
+
+ingest nginx --kind proc --sudo
+
+remove [nginx_enabled|/etc/nginx/sites-enabled]/nginx-[name].conf
+--as root
+
+remove [nginx_available|/etc/nginx/sites-available]/nginx-[name].conf
+--as root
+
+nginx -t
+nginx -s reload
