@@ -3,6 +3,7 @@ import pytest
 from gway.journal import (
     RollbackError,
     RollbackFailure,
+    RollbackRecoveryError,
     attach_rollback_error,
     rollback_error_for,
 )
@@ -144,3 +145,26 @@ def test_rollback_after_failure_attaches_recovery_error_without_replacing_primar
     assert isinstance(recovery, RollbackError)
     assert recovery.failures[0].sequence == 1
     assert gateway.journal.require_open("deploy").entries[0].state.value == "applied"
+
+
+def test_repeated_recovery_failures_accumulate_without_replacing_primary():
+    primary = RuntimeError("validation failed")
+    first = RollbackError(
+        "deploy",
+        [RollbackFailure("deploy", 2, "render", OSError("first recovery failed"))],
+        attempted=2,
+    )
+    second = RollbackError(
+        "deploy",
+        [RollbackFailure("deploy", 1, "copy", OSError("retry failed"))],
+        attempted=1,
+    )
+
+    attach_rollback_error(primary, first)
+    returned = attach_rollback_error(primary, second)
+    recovery = rollback_error_for(primary)
+
+    assert returned is primary
+    assert isinstance(recovery, RollbackRecoveryError)
+    assert recovery.errors == (first, second)
+    assert recovery.journals == ("deploy", "deploy")
