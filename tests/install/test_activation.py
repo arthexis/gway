@@ -1,36 +1,7 @@
-import os
-import subprocess
-
 import pytest
 
 from gway.install import InstallRequest, InstallState, UninstallRequest
 import gway.install.transaction as transaction
-
-
-def test_install_activates_declared_script(make_project, managed_paths, tmp_path):
-    source = make_project("tool", launcher=True)
-
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-
-    launcher = managed_paths.bin / "tool"
-    assert launcher.is_file()
-    assert os.access(launcher, os.X_OK)
-    assert (managed_paths.launchers / "tool.json").is_file()
-
-    result = subprocess.run(
-        [str(launcher)],
-        cwd=tmp_path,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == "managed launcher works"
-    assert str(installed.install_path) in launcher.read_text(encoding="utf-8")
 
 
 def test_noop_install_repairs_missing_owned_launcher(make_project, managed_paths):

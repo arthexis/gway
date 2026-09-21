@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -31,7 +32,7 @@ def _route_gway_to(remote, monkeypatch):
     monkeypatch.setattr(install_source, "named_source", resolve)
 
 
-def test_gway_can_install_itself_and_run_outside_source_checkout(
+def test_gway_self_install_crosses_git_install_activation_and_runtime_boundaries(
     gateway,
     tmp_path,
     monkeypatch,
@@ -47,21 +48,41 @@ def test_gway_can_install_itself_and_run_outside_source_checkout(
     assert installed.source == remote.as_uri()
     assert installed.requested_ref == "selftest"
     assert installed.resolved_revision == revision
+    assert installed.fingerprint
+    assert installed.scope == "user"
     assert (
         installed.install_path
         == (install_environment.data / "projects" / "gway").resolve()
     )
     assert installed.install_path != root.resolve()
+    assert installed.install_path.is_dir()
+    assert not (installed.install_path / ".git").exists()
+
+    snapshots = list((install_environment.cache / "git").glob("*/snapshots/*"))
+    assert snapshots
+    assert all(path.is_relative_to(install_environment.cache) for path in snapshots)
+    assert not installed.install_path.is_relative_to(install_environment.cache)
+
+    state = InstallState(install_environment.data / "state.sqlite")
+    assert state.get("gway") == installed
 
     launcher = install_environment.bin / "gway"
+    launcher_record = install_environment.data / "launchers" / "gway.json"
     assert launcher.is_file()
     assert os.access(launcher, os.X_OK)
+    assert launcher_record.is_file()
+    assert str(installed.install_path) in launcher.read_text(encoding="utf-8")
+
+    metadata = json.loads(launcher_record.read_text(encoding="utf-8"))
+    assert metadata["project"] == "gway"
+    assert metadata["scripts"]["gway"] == "gway:cli_main"
 
     outside = tmp_path / "outside"
     outside.mkdir()
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
-    result = subprocess.run(
+
+    help_result = subprocess.run(
         [str(launcher), "--help"],
         cwd=outside,
         env=env,
@@ -70,10 +91,23 @@ def test_gway_can_install_itself_and_run_outside_source_checkout(
         text=True,
         check=False,
     )
+    assert help_result.returncode == 0
+    assert "GWAY command-dispatch and composition core" in help_result.stdout
 
-    assert result.returncode == 0
-    assert "GWAY command-dispatch and composition core" in result.stdout
-    assert str(installed.install_path) in launcher.read_text(encoding="utf-8")
-    assert (
-        InstallState(install_environment.data / "state.sqlite").get("gway") == installed
+    command_result = subprocess.run(
+        [
+            str(launcher),
+            "--expression",
+            "[site]",
+            "--site",
+            "MTY",
+        ],
+        cwd=outside,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
     )
+    assert command_result.returncode == 0
+    assert command_result.stdout.strip() == "MTY"
