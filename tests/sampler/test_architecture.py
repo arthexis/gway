@@ -5,14 +5,19 @@ def repository_root():
     return Path(__file__).resolve().parents[2]
 
 
-def test_sampler_has_one_canonical_repository_root():
+def test_sampler_has_one_canonical_repository_recipe_root():
     root = repository_root()
     sampler = root / "sampler"
+    recipe_sampler_roots = [
+        path
+        for path in root.rglob("sampler")
+        if path.is_dir() and any(path.rglob("*.rx"))
+    ]
 
     assert sampler.is_dir()
     assert any(sampler.rglob("*.rx"))
     assert sampler.parent == root
-    assert [path for path in root.rglob("sampler") if path.is_dir()] == [sampler]
+    assert recipe_sampler_roots == [sampler]
 
 
 def test_sampler_is_not_implemented_as_a_bundled_recipe_tree():
