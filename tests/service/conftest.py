@@ -4,6 +4,7 @@ import pytest
 
 from gway.launchable import Launchable
 from gway.service.model import Service
+from gway.service.runtime import ProcessBackend
 
 
 @pytest.fixture
@@ -41,3 +42,20 @@ def service_factory(tmp_path):
         )
 
     return make
+
+
+@pytest.fixture
+def process_backend(tmp_path):
+    """Return an isolated process backend for service lifecycle tests."""
+    return ProcessBackend(state_root=tmp_path / "state")
+
+
+@pytest.fixture
+def running_service(process_backend, service_factory):
+    """Start the default sleeper service and always stop it after the test."""
+    service = service_factory()
+    started = process_backend.start(service)
+    try:
+        yield service, process_backend, started
+    finally:
+        process_backend.stop(service)
