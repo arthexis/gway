@@ -38,7 +38,7 @@ def test_store_adoption_is_single_consumer(tmp_path):
     assert not store.path(checkpoint.checkpoint_id).exists()
     assert store.adopted_path(checkpoint.checkpoint_id).is_file()
 
-    with pytest.raises(ReloadError, match="already adopted"):
+    with pytest.raises(ReloadError, match="already claimed"):
         store.adopt(checkpoint.checkpoint_id)
 
 
@@ -289,13 +289,13 @@ def test_fresh_resume_context_does_not_restore_pre_reload_values(
         "    return site\n",
         encoding="utf-8",
     )
-    recipe.write_text("fresh-context read\n", encoding="utf-8")
+    recipe.write_text("fresh_context read\n", encoding="utf-8")
 
     store = ReloadStore(tmp_path / "reload")
     checkpoint = _handoff_checkpoint(
         mode="fresh",
         recipe_stack=(str(recipe),),
-        frames=(_frame(recipe, "fresh-context read"),),
+        frames=(_frame(recipe, "fresh_context read"),),
         context={},
         result="old-result",
         result_history=(),
