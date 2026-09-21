@@ -153,9 +153,16 @@ class Gateway(Resolver):
                 from .reload import ReloadTransferred
 
                 transferred = isinstance(primary, ReloadTransferred)
-                if primary is not None and not transferred:
+                if transferred and suspension is not None:
+                    self.info(
+                        "execution transferred to reload checkpoint %s with "
+                        "rollback session %s",
+                        suspension.checkpoint_id,
+                        self.journal.session_id,
+                    )
+                elif primary is not None:
                     self._finalize_execution(primary)
-                elif suspension is None and not transferred:
+                elif suspension is None:
                     self._finalize_execution(None)
                 else:
                     self.info(
