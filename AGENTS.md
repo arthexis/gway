@@ -420,6 +420,20 @@ Important current invariants:
   explicit commit.
 - Nested recipes share journals. Only the outer execution boundary performs
   automatic leak cleanup.
+- `reload` is a process-transfer control for active recipes, not a module
+  reload. Ordinary reload resumes after the reload stage; `--fresh` preserves
+  structural continuation while clearing semantic state; `--restart` rolls
+  back all open journals before restarting the outermost recipe from statement
+  zero.
+- `reload --when changed` must be transaction- and pipeline-transparent when
+  the running and installed managed identities match: no checkpoint, no
+  journal mutation, no publication, and no loss of an incoming raw value.
+- Ordinary/fresh reload transfers open rollback journals only after the
+  successor restores and durably adopts the checkpoint. The old process then
+  supervises the successor and recovers only journals still durably open after
+  an abnormal successor exit.
+- Restart never transfers the abandoned rollback session. It preserves only
+  top-level invocation provenance needed to start a clean new execution.
 - A successful outer invocation may not silently retain an open journal. It
   automatically attempts rollback and raises `UncommittedJournalError`.
 - When recovery also fails, preserve the original control/forward exception as
