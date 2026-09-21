@@ -1,7 +1,7 @@
 import pytest
 
 from gway.dispatch import CheckError, RepeatLimitError
-from gway.journal import RollbackError, rollback_error_for
+from gway.journal import RollbackError, RollbackRecoveryError, rollback_error_for
 
 
 def _register_mutation(gateway, source, destination, *, drift=False):
@@ -238,8 +238,10 @@ def test_incomplete_control_rollback_is_retried_by_boundary_and_keeps_primary(
         gateway(recipe)
 
     recovery = rollback_error_for(raised.value)
-    assert isinstance(recovery, RollbackError)
-    assert recovery.journal == "deploy"
+    assert isinstance(recovery, RollbackRecoveryError)
+    assert len(recovery.errors) == 2
+    assert all(isinstance(error, RollbackError) for error in recovery.errors)
+    assert recovery.journals == ("deploy", "deploy")
     assert rollbacks == ["deploy", "deploy"]
     assert destination.read_text(encoding="utf-8") == "external"
     assert gateway.journal.require_open("deploy").entries[0].state.value == "applied"
