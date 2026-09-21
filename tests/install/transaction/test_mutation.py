@@ -1,19 +1,16 @@
 import pytest
 
-from gway.install import InstallRequest, InstallState
+from gway.install import InstallRequest
 import gway.install.transaction as transaction
 
 
 def test_managed_tree_drift_blocks_unchanged_reinstall(
-    make_project,
+    installed_project,
     managed_paths,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    managed = installed.install_path / "module.py"
+    source = installed_project.source
+    installed = installed_project.installed
+    managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="local modifications"):
@@ -23,19 +20,16 @@ def test_managed_tree_drift_blocks_unchanged_reinstall(
         )
 
     assert managed.read_text(encoding="utf-8") == "CUSTOM = True\n"
-    assert InstallState(managed_paths.state).get("wire") == installed
+    assert installed_project.state.get("wire") == installed
 
 
 def test_managed_tree_drift_blocks_source_upgrade_before_swap(
-    make_project,
+    installed_project,
     managed_paths,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    managed = installed.install_path / "module.py"
+    source = installed_project.source
+    installed = installed_project.installed
+    managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
     (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
 
@@ -51,16 +45,13 @@ def test_managed_tree_drift_blocks_source_upgrade_before_swap(
 
 
 def test_force_discards_managed_drift_and_reinstalls_clean_source(
-    make_project,
+    installed_project,
     managed_paths,
     caplog,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    managed = installed.install_path / "module.py"
+    source = installed_project.source
+    installed = installed_project.installed
+    managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
 
     repaired = transaction.install_local(
@@ -75,15 +66,12 @@ def test_force_discards_managed_drift_and_reinstalls_clean_source(
 
 
 def test_force_can_repair_drift_without_enabling_source_upgrade(
-    make_project,
+    installed_project,
     managed_paths,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    managed = installed.install_path / "module.py"
+    source = installed_project.source
+    installed = installed_project.installed
+    managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
 
     repaired = transaction.install_local(
@@ -96,16 +84,13 @@ def test_force_can_repair_drift_without_enabling_source_upgrade(
 
 
 def test_stash_preserves_managed_drift_before_reinstall(
-    make_project,
+    installed_project,
     managed_paths,
     caplog,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    managed = installed.install_path / "module.py"
+    source = installed_project.source
+    installed = installed_project.installed
+    managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
 
     repaired = transaction.install_local(
@@ -124,15 +109,12 @@ def test_stash_preserves_managed_drift_before_reinstall(
 
 
 def test_stash_preserves_drift_then_applies_source_upgrade(
-    make_project,
+    installed_project,
     managed_paths,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    managed = installed.install_path / "module.py"
+    source = installed_project.source
+    installed = installed_project.installed
+    managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
     (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
 
@@ -152,16 +134,13 @@ def test_stash_preserves_drift_then_applies_source_upgrade(
 
 @pytest.mark.parametrize("mutation", [{"force": True}, {"stash": True}])
 def test_no_upgrade_with_changed_source_never_uses_mutation_override(
-    make_project,
+    installed_project,
     managed_paths,
     mutation,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    managed = installed.install_path / "module.py"
+    source = installed_project.source
+    installed = installed_project.installed
+    managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
     (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
 
@@ -180,16 +159,13 @@ def test_no_upgrade_with_changed_source_never_uses_mutation_override(
 
 
 def test_stash_failure_leaves_managed_tree_untouched(
-    make_project,
+    installed_project,
     managed_paths,
     monkeypatch,
 ):
-    source = make_project("wire")
-    installed = transaction.install_local(
-        InstallRequest(str(source)),
-        paths=managed_paths,
-    )
-    managed = installed.install_path / "module.py"
+    source = installed_project.source
+    installed = installed_project.installed
+    managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
 
     def fail_stash(*args, **kwargs):
