@@ -75,6 +75,7 @@ def test_gway_self_install_crosses_git_install_activation_and_runtime_boundaries
 
     metadata = json.loads(launcher_record.read_text(encoding="utf-8"))
     assert metadata["project"] == "gway"
+    assert metadata["scripts"]["gway"] == "gway:cli_main"
 
     outside = tmp_path / "outside"
     outside.mkdir()
@@ -94,7 +95,13 @@ def test_gway_self_install_crosses_git_install_activation_and_runtime_boundaries
     assert "GWAY command-dispatch and composition core" in help_result.stdout
 
     command_result = subprocess.run(
-        [str(launcher), "help", "install"],
+        [
+            str(launcher),
+            "--expression",
+            "[site]",
+            "--site",
+            "MTY",
+        ],
         cwd=outside,
         env=env,
         stdout=subprocess.PIPE,
@@ -103,4 +110,4 @@ def test_gway_self_install_crosses_git_install_activation_and_runtime_boundaries
         check=False,
     )
     assert command_result.returncode == 0
-    assert "install" in command_result.stdout.lower()
+    assert command_result.stdout.strip() == "MTY"
