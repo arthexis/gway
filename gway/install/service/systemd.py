@@ -221,6 +221,17 @@ def render(service, *, system=False):
     return "\n".join(lines)
 
 
+def _add_exception_note(exc, note):
+    """Attach an exception note on Python 3.11+ and emulate it on 3.10."""
+    add_note = getattr(exc, "add_note", None)
+    if add_note is not None:
+        add_note(note)
+        return
+    notes = list(getattr(exc, "__notes__", ()))
+    notes.append(note)
+    exc.__notes__ = notes
+
+
 def _rollback_install_units(
     project,
     *,
