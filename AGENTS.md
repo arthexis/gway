@@ -1034,7 +1034,7 @@ the managed project by default. `--no-upgrade` keeps the already-installed
 commit even though GWAY may refresh the repository mirror to discover the newer
 remote state. A pinned commit becomes a stable no-op once installed.
 
-A local source must be an existing directory containing `gway.toml` with a
+A local source must be an existing directory containing `pyproject.toml` with a
 non-empty, path-safe `[project].name`. GWAY computes a stable source
 fingerprint from project paths, contents, symlink targets, and mode bits while
 ignoring incidental VCS/tool-cache internals such as `.git` and
@@ -1045,7 +1045,7 @@ managed copy beneath the selected durable `projects/` directory, validates
 that the staged project still has the expected identity and fingerprint, then
 atomically activates the staged directory.
 
-Projects may declare command activation through `[install.scripts]`. Each
+Projects declare command activation through standard `[project.scripts]`. Each
 entry maps one command name to a `module:callable` target. GWAY creates an
 executable launcher that prepends the durable managed project to `sys.path`
 and invokes that target with the same Python interpreter running the installer.
