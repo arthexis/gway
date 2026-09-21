@@ -1,4 +1,4 @@
-from gway.bundled import resolve
+from gway.bundled import resolve, run
 from gway.gateway import Gateway
 
 
@@ -34,6 +34,22 @@ def test_bundled_web_recipe_is_available_through_gateway(monkeypatch):
     assert observed["name"] == "web/expose"
     assert observed["context"]["domain"] == "arthexis.com"
     assert observed["context"]["port"] == "8888"
+
+
+def test_bundled_run_accepts_name_in_recipe_context(monkeypatch):
+    runtime = Gateway()
+    observed = {}
+
+    def fake_execute(runtime_arg, path, *, context):
+        observed.update(runtime=runtime_arg, path=path, context=context)
+        return {}, "ok"
+
+    monkeypatch.setattr("gway.bundled.execute_recipe", fake_execute)
+
+    assert run(runtime, "web/expose", name="arthexis") == "ok"
+    assert observed["runtime"] is runtime
+    assert observed["path"] == resolve("web/expose")
+    assert observed["context"]["name"] == "arthexis"
 
 
 def test_web_exposure_recipe_keeps_dns_out_of_default_flow():
