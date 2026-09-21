@@ -1,0 +1,16 @@
+# Prepare plain HTTP reverse proxy and ACME webroot.
+ingest [nginx_executable|nginx] --kind proc --sudo
+ingest [mkdir_executable|mkdir] --kind proc --sudo
+
+mkdir -p [acme_webroot|/var/www/gway-acme]
+
+render nginx-http-[name].conf
+--to [nginx_available|/etc/nginx/sites-available]/nginx-[name].conf
+--as root
+
+link [nginx_available|/etc/nginx/sites-available]/nginx-[name].conf
+--to [nginx_enabled|/etc/nginx/sites-enabled]/nginx-[name].conf
+--as root
+
+nginx -t
+nginx -s reload

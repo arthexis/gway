@@ -46,6 +46,17 @@ def ingest(gateway, source, **kwargs):
     if is_url(source):
         return ingest_url(gateway, source, **kwargs)
 
+    if kind == "proc":
+        from .proc import ingest_proc
+
+        return ingest_proc(gateway, source, **kwargs)
+
+    if kind == "python":
+        if isinstance(source, str):
+            from .python import ingest_name
+
+            return ingest_name(gateway, source, **kwargs)
+
     if kind == "django":
         from .django import ingest_orm, ingest_project, source_kind
 
@@ -59,7 +70,14 @@ def ingest(gateway, source, **kwargs):
     if isinstance(source, str):
         from .python import ingest_name
 
-        return ingest_name(gateway, source, **kwargs)
+        try:
+            return ingest_name(gateway, source, **kwargs)
+        except ModuleNotFoundError as error:
+            if error.name != source.split(".", 1)[0]:
+                raise
+            from .proc import ingest_proc
+
+            return ingest_proc(gateway, source, **kwargs)
 
     if isinstance(source, ModuleType):
         from .python import ingest_module
