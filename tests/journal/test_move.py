@@ -4,10 +4,6 @@ from gway.journal import MutationState
 from gway.snapshot import DriftError, restore_path
 
 
-def _move_entry(gateway, name="deploy"):
-    return gateway.journal.require_open(name).entries[-1]
-
-
 def _snapshot_storage(gateway, entry, snapshot, name="deploy"):
     return gateway.journal.entry_storage(name, entry.sequence) / snapshot["storage"]
 
@@ -28,7 +24,7 @@ def _restore_move(gateway, entry, name="deploy"):
     )
 
 
-def test_move_records_one_logical_entry_with_two_paths(gateway, tmp_path):
+def test_move_records_one_logical_entry_with_two_paths(gateway, tmp_path, journal_entry):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination.txt"
@@ -36,7 +32,7 @@ def test_move_records_one_logical_entry_with_two_paths(gateway, tmp_path):
     result = gateway.move(str(source), to=str(destination), rollback="deploy")
 
     assert result == destination
-    entry = _move_entry(gateway)
+    entry = journal_entry(index=-1)
     assert entry.state is MutationState.APPLIED
     assert entry.data["operation"] == "move"
     assert len(entry.data["paths"]) == 2
@@ -50,13 +46,13 @@ def test_move_records_one_logical_entry_with_two_paths(gateway, tmp_path):
     ]
 
 
-def test_move_to_absent_destination_can_restore_both_sides(gateway, tmp_path):
+def test_move_to_absent_destination_can_restore_both_sides(gateway, tmp_path, journal_entry):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination.txt"
 
     gateway.move(str(source), to=str(destination), rollback="deploy")
-    entry = _move_entry(gateway)
+    entry = journal_entry(index=-1)
 
     assert not source.exists()
     assert destination.read_text(encoding="utf-8") == "source"
@@ -67,14 +63,14 @@ def test_move_to_absent_destination_can_restore_both_sides(gateway, tmp_path):
     assert not destination.exists()
 
 
-def test_move_over_existing_file_can_restore_both_sides(gateway, tmp_path):
+def test_move_over_existing_file_can_restore_both_sides(gateway, tmp_path, journal_entry):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination.txt"
     destination.write_text("destination", encoding="utf-8")
 
     gateway.move(str(source), to=str(destination), rollback="deploy")
-    entry = _move_entry(gateway)
+    entry = journal_entry(index=-1)
 
     assert not source.exists()
     assert destination.read_text(encoding="utf-8") == "source"
@@ -85,7 +81,7 @@ def test_move_over_existing_file_can_restore_both_sides(gateway, tmp_path):
     assert destination.read_text(encoding="utf-8") == "destination"
 
 
-def test_move_into_directory_snapshots_resolved_target(gateway, tmp_path):
+def test_move_into_directory_snapshots_resolved_target(gateway, tmp_path, journal_entry):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination"
@@ -95,7 +91,7 @@ def test_move_into_directory_snapshots_resolved_target(gateway, tmp_path):
     result = gateway.move(str(source), to=str(destination), rollback="deploy")
 
     assert result == target
-    entry = _move_entry(gateway)
+    entry = journal_entry(index=-1)
     assert [snapshot["path"] for snapshot in entry.data["paths"]] == [
         str(source),
         str(target),
@@ -108,14 +104,14 @@ def test_move_into_directory_snapshots_resolved_target(gateway, tmp_path):
     assert not target.exists()
 
 
-def test_move_directory_can_restore_tree(gateway, tmp_path):
+def test_move_directory_can_restore_tree(gateway, tmp_path, journal_entry):
     source = tmp_path / "source"
     source.mkdir()
     (source / "nested.txt").write_text("nested", encoding="utf-8")
     destination = tmp_path / "destination"
 
     gateway.move(str(source), to=str(destination), rollback="deploy")
-    entry = _move_entry(gateway)
+    entry = journal_entry(index=-1)
 
     assert not source.exists()
     assert (destination / "nested.txt").read_text(encoding="utf-8") == "nested"
@@ -163,13 +159,13 @@ def test_move_without_rollback_creates_no_journal(gateway, tmp_path):
     assert gateway.journal.open_names() == ()
 
 
-def test_move_detects_destination_drift(gateway, tmp_path):
+def test_move_detects_destination_drift(gateway, tmp_path, journal_entry):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination.txt"
 
     gateway.move(str(source), to=str(destination), rollback="deploy")
-    entry = _move_entry(gateway)
+    entry = journal_entry(index=-1)
     destination.write_text("changed elsewhere", encoding="utf-8")
 
     with pytest.raises(DriftError):
@@ -178,13 +174,13 @@ def test_move_detects_destination_drift(gateway, tmp_path):
     assert destination.read_text(encoding="utf-8") == "changed elsewhere"
 
 
-def test_move_detects_source_recreation_drift(gateway, tmp_path):
+def test_move_detects_source_recreation_drift(gateway, tmp_path, journal_entry):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "destination.txt"
 
     gateway.move(str(source), to=str(destination), rollback="deploy")
-    entry = _move_entry(gateway)
+    entry = journal_entry(index=-1)
     source.write_text("new external source", encoding="utf-8")
 
     with pytest.raises(DriftError):
