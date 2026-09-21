@@ -8,7 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from gway.install import install_paths
+from gway.install import InstallRequest, InstallState, install_paths
+import gway.install.transaction as transaction
 import gway.install.service.systemd as systemd
 
 
@@ -168,3 +169,20 @@ def record_systemd_operations(monkeypatch):
 
     monkeypatch.setattr(systemd, "_run_systemctl_operation", run)
     return observed
+
+
+
+@pytest.fixture
+def installed_project(make_project, managed_paths):
+    """Return one ordinary managed wire installation and its durable state."""
+    source = make_project("wire")
+    installed = transaction.install_local(
+        InstallRequest(str(source)),
+        paths=managed_paths,
+    )
+    return SimpleNamespace(
+        source=source,
+        installed=installed,
+        destination=installed.install_path,
+        state=InstallState(managed_paths.state),
+    )
