@@ -141,13 +141,14 @@ class Renderer:
     def __init__(self, runtime):
         self.runtime = runtime
 
-    def render(self, template: Literal, to, sudo=False, **options):
+    def render(self, template: Literal, to, sudo=False, rollback=None, **options):
         """Render a sigil-aware text template to an atomic destination.
 
         Args:
             template: Template path. Sigils in its filename determine the output name.
             to: Destination file or directory.
             sudo: Execute the final write as root.
+            rollback: Optional rollback journal name to capture destination state.
             options: Supports ``--as USER`` for execution identity.
         """
         identity = execution_identity(
@@ -161,8 +162,33 @@ class Renderer:
             rendered = str(rendered)
 
         destination = _destination(self.runtime, to, resolved_template)
-        return atomic_write_text(
+
+        entry = None
+        if rollback is None:
+            self.runtime.debug("rollback-capable render executed without journal")
+        else:
+            self.runtime.debug(
+                "transaction mutation journal=%s operation=render path=%s",
+                rollback,
+                destination,
+            )
+            entry = self.runtime.journal.prepare_path(
+                rollback,
+                operation="render",
+                path=destination,
+                identity=identity,
+            )
+
+        if entry is not None:
+            self.runtime.journal.mark_mutated(rollback, entry.sequence)
+
+        result = atomic_write_text(
             destination,
             rendered,
             identity=identity,
         )
+
+        if entry is not None:
+            self.runtime.journal.mark_applied(rollback, entry.sequence)
+
+        return result

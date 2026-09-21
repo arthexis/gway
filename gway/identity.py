@@ -34,6 +34,20 @@ class ExecutionIdentity:
         """Apply this identity to one external command argv."""
         return (*self.prefix(), *(str(argument) for argument in argv))
 
+    def as_dict(self):
+        """Serialize this identity for persistent transaction metadata."""
+        return {"user": self.user}
+
+    @classmethod
+    def from_dict(cls, value):
+        """Restore a normalized execution identity from persisted metadata."""
+        value = dict(value or {})
+        unknown = set(value) - {"user"}
+        if unknown:
+            names = ", ".join(sorted(unknown))
+            raise ValueError(f"Unknown execution identity fields: {names}")
+        return cls(value.get("user"))
+
 
 def execution_identity(*, as_user=None, sudo=False, options=None):
     """Normalize --as/--sudo semantics into one execution identity."""

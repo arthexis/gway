@@ -6,6 +6,7 @@ import re
 
 from .paths import follow_path
 from .resolution import resolve_text
+from ..semantic import AmbiguousKeyError, mapping_value
 from .value import Sigil
 
 _MISSING = object()
@@ -60,7 +61,11 @@ class Resolver:
         """Return the first matching value from the configured semantic sources."""
         for _, source in self._search_order:
             try:
+                if isinstance(source, Mapping):
+                    return mapping_value(source, key)
                 return source[key]
+            except AmbiguousKeyError:
+                raise
             except (KeyError, IndexError, TypeError):
                 continue
         return fallback
@@ -89,6 +94,8 @@ class Resolver:
                         lookup=self._lookup,
                         resolve_text=resolve_text,
                     )
+                except AmbiguousKeyError:
+                    raise
                 except KeyError:
                     pass
 

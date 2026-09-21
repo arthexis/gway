@@ -48,3 +48,36 @@ def host_calls(monkeypatch):
 
     monkeypatch.setattr("gway.host.subprocess.run", fake_run)
     return calls
+
+
+@pytest.fixture
+def rollback_paths(tmp_path):
+    """Return a source file and absent destination for rollback tests."""
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    destination = tmp_path / "destination.txt"
+    return source, destination
+
+
+@pytest.fixture
+def record_rollbacks(gateway, monkeypatch):
+    """Record journal rollback calls while preserving real rollback behavior."""
+    calls = []
+    original = gateway.journal.rollback
+
+    def rollback(name):
+        calls.append(name)
+        return original(name)
+
+    monkeypatch.setattr(gateway.journal, "rollback", rollback)
+    return calls
+
+
+@pytest.fixture
+def journal_entry(gateway):
+    """Return a journal entry by name and index without duplicating lookup boilerplate."""
+
+    def lookup(name="deploy", index=0):
+        return gateway.journal.require_open(name).entries[index]
+
+    return lookup

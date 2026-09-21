@@ -3,6 +3,7 @@
 import json
 import re
 
+from ..semantic import AmbiguousKeyError
 from .paths import follow_path
 
 _PATTERN = re.compile(r"\[([^\[\]]+)\]")
@@ -76,6 +77,8 @@ def resolve_single(raw, lookup):
 
     try:
         value = lookup(key)
+    except AmbiguousKeyError:
+        raise
     except KeyError:
         value = _MISSING
 
@@ -84,6 +87,8 @@ def resolve_single(raw, lookup):
         if len(parts) > 1:
             try:
                 base = lookup(parts[0])
+            except AmbiguousKeyError:
+                raise
             except KeyError:
                 base = _MISSING
             if base is not _MISSING:
@@ -94,6 +99,8 @@ def resolve_single(raw, lookup):
                         lookup=lookup,
                         resolve_text=resolve_text,
                     )
+                except AmbiguousKeyError:
+                    raise
                 except KeyError:
                     value = _MISSING
 

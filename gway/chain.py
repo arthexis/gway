@@ -16,12 +16,25 @@ class Chain:
         self.last = None
         self.history = []
         self._active = False
+        self._execution_scope = None
 
     def __enter__(self):
         if self._active:
             raise RuntimeError("Chain is already active")
 
-        self.head = self.gateway(self.command, *self.args, **self.kwargs)
+        self._execution_scope = self.gateway.execution_scope()
+        self._execution_scope.__enter__()
+        try:
+            self.head = self.gateway(self.command, *self.args, **self.kwargs)
+        except BaseException as exception:
+            self._execution_scope.__exit__(
+                type(exception),
+                exception,
+                exception.__traceback__,
+            )
+            self._execution_scope = None
+            raise
+
         self.last = self.head
         self.history.append(self.head)
         self._active = True
@@ -29,7 +42,11 @@ class Chain:
 
     def __exit__(self, exc_type, exc, traceback):
         self._active = False
-        return False
+        scope = self._execution_scope
+        self._execution_scope = None
+        if scope is None:
+            return False
+        return scope.__exit__(exc_type, exc, traceback)
 
     def __call__(self, command, *args, **kwargs):
         if not self._active:

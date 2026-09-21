@@ -1,5 +1,6 @@
 # file: gway/gateway.py
 
+from contextlib import contextmanager
 import inspect
 import threading
 
@@ -43,10 +44,15 @@ class Gateway(Resolver):
         self.launchables = Launchables()
         self._service_presets = {}
         self._ingested = {}
+        self.execution = None
+        self.previous_execution = None
 
-        from .cache import Cache
+        from .cache import Cache, default_root
+        from .journal import JournalManager
 
         self.cache = cache if isinstance(cache, Cache) else Cache(cache)
+        self.journal = JournalManager(default_root() / "rollback")
+        self._execution_depth = 0
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
@@ -95,6 +101,8 @@ class Gateway(Resolver):
         self._renderer = Renderer(self)
         self.render = self.wrap("render", self._renderer.render)
 
+        self.commit = self.wrap("commit", self._commit_journal)
+        self.rollback = self.wrap("rollback", self._rollback_journal)
         self.clear = self.wrap("clear", self._clear_context)
         self.help = self.wrap("help", self._help)
 
@@ -114,6 +122,93 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    @property
+    def execution_depth(self):
+        """Return the current nested GWay execution depth."""
+        return self._execution_depth
+
+    @contextmanager
+    def execution_scope(self):
+        """Own one nested execution scope and finalize only at the outer boundary."""
+        outermost = self._execution_depth == 0
+        self._execution_depth += 1
+        primary = None
+        try:
+            yield outermost
+        except BaseException as exception:
+            primary = exception
+            raise
+        finally:
+            self._execution_depth -= 1
+            if outermost:
+                self._finalize_execution(primary)
+
+    def _finalize_execution(self, primary=None):
+        """Resolve open journals at the outermost execution boundary."""
+        from .journal import (
+            JournalError,
+            RollbackRecoveryError,
+            UncommittedJournalError,
+            attach_rollback_error,
+        )
+
+        open_journals = self.journal.open_names()
+        if not open_journals:
+            return None
+
+        cleanup_order = tuple(reversed(open_journals))
+
+        if primary is not None:
+            rollback_errors = []
+            for name in cleanup_order:
+                self.info(
+                    "execution failed with open rollback journal %r; "
+                    "rolling back automatically",
+                    name,
+                )
+                try:
+                    self.journal.rollback(name)
+                except JournalError as exception:
+                    rollback_errors.append(exception)
+
+            if len(rollback_errors) == 1:
+                attach_rollback_error(primary, rollback_errors[0])
+            elif rollback_errors:
+                attach_rollback_error(
+                    primary,
+                    RollbackRecoveryError(rollback_errors),
+                )
+            return None
+
+        rollback_errors = []
+        for name in cleanup_order:
+            self.info(
+                "uncommitted rollback journal %r detected at execution boundary",
+                name,
+            )
+            try:
+                self.journal.rollback(name)
+            except Exception as exception:
+                rollback_errors.append(exception)
+
+        boundary_error = UncommittedJournalError(
+            open_journals,
+            rollback_errors=rollback_errors,
+        )
+        if rollback_errors:
+            raise boundary_error from rollback_errors[0]
+        raise boundary_error
+
+    def _commit_journal(self, name):
+        """Commit one named rollback journal and discard its rollback material."""
+        self.journal.commit(name)
+        return name
+
+    def _rollback_journal(self, name):
+        """Roll back one named journal and discard it after full success."""
+        self.journal.rollback(name)
+        return name
 
     def _clear_context(self, **values):
         """Clear accumulated semantic context.
