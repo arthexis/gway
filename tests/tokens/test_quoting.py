@@ -4,14 +4,24 @@ from gway.console import process
 from gway.tokens import Token, chunk, statements, tokenize
 
 
-def test_double_quotes_group_spaces():
+def _echo(gateway, annotation=str):
+    def echo(value: annotation):
+        return value
+
+    gateway.echo = gateway.wrap("echo_value", echo)
+
+
+def _run(gateway, *tokens):
+    _, last = process([[Token("echo"), *tokens]], gw_instance=gateway)
+    return last
+
+
+def test_quotes_group_spaces_and_preserve_provenance():
     assert tokenize('echo "hello world"') == [
         Token("echo"),
         Token("hello world", "double"),
     ]
 
-
-def test_single_quotes_group_spaces_as_literal():
     tokens = tokenize("echo 'hello world'")
     assert tokens == [Token("echo"), Token("hello world", "single")]
     assert tokens[1].literal is True
@@ -25,201 +35,118 @@ def test_embedded_dash_is_ordinary_text():
 
 
 def test_single_quoted_flag_like_value_is_literal(gateway):
-    def echo(value: str):
-        return value
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-    _, last = process(
-        [[Token("echo"), Token("--special", "single")]],
-        gw_instance=gateway,
-    )
-    assert last == "--special"
+    _echo(gateway)
+    assert _run(gateway, Token("--special", "single")) == "--special"
 
 
-def test_unquoted_flag_like_positional_is_syntax(gateway):
-    def echo(value: str):
-        return value
+@pytest.mark.parametrize("quote", [None, "double"])
+def test_nonliteral_flag_like_positional_is_syntax(gateway, quote):
+    _echo(gateway)
+    token = Token("--special", quote) if quote else Token("--special")
 
-    gateway.echo = gateway.wrap("echo_value", echo)
     with pytest.raises(TypeError, match="Unknown argument"):
-        process([["echo", "--special"]], gw_instance=gateway)
+        _run(gateway, token)
 
 
-def test_double_quoted_flag_like_positional_remains_syntax(gateway):
-    def echo(value: str):
-        return value
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-    with pytest.raises(TypeError, match="Unknown argument"):
-        process(
-            [[Token("echo"), Token("--special", "double")]],
-            gw_instance=gateway,
-        )
-
-
-def test_single_quoted_dash_does_not_split_stage():
-    assert chunk([Token("echo"), Token("-", "single")]) == [
-        [Token("echo"), Token("-", "single")]
-    ]
+@pytest.mark.parametrize(
+    ("separator", "splitter"),
+    [
+        ("-", chunk),
+        (";", statements),
+    ],
+)
+@pytest.mark.parametrize("quote", ["single", "double"])
+def test_quoted_separators_do_not_split(separator, splitter, quote):
+    tokens = [Token("echo"), Token(separator, quote)]
+    assert splitter(tokens) == [tokens]
 
 
-def test_single_quoted_semicolon_does_not_split_statement():
-    assert statements([Token("echo"), Token(";", "single")]) == [
-        [Token("echo"), Token(";", "single")]
-    ]
-
-
-def test_unquoted_semicolon_splits_statements():
-    assert statements([Token("one"), Token(";"), Token("two")]) == [
+@pytest.mark.parametrize(
+    ("separator", "splitter"),
+    [
+        ("-", chunk),
+        (";", statements),
+    ],
+)
+def test_unquoted_separators_split(separator, splitter):
+    assert splitter([Token("one"), Token(separator), Token("two")]) == [
         [Token("one")],
         [Token("two")],
     ]
 
 
 def test_semicolon_is_not_a_pipeline_separator():
-    assert chunk([Token("one"), Token(";"), Token("two")]) == [
-        [Token("one"), Token(";"), Token("two")]
-    ]
-
-
-def test_unquoted_dash_splits_stage():
-    assert chunk([Token("one"), Token("-"), Token("two")]) == [
-        [Token("one")],
-        [Token("two")],
-    ]
+    tokens = [Token("one"), Token(";"), Token("two")]
+    assert chunk(tokens) == [tokens]
 
 
 def test_double_dash_ends_option_parsing(gateway):
-    def echo(value: str):
-        return value
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-    _, last = process(
-        [[Token("echo"), Token("--"), Token("--special")]],
-        gw_instance=gateway,
-    )
-    assert last == "--special"
+    _echo(gateway)
+    assert _run(gateway, Token("--"), Token("--special")) == "--special"
 
 
-def test_single_quoted_sigil_is_not_resolved(gateway):
+@pytest.mark.parametrize(
+    ("quote", "expected"),
+    [
+        ("single", "[site]"),
+        ("double", "MTY"),
+    ],
+)
+def test_quoted_sigil_semantics(gateway, quote, expected):
     gateway.context["site"] = "MTY"
+    _echo(gateway)
 
-    def echo(value: str):
-        return value
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-    _, last = process(
-        [[Token("echo"), Token("[site]", "single")]],
-        gw_instance=gateway,
-    )
-    assert last == "[site]"
+    assert _run(gateway, Token("[site]", quote)) == expected
 
 
-def test_double_quoted_sigil_can_resolve(gateway):
-    gateway.context["site"] = "MTY"
-
-    def echo(value: str):
-        return value
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-    _, last = process(
-        [[Token("echo"), Token("[site]", "double")]],
-        gw_instance=gateway,
-    )
-    assert last == "MTY"
-
-
-def test_nested_sigil_in_double_quoted_token_can_resolve(gateway):
+@pytest.mark.parametrize(
+    ("quote", "expected"),
+    [
+        ("single", "[charger [field]]"),
+        ("double", "ABC"),
+    ],
+)
+def test_nested_sigil_semantics(gateway, quote, expected):
     gateway.context["field"] = "serial"
     gateway.context["charger"] = {"serial": "ABC"}
+    _echo(gateway)
 
-    def echo(value: str):
-        return value
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-    _, last = process(
-        [[Token("echo"), Token("[charger [field]]", "double")]],
-        gw_instance=gateway,
-    )
-    assert last == "ABC"
+    assert _run(gateway, Token("[charger [field]]", quote)) == expected
 
 
-def test_nested_sigil_in_single_quoted_token_is_literal(gateway):
-    gateway.context["field"] = "serial"
-    gateway.context["charger"] = {"serial": "ABC"}
+@pytest.mark.parametrize(
+    ("quote", "expected", "expected_type"),
+    [
+        ("single", "32", str),
+        ("double", 32, int),
+    ],
+)
+def test_quoted_numeric_signature_conversion(gateway, quote, expected, expected_type):
+    _echo(gateway, int)
 
-    def echo(value: str):
-        return value
+    last = _run(gateway, Token("32", quote))
 
-    gateway.echo = gateway.wrap("echo_value", echo)
-    _, last = process(
-        [[Token("echo"), Token("[charger [field]]", "single")]],
-        gw_instance=gateway,
-    )
-    assert last == "[charger [field]]"
-
-
-def test_single_quoted_numeric_text_stays_string(gateway):
-    def echo(value: int):
-        return value
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-    _, last = process(
-        [[Token("echo"), Token("32", "single")]],
-        gw_instance=gateway,
-    )
-    assert last == "32"
-    assert isinstance(last, str)
-
-
-def test_double_quoted_numeric_text_uses_signature_conversion(gateway):
-    def echo(value: int):
-        return value
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-    _, last = process(
-        [[Token("echo"), Token("32", "double")]],
-        gw_instance=gateway,
-    )
-    assert last == 32
+    assert last == expected
+    assert isinstance(last, expected_type)
 
 
 def test_empty_single_quoted_string_is_preserved():
     assert tokenize("echo ''") == [Token("echo"), Token("", "single")]
 
 
-def test_unterminated_single_quote_fails():
-    with pytest.raises(ValueError, match="Unterminated single-quoted string"):
-        tokenize("echo 'oops")
-
-
-def test_unterminated_double_quote_fails():
-    with pytest.raises(ValueError, match="Unterminated double-quoted string"):
-        tokenize('echo "oops')
-
-
-def test_double_quoted_dash_does_not_split_stage():
-    assert chunk([Token("echo"), Token("-", "double")]) == [
-        [Token("echo"), Token("-", "double")]
-    ]
-
-
-def test_double_quoted_semicolon_does_not_split_statement():
-    assert statements([Token("echo"), Token(";", "double")]) == [
-        [Token("echo"), Token(";", "double")]
-    ]
+@pytest.mark.parametrize(
+    ("source", "quote"),
+    [
+        ("echo 'oops", "single"),
+        ('echo "oops', "double"),
+    ],
+)
+def test_unterminated_quote_fails(source, quote):
+    with pytest.raises(ValueError, match=f"Unterminated {quote}-quoted string"):
+        tokenize(source)
 
 
 @pytest.mark.parametrize("value", [";", "-"])
 def test_double_quoted_separator_reaches_operation_as_argument(gateway, value):
-    def echo(argument: str):
-        return argument
-
-    gateway.echo = gateway.wrap("echo_value", echo)
-
-    _, last = process(
-        [[Token("echo"), Token(value, "double")]],
-        gw_instance=gateway,
-    )
-
-    assert last == value
+    _echo(gateway)
+    assert _run(gateway, Token(value, "double")) == value
