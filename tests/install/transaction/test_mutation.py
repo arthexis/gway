@@ -28,7 +28,6 @@ def test_managed_tree_drift_blocks_source_upgrade_before_swap(
     managed_paths,
 ):
     source = installed_project.source
-    installed = installed_project.installed
     managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
     (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
@@ -50,7 +49,6 @@ def test_force_discards_managed_drift_and_reinstalls_clean_source(
     caplog,
 ):
     source = installed_project.source
-    installed = installed_project.installed
     managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
 
@@ -139,7 +137,6 @@ def test_no_upgrade_with_changed_source_never_uses_mutation_override(
     mutation,
 ):
     source = installed_project.source
-    installed = installed_project.installed
     managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
     (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
@@ -164,7 +161,6 @@ def test_stash_failure_leaves_managed_tree_untouched(
     monkeypatch,
 ):
     source = installed_project.source
-    installed = installed_project.installed
     managed = installed_project.destination / "module.py"
     managed.write_text("CUSTOM = True\n", encoding="utf-8")
 
