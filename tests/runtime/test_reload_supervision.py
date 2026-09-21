@@ -176,3 +176,20 @@ def test_restart_supervision_never_recovers_abandoned_session(
         )
 
     assert called == []
+
+
+
+def test_reload_transfer_carries_supervision_state(tmp_path, monkeypatch):
+    monkeypatch.setattr("gway.cache.default_root", lambda: tmp_path / "cache")
+    gateway = Gateway()
+    checkpoint = _checkpoint(gateway)
+    process = FinishedProcess(0)
+
+    from gway.reload import ReloadTransferred
+
+    transfer = ReloadTransferred(process, checkpoint, gateway.journal.root)
+
+    assert transfer.process is process
+    assert transfer.checkpoint is checkpoint
+    assert transfer.checkpoint_id == checkpoint.checkpoint_id
+    assert transfer.journal_root == gateway.journal.root
