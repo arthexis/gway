@@ -281,10 +281,7 @@ def test_post_mutation_fingerprint_failure_retains_unsealed_journal(
     assert isinstance(recovery, RollbackError)
     assert recovery.journal == "deploy"
     assert recovery.failures[0].sequence == 1
-    assert (
-        "post-mutation fingerprint is unavailable"
-        in str(recovery.failures[0].error)
-    )
+    assert "post-mutation fingerprint is unavailable" in str(recovery.failures[0].error)
 
     with pytest.raises(JournalError, match="unsealed mutations"):
         gateway.journal.commit("deploy")
