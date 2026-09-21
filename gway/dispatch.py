@@ -130,8 +130,20 @@ def _gate_value(runtime, gate, result):
         return resolved
 
     try:
+        resolution = resolve_operation(runtime, [gate], pipeline=result)
+    except LookupError:
+        use_pipeline = False
+    else:
+        try:
+            adapt_pipeline(runtime, resolution.callable, result)
+        except TypeError:
+            use_pipeline = False
+        else:
+            use_pipeline = True
+
+    if use_pipeline:
         value = dispatch_stage(runtime, [gate], pipeline=result)
-    except (LookupError, TypeError):
+    else:
         value = dispatch_stage(runtime, [gate])
 
     if not isinstance(value, bool):
