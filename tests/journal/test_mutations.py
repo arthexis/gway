@@ -42,7 +42,9 @@ def test_copy_with_rollback_restores_existing_destination(gateway, tmp_path):
     assert gateway.journal.get("deploy") is None
 
 
-def test_copy_with_rollback_removes_new_destination_on_restore(gateway, tmp_path, journal_entry):
+def test_copy_with_rollback_removes_new_destination_on_restore(
+    gateway, tmp_path, journal_entry
+):
     source = tmp_path / "source.txt"
     source.write_text("new", encoding="utf-8")
     destination = tmp_path / "target.txt"
@@ -145,7 +147,9 @@ def test_link_conflict_is_rejected_before_journal_entry(gateway, tmp_path):
     assert gateway.journal.open_names() == ()
 
 
-def test_link_with_rollback_removes_new_link_on_restore(gateway, tmp_path, journal_entry):
+def test_link_with_rollback_removes_new_link_on_restore(
+    gateway, tmp_path, journal_entry
+):
     source = tmp_path / "source.txt"
     source.write_text("source", encoding="utf-8")
     destination = tmp_path / "linked.txt"
@@ -222,7 +226,9 @@ def test_remove_with_rollback_restores_symlink(gateway, tmp_path, journal_entry)
     assert os.readlink(target) == str(source)
 
 
-def test_remove_with_rollback_restores_empty_directory(gateway, tmp_path, journal_entry):
+def test_remove_with_rollback_restores_empty_directory(
+    gateway, tmp_path, journal_entry
+):
     target = tmp_path / "empty"
     target.mkdir()
 
