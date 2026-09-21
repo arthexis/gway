@@ -712,7 +712,9 @@ def perform_reload(
                 f"{exception}"
             ) from exception
         if unchanged:
-            return None
+            from .publication import SKIP_PUBLICATION
+
+            return SKIP_PUBLICATION
 
     source_diagnostic = source.diagnostic() if source is not None else None
     target_diagnostic = target.diagnostic() if target is not None else None
