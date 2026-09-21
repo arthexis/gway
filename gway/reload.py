@@ -17,6 +17,7 @@ from .install.paths import data_root
 
 
 CHECKPOINT_VERSION = 1
+_INSTALLATION_TAG = "$gway.installation"
 
 
 class ReloadError(RuntimeError):
@@ -49,6 +50,21 @@ def _timestamp():
 
 def _json_value(value, *, path="value"):
     """Validate and normalize one portable reload value."""
+    from .install.model import Installation
+
+    if isinstance(value, Installation):
+        return {
+            _INSTALLATION_TAG: {
+                "name": value.name,
+                "source": value.source,
+                "install_path": str(value.install_path),
+                "scope": value.scope,
+                "requested_ref": value.requested_ref,
+                "resolved_revision": value.resolved_revision,
+                "fingerprint": value.fingerprint,
+                "installed_at": value.installed_at,
+            }
+        }
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, Path):
@@ -72,6 +88,29 @@ def _json_value(value, *, path="value"):
     raise TypeError(
         f"{path} contains unsupported reload value {type(value).__name__}"
     )
+
+
+def _restore_json_value(value):
+    """Restore explicitly supported typed values from checkpoint JSON."""
+    if isinstance(value, list):
+        return [_restore_json_value(item) for item in value]
+    if isinstance(value, dict):
+        if set(value) == {_INSTALLATION_TAG}:
+            from .install.model import Installation
+
+            data = dict(value[_INSTALLATION_TAG])
+            return Installation(
+                name=str(data["name"]),
+                source=str(data["source"]),
+                install_path=Path(str(data["install_path"])),
+                scope=str(data.get("scope", "user")),
+                requested_ref=data.get("requested_ref"),
+                resolved_revision=data.get("resolved_revision"),
+                fingerprint=data.get("fingerprint"),
+                installed_at=data.get("installed_at"),
+            )
+        return {key: _restore_json_value(item) for key, item in value.items()}
+    return value
 
 
 @dataclass(frozen=True)
@@ -200,12 +239,19 @@ class ReloadCheckpoint:
             source_identity=value.get("source_identity"),
             target_identity=value.get("target_identity"),
             recipe_stack=tuple(str(item) for item in value.get("recipe_stack") or ()),
-            frames=tuple(dict(item) for item in value.get("frames") or ()),
-            context=dict(value.get("context") or {}),
-            result=value.get("result"),
-            result_history=tuple(value.get("result_history") or ()),
-            result_subjects=dict(value.get("result_subjects") or {}),
-            flags=dict(value.get("flags") or {}),
+            frames=tuple(
+                dict(_restore_json_value(item))
+                for item in value.get("frames") or ()
+            ),
+            context=dict(_restore_json_value(value.get("context") or {})),
+            result=_restore_json_value(value.get("result")),
+            result_history=tuple(
+                _restore_json_value(value.get("result_history") or ())
+            ),
+            result_subjects=dict(
+                _restore_json_value(value.get("result_subjects") or {})
+            ),
+            flags=dict(_restore_json_value(value.get("flags") or {})),
             journal_session_id=value.get("journal_session_id"),
             open_journals=tuple(
                 str(item) for item in value.get("open_journals") or ()
