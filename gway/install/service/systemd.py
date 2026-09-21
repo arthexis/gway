@@ -390,7 +390,7 @@ def install_units(
             timeout=timeout,
         )
         for failure in rollback_failures:
-            exc.add_note(f"Rollback failure: {failure}")
+            _add_exception_note(exc, f"Rollback failure: {failure}")
         raise
 
 
