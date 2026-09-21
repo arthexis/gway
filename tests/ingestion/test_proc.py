@@ -20,6 +20,19 @@ def test_explicit_process_ingestion_preserves_argv(tmp_path):
     assert result.stdout.splitlines() == ["first", "--flag", "value", "--switch"]
 
 
+def test_recipe_surface_can_ingest_process(monkeypatch, tmp_path):
+    tool = tmp_path / "recipe-tool"
+    tool.write_text("#!/bin/sh\\necho recipe\\n", encoding="utf-8")
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ.get('PATH', '')}")
+    runtime = Gateway()
+
+    runtime("ingest recipe-tool --kind proc")
+    result = runtime("recipe-tool")
+
+    assert result.stdout.strip() == "recipe"
+
+
 def test_bare_name_falls_back_to_path_executable(monkeypatch, tmp_path):
     tool = tmp_path / "gway-proc-test"
     tool.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
