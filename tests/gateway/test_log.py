@@ -154,3 +154,24 @@ def test_cli_silent_suppresses_result_without_changing_log_level(
     assert status == 0
     assert stdout == ""
     assert gway_log.logger.level == logging.WARNING
+
+
+
+def test_cli_restores_existing_output_handler(run_cli, tmp_path):
+    previous = gway_log.configure_output(
+        destination=tmp_path / "previous.log",
+        level="WARNING",
+    )
+    previous_level = gway_log.logger.level
+    previous_propagate = gway_log.logger.propagate
+
+    try:
+        status, _, _ = run_cli("log", "scoped-cli")
+        assert status == 0
+        assert gway_log.logger.level == previous_level
+        assert gway_log.logger.propagate is previous_propagate
+        assert previous in gway_log.logger.handlers
+    finally:
+        gway_log._remove_output_handler()
+        gway_log.logger.setLevel(logging.WARNING)
+        gway_log.logger.propagate = True
