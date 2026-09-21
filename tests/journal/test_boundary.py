@@ -3,6 +3,7 @@ import logging
 import pytest
 
 from gway.journal import (
+    JournalError,
     RollbackError,
     RollbackRecoveryError,
     UncommittedJournalError,
@@ -550,3 +551,29 @@ def test_multi_journal_boundary_logs_follow_reverse_open_order(
         "uncommitted rollback journal 'beta' detected at execution boundary",
         "uncommitted rollback journal 'alpha' detected at execution boundary",
     ]
+
+
+def test_failed_boundary_preserves_primary_for_nonaggregate_journal_error(
+    gateway,
+    monkeypatch,
+):
+    primary = RuntimeError("forward failed")
+    gateway.journal.prepare("deploy")
+
+    def fail_rollback(name):
+        raise JournalError(f"cannot recover {name}")
+
+    monkeypatch.setattr(gateway.journal, "rollback", fail_rollback)
+
+    def fail():
+        raise primary
+
+    gateway.fail_with_journal_error = gateway.wrap("fail_with_journal_error", fail)
+
+    with pytest.raises(RuntimeError) as raised:
+        gateway(["fail_with_journal_error"])
+
+    assert raised.value is primary
+    recovery = rollback_error_for(primary)
+    assert isinstance(recovery, JournalError)
+    assert "cannot recover deploy" in str(recovery)
