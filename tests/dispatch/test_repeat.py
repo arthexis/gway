@@ -321,3 +321,28 @@ def test_repeat_operation_exception_triggers_rollback(gateway, rollback_paths):
 
     assert not destination.exists()
     assert gateway.journal.get("deploy") is None
+
+
+@pytest.mark.parametrize(
+    ("error_type", "message"),
+    [
+        (TypeError, "gate type failure"),
+        (LookupError, "gate lookup failure"),
+    ],
+)
+def test_repeat_gate_execution_errors_are_not_retried(gateway, error_type, message):
+    calls = _counter(gateway)
+    gate_calls = []
+
+    def failing_gate(value):
+        gate_calls.append(value)
+        raise error_type(message)
+
+    gateway.failing_gate = gateway.wrap("failing_gate", failing_gate)
+    gateway("probe")
+
+    with pytest.raises(error_type, match=message):
+        gateway("repeat --until failing_gate --max 2")
+
+    assert calls == [1, 2]
+    assert gate_calls == [2]
