@@ -105,6 +105,7 @@ class Gateway(Resolver):
         self.rollback = self.wrap("rollback", self._rollback_journal)
         self.clear = self.wrap("clear", self._clear_context)
         self.help = self.wrap("help", self._help)
+        self.wrap("ingest", self.ingest)
 
         from .config import bootstrap
 
