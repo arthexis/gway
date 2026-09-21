@@ -123,8 +123,10 @@ def pid_exists(pid):
     return True
 
 
-def record_matches(record):
+def record_matches(record, process=None):
     """Return whether a live process still matches one ownership record."""
+    if process is not None:
+        return process.pid == record.pid and process.poll() is None
     if not pid_exists(record.pid):
         return False
     if record.process_token is None:
