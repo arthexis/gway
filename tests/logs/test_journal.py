@@ -45,6 +45,7 @@ def test_build_command_uses_persisted_units_without_shell_interpolation():
 
     command = _build_command(
         sources,
+        backend="systemd",
         system=False,
         since="10 minutes ago",
         until="now",
@@ -215,11 +216,11 @@ def test_read_journal_uses_one_query_for_multiple_sources_same_scope(monkeypatch
     ]
 
 
-def test_read_journal_rejects_aggregate_and_non_systemd_sources():
-    with pytest.raises(ValueError, match="concrete service"):
+def test_read_journal_rejects_aggregate_and_non_journal_sources():
+    with pytest.raises(ValueError, match="concrete sources"):
         read_journal([LogSource(identity="arthexis", kind="project")])
 
-    with pytest.raises(ValueError, match="not systemd-backed"):
+    with pytest.raises(ValueError, match="not journal-readable"):
         read_journal(
             [
                 LogSource(
@@ -294,3 +295,114 @@ def test_user_unit_field_maps_back_to_logical_source():
 
     assert records[0].source == "arthexis/web"
     assert records[0].unit == "arthexis-web.service"
+
+
+def journal_source(identity):
+    return LogSource(
+        identity=identity,
+        kind="gway" if identity == "gway" else "recipe",
+        backend="journal",
+        backend_id=identity,
+    )
+
+
+def journal_entry(identifier, micros, message):
+    return json.dumps(
+        {
+            "__REALTIME_TIMESTAMP": str(micros),
+            "SYSLOG_IDENTIFIER": identifier,
+            "MESSAGE": message,
+            "PRIORITY": "6",
+        }
+    )
+
+
+def test_build_command_for_direct_journal_identifiers():
+    sources = [journal_source("gway"), journal_source("recipe/deploy")]
+
+    command = _build_command(
+        sources,
+        backend="journal",
+        since="today",
+        limit=25,
+    )
+
+    assert command == [
+        "journalctl",
+        "--output=json",
+        "--no-pager",
+        "SYSLOG_IDENTIFIER=gway",
+        "SYSLOG_IDENTIFIER=recipe/deploy",
+        "--since",
+        "today",
+        "--lines=25",
+    ]
+
+
+def test_read_journal_queries_identifiers_together(monkeypatch):
+    calls = []
+    sources = [journal_source("gway"), journal_source("recipe/deploy")]
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="\n".join(
+                [
+                    journal_entry("gway", 1_700_000_000_000_000, "core"),
+                    journal_entry(
+                        "recipe/deploy",
+                        1_700_000_001_000_000,
+                        "recipe",
+                    ),
+                ]
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr("gway.logs.journal.subprocess.run", fake_run)
+
+    records = read_journal(sources)
+
+    assert len(calls) == 1
+    assert "SYSLOG_IDENTIFIER=gway" in calls[0]
+    assert "SYSLOG_IDENTIFIER=recipe/deploy" in calls[0]
+    assert [record.source for record in records] == [
+        "gway",
+        "recipe/deploy",
+    ]
+
+
+def test_service_and_identifier_sources_use_native_query_groups(monkeypatch):
+    calls = []
+    sources = [
+        source("arthexis/web", "arthexis-web.service"),
+        journal_source("recipe/deploy"),
+    ]
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if "SYSLOG_IDENTIFIER=recipe/deploy" in command:
+            stdout = journal_entry(
+                "recipe/deploy",
+                1_700_000_001_000_000,
+                "recipe",
+            )
+        else:
+            stdout = entry(
+                "arthexis-web.service",
+                1_700_000_000_000_000,
+                "web",
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("gway.logs.journal.subprocess.run", fake_run)
+
+    records = read_journal(sources)
+
+    assert len(calls) == 2
+    assert [record.source for record in records] == [
+        "arthexis/web",
+        "recipe/deploy",
+    ]
