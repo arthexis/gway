@@ -1,6 +1,6 @@
-import builtins
 """Named reusable authorization scopes."""
 
+import builtins
 from dataclasses import dataclass
 from ..cache import default_root
 from .state import SecurityState
