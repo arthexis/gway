@@ -26,6 +26,7 @@ class Token:
     scopes: frozenset[str]
     disabled: bool
     created_at: str
+    expires_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,7 @@ class TokenRegistry:
             scopes=cls._scope_names(connection, row["id"]),
             disabled=bool(row["disabled"]),
             created_at=row["created_at"],
+            expires_at=row["expires_at"],
         )
 
     def get(self, name):
@@ -117,7 +119,7 @@ class TokenRegistry:
         with self.state.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, name, public_id, disabled, created_at
+                SELECT id, name, public_id, disabled, created_at, expires_at
                 FROM tokens
                 WHERE name = ?
                 """,
@@ -139,17 +141,37 @@ class TokenRegistry:
         with self.state.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, name, public_id, disabled, created_at
+                SELECT id, name, public_id, disabled, created_at, expires_at
                 FROM tokens
                 ORDER BY name
                 """
             ).fetchall()
             return [self._from_row(connection, row) for row in rows]
 
-    def create(self, name, *, scopes=()):
+    @staticmethod
+    def _expiry(value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            expires = value
+        else:
+            try:
+                expires = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError(
+                    "token expiry must be a timezone-aware ISO-8601 timestamp"
+                ) from exc
+        if expires.tzinfo is None or expires.utcoffset() is None:
+            raise ValueError(
+                "token expiry must be a timezone-aware ISO-8601 timestamp"
+            )
+        return expires.astimezone(timezone.utc).isoformat()
+
+    def create(self, name, *, scopes=(), expires_at=None):
         """Issue a new random bearer token and return its secret exactly once."""
         name = self._name(name)
         scope_names = self._validate_scope_names(scopes)
+        expires_at = self._expiry(expires_at)
         public_id = secrets.token_hex(8)
         secret = secrets.token_urlsafe(32)
         bearer = self._bearer(public_id, secret)
@@ -160,10 +182,10 @@ class TokenRegistry:
                 cursor = connection.execute(
                     """
                     INSERT INTO tokens (
-                        name, public_id, token_hash, created_at, disabled
-                    ) VALUES (?, ?, ?, ?, 0)
+                        name, public_id, token_hash, created_at, expires_at, disabled
+                    ) VALUES (?, ?, ?, ?, ?, 0)
                     """,
-                    (name, public_id, self._hash(bearer), created_at),
+                    (name, public_id, self._hash(bearer), created_at, expires_at),
                 )
             except Exception:
                 if connection.execute(
@@ -267,7 +289,7 @@ class TokenRegistry:
         with self.state.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, name, public_id, token_hash, disabled, created_at
+                SELECT id, name, public_id, token_hash, disabled, created_at, expires_at
                 FROM tokens
                 WHERE public_id = ?
                 """,
@@ -275,6 +297,10 @@ class TokenRegistry:
             ).fetchone()
             if row is None or bool(row["disabled"]):
                 raise AuthenticationError()
+            if row["expires_at"] is not None:
+                expires = datetime.fromisoformat(row["expires_at"])
+                if expires <= datetime.now(timezone.utc):
+                    raise AuthenticationError()
             supplied_hash = self._hash(bearer)
             if not secrets.compare_digest(row["token_hash"], supplied_hash):
                 raise AuthenticationError()
