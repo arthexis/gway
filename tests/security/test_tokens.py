@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -55,7 +56,7 @@ def test_security_state_migrates_v1_scopes_to_v2_without_data_loss(tmp_path):
     assert issued.token.scopes == frozenset({"logs"})
 
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
 
 
 def test_token_create_returns_secret_once_and_persists_only_safe_metadata(tmp_path):
@@ -227,3 +228,106 @@ def test_security_token_gway_command_surface(gateway, tmp_path, monkeypatch):
 
     assert gateway("security token delete reader") is True
     assert gateway("security token list") == []
+
+
+
+def test_security_state_migrates_v2_tokens_to_v3_with_nullable_expiry(tmp_path):
+    path = tmp_path / "security.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE scopes (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE
+            );
+            CREATE TABLE scope_operations (
+                scope_id INTEGER NOT NULL,
+                operation TEXT NOT NULL,
+                UNIQUE(scope_id, operation),
+                FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
+            );
+            CREATE TABLE scope_environment (
+                scope_id INTEGER NOT NULL,
+                variable_name TEXT NOT NULL,
+                UNIQUE(scope_id, variable_name),
+                FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
+            );
+            CREATE TABLE tokens (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                public_id TEXT NOT NULL UNIQUE,
+                token_hash TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                disabled INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE token_scopes (
+                token_id INTEGER NOT NULL,
+                scope_id INTEGER NOT NULL,
+                UNIQUE(token_id, scope_id),
+                FOREIGN KEY(token_id) REFERENCES tokens(id) ON DELETE CASCADE,
+                FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
+            );
+            PRAGMA user_version = 2;
+            """
+        )
+
+    tokens = TokenRegistry(path)
+    scopes = ScopeRegistry(path)
+    scopes.create("logs")
+    issued = tokens.create("reader", scopes={"logs"})
+
+    assert issued.token.expires_at is None
+    with sqlite3.connect(path) as connection:
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(tokens)")
+        }
+        assert "expires_at" in columns
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+
+
+def test_token_expiry_is_enforced_as_authentication_failure(tmp_path):
+    scopes, tokens = _registries(tmp_path)
+    scopes.create("logs")
+    expired = datetime.now(timezone.utc) - timedelta(seconds=1)
+    issued = tokens.create("reader", scopes={"logs"}, expires_at=expired)
+
+    assert issued.token.expires_at == expired.isoformat()
+    with pytest.raises(AuthenticationError, match="Invalid bearer token"):
+        tokens.authenticate(issued.bearer)
+
+
+def test_future_token_expiry_authenticates_and_is_safe_metadata(tmp_path):
+    scopes, tokens = _registries(tmp_path)
+    scopes.create("logs")
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    issued = tokens.create("reader", scopes={"logs"}, expires_at=expires)
+
+    authenticated = tokens.authenticate(issued.bearer)
+
+    assert authenticated.token.expires_at == expires.isoformat()
+    assert issued.bearer not in repr(authenticated.token)
+
+
+@pytest.mark.parametrize("expires", ["2026-09-22T12:00:00", "not-a-date"])
+def test_token_expiry_requires_aware_iso_timestamp(tmp_path, expires):
+    scopes, tokens = _registries(tmp_path)
+    scopes.create("logs")
+
+    with pytest.raises(ValueError, match="timezone-aware ISO-8601"):
+        tokens.create("reader", scopes={"logs"}, expires_at=expires)
+
+
+def test_security_token_create_accepts_expiry_flag(gateway, tmp_path, monkeypatch):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.create("logs")
+    monkeypatch.setattr(scope_commands, "_registry", scopes)
+    monkeypatch.setattr(token_commands, "_registry", tokens)
+    expires = "2099-01-01T00:00:00+00:00"
+
+    bearer = gateway(f"security token create reader logs --expires {expires}")
+
+    assert bearer.startswith("gwt_")
+    assert gateway("security token show reader").expires_at == expires
