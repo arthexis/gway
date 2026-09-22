@@ -14,18 +14,27 @@ _RAISE = object()
 
 
 class Environment(Mapping):
-    """Case-normalized view of an environment mapping for semantic lookup."""
+    """Environment view whose reads may be mediated by the owning runtime."""
 
-    def __init__(self, environ=None):
+    def __init__(self, environ=None, *, reader=None, names=None):
         self._environ = os.environ if environ is None else environ
+        self._reader = reader
+        self._names = names
 
     def __getitem__(self, key):
-        return self._environ[str(key).upper()]
+        name = str(key).upper()
+        if self._reader is not None:
+            return self._reader(name)
+        return self._environ[name]
 
     def __iter__(self):
+        if self._names is not None:
+            return iter(tuple(self._names()))
         return iter(self._environ)
 
     def __len__(self):
+        if self._names is not None:
+            return len(tuple(self._names()))
         return len(self._environ)
 
 
