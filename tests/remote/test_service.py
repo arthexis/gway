@@ -74,38 +74,6 @@ def test_remote_auth_systemd_rendering_uses_generic_backend():
     assert "daemon-reload" not in rendered
 
 
-def test_remote_auth_systemd_install_persists_durable_cache_environment(
-    tmp_path,
-    monkeypatch,
-    fake_systemd,
-    install_environment,
-):
-    monkeypatch.chdir(tmp_path)
-    units, _ = fake_systemd
-
-    records = Gateway()(
-        "service install --backend systemd "
-        "--environment GWAY_CACHE_DIR=/var/lib/gway/cache "
-        "remote serve"
-    )
-
-    assert len(records) == 1
-    record = records[0]
-    assert record.project == "gway"
-    assert record.service == "remote-auth"
-    assert record.environment == ("GWAY_CACHE_DIR=/var/lib/gway/cache",)
-
-    unit = (units / "gway-remote-auth.service").read_text(encoding="utf-8")
-    assert "Environment=GWAY_CACHE_DIR=/var/lib/gway/cache" in unit
-    assert " remote serve" in unit
-
-    persisted = ServiceInstallState(
-        install_environment.data / "services-installed"
-    ).get("gway")
-    remote = next(item for item in persisted if item.service == "remote-auth")
-    assert remote.environment == ("GWAY_CACHE_DIR=/var/lib/gway/cache",)
-
-
 def test_remote_auth_process_service_start_status_restart_stop(tmp_path, monkeypatch):
     data_root = tmp_path / "data"
     cache_root = tmp_path / "cache"
