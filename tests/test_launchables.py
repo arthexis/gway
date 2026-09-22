@@ -1,5 +1,6 @@
 import sys
 
+from gway import log as gway_log
 from gway.gateway import Gateway
 from gway.launchable import Launchable
 from gway.recipe import execute_recipe
@@ -72,3 +73,15 @@ def test_process_backend_executes_service_launchable_command(tmp_path):
         "demo",
         "worker",
     ]
+
+
+def test_recipe_execution_scopes_log_identity(tmp_path):
+    recipe = tmp_path / "deploy.rx"
+    recipe.write_text("capture\n", encoding="utf-8")
+    runtime = Gateway()
+    runtime.wrap("capture", gway_log.current_source)
+
+    _, output = execute_recipe(runtime, recipe)
+
+    assert output == "recipe/deploy"
+    assert gway_log.current_source() == "gway"
