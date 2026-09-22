@@ -22,9 +22,12 @@ def test_collect_requirements_accepts_explicit_python_flag():
 
 
 def test_collect_requirements_across_recipe_deduplicates_packages():
-    assert _requirements(
-        "require fastmcp; require fastmcp cryptography --python"
-    ) == {
+    statement_list = [
+        *statements(tokenize("require fastmcp")),
+        *statements(tokenize("require fastmcp cryptography --python")),
+    ]
+
+    assert collect_recipe_requirements(statement_list) == {
         "python": ["fastmcp", "cryptography"]
     }
 
