@@ -3,6 +3,7 @@ import pytest
 import gway.install.service.systemd as systemd
 from gway import Gateway
 from gway.install.service import ServiceInstallState
+from gway.sampler import root as sampler_root
 
 
 def test_service_install_systemd_materializes_unit(
@@ -740,3 +741,24 @@ def test_exception_note_fallback_supports_python_310_shape():
     systemd._add_exception_note(error, "Rollback failure: cleanup timed out")
 
     assert error.__notes__ == ["Rollback failure: cleanup timed out"]
+
+
+
+def test_mcp_service_systemd_rendering_uses_generic_service_backend():
+    runtime = Gateway()
+    recipe = sampler_root() / "mcp" / "server.rx"
+    definition = runtime._service_controller._definition(
+        (str(recipe),),
+        name="mcp-server",
+        restart="no",
+    )
+
+    rendered = systemd.render(definition)
+
+    assert "Description=gway/mcp-server" in rendered
+    assert "Type=simple" in rendered
+    assert str(recipe.resolve()) in rendered
+    assert "ExecStart=" in rendered
+    assert "systemctl" not in rendered
+    assert "daemon-reload" not in rendered
+    assert "Restart=no" in rendered

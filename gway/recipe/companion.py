@@ -9,6 +9,7 @@ import subprocess
 import threading
 
 from ..ingestion.base import IngestedOperation, register_operation
+from ..security.tokens import TokenRegistry
 
 
 _HEADER = struct.Struct("!Q")
@@ -66,6 +67,64 @@ def write_message(value):
     sys.__stdout__.buffer.flush()
 
 
+_child_request_id = 0
+
+
+def request_parent(method, **params):
+    global _child_request_id
+    _child_request_id += 1
+    request_id = f"child:{_child_request_id}"
+    write_message(
+        {
+            "type": "request",
+            "id": request_id,
+            "method": method,
+            "params": params,
+        }
+    )
+    while True:
+        message = read_message()
+        if message.get("type") != "response":
+            raise RuntimeError(
+                f"Unexpected message while awaiting parent response: {message!r}"
+            )
+        if message.get("id") != request_id:
+            raise RuntimeError(
+                f"Unexpected RPC response id {message.get('id')!r}; "
+                f"expected {request_id!r}"
+            )
+        if not message.get("ok"):
+            detail = message.get("traceback") or message.get("error")
+            raise RuntimeError(f"Parent Gateway request failed:\n{detail}")
+        return message.get("result")
+
+
+class ParentGateway:
+    def list_operations(self):
+        return request_parent("gateway.list")
+
+    def describe_operation(self, name):
+        return request_parent("gateway.describe", name=name)
+
+    def call_operation(self, name, *args, **kwargs):
+        return request_parent(
+            "gateway.call",
+            name=name,
+            args=tuple(args),
+            kwargs=dict(kwargs),
+        )
+
+    def execute(self, command):
+        return request_parent("gateway.execute", command=command)
+
+    def execute_authenticated(self, bearer, command):
+        return request_parent(
+            "gateway.execute_authenticated",
+            bearer=bearer,
+            command=command,
+        )
+
+
 def safe_default(value):
     if value is inspect.Parameter.empty:
         return ("empty", None)
@@ -112,6 +171,7 @@ spec = importlib.util.spec_from_file_location(module_name, path)
 if spec is None or spec.loader is None:
     raise ImportError(f"Unable to load recipe companion: {path}")
 module = importlib.util.module_from_spec(spec)
+module.__dict__["_gway_parent"] = ParentGateway()
 sys.modules[module_name] = module
 
 # Reserve stdout for the binary protocol. Normal companion prints are visible on stderr.
@@ -136,17 +196,43 @@ while True:
     except EOFError:
         break
 
-    if request.get("op") == "close":
-        write_message({"ok": True, "result": None})
+    request_id = request.get("id")
+    method = request.get("method")
+    params = request.get("params", {})
+
+    if request.get("type") != "request" or request_id is None:
+        write_message(
+            {
+                "type": "response",
+                "id": request_id,
+                "ok": False,
+                "error": f"Invalid RPC request: {request!r}",
+            }
+        )
+        continue
+
+    if method == "companion.close":
+        write_message(
+            {"type": "response", "id": request_id, "ok": True, "result": None}
+        )
         break
 
-    name = request["name"]
     try:
-        result = getattr(module, name)(*request.get("args", ()), **request.get("kwargs", {}))
-        write_message({"ok": True, "result": result})
+        if method != "companion.call":
+            raise LookupError(f"Unknown companion RPC method: {method}")
+        name = params["name"]
+        result = getattr(module, name)(
+            *params.get("args", ()),
+            **params.get("kwargs", {}),
+        )
+        write_message(
+            {"type": "response", "id": request_id, "ok": True, "result": result}
+        )
     except BaseException as exception:
         write_message(
             {
+                "type": "response",
+                "id": request_id,
                 "ok": False,
                 "error": f"{type(exception).__name__}: {exception}",
                 "traceback": traceback.format_exc(),
@@ -196,6 +282,7 @@ class CompanionWorker:
     process: subprocess.Popen
     operations: tuple[dict, ...]
     _lock: threading.Lock
+    _next_request_id: int = 0
 
     @classmethod
     def start(cls, recipe, companion, python):
@@ -226,21 +313,46 @@ class CompanionWorker:
             _lock=threading.Lock(),
         )
 
-    def call(self, name, args, kwargs):
+    def _request(self, runtime, method, params=None):
         if self.process.poll() is not None:
             raise RuntimeError(f"Recipe companion worker exited: {self.companion}")
         assert self.process.stdin is not None
         assert self.process.stdout is not None
-        with self._lock:
-            _write_message(
-                self.process.stdin,
-                {"op": "call", "name": name, "args": tuple(args), "kwargs": dict(kwargs)},
-            )
+        self._next_request_id += 1
+        request_id = f"parent:{self._next_request_id}"
+        _write_message(
+            self.process.stdin,
+            {
+                "type": "request",
+                "id": request_id,
+                "method": method,
+                "params": {} if params is None else dict(params),
+            },
+        )
+        while True:
             response = _read_message(self.process.stdout)
-        if not response.get("ok"):
-            detail = response.get("traceback") or response.get("error")
-            raise RuntimeError(f"Recipe companion operation failed:\n{detail}")
-        return response.get("result")
+            if response.get("type") == "request":
+                _service_parent_request(runtime, self.process.stdin, response)
+                continue
+            if response.get("type") != "response":
+                raise RuntimeError(f"Invalid companion RPC message: {response!r}")
+            if response.get("id") != request_id:
+                raise RuntimeError(
+                    f"Unexpected companion RPC response id {response.get('id')!r}; "
+                    f"expected {request_id!r}"
+                )
+            if not response.get("ok"):
+                detail = response.get("traceback") or response.get("error")
+                raise RuntimeError(f"Recipe companion operation failed:\n{detail}")
+            return response.get("result")
+
+    def call(self, runtime, name, args, kwargs):
+        with self._lock:
+            return self._request(
+                runtime,
+                "companion.call",
+                {"name": name, "args": tuple(args), "kwargs": dict(kwargs)},
+            )
 
     def close(self):
         if self.process.poll() is not None:
@@ -249,8 +361,26 @@ class CompanionWorker:
             assert self.process.stdin is not None
             assert self.process.stdout is not None
             with self._lock:
-                _write_message(self.process.stdin, {"op": "close"})
-                _read_message(self.process.stdout)
+                self._next_request_id += 1
+                request_id = f"parent:{self._next_request_id}"
+                _write_message(
+                    self.process.stdin,
+                    {
+                        "type": "request",
+                        "id": request_id,
+                        "method": "companion.close",
+                        "params": {},
+                    },
+                )
+                response = _read_message(self.process.stdout)
+                if (
+                    response.get("type") != "response"
+                    or response.get("id") != request_id
+                    or not response.get("ok")
+                ):
+                    raise RuntimeError(
+                        f"Invalid companion close response: {response!r}"
+                    )
         except (BrokenPipeError, EOFError, OSError):
             pass
         finally:
@@ -259,6 +389,97 @@ class CompanionWorker:
             except subprocess.TimeoutExpired:
                 self.process.terminate()
                 self.process.wait(timeout=2)
+
+
+def _parent_operation_names(runtime):
+    records = runtime.ops._registry.records
+    return tuple(sorted(records))
+
+
+def _describe_parent_operation(runtime, name):
+    records = runtime.ops._registry.records
+    record = records.get(name)
+    if record is None:
+        raise LookupError(f"Unknown canonical GWAY operation: {name}")
+    signature = inspect.signature(record.callable)
+    parameters = []
+    for parameter in signature.parameters.values():
+        if parameter.default is inspect.Parameter.empty:
+            default_kind = "empty"
+            default = None
+        else:
+            try:
+                pickle.dumps(parameter.default, protocol=pickle.HIGHEST_PROTOCOL)
+            except Exception:
+                default_kind = "repr"
+                default = repr(parameter.default)
+            else:
+                default_kind = "value"
+                default = parameter.default
+        parameters.append(
+            {
+                "name": parameter.name,
+                "kind": parameter.kind.name,
+                "default_kind": default_kind,
+                "default": default,
+            }
+        )
+    return {
+        "name": record.name,
+        "operation": record.op,
+        "subject": record.sub,
+        "parameters": parameters,
+        "doc": inspect.getdoc(record.callable),
+    }
+
+
+def _service_parent_request(runtime, stream, request):
+    request_id = request.get("id")
+    method = request.get("method")
+    params = request.get("params", {})
+    try:
+        if request_id is None:
+            raise ValueError("Parent RPC request requires an id")
+        if method == "gateway.list":
+            result = _parent_operation_names(runtime)
+        elif method == "gateway.describe":
+            result = _describe_parent_operation(runtime, params["name"])
+        elif method == "gateway.call":
+            result = runtime(
+                params["name"],
+                *tuple(params.get("args", ())),
+                **dict(params.get("kwargs", {})),
+            )
+        elif method == "gateway.execute":
+            with runtime.external_authority():
+                result = runtime(params["command"])
+        elif method == "gateway.execute_authenticated":
+            identity = TokenRegistry().authenticate(params["bearer"])
+            with runtime.authorized(
+                operations=identity.authority.operations,
+                environment=identity.authority.environment,
+            ):
+                with runtime.external_authority():
+                    result = runtime(params["command"])
+        else:
+            raise LookupError(f"Unknown parent Gateway RPC method: {method}")
+        response = {
+            "type": "response",
+            "id": request_id,
+            "ok": True,
+            "result": result,
+        }
+    except BaseException as exception:
+        import traceback
+
+        response = {
+            "type": "response",
+            "id": request_id,
+            "ok": False,
+            "error": f"{type(exception).__name__}: {exception}",
+            "traceback": traceback.format_exc(),
+        }
+    _write_message(stream, response)
 
 
 def _active_worker(runtime, recipe):
@@ -271,7 +492,7 @@ def _active_worker(runtime, recipe):
 
 def _proxy(runtime, recipe, name, signature):
     def invoke(*args, **kwargs):
-        return _active_worker(runtime, recipe).call(name, args, kwargs)
+        return _active_worker(runtime, recipe).call(runtime, name, args, kwargs)
 
     invoke.__name__ = name
     invoke.__doc__ = f"Invoke {name!r} in the managed recipe environment."

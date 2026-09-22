@@ -141,3 +141,63 @@ def test_managed_companion_runs_in_separate_process(
     )
 
     assert gateway(recipe) != os.getpid()
+
+
+def test_managed_companion_can_list_describe_and_call_parent_gateway(
+    gateway, recipe_factory, required_runtime
+):
+    def add(a, b):
+        """Add two values in the authoritative parent Gateway."""
+        return a + b
+
+    gateway.wrap("add", add)
+    recipe = recipe_factory(
+        body="require placeholder\ndemo probe\n",
+        companion=(
+            "def probe():\n"
+            "    operations = _gway_parent.list_operations()\n"
+            "    description = _gway_parent.describe_operation('add')\n"
+            "    result = _gway_parent.call_operation('add', 2, 3)\n"
+            "    return {\n"
+            "        'listed': 'add' in operations,\n"
+            "        'name': description['name'],\n"
+            "        'parameters': [p['name'] for p in description['parameters']],\n"
+            "        'result': result,\n"
+            "    }\n"
+        ),
+    )
+
+    assert gateway(recipe) == {
+        "listed": True,
+        "name": "add",
+        "parameters": ["a", "b"],
+        "result": 5,
+    }
+
+
+def test_parent_gateway_rpc_error_does_not_desynchronize_companion(
+    gateway, recipe_factory, required_runtime
+):
+    def add(a, b):
+        return a + b
+
+    def explode():
+        raise ValueError("boom")
+
+    gateway.wrap("add", add)
+    gateway.wrap("explode", explode)
+    recipe = recipe_factory(
+        body="require placeholder\ndemo recover\n",
+        companion=(
+            "def recover():\n"
+            "    try:\n"
+            "        _gway_parent.call_operation('explode')\n"
+            "    except RuntimeError as exception:\n"
+            "        failed = 'ValueError: boom' in str(exception)\n"
+            "    else:\n"
+            "        failed = False\n"
+            "    return failed, _gway_parent.call_operation('add', 2, 3)\n"
+        ),
+    )
+
+    assert gateway(recipe) == (True, 5)

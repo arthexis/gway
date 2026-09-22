@@ -1,6 +1,7 @@
 # file: gway/gateway.py
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 import inspect
 import threading
 
@@ -58,6 +59,14 @@ class Gateway(Resolver):
         self.journal = JournalManager(default_root() / "rollback")
         self._execution_depth = 0
         self._execution_suspension = None
+        self._authorization_stack_var = ContextVar(
+            f"gway_authorization_stack_{id(self)}",
+            default=(),
+        )
+        self._capability_depth_var = ContextVar(
+            f"gway_capability_depth_{id(self)}",
+            default=0,
+        )
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
@@ -85,7 +94,13 @@ class Gateway(Resolver):
             [
                 ("results", self.results),
                 ("context", self.context),
-                ("env", Environment()),
+                (
+                    "env",
+                    Environment(
+                        reader=self._environment_value,
+                        names=self._environment_names,
+                    ),
+                ),
             ]
         )
 
@@ -417,6 +432,154 @@ class Gateway(Resolver):
         """Advance the current iterator result."""
         return self.next()
 
+    @property
+    def _authorization_stack(self):
+        """Return the execution-local external authorization stack."""
+        return self._authorization_stack_var.get()
+
+    @property
+    def authorization(self):
+        """Return the active external authorization context, if any."""
+        stack = self._authorization_stack
+        return stack[-1] if stack else None
+
+    @contextmanager
+    def authorized(self, *, operations=(), environment=None, context=None):
+        """Constrain one external request and isolate its semantic state."""
+        from .authorization import Authorization
+
+        authority = Authorization.create(
+            operations=operations,
+            environment=environment,
+        )
+        stack = self._authorization_stack
+        outermost = not stack
+        previous_context = None
+        previous_results = None
+        previous_history = None
+        if outermost:
+            previous_context = dict(self.context)
+            previous_results = dict(self.results.maps[0])
+            previous_history = list(self.results.history)
+            self.context.clear()
+            self.results.clear()
+            self.context["verbose"] = self.verbose
+            self.context["silent"] = self.silent
+            if context:
+                self.context.update(context)
+
+        token = self._authorization_stack_var.set((*stack, authority))
+        try:
+            yield authority
+        finally:
+            self._authorization_stack_var.reset(token)
+            if outermost:
+                self.context.clear()
+                self.context.update(previous_context)
+                self.results.clear()
+                self.results.maps[0].update(previous_results)
+                self.results.history.extend(previous_history)
+
+    @property
+    def _capability_depth(self):
+        """Return the execution-local trusted-capability nesting depth."""
+        return self._capability_depth_var.get()
+
+    @contextmanager
+    def trusted_capability(self):
+        """Temporarily execute trusted implementation details under recipe authority."""
+        token = self._capability_depth_var.set(self._capability_depth + 1)
+        try:
+            yield
+        finally:
+            self._capability_depth_var.reset(token)
+
+    @contextmanager
+    def external_authority(self):
+        """Re-enter the active caller authority from trusted implementation code."""
+        from .authorization import AuthorizationError
+
+        if self.authorization is None:
+            raise AuthorizationError(
+                "External Gateway execution requires an authorization context"
+            )
+        token = self._capability_depth_var.set(0)
+        try:
+            yield self.authorization
+        finally:
+            self._capability_depth_var.reset(token)
+
+    def authorize_operation(self, operation, args=(), kwargs=None):
+        """Authorize one canonical operation immediately before invocation."""
+        authority = self.authorization
+        if authority is None or self._capability_depth:
+            return
+        authority.authorize_operation(operation)
+        if operation == "env":
+            kwargs = {} if kwargs is None else kwargs
+            name = args[0] if args else kwargs.get("name")
+            if name is not None:
+                authority.authorize_environment(str(name))
+
+    def authorize_recipe_path(self, path):
+        """Reject direct recipe-path execution under external constrained authority."""
+        if self.authorization is None or self._capability_depth:
+            return
+        from .authorization import AuthorizationError
+
+        raise AuthorizationError(
+            "Direct recipe paths are not authorized; invoke an authorized recipe operation"
+        )
+
+    @contextmanager
+    def invocation_authority(self, operation):
+        """Encapsulate internals of an already-authorized trusted recipe operation."""
+        if (
+            self.authorization is not None
+            and not self._capability_depth
+            and getattr(operation, "__gway_source_kind__", None) == "recipe"
+        ):
+            with self.trusted_capability():
+                yield
+            return
+        yield
+
+    def filter_operation_result(self, operation, result):
+        """Filter sensitive operation results under constrained execution."""
+        authority = self.authorization
+        if authority is None or self._capability_depth:
+            return result
+        if operation == "envs":
+            return authority.filter_environment(result)
+        return result
+
+    def _environment_value(self, name):
+        """Resolve one environment value through the authorized env built-in."""
+        name = str(name)
+        self.authorize_operation("env", args=(name, None))
+        operation = self.ops.resolve("env")
+        if operation is None:
+            raise KeyError(name)
+        builtin = getattr(operation, "__wrapped__", operation)
+        value = builtin(name, None)
+        if value is None:
+            raise KeyError(name)
+        return value
+
+    def _environment_names(self):
+        """Return only environment names visible to the active authority."""
+        import os
+
+        authority = self.authorization
+        if authority is None or self._capability_depth:
+            return tuple(os.environ)
+        allowed = authority.environment
+        if allowed is None:
+            return ()
+        if "__all__" in allowed:
+            return tuple(os.environ)
+        return tuple(name for name in allowed if name in os.environ)
+
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command through the unified dispatcher."""
         from .dispatch import dispatch
@@ -464,6 +627,7 @@ class Gateway(Resolver):
                 args=call.args,
                 kwargs=call.kwargs,
             )
+            result = self.filter_operation_result(func_name, result)
             return publish(self, subject, result)
 
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)

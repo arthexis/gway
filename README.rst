@@ -93,6 +93,7 @@ Documentation
 - ``docs/RECIPES.md`` — complete recipe language and execution semantics.
 - ``docs/PLATFORM.md`` — GWAY's platform/application ownership boundary.
 - ``docs/LOGGING.md`` — unified logging sources, queries, and backend policy.
+- ``docs/MCP.md`` — MCP transport, authorization, token/scope, and deployment model.
 - ``docs/README.md`` — documentation index.
 - ``AGENTS.md`` — maintainer and automation guidance.
 

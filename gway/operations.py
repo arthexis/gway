@@ -170,6 +170,13 @@ class Operations(Mapping):
     def resolve_pair(self, op, sub, default=None):
         return self._registry.resolve_pair(op, sub, default)
 
+    def canonical_name(self, operation, default=None):
+        """Return the canonical registry identity for one operation callable."""
+        for name, record in self._registry.records.items():
+            if record.callable is operation:
+                return name
+        return default
+
     def __getitem__(self, op):
         items = {
             record.sub: record.callable
