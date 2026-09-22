@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from gway import Gateway
@@ -199,3 +201,74 @@ def test_mcp_recipe_installs_through_generic_process_backend(tmp_path, monkeypat
 
     persisted = ServiceInstallState(data_root / "services-installed").get("gway")
     assert persisted == records
+
+
+
+def test_installed_mcp_process_service_lifecycle(tmp_path, monkeypatch):
+    gateway = Gateway()
+    recipe = sampler_root() / "mcp" / "server.rx"
+    data_root = tmp_path / "gway-data"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data_root))
+
+    gateway._service_controller.install(
+        str(recipe),
+        backend="process",
+        name="mcp-server",
+        restart="no",
+    )
+
+    started = gateway._service_controller.start(
+        str(recipe),
+        name="mcp-server",
+    )
+    first_pid = started["pid"]
+
+    try:
+        assert started["project"] == "gway"
+        assert started["service"] == "mcp-server"
+        assert started["running"] is True
+        assert first_pid is not None
+
+        deadline = time.monotonic() + 5
+        status = gateway._service_controller.status(
+            str(recipe),
+            name="mcp-server",
+        )
+        while time.monotonic() < deadline and not status["running"]:
+            time.sleep(0.05)
+            status = gateway._service_controller.status(
+                str(recipe),
+                name="mcp-server",
+            )
+
+        assert status["running"] is True
+        assert status["pid"] == first_pid
+
+        restarted = gateway._service_controller.restart(
+            str(recipe),
+            name="mcp-server",
+        )
+        assert restarted["running"] is True
+        assert restarted["pid"] is not None
+        assert restarted["pid"] != first_pid
+
+        restarted_status = gateway._service_controller.status(
+            str(recipe),
+            name="mcp-server",
+        )
+        assert restarted_status["running"] is True
+        assert restarted_status["pid"] == restarted["pid"]
+    finally:
+        stopped = gateway._service_controller.stop(
+            str(recipe),
+            name="mcp-server",
+        )
+
+    assert stopped == {
+        "project": "gway",
+        "service": "mcp-server",
+        "running": False,
+        "pid": None,
+        "started_at": None,
+        "stale": False,
+    }
