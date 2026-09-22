@@ -1,6 +1,9 @@
 import asyncio
 import json
+import os
+from pathlib import Path
 import socket
+import subprocess
 import time
 
 import pytest
@@ -381,3 +384,94 @@ def test_mcp_sampler_contains_no_service_manager_lifecycle_logic():
     )
     for marker in forbidden:
         assert marker not in text
+
+
+
+def test_required_service_companion_repairs_missing_dependency(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "gway-data"
+    cache_root = tmp_path / "gway-cache"
+    bin_root = tmp_path / "bin"
+    bin_root.mkdir()
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data_root))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(cache_root))
+    monkeypatch.setenv("PATH", f"{bin_root}:{os.environ['PATH']}")
+
+    fake_uv = bin_root / "uv"
+    fake_uv.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        "import subprocess\n"
+        "import sys\n"
+        "\n"
+        "args = sys.argv[1:]\n"
+        "if args[0] == 'venv':\n"
+        "    subprocess.check_call([sys.executable, '-m', 'venv', args[1]])\n"
+        "elif args[:2] == ['pip', 'sync']:\n"
+        "    python = Path(args[args.index('--python') + 1])\n"
+        "    site_packages = subprocess.check_output(\n"
+        "        [str(python), '-c', "
+        "\"import site; print(site.getsitepackages()[0])\"],\n"
+        "        text=True,\n"
+        "    ).strip()\n"
+        "    Path(site_packages, 'service_only_dependency.py').write_text(\n"
+        "        \"VALUE = 'required'\\n\", encoding='utf-8'\n"
+        "    )\n"
+        "else:\n"
+        "    raise SystemExit(f'unexpected fake uv invocation: {args!r}')\n",
+        encoding="utf-8",
+    )
+    fake_uv.chmod(0o755)
+
+    marker = tmp_path / "imports.txt"
+    recipe = tmp_path / "required-service.rx"
+    recipe.write_text(
+        "require service_only_dependency\n"
+        "required-service record\n",
+        encoding="utf-8",
+    )
+    recipe.with_suffix(".py").write_text(
+        "from pathlib import Path\n"
+        "import service_only_dependency\n"
+        f"_marker = Path({str(marker)!r})\n"
+        "def record():\n"
+        "    previous = _marker.read_text() if _marker.exists() else ''\n"
+        "    _marker.write_text(previous + service_only_dependency.VALUE)\n",
+        encoding="utf-8",
+    )
+
+    gateway = Gateway()
+    gateway._service_controller.install(
+        str(recipe),
+        backend="process",
+        name="required-service",
+        restart="no",
+    )
+
+    def run_once(expected):
+        gateway._service_controller.start(str(recipe), name="required-service")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if marker.exists() and marker.read_text(encoding="utf-8") == expected:
+                break
+            time.sleep(0.05)
+        assert marker.read_text(encoding="utf-8") == expected
+        gateway._service_controller.stop(str(recipe), name="required-service")
+
+    run_once("required")
+
+    from gway.recipe.environment import environment_python, recipe_environment
+
+    environment = recipe_environment(gateway, recipe)
+    python = environment_python(environment)
+    site_packages = Path(
+        subprocess.check_output(
+            [str(python), "-c", "import site; print(site.getsitepackages()[0])"],
+            text=True,
+        ).strip()
+    )
+    (site_packages / "service_only_dependency.py").unlink()
+
+    run_once("requiredrequired")
