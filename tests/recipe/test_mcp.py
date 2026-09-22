@@ -199,12 +199,7 @@ def _authenticated_parent_recipe(recipe_factory, root, bearer, command):
 def test_parent_authenticated_execution_uses_token_scope(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
-    path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(path)
-    tokens = TokenRegistry(path)
-    scopes.replace("reader", operations={"allowed"})
-    issued = tokens.create("client", scopes={"reader"})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    _, _, issued = _issued_token(tmp_path, monkeypatch)
 
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     recipe = _authenticated_parent_recipe(
@@ -264,13 +259,8 @@ def test_parent_authenticated_execution_rejects_invalid_bearer_uniformly(
 def test_parent_authenticated_execution_rejects_disabled_token(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
-    path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(path)
-    tokens = TokenRegistry(path)
-    scopes.replace("reader", operations={"allowed"})
-    issued = tokens.create("client", scopes={"reader"})
+    _, tokens, issued = _issued_token(tmp_path, monkeypatch)
     tokens.disable("client")
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
 
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     recipe = _authenticated_parent_recipe(
@@ -385,12 +375,11 @@ def _mcp_http_recipe(recipe_factory, root):
 def test_mcp_http_real_client_uses_bearer_scope(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
-    path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(path)
-    tokens = TokenRegistry(path)
-    scopes.replace("reader", operations={"allowed"})
-    issued = tokens.create("http-client", scopes={"reader"})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    _, _, issued = _issued_token(
+        tmp_path,
+        monkeypatch,
+        token="http-client",
+    )
 
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttp")
@@ -475,13 +464,12 @@ def test_mcp_http_rejects_missing_and_invalid_bearer(
 def test_mcp_http_rejects_disabled_bearer(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
-    path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(path)
-    tokens = TokenRegistry(path)
-    scopes.replace("reader", operations={"allowed"})
-    issued = tokens.create("http-client", scopes={"reader"})
+    _, tokens, issued = _issued_token(
+        tmp_path,
+        monkeypatch,
+        token="http-client",
+    )
     tokens.disable("http-client")
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
 
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpdisabled")
@@ -728,6 +716,16 @@ def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
 
 
 
+def _maintained_companion_with_http_stub():
+    companion = (sampler_root() / "mcp" / "server.py").read_text(
+        encoding="utf-8"
+    )
+    return companion + (
+        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp'):\n"
+        "    return {'host': host, 'port': int(port), 'path': path}\n"
+    )
+
+
 def test_maintained_mcp_recipe_serves_http_with_safe_defaults(
     gateway, recipe_factory, required_runtime, tmp_path
 ):
@@ -736,13 +734,7 @@ def test_maintained_mcp_recipe_serves_http_with_safe_defaults(
     maintained_rx = (sampler_root() / "mcp" / "server.rx").read_text(
         encoding="utf-8"
     )
-    maintained_py = (sampler_root() / "mcp" / "server.py").read_text(
-        encoding="utf-8"
-    )
-    maintained_py += (
-        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp'):\n"
-        "    return {'host': host, 'port': int(port), 'path': path}\n"
-    )
+    maintained_py = _maintained_companion_with_http_stub()
     recipe = recipe_factory(
         name="server",
         root=root,
