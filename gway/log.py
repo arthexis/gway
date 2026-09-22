@@ -101,7 +101,7 @@ def _journal_address():
 
 def default_output_destination():
     """Return GWAY's default diagnostic destination for this host."""
-    return "journal" if _journal_address() is not None else "stderr"
+    return "journal" if _journal_address() is not None else "file"
 
 
 def _journal_priority(level):
