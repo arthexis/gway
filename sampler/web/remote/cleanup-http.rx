@@ -1,0 +1,13 @@
+# Remove nginx resources created by the remote exposure sampler.
+# Certificates and the shared ACME webroot are intentionally preserved.
+
+ingest nginx --kind proc --sudo
+
+remove [nginx_enabled|/etc/nginx/sites-enabled]/[site]
+--as root
+
+remove [nginx_available|/etc/nginx/sites-available]/[site]
+--as root
+
+nginx -t
+nginx -s reload
