@@ -2,6 +2,8 @@ import os
 
 import pytest
 
+from gway.sampler import root as sampler_root
+
 
 def test_recipe_ingests_same_stem_companion_before_resolution(
     gateway, recipe_factory
@@ -201,3 +203,90 @@ def test_parent_gateway_rpc_error_does_not_desynchronize_companion(
     )
 
     assert gateway(recipe) == (True, 5)
+
+
+
+def _mcp_companion_recipe(recipe_factory, root, command):
+    (root / "fastmcp.py").write_text(
+        "class FastMCP:\n"
+        "    def __init__(self, name):\n"
+        "        self.name = name\n"
+        "    def tool(self, **options):\n"
+        "        def decorate(function):\n"
+        "            function.__fastmcp_options__ = options\n"
+        "            return function\n"
+        "        return decorate\n",
+        encoding="utf-8",
+    )
+    companion = (sampler_root() / "mcp" / "server.py").read_text(encoding="utf-8")
+    return recipe_factory(
+        name="server",
+        root=root,
+        body=f"require fastmcp\\nserver gway {command!r}\\n",
+        companion=companion,
+    )
+
+
+def test_mcp_gway_tool_executes_native_pipeline_under_caller_authority(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp"
+    gateway.produce = gateway.wrap("produce", lambda: "hello")
+    gateway.consume = gateway.wrap("consume", lambda value: f"{value}!")
+    _mcp_companion_recipe(recipe_factory, root, "produce - consume")
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcp.server", "produce", "consume"}):
+        assert gateway("mcp server") == "hello!"
+
+
+def test_mcp_gway_tool_rechecks_each_native_pipeline_operation(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp"
+    calls = []
+    gateway.produce = gateway.wrap("produce", lambda: "hello")
+
+    def consume(value):
+        calls.append(value)
+        return value
+
+    gateway.consume = gateway.wrap("consume", consume)
+    _mcp_companion_recipe(recipe_factory, root, "produce - consume")
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcp.server", "produce"}):
+        with pytest.raises(RuntimeError, match="Operation is not authorized: consume"):
+            gateway("mcp server")
+
+    assert calls == []
+
+
+def test_mcp_gway_tool_requires_external_authority(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp"
+    gateway.echo = gateway.wrap("echo_value", lambda value: value)
+    recipe = _mcp_companion_recipe(recipe_factory, root, "echo hello")
+
+    with pytest.raises(
+        RuntimeError,
+        match="External Gateway execution requires an authorization context",
+    ):
+        gateway(recipe)
+
+
+def test_mcp_gway_tool_rejects_non_json_result(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp"
+    gateway.opaque = gateway.wrap("opaque", lambda: {"not-json"})
+    _mcp_companion_recipe(recipe_factory, root, "opaque")
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcp.server", "opaque"}):
+        with pytest.raises(
+            RuntimeError,
+            match="GWAY result is not MCP-serializable: set",
+        ):
+            gateway("mcp server")
