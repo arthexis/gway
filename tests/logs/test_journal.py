@@ -58,8 +58,8 @@ def test_build_command_uses_persisted_units_without_shell_interpolation():
         "--user",
         "--output=json",
         "--no-pager",
-        "--unit=custom-web.service",
-        "--unit=custom-worker.service",
+        "--user-unit=custom-web.service",
+        "--user-unit=custom-worker.service",
         "--since",
         "10 minutes ago",
         "--until",
@@ -146,7 +146,11 @@ def test_read_journal_groups_user_and_system_scopes(monkeypatch):
 
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
-        unit = next(value.split("=", 1)[1] for value in command if value.startswith("--unit="))
+        unit = next(
+            value.split("=", 1)[1]
+            for value in command
+            if value.startswith("--unit=") or value.startswith("--user-unit=")
+        )
         micros = (
             1_700_000_000_000_000
             if "--user" in command
@@ -203,8 +207,8 @@ def test_read_journal_uses_one_query_for_multiple_sources_same_scope(monkeypatch
     records = read_journal(sources)
 
     assert len(calls) == 1
-    assert "--unit=arthexis-web.service" in calls[0]
-    assert "--unit=arthexis-worker.service" in calls[0]
+    assert "--user-unit=arthexis-web.service" in calls[0]
+    assert "--user-unit=arthexis-worker.service" in calls[0]
     assert [record.source for record in records] == [
         "arthexis/web",
         "arthexis/worker",
@@ -274,3 +278,19 @@ def test_read_journal_wraps_missing_journalctl(monkeypatch):
 
     with pytest.raises(JournalError, match="not available"):
         read_journal(selected)
+
+
+def test_user_unit_field_maps_back_to_logical_source():
+    selected = [source("arthexis/web", "arthexis-web.service")]
+    output = json.dumps(
+        {
+            "__REALTIME_TIMESTAMP": "1700000000000000",
+            "_SYSTEMD_USER_UNIT": "arthexis-web.service",
+            "MESSAGE": "user service message",
+        }
+    )
+
+    records = _parse_output(output, selected)
+
+    assert records[0].source == "arthexis/web"
+    assert records[0].unit == "arthexis-web.service"
