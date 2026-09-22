@@ -183,7 +183,7 @@ def _canonical_operation_launchable(runtime, resolution):
 def resolve_launchable(runtime, target):
     """Resolve an operation or recipe invocation without executing it."""
     from .dispatch import resolve_operation
-    from .recipes import recipe_path
+    from .recipe import recipe_path
     from .tokens import token_value, tokenize
 
     tokens = tokenize(target) if isinstance(target, str) else list(target)
