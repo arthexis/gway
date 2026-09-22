@@ -12,7 +12,7 @@ from gway.logs.journal import (
 )
 
 
-def source(identity, unit, *, system=False):
+def _service_source(identity, unit, *, system=False):
     project, service = identity.split("/", 1)
     return LogSource(
         identity=identity,
@@ -25,7 +25,7 @@ def source(identity, unit, *, system=False):
     )
 
 
-def entry(unit, micros, message, *, priority="6", pid="42"):
+def _unit_entry(unit, micros, message, *, priority="6", pid="42"):
     return json.dumps(
         {
             "__REALTIME_TIMESTAMP": str(micros),
@@ -39,8 +39,8 @@ def entry(unit, micros, message, *, priority="6", pid="42"):
 
 def test_build_command_uses_persisted_units_without_shell_interpolation():
     sources = [
-        source("arthexis/web", "custom-web.service"),
-        source("arthexis/worker", "custom-worker.service"),
+        _service_source("arthexis/web", "custom-web.service"),
+        _service_source("arthexis/worker", "custom-worker.service"),
     ]
 
     command = _build_command(
@@ -74,19 +74,19 @@ def test_build_command_uses_persisted_units_without_shell_interpolation():
 
 def test_parse_output_normalizes_and_attributes_multiple_units():
     sources = [
-        source("arthexis/web", "arthexis-web.service"),
-        source("arthexis/worker", "arthexis-worker.service"),
+        _service_source("arthexis/web", "arthexis-web.service"),
+        _service_source("arthexis/worker", "arthexis-worker.service"),
     ]
     output = "\n".join(
         [
-            entry(
+            _unit_entry(
                 "arthexis-web.service",
                 1_700_000_000_000_000,
                 "request complete",
                 priority="6",
                 pid="101",
             ),
-            entry(
+            _unit_entry(
                 "arthexis-worker.service",
                 1_700_000_001_000_000,
                 "job failed",
@@ -110,7 +110,7 @@ def test_parse_output_normalizes_and_attributes_multiple_units():
 
 
 def test_single_source_can_attribute_entry_without_unit_field():
-    selected = [source("arthexis/web", "arthexis-web.service")]
+    selected = [_service_source("arthexis/web", "arthexis-web.service")]
     output = json.dumps(
         {
             "__REALTIME_TIMESTAMP": "1700000000000000",
@@ -126,8 +126,8 @@ def test_single_source_can_attribute_entry_without_unit_field():
 
 def test_multiple_sources_require_attributable_unit():
     selected = [
-        source("arthexis/web", "arthexis-web.service"),
-        source("arthexis/worker", "arthexis-worker.service"),
+        _service_source("arthexis/web", "arthexis-web.service"),
+        _service_source("arthexis/worker", "arthexis-worker.service"),
     ]
     output = json.dumps(
         {
@@ -142,8 +142,8 @@ def test_multiple_sources_require_attributable_unit():
 
 def test_read_journal_groups_user_and_system_scopes(monkeypatch):
     calls = []
-    user = source("arthexis/web", "arthexis-web.service", system=False)
-    system = source("infra/watch", "infra-watch.service", system=True)
+    user = _service_source("arthexis/web", "arthexis-web.service", system=False)
+    system = _service_source("infra/watch", "infra-watch.service", system=True)
 
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
@@ -160,7 +160,7 @@ def test_read_journal_groups_user_and_system_scopes(monkeypatch):
         return subprocess.CompletedProcess(
             command,
             0,
-            stdout=entry(unit, micros, unit),
+            stdout=_unit_entry(unit, micros, unit),
             stderr="",
         )
 
@@ -181,8 +181,8 @@ def test_read_journal_groups_user_and_system_scopes(monkeypatch):
 def test_read_journal_uses_one_query_for_multiple_sources_same_scope(monkeypatch):
     calls = []
     sources = [
-        source("arthexis/web", "arthexis-web.service"),
-        source("arthexis/worker", "arthexis-worker.service"),
+        _service_source("arthexis/web", "arthexis-web.service"),
+        _service_source("arthexis/worker", "arthexis-worker.service"),
     ]
 
     def fake_run(command, **kwargs):
@@ -192,8 +192,8 @@ def test_read_journal_uses_one_query_for_multiple_sources_same_scope(monkeypatch
             0,
             stdout="\n".join(
                 [
-                    entry("arthexis-web.service", 1_700_000_000_000_000, "web"),
-                    entry(
+                    _unit_entry("arthexis-web.service", 1_700_000_000_000_000, "web"),
+                    _unit_entry(
                         "arthexis-worker.service",
                         1_700_000_001_000_000,
                         "worker",
@@ -235,7 +235,7 @@ def test_read_journal_rejects_aggregate_and_non_journal_sources():
 
 
 def test_read_journal_wraps_process_failure(monkeypatch):
-    selected = [source("arthexis/web", "arthexis-web.service")]
+    selected = [_service_source("arthexis/web", "arthexis-web.service")]
 
     def fail(command, **kwargs):
         raise subprocess.CalledProcessError(
@@ -255,7 +255,7 @@ def test_read_journal_wraps_process_failure(monkeypatch):
 
 
 def test_read_journal_wraps_timeout(monkeypatch):
-    selected = [source("arthexis/web", "arthexis-web.service")]
+    selected = [_service_source("arthexis/web", "arthexis-web.service")]
 
     def fail(command, **kwargs):
         raise subprocess.TimeoutExpired(command, 40, stderr=b"too slow")
@@ -270,7 +270,7 @@ def test_read_journal_wraps_timeout(monkeypatch):
 
 
 def test_read_journal_wraps_missing_journalctl(monkeypatch):
-    selected = [source("arthexis/web", "arthexis-web.service")]
+    selected = [_service_source("arthexis/web", "arthexis-web.service")]
 
     def fail(command, **kwargs):
         raise FileNotFoundError("journalctl")
@@ -281,8 +281,8 @@ def test_read_journal_wraps_missing_journalctl(monkeypatch):
         read_journal(selected)
 
 
-def test_user_unit_field_maps_back_to_logical_source():
-    selected = [source("arthexis/web", "arthexis-web.service")]
+def test_user_unit_field_maps_back_to_logical__service_source():
+    selected = [_service_source("arthexis/web", "arthexis-web.service")]
     output = json.dumps(
         {
             "__REALTIME_TIMESTAMP": "1700000000000000",
@@ -297,7 +297,7 @@ def test_user_unit_field_maps_back_to_logical_source():
     assert records[0].unit == "arthexis-web.service"
 
 
-def journal_source(identity):
+def journal__service_source(identity):
     return LogSource(
         identity=identity,
         kind="gway" if identity == "gway" else "recipe",
@@ -306,7 +306,7 @@ def journal_source(identity):
     )
 
 
-def journal_entry(identifier, micros, message):
+def journal__unit_entry(identifier, micros, message):
     return json.dumps(
         {
             "__REALTIME_TIMESTAMP": str(micros),
@@ -318,7 +318,7 @@ def journal_entry(identifier, micros, message):
 
 
 def test_build_command_for_direct_journal_identifiers():
-    sources = [journal_source("gway"), journal_source("recipe/deploy")]
+    sources = [journal__service_source("gway"), journal__service_source("recipe/deploy")]
 
     command = _build_command(
         sources,
@@ -341,7 +341,7 @@ def test_build_command_for_direct_journal_identifiers():
 
 def test_read_journal_queries_identifiers_together(monkeypatch):
     calls = []
-    sources = [journal_source("gway"), journal_source("recipe/deploy")]
+    sources = [journal__service_source("gway"), journal__service_source("recipe/deploy")]
 
     def fake_run(command, **kwargs):
         calls.append(command)
@@ -350,8 +350,8 @@ def test_read_journal_queries_identifiers_together(monkeypatch):
             0,
             stdout="\n".join(
                 [
-                    journal_entry("gway", 1_700_000_000_000_000, "core"),
-                    journal_entry(
+                    journal__unit_entry("gway", 1_700_000_000_000_000, "core"),
+                    journal__unit_entry(
                         "recipe/deploy",
                         1_700_000_001_000_000,
                         "recipe",
@@ -377,20 +377,20 @@ def test_read_journal_queries_identifiers_together(monkeypatch):
 def test_service_and_identifier_sources_use_native_query_groups(monkeypatch):
     calls = []
     sources = [
-        source("arthexis/web", "arthexis-web.service"),
-        journal_source("recipe/deploy"),
+        _service_source("arthexis/web", "arthexis-web.service"),
+        journal__service_source("recipe/deploy"),
     ]
 
     def fake_run(command, **kwargs):
         calls.append(command)
         if "SYSLOG_IDENTIFIER=recipe/deploy" in command:
-            stdout = journal_entry(
+            stdout = journal__unit_entry(
                 "recipe/deploy",
                 1_700_000_001_000_000,
                 "recipe",
             )
         else:
-            stdout = entry(
+            stdout = _unit_entry(
                 "arthexis-web.service",
                 1_700_000_000_000_000,
                 "web",
