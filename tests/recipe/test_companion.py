@@ -872,7 +872,7 @@ def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
         suffix=_mcp_log_http_probe_suffix(),
     )
     recipe.write_text(
-        f"require fastmcp\nserver probe log http {issued.bearer!r}\n",
+        f"require fastmcp\nserver probe_log_http {issued.bearer!r}\n",
         encoding="utf-8",
     )
     gateway.ingest(root)
