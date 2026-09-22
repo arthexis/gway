@@ -4,19 +4,15 @@ import pytest
 
 from gway.recipe import load_recipe, recipe_path
 
-
 def remote_root():
     return Path(__file__).resolve().parents[2] / "sampler" / "web" / "remote"
-
 
 def _template(name):
     return (remote_root() / name).read_text(encoding="utf-8")
 
-
 def _commands(name):
     commands, _ = load_recipe(remote_root() / name)
     return [" ".join(str(token) for token in command["tokens"]) for command in commands]
-
 
 def _block(content, marker):
     start = content.index(marker)
@@ -26,13 +22,11 @@ def _block(content, marker):
     end = min(candidates) if candidates else len(content)
     return content[start:end]
 
-
 def test_remote_proxy_package_has_topology_templates():
     root = remote_root()
 
     assert (root / "nginx-http-[site].conf").is_file()
     assert (root / "nginx-https-[site].conf").is_file()
-
 
 def test_remote_https_template_uses_two_independent_loopback_upstreams():
     content = _template("nginx-https-[site].conf")
@@ -43,7 +37,6 @@ def test_remote_https_template_uses_two_independent_loopback_upstreams():
     mcp = _block(content, "location = /mcp {")
     assert "[mcp_host|127.0.0.1]:[mcp_port|8000]" in mcp
     assert "[auth_host|127.0.0.1]:[auth_port|8001]" not in mcp
-
 
 def test_remote_https_template_routes_public_oauth_surface_to_remote_auth():
     content = _template("nginx-https-[site].conf")
@@ -65,7 +58,6 @@ def test_remote_https_template_routes_public_oauth_surface_to_remote_auth():
         assert auth_target in block, marker
         assert "[mcp_host|127.0.0.1]:[mcp_port|8000]" not in block, marker
 
-
 def test_remote_http_template_routes_same_application_topology_before_tls():
     content = _template("nginx-http-[site].conf")
 
@@ -77,7 +69,6 @@ def test_remote_http_template_routes_same_application_topology_before_tls():
     assert "location = /settings/connections {" in content
     assert "proxy_pass http://[mcp_host|127.0.0.1]:[mcp_port|8000];" in content
     assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in content
-
 
 def test_remote_templates_preserve_host_and_forwarded_request_context():
     for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
@@ -91,15 +82,12 @@ def test_remote_templates_preserve_host_and_forwarded_request_context():
         )
         assert "proxy_set_header X-Forwarded-Proto $scheme;" in content
 
-
 def test_remote_templates_do_not_use_one_catch_all_application_upstream():
     for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
         content = _template(name)
 
         assert "proxy_pass http://[host]:[port];" not in content
         assert "location / {\n        proxy_set_header" not in content
-
-
 
 def test_remote_mcp_route_has_streaming_proxy_semantics():
     for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
@@ -114,7 +102,6 @@ def test_remote_mcp_route_has_streaming_proxy_semantics():
         assert "proxy_read_timeout [mcp_read_timeout|300s];" in block
         assert "proxy_send_timeout [mcp_send_timeout|300s];" in block
 
-
 def test_remote_mcp_route_is_exact_and_does_not_strip_prefix():
     for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
         content = _template(name)
@@ -123,7 +110,6 @@ def test_remote_mcp_route_is_exact_and_does_not_strip_prefix():
         assert "location = /mcp {" in block
         assert "proxy_pass http://[mcp_host|127.0.0.1]:[mcp_port|8000];" in block
         assert "proxy_pass http://[mcp_host|127.0.0.1]:[mcp_port|8000]/;" not in block
-
 
 def test_remote_auth_routes_do_not_inherit_mcp_streaming_policy():
     content = _template("nginx-https-[site].conf")
@@ -143,8 +129,6 @@ def test_remote_auth_routes_do_not_inherit_mcp_streaming_policy():
         assert "proxy_read_timeout" not in block, marker
         assert "proxy_send_timeout" not in block, marker
 
-
-
 def test_remote_http_acme_challenge_is_filesystem_owned_not_proxied():
     content = _template("nginx-http-[site].conf")
     marker = "location ^~ /.well-known/acme-challenge/ {"
@@ -153,7 +137,6 @@ def test_remote_http_acme_challenge_is_filesystem_owned_not_proxied():
     assert "root [acme_webroot|/var/www/gway-acme];" in block
     assert "default_type text/plain;" in block
     assert "proxy_pass" not in block
-
 
 def test_remote_https_redirect_server_preserves_acme_before_redirect():
     content = _template("nginx-https-[site].conf")
@@ -166,7 +149,6 @@ def test_remote_https_redirect_server_preserves_acme_before_redirect():
         first_server.index("location / {")
     )
 
-
 def test_remote_well_known_oauth_routes_are_exact_and_distinct_from_acme():
     for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
         content = _template(name)
@@ -175,7 +157,6 @@ def test_remote_well_known_oauth_routes_are_exact_and_distinct_from_acme():
         assert "location = /.well-known/oauth-authorization-server {" in content
         assert "location ^~ /.well-known/ {" not in content
         assert "location / .well-known" not in content
-
 
 def test_remote_auth_surface_does_not_publish_unimplemented_prefixes():
     for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
@@ -191,8 +172,6 @@ def test_remote_auth_surface_does_not_publish_unimplemented_prefixes():
         ):
             assert f"location = {route} {{" in content
 
-
-
 def test_remote_expose_package_has_deployment_recipes():
     root = remote_root()
 
@@ -206,10 +185,8 @@ def test_remote_expose_package_has_deployment_recipes():
     ):
         assert (root / name).is_file(), name
 
-
 def test_remote_expose_composes_http_then_https_only():
     assert _commands("expose.rx") == ["./http.rx", "./https.rx"]
-
 
 def test_remote_http_recipe_bootstraps_acme_and_remote_nginx_template():
     rendered = _commands("http.rx")
@@ -225,7 +202,6 @@ def test_remote_http_recipe_bootstraps_acme_and_remote_nginx_template():
     assert any(command.startswith("link [nginx_available") for command in rendered)
     assert rendered[-3:] == ["nginx -t", "nginx -s reload", "commit remote-expose"]
     assert not any(command.startswith("certbot ") for command in rendered)
-
 
 def test_remote_https_recipe_gets_certificate_before_tls_render():
     rendered = _commands("https.rx")
@@ -254,7 +230,6 @@ def test_remote_https_recipe_gets_certificate_before_tls_render():
     assert rendered.index(certbot) < render_index
     assert rendered[-3:] == ["nginx -t", "nginx -s reload", "commit remote-expose"]
 
-
 def test_remote_cleanup_removes_only_nginx_site_artifacts():
     rendered = _commands("cleanup-http.rx")
 
@@ -272,14 +247,12 @@ def test_remote_cleanup_removes_only_nginx_site_artifacts():
     assert not any("letsencrypt" in command for command in rendered)
     assert not any("[acme_webroot" in command for command in rendered)
 
-
 def test_remote_sampler_recipes_resolve_as_one_package(gateway):
     root = remote_root()
 
     for name in ("expose.rx", "http.rx", "https.rx", "cleanup-http.rx"):
         path = root / name
         assert recipe_path(gateway, path, allow_bare=False) == path
-
 
 def test_remote_templates_resolve_from_remote_recipe_directory(
     gateway,
@@ -305,8 +278,6 @@ def test_remote_templates_resolve_from_remote_recipe_directory(
     assert source == root / "nginx-http-[site].conf"
     assert resolved == Path("nginx-http-remote-demo.conf")
 
-
-
 def test_remote_http_mutations_share_transaction_before_validation():
     rendered = _commands("http.rx")
     render = next(
@@ -324,7 +295,6 @@ def test_remote_http_mutations_share_transaction_before_validation():
     assert rendered.index(link) < rendered.index("nginx -t")
     assert rendered.index("commit remote-expose") > rendered.index("nginx -s reload")
 
-
 def test_remote_https_render_rolls_back_until_reload_succeeds():
     rendered = _commands("https.rx")
     render = next(
@@ -336,7 +306,6 @@ def test_remote_https_render_rolls_back_until_reload_succeeds():
     assert rendered.index(render) < rendered.index("nginx -t")
     assert rendered.index("commit remote-expose") > rendered.index("nginx -s reload")
 
-
 def test_remote_cleanup_is_transactional_until_reload_succeeds():
     rendered = _commands("cleanup-http.rx")
 
@@ -345,7 +314,6 @@ def test_remote_cleanup_is_transactional_until_reload_succeeds():
             assert "--rollback remote-cleanup" in command
 
     assert rendered.index("commit remote-cleanup") > rendered.index("nginx -s reload")
-
 
 def test_remote_exposure_uses_generic_journal_to_restore_failed_validation(
     gateway,
@@ -375,3 +343,49 @@ def test_remote_exposure_uses_generic_journal_to_restore_failed_validation(
     assert target.read_text(encoding="utf-8") == "old config"
     assert not enabled.exists()
     assert gateway.journal.get("remote-expose") is None
+
+
+def test_remote_https_public_contract_has_one_mcp_route_and_explicit_auth_routes():
+    content = _template("nginx-https-[site].conf")
+    mcp_target = "[mcp_host|127.0.0.1]:[mcp_port|8000]"
+    auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
+
+    assert content.count("location = /mcp {") == 1
+    assert _block(content, "location = /mcp {").count(mcp_target) == 1
+
+    auth_routes = (
+        "/",
+        "/.well-known/oauth-protected-resource/mcp",
+        "/.well-known/oauth-authorization-server",
+        "/oauth/authorize",
+        "/oauth/token",
+        "/oauth/revoke",
+        "/login",
+        "/connect",
+        "/consent",
+        "/settings/connections",
+    )
+    for route in auth_routes:
+        marker = f"location = {route} {{"
+        block = _block(content, marker)
+        assert auth_target in block, route
+        assert mcp_target not in block, route
+
+
+def test_remote_https_contract_has_no_application_catch_all_proxy():
+    content = _template("nginx-https-[site].conf")
+    tls_server = content.split("\n}\n\nserver {", 1)[1]
+
+    assert "location / {" not in tls_server
+    assert "location ^~ /oauth/ {" not in tls_server
+    assert "location ^~ /settings/ {" not in tls_server
+    assert "location ^~ /.well-known/ {" not in tls_server
+
+
+def test_remote_templates_default_both_application_upstreams_to_loopback():
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+
+        assert "[mcp_host|127.0.0.1]" in content
+        assert "[auth_host|127.0.0.1]" in content
+        assert "0.0.0.0" not in content
