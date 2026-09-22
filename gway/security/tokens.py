@@ -150,7 +150,7 @@ class TokenRegistry:
         """Issue a new random bearer token and return its secret exactly once."""
         name = self._name(name)
         scope_names = self._validate_scope_names(scopes)
-        public_id = secrets.token_urlsafe(8)
+        public_id = secrets.token_hex(8)
         secret = secrets.token_urlsafe(32)
         bearer = self._bearer(public_id, secret)
         created_at = datetime.now(timezone.utc).isoformat()
