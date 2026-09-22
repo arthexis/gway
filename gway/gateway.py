@@ -471,9 +471,10 @@ class Gateway(Resolver):
             return
         authority.authorize_operation(operation)
         if operation == "env":
-            if not args:
-                return
-            authority.authorize_environment(str(args[0]))
+            kwargs = {} if kwargs is None else kwargs
+            name = args[0] if args else kwargs.get("name")
+            if name is not None:
+                authority.authorize_environment(str(name))
 
     def authorize_recipe_path(self, path):
         """Reject direct recipe-path execution under external constrained authority."""
