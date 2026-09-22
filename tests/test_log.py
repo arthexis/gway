@@ -1,3 +1,4 @@
+import json
 import logging
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
@@ -46,8 +47,12 @@ def test_file_output_persists_info_without_console_output(tmp_path, capsys):
     assert captured.out == ""
     assert captured.err == ""
 
-    text = (tmp_path / "logs" / "gway.log").read_text(encoding="utf-8")
-    assert "INFO gway [gway] reconciliation complete" in text
+    payload = json.loads(
+        (tmp_path / "logs" / "gway.log").read_text(encoding="utf-8")
+    )
+    assert payload["level"] == "INFO"
+    assert payload["source"] == "gway"
+    assert payload["message"] == "reconciliation complete"
 
 
 @pytest.mark.parametrize(
@@ -86,7 +91,8 @@ def test_explicit_file_path_is_supported(tmp_path):
     handler.flush()
 
     assert path.is_file()
-    assert "custom destination" in path.read_text(encoding="utf-8")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["message"] == "custom destination"
     assert handler.level == logging.WARNING
 
 
@@ -204,5 +210,8 @@ def test_file_output_preserves_logical_source(tmp_path):
         gway_log.info("portable identity")
     handler.flush()
 
-    text = (tmp_path / "logs" / "gway.log").read_text(encoding="utf-8")
-    assert "[recipe/deploy] portable identity" in text
+    payload = json.loads(
+        (tmp_path / "logs" / "gway.log").read_text(encoding="utf-8")
+    )
+    assert payload["source"] == "recipe/deploy"
+    assert payload["message"] == "portable identity"
