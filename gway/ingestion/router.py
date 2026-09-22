@@ -178,6 +178,12 @@ def ingest_path(gateway, path, **kwargs):
 
         return ingest_django_project(gateway, path, **kwargs)
 
+    if path.is_dir():
+        from .recipe import ingest_recipe_tree, is_recipe_tree
+
+        if is_recipe_tree(path):
+            return ingest_recipe_tree(gateway, path, **kwargs)
+
     if path.suffix == ".py" or path.is_dir():
         from .python import ingest_path as ingest_python_path
 
