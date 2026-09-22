@@ -206,20 +206,10 @@ def test_parent_gateway_rpc_error_does_not_desynchronize_companion(
 
 
 
-def _mcp_companion_recipe(recipe_factory, root, command):
+def _mcp_companion_recipe(recipe_factory, root, command, *, suffix=""):
     root.mkdir(parents=True, exist_ok=True)
-    (root / "fastmcp.py").write_text(
-        "class FastMCP:\n"
-        "    def __init__(self, name):\n"
-        "        self.name = name\n"
-        "    def tool(self, **options):\n"
-        "        def decorate(function):\n"
-        "            function.__fastmcp_options__ = options\n"
-        "            return function\n"
-        "        return decorate\n",
-        encoding="utf-8",
-    )
     companion = (sampler_root() / "mcp" / "server.py").read_text(encoding="utf-8")
+    companion += suffix
     return recipe_factory(
         name="server",
         root=root,
@@ -291,3 +281,77 @@ def test_mcp_gway_tool_rejects_non_json_result(
             match="GWAY result is not MCP-serializable: set",
         ):
             gateway("mcp server")
+
+
+
+def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp-stdio"
+    gateway.echo = gateway.wrap("echo_value", lambda value: value)
+    probe = (
+        "\n\ndef probe_stdio(command):\n"
+        "    import asyncio\n"
+        "    from fastmcp import Client\n"
+        "    from fastmcp.client.transports import PythonStdioTransport\n"
+        "    async def run():\n"
+        "        with _callback_relay() as env:\n"
+        "            transport = PythonStdioTransport(str(Path(__file__)), env=env)\n"
+        "            async with Client(transport) as client:\n"
+        "                tools = await client.list_tools()\n"
+        "                result = await client.call_tool('gway', {'command': command})\n"
+        "                return [tool.name for tool in tools], result.data\n"
+        "    return asyncio.run(run())\n"
+    )
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "echo unused",
+        suffix=probe,
+    )
+    recipe.write_text("require fastmcp\nserver probe stdio 'echo hello'\n", encoding="utf-8")
+
+    with gateway.authorized(operations={"server.probe_stdio", "echo_value"}):
+        tools, result = gateway(recipe)
+
+    assert tools == ["gway"]
+    assert result == "hello"
+
+
+def test_mcp_stdio_authorization_error_does_not_kill_server_session(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp-stdio-error"
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    gateway.denied = gateway.wrap("denied", lambda: "no")
+    probe = (
+        "\n\ndef probe_stdio():\n"
+        "    import asyncio\n"
+        "    from fastmcp import Client\n"
+        "    from fastmcp.client.transports import PythonStdioTransport\n"
+        "    async def run():\n"
+        "        with _callback_relay() as env:\n"
+        "            transport = PythonStdioTransport(str(Path(__file__)), env=env)\n"
+        "            async with Client(transport) as client:\n"
+        "                first_error = None\n"
+        "                try:\n"
+        "                    await client.call_tool('gway', {'command': 'denied'})\n"
+        "                except Exception as exception:\n"
+        "                    first_error = str(exception)\n"
+        "                second = await client.call_tool('gway', {'command': 'allowed'})\n"
+        "                return first_error, second.data\n"
+        "    return asyncio.run(run())\n"
+    )
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "allowed",
+        suffix=probe,
+    )
+    recipe.write_text("require fastmcp\nserver probe stdio\n", encoding="utf-8")
+
+    with gateway.authorized(operations={"server.probe_stdio", "allowed"}):
+        error, result = gateway(recipe)
+
+    assert "Operation is not authorized: denied" in error
+    assert result == "ok"
