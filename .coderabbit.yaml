@@ -1,0 +1,5 @@
+# CodeRabbit is intentionally disabled for this repository.
+# Reviews are handled by the project's internal review process.
+reviews:
+  auto_review:
+    enabled: false
