@@ -137,7 +137,7 @@ def test_cli_log_level_controls_configured_output(
     )
 
     assert status == 0
-    assert "DEBUG gway cli-debug" in stdout
+    assert "DEBUG gway [gway] cli-debug" in stdout
     assert stderr == ""
 
 
