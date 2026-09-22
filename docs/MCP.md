@@ -168,8 +168,9 @@ The maintained server is the ordinary recipe:
 sampler/mcp/server.rx
 ```
 
-It installs FastMCP through recipe-managed `require fastmcp` and runs the HTTP
-server. GWAY's generic service layer owns supervision.
+It installs the supported FastMCP major through recipe-managed
+`require fastmcp>=4,<5` and runs the HTTP server. GWAY's generic service layer owns
+supervision.
 
 A process-backed deployment can be installed with the generic service controller,
 using the stable service name `mcp-server`. Systemd deployment uses the same
