@@ -12,18 +12,18 @@ def managed_runtime(monkeypatch, tmp_path):
     uv = tmp_path / "uv"
     sync_calls = []
 
-    monkeypatch.setattr("gway.uv.ensure_uv", lambda **kwargs: uv)
+    monkeypatch.setattr("gway.recipe.uv.ensure_uv", lambda **kwargs: uv)
 
     def sync(environment, executable, requirements):
         sync_calls.append((environment, executable, tuple(requirements)))
         return Path(sys.executable)
 
     monkeypatch.setattr(
-        "gway.recipe_environment.sync_python_environment",
+        "gway.recipe.environment.sync_python_environment",
         sync,
     )
     monkeypatch.setattr(
-        "gway.recipe_environment.environment_python",
+        "gway.recipe.environment.environment_python",
         lambda environment: Path(sys.executable),
     )
     return sync_calls
