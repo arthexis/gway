@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import secrets
+from threading import RLock
 
 
 @dataclass
@@ -27,6 +28,7 @@ class RemoteSessionStore:
             raise ValueError("remote session lifetime must be positive")
         self.lifetime = timedelta(seconds=lifetime_seconds)
         self._sessions = {}
+        self._lock = RLock()
 
     @staticmethod
     def _now():
@@ -38,19 +40,21 @@ class RemoteSessionStore:
             csrf=secrets.token_urlsafe(32),
             expires_at=self._now() + self.lifetime,
         )
-        self._sessions[session.id] = session
+        with self._lock:
+            self._sessions[session.id] = session
         return session
 
     def get(self, session_id):
         if not session_id:
             return None
-        session = self._sessions.get(str(session_id))
-        if session is None:
-            return None
-        if session.expires_at <= self._now():
-            self._sessions.pop(session.id, None)
-            return None
-        return session
+        with self._lock:
+            session = self._sessions.get(str(session_id))
+            if session is None:
+                return None
+            if session.expires_at <= self._now():
+                self._sessions.pop(session.id, None)
+                return None
+            return session
 
     def require(self, session_id):
         session = self.get(session_id)
@@ -58,9 +62,20 @@ class RemoteSessionStore:
             raise LookupError("Remote browser session is missing or expired")
         return session
 
+    def rotate(self, session):
+        """Rotate the browser session identifier after authentication."""
+        with self._lock:
+            self._sessions.pop(session.id, None)
+            session.id = secrets.token_urlsafe(32)
+            session.csrf = secrets.token_urlsafe(32)
+            session.expires_at = self._now() + self.lifetime
+            self._sessions[session.id] = session
+        return session
+
     def rotate_csrf(self, session):
         session.csrf = secrets.token_urlsafe(32)
         return session.csrf
 
     def destroy(self, session_id):
-        return self._sessions.pop(str(session_id), None) is not None
+        with self._lock:
+            return self._sessions.pop(str(session_id), None) is not None
