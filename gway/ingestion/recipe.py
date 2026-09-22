@@ -90,6 +90,7 @@ def ingest_recipe_tree(gateway, directory, *, path=None, **kwargs):
             metadata={
                 "recipe": str(recipe),
                 "root": directory,
+                "ingest_root": root,
             },
         )
         registered = register_operation(gateway, operation)
