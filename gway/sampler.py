@@ -3,7 +3,7 @@
 from pathlib import Path
 import sysconfig
 
-from .recipes import execute_recipe
+from .recipe import execute_recipe
 
 
 def _source_root():
