@@ -23,6 +23,7 @@ class RecipeFrame:
     invocation_context: dict[str, object] = field(default_factory=dict)
     section: str | None = None
     environment: object | None = None
+    requirements: dict[str, list[str]] = field(default_factory=dict)
 
     def enter_statement(self, index):
         """Advance the cursor before one statement starts executing."""
