@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from gway.recipe import load_recipe, recipe_path
 
 
@@ -221,7 +223,7 @@ def test_remote_http_recipe_bootstraps_acme_and_remote_nginx_template():
         command.startswith("render nginx-http-[site].conf") for command in rendered
     )
     assert any(command.startswith("link [nginx_available") for command in rendered)
-    assert rendered[-2:] == ["nginx -t", "nginx -s reload"]
+    assert rendered[-3:] == ["nginx -t", "nginx -s reload", "commit remote-expose"]
     assert not any(command.startswith("certbot ") for command in rendered)
 
 
@@ -250,7 +252,7 @@ def test_remote_https_recipe_gets_certificate_before_tls_render():
         if command.startswith("render nginx-https-[site].conf")
     )
     assert rendered.index(certbot) < render_index
-    assert rendered[-2:] == ["nginx -t", "nginx -s reload"]
+    assert rendered[-3:] == ["nginx -t", "nginx -s reload", "commit remote-expose"]
 
 
 def test_remote_cleanup_removes_only_nginx_site_artifacts():
@@ -261,7 +263,11 @@ def test_remote_cleanup_removes_only_nginx_site_artifacts():
     assert "--as root" in rendered[1]
     assert rendered[2].startswith("remove [nginx_available")
     assert "--as root" in rendered[2]
-    assert rendered[3:5] == ["nginx -t", "nginx -s reload"]
+    assert rendered[3:6] == [
+        "nginx -t",
+        "nginx -s reload",
+        "commit remote-cleanup",
+    ]
     assert not any("certbot" in command for command in rendered)
     assert not any("letsencrypt" in command for command in rendered)
     assert not any("[acme_webroot" in command for command in rendered)
@@ -298,3 +304,74 @@ def test_remote_templates_resolve_from_remote_recipe_directory(
 
     assert source == root / "nginx-http-[site].conf"
     assert resolved == Path("nginx-http-remote-demo.conf")
+
+
+
+def test_remote_http_mutations_share_transaction_before_validation():
+    rendered = _commands("http.rx")
+    render = next(
+        command for command in rendered
+        if command.startswith("render nginx-http-[site].conf")
+    )
+    link = next(
+        command for command in rendered
+        if command.startswith("link [nginx_available")
+    )
+
+    assert "--rollback remote-expose" in render
+    assert "--rollback remote-expose" in link
+    assert rendered.index(render) < rendered.index("nginx -t")
+    assert rendered.index(link) < rendered.index("nginx -t")
+    assert rendered.index("commit remote-expose") > rendered.index("nginx -s reload")
+
+
+def test_remote_https_render_rolls_back_until_reload_succeeds():
+    rendered = _commands("https.rx")
+    render = next(
+        command for command in rendered
+        if command.startswith("render nginx-https-[site].conf")
+    )
+
+    assert "--rollback remote-expose" in render
+    assert rendered.index(render) < rendered.index("nginx -t")
+    assert rendered.index("commit remote-expose") > rendered.index("nginx -s reload")
+
+
+def test_remote_cleanup_is_transactional_until_reload_succeeds():
+    rendered = _commands("cleanup-http.rx")
+
+    for command in rendered:
+        if command.startswith("remove "):
+            assert "--rollback remote-cleanup" in command
+
+    assert rendered.index("commit remote-cleanup") > rendered.index("nginx -s reload")
+
+
+def test_remote_exposure_uses_generic_journal_to_restore_failed_validation(
+    gateway,
+    tmp_path,
+):
+    template = tmp_path / "site.conf.tmpl"
+    target = tmp_path / "site.conf"
+    enabled = tmp_path / "site-enabled"
+
+    template.write_text("new config", encoding="utf-8")
+    target.write_text("old config", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="nginx validation failed"):
+        with gateway.execution_scope():
+            gateway.render(
+                str(template),
+                to=str(target),
+                rollback="remote-expose",
+            )
+            gateway.link(
+                str(target),
+                to=str(enabled),
+                rollback="remote-expose",
+            )
+            raise RuntimeError("nginx validation failed")
+
+    assert target.read_text(encoding="utf-8") == "old config"
+    assert not enabled.exists()
+    assert gateway.journal.get("remote-expose") is None
