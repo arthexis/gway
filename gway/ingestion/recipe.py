@@ -30,7 +30,7 @@ def _recipe_callable(gateway, recipe):
     recipe = Path(recipe).expanduser().resolve()
 
     def invoke(*pipeline, **context):
-        from ..recipes import execute_recipe
+        from ..recipe import execute_recipe
 
         if not pipeline:
             _, result = execute_recipe(gateway, recipe, context=context)
