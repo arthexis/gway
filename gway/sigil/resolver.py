@@ -70,11 +70,10 @@ class Resolver:
         """Return the first matching value from the configured semantic sources."""
         for _, source in self._search_order:
             try:
+                if isinstance(source, Environment):
+                    return source[key]
                 if isinstance(source, Mapping):
-                    try:
-                        return source[key]
-                    except KeyError:
-                        return mapping_value(source, key)
+                    return mapping_value(source, key)
                 return source[key]
             except AmbiguousKeyError:
                 raise
