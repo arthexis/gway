@@ -9,9 +9,9 @@ import socket
 import struct
 import threading
 
-from fastmcp import Context as _Context
 from fastmcp import FastMCP as _FastMCP
 from fastmcp.server.dependencies import get_http_headers as _get_http_headers
+from fastmcp.server.dependencies import get_http_request as _get_http_request
 
 
 mcp = _FastMCP("GWAY")
@@ -179,11 +179,19 @@ def _bearer_from_http():
     return credential.strip()
 
 
+def _has_http_request():
+    try:
+        _get_http_request()
+    except RuntimeError:
+        return False
+    return True
+
+
 @mcp.tool(run_in_thread=False)
-def gway(command: str, ctx: _Context | None = None):
+def gway(command: str):
     """Execute one native GWAY command under the caller's active authorization."""
     parent = _parent()
-    if ctx is not None and ctx.transport == "streamable-http":
+    if _has_http_request():
         return _validate_result(
             parent.execute_authenticated(_bearer_from_http(), command)
         )
