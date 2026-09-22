@@ -430,14 +430,29 @@ class Gateway(Resolver):
         return self._authorization_stack[-1] if self._authorization_stack else None
 
     @contextmanager
-    def authorized(self, *, operations=(), environment=None):
-        """Constrain nested Gateway execution to one explicit authority."""
+    def authorized(self, *, operations=(), environment=None, context=None):
+        """Constrain one external request and isolate its semantic state."""
         from .authorization import Authorization
 
         authority = Authorization.create(
             operations=operations,
             environment=environment,
         )
+        outermost = not self._authorization_stack
+        previous_context = None
+        previous_results = None
+        previous_history = None
+        if outermost:
+            previous_context = dict(self.context)
+            previous_results = dict(self.results.maps[0])
+            previous_history = list(self.results.history)
+            self.context.clear()
+            self.results.clear()
+            self.context["verbose"] = self.verbose
+            self.context["silent"] = self.silent
+            if context:
+                self.context.update(context)
+
         self._authorization_stack.append(authority)
         try:
             yield authority
@@ -446,6 +461,12 @@ class Gateway(Resolver):
                 self._authorization_stack.pop()
             else:
                 self._authorization_stack.remove(authority)
+            if outermost:
+                self.context.clear()
+                self.context.update(previous_context)
+                self.results.clear()
+                self.results.maps[0].update(previous_results)
+                self.results.history.extend(previous_history)
 
     @property
     def _capability_depth(self):
