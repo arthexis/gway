@@ -113,6 +113,9 @@ class ParentGateway:
             kwargs=dict(kwargs),
         )
 
+    def execute(self, command):
+        return request_parent("gateway.execute", command=command)
+
 
 def safe_default(value):
     if value is inspect.Parameter.empty:
@@ -439,6 +442,9 @@ def _service_parent_request(runtime, stream, request):
                 *tuple(params.get("args", ())),
                 **dict(params.get("kwargs", {})),
             )
+        elif method == "gateway.execute":
+            with runtime.external_authority():
+                result = runtime(params["command"])
         else:
             raise LookupError(f"Unknown parent Gateway RPC method: {method}")
         response = {
