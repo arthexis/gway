@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from gway.recipe import load_recipe, recipe_path
+
 
 def remote_root():
     return Path(__file__).resolve().parents[2] / "sampler" / "web" / "remote"
@@ -7,6 +9,11 @@ def remote_root():
 
 def _template(name):
     return (remote_root() / name).read_text(encoding="utf-8")
+
+
+def _commands(name):
+    commands, _ = load_recipe(remote_root() / name)
+    return [" ".join(str(token) for token in command["tokens"]) for command in commands]
 
 
 def _block(content, marker):
@@ -181,3 +188,113 @@ def test_remote_auth_surface_does_not_publish_unimplemented_prefixes():
             "/settings/connections",
         ):
             assert f"location = {route} {{" in content
+
+
+
+def test_remote_expose_package_has_deployment_recipes():
+    root = remote_root()
+
+    for name in (
+        "expose.rx",
+        "http.rx",
+        "https.rx",
+        "cleanup-http.rx",
+        "nginx-http-[site].conf",
+        "nginx-https-[site].conf",
+    ):
+        assert (root / name).is_file(), name
+
+
+def test_remote_expose_composes_http_then_https_only():
+    assert _commands("expose.rx") == ["./http.rx", "./https.rx"]
+
+
+def test_remote_http_recipe_bootstraps_acme_and_remote_nginx_template():
+    rendered = _commands("http.rx")
+
+    assert rendered[:2] == [
+        "ingest [nginx_executable|nginx] --kind proc --sudo",
+        "ingest [mkdir_executable|mkdir] --kind proc --sudo",
+    ]
+    assert "mkdir -p [acme_webroot|/var/www/gway-acme]" in rendered
+    assert any(
+        command.startswith("render nginx-http-[site].conf") for command in rendered
+    )
+    assert any(command.startswith("link [nginx_available") for command in rendered)
+    assert rendered[-2:] == ["nginx -t", "nginx -s reload"]
+    assert not any(command.startswith("certbot ") for command in rendered)
+
+
+def test_remote_https_recipe_gets_certificate_before_tls_render():
+    rendered = _commands("https.rx")
+
+    assert rendered[:2] == [
+        "ingest [nginx_executable|nginx] --kind proc --sudo",
+        "ingest [certbot_executable|certbot] --kind proc --sudo",
+    ]
+    certbot = next(
+        command for command in rendered if command.startswith("certbot certonly")
+    )
+    assert "--webroot" in certbot
+    assert "--webroot-path [acme_webroot|/var/www/gway-acme]" in certbot
+    assert "--domain [domain]" in certbot
+    assert "--cert-name [domain]" in certbot
+    assert "--email [email]" in certbot
+    assert "--non-interactive" in certbot
+    assert "--agree-tos" in certbot
+    assert "--keep-until-expiring" in certbot
+
+    render_index = next(
+        index
+        for index, command in enumerate(rendered)
+        if command.startswith("render nginx-https-[site].conf")
+    )
+    assert rendered.index(certbot) < render_index
+    assert rendered[-2:] == ["nginx -t", "nginx -s reload"]
+
+
+def test_remote_cleanup_removes_only_nginx_site_artifacts():
+    rendered = _commands("cleanup-http.rx")
+
+    assert rendered[0] == "ingest nginx --kind proc --sudo"
+    assert rendered[1].startswith("remove [nginx_enabled")
+    assert "--as root" in rendered[1]
+    assert rendered[2].startswith("remove [nginx_available")
+    assert "--as root" in rendered[2]
+    assert rendered[3:5] == ["nginx -t", "nginx -s reload"]
+    assert not any("certbot" in command for command in rendered)
+    assert not any("letsencrypt" in command for command in rendered)
+    assert not any("[acme_webroot" in command for command in rendered)
+
+
+def test_remote_sampler_recipes_resolve_as_one_package(gateway):
+    root = remote_root()
+
+    for name in ("expose.rx", "http.rx", "https.rx", "cleanup-http.rx"):
+        path = root / name
+        assert recipe_path(gateway, path, allow_bare=False) == path
+
+
+def test_remote_templates_resolve_from_remote_recipe_directory(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    root = remote_root()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    gateway._recipe_stack = [root / "http.rx"]
+    gateway.context["site"] = "remote-demo"
+    try:
+        renderer = gateway._renderer
+        source, resolved = renderer.render.__globals__["_template_source"](
+            gateway,
+            "nginx-http-[site].conf",
+        )
+    finally:
+        gateway.context.pop("site", None)
+        gateway._recipe_stack = []
+
+    assert source == root / "nginx-http-[site].conf"
+    assert resolved == Path("nginx-http-remote-demo.conf")
