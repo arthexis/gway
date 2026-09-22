@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from .account import RemoteAccountApplication
 from .metadata import RemoteOAuthMetadata
+from .oauth import OAuthProtocolError, RemoteOAuthProtocol
 
 
 class RemoteDiscoveryApplication:
@@ -47,9 +48,14 @@ class RemoteApplication(RemoteDiscoveryApplication):
 
     cookie_name = "gway_remote_session"
 
-    def __init__(self, metadata, *, account=None):
+    def __init__(self, metadata, *, account=None, client_resolver=None):
         super().__init__(metadata)
         self.account = RemoteAccountApplication() if account is None else account
+        self.oauth = RemoteOAuthProtocol(
+            metadata,
+            self.account,
+            client_resolver=client_resolver,
+        )
 
     def _cookie(self, headers):
         value = (headers or {}).get("cookie", "")
@@ -108,6 +114,51 @@ class RemoteApplication(RemoteDiscoveryApplication):
         split = urlsplit(str(path))
         route = split.path
         headers = {str(k).casefold(): str(v) for k, v in (headers or {}).items()}
+
+        if route == "/oauth/authorize":
+            if method not in {"GET", "POST"}:
+                return 405, {"allow": "GET, POST"}, {"error": "method_not_allowed"}
+            session, created = self._session(headers, create=True)
+            params = (
+                {name: values[-1] for name, values in parse_qs(
+                    split.query, keep_blank_values=True
+                ).items()}
+                if method == "GET"
+                else self._form(body)
+            )
+            try:
+                self.oauth.stage_authorization(session, params)
+            except OAuthProtocolError as error:
+                return error.status, {"content-type": "application/json"}, error.payload()
+            response_headers = self._with_cookie({}, session, created)
+            destination = "/consent" if session.link_name else "/connect"
+            return self._redirect(destination, response_headers)
+
+        if route == "/oauth/token":
+            if method != "POST":
+                return 405, {"allow": "POST"}, {"error": "method_not_allowed"}
+            try:
+                payload = self.oauth.token(self._form(body))
+            except OAuthProtocolError as error:
+                return error.status, {
+                    "content-type": "application/json",
+                    "cache-control": "no-store",
+                    "pragma": "no-cache",
+                }, error.payload()
+            return 200, {
+                "content-type": "application/json",
+                "cache-control": "no-store",
+                "pragma": "no-cache",
+            }, payload
+
+        if route == "/oauth/revoke":
+            if method != "POST":
+                return 405, {"allow": "POST"}, {"error": "method_not_allowed"}
+            try:
+                payload = self.oauth.revoke(self._form(body))
+            except OAuthProtocolError as error:
+                return error.status, {"content-type": "application/json"}, error.payload()
+            return 200, {"content-type": "application/json"}, payload
 
         if route in self.routes:
             return super().response(method, path, headers=headers, body=body)
@@ -207,6 +258,13 @@ class RemoteApplication(RemoteDiscoveryApplication):
             except (ValueError, LookupError):
                 return 400, {}, {"error": "invalid_consent_request"}
 
+            if session.pending_redirect_uri:
+                try:
+                    destination = self.oauth.finish_authorization(session, grant)
+                except OAuthProtocolError as error:
+                    return error.status, {"content-type": "application/json"}, error.payload()
+                return self._redirect(destination)
+
             if grant is None:
                 return self._html(
                     200,
@@ -291,6 +349,7 @@ def build_server(
     resource_path="/mcp",
     allow_insecure_loopback=False,
     account=None,
+    client_resolver=None,
 ):
     """Build the remote HTTP server without starting its lifecycle."""
     metadata = RemoteOAuthMetadata.from_origin(
@@ -298,7 +357,11 @@ def build_server(
         resource_path=resource_path,
         allow_insecure_loopback=allow_insecure_loopback,
     )
-    application = RemoteApplication(metadata, account=account)
+    application = RemoteApplication(
+        metadata,
+        account=account,
+        client_resolver=client_resolver,
+    )
     return ThreadingHTTPServer((str(host), int(port)), _handler(application))
 
 
