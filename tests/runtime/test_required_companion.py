@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from gway.recipes import execute_recipe
+from gway.recipe import execute_recipe
 
 
 @pytest.fixture
