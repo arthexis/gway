@@ -58,6 +58,7 @@ class Gateway(Resolver):
         self.journal = JournalManager(default_root() / "rollback")
         self._execution_depth = 0
         self._execution_suspension = None
+        self._authorization_stack = []
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
@@ -416,6 +417,49 @@ class Gateway(Resolver):
     def __next__(self):
         """Advance the current iterator result."""
         return self.next()
+
+    @property
+    def authorization(self):
+        """Return the active external authorization context, if any."""
+        return self._authorization_stack[-1] if self._authorization_stack else None
+
+    @contextmanager
+    def authorized(self, *, operations=(), environment=None):
+        """Constrain nested Gateway execution to one explicit authority."""
+        from .authorization import Authorization
+
+        authority = Authorization.create(
+            operations=operations,
+            environment=environment,
+        )
+        self._authorization_stack.append(authority)
+        try:
+            yield authority
+        finally:
+            if self._authorization_stack and self._authorization_stack[-1] is authority:
+                self._authorization_stack.pop()
+            else:
+                self._authorization_stack.remove(authority)
+
+    def authorize_operation(self, operation, args=(), kwargs=None):
+        """Authorize one canonical operation immediately before invocation."""
+        authority = self.authorization
+        if authority is None:
+            return
+        authority.authorize_operation(operation)
+        if operation == "env":
+            if not args:
+                return
+            authority.authorize_environment(str(args[0]))
+
+    def filter_operation_result(self, operation, result):
+        """Filter sensitive operation results under constrained execution."""
+        authority = self.authorization
+        if authority is None:
+            return result
+        if operation == "envs":
+            return authority.filter_environment(result)
+        return result
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command through the unified dispatcher."""
