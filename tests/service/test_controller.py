@@ -288,6 +288,16 @@ def test_installed_mcp_process_service_lifecycle(tmp_path, monkeypatch):
 
 def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypatch):
     gateway = Gateway()
+    captured_process = {}
+    real_popen = subprocess.Popen
+
+    def diagnostic_popen(*args, **kwargs):
+        kwargs["stderr"] = subprocess.PIPE
+        process = real_popen(*args, **kwargs)
+        captured_process["process"] = process
+        return process
+
+    monkeypatch.setattr("gway.service.runtime.subprocess.Popen", diagnostic_popen)
     data_root = tmp_path / "gway-data"
     cache_root = tmp_path / "gway-cache"
     monkeypatch.setenv("GWAY_DATA_DIR", str(data_root))
@@ -349,8 +359,13 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
                         str(recipe),
                         name="mcp-server",
                     )
+                    process = captured_process.get("process")
+                    stderr = ""
+                    if process is not None and process.poll() is not None:
+                        stderr = process.stderr.read() if process.stderr else ""
                     raise AssertionError(
-                        f"deployed MCP service did not become ready: {status}"
+                        "deployed MCP service did not become ready: "
+                        f"{status}\n{stderr}"
                     )
                 time.sleep(0.05)
 
