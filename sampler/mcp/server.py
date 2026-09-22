@@ -180,10 +180,10 @@ def _bearer_from_http():
 
 
 @mcp.tool(run_in_thread=False)
-def gway(command: str, ctx: _Context):
+def gway(command: str, ctx: _Context | None = None):
     """Execute one native GWAY command under the caller's active authorization."""
     parent = _parent()
-    if ctx.transport == "streamable-http":
+    if ctx is not None and ctx.transport == "streamable-http":
         return _validate_result(
             parent.execute_authenticated(_bearer_from_http(), command)
         )
