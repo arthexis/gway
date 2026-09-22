@@ -124,7 +124,16 @@ class OAuthRegistry:
 
     @staticmethod
     def _pkce(verifier):
-        digest = hashlib.sha256(str(verifier).encode("ascii")).digest()
+        verifier = str(verifier)
+        if not 43 <= len(verifier) <= 128:
+            raise OAuthAuthenticationError()
+        allowed = set(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+            "0123456789-._~"
+        )
+        if any(character not in allowed for character in verifier):
+            raise OAuthAuthenticationError()
+        digest = hashlib.sha256(verifier.encode("ascii")).digest()
         return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
     def create_client(self, client_id, *, redirect_uris=(), metadata_url=None):
