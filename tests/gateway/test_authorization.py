@@ -165,3 +165,25 @@ def test_authorized_ingested_recipe_encapsulates_internal_operations(
     with gateway.authorized(operations={"recipes.deploy"}):
         with pytest.raises(AuthorizationError, match="internal"):
             gateway("internal")
+
+
+def test_authorized_request_does_not_inherit_host_semantic_context(gateway):
+    gateway.context["HOST_SECRET"] = "secret"
+    gateway.echo = gateway.wrap("echo_value", lambda value: value)
+
+    with gateway.authorized(operations={"echo_value"}):
+        with pytest.raises(AuthorizationError, match="Operation is not authorized: env"):
+            gateway("echo [HOST_SECRET]")
+
+    assert gateway.context["HOST_SECRET"] == "secret"
+
+
+def test_authorized_request_can_reuse_values_generated_inside_request(gateway):
+    gateway.make = gateway.wrap("make_token", lambda: "generated")
+    gateway.echo = gateway.wrap("echo_value", lambda value: value)
+
+    with gateway.authorized(operations={"make_token", "echo_value"}):
+        assert gateway("make token") == "generated"
+        assert gateway("echo [token]") == "generated"
+
+    assert "token" not in gateway.results.maps[0]
