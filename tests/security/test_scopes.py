@@ -25,7 +25,7 @@ def test_scope_create_round_trips_and_versions_schema(tmp_path):
     assert registry.get("logs-read") == Scope("logs-read")
 
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
 
 
 def test_scope_replace_is_atomic_complete_definition(tmp_path):
@@ -195,3 +195,98 @@ def test_security_scope_gway_command_surface(gateway, tmp_path, monkeypatch):
     assert gateway("security scope list") == [updated]
     assert gateway("security scope delete logs") is True
     assert gateway("security scope list") == []
+
+
+
+def test_scope_toml_apply_and_export_round_trip(gateway, tmp_path, monkeypatch):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    monkeypatch.setattr(scope_commands, "_registry", registry)
+    source = tmp_path / "scopes.toml"
+    source.write_text(
+        """
+[scopes.logs-read]
+operations = ["log.sources", "log.read", "log.tail", "log.search"]
+environment = []
+
+[scopes.operator]
+operations = ["status"]
+environment = ["SITE"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    first = gateway(f"security scope apply {source}")
+    second = gateway(f"security scope apply {source}")
+
+    assert first == second
+    assert [scope.name for scope in first] == ["logs-read", "operator"]
+    assert registry.require("logs-read").operations == frozenset(
+        {"log.sources", "log.read", "log.tail", "log.search"}
+    )
+    assert registry.require("operator").environment == frozenset({"SITE"})
+
+    exported = tmp_path / "exported.toml"
+    assert gateway(f"security scope export --to {exported}") == str(exported)
+    assert "[scopes.\"logs-read\"]" in exported.read_text(encoding="utf-8")
+
+    replacement = ScopeRegistry(tmp_path / "replacement.sqlite")
+    monkeypatch.setattr(scope_commands, "_registry", replacement)
+    gateway(f"security scope apply {exported}")
+
+    assert replacement.all() == registry.all()
+
+
+def test_scope_toml_apply_is_transactional(tmp_path, monkeypatch):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    registry.replace("existing", operations={"old"})
+    original_connect = SecurityState.connect
+    calls = 0
+
+    class BrokenConnection:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def __enter__(self):
+            self.connection.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.connection.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self.connection, name)
+
+        def executemany(self, sql, values):
+            nonlocal calls
+            if "scope_operations" in sql:
+                calls += 1
+                if calls == 2:
+                    raise RuntimeError("second scope failed")
+            return self.connection.executemany(sql, values)
+
+    monkeypatch.setattr(
+        SecurityState,
+        "connect",
+        lambda state: BrokenConnection(original_connect(state)),
+    )
+
+    with pytest.raises(RuntimeError, match="second scope failed"):
+        registry.replace_many(
+            {
+                "existing": {"operations": ["new"]},
+                "second": {"operations": ["other"]},
+            }
+        )
+
+    monkeypatch.setattr(SecurityState, "connect", original_connect)
+    assert registry.require("existing").operations == frozenset({"old"})
+    assert registry.get("second") is None
+
+
+def test_scope_toml_rejects_unknown_fields(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+
+    with pytest.raises(ValueError, match="Unknown scope fields"):
+        registry.replace_many(
+            {"logs": {"operations": ["log.read"], "wildcard": ["*"]}}
+        )
