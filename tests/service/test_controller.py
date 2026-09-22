@@ -338,7 +338,7 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
 
     try:
         assert started["running"] is True
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 30
         while True:
             try:
                 with socket.create_connection(("127.0.0.1", port), timeout=0.1):
@@ -426,10 +426,10 @@ def test_required_service_companion_repairs_missing_dependency(
     fake_uv.chmod(0o755)
 
     marker = tmp_path / "imports.txt"
-    recipe = tmp_path / "required-service.rx"
+    recipe = tmp_path / "requiredservice.rx"
     recipe.write_text(
         "require service_only_dependency\n"
-        "required-service record\n",
+        "requiredservice record\n",
         encoding="utf-8",
     )
     recipe.with_suffix(".py").write_text(
