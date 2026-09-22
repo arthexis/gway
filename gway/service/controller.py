@@ -82,6 +82,7 @@ class Controller:
         restart=None,
         attempts=None,
         restart_sec=None,
+        environment=None,
     ):
         """Resolve an arbitrary invocation into service policy."""
         from ..launchable import resolve_launchable
@@ -108,6 +109,12 @@ class Controller:
             policy["attempts"] = attempts
         if restart_sec is not None:
             policy["restart_sec"] = restart_sec
+        if environment is not None:
+            policy["environment"] = (
+                (environment,)
+                if isinstance(environment, str)
+                else tuple(environment)
+            )
         return replace(definition, **policy) if policy else definition
 
     def list(self, project=None):
@@ -145,6 +152,7 @@ class Controller:
                 "command": list(definition.launchable.command),
             },
             "working_directory": definition.working_directory,
+            "environment": list(definition.environment),
             "restart": definition.restart,
             "attempts": definition.attempts,
             "restart_sec": definition.restart_sec,
@@ -179,14 +187,16 @@ class Controller:
             raise RuntimeError(
                 f"Service backend {record.backend!r} has no runtime adapter"
             )
+        updates = {}
         if record.command:
-            definition = replace(
-                definition,
-                launchable=replace(
-                    definition.launchable,
-                    command=tuple(record.command),
-                ),
+            updates["launchable"] = replace(
+                definition.launchable,
+                command=tuple(record.command),
             )
+        if record.environment:
+            updates["environment"] = tuple(record.environment)
+        if updates:
+            definition = replace(definition, **updates)
 
         policy = {}
         if record.restart is not None:
@@ -219,6 +229,7 @@ class Controller:
         restart: str = None,
         attempts: int = None,
         restart_sec: float = None,
+        environment=None,
         timeout: float = None,
     ):
         """Install supervision for any resolvable Gway operation or recipe.
@@ -231,6 +242,7 @@ class Controller:
             restart: Restart policy override.
             attempts: Automatic retry attempts after failure.
             restart_sec: Delay between restart attempts in seconds.
+            environment: Optional NAME=value environment assignment(s).
             timeout: Maximum seconds for each systemd operation; defaults to 40.
         """
         definition = self._definition(
@@ -239,6 +251,7 @@ class Controller:
             restart=restart,
             attempts=attempts,
             restart_sec=restart_sec,
+            environment=environment,
         )
 
         from ..install.service import get as get_backend
