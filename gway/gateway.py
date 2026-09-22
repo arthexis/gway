@@ -322,11 +322,12 @@ class Gateway(Resolver):
 
         frame = frames[-1]
 
-        from .uv import ensure_uv
+        if frame.uv is None:
+            from .uv import ensure_uv
 
-        frame.uv = ensure_uv(
-            system=getattr(frame.environment, "scope", "user") == "system"
-        )
+            frame.uv = ensure_uv(
+                system=getattr(frame.environment, "scope", "user") == "system"
+            )
 
         requirements = frame.requirements.setdefault("python", [])
         for package in normalized:
