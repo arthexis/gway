@@ -1,4 +1,4 @@
-"""Bounded journald reads for concrete systemd-backed log sources."""
+"""Bounded journald reads for concrete GWAY log sources."""
 
 from datetime import datetime, timezone
 import json
@@ -53,32 +53,38 @@ def _diagnostic_text(value, *, limit=4000):
     return text[:limit] + "...<truncated>"
 
 
-def _systemd_sources(sources):
+def _concrete_sources(sources):
     selected = list(sources)
     for source in selected:
-        if source.kind != "service":
+        if source.kind == "project":
             raise ValueError(
-                f"journal reader requires concrete service sources: {source.identity}"
+                f"journal reader requires concrete sources: {source.identity}"
             )
-        if source.backend != "systemd":
+        if source.backend not in {"systemd", "journal"}:
             raise ValueError(
-                f"log source {source.identity!r} is not systemd-backed"
+                f"log source {source.identity!r} is not journal-readable"
             )
         if not source.backend_id:
             raise ValueError(
                 f"log source {source.identity!r} has no persisted backend identity"
             )
-        if source.system is None:
-            raise ValueError(
-                f"log source {source.identity!r} has no journal scope"
-            )
+        if source.backend == "systemd":
+            if source.kind != "service":
+                raise ValueError(
+                    f"systemd log source must be a service: {source.identity}"
+                )
+            if source.system is None:
+                raise ValueError(
+                    f"log source {source.identity!r} has no journal scope"
+                )
     return selected
 
 
 def _build_command(
     sources,
     *,
-    system,
+    backend,
+    system=None,
     since=None,
     until=None,
     limit=None,
@@ -87,13 +93,19 @@ def _build_command(
 ):
     """Build one safe journalctl invocation for one journal scope."""
     command = ["journalctl"]
-    if not system:
+    if backend == "systemd" and not system:
         command.append("--user")
     command.extend(("--output=json", "--no-pager"))
 
-    unit_option = "--unit" if system else "--user-unit"
-    for source in sources:
-        command.append(f"{unit_option}={source.backend_id}")
+    if backend == "systemd":
+        unit_option = "--unit" if system else "--user-unit"
+        for source in sources:
+            command.append(f"{unit_option}={source.backend_id}")
+    elif backend == "journal":
+        for source in sources:
+            command.append(f"SYSLOG_IDENTIFIER={source.backend_id}")
+    else:
+        raise ValueError(f"Unsupported journal backend: {backend}")
 
     if since is not None:
         command.extend(("--since", str(since)))
@@ -144,13 +156,27 @@ def _priority(entry):
 
 
 def _entry_source(entry, sources):
+    identifier = entry.get("SYSLOG_IDENTIFIER")
+    if identifier is not None:
+        matches = [
+            source
+            for source in sources
+            if source.backend == "journal" and source.backend_id == identifier
+        ]
+        if len(matches) == 1:
+            return matches[0]
+
     unit = (
         entry.get("_SYSTEMD_UNIT")
         or entry.get("_SYSTEMD_USER_UNIT")
         or entry.get("UNIT")
     )
     if unit is not None:
-        matches = [source for source in sources if source.backend_id == unit]
+        matches = [
+            source
+            for source in sources
+            if source.backend == "systemd" and source.backend_id == unit
+        ]
         if len(matches) == 1:
             return matches[0]
 
@@ -158,7 +184,8 @@ def _entry_source(entry, sources):
         return sources[0]
 
     raise ValueError(
-        f"journal entry cannot be attributed to one requested source: unit={unit!r}"
+        "journal entry cannot be attributed to one requested source: "
+        f"identifier={identifier!r} unit={unit!r}"
     )
 
 
@@ -264,27 +291,49 @@ def read_journal(
     reverse=False,
     timeout=JOURNALCTL_TIMEOUT,
 ):
-    """Read concrete systemd log sources and return normalized records.
+    """Read concrete journal-readable sources and return normalized records.
 
-    Sources in the same user/system scope share one journalctl invocation.
-    Mixed scopes require separate journalctl invocations and are merged by
-    timestamp after normalization.
+    Systemd sources share one query per user/system scope. Direct journal
+    identifier sources share one SYSLOG_IDENTIFIER query. Results from the
+    required native queries are merged by timestamp after normalization.
     """
-    selected = _systemd_sources(sources)
+    selected = _concrete_sources(sources)
     if not selected:
         return []
 
-    groups = {
-        system: [source for source in selected if source.system is system]
-        for system in (False, True)
-    }
+    groups = [
+        (
+            "systemd",
+            False,
+            [
+                source
+                for source in selected
+                if source.backend == "systemd" and source.system is False
+            ],
+        ),
+        (
+            "systemd",
+            True,
+            [
+                source
+                for source in selected
+                if source.backend == "systemd" and source.system is True
+            ],
+        ),
+        (
+            "journal",
+            None,
+            [source for source in selected if source.backend == "journal"],
+        ),
+    ]
 
     records = []
-    for system, scoped_sources in groups.items():
+    for backend, system, scoped_sources in groups:
         if not scoped_sources:
             continue
         command = _build_command(
             scoped_sources,
+            backend=backend,
             system=system,
             since=since,
             until=until,
