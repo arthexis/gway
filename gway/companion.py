@@ -6,9 +6,7 @@ import pickle
 from pathlib import Path
 import struct
 import subprocess
-import sys
 import threading
-import traceback
 
 from .ingestion.base import IngestedOperation, register_operation
 
@@ -158,8 +156,11 @@ while True:
 
 
 _KIND = {
-    name: value
-    for name, value in inspect._ParameterKind.__members__.items()
+    "POSITIONAL_ONLY": inspect.Parameter.POSITIONAL_ONLY,
+    "POSITIONAL_OR_KEYWORD": inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    "VAR_POSITIONAL": inspect.Parameter.VAR_POSITIONAL,
+    "KEYWORD_ONLY": inspect.Parameter.KEYWORD_ONLY,
+    "VAR_KEYWORD": inspect.Parameter.VAR_KEYWORD,
 }
 
 
@@ -300,3 +301,24 @@ def register_worker_operations(runtime, worker):
             continue
         registered.append(register_operation(runtime, operation))
     return registered
+
+
+def unregister_worker_operations(runtime, worker):
+    """Hide operations previously registered for one managed companion."""
+    root = worker.companion.stem
+    removed = []
+    for description in worker.operations:
+        name = f"{root}.{description['name']}"
+        operation = runtime.ops.resolve(name)
+        if operation is None:
+            continue
+        metadata = getattr(operation, "__gway_metadata__", {})
+        if (
+            getattr(operation, "__gway_source_kind__", None)
+            != "recipe-companion-worker"
+            or metadata.get("companion") != str(worker.companion)
+        ):
+            continue
+        runtime.ops.unregister(name)
+        removed.append(name)
+    return tuple(removed)
