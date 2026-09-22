@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from gway import uv
+from gway.recipe import uv
 
 
 def test_managed_uv_path_lives_under_gway_data(monkeypatch, tmp_path):
@@ -108,7 +108,7 @@ def test_require_bootstraps_uv_once_per_recipe_frame(gateway, monkeypatch, tmp_p
         calls.append(kwargs)
         return executable
 
-    monkeypatch.setattr("gway.uv.ensure_uv", ensure_uv)
+    monkeypatch.setattr("gway.recipe.uv.ensure_uv", ensure_uv)
 
     def probe():
         return gateway._recipe_frames[-1].uv
