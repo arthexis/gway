@@ -61,11 +61,18 @@ def test_service_list_contains_named_presets():
     assert listed == [
         {
             "project": "gway",
+            "service": "remote-auth",
+            "description": "Gway remote OAuth and account service",
+            "launchable": "operation",
+            "target": "remote.serve",
+        },
+        {
+            "project": "gway",
             "service": "sous-chef",
             "description": "Gway single-worker recipe scheduler",
             "launchable": "operation",
             "target": "sous.chef",
-        }
+        },
     ]
 
 
