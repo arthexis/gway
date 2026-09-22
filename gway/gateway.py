@@ -321,26 +321,34 @@ class Gateway(Resolver):
             normalized.append(package.strip())
 
         frame = frames[-1]
+        preflight = frame.preflight_requirements.get("python", [])
+        if preflight:
+            undeclared = [package for package in normalized if package not in preflight]
+            if undeclared:
+                raise RuntimeError(
+                    "require preflight mismatch for " + ", ".join(undeclared)
+                )
+        else:
+            if frame.uv is None:
+                from .uv import ensure_uv
 
-        if frame.uv is None:
-            from .uv import ensure_uv
+                frame.uv = ensure_uv(
+                    system=getattr(frame.environment, "scope", "user") == "system"
+                )
+            from .recipe_environment import sync_python_environment
 
-            frame.uv = ensure_uv(
-                system=getattr(frame.environment, "scope", "user") == "system"
-            )
+            sync_python_environment(frame.environment, frame.uv, normalized)
 
         requirements = frame.requirements.setdefault("python", [])
         for package in normalized:
             if package not in requirements:
                 requirements.append(package)
 
-        from .recipe_environment import sync_python_environment
+        if frame.companion_worker is not None and not frame.companion_registered:
+            from .companion import register_worker_operations
 
-        sync_python_environment(
-            frame.environment,
-            frame.uv,
-            requirements,
-        )
+            register_worker_operations(self, frame.companion_worker)
+            frame.companion_registered = True
         return tuple(requirements)
 
     def _run_sampler_recipe(self, recipe_name, **context):
