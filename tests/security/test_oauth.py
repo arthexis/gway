@@ -201,10 +201,9 @@ def test_disabled_or_expired_linked_gway_token_invalidates_oauth(tmp_path):
     tokens2.create("operator", scopes={"logs"}, expires_at=expired)
     oauth2.link("chatgpt", "operator")
     grant2 = oauth2.create_grant("chatgpt", "client", scopes={"logs"})
-    issued2 = oauth2.issue_tokens(grant2.id)
 
     with pytest.raises(OAuthAuthenticationError):
-        oauth2.authenticate_access(issued2.access_token)
+        oauth2.issue_tokens(grant2.id)
 
 
 def test_refresh_rotation_is_one_time_and_cannot_restore_removed_scope(tmp_path):
