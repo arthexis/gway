@@ -9,6 +9,10 @@ from gway.recipes import execute_recipe
 def _fake_uv(monkeypatch, tmp_path):
     uv = tmp_path / "uv"
     monkeypatch.setattr("gway.uv.ensure_uv", lambda **kwargs: uv)
+    monkeypatch.setattr(
+        "gway.recipe_environment.sync_python_environment",
+        lambda environment, executable, requirements: environment.venv,
+    )
     return uv
 
 
