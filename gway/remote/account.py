@@ -81,7 +81,7 @@ class RemoteAccountApplication:
         self.oauth.link(link_name, identity.token.name)
         session.link_name = link_name
         session.approved_grant_id = None
-        self.sessions.rotate_csrf(session)
+        self.sessions.rotate(session)
         return self.oauth.get_link(link_name)
 
     def consent_details(self, session):
