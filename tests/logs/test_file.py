@@ -184,7 +184,7 @@ def test_file_time_bounds_require_iso_timestamps(tmp_path):
         read_file_logs(
             [source("arthexis/web")],
             paths=[base],
-            since="10 minutes ago",
+            since="sometime later",
         )
 
 
