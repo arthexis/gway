@@ -510,7 +510,10 @@ class Gateway(Resolver):
 
     def _environment_value(self, name):
         """Resolve one environment value through the normal env operation."""
-        return self("env", str(name))
+        value = self("env", str(name), None)
+        if value is None:
+            raise KeyError(name)
+        return value
 
     def _environment_names(self):
         """Return only environment names visible to the active authority."""
