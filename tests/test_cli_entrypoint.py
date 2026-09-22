@@ -90,7 +90,7 @@ def test_cli_file_logging_remains_explicit_compatibility_option(tmp_path):
     assert completed.returncode == 0
     log_path = tmp_path / "logs" / "gway.log"
     assert log_path.is_file()
-    assert "INFO gway reconciliation-test" in log_path.read_text(encoding="utf-8")
+    assert "INFO gway [gway] reconciliation-test" in log_path.read_text(encoding="utf-8")
 
 
 def test_cli_logfile_stdout_is_explicit_opt_in(tmp_path):
@@ -116,7 +116,7 @@ def test_cli_logfile_stdout_is_explicit_opt_in(tmp_path):
     )
 
     assert completed.returncode == 0
-    assert "INFO gway visible-on-stdout" in completed.stdout
+    assert "INFO gway [gway] visible-on-stdout" in completed.stdout
     assert completed.stderr == ""
 
 
@@ -144,4 +144,4 @@ def test_cli_logfile_stderr_is_explicit_opt_in(tmp_path):
 
     assert completed.returncode == 0
     assert completed.stdout == ""
-    assert "INFO gway visible-on-stderr" in completed.stderr
+    assert "INFO gway [gway] visible-on-stderr" in completed.stderr
