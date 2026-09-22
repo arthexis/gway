@@ -281,7 +281,7 @@ def test_read_journal_wraps_missing_journalctl(monkeypatch):
         read_journal(selected)
 
 
-def test_user_unit_field_maps_back_to_logical__service_source():
+def test_user_unit_field_maps_back_to_logical_source():
     selected = [_service_source("arthexis/web", "arthexis-web.service")]
     output = json.dumps(
         {
@@ -297,7 +297,7 @@ def test_user_unit_field_maps_back_to_logical__service_source():
     assert records[0].unit == "arthexis-web.service"
 
 
-def journal__service_source(identity):
+def _journal_source(identity):
     return LogSource(
         identity=identity,
         kind="gway" if identity == "gway" else "recipe",
@@ -306,7 +306,7 @@ def journal__service_source(identity):
     )
 
 
-def journal__unit_entry(identifier, micros, message):
+def _journal_entry(identifier, micros, message):
     return json.dumps(
         {
             "__REALTIME_TIMESTAMP": str(micros),
@@ -318,7 +318,7 @@ def journal__unit_entry(identifier, micros, message):
 
 
 def test_build_command_for_direct_journal_identifiers():
-    sources = [journal__service_source("gway"), journal__service_source("recipe/deploy")]
+    sources = [_journal_source("gway"), _journal_source("recipe/deploy")]
 
     command = _build_command(
         sources,
@@ -341,7 +341,7 @@ def test_build_command_for_direct_journal_identifiers():
 
 def test_read_journal_queries_identifiers_together(monkeypatch):
     calls = []
-    sources = [journal__service_source("gway"), journal__service_source("recipe/deploy")]
+    sources = [_journal_source("gway"), _journal_source("recipe/deploy")]
 
     def fake_run(command, **kwargs):
         calls.append(command)
@@ -350,8 +350,8 @@ def test_read_journal_queries_identifiers_together(monkeypatch):
             0,
             stdout="\n".join(
                 [
-                    journal__unit_entry("gway", 1_700_000_000_000_000, "core"),
-                    journal__unit_entry(
+                    _journal_entry("gway", 1_700_000_000_000_000, "core"),
+                    _journal_entry(
                         "recipe/deploy",
                         1_700_000_001_000_000,
                         "recipe",
@@ -378,13 +378,13 @@ def test_service_and_identifier_sources_use_native_query_groups(monkeypatch):
     calls = []
     sources = [
         _service_source("arthexis/web", "arthexis-web.service"),
-        journal__service_source("recipe/deploy"),
+        _journal_source("recipe/deploy"),
     ]
 
     def fake_run(command, **kwargs):
         calls.append(command)
         if "SYSLOG_IDENTIFIER=recipe/deploy" in command:
-            stdout = journal__unit_entry(
+            stdout = _journal_entry(
                 "recipe/deploy",
                 1_700_000_001_000_000,
                 "recipe",
