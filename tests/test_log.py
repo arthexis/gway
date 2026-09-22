@@ -169,13 +169,13 @@ def test_source_scope_changes_journal_identifier_and_restores(monkeypatch):
     monkeypatch.setattr(gway_log._socket, "socket", lambda *args: fake)
 
     gway_log.configure_output(level="INFO")
-    assert gway_log.current_source() == "gway"
+    assert gway_log._current_source() == "gway"
 
-    with gway_log.source_scope("recipe/deploy"):
-        assert gway_log.current_source() == "recipe/deploy"
+    with gway_log._source_scope("recipe/deploy"):
+        assert gway_log._current_source() == "recipe/deploy"
         gway_log.info("inside")
 
-    assert gway_log.current_source() == "gway"
+    assert gway_log._current_source() == "gway"
     gway_log.info("outside")
 
     assert fake.payloads[-2:] == [
@@ -185,22 +185,22 @@ def test_source_scope_changes_journal_identifier_and_restores(monkeypatch):
 
 
 def test_source_scope_nests_and_restores_after_exception():
-    assert gway_log.current_source() == "gway"
+    assert gway_log._current_source() == "gway"
 
     with pytest.raises(RuntimeError):
-        with gway_log.source_scope("recipe/outer"):
-            assert gway_log.current_source() == "recipe/outer"
-            with gway_log.source_scope("recipe/inner"):
-                assert gway_log.current_source() == "recipe/inner"
+        with gway_log._source_scope("recipe/outer"):
+            assert gway_log._current_source() == "recipe/outer"
+            with gway_log._source_scope("recipe/inner"):
+                assert gway_log._current_source() == "recipe/inner"
                 raise RuntimeError("boom")
 
-    assert gway_log.current_source() == "gway"
+    assert gway_log._current_source() == "gway"
 
 
 def test_file_output_preserves_logical_source(tmp_path):
     handler = gway_log.configure_output(destination="file", root=tmp_path)
 
-    with gway_log.source_scope("recipe/deploy"):
+    with gway_log._source_scope("recipe/deploy"):
         gway_log.info("portable identity")
     handler.flush()
 
