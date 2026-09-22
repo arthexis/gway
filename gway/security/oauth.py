@@ -42,6 +42,7 @@ class OAuthGrant:
     id: int
     link_name: str
     client_id: str
+    resource: str | None
     scopes: frozenset[str]
     created_at: str
     revoked_at: str | None = None
@@ -262,6 +263,7 @@ class OAuthRegistry:
             row["id"],
             row["link_name"],
             row["client_id"],
+            row["resource"],
             cls._grant_scopes(connection, row["id"]),
             row["created_at"],
             row["revoked_at"],
@@ -274,8 +276,8 @@ class OAuthRegistry:
             row = connection.execute(
                 """
                 SELECT oauth_grants.id, oauth_links.name AS link_name,
-                       oauth_grants.client_id, oauth_grants.created_at,
-                       oauth_grants.revoked_at
+                       oauth_grants.client_id, oauth_grants.resource,
+                       oauth_grants.created_at, oauth_grants.revoked_at
                 FROM oauth_grants
                 JOIN oauth_links ON oauth_links.id = oauth_grants.link_id
                 WHERE oauth_grants.id = ?
@@ -284,9 +286,10 @@ class OAuthRegistry:
             ).fetchone()
             return self._grant_from_row(connection, row)
 
-    def create_grant(self, link_name, client_id, *, scopes):
+    def create_grant(self, link_name, client_id, *, scopes, resource=None):
         link_name = self._text(link_name, "OAuth link name")
         client_id = self._text(client_id, "OAuth client id")
+        resource = None if resource is None else self._text(resource, "OAuth resource")
         link = self.get_link(link_name)
         if link is None:
             raise LookupError(f"Unknown OAuth link: {link_name}")
@@ -309,10 +312,16 @@ class OAuthRegistry:
             ).fetchone()
             cursor = connection.execute(
                 """
-                INSERT INTO oauth_grants (link_id, client_id, created_at, revoked_at)
-                VALUES (?, ?, ?, NULL)
+                INSERT INTO oauth_grants (
+                    link_id, client_id, resource, created_at, revoked_at
+                ) VALUES (?, ?, ?, ?, NULL)
                 """,
-                (link_row["id"], client_id, self._now().isoformat()),
+                (
+                    link_row["id"],
+                    client_id,
+                    resource,
+                    self._now().isoformat(),
+                ),
             )
             grant_id = cursor.lastrowid
             for name in sorted(scope_names):
@@ -347,8 +356,8 @@ class OAuthRegistry:
         row = connection.execute(
             """
             SELECT oauth_grants.id, oauth_links.name AS link_name,
-                   oauth_grants.client_id, oauth_grants.created_at,
-                   oauth_grants.revoked_at,
+                   oauth_grants.client_id, oauth_grants.resource,
+                   oauth_grants.created_at, oauth_grants.revoked_at,
                    oauth_links.revoked_at AS link_revoked_at,
                    tokens.name AS token_name, tokens.disabled AS token_disabled,
                    tokens.expires_at AS token_expires_at
@@ -389,6 +398,7 @@ class OAuthRegistry:
             row["id"],
             row["link_name"],
             row["client_id"],
+            row["resource"],
             granted,
             row["created_at"],
             row["revoked_at"],
@@ -430,9 +440,21 @@ class OAuthRegistry:
             self.get_grant(grant_id), code, redirect_uri, expires_at
         )
 
-    def consume_authorization_code(self, code, *, redirect_uri, code_verifier):
+    def consume_authorization_code(
+        self,
+        code,
+        *,
+        redirect_uri,
+        code_verifier,
+        client_id=None,
+        resource=None,
+    ):
         redirect_uri = self._text(redirect_uri, "OAuth redirect URI")
         code_verifier = self._text(code_verifier, "PKCE code verifier")
+        client_id = (
+            None if client_id is None else self._text(client_id, "OAuth client id")
+        )
+        resource = None if resource is None else self._text(resource, "OAuth resource")
         code_hash = self._hash(code)
         with self.state.connect() as connection:
             row = connection.execute(
@@ -458,7 +480,11 @@ class OAuthRegistry:
                 row["code_challenge"], self._pkce(code_verifier)
             ):
                 raise OAuthAuthenticationError()
-            self._active_grant(connection, row["grant_id"])
+            active = self._active_grant(connection, row["grant_id"])
+            if client_id is not None and active["client_id"] != client_id:
+                raise OAuthAuthenticationError()
+            if resource is not None and active["resource"] != resource:
+                raise OAuthAuthenticationError()
             consumed_at = self._now().isoformat()
             cursor = connection.execute(
                 """
@@ -548,9 +574,15 @@ class OAuthRegistry:
         self,
         refresh_token,
         *,
+        client_id=None,
+        resource=None,
         access_lifetime_seconds=900,
         refresh_lifetime_seconds=2592000,
     ):
+        client_id = (
+            None if client_id is None else self._text(client_id, "OAuth client id")
+        )
+        resource = None if resource is None else self._text(resource, "OAuth resource")
         public_id = self._public_id(refresh_token, "gwr")
         with self.state.connect() as connection:
             row = connection.execute(
@@ -570,7 +602,11 @@ class OAuthRegistry:
                 )
             ):
                 raise OAuthAuthenticationError()
-            self._active_grant(connection, row["grant_id"])
+            active = self._active_grant(connection, row["grant_id"])
+            if client_id is not None and active["client_id"] != client_id:
+                raise OAuthAuthenticationError()
+            if resource is not None and active["resource"] != resource:
+                raise OAuthAuthenticationError()
             rotated_at = self._now().isoformat()
             cursor = connection.execute(
                 """
