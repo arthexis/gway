@@ -406,9 +406,9 @@ def sources():
 
 def read(
     *source: str,
-    since: str | None = None,
-    until: str | None = None,
-    limit: int | None = None,
+    since: str = None,
+    until: str = None,
+    limit: int = None,
 ):
     """Read bounded records from GWAY-managed log sources."""
     from .logs.operations import read as _read
@@ -418,7 +418,7 @@ def read(
 
 def tail(
     *source: str,
-    since: str | None = None,
+    since: str = None,
     limit: int = 100,
 ):
     """Return the newest records from GWAY-managed log sources."""
@@ -430,9 +430,9 @@ def tail(
 def search(
     pattern: str,
     *source: str,
-    since: str | None = None,
-    until: str | None = None,
-    limit: int | None = None,
+    since: str = None,
+    until: str = None,
+    limit: int = None,
 ):
     """Search message content in GWAY-managed log sources."""
     from .logs.operations import search as _search
