@@ -102,10 +102,10 @@ def test_default_destination_prefers_journal_when_available(monkeypatch):
     assert gway_log.default_output_destination() == "journal"
 
 
-def test_default_destination_falls_back_to_stderr(monkeypatch):
+def test_default_destination_uses_file_when_journal_unavailable(monkeypatch):
     monkeypatch.setattr(gway_log, "_journal_address", lambda: None)
 
-    assert gway_log.default_output_destination() == "stderr"
+    assert gway_log.default_output_destination() == "file"
 
 
 class _FakeJournalSocket:
@@ -215,3 +215,34 @@ def test_file_output_preserves_logical_source(tmp_path):
     )
     assert payload["source"] == "recipe/deploy"
     assert payload["message"] == "portable identity"
+
+
+def test_default_non_journal_output_is_durable_jsonl(monkeypatch, tmp_path):
+    monkeypatch.setattr(gway_log, "_journal_address", lambda: None)
+
+    handler = gway_log.configure_output(root=tmp_path, level="INFO")
+    gway_log.info("portable default")
+    handler.flush()
+
+    assert isinstance(handler, TimedRotatingFileHandler)
+    payload = json.loads(
+        (tmp_path / "logs" / "gway.log").read_text(encoding="utf-8")
+    )
+    assert payload["source"] == "gway"
+    assert payload["message"] == "portable default"
+
+
+def test_default_journal_output_does_not_dual_write_file(
+    monkeypatch,
+    tmp_path,
+):
+    fake = _FakeJournalSocket()
+    monkeypatch.setattr(gway_log, "_journal_address", lambda: "/run/journal")
+    monkeypatch.setattr(gway_log._socket, "socket", lambda *args: fake)
+
+    handler = gway_log.configure_output(root=tmp_path, level="INFO")
+    gway_log.info("journal only")
+
+    assert isinstance(handler, gway_log._JournalHandler)
+    assert fake.payloads == [b"<14>gway: journal only"]
+    assert not (tmp_path / "logs" / "gway.log").exists()
