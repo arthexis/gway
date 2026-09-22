@@ -71,7 +71,10 @@ class Resolver:
         for _, source in self._search_order:
             try:
                 if isinstance(source, Mapping):
-                    return mapping_value(source, key)
+                    try:
+                        return source[key]
+                    except KeyError:
+                        return mapping_value(source, key)
                 return source[key]
             except AmbiguousKeyError:
                 raise
