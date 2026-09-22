@@ -19,7 +19,7 @@ file = "README.rst"
 content-type = "text/x-rst"
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "fastmcp>=4,<5"]
 toml = ['tomli>=2; python_version < "3.11"']
 
 [project.scripts]
