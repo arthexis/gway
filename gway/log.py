@@ -1,6 +1,7 @@
 """Built-in logging operations and GWAY logger hierarchy."""
 
 from contextlib import contextmanager as _contextmanager
+from contextvars import ContextVar as _ContextVar
 from itertools import count as _count
 import logging as _logging
 from logging.handlers import TimedRotatingFileHandler as _TimedRotatingFileHandler
@@ -25,6 +26,39 @@ _gway_logger.setLevel(_DEFAULT_LEVEL)
 logger = _gway_logger
 _instances = _count()
 _output_handler = None
+_log_source = _ContextVar("gway_log_source", default="gway")
+
+
+def current_source():
+    """Return the logical log source for the current execution context."""
+    return _log_source.get()
+
+
+def _validate_source(identity):
+    value = str(identity).strip()
+    if not value:
+        raise ValueError("log source identity cannot be empty")
+    if "\n" in value or "\r" in value or ":" in value:
+        raise ValueError("log source identity contains invalid syslog characters")
+    return value
+
+
+@_contextmanager
+def source_scope(identity):
+    """Temporarily assign a logical source to GWAY diagnostics."""
+    token = _log_source.set(_validate_source(identity))
+    try:
+        yield current_source()
+    finally:
+        _log_source.reset(token)
+
+
+class _SourceFilter(_logging.Filter):
+    """Attach the current logical GWAY source to every emitted record."""
+
+    def filter(self, record):
+        record.gway_source = current_source()
+        return True
 
 
 def _coerce_level(level):
@@ -106,7 +140,11 @@ class _JournalHandler(_logging.Handler):
     def emit(self, record):
         message = self.format(record)
         priority = (_SYSLOG_USER_FACILITY * 8) + _journal_priority(record.levelno)
-        payload = f"<{priority}>gway: {message}".encode("utf-8", errors="replace")
+        identifier = getattr(record, "gway_source", current_source())
+        payload = f"<{priority}>{identifier}: {message}".encode(
+            "utf-8",
+            errors="replace",
+        )
         try:
             self._send(payload)
         except OSError:
@@ -193,12 +231,13 @@ def configure_output(
             handler = _daily_file_handler(_Path(selected).expanduser())
 
     handler.setLevel(numeric_level)
+    handler.addFilter(_SourceFilter())
     handler.setFormatter(
         formatter
         or _logging.Formatter(
             "%(message)s"
             if journal
-            else "%(asctime)s %(levelname)s %(name)s %(message)s"
+            else "%(asctime)s %(levelname)s %(name)s [%(gway_source)s] %(message)s"
         )
     )
     handler._gway_output_handler = True
