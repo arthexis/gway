@@ -1,6 +1,6 @@
 """Structured rotating-file reader for portable GWAY logging."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import re
@@ -24,13 +24,25 @@ def _bound(value, label):
         result = value
     else:
         text = str(value).strip()
-        if text.lower() == "now":
-            return datetime.now(timezone.utc)
+        lowered = text.lower()
+        now = datetime.now(timezone.utc)
+        if lowered == "now":
+            return now
+        if lowered == "today":
+            return now.replace(hour=0, minute=0, second=0, microsecond=0)
+        relative = re.fullmatch(
+            r"(\d+)\s+(second|minute|hour|day)s?\s+ago",
+            lowered,
+        )
+        if relative is not None:
+            amount = int(relative.group(1))
+            unit = relative.group(2)
+            return now - timedelta(**{unit + "s": amount})
         try:
             result = datetime.fromisoformat(text.replace("Z", "+00:00"))
         except ValueError as exc:
             raise FileLogError(
-                f"{label} must be an ISO-8601 timestamp for file-backed logs"
+                f"{label} must be ISO-8601 or a supported relative time"
             ) from exc
     if result.tzinfo is None or result.utcoffset() is None:
         raise FileLogError(f"{label} must be timezone-aware")
