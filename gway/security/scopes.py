@@ -1,3 +1,4 @@
+import builtins
 """Named reusable authorization scopes."""
 
 from dataclasses import dataclass
@@ -169,63 +170,11 @@ class ScopeRegistry:
 
     def resolve(self, names):
         """Union named scopes into one effective authority."""
-        operations = set()
-        environment = set()
+        operations = builtins.set()
+        environment = builtins.set()
         for name in names:
             scope = self.require(name)
             operations.update(scope.operations)
             environment.update(scope.environment)
         return EffectiveScope(frozenset(operations), frozenset(environment))
 
-
-_default_registry = None
-
-
-def registry():
-    """Return the process-local default scope registry."""
-    global _default_registry
-    if _default_registry is None:
-        _default_registry = ScopeRegistry()
-    return _default_registry
-
-
-def create(name):
-    """Create an empty named security scope."""
-    return registry().create(name)
-
-
-def show(name):
-    """Return one named security scope."""
-    return registry().require(name)
-
-
-def list():
-    """Return all named security scopes."""
-    return registry().all()
-
-
-def delete(name):
-    """Delete one named security scope."""
-    return registry().remove(name)
-
-
-def set(name, *operations, environment=None):
-    """Replace one scope using operation grants and optional environment names."""
-    if environment is None:
-        environment_values = ()
-    elif isinstance(environment, str):
-        environment_values = tuple(
-            item.strip() for item in environment.split(",") if item.strip()
-        )
-    else:
-        environment_values = tuple(environment)
-    return registry().replace(
-        name,
-        operations=operations,
-        environment=environment_values,
-    )
-
-
-def resolve(*names):
-    """Return the union of named security scopes."""
-    return registry().resolve(names)
