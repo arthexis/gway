@@ -69,7 +69,9 @@ class ProcessBackend:
 
     @staticmethod
     def _environment(service):
-        return os.environ.copy()
+        environment = os.environ.copy()
+        environment["GWAY_LOG_SOURCE"] = f"{service.project}/{service.name}"
+        return environment
 
     def _state(self, service):
         root = (
