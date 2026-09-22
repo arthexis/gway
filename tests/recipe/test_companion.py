@@ -365,10 +365,11 @@ def test_mcp_stdio_authorization_error_does_not_kill_server_session(
 
 def _authenticated_parent_recipe(recipe_factory, root, bearer, command):
     root.mkdir(parents=True, exist_ok=True)
+    name = root.name.replace("-", "_")
     return recipe_factory(
-        name="auth",
+        name=name,
         root=root,
-        body=f"require placeholder\nauth probe {bearer!r} {command!r}\n",
+        body=f"require placeholder\n{name} probe {bearer!r} {command!r}\n",
         companion=(
             "def probe(bearer, command):\n"
             "    return _gway_parent.execute_authenticated(bearer, command)\n"
