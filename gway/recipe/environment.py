@@ -182,6 +182,20 @@ def sync_python_environment(environment, uv, requirements):
     )
     temporary_requirements.replace(environment.requirements_file)
 
+    locked_requirements = environment.root / "requirements.lock.txt"
+    subprocess.run(
+        [
+            str(uv),
+            "pip",
+            "compile",
+            "--python",
+            str(python),
+            str(environment.requirements_file),
+            "--output-file",
+            str(locked_requirements),
+        ],
+        check=True,
+    )
     subprocess.run(
         [
             str(uv),
@@ -189,7 +203,7 @@ def sync_python_environment(environment, uv, requirements):
             "sync",
             "--python",
             str(python),
-            str(environment.requirements_file),
+            str(locked_requirements),
         ],
         check=True,
     )
