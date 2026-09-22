@@ -2,6 +2,7 @@
 
 import ast
 import os
+from pathlib import Path
 import time
 from dataclasses import dataclass
 from collections.abc import Mapping
@@ -620,6 +621,16 @@ def _resolve_recipe_stage(runtime, tokens, *, pipeline=_MISSING):
     if bare is None:
         return None
 
+    stack = getattr(runtime, "_recipe_stack", ()) or ()
+    if stack:
+        try:
+            if bare.expanduser().resolve() == Path(stack[-1]).expanduser().resolve():
+                bare = None
+        except (OSError, RuntimeError):
+            pass
+    if bare is None:
+        return None
+
     try:
         resolve_operation(runtime, tokens, pipeline=pipeline)
     except LookupError:
@@ -872,7 +883,11 @@ def dispatch_pipeline(
                     has_incoming=incoming is not _MISSING,
                 )
             )
-        current = result
+        current = (
+            _MISSING
+            if resolution.candidate.replace(".", " ") == "require"
+            else result
+        )
         first = False
 
     return results, current
