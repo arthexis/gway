@@ -173,7 +173,7 @@ def test_sync_creates_venv_and_persists_requirements(
     assert list(source.iterdir()) == [recipe]
 
 
-def test_sync_is_noop_when_state_is_intact(
+def test_sync_reconciles_requirements_when_metadata_is_unchanged(
     monkeypatch, recipe_factory, tmp_path
 ):
     monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
@@ -185,19 +185,19 @@ def test_sync_is_noop_when_state_is_intact(
         _fake_uv_run(calls, environment),
     )
     sync_python_environment(environment, tmp_path / "uv", ["fastmcp"])
-
-    monkeypatch.setattr(
-        "gway.recipe.environment.subprocess.run",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("uv should not run")
-        ),
-    )
+    calls.clear()
 
     assert sync_python_environment(
         environment,
         tmp_path / "uv",
         ["fastmcp"],
     ) == environment_python(environment)
+
+    assert len(calls) == 1
+    argv, kwargs = calls[0]
+    assert argv[:3] == [str(tmp_path / "uv"), "pip", "sync"]
+    assert argv[-1] == str(environment.requirements_file)
+    assert kwargs["check"] is True
 
 
 def test_sync_changed_requirements_reuses_venv(
