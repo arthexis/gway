@@ -85,3 +85,12 @@ def test_recipe_execution_scopes_log_identity(tmp_path):
 
     assert output == "recipe/deploy"
     assert gway_log._current_source() == "gway"
+
+
+def test_process_backend_propagates_service_log_identity(tmp_path):
+    launchable = Launchable.operation("demo.worker", root=tmp_path)
+    service = Service.from_launchable("demo", "worker", tmp_path, launchable)
+
+    environment = ProcessBackend._environment(service)
+
+    assert environment["GWAY_LOG_SOURCE"] == "demo/worker"
