@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 
 class SecurityState:
@@ -67,6 +67,77 @@ class SecurityState:
                 UNIQUE(token_id, scope_id),
                 FOREIGN KEY(token_id) REFERENCES tokens(id) ON DELETE CASCADE,
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS oauth_clients (
+                id INTEGER PRIMARY KEY,
+                client_id TEXT NOT NULL UNIQUE,
+                metadata_url TEXT,
+                redirect_uris TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                disabled INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS oauth_links (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                token_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                revoked_at TEXT,
+                FOREIGN KEY(token_id) REFERENCES tokens(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS oauth_grants (
+                id INTEGER PRIMARY KEY,
+                link_id INTEGER NOT NULL,
+                client_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                revoked_at TEXT,
+                FOREIGN KEY(link_id) REFERENCES oauth_links(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS oauth_grant_scopes (
+                grant_id INTEGER NOT NULL,
+                scope_id INTEGER NOT NULL,
+                UNIQUE(grant_id, scope_id),
+                FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE,
+                FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
+                id INTEGER PRIMARY KEY,
+                grant_id INTEGER NOT NULL,
+                code_hash TEXT NOT NULL UNIQUE,
+                redirect_uri TEXT NOT NULL,
+                code_challenge TEXT NOT NULL,
+                code_challenge_method TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                consumed_at TEXT,
+                FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS oauth_access_tokens (
+                id INTEGER PRIMARY KEY,
+                grant_id INTEGER NOT NULL,
+                public_id TEXT NOT NULL UNIQUE,
+                token_hash TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT,
+                FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
+                id INTEGER PRIMARY KEY,
+                grant_id INTEGER NOT NULL,
+                public_id TEXT NOT NULL UNIQUE,
+                token_hash TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT,
+                rotated_at TEXT,
+                FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE
             );
             """
         )
