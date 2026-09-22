@@ -882,6 +882,8 @@ def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
 
     assert tools == ["gway"]
 
+    assert all("value" in result for result in results[:4]), results
+
     source_result = results[0]["value"]
     assert [item["identity"] for item in source_result] == [
         "gway",
