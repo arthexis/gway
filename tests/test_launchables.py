@@ -79,9 +79,9 @@ def test_recipe_execution_scopes_log_identity(tmp_path):
     recipe = tmp_path / "deploy.rx"
     recipe.write_text("capture\n", encoding="utf-8")
     runtime = Gateway()
-    runtime.wrap("capture", gway_log.current_source)
+    runtime.wrap("capture", gway_log._current_source)
 
     _, output = execute_recipe(runtime, recipe)
 
     assert output == "recipe/deploy"
-    assert gway_log.current_source() == "gway"
+    assert gway_log._current_source() == "gway"
