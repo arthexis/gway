@@ -82,7 +82,7 @@ def _apply_aka(gateway, result, aka, *, source=None):
         raise ValueError("AKA requires an ingested source")
 
     aliases = []
-    source_roots = []
+    source_roots = [fallback_root] if not wrapped else []
     for item, operation_path in zip(wrapped, paths):
         metadata = dict(getattr(item, "__gway_metadata__", {}) or {})
         source_root = metadata.get("ingest_root")
