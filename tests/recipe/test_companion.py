@@ -207,6 +207,7 @@ def test_parent_gateway_rpc_error_does_not_desynchronize_companion(
 
 
 def _mcp_companion_recipe(recipe_factory, root, command):
+    root.mkdir(parents=True, exist_ok=True)
     (root / "fastmcp.py").write_text(
         "class FastMCP:\n"
         "    def __init__(self, name):\n"
