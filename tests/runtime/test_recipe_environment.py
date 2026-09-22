@@ -4,15 +4,15 @@ from types import SimpleNamespace
 import pytest
 
 from gway.install.model import Installation
-from gway.recipe_environment import recipe_environment
+from gway.recipe.environment import recipe_environment
 from gway.recipes import execute_recipe
 
 @pytest.fixture(autouse=True)
 def _fake_uv(monkeypatch, tmp_path):
     uv = tmp_path / "uv"
-    monkeypatch.setattr("gway.uv.ensure_uv", lambda **kwargs: uv)
+    monkeypatch.setattr("gway.recipe.uv.ensure_uv", lambda **kwargs: uv)
     monkeypatch.setattr(
-        "gway.recipe_environment.sync_python_environment",
+        "gway.recipe.environment.sync_python_environment",
         lambda environment, executable, requirements: environment.venv,
     )
     return uv
