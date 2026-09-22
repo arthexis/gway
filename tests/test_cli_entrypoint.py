@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -90,7 +91,10 @@ def test_cli_file_logging_remains_explicit_compatibility_option(tmp_path):
     assert completed.returncode == 0
     log_path = tmp_path / "logs" / "gway.log"
     assert log_path.is_file()
-    assert "INFO gway [gway] reconciliation-test" in log_path.read_text(encoding="utf-8")
+    payload = json.loads(log_path.read_text(encoding="utf-8"))
+    assert payload["level"] == "INFO"
+    assert payload["source"] == "gway"
+    assert payload["message"] == "reconciliation-test"
 
 
 def test_cli_logfile_stdout_is_explicit_opt_in(tmp_path):
