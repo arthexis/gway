@@ -3,6 +3,9 @@
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
+import json
+import os
+import subprocess
 
 from .install.paths import data_root
 
@@ -96,3 +99,89 @@ def recipe_environment(runtime, recipe_filename):
         relative_path=provenance["relative_path"],
         resolved_revision=provenance["resolved_revision"],
     )
+
+
+def environment_python(environment):
+    """Return the Python executable path inside one managed recipe venv."""
+    if os.name == "nt":
+        return environment.venv / "Scripts" / "python.exe"
+    return environment.venv / "bin" / "python"
+
+
+def _metadata_payload(environment, requirements):
+    """Return durable desired-state metadata for one recipe environment."""
+    return {
+        "identity": environment.identity,
+        "recipe": str(environment.recipe),
+        "scope": environment.scope,
+        "source": environment.source,
+        "relative_path": (
+            environment.relative_path.as_posix()
+            if environment.relative_path is not None
+            else None
+        ),
+        "resolved_revision": environment.resolved_revision,
+        "requirements": {
+            "python": list(requirements),
+        },
+    }
+
+
+def load_environment_metadata(environment):
+    """Return persisted recipe-environment metadata, if valid and present."""
+    try:
+        return json.loads(environment.metadata.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _write_environment_metadata(environment, payload):
+    """Atomically persist recipe-environment desired state."""
+    environment.root.mkdir(parents=True, exist_ok=True)
+    temporary = environment.metadata.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(environment.metadata)
+
+
+def sync_python_environment(environment, uv, requirements):
+    """Converge one recipe-owned Python environment with uv.
+
+    The recipe source tree is never mutated. The venv and metadata live only
+    under Gway's durable data root.
+    """
+    requirements = tuple(dict.fromkeys(str(item).strip() for item in requirements))
+    if not requirements or any(not item for item in requirements):
+        raise ValueError("Python environment requires non-empty package specs")
+
+    desired = _metadata_payload(environment, requirements)
+    python = environment_python(environment)
+    current = load_environment_metadata(environment)
+
+    if current == desired and python.is_file():
+        return python
+
+    environment.root.mkdir(parents=True, exist_ok=True)
+    if not python.is_file():
+        subprocess.run(
+            [str(uv), "venv", str(environment.venv)],
+            check=True,
+        )
+
+    subprocess.run(
+        [
+            str(uv),
+            "pip",
+            "install",
+            "--python",
+            str(python),
+            *requirements,
+        ],
+        check=True,
+    )
+    _write_environment_metadata(environment, desired)
+    return python
