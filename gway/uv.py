@@ -4,7 +4,6 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
-import sys
 from urllib.request import Request, urlopen
 
 from .install.paths import data_root
