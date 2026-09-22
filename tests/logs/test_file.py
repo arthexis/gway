@@ -182,9 +182,25 @@ def test_file_time_bounds_require_iso_timestamps(tmp_path):
     base = tmp_path / "gway.log"
     base.write_text("", encoding="utf-8")
 
-    with pytest.raises(FileLogError, match="ISO-8601"):
+    with pytest.raises(FileLogError, match="ISO-8601 or a supported relative time"):
         read_file_logs(
             [source("arthexis/web")],
             paths=[base],
             since="10 minutes ago",
         )
+
+
+def test_file_time_bounds_support_common_relative_syntax(tmp_path):
+    base = tmp_path / "gway.log"
+    base.write_text(
+        row("2000-01-01T00:00:00+00:00", "arthexis/web", "ancient") + "\n",
+        encoding="utf-8",
+    )
+
+    records = read_file_logs(
+        [source("arthexis/web")],
+        paths=[base],
+        since="10 minutes ago",
+    )
+
+    assert records == []
