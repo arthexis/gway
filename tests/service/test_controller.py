@@ -1,6 +1,8 @@
 import pytest
 
 from gway import Gateway
+from gway.install.service import ServiceInstallState
+from gway.sampler import root as sampler_root
 from gway.service.model import Service
 
 
@@ -154,3 +156,46 @@ def test_timeout_normalizer_accepts_finite_positive_values(
     gateway, _ = service_gateway
 
     assert gateway._service_controller._timeout(value) == expected
+
+
+
+def test_mcp_recipe_resolves_as_generic_gway_service():
+    gateway = Gateway()
+    recipe = sampler_root() / "mcp" / "server.rx"
+
+    definition = gateway._service_controller._definition(
+        (str(recipe),),
+        name="mcp-server",
+    )
+
+    assert definition.identity == ("gway", "mcp-server")
+    assert definition.launchable.kind == "recipe"
+    assert definition.launchable.name == "server"
+    assert definition.launchable.target == recipe.resolve()
+    assert definition.launchable.command[:3] == ("{python}", "-m", "gway")
+    assert definition.launchable.command[3] == str(recipe.resolve())
+
+
+def test_mcp_recipe_installs_through_generic_process_backend(tmp_path, monkeypatch):
+    gateway = Gateway()
+    recipe = sampler_root() / "mcp" / "server.rx"
+    data_root = tmp_path / "gway-data"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data_root))
+
+    records = gateway._service_controller.install(
+        str(recipe),
+        backend="process",
+        name="mcp-server",
+    )
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.project == "gway"
+    assert record.service == "mcp-server"
+    assert record.backend == "process"
+    assert record.backend_id == "mcp-server"
+    assert record.command[:3] == ("{python}", "-m", "gway")
+    assert record.command[3] == str(recipe.resolve())
+
+    persisted = ServiceInstallState(data_root / "services-installed").get("gway")
+    assert persisted == records
