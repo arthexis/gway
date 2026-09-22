@@ -40,7 +40,7 @@ def test_cli_expression_resolves_supplied_context():
     assert completed.stdout.strip() == "MTY"
 
 
-def test_cli_default_logging_persists_info_without_console_noise(tmp_path):
+def test_cli_default_logging_does_not_create_private_log_file(tmp_path):
     env = os.environ.copy()
     env["GWAY_DATA_DIR"] = str(tmp_path)
 
@@ -62,8 +62,32 @@ def test_cli_default_logging_persists_info_without_console_noise(tmp_path):
 
     assert completed.returncode == 0
     assert completed.stdout == ""
-    assert completed.stderr == ""
+    assert not (tmp_path / "logs" / "gway.log").exists()
 
+
+def test_cli_file_logging_remains_explicit_compatibility_option(tmp_path):
+    env = os.environ.copy()
+    env["GWAY_DATA_DIR"] = str(tmp_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "gway",
+            "--logfile",
+            "file",
+            "log",
+            "reconciliation-test",
+            "--level",
+            "INFO",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert completed.returncode == 0
     log_path = tmp_path / "logs" / "gway.log"
     assert log_path.is_file()
     assert "INFO gway reconciliation-test" in log_path.read_text(encoding="utf-8")
