@@ -443,24 +443,15 @@ def test_required_service_companion_repairs_missing_dependency(
     )
 
     gateway = Gateway()
+    gateway(recipe)
+    assert marker.read_text(encoding="utf-8") == "required"
+
     gateway._service_controller.install(
         str(recipe),
         backend="process",
         name="required-service",
         restart="no",
     )
-
-    def run_once(expected):
-        gateway._service_controller.start(str(recipe), name="required-service")
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            if marker.exists() and marker.read_text(encoding="utf-8") == expected:
-                break
-            time.sleep(0.05)
-        assert marker.read_text(encoding="utf-8") == expected
-        gateway._service_controller.stop(str(recipe), name="required-service")
-
-    run_once("required")
 
     from gway.recipe.environment import environment_python, recipe_environment
 
@@ -474,4 +465,13 @@ def test_required_service_companion_repairs_missing_dependency(
     )
     (site_packages / "service_only_dependency.py").unlink()
 
-    run_once("requiredrequired")
+    gateway._service_controller.start(str(recipe), name="required-service")
+    try:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if marker.read_text(encoding="utf-8") == "requiredrequired":
+                break
+            time.sleep(0.05)
+        assert marker.read_text(encoding="utf-8") == "requiredrequired"
+    finally:
+        gateway._service_controller.stop(str(recipe), name="required-service")
