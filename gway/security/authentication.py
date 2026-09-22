@@ -42,13 +42,10 @@ def authenticate_bearer(
     if not value:
         raise BearerAuthenticationError()
 
-    if tokens is None:
-        tokens = TokenRegistry() if path is None else TokenRegistry(path)
-    if oauth is None:
-        oauth = OAuthRegistry() if path is None else OAuthRegistry(path)
-
     try:
         if value.startswith("gwt_"):
+            if tokens is None:
+                tokens = TokenRegistry() if path is None else TokenRegistry(path)
             identity = tokens.authenticate(value)
             return AuthenticatedBearer(
                 kind="gway",
@@ -59,6 +56,8 @@ def authenticate_bearer(
             )
 
         if value.startswith("gwa_"):
+            if oauth is None:
+                oauth = OAuthRegistry() if path is None else OAuthRegistry(path)
             identity = oauth.authenticate_access(value)
             if resource is None or identity.grant.resource != str(resource):
                 raise BearerAuthenticationError()
