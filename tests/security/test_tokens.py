@@ -66,6 +66,7 @@ def test_token_create_returns_secret_once_and_persists_only_safe_metadata(tmp_pa
 
     assert isinstance(issued, IssuedToken)
     assert issued.bearer.startswith(f"gwt_{issued.token.public_id}_")
+    assert "_" not in issued.token.public_id
     assert tokens.get("reader") == issued.token
     assert tokens.all() == [issued.token]
     assert not hasattr(tokens.get("reader"), "bearer")
