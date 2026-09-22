@@ -3,7 +3,9 @@
 from ..install.paths import install_paths
 from ..install.service import ServiceInstallState
 from .catalog import resolve_sources, source_catalog
+from .file import read_file_logs
 from .journal import read_journal
+from .source import LogSource
 
 
 class UnsupportedLogBackend(RuntimeError):
@@ -76,36 +78,57 @@ def sources():
     return [_source_dict(source) for source in _catalog()]
 
 
-def _resolved(requested):
+def _journal_available():
+    from .. import log as gway_log
+
+    return gway_log._journal_address() is not None
+
+
+def _file_paths(sources):
+    from .. import log as gway_log
+
+    paths = set()
+    for source in sources:
+        scopes = (source.system,) if source.system is not None else (False, True)
+        for system in scopes:
+            paths.add(gway_log.default_log_path(system=system))
+    return sorted(paths, key=str)
+
+
+def _query_groups(requested):
     catalog = _catalog()
     requested = tuple(requested)
     resolved = resolve_sources(requested, catalog)
-    readable = [
-        source
-        for source in resolved
-        if source.backend in {"systemd", "journal"}
-    ]
-    if not requested:
-        # Until rotating-file structured reads are implemented, an empty
-        # request means every currently readable managed source, never the
-        # whole host log.
-        return readable
+    journal = []
+    files = []
 
-    requested_identities = set(requested)
-    explicit_unreadable = [
-        source
-        for source in resolved
-        if (
-            source.backend not in {"systemd", "journal"}
-            and source.identity in requested_identities
-        )
-    ]
-    if explicit_unreadable:
-        raise UnsupportedLogBackend(explicit_unreadable[0])
+    for source in resolved:
+        if source.backend == "systemd":
+            journal.append(source)
+        elif source.backend == "journal":
+            if _journal_available():
+                journal.append(source)
+            else:
+                files.append(source)
+        elif source.backend == "process":
+            if _journal_available():
+                journal.append(
+                    LogSource(
+                        identity=source.identity,
+                        kind=source.kind,
+                        project=source.project,
+                        service=source.service,
+                        backend="journal",
+                        backend_id=source.identity,
+                        system=source.system,
+                    )
+                )
+            else:
+                files.append(source)
+        elif requested and source.identity in set(requested):
+            raise UnsupportedLogBackend(source)
 
-    # Aggregate selections may contain members whose structured reader lands
-    # in the portable-file follow-up. Return the readable subset for now.
-    return readable
+    return journal, files
 
 
 def _read(
@@ -117,15 +140,36 @@ def _read(
     grep=None,
     reverse=False,
 ):
-    selected = _resolved(requested)
-    records = read_journal(
-        selected,
-        since=since,
-        until=until,
-        limit=limit,
-        grep=grep,
-        reverse=reverse,
-    )
+    journal_sources, file_sources = _query_groups(requested)
+    records = []
+
+    if journal_sources:
+        records.extend(
+            read_journal(
+                journal_sources,
+                since=since,
+                until=until,
+                limit=limit,
+                grep=grep,
+                reverse=reverse,
+            )
+        )
+    if file_sources:
+        records.extend(
+            read_file_logs(
+                file_sources,
+                paths=_file_paths(file_sources),
+                since=since,
+                until=until,
+                limit=limit,
+                grep=grep,
+                reverse=reverse,
+            )
+        )
+
+    records.sort(key=lambda record: record.timestamp, reverse=reverse)
+    if limit is not None:
+        records = records[: int(limit)]
     return [_record_dict(record) for record in records]
 
 
