@@ -9,7 +9,9 @@ import socket
 import struct
 import threading
 
+from fastmcp import Context as _Context
 from fastmcp import FastMCP as _FastMCP
+from fastmcp.server.dependencies import get_http_headers as _get_http_headers
 
 
 mcp = _FastMCP("GWAY")
@@ -61,20 +63,30 @@ class _SocketParentGateway:
         self.port = int(os.environ[_CALLBACK_ENV[1]])
         self.token = os.environ[_CALLBACK_ENV[2]]
 
-    def execute(self, command):
+    def _request(self, method, **params):
         with socket.create_connection((self.host, self.port), timeout=10) as stream:
             _send_json(
                 stream,
                 {
                     "token": self.token,
-                    "method": "gateway.execute",
-                    "command": command,
+                    "method": method,
+                    **params,
                 },
             )
             response = _recv_json(stream)
         if not response.get("ok"):
             raise RuntimeError(response.get("error") or "Parent Gateway request failed")
         return response.get("result")
+
+    def execute(self, command):
+        return self._request("gateway.execute", command=command)
+
+    def execute_authenticated(self, bearer, command):
+        return self._request(
+            "gateway.execute_authenticated",
+            bearer=bearer,
+            command=command,
+        )
 
 
 def _parent():
@@ -91,11 +103,20 @@ def _callback_connection(stream, token):
     if not secrets.compare_digest(str(request.get("token", "")), token):
         _send_json(stream, {"ok": False, "error": "Invalid MCP callback token"})
         return
-    if request.get("method") != "gateway.execute":
+    method = request.get("method")
+    if method not in {"gateway.execute", "gateway.execute_authenticated"}:
         _send_json(stream, {"ok": False, "error": "Unsupported MCP callback method"})
         return
     try:
-        result = _validate_result(_gway_parent.execute(request["command"]))
+        if method == "gateway.execute_authenticated":
+            result = _validate_result(
+                _gway_parent.execute_authenticated(
+                    request["bearer"],
+                    request["command"],
+                )
+            )
+        else:
+            result = _validate_result(_gway_parent.execute(request["command"]))
         response = {"ok": True, "result": result}
     except BaseException as exception:
         response = {
@@ -149,11 +170,47 @@ def _callback_relay():
         thread.join(timeout=1)
 
 
+def _bearer_from_http():
+    headers = _get_http_headers(include={"authorization"})
+    value = headers.get("authorization", "")
+    scheme, separator, credential = value.partition(" ")
+    if not separator or scheme.casefold() != "bearer" or not credential.strip():
+        raise PermissionError("Bearer authentication required")
+    return credential.strip()
+
+
 @mcp.tool(run_in_thread=False)
-def gway(command: str):
+def gway(command: str, ctx: _Context):
     """Execute one native GWAY command under the caller's active authorization."""
-    return _validate_result(_parent().execute(command))
+    parent = _parent()
+    if ctx.transport == "streamable-http":
+        return _validate_result(
+            parent.execute_authenticated(_bearer_from_http(), command)
+        )
+    return _validate_result(parent.execute(command))
+
+
+def run_http(*, host="127.0.0.1", port=8000, path="/mcp"):
+    """Run the GWAY MCP server over Streamable HTTP."""
+    return mcp.run(
+        transport="http",
+        host=host,
+        port=int(port),
+        path=path,
+    )
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--transport", choices=("stdio", "http"), default="stdio")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--path", default="/mcp")
+    args = parser.parse_args()
+
+    if args.transport == "http":
+        run_http(host=args.host, port=args.port, path=args.path)
+    else:
+        mcp.run(transport="stdio")
