@@ -499,7 +499,7 @@ def probe_http(bearer, command, second_bearer=None, second_command=None):
         raise RuntimeError("MCP HTTP server did not become ready")
 
     async def call(url, credential, value):
-        auth = None if credential is None else BearerAuth(credential)
+        auth = None if credential == "__missing__" else BearerAuth(credential)
         async with Client(url, auth=auth) as client:
             tools = await client.list_tools()
             try:
@@ -616,7 +616,7 @@ def test_mcp_http_scope_denial_is_tool_error_not_authentication_failure(
     assert "Invalid bearer token" not in error
 
 
-@pytest.mark.parametrize("credential", [None, "gwt_missing_wrong"])
+@pytest.mark.parametrize("credential", ["__missing__", "gwt_missing_wrong"])
 def test_mcp_http_rejects_missing_and_invalid_bearer(
     gateway,
     recipe_factory,
@@ -630,9 +630,11 @@ def test_mcp_http_rejects_missing_and_invalid_bearer(
 
     recipe = _mcp_http_recipe(
         recipe_factory,
-        tmp_path / ("mcphttpmissing" if credential is None else "mcphttpinvalid"),
+        tmp_path / (
+            "mcphttpmissing" if credential == "__missing__" else "mcphttpinvalid"
+        ),
     )
-    value = "None" if credential is None else repr(credential)
+    value = repr(credential)
     recipe.write_text(
         f"require fastmcp\nserver probe http {value} clear\n",
         encoding="utf-8",
@@ -645,7 +647,7 @@ def test_mcp_http_rejects_missing_and_invalid_bearer(
 
     assert tools == ["gway"]
     assert result is None
-    if credential is None:
+    if credential == "__missing__":
         assert "Bearer authentication required" in error
     else:
         assert "Invalid bearer token" in error
