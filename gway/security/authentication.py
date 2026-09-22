@@ -25,7 +25,14 @@ class AuthenticatedBearer:
     authority: EffectiveScope
 
 
-def authenticate_bearer(bearer, *, resource=None, path=None):
+def authenticate_bearer(
+    bearer,
+    *,
+    resource=None,
+    path=None,
+    tokens=None,
+    oauth=None,
+):
     """Authenticate one supported bearer against the shared security registry.
 
     Native G-Way tokens are accepted directly. OAuth access tokens additionally
@@ -35,12 +42,10 @@ def authenticate_bearer(bearer, *, resource=None, path=None):
     if not value:
         raise BearerAuthenticationError()
 
-    if path is None:
-        tokens = TokenRegistry()
-        oauth = OAuthRegistry()
-    else:
-        tokens = TokenRegistry(path)
-        oauth = OAuthRegistry(path)
+    if tokens is None:
+        tokens = TokenRegistry() if path is None else TokenRegistry(path)
+    if oauth is None:
+        oauth = OAuthRegistry() if path is None else OAuthRegistry(path)
 
     try:
         if value.startswith("gwt_"):
