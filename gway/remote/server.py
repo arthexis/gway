@@ -1,8 +1,11 @@
-"""Minimal read-only HTTP surface for remote OAuth discovery."""
+"""HTTP surface for G-Way remote OAuth discovery and browser linking."""
 
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+from urllib.parse import parse_qs, urlsplit
 
+from .account import RemoteAccountApplication
 from .metadata import RemoteOAuthMetadata
 
 
@@ -27,7 +30,8 @@ class RemoteDiscoveryApplication:
             "/oauth/revoke": (501, lambda: {"error": "not_implemented"}),
         }
 
-    def response(self, method, path):
+    def response(self, method, path, *, headers=None, body=b""):
+        del headers, body
         if str(method).upper() != "GET":
             return 405, {"allow": "GET"}, {"error": "method_not_allowed"}
         path = str(path).partition("?")[0]
@@ -38,20 +42,235 @@ class RemoteDiscoveryApplication:
         return status, {"content-type": "application/json"}, handler()
 
 
+class RemoteApplication(RemoteDiscoveryApplication):
+    """Discovery plus O2 browser session, bearer linking, and consent."""
+
+    cookie_name = "gway_remote_session"
+
+    def __init__(self, metadata, *, account=None):
+        super().__init__(metadata)
+        self.account = RemoteAccountApplication() if account is None else account
+
+    def _cookie(self, headers):
+        value = (headers or {}).get("cookie", "")
+        cookie = SimpleCookie()
+        cookie.load(value)
+        morsel = cookie.get(self.cookie_name)
+        return None if morsel is None else morsel.value
+
+    def _session(self, headers, *, create=False):
+        session = self.account.sessions.get(self._cookie(headers))
+        created = False
+        if session is None and create:
+            session = self.account.new_session()
+            created = True
+        return session, created
+
+    def _cookie_header(self, session):
+        parts = [
+            f"{self.cookie_name}={session.id}",
+            "Path=/",
+            "HttpOnly",
+            "SameSite=Lax",
+            "Max-Age=1800",
+        ]
+        if urlsplit(self.metadata.issuer).scheme == "https":
+            parts.append("Secure")
+        return "; ".join(parts)
+
+    @staticmethod
+    def _form(body):
+        if isinstance(body, bytes):
+            body = body.decode("utf-8")
+        parsed = parse_qs(str(body), keep_blank_values=True)
+        return {name: values[-1] for name, values in parsed.items()}
+
+    @staticmethod
+    def _html(status, body, headers=None):
+        result = {"content-type": "text/html; charset=utf-8"}
+        result.update(headers or {})
+        return status, result, body
+
+    @staticmethod
+    def _redirect(location, headers=None):
+        result = {"location": location}
+        result.update(headers or {})
+        return 303, result, ""
+
+    def _with_cookie(self, headers, session, created):
+        if created:
+            headers = dict(headers)
+            headers["set-cookie"] = self._cookie_header(session)
+        return headers
+
+    def response(self, method, path, *, headers=None, body=b""):
+        method = str(method).upper()
+        split = urlsplit(str(path))
+        route = split.path
+        headers = {str(k).casefold(): str(v) for k, v in (headers or {}).items()}
+
+        if route in self.routes:
+            return super().response(method, path, headers=headers, body=body)
+
+        if route == "/login":
+            if method != "GET":
+                return 405, {"allow": "GET"}, {"error": "method_not_allowed"}
+            return self._redirect("/connect")
+
+        if route == "/":
+            if method != "GET":
+                return 405, {"allow": "GET"}, {"error": "method_not_allowed"}
+            session, created = self._session(headers, create=True)
+            response_headers = self._with_cookie({}, session, created)
+            return self._html(
+                200,
+                "<!doctype html><html><body><h1>G-Way Remote</h1>"
+                '<p><a href="/connect">Connect G-Way</a></p>'
+                '<p><a href="/settings/connections">Connections</a></p>'
+                "</body></html>",
+                response_headers,
+            )
+
+        if route == "/connect":
+            session, created = self._session(headers, create=(method == "GET"))
+            if session is None:
+                return 401, {}, {"error": "session_required"}
+            if method == "GET":
+                response_headers = self._with_cookie({}, session, created)
+                return self._html(
+                    200,
+                    self.account.connect_page(session),
+                    response_headers,
+                )
+            if method != "POST":
+                return 405, {"allow": "GET, POST"}, {"error": "method_not_allowed"}
+            form = self._form(body)
+            previous_id = session.id
+            try:
+                self.account.connect(
+                    session,
+                    csrf=form.get("csrf"),
+                    bearer=form.get("bearer"),
+                )
+            except PermissionError as error:
+                message = str(error)
+                status = 403 if "CSRF" in message else 401
+                return status, {}, {"error": "connection_failed"}
+            destination = (
+                "/consent"
+                if session.pending_client_id and session.pending_scopes
+                else "/settings/connections"
+            )
+            response_headers = {"set-cookie": self._cookie_header(session)}
+            if previous_id == session.id:
+                response_headers = {}
+            return self._redirect(destination, response_headers)
+
+        if route == "/consent":
+            session, created = self._session(headers, create=(method == "GET"))
+            if session is None:
+                return 401, {}, {"error": "session_required"}
+
+            query = parse_qs(split.query, keep_blank_values=True)
+            if method == "GET" and ("client_id" in query or "scope" in query):
+                try:
+                    self.account.stage_consent(
+                        session,
+                        query.get("client_id", [""])[-1],
+                        query.get("scope", [""])[-1],
+                    )
+                except ValueError:
+                    return 400, {}, {"error": "invalid_consent_request"}
+
+            if method == "GET":
+                if not session.link_name:
+                    response_headers = self._with_cookie({}, session, created)
+                    return self._redirect("/connect", response_headers)
+                try:
+                    page = self.account.consent_page(session)
+                except (PermissionError, ValueError, LookupError):
+                    return 400, {}, {"error": "invalid_consent_request"}
+                response_headers = self._with_cookie({}, session, created)
+                return self._html(200, page, response_headers)
+
+            if method != "POST":
+                return 405, {"allow": "GET, POST"}, {"error": "method_not_allowed"}
+            form = self._form(body)
+            try:
+                grant = self.account.decide_consent(
+                    session,
+                    csrf=form.get("csrf"),
+                    decision=form.get("decision"),
+                )
+            except PermissionError:
+                return 403, {}, {"error": "consent_failed"}
+            except (ValueError, LookupError):
+                return 400, {}, {"error": "invalid_consent_request"}
+
+            if grant is None:
+                return self._html(
+                    200,
+                    "<!doctype html><html><body><h1>Access denied</h1></body></html>",
+                )
+            return self._html(
+                200,
+                "<!doctype html><html><body><h1>Access approved</h1>"
+                f"<p>Grant {grant.id} is ready for authorization-code issuance.</p>"
+                "</body></html>",
+            )
+
+        if route == "/settings/connections":
+            session, created = self._session(headers, create=(method == "GET"))
+            if session is None:
+                return 401, {}, {"error": "session_required"}
+            if method == "GET":
+                response_headers = self._with_cookie({}, session, created)
+                return self._html(
+                    200,
+                    self.account.connections_page(session),
+                    response_headers,
+                )
+            if method != "POST":
+                return 405, {"allow": "GET, POST"}, {"error": "method_not_allowed"}
+            form = self._form(body)
+            if form.get("action") != "revoke":
+                return 400, {}, {"error": "invalid_connection_action"}
+            try:
+                self.account.revoke_connection(session, csrf=form.get("csrf"))
+            except PermissionError:
+                return 403, {}, {"error": "connection_action_failed"}
+            return self._redirect("/settings/connections")
+
+        return 404, {}, {"error": "not_found"}
+
+
+def _encode(payload, content_type):
+    if isinstance(payload, bytes):
+        return payload
+    if content_type.startswith("application/json"):
+        return json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return str(payload).encode("utf-8")
+
+
 def _handler(application):
     class Handler(BaseHTTPRequestHandler):
         def _respond(self):
+            length = int(self.headers.get("content-length", "0") or 0)
+            body = self.rfile.read(length) if length else b""
             status, headers, payload = application.response(
                 self.command,
                 self.path,
+                headers=dict(self.headers.items()),
+                body=body,
             )
-            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            content_type = headers.get("content-type", "application/json")
+            encoded = _encode(payload, content_type)
             self.send_response(status)
             for name, value in headers.items():
                 self.send_header(name, value)
-            self.send_header("content-length", str(len(body)))
+            self.send_header("content-length", str(len(encoded)))
             self.end_headers()
-            self.wfile.write(body)
+            self.wfile.write(encoded)
 
         do_GET = _respond
         do_POST = _respond
@@ -71,14 +290,15 @@ def build_server(
     public_origin="https://remote.arthexis.com",
     resource_path="/mcp",
     allow_insecure_loopback=False,
+    account=None,
 ):
-    """Build the remote discovery HTTP server without starting its lifecycle."""
+    """Build the remote HTTP server without starting its lifecycle."""
     metadata = RemoteOAuthMetadata.from_origin(
         public_origin,
         resource_path=resource_path,
         allow_insecure_loopback=allow_insecure_loopback,
     )
-    application = RemoteDiscoveryApplication(metadata)
+    application = RemoteApplication(metadata, account=account)
     return ThreadingHTTPServer((str(host), int(port)), _handler(application))
 
 
@@ -89,7 +309,7 @@ def serve(
     public_origin="https://remote.arthexis.com",
     resource_path="/mcp",
 ):
-    """Serve OAuth discovery only; authorization flows arrive in later slices."""
+    """Serve remote OAuth discovery and browser linking until stopped."""
     server = build_server(
         host,
         port,
