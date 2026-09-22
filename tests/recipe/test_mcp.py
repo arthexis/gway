@@ -7,8 +7,13 @@ from gway.logs import LogRecord
 from gway.logs import operations as log_operations
 from gway.recipe import companion as companion_runtime
 from gway.sampler import root as sampler_root
+from gway.security.oauth import OAuthRegistry
 from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
+
+
+MCP_PUBLIC_ORIGIN = "https://remote.example.test"
+MCP_RESOURCE = f"{MCP_PUBLIC_ORIGIN}/mcp"
 
 
 def _issued_token(
@@ -309,13 +314,16 @@ def probe_http(bearer, command, second_bearer=None, second_command=None):
 
     async def call(url, credential, value):
         auth = None if credential == "__missing__" else BearerAuth(credential)
-        async with Client(url, auth=auth) as client:
-            tools = await client.list_tools()
-            try:
-                result = await client.call_tool("gway", {"command": value})
-            except Exception as exception:
-                return [tool.name for tool in tools], None, str(exception)
-            return [tool.name for tool in tools], result.content[0].text, None
+        try:
+            async with Client(url, auth=auth) as client:
+                tools = await client.list_tools()
+                try:
+                    result = await client.call_tool("gway", {"command": value})
+                except Exception as exception:
+                    return [tool.name for tool in tools], None, str(exception)
+                return [tool.name for tool in tools], result.content[0].text, None
+        except Exception as exception:
+            return [], None, str(exception)
 
     async def run(url):
         first = await call(url, bearer, command)
@@ -343,6 +351,8 @@ def probe_http(bearer, command, second_bearer=None, second_command=None):
                 str(port),
                 "--path",
                 "/mcp",
+                "--public-origin",
+                "https://remote.example.test",
             ],
             env=env,
             stdout=subprocess.DEVNULL,
@@ -453,12 +463,10 @@ def test_mcp_http_rejects_missing_and_invalid_bearer(
     with gateway.authorized(operations={operation}):
         tools, result, error = gateway(operation.replace(".", " "))
 
-    assert tools == ["gway"]
+    assert tools == []
     assert result is None
-    if credential == "__missing__":
-        assert "Bearer authentication required" in error
-    else:
-        assert "Invalid bearer token" in error
+    assert error is not None
+    assert "401" in error or "Unauthorized" in error
 
 
 def test_mcp_http_rejects_disabled_bearer(
@@ -587,6 +595,8 @@ def probe_log_http(bearer):
                 str(port),
                 "--path",
                 "/mcp",
+                "--public-origin",
+                "https://remote.example.test",
             ],
             env=env,
             stdout=subprocess.DEVNULL,
