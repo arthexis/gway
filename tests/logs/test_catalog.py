@@ -183,3 +183,25 @@ def test_gway_project_aggregate_does_not_shadow_builtin_source(tmp_path):
         "gway/worker",
     ]
     assert resolve_sources(["gway"], catalog)[0].kind == "gway"
+
+
+def test_recipe_source_resolves_lazily_without_persistent_registration(tmp_path):
+    catalog = source_catalog(_state(tmp_path))
+
+    resolved = resolve_sources(["recipe/deploy"], catalog)
+
+    assert len(resolved) == 1
+    assert resolved[0] == LogSource(
+        identity="recipe/deploy",
+        kind="recipe",
+        backend="journal",
+        backend_id="recipe/deploy",
+    )
+
+
+@pytest.mark.parametrize("identity", ["recipe/", "recipe/foo/bar"])
+def test_invalid_recipe_source_does_not_bypass_unknown_source(identity, tmp_path):
+    catalog = source_catalog(_state(tmp_path))
+
+    with pytest.raises(UnknownLogSource):
+        resolve_sources([identity], catalog)
