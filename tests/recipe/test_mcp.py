@@ -536,6 +536,54 @@ def test_mcp_http_real_client_accepts_oauth_access_token(
     assert error is None
 
 
+def test_mcp_http_oauth_token_uses_live_named_scope_after_issuance(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    scopes, _, _, issued = _issued_oauth_token(tmp_path, monkeypatch)
+    scopes.replace("reader", operations={"new_allowed"})
+
+    gateway.allowed = gateway.wrap("allowed", lambda: "old")
+    gateway.new_allowed = gateway.wrap("new_allowed", lambda: "new")
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauthlive")
+    recipe.write_text(
+        "require fastmcp\n"
+        f"server probe http {issued.access_token!r} allowed "
+        f"{issued.access_token!r} new_allowed\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcpoauthlive.server"}):
+        results = gateway("mcpoauthlive server")
+
+    first, second = results
+    assert first[0] == ["gway"]
+    assert first[1] is None
+    assert "Operation is not authorized: allowed" in first[2]
+    assert second == (["gway"], "new", None)
+
+
+def test_mcp_http_oauth_authority_does_not_inherit_trusted_recipe_capability(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    _, _, _, issued = _issued_oauth_token(tmp_path, monkeypatch)
+
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauthcapability")
+    recipe.write_text(
+        f"require fastmcp\nserver probe http {issued.access_token!r} clear\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcpoauthcapability.server"}):
+        tools, result, error = gateway("mcpoauthcapability server")
+
+    assert tools == ["gway"]
+    assert result is None
+    assert "Operation is not authorized: clear" in error
+    assert "401" not in error
+
+
 def test_mcp_http_rejects_oauth_token_for_different_resource(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
