@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import logging
 import gway.log as gway_log
 from gway import Gateway
-from gway.logs import LogRecord
+from gway.logs import LogRecord, LogSource
 from gway.logs import operations as log_operations
 
 
@@ -184,17 +184,6 @@ def test_cli_restores_existing_output_handler(run_cli, tmp_path):
 
 
 
-def _acceptance_record(source="gway", message="accepted"):
-    return LogRecord(
-        timestamp=datetime(2026, 9, 22, 12, 0, tzinfo=timezone.utc),
-        source=source,
-        message=message,
-        level="INFO",
-        pid=42,
-        unit=None,
-    )
-
-
 def test_log_query_operations_are_canonical_gateway_operations(gateway, monkeypatch):
     monkeypatch.setattr(log_operations, "sources", lambda: [{"identity": "gway"}])
     monkeypatch.setattr(
@@ -236,28 +225,46 @@ def test_log_read_returns_structured_serializable_records_through_gateway(
     gateway,
     monkeypatch,
 ):
+    selected = LogSource(
+        identity="gway",
+        kind="gway",
+        backend="journal",
+        backend_id="gway",
+    )
     monkeypatch.setattr(
         log_operations,
         "_query_groups",
-        lambda requested: ([], []),
+        lambda requested: ([selected], []),
     )
-    monkeypatch.setattr(
-        log_operations,
-        "_read",
-        lambda requested, **kwargs: [
-            {
-                "timestamp": "2026-09-22T12:00:00+00:00",
-                "source": "gway",
-                "level": "INFO",
-                "message": "accepted",
-                "pid": 42,
-                "unit": None,
-            }
-        ],
-    )
+    captured = {}
+
+    def fake_journal(sources, **kwargs):
+        captured["sources"] = list(sources)
+        captured["kwargs"] = kwargs
+        return [
+            LogRecord(
+                timestamp=datetime(
+                    2026,
+                    9,
+                    22,
+                    12,
+                    0,
+                    tzinfo=timezone.utc,
+                ),
+                source="gway",
+                message="accepted",
+                level="INFO",
+                pid=42,
+                unit=None,
+            )
+        ]
+
+    monkeypatch.setattr(log_operations, "read_journal", fake_journal)
 
     result = gateway("log read gway --limit 10")
 
+    assert [source.identity for source in captured["sources"]] == ["gway"]
+    assert captured["kwargs"]["limit"] == 10
     assert result == [
         {
             "timestamp": "2026-09-22T12:00:00+00:00",
