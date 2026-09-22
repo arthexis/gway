@@ -277,3 +277,21 @@ def test_process_backend_propagates_service_log_identity(tmp_path):
     environment = ProcessBackend._environment(service)
 
     assert environment["GWAY_LOG_SOURCE"] == "demo/worker"
+
+
+
+def test_process_backend_applies_service_environment(tmp_path, monkeypatch):
+    launchable = Launchable.operation("demo.worker", root=tmp_path)
+    service = Service.from_launchable(
+        "demo",
+        "worker",
+        tmp_path,
+        launchable,
+        environment=("GWAY_CACHE_DIR=/var/lib/gway/cache",),
+    )
+    monkeypatch.setenv("GWAY_CACHE_DIR", "/tmp/old-cache")
+
+    environment = ProcessBackend._environment(service)
+
+    assert environment["GWAY_CACHE_DIR"] == "/var/lib/gway/cache"
+    assert environment["GWAY_LOG_SOURCE"] == "demo/worker"
