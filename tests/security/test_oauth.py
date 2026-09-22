@@ -30,7 +30,7 @@ def _linked_grant(tmp_path):
     return scopes, tokens, oauth, grant
 
 
-def test_security_state_migrates_v3_to_v4_without_losing_existing_policy(tmp_path):
+def test_security_state_migrates_v4_to_v5_without_losing_existing_policy(tmp_path):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
     tokens = TokenRegistry(path)
@@ -38,7 +38,7 @@ def test_security_state_migrates_v3_to_v4_without_losing_existing_policy(tmp_pat
     issued = tokens.create("reader", scopes={"logs"})
 
     with sqlite3.connect(path) as connection:
-        connection.execute("PRAGMA user_version = 3")
+        connection.execute("PRAGMA user_version = 4")
 
     oauth = OAuthRegistry(path)
     oauth.create_client(
@@ -50,7 +50,7 @@ def test_security_state_migrates_v3_to_v4_without_losing_existing_policy(tmp_pat
     assert scopes.require("logs").operations == frozenset({"log.read"})
     assert tokens.require("reader") == issued.token
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
         tables = {
             row[0]
             for row in connection.execute(
@@ -247,3 +247,54 @@ def test_oauth_plaintext_credentials_are_never_persisted(tmp_path):
     assert code.code not in dump
     assert issued.access_token not in dump
     assert issued.refresh_token not in dump
+
+
+def test_grant_resource_binds_code_and_refresh_exchange(tmp_path):
+    scopes, tokens, oauth = _registries(tmp_path)
+    scopes.create("logs")
+    tokens.create("operator", scopes={"logs"})
+    oauth.link("chatgpt", "operator")
+    grant = oauth.create_grant(
+        "chatgpt",
+        "client",
+        scopes={"logs"},
+        resource="https://remote.example/mcp",
+    )
+    verifier = "v" * 64
+    code = oauth.issue_authorization_code(
+        grant.id,
+        redirect_uri="https://client.example/callback",
+        code_challenge=_challenge(verifier),
+    )
+
+    with pytest.raises(OAuthAuthenticationError):
+        oauth.consume_authorization_code(
+            code.code,
+            redirect_uri="https://client.example/callback",
+            code_verifier=verifier,
+            client_id="client",
+            resource="https://remote.example/api",
+        )
+
+    consumed = oauth.consume_authorization_code(
+        code.code,
+        redirect_uri="https://client.example/callback",
+        code_verifier=verifier,
+        client_id="client",
+        resource="https://remote.example/mcp",
+    )
+    issued = oauth.issue_tokens(consumed.id)
+
+    with pytest.raises(OAuthAuthenticationError):
+        oauth.rotate_refresh(
+            issued.refresh_token,
+            client_id="other-client",
+            resource="https://remote.example/mcp",
+        )
+
+    rotated = oauth.rotate_refresh(
+        issued.refresh_token,
+        client_id="client",
+        resource="https://remote.example/mcp",
+    )
+    assert rotated.grant.resource == "https://remote.example/mcp"

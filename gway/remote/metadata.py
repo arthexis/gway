@@ -94,6 +94,7 @@ class RemoteOAuthMetadata:
             "revocation_endpoint": self.revocation_endpoint,
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
+            "authorization_response_iss_parameter_supported": True,
             "code_challenge_methods_supported": ["S256"],
             "token_endpoint_auth_methods_supported": ["none"],
             "client_id_metadata_document_supported": True,

@@ -16,6 +16,10 @@ class RemoteSession:
     link_name: str | None = None
     pending_client_id: str | None = None
     pending_scopes: frozenset[str] = field(default_factory=frozenset)
+    pending_resource: str | None = None
+    pending_redirect_uri: str | None = None
+    pending_state: str | None = None
+    pending_code_challenge: str | None = None
     approved_grant_id: int | None = None
 
 

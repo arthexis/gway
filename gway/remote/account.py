@@ -43,7 +43,7 @@ class RemoteAccountApplication:
     def new_session(self):
         return self.sessions.create()
 
-    def stage_consent(self, session, client_id, scopes):
+    def stage_consent(self, session, client_id, scopes, *, resource=None):
         client_id = str(client_id or "").strip()
         if not client_id:
             raise ValueError("OAuth client id is required")
@@ -52,6 +52,7 @@ class RemoteAccountApplication:
             raise ValueError("At least one named G-Way scope is required")
         session.pending_client_id = client_id
         session.pending_scopes = scopes
+        session.pending_resource = None if resource is None else str(resource).strip()
         session.approved_grant_id = None
         return session
 
@@ -109,6 +110,7 @@ class RemoteAccountApplication:
             environment.update(scope.environment)
         return {
             "client_id": session.pending_client_id,
+            "resource": session.pending_resource,
             "scopes": frozenset(session.pending_scopes),
             "operations": frozenset(operations),
             "environment": frozenset(environment),
@@ -155,6 +157,7 @@ class RemoteAccountApplication:
                 session.link_name,
                 details["client_id"],
                 scopes=details["scopes"],
+                resource=details["resource"],
             )
             session.approved_grant_id = grant.id
         else:
@@ -162,6 +165,7 @@ class RemoteAccountApplication:
 
         session.pending_client_id = None
         session.pending_scopes = frozenset()
+        session.pending_resource = None
         self.sessions.rotate_csrf(session)
         return grant
 
@@ -206,5 +210,9 @@ class RemoteAccountApplication:
         session.approved_grant_id = None
         session.pending_client_id = None
         session.pending_scopes = frozenset()
+        session.pending_resource = None
+        session.pending_redirect_uri = None
+        session.pending_state = None
+        session.pending_code_challenge = None
         self.sessions.rotate_csrf(session)
         return True

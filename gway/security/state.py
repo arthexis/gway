@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION = 5
 
 
 class SecurityState:
@@ -91,6 +91,7 @@ class SecurityState:
                 id INTEGER PRIMARY KEY,
                 link_id INTEGER NOT NULL,
                 client_id TEXT NOT NULL,
+                resource TEXT,
                 created_at TEXT NOT NULL,
                 revoked_at TEXT,
                 FOREIGN KEY(link_id) REFERENCES oauth_links(id) ON DELETE CASCADE
@@ -148,5 +149,12 @@ class SecurityState:
             }
             if "expires_at" not in columns:
                 connection.execute("ALTER TABLE tokens ADD COLUMN expires_at TEXT")
+        if version < 5:
+            columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(oauth_grants)")
+            }
+            if "resource" not in columns:
+                connection.execute("ALTER TABLE oauth_grants ADD COLUMN resource TEXT")
         if version < _SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")

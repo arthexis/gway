@@ -25,7 +25,7 @@ def test_scope_create_round_trips_and_versions_schema(tmp_path):
     assert registry.get("logs-read") == Scope("logs-read")
 
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
 
 
 def test_scope_replace_is_atomic_complete_definition(tmp_path):
