@@ -135,11 +135,13 @@ class Gateway(Resolver):
         bootstrap(self)
 
         from .ingestion.python import ingest_python
+        from .remote.service import register as register_remote_service
         from .service.controller import Controller
         from .souschef.controller import Controller as SousChefController
         from .souschef.service import register as register_souschef_service
 
         register_souschef_service(self)
+        register_remote_service(self)
 
         self._service_controller = Controller(self)
         ingest_python(self, self._service_controller, path=("service",))
