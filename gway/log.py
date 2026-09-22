@@ -5,6 +5,8 @@ from itertools import count as _count
 import logging as _logging
 from logging.handlers import TimedRotatingFileHandler as _TimedRotatingFileHandler
 from pathlib import Path as _Path
+import os as _os
+import socket as _socket
 import sys as _sys
 
 
@@ -13,6 +15,11 @@ _DEFAULT_OUTPUT_LEVEL = _logging.INFO
 _DEFAULT_LOG_FILENAME = "gway.log"
 _LOG_RETENTION_DAYS = 30
 _LOG_BACKUP_COUNT = _LOG_RETENTION_DAYS - 1
+_JOURNAL_ADDRESSES = (
+    "/run/systemd/journal/dev-log",
+    "/dev/log",
+)
+_SYSLOG_USER_FACILITY = 1
 _gway_logger = _logging.getLogger("gway")
 _gway_logger.setLevel(_DEFAULT_LEVEL)
 logger = _gway_logger
@@ -37,12 +44,87 @@ def _coerce_level(level):
 
 
 def default_log_path(*, system=False, root=None, **kwargs):
-    """Return the durable GWAY log path without creating it."""
+    """Return the legacy durable GWAY log path without creating it."""
     if root is None:
         from .install.paths import data_root
 
         root = data_root(system=system, **kwargs)
     return _Path(root).expanduser() / "logs" / _DEFAULT_LOG_FILENAME
+
+
+def _journal_address():
+    """Return the first local journald-compatible syslog socket, if present."""
+    for address in _JOURNAL_ADDRESSES:
+        if _os.path.exists(address):
+            return address
+    return None
+
+
+def default_output_destination():
+    """Return GWAY's default diagnostic destination for this host."""
+    return "journal" if _journal_address() is not None else "stderr"
+
+
+def _journal_priority(level):
+    """Map a Python logging level to syslog/journal priority."""
+    if level >= _logging.CRITICAL:
+        return 2
+    if level >= _logging.ERROR:
+        return 3
+    if level >= _logging.WARNING:
+        return 4
+    if level >= _logging.INFO:
+        return 6
+    return 7
+
+
+class _JournalHandler(_logging.Handler):
+    """Send GWAY records to journald through its local syslog socket."""
+
+    def __init__(self, address):
+        super().__init__()
+        self.address = address
+        self._socket = None
+
+    def _connect(self):
+        sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_DGRAM)
+        sock.connect(self.address)
+        self._socket = sock
+        return sock
+
+    def _send(self, payload):
+        sock = self._socket or self._connect()
+        try:
+            sock.send(payload)
+        except OSError:
+            try:
+                sock.close()
+            finally:
+                self._socket = None
+            raise
+
+    def emit(self, record):
+        message = self.format(record)
+        priority = (_SYSLOG_USER_FACILITY * 8) + _journal_priority(record.levelno)
+        payload = f"<{priority}>gway: {message}".encode("utf-8", errors="replace")
+        try:
+            self._send(payload)
+        except OSError:
+            # Logging must never make the GWAY operation fail merely because
+            # the host journal is temporarily unavailable.
+            try:
+                _sys.stderr.write(message + "\n")
+                _sys.stderr.flush()
+            except Exception:
+                self.handleError(record)
+
+    def close(self):
+        if self._socket is not None:
+            try:
+                self._socket.close()
+            finally:
+                self._socket = None
+        super().close()
 
 
 def _remove_output_handler():
@@ -73,27 +155,35 @@ def _daily_file_handler(path):
 
 def configure_output(
     *,
-    destination="file",
+    destination=None,
     level=_DEFAULT_OUTPUT_LEVEL,
     system=False,
     root=None,
     formatter=None,
 ):
-    """Configure GWAY's global log destination."""
+    """Configure GWAY's global diagnostic destination."""
     global _output_handler
 
     numeric_level = _coerce_level(level)
     if destination is None:
-        destination = "file"
+        destination = default_output_destination()
 
     _remove_output_handler()
 
+    journal = False
     if isinstance(destination, _Path):
         handler = _daily_file_handler(destination.expanduser())
     else:
         selected = str(destination).strip()
         lowered = selected.lower()
-        if lowered == "file":
+        if lowered == "journal":
+            address = _journal_address()
+            if address is None:
+                handler = _logging.StreamHandler(_sys.stderr)
+            else:
+                handler = _JournalHandler(address)
+                journal = True
+        elif lowered == "file":
             handler = _daily_file_handler(default_log_path(system=system, root=root))
         elif lowered == "stdout":
             handler = _logging.StreamHandler(_sys.stdout)
@@ -105,7 +195,11 @@ def configure_output(
     handler.setLevel(numeric_level)
     handler.setFormatter(
         formatter
-        or _logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+        or _logging.Formatter(
+            "%(message)s"
+            if journal
+            else "%(asctime)s %(levelname)s %(name)s %(message)s"
+        )
     )
     handler._gway_output_handler = True
     _gway_logger.addHandler(handler)
