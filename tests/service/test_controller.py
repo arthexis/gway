@@ -355,14 +355,14 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
                     break
             except OSError:
                 if time.monotonic() >= deadline:
+                    process = captured_process.get("process")
+                    stderr = ""
+                    if process is not None and process.poll() is not None:
+                        _, stderr = process.communicate()
                     status = gateway._service_controller.status(
                         str(recipe),
                         name="mcp-server",
                     )
-                    process = captured_process.get("process")
-                    stderr = ""
-                    if process is not None and process.poll() is not None:
-                        stderr = process.stderr.read() if process.stderr else ""
                     raise AssertionError(
                         "deployed MCP service did not become ready: "
                         f"{status}\n{stderr}"
