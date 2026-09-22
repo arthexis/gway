@@ -171,8 +171,8 @@ def _prepare_required_companion(runtime, frame):
     if not requirements:
         return
 
-    from .recipe_environment import environment_python, sync_python_environment
-    from .uv import ensure_uv
+    from .recipe.environment import environment_python, sync_python_environment
+    from .recipe.uv import ensure_uv
 
     frame.uv = ensure_uv(
         system=getattr(frame.environment, "scope", "user") == "system"
@@ -183,7 +183,7 @@ def _prepare_required_companion(runtime, frame):
     if companion is None:
         return
 
-    from .companion import CompanionWorker, unregister_worker_operations
+    from .recipe.companion import CompanionWorker, unregister_worker_operations
 
     worker = CompanionWorker.start(
         frame.path,
@@ -300,7 +300,7 @@ def execute_recipe(
         if not statement_list:
             return [], None
 
-        from .recipe_environment import recipe_environment
+        from .recipe.environment import recipe_environment
 
         preflight_requirements = collect_recipe_requirements(statement_list)
         frame = RecipeFrame(
@@ -330,7 +330,7 @@ def execute_recipe(
         )
     finally:
         if frame is not None and frame.companion_worker is not None:
-            from .companion import unregister_worker_operations
+            from .recipe.companion import unregister_worker_operations
 
             unregister_worker_operations(runtime, frame.companion_worker)
             frame.companion_worker.close()
