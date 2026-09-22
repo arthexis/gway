@@ -22,7 +22,7 @@ class Stage:
     def replay(self, runtime, *, pipeline=_UNSET):
         """Re-dispatch this stage from its semantic tokens."""
         if self.kind == "recipe":
-            from .recipes import execute_recipe, parse_recipe_context, recipe_path
+            from .recipe import execute_recipe, parse_recipe_context, recipe_path
 
             source = self.tokens[0]
             path = recipe_path(runtime, source, allow_bare=True)
