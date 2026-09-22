@@ -5,6 +5,12 @@ from gway.install.model import Installation
 from gway.recipe_environment import recipe_environment
 from gway.recipes import execute_recipe
 
+@pytest.fixture(autouse=True)
+def _fake_uv(monkeypatch, tmp_path):
+    uv = tmp_path / "uv"
+    monkeypatch.setattr("gway.uv.ensure_uv", lambda **kwargs: uv)
+    return uv
+
 
 def test_local_recipe_environment_uses_external_data_root(monkeypatch, tmp_path):
     data = tmp_path / "data"
@@ -112,8 +118,6 @@ def test_recipe_frame_exposes_environment_identity(gateway, monkeypatch, tmp_pat
 
 
 def test_require_rejects_use_outside_recipe(gateway):
-    import pytest
-
     with pytest.raises(RuntimeError, match="only available during recipe execution"):
         gateway("require fastmcp")
 
@@ -175,8 +179,6 @@ def test_require_is_idempotent_within_recipe(gateway, tmp_path):
 
 
 def test_require_rejects_missing_packages_inside_recipe(gateway, tmp_path):
-    import pytest
-
     recipe = tmp_path / "demo.rx"
     recipe.write_text("require\n", encoding="utf-8")
 
