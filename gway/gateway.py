@@ -333,6 +333,14 @@ class Gateway(Resolver):
         for package in normalized:
             if package not in requirements:
                 requirements.append(package)
+
+        from .recipe_environment import sync_python_environment
+
+        sync_python_environment(
+            frame.environment,
+            frame.uv,
+            requirements,
+        )
         return tuple(requirements)
 
     def _run_sampler_recipe(self, recipe_name, **context):
