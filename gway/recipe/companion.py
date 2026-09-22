@@ -9,6 +9,7 @@ import subprocess
 import threading
 
 from ..ingestion.base import IngestedOperation, register_operation
+from ..security.tokens import TokenRegistry
 
 
 _HEADER = struct.Struct("!Q")
@@ -115,6 +116,13 @@ class ParentGateway:
 
     def execute(self, command):
         return request_parent("gateway.execute", command=command)
+
+    def execute_authenticated(self, bearer, command):
+        return request_parent(
+            "gateway.execute_authenticated",
+            bearer=bearer,
+            command=command,
+        )
 
 
 def safe_default(value):
@@ -444,6 +452,13 @@ def _service_parent_request(runtime, stream, request):
             )
         elif method == "gateway.execute":
             with runtime.external_authority():
+                result = runtime(params["command"])
+        elif method == "gateway.execute_authenticated":
+            identity = TokenRegistry().authenticate(params["bearer"])
+            with runtime.authorized(
+                operations=identity.authority.operations,
+                environment=identity.authority.environment,
+            ):
                 result = runtime(params["command"])
         else:
             raise LookupError(f"Unknown parent Gateway RPC method: {method}")
