@@ -20,6 +20,7 @@ class ServiceInstallRecord:
     attempts: int | None = None
     restart_sec: float | None = None
     command: tuple[str, ...] = ()
+    environment: tuple[str, ...] = ()
 
 
 class ServiceInstallState:
@@ -48,6 +49,7 @@ class ServiceInstallState:
                 attempts=item.get("attempts"),
                 restart_sec=item.get("restart_sec"),
                 command=tuple(item.get("command", ())),
+                environment=tuple(item.get("environment", ())),
             )
             for item in data
         ]
@@ -88,6 +90,7 @@ class ServiceInstallState:
             for record in records:
                 item = asdict(record)
                 item["command"] = list(record.command)
+                item["environment"] = list(record.environment)
                 payload.append(item)
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 json.dump(payload, stream, indent=2, sort_keys=True)
