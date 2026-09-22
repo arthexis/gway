@@ -321,6 +321,13 @@ class Gateway(Resolver):
             normalized.append(package.strip())
 
         frame = frames[-1]
+
+        from .uv import ensure_uv
+
+        frame.uv = ensure_uv(
+            system=getattr(frame.environment, "scope", "user") == "system"
+        )
+
         requirements = frame.requirements.setdefault("python", [])
         for package in normalized:
             if package not in requirements:
