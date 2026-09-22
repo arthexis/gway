@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pytest
 
 from gway.authorization import AuthorizationError
@@ -187,3 +190,59 @@ def test_authorized_request_can_reuse_values_generated_inside_request(gateway):
         assert gateway("echo [token]") == "generated"
 
     assert "token" not in gateway.results.maps[0]
+
+
+def test_concurrent_authorization_contexts_are_isolated(gateway):
+    """Concurrent callers on one Gateway must not share active authorities."""
+    barrier = Barrier(2)
+
+    def probe(allowed, denied):
+        with gateway.authorized(operations={allowed}):
+            barrier.wait()
+            gateway.authorize_operation(allowed)
+            with pytest.raises(AuthorizationError, match=denied):
+                gateway.authorize_operation(denied)
+            barrier.wait()
+            return gateway.authorization.operations
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(probe, "alpha", "beta")
+        second = pool.submit(probe, "beta", "alpha")
+
+        assert first.result() == frozenset({"alpha"})
+        assert second.result() == frozenset({"beta"})
+
+    assert gateway.authorization is None
+
+
+def test_concurrent_trusted_capability_does_not_elevate_other_callers(gateway):
+    """Trusted recipe authority must remain local to the active execution."""
+    entered = Barrier(2)
+    finished = Barrier(2)
+
+    def trusted():
+        with gateway.authorized(operations=set()):
+            with gateway.trusted_capability():
+                entered.wait()
+                gateway.authorize_operation("internal")
+                finished.wait()
+                return gateway._capability_depth
+
+    def constrained():
+        with gateway.authorized(operations=set()):
+            entered.wait()
+            try:
+                with pytest.raises(AuthorizationError, match="internal"):
+                    gateway.authorize_operation("internal")
+            finally:
+                finished.wait()
+            return gateway._capability_depth
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        trusted_result = pool.submit(trusted)
+        constrained_result = pool.submit(constrained)
+
+        assert trusted_result.result() == 1
+        assert constrained_result.result() == 0
+
+    assert gateway._capability_depth == 0
