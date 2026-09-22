@@ -219,11 +219,10 @@ def test_companion_preserves_venv_python_symlink(
     required_runtime.python = venv_python
 
     captured = {}
-    real_popen = __import__("subprocess").Popen
 
     def popen(argv, *args, **kwargs):
         captured["python"] = argv[0]
-        return real_popen(argv, *args, **kwargs)
+        raise RuntimeError("stop before subprocess launch")
 
     monkeypatch.setattr("gway.recipe.companion.subprocess.Popen", popen)
 
@@ -232,7 +231,7 @@ def test_companion_preserves_venv_python_symlink(
         companion="def ping():\n    return 'pong'\n",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="stop before subprocess launch"):
         gateway(recipe)
 
     assert captured["python"] == str(venv_python)
