@@ -69,11 +69,30 @@ Advanced recipe behavior—including sigils, companion Python files, nested
 recipes, checks, repeat, rollback journals, reload/process handoff, and execution boundaries—is
 documented in ``docs/RECIPES.md``.
 
+Logging
+-------
+
+GWAY provides one logical logging surface across journald and portable rotating
+files:
+
+.. code-block:: bash
+
+   gway log sources
+   gway log read arthexis --since "10 minutes ago"
+   gway log tail arthexis/web --limit 50
+   gway log search "connection refused" arthexis
+
+Journald is used automatically when available. Otherwise GWAY uses structured
+rotating files. With no source argument, reads remain limited to GWAY-managed
+sources rather than the entire host journal. See ``docs/LOGGING.md`` for the
+source model, backend behavior, and portable query semantics.
+
 Documentation
 -------------
 
 - ``docs/RECIPES.md`` — complete recipe language and execution semantics.
 - ``docs/PLATFORM.md`` — GWAY's platform/application ownership boundary.
+- ``docs/LOGGING.md`` — unified logging sources, queries, and backend policy.
 - ``docs/README.md`` — documentation index.
 - ``AGENTS.md`` — maintainer and automation guidance.
 
