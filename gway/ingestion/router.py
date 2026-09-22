@@ -4,6 +4,8 @@ import os
 from pathlib import Path, PureWindowsPath
 from types import ModuleType
 
+from .base import canonical_name, normalize_path
+
 
 def has_path_syntax(source):
     """Return whether a string explicitly spells filesystem path intent."""
@@ -37,61 +39,157 @@ def _is_pathlike(source):
     return _is_path_string(source)
 
 
+def _common_root(paths):
+    """Return the longest shared path prefix for ingested operations."""
+    if not paths:
+        return ()
+    prefix = list(paths[0])
+    for path in paths[1:]:
+        size = min(len(prefix), len(path))
+        index = 0
+        while index < size and prefix[index] == path[index]:
+            index += 1
+        del prefix[index:]
+        if not prefix:
+            break
+    return tuple(prefix)
+
+
+def _apply_aka(gateway, result, aka, *, source=None):
+    """Expose an ingested source under one additional semantic root."""
+    if aka is None:
+        return result
+
+    alias_root = normalize_path(aka)
+    if isinstance(result, (list, tuple, set)):
+        wrapped = [
+            item
+            for item in result
+            if callable(item) and getattr(item, "__gway_path__", None)
+        ]
+    elif callable(result) and getattr(result, "__gway_path__", None):
+        wrapped = [result]
+    else:
+        wrapped = []
+
+    paths = [tuple(item.__gway_path__) for item in wrapped]
+    fallback_root = _common_root(paths)
+
+    source_record = gateway._ingested.get(id(source)) if source is not None else None
+    if not fallback_root and source_record is not None and source_record.paths:
+        fallback_root = min((tuple(path) for path in source_record.paths), key=len)
+    if not fallback_root:
+        raise ValueError("AKA requires an ingested source")
+
+    aliases = []
+    source_roots = [fallback_root] if not wrapped else []
+    for item, operation_path in zip(wrapped, paths):
+        metadata = dict(getattr(item, "__gway_metadata__", {}) or {})
+        source_root = metadata.get("ingest_root")
+        if source_root is not None:
+            source_root = normalize_path(source_root)
+        else:
+            source = getattr(item, "__gway_source__", None)
+            record = gateway._ingested.get(id(source))
+            candidates = []
+            if record is not None:
+                candidates = [
+                    tuple(path)
+                    for path in record.paths
+                    if operation_path[: len(path)] == tuple(path)
+                ]
+            source_root = min(candidates, key=len) if candidates else fallback_root
+
+        if operation_path[: len(source_root)] != source_root:
+            source_root = fallback_root
+        relative = operation_path[len(source_root) :]
+        alias = canonical_name((*alias_root, *relative))
+        source_roots.append(source_root)
+        existing = gateway.ops.resolve(alias)
+        if existing is not None and existing is not item:
+            raise ValueError(f"AKA conflicts with existing operation: {alias}")
+        aliases.append((alias, item))
+
+    for alias, item in aliases:
+        gateway.ops.register_alias(alias, item)
+
+    # Preserve lazy/JIT reachability through the AKA root as well. Records may
+    # include non-callable namespace children that are expanded only on demand.
+    for record in gateway._ingested.values():
+        extra = set()
+        for known_path in record.paths:
+            for source_root in source_roots:
+                if known_path[: len(source_root)] != source_root:
+                    continue
+                relative = known_path[len(source_root) :]
+                extra.add((*alias_root, *relative))
+        record.paths.update(extra)
+
+    return result
+
+
 def ingest(gateway, source, **kwargs):
     """Route an explicitly requested ingestion source to its ingestor."""
     kind = kwargs.pop("kind", None)
+    aka = kwargs.pop("aka", None)
+    if aka is not None:
+        # Validate before performing the source-specific ingestion.
+        normalize_path(aka)
+
+    def finish(result):
+        return _apply_aka(gateway, result, aka, source=source)
 
     from .url import ingest_url, is_url
 
     if is_url(source):
-        return ingest_url(gateway, source, **kwargs)
+        return finish(ingest_url(gateway, source, **kwargs))
 
     if kind == "proc":
         from .proc import ingest_proc
 
-        return ingest_proc(gateway, source, **kwargs)
+        return finish(ingest_proc(gateway, source, **kwargs))
 
     if kind == "python":
         if isinstance(source, str):
             from .python import ingest_name
 
-            return ingest_name(gateway, source, **kwargs)
+            return finish(ingest_name(gateway, source, **kwargs))
 
     if kind == "django":
         from .django import ingest_orm, ingest_project, source_kind
 
         if source_kind(source) is not None:
-            return ingest_orm(gateway, source, **kwargs)
-        return ingest_project(gateway, source, **kwargs)
+            return finish(ingest_orm(gateway, source, **kwargs))
+        return finish(ingest_project(gateway, source, **kwargs))
 
     if _is_pathlike(source):
-        return ingest_path(gateway, source, **kwargs)
+        return finish(ingest_path(gateway, source, **kwargs))
 
     if isinstance(source, str):
         from .python import ingest_name
 
         try:
-            return ingest_name(gateway, source, **kwargs)
+            return finish(ingest_name(gateway, source, **kwargs))
         except ModuleNotFoundError as error:
             if error.name != source.split(".", 1)[0]:
                 raise
             from .proc import ingest_proc
 
-            return ingest_proc(gateway, source, **kwargs)
+            return finish(ingest_proc(gateway, source, **kwargs))
 
     if isinstance(source, ModuleType):
         from .python import ingest_module
 
-        return ingest_module(gateway, source, **kwargs)
+        return finish(ingest_module(gateway, source, **kwargs))
 
     from .django import ingest_orm, source_kind
 
     if source_kind(source) is not None:
-        return ingest_orm(gateway, source, **kwargs)
+        return finish(ingest_orm(gateway, source, **kwargs))
 
     from .python import ingest_python
 
-    return ingest_python(gateway, source, **kwargs)
+    return finish(ingest_python(gateway, source, **kwargs))
 
 
 def ingest_path(gateway, path, **kwargs):
@@ -104,6 +202,12 @@ def ingest_path(gateway, path, **kwargs):
         from .django import ingest_project as ingest_django_project
 
         return ingest_django_project(gateway, path, **kwargs)
+
+    if path.is_dir():
+        from .recipe import ingest_recipe_tree, is_recipe_tree
+
+        if is_recipe_tree(path):
+            return ingest_recipe_tree(gateway, path, **kwargs)
 
     if path.suffix == ".py" or path.is_dir():
         from .python import ingest_path as ingest_python_path

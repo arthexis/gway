@@ -1210,6 +1210,35 @@ resolution never probes the current directory or automatically exposes files.
   entry with that name exists in the current directory.
 - Otherwise a bare string is treated as a Python import name.
 
+Recipe directories are ordinary ingestion sources. If an explicitly ingested
+directory contains one or more `.rx` descendants, GWAY recursively exposes
+those recipes under a semantic root named for the selected directory's final
+path segment. The caller may therefore choose any useful depth:
+
+```text
+ingest sampler
+# sampler web expose http
+
+ingest sampler/web
+# web expose http
+
+ingest sampler/web/expose
+# expose http
+```
+
+Within a mounted recipe tree, `dirname/dirname.rx` and
+`dirname/__main__.rx` are directory entry recipes and collapse to the
+directory operation itself rather than adding a repeated final segment.
+
+Explicit ingestion also accepts `--aka NAME`. AKA preserves the canonical
+mount and adds another spelling with only the ingested root replaced:
+
+```text
+ingest sampler/wireguard --aka wg
+# wireguard client
+# wg client
+```
+
 For the ambiguous bare-name case, filesystem existence wins only because the
 caller explicitly requested ingestion. Thus `gateway.ingest("json")` may
 intentionally ingest a local entry named `json`, while executing

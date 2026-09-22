@@ -32,6 +32,33 @@ def test_recipe_surface_can_ingest_process(monkeypatch, tmp_path):
     assert result.stdout.strip() == "recipe"
 
 
+def test_recipe_surface_can_add_process_aka(monkeypatch, tmp_path):
+    tool = tmp_path / "recipe-tool"
+    tool.symlink_to("/bin/echo")
+    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ.get('PATH', '')}")
+    runtime = Gateway()
+
+    runtime("ingest recipe-tool --kind proc --aka echoer")
+
+    assert runtime.ops.resolve("echoer") is runtime.ops.resolve("recipe-tool")
+    assert runtime("echoer aka").stdout.strip() == "aka"
+    assert runtime("recipe-tool canonical").stdout.strip() == "canonical"
+
+
+def test_process_aka_refuses_to_shadow_existing_operation(monkeypatch, tmp_path):
+    first = tmp_path / "first-tool"
+    first.symlink_to("/bin/echo")
+    second = tmp_path / "second-tool"
+    second.symlink_to("/bin/echo")
+    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ.get('PATH', '')}")
+    runtime = Gateway()
+
+    runtime("ingest first-tool --kind proc --aka shared")
+
+    with pytest.raises(ValueError, match="AKA conflicts with existing operation: shared"):
+        runtime("ingest second-tool --kind proc --aka shared")
+
+
 def test_bare_name_falls_back_to_path_executable(monkeypatch, tmp_path):
     tool = tmp_path / "gway-proc-test"
     tool.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")

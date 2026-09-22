@@ -33,3 +33,13 @@ def test_sampler_contains_gway_and_arthexis_recipe_families():
     assert (root / "web" / "expose" / "expose.rx").is_file()
     assert (root / "arthexis" / "setup.rx").is_file()
     assert (root / "arthexis" / "expose.rx").is_file()
+
+
+def test_sampler_tree_can_be_ingested_as_one_command_namespace(gateway):
+    sampler = repository_root() / "sampler"
+
+    gateway.ingest(sampler)
+
+    assert gateway.ops.resolve("sampler.web.expose") is not None
+    assert gateway.ops.resolve("sampler.web.expose.http") is not None
+    assert gateway.ops.resolve("sampler.arthexis.setup") is not None
