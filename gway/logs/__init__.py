@@ -2,6 +2,7 @@
 
 from .catalog import UnknownLogSource, resolve_sources, source_catalog
 from .discovery import installed_sources
+from .file import FileLogError, read_file_logs
 from .identity import (
     gway_identity,
     project_identity,
@@ -14,6 +15,7 @@ from .source import LogSource
 
 
 __all__ = [
+    "FileLogError",
     "JournalError",
     "LogRecord",
     "LogSource",
@@ -21,6 +23,7 @@ __all__ = [
     "gway_identity",
     "installed_sources",
     "project_identity",
+    "read_file_logs",
     "read_journal",
     "resolve_sources",
     "recipe_identity",
