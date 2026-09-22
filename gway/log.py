@@ -361,3 +361,38 @@ def _child(name="gw", level=None):
     if level is not None:
         child.setLevel(_coerce_level(level))
     return child
+
+
+
+def sources():
+    """List selectable GWAY-managed log sources."""
+    from .logs.operations import sources as _sources
+
+    return _sources()
+
+
+def read(*source, since=None, until=None, limit=None):
+    """Read bounded records from GWAY-managed log sources."""
+    from .logs.operations import read as _read
+
+    return _read(*source, since=since, until=until, limit=limit)
+
+
+def tail(*source, since=None, limit=100):
+    """Return the newest records from GWAY-managed log sources."""
+    from .logs.operations import tail as _tail
+
+    return _tail(*source, since=since, limit=limit)
+
+
+def search(pattern, *source, since=None, until=None, limit=None):
+    """Search message content in GWAY-managed log sources."""
+    from .logs.operations import search as _search
+
+    return _search(
+        pattern,
+        *source,
+        since=since,
+        until=until,
+        limit=limit,
+    )
