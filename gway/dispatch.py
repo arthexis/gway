@@ -578,7 +578,8 @@ def _invoke_resolved(runtime, resolution, *args, **kwargs):
     runtime.authorize_operation(canonical, args=args, kwargs=kwargs)
 
     try:
-        raw = resolution.callable(*args, **kwargs)
+        with runtime.invocation_authority(resolution.callable):
+            raw = resolution.callable(*args, **kwargs)
         raw = runtime.filter_operation_result(canonical, raw)
         normalized = _enforce_cardinality(resolution, raw)
     except Exception:
@@ -777,6 +778,7 @@ def dispatch_pipeline(
             if stage_args or stage_kwargs:
                 raise TypeError("Native arguments are not supported for recipe stages")
             path, recipe_arguments, remaining = recipe
+            runtime.authorize_recipe_path(path)
             if recipe_frame is not None:
                 recipe_frame.set_pipeline_remaining(remaining)
             context = parse_recipe_context(recipe_arguments)
