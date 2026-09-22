@@ -469,11 +469,16 @@ def _service_parent_request(runtime, stream, request):
             "gateway.authenticate_bearer",
             "gateway.execute_authenticated",
         }:
+            bearer = params["bearer"]
+            registry_args = {}
+            if str(bearer).startswith("gwt_"):
+                registry_args["tokens"] = TokenRegistry()
+            elif str(bearer).startswith("gwa_"):
+                registry_args["oauth"] = OAuthRegistry()
             identity = authenticate_bearer(
-                params["bearer"],
+                bearer,
                 resource=params.get("resource"),
-                tokens=TokenRegistry(),
-                oauth=OAuthRegistry(),
+                **registry_args,
             )
             if method == "gateway.authenticate_bearer":
                 result = {
