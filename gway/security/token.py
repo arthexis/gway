@@ -14,9 +14,15 @@ def registry():
     return _registry
 
 
-def create(name, *scopes):
-    """Issue a token and return its bearer secret exactly once."""
-    return registry().create(name, scopes=scopes).bearer
+def create(name, *scopes, expires=None):
+    """Issue a token and return its bearer secret exactly once.
+
+    Args:
+        name: Stable token subject/name.
+        scopes: Named scopes to bind.
+        expires: Optional timezone-aware ISO-8601 expiry timestamp.
+    """
+    return registry().create(name, scopes=scopes, expires_at=expires).bearer
 
 
 def show(name):
