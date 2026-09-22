@@ -510,7 +510,13 @@ class Gateway(Resolver):
 
     def _environment_value(self, name):
         """Resolve one environment value through the normal env operation."""
-        value = self("env", str(name), None)
+        from .dispatch import dispatch_stage
+
+        value = dispatch_stage(
+            self,
+            ["env"],
+            args=(str(name), None),
+        )
         if value is None:
             raise KeyError(name)
         return value
