@@ -47,7 +47,7 @@ def test_file_output_persists_info_without_console_output(tmp_path, capsys):
     assert captured.err == ""
 
     text = (tmp_path / "logs" / "gway.log").read_text(encoding="utf-8")
-    assert "INFO gway reconciliation complete" in text
+    assert "INFO gway [gway] reconciliation complete" in text
 
 
 @pytest.mark.parametrize(
@@ -161,3 +161,48 @@ def test_explicit_journal_destination_falls_back_when_socket_absent(
 
     assert isinstance(handler, logging.StreamHandler)
     assert "fallback" in capsys.readouterr().err
+
+
+def test_source_scope_changes_journal_identifier_and_restores(monkeypatch):
+    fake = _FakeJournalSocket()
+    monkeypatch.setattr(gway_log, "_journal_address", lambda: "/run/journal")
+    monkeypatch.setattr(gway_log._socket, "socket", lambda *args: fake)
+
+    gway_log.configure_output(level="INFO")
+    assert gway_log.current_source() == "gway"
+
+    with gway_log.source_scope("recipe/deploy"):
+        assert gway_log.current_source() == "recipe/deploy"
+        gway_log.info("inside")
+
+    assert gway_log.current_source() == "gway"
+    gway_log.info("outside")
+
+    assert fake.payloads[-2:] == [
+        b"<14>recipe/deploy: inside",
+        b"<14>gway: outside",
+    ]
+
+
+def test_source_scope_nests_and_restores_after_exception():
+    assert gway_log.current_source() == "gway"
+
+    with pytest.raises(RuntimeError):
+        with gway_log.source_scope("recipe/outer"):
+            assert gway_log.current_source() == "recipe/outer"
+            with gway_log.source_scope("recipe/inner"):
+                assert gway_log.current_source() == "recipe/inner"
+                raise RuntimeError("boom")
+
+    assert gway_log.current_source() == "gway"
+
+
+def test_file_output_preserves_logical_source(tmp_path):
+    handler = gway_log.configure_output(destination="file", root=tmp_path)
+
+    with gway_log.source_scope("recipe/deploy"):
+        gway_log.info("portable identity")
+    handler.flush()
+
+    text = (tmp_path / "logs" / "gway.log").read_text(encoding="utf-8")
+    assert "[recipe/deploy] portable identity" in text
