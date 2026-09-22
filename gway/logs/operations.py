@@ -1,7 +1,5 @@
 """Public logging operation orchestration over discovered sources and readers."""
 
-from dataclasses import asdict
-
 from ..install.paths import install_paths
 from ..install.service import ServiceInstallState
 from .catalog import resolve_sources, source_catalog
@@ -82,23 +80,32 @@ def _resolved(requested):
     catalog = _catalog()
     requested = tuple(requested)
     resolved = resolve_sources(requested, catalog)
-    if requested:
-        unreadable = [
-            source
-            for source in resolved
-            if source.backend not in {"systemd", "journal"}
-        ]
-        if unreadable:
-            raise UnsupportedLogBackend(unreadable[0])
-        return resolved
-
-    # Until rotating-file structured reads are implemented, an empty request
-    # means every currently readable managed source, never the whole host log.
-    return [
+    readable = [
         source
         for source in resolved
         if source.backend in {"systemd", "journal"}
     ]
+    if not requested:
+        # Until rotating-file structured reads are implemented, an empty
+        # request means every currently readable managed source, never the
+        # whole host log.
+        return readable
+
+    requested_identities = set(requested)
+    explicit_unreadable = [
+        source
+        for source in resolved
+        if (
+            source.backend not in {"systemd", "journal"}
+            and source.identity in requested_identities
+        )
+    ]
+    if explicit_unreadable:
+        raise UnsupportedLogBackend(explicit_unreadable[0])
+
+    # Aggregate selections may contain members whose structured reader lands
+    # in the portable-file follow-up. Return the readable subset for now.
+    return readable
 
 
 def _read(
