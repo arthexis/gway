@@ -66,11 +66,13 @@ class Resolver:
             raise last_exc
         raise KeyError("No arguments provided to resolve() or all were None")
 
-    def find_value(self, key, fallback=None):
+    def find_value(self, key, fallback=None, *, include_environment=True):
         """Return the first matching value from the configured semantic sources."""
         for _, source in self._search_order:
             try:
                 if isinstance(source, Environment):
+                    if not include_environment:
+                        continue
                     return source[key]
                 if isinstance(source, Mapping):
                     return mapping_value(source, key)
