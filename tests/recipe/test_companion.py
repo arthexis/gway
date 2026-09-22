@@ -2,7 +2,10 @@ import os
 
 import pytest
 
+from gway.recipe import companion as companion_runtime
 from gway.sampler import root as sampler_root
+from gway.security.scopes import ScopeRegistry
+from gway.security.tokens import TokenRegistry
 
 
 def test_recipe_ingests_same_stem_companion_before_resolution(
@@ -357,3 +360,107 @@ def test_mcp_stdio_authorization_error_does_not_kill_server_session(
 
     assert "Operation is not authorized: denied" in error
     assert result == "ok"
+
+
+
+def _authenticated_parent_recipe(recipe_factory, root, bearer, command):
+    root.mkdir(parents=True, exist_ok=True)
+    return recipe_factory(
+        name="auth",
+        root=root,
+        body=f"require placeholder\nauth probe {bearer!r} {command!r}\n",
+        companion=(
+            "def probe(bearer, command):\n"
+            "    return _gway_parent.execute_authenticated(bearer, command)\n"
+        ),
+    )
+
+
+def test_parent_authenticated_execution_uses_token_scope(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    issued = tokens.create("client", scopes={"reader"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    recipe = _authenticated_parent_recipe(
+        recipe_factory,
+        tmp_path / "auth",
+        issued.bearer,
+        "allowed",
+    )
+
+    assert gateway(recipe) == "ok"
+    assert gateway.authorization is None
+
+
+def test_parent_authenticated_execution_denies_operation_outside_token_scope(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    issued = tokens.create("client", scopes={"reader"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.denied = gateway.wrap("denied", lambda: "no")
+    recipe = _authenticated_parent_recipe(
+        recipe_factory,
+        tmp_path / "auth-denied",
+        issued.bearer,
+        "denied",
+    )
+
+    with pytest.raises(RuntimeError, match="Operation is not authorized: denied"):
+        gateway(recipe)
+
+    assert gateway.authorization is None
+
+
+def test_parent_authenticated_execution_rejects_invalid_bearer_uniformly(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    tokens = TokenRegistry(tmp_path / "security.sqlite")
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    recipe = _authenticated_parent_recipe(
+        recipe_factory,
+        tmp_path / "auth-invalid",
+        "gwt_missing_wrong",
+        "clear",
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid bearer token"):
+        gateway(recipe)
+
+    assert gateway.authorization is None
+
+
+def test_parent_authenticated_execution_rejects_disabled_token(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    issued = tokens.create("client", scopes={"reader"})
+    tokens.disable("client")
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    recipe = _authenticated_parent_recipe(
+        recipe_factory,
+        tmp_path / "auth-disabled",
+        issued.bearer,
+        "allowed",
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid bearer token"):
+        gateway(recipe)
+
+    assert gateway.authorization is None
