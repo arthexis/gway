@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 
 class SecurityState:
@@ -57,6 +57,7 @@ class SecurityState:
                 public_id TEXT NOT NULL UNIQUE,
                 token_hash TEXT NOT NULL UNIQUE,
                 created_at TEXT NOT NULL,
+                expires_at TEXT,
                 disabled INTEGER NOT NULL DEFAULT 0
             );
 
@@ -69,5 +70,12 @@ class SecurityState:
             );
             """
         )
+        if version < 3:
+            columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(tokens)")
+            }
+            if "expires_at" not in columns:
+                connection.execute("ALTER TABLE tokens ADD COLUMN expires_at TEXT")
         if version < _SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
