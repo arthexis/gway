@@ -485,6 +485,22 @@ class Gateway(Resolver):
         finally:
             self._capability_depth -= 1
 
+    @contextmanager
+    def external_authority(self):
+        """Re-enter the active caller authority from trusted implementation code."""
+        from .authorization import AuthorizationError
+
+        if self.authorization is None:
+            raise AuthorizationError(
+                "External Gateway execution requires an authorization context"
+            )
+        previous_depth = self._capability_depth
+        self._capability_depth = 0
+        try:
+            yield self.authorization
+        finally:
+            self._capability_depth = previous_depth
+
     def authorize_operation(self, operation, args=(), kwargs=None):
         """Authorize one canonical operation immediately before invocation."""
         authority = self.authorization
