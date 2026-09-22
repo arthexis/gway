@@ -29,7 +29,7 @@ _output_handler = None
 _log_source = _ContextVar("gway_log_source", default="gway")
 
 
-def current_source():
+def _current_source():
     """Return the logical log source for the current execution context."""
     return _log_source.get()
 
@@ -44,11 +44,11 @@ def _validate_source(identity):
 
 
 @_contextmanager
-def source_scope(identity):
+def _source_scope(identity):
     """Temporarily assign a logical source to GWAY diagnostics."""
     token = _log_source.set(_validate_source(identity))
     try:
-        yield current_source()
+        yield _current_source()
     finally:
         _log_source.reset(token)
 
@@ -57,7 +57,7 @@ class _SourceFilter(_logging.Filter):
     """Attach the current logical GWAY source to every emitted record."""
 
     def filter(self, record):
-        record.gway_source = current_source()
+        record.gway_source = _current_source()
         return True
 
 
@@ -140,7 +140,7 @@ class _JournalHandler(_logging.Handler):
     def emit(self, record):
         message = self.format(record)
         priority = (_SYSLOG_USER_FACILITY * 8) + _journal_priority(record.levelno)
-        identifier = getattr(record, "gway_source", current_source())
+        identifier = getattr(record, "gway_source", _current_source())
         payload = f"<{priority}>{identifier}: {message}".encode(
             "utf-8",
             errors="replace",
