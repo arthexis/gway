@@ -1,6 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from gway.install.model import Installation
 from gway.recipe_environment import recipe_environment
 from gway.recipes import execute_recipe
