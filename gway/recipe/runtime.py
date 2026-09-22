@@ -64,7 +64,7 @@ def execute_recipe(
         runtime._recipe_frames = frames
     frame = None
     try:
-        with gway_log.source_scope(source_identity):
+        with gway_log._source_scope(source_identity):
             if context:
                 runtime.context.update(context)
 
