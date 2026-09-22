@@ -70,6 +70,9 @@ class ProcessBackend:
     @staticmethod
     def _environment(service):
         environment = os.environ.copy()
+        for assignment in service.environment:
+            name, value = assignment.split("=", 1)
+            environment[name] = value
         environment["GWAY_LOG_SOURCE"] = f"{service.project}/{service.name}"
         return environment
 

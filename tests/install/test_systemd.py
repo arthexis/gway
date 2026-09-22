@@ -762,3 +762,42 @@ def test_mcp_service_systemd_rendering_uses_generic_service_backend():
     assert "systemctl" not in rendered
     assert "daemon-reload" not in rendered
     assert "Restart=no" in rendered
+
+
+
+def test_service_install_systemd_renders_and_persists_environment(
+    tmp_path,
+    monkeypatch,
+    fake_systemd,
+    install_environment,
+):
+    monkeypatch.chdir(tmp_path)
+    units, _ = fake_systemd
+
+    records = Gateway()(
+        "service install --backend systemd "
+        "--environment GWAY_CACHE_DIR=/var/lib/gway/cache sous chef"
+    )
+
+    unit = (units / "gway-sous-chef.service").read_text(encoding="utf-8")
+    assert "Environment=GWAY_CACHE_DIR=/var/lib/gway/cache" in unit
+    assert records[0].environment == ("GWAY_CACHE_DIR=/var/lib/gway/cache",)
+
+    state = ServiceInstallState(install_environment.data / "services-installed")
+    restored = state.get("gway")
+    assert restored[0].environment == ("GWAY_CACHE_DIR=/var/lib/gway/cache",)
+
+
+def test_service_environment_rejects_invalid_assignment():
+    runtime = Gateway()
+    recipe = sampler_root() / "mcp" / "server.rx"
+
+    with pytest.raises(
+        ValueError,
+        match="Service environment entries must be NAME=value assignments",
+    ):
+        runtime._service_controller._definition(
+            (str(recipe),),
+            name="mcp-server",
+            environment="GWAY_CACHE_DIR",
+        )

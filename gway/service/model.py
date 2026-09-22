@@ -16,6 +16,7 @@ class Service:
     launchable: Launchable
     description: str | None = None
     working_directory: str | None = None
+    environment: tuple[str, ...] = ()
     restart: str = "on-failure"
     attempts: int = 3
     restart_sec: float = 5.0
@@ -27,6 +28,27 @@ class Service:
 
         if not isinstance(self.launchable, Launchable):
             raise TypeError("Service launchable must be a Launchable")
+        environment = (
+            (self.environment,)
+            if isinstance(self.environment, str)
+            else tuple(self.environment)
+        )
+        normalized_environment = []
+        for assignment in environment:
+            assignment = str(assignment)
+            name, separator, _ = assignment.partition("=")
+            if (
+                not separator
+                or not name
+                or "\x00" in assignment
+                or "\n" in assignment
+                or "\r" in assignment
+            ):
+                raise ValueError(
+                    "Service environment entries must be NAME=value assignments"
+                )
+            normalized_environment.append(assignment)
+        object.__setattr__(self, "environment", tuple(normalized_environment))
         if not isinstance(self.attempts, int) or isinstance(self.attempts, bool):
             raise TypeError("Service attempts must be an integer")
         if self.attempts < 0:

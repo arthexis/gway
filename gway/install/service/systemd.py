@@ -206,8 +206,12 @@ def render(service, *, system=False):
         "[Service]",
         "Type=simple",
         f"WorkingDirectory={cwd}",
-        "ExecStart=" + " ".join(shlex.quote(part) for part in command),
     ]
+    lines.extend(
+        f"Environment={shlex.quote(assignment)}"
+        for assignment in service.environment
+    )
+    lines.append("ExecStart=" + " ".join(shlex.quote(part) for part in command))
     lines.append("Restart=no")
 
     lines.extend(
@@ -368,6 +372,7 @@ def install_units(
                     attempts=service.attempts,
                     restart_sec=service.restart_sec,
                     command=tuple(service.launchable.command),
+                    environment=tuple(service.environment),
                 )
             )
 
