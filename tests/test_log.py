@@ -23,7 +23,7 @@ def test_default_log_path_uses_durable_data_root(tmp_path):
 
 
 def test_file_output_rotates_daily_with_thirty_days_total(tmp_path):
-    handler = gway_log.configure_output(root=tmp_path)
+    handler = gway_log.configure_output(destination="file", root=tmp_path)
 
     assert isinstance(handler, TimedRotatingFileHandler)
     assert Path(handler.baseFilename) == tmp_path / "logs" / "gway.log"
@@ -36,7 +36,7 @@ def test_file_output_rotates_daily_with_thirty_days_total(tmp_path):
 
 
 def test_file_output_persists_info_without_console_output(tmp_path, capsys):
-    gway_log.configure_output(root=tmp_path)
+    gway_log.configure_output(destination="file", root=tmp_path)
 
     gway_log.info("reconciliation complete")
     for handler in gway_log.logger.handlers:
@@ -88,3 +88,76 @@ def test_explicit_file_path_is_supported(tmp_path):
     assert path.is_file()
     assert "custom destination" in path.read_text(encoding="utf-8")
     assert handler.level == logging.WARNING
+
+
+def test_default_destination_prefers_journal_when_available(monkeypatch):
+    monkeypatch.setattr(gway_log, "_journal_address", lambda: "/run/journal")
+
+    assert gway_log.default_output_destination() == "journal"
+
+
+def test_default_destination_falls_back_to_stderr(monkeypatch):
+    monkeypatch.setattr(gway_log, "_journal_address", lambda: None)
+
+    assert gway_log.default_output_destination() == "stderr"
+
+
+class _FakeJournalSocket:
+    def __init__(self):
+        self.address = None
+        self.payloads = []
+        self.closed = False
+
+    def connect(self, address):
+        self.address = address
+
+    def send(self, payload):
+        self.payloads.append(payload)
+        return len(payload)
+
+    def close(self):
+        self.closed = True
+
+
+def test_journal_handler_emits_identifier_and_priority(monkeypatch):
+    fake = _FakeJournalSocket()
+    monkeypatch.setattr(gway_log, "_journal_address", lambda: "/run/journal")
+    monkeypatch.setattr(gway_log._socket, "socket", lambda *args: fake)
+
+    handler = gway_log.configure_output(level="DEBUG")
+    gway_log.info("reconciled %s", "service")
+    gway_log.warning("retrying")
+
+    assert isinstance(handler, gway_log._JournalHandler)
+    assert fake.address == "/run/journal"
+    assert fake.payloads == [
+        b"<14>gway: reconciled service",
+        b"<12>gway: retrying",
+    ]
+
+
+def test_journal_transport_failure_falls_back_to_stderr(monkeypatch, capsys):
+    class BrokenSocket(_FakeJournalSocket):
+        def connect(self, address):
+            raise OSError("journal unavailable")
+
+    monkeypatch.setattr(gway_log, "_journal_address", lambda: "/run/journal")
+    monkeypatch.setattr(gway_log._socket, "socket", lambda *args: BrokenSocket())
+
+    gway_log.configure_output(level="INFO")
+    gway_log.info("still visible")
+
+    assert "still visible" in capsys.readouterr().err
+
+
+def test_explicit_journal_destination_falls_back_when_socket_absent(
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setattr(gway_log, "_journal_address", lambda: None)
+
+    handler = gway_log.configure_output(destination="journal", level="INFO")
+    gway_log.info("fallback")
+
+    assert isinstance(handler, logging.StreamHandler)
+    assert "fallback" in capsys.readouterr().err
