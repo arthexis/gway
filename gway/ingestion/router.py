@@ -55,7 +55,7 @@ def _common_root(paths):
     return tuple(prefix)
 
 
-def _apply_aka(gateway, result, aka):
+def _apply_aka(gateway, result, aka, *, source=None):
     """Expose an ingested source under one additional semantic root."""
     if aka is None:
         return result
@@ -74,8 +74,12 @@ def _apply_aka(gateway, result, aka):
 
     paths = [tuple(item.__gway_path__) for item in wrapped]
     fallback_root = _common_root(paths)
+
+    source_record = gateway._ingested.get(id(source)) if source is not None else None
+    if not fallback_root and source_record is not None and source_record.paths:
+        fallback_root = min((tuple(path) for path in source_record.paths), key=len)
     if not fallback_root:
-        raise ValueError("AKA requires an ingested callable source")
+        raise ValueError("AKA requires an ingested source")
 
     aliases = []
     source_roots = []
@@ -133,7 +137,7 @@ def ingest(gateway, source, **kwargs):
         normalize_path(aka)
 
     def finish(result):
-        return _apply_aka(gateway, result, aka)
+        return _apply_aka(gateway, result, aka, source=source)
 
     from .url import ingest_url, is_url
 
