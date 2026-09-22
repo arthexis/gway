@@ -119,7 +119,7 @@ def test_require_bootstraps_uv_once_per_recipe_frame(gateway, monkeypatch, tmp_p
 
     gateway.wrap("uv probe", probe)
 
-    _, result = __import__("gway.recipes", fromlist=["execute_recipe"]).execute_recipe(
+    _, result = __import__("gway.recipe", fromlist=["execute_recipe"]).execute_recipe(
         gateway, recipe
     )
 
