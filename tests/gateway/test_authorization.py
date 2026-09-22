@@ -246,3 +246,18 @@ def test_concurrent_trusted_capability_does_not_elevate_other_callers(gateway):
         assert constrained_result.result() == 0
 
     assert gateway._capability_depth == 0
+
+
+
+def test_optional_defaults_do_not_probe_environment_under_authority(
+    gateway, monkeypatch
+):
+    monkeypatch.setenv("OPTIONAL_VALUE", "host-secret")
+
+    def optional(value="default"):
+        return value
+
+    gateway.optional = gateway.wrap("optional", optional)
+
+    with gateway.authorized(operations={"optional"}, environment=()):
+        assert gateway("optional") == "default"
