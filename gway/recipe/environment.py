@@ -164,11 +164,10 @@ def sync_python_environment(environment, uv, requirements):
 
     desired = _metadata_payload(environment, requirements)
     python = environment_python(environment)
-    current = load_environment_metadata(environment)
 
-    if current == desired and python.is_file():
-        return python
-
+    # Metadata describes desired state, but cannot prove the environment still
+    # contains those packages. Always reconcile declared requirements so
+    # deleted/corrupted dependencies are repaired before companion import.
     environment.root.mkdir(parents=True, exist_ok=True)
     if not python.is_file():
         subprocess.run(
@@ -183,6 +182,20 @@ def sync_python_environment(environment, uv, requirements):
     )
     temporary_requirements.replace(environment.requirements_file)
 
+    locked_requirements = environment.root / "requirements.lock.txt"
+    subprocess.run(
+        [
+            str(uv),
+            "pip",
+            "compile",
+            "--python",
+            str(python),
+            str(environment.requirements_file),
+            "--output-file",
+            str(locked_requirements),
+        ],
+        check=True,
+    )
     subprocess.run(
         [
             str(uv),
@@ -190,7 +203,7 @@ def sync_python_environment(environment, uv, requirements):
             "sync",
             "--python",
             str(python),
-            str(environment.requirements_file),
+            str(locked_requirements),
         ],
         check=True,
     )

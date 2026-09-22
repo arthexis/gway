@@ -288,7 +288,9 @@ class CompanionWorker:
     def start(cls, recipe, companion, python):
         recipe = Path(recipe).expanduser().resolve()
         companion = Path(companion).expanduser().resolve()
-        python = Path(python).expanduser().resolve()
+        # Preserve the venv interpreter path. Resolving it can collapse the
+        # venv's python symlink to the base interpreter and lose site-packages.
+        python = Path(python).expanduser().absolute()
         process = subprocess.Popen(
             [str(python), "-u", "-c", _WORKER, str(companion)],
             stdin=subprocess.PIPE,

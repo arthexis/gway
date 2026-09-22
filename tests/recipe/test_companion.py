@@ -201,3 +201,37 @@ def test_parent_gateway_rpc_error_does_not_desynchronize_companion(
     )
 
     assert gateway(recipe) == (True, 5)
+
+
+
+def test_companion_preserves_venv_python_symlink(
+    gateway,
+    recipe_factory,
+    required_runtime,
+    tmp_path,
+    monkeypatch,
+):
+    target = tmp_path / "base-python"
+    target.write_text("", encoding="utf-8")
+    venv_python = tmp_path / "venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.symlink_to(target)
+    required_runtime.python = venv_python
+
+    captured = {}
+
+    def popen(argv, *args, **kwargs):
+        captured["python"] = argv[0]
+        raise RuntimeError("stop before subprocess launch")
+
+    monkeypatch.setattr("gway.recipe.companion.subprocess.Popen", popen)
+
+    recipe = recipe_factory(
+        body="require placeholder\ndemo ping\n",
+        companion="def ping():\n    return 'pong'\n",
+    )
+
+    with pytest.raises(RuntimeError, match="stop before subprocess launch"):
+        gateway(recipe)
+
+    assert captured["python"] == str(venv_python)
