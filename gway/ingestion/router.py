@@ -73,14 +73,34 @@ def _apply_aka(gateway, result, aka):
         wrapped = []
 
     paths = [tuple(item.__gway_path__) for item in wrapped]
-    source_root = _common_root(paths)
-    if not source_root:
+    fallback_root = _common_root(paths)
+    if not fallback_root:
         raise ValueError("AKA requires an ingested callable source")
 
     aliases = []
-    for item, path in zip(wrapped, paths):
-        relative = path[len(source_root) :]
+    source_roots = []
+    for item, operation_path in zip(wrapped, paths):
+        metadata = dict(getattr(item, "__gway_metadata__", {}) or {})
+        source_root = metadata.get("ingest_root")
+        if source_root is not None:
+            source_root = normalize_path(source_root)
+        else:
+            source = getattr(item, "__gway_source__", None)
+            record = gateway._ingested.get(id(source))
+            candidates = []
+            if record is not None:
+                candidates = [
+                    tuple(path)
+                    for path in record.paths
+                    if operation_path[: len(path)] == tuple(path)
+                ]
+            source_root = min(candidates, key=len) if candidates else fallback_root
+
+        if operation_path[: len(source_root)] != source_root:
+            source_root = fallback_root
+        relative = operation_path[len(source_root) :]
         alias = canonical_name((*alias_root, *relative))
+        source_roots.append(source_root)
         existing = gateway.ops.resolve(alias)
         if existing is not None and existing is not item:
             raise ValueError(f"AKA conflicts with existing operation: {alias}")
@@ -93,11 +113,12 @@ def _apply_aka(gateway, result, aka):
     # include non-callable namespace children that are expanded only on demand.
     for record in gateway._ingested.values():
         extra = set()
-        for path in record.paths:
-            if path[: len(source_root)] != source_root:
-                continue
-            relative = path[len(source_root) :]
-            extra.add((*alias_root, *relative))
+        for known_path in record.paths:
+            for source_root in source_roots:
+                if known_path[: len(source_root)] != source_root:
+                    continue
+                relative = known_path[len(source_root) :]
+                extra.add((*alias_root, *relative))
         record.paths.update(extra)
 
     return result
