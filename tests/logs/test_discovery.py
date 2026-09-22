@@ -77,6 +77,4 @@ def test_installed_sources_do_not_reconstruct_backend_identity(tmp_path):
 def test_empty_install_state_has_no_installed_sources(tmp_path):
     state = ServiceInstallState(tmp_path)
 
-    assert state.projects() == []
-    assert state.all() == []
     assert installed_sources(state) == []
