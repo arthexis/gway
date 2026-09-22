@@ -52,6 +52,23 @@ class ServiceInstallState:
             for item in data
         ]
 
+    def projects(self):
+        """Return project names with persisted service-install records."""
+        if not self.root.exists():
+            return []
+        try:
+            paths = self.root.glob("*.json")
+            return sorted(path.stem for path in paths if path.is_file())
+        except PermissionError:
+            return []
+
+    def all(self):
+        """Return all persisted service-install records."""
+        records = []
+        for project in self.projects():
+            records.extend(self.get(project))
+        return records
+
     def put(self, project, records):
         path = self.path(project)
         records = list(records)
