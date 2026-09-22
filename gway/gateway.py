@@ -449,7 +449,7 @@ class Gateway(Resolver):
 
     @property
     def _capability_depth(self):
-        return getattr(self, "__capability_depth", 0)
+        return getattr(self, "_Gateway__capability_depth", 0)
 
     @_capability_depth.setter
     def _capability_depth(self, value):
