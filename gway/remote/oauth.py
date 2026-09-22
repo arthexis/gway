@@ -176,8 +176,14 @@ class RemoteOAuthProtocol:
         challenge = self._required(params, "code_challenge")
         if self._required(params, "code_challenge_method") != "S256":
             raise OAuthProtocolError("invalid_request", "PKCE S256 is required")
-        if len(challenge) < 43 or len(challenge) > 128:
-            raise OAuthProtocolError("invalid_request", "PKCE code_challenge has invalid length")
+        if len(challenge) != 43 or any(
+            character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+            for character in challenge
+        ):
+            raise OAuthProtocolError(
+                "invalid_request",
+                "PKCE S256 code_challenge is malformed",
+            )
 
         scope = self._required(params, "scope")
         self.account.stage_consent(
