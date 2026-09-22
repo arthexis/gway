@@ -109,3 +109,76 @@ def test_recipe_frame_exposes_environment_identity(gateway, monkeypatch, tmp_pat
 
     assert environment.recipe == recipe.resolve()
     assert environment.root.parent == (tmp_path / "data" / "recipes").resolve()
+
+
+def test_require_rejects_use_outside_recipe(gateway):
+    import pytest
+
+    with pytest.raises(RuntimeError, match="only available during recipe execution"):
+        gateway("require fastmcp")
+
+
+def test_require_records_multiple_python_packages(gateway, tmp_path):
+    recipe = tmp_path / "demo.rx"
+    recipe.write_text("require fastmcp cryptography\n", encoding="utf-8")
+
+    captured = {}
+
+    def probe():
+        captured.update(gateway._recipe_frames[-1].requirements)
+        return "ok"
+
+    gateway.wrap("require probe", probe)
+    recipe.write_text(
+        "require fastmcp cryptography\nrequire probe\n",
+        encoding="utf-8",
+    )
+    execute_recipe(gateway, recipe)
+
+    assert captured == {"python": ["fastmcp", "cryptography"]}
+
+
+def test_require_explicit_python_flag_matches_default(gateway, tmp_path):
+    recipe = tmp_path / "demo.rx"
+    captured = {}
+
+    def probe():
+        captured.update(gateway._recipe_frames[-1].requirements)
+        return "ok"
+
+    gateway.wrap("require probe", probe)
+    recipe.write_text(
+        "require fastmcp --python\nrequire probe\n",
+        encoding="utf-8",
+    )
+    execute_recipe(gateway, recipe)
+
+    assert captured == {"python": ["fastmcp"]}
+
+
+def test_require_is_idempotent_within_recipe(gateway, tmp_path):
+    recipe = tmp_path / "demo.rx"
+    captured = {}
+
+    def probe():
+        captured.update(gateway._recipe_frames[-1].requirements)
+        return "ok"
+
+    gateway.wrap("require probe", probe)
+    recipe.write_text(
+        "require fastmcp\nrequire fastmcp cryptography\nrequire probe\n",
+        encoding="utf-8",
+    )
+    execute_recipe(gateway, recipe)
+
+    assert captured == {"python": ["fastmcp", "cryptography"]}
+
+
+def test_require_rejects_missing_packages_inside_recipe(gateway, tmp_path):
+    import pytest
+
+    recipe = tmp_path / "demo.rx"
+    recipe.write_text("require\n", encoding="utf-8")
+
+    with pytest.raises(TypeError, match="at least one package"):
+        execute_recipe(gateway, recipe)
