@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 class SecurityState:
@@ -48,6 +48,23 @@ class SecurityState:
                 scope_id INTEGER NOT NULL,
                 variable_name TEXT NOT NULL,
                 UNIQUE(scope_id, variable_name),
+                FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS tokens (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                public_id TEXT NOT NULL UNIQUE,
+                token_hash TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                disabled INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS token_scopes (
+                token_id INTEGER NOT NULL,
+                scope_id INTEGER NOT NULL,
+                UNIQUE(token_id, scope_id),
+                FOREIGN KEY(token_id) REFERENCES tokens(id) ON DELETE CASCADE,
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
             """
