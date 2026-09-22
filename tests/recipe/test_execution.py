@@ -21,7 +21,7 @@ def test_bare_existing_recipe_is_fallback_when_operation_is_missing(
     gateway, recipe_factory, monkeypatch, tmp_path
 ):
     gateway.echo = gateway.wrap("echo_value", lambda value: value)
-    recipe = recipe_factory(name="nightly", body="echo recipe\n")
+    recipe_factory(name="nightly", body="echo recipe\n")
     monkeypatch.chdir(tmp_path)
 
     assert gateway("nightly") == "recipe"
