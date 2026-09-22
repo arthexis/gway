@@ -1,0 +1,790 @@
+from datetime import datetime, timezone
+
+import pytest
+
+from gway.install.service import ServiceInstallRecord, ServiceInstallState
+from gway.logs import LogRecord
+from gway.logs import operations as log_operations
+from gway.recipe import companion as companion_runtime
+from gway.sampler import root as sampler_root
+from gway.security.scopes import ScopeRegistry
+from gway.security.tokens import TokenRegistry
+
+
+def _issued_token(
+    tmp_path,
+    monkeypatch,
+    *,
+    scope="reader",
+    operations=("allowed",),
+    token="client",
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace(scope, operations=set(operations))
+    issued = tokens.create(token, scopes={scope})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    return scopes, tokens, issued
+
+
+def _mcp_companion_recipe(recipe_factory, root, command, *, suffix=""):
+    root.mkdir(parents=True, exist_ok=True)
+    companion = (sampler_root() / "mcp" / "server.py").read_text(encoding="utf-8")
+    companion += suffix
+    return recipe_factory(
+        name="server",
+        root=root,
+        body=f"require fastmcp\nserver gway {command!r}\n",
+        companion=companion,
+    )
+
+
+def test_mcp_gway_tool_executes_native_pipeline_under_caller_authority(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp"
+    gateway.produce = gateway.wrap("produce", lambda: "hello")
+    gateway.consume = gateway.wrap("consume", lambda value: f"{value}!")
+    _mcp_companion_recipe(recipe_factory, root, "produce - consume")
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcp.server", "produce", "consume"}):
+        assert gateway("mcp server") == "hello!"
+
+
+def test_mcp_gway_tool_rechecks_each_native_pipeline_operation(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp"
+    calls = []
+    gateway.produce = gateway.wrap("produce", lambda: "hello")
+
+    def consume(value):
+        calls.append(value)
+        return value
+
+    gateway.consume = gateway.wrap("consume", consume)
+    _mcp_companion_recipe(recipe_factory, root, "produce - consume")
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcp.server", "produce"}):
+        with pytest.raises(RuntimeError, match="Operation is not authorized: consume"):
+            gateway("mcp server")
+
+    assert calls == []
+
+
+def test_mcp_gway_tool_requires_external_authority(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp"
+    gateway.echo = gateway.wrap("echo_value", lambda value: value)
+    recipe = _mcp_companion_recipe(recipe_factory, root, "echo hello")
+
+    with pytest.raises(
+        RuntimeError,
+        match="External Gateway execution requires an authorization context",
+    ):
+        gateway(recipe)
+
+
+def test_mcp_gway_tool_rejects_non_json_result(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcp"
+    gateway.opaque = gateway.wrap("opaque", lambda: {"not-json"})
+    _mcp_companion_recipe(recipe_factory, root, "opaque")
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcp.server", "opaque"}):
+        with pytest.raises(
+            RuntimeError,
+            match="GWAY result is not MCP-serializable: set",
+        ):
+            gateway("mcp server")
+
+
+
+def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpstdio"
+    gateway.echo = gateway.wrap("echo_value", lambda value: value)
+    probe = (
+        "\n\ndef probe_stdio(command):\n"
+        "    import asyncio\n"
+        "    from fastmcp import Client\n"
+        "    from fastmcp.client.transports import PythonStdioTransport\n"
+        "    async def run():\n"
+        "        with _callback_relay() as env:\n"
+        "            transport = PythonStdioTransport(str(Path(__file__)), env=env)\n"
+        "            async with Client(transport) as client:\n"
+        "                tools = await client.list_tools()\n"
+        "                result = await client.call_tool('gway', {'command': command})\n"
+        "                return [tool.name for tool in tools], result.content[0].text\n"
+        "    return asyncio.run(run())\n"
+    )
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "echo unused",
+        suffix=probe,
+    )
+    recipe.write_text("require fastmcp\nserver probe stdio 'echo hello'\n", encoding="utf-8")
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcpstdio.server", "echo_value"}):
+        tools, result = gateway("mcpstdio server")
+
+    assert tools == ["gway"]
+    assert result == "hello"
+
+
+def test_mcp_stdio_authorization_error_does_not_kill_server_session(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpstdioerror"
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    gateway.denied = gateway.wrap("denied", lambda: "no")
+    probe = (
+        "\n\ndef probe_stdio():\n"
+        "    import asyncio\n"
+        "    from fastmcp import Client\n"
+        "    from fastmcp.client.transports import PythonStdioTransport\n"
+        "    async def run():\n"
+        "        with _callback_relay() as env:\n"
+        "            transport = PythonStdioTransport(str(Path(__file__)), env=env)\n"
+        "            async with Client(transport) as client:\n"
+        "                first_error = None\n"
+        "                try:\n"
+        "                    await client.call_tool('gway', {'command': 'denied'})\n"
+        "                except Exception as exception:\n"
+        "                    first_error = str(exception)\n"
+        "                second = await client.call_tool('gway', {'command': 'allowed'})\n"
+        "                return first_error, second.content[0].text\n"
+        "    return asyncio.run(run())\n"
+    )
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "allowed",
+        suffix=probe,
+    )
+    recipe.write_text("require fastmcp\nserver probe stdio\n", encoding="utf-8")
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcpstdioerror.server", "allowed"}):
+        error, result = gateway("mcpstdioerror server")
+
+    assert "Operation is not authorized: denied" in error
+    assert result == "ok"
+
+
+
+def _authenticated_parent_recipe(recipe_factory, root, bearer, command):
+    root.mkdir(parents=True, exist_ok=True)
+    name = root.name.replace("-", "_")
+    return recipe_factory(
+        name=name,
+        root=root,
+        body=f"require placeholder\n{name} probe {bearer!r} {command!r}\n",
+        companion=(
+            "def probe(bearer, command):\n"
+            "    return _gway_parent.execute_authenticated(bearer, command)\n"
+        ),
+    )
+
+
+def test_parent_authenticated_execution_uses_token_scope(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    issued = tokens.create("client", scopes={"reader"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    recipe = _authenticated_parent_recipe(
+        recipe_factory,
+        tmp_path / "auth",
+        issued.bearer,
+        "allowed",
+    )
+
+    assert gateway(recipe) == "ok"
+    assert gateway.authorization is None
+
+
+def test_parent_authenticated_execution_denies_operation_outside_token_scope(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    issued = tokens.create("client", scopes={"reader"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.denied = gateway.wrap("denied", lambda: "no")
+    recipe = _authenticated_parent_recipe(
+        recipe_factory,
+        tmp_path / "auth-denied",
+        issued.bearer,
+        "denied",
+    )
+
+    with pytest.raises(RuntimeError, match="Operation is not authorized: denied"):
+        gateway(recipe)
+
+    assert gateway.authorization is None
+
+
+def test_parent_authenticated_execution_rejects_invalid_bearer_uniformly(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    tokens = TokenRegistry(tmp_path / "security.sqlite")
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    recipe = _authenticated_parent_recipe(
+        recipe_factory,
+        tmp_path / "auth-invalid",
+        "gwt_missing_wrong",
+        "clear",
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid bearer token"):
+        gateway(recipe)
+
+    assert gateway.authorization is None
+
+
+def test_parent_authenticated_execution_rejects_disabled_token(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    issued = tokens.create("client", scopes={"reader"})
+    tokens.disable("client")
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    recipe = _authenticated_parent_recipe(
+        recipe_factory,
+        tmp_path / "auth-disabled",
+        issued.bearer,
+        "allowed",
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid bearer token"):
+        gateway(recipe)
+
+    assert gateway.authorization is None
+
+
+
+def _mcp_http_probe_suffix():
+    return r'''
+def probe_http(bearer, command, second_bearer=None, second_command=None):
+    import asyncio
+    import os
+    import socket
+    import subprocess
+    import sys
+    import time
+
+    from fastmcp import Client
+    from fastmcp.client.auth import BearerAuth
+
+    def free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return listener.getsockname()[1]
+
+    def wait_ready(port, process):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError(f"MCP HTTP server exited with {process.returncode}")
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                    return
+            except OSError:
+                time.sleep(0.05)
+        raise RuntimeError("MCP HTTP server did not become ready")
+
+    async def call(url, credential, value):
+        auth = None if credential == "__missing__" else BearerAuth(credential)
+        async with Client(url, auth=auth) as client:
+            tools = await client.list_tools()
+            try:
+                result = await client.call_tool("gway", {"command": value})
+            except Exception as exception:
+                return [tool.name for tool in tools], None, str(exception)
+            return [tool.name for tool in tools], result.content[0].text, None
+
+    async def run(url):
+        first = await call(url, bearer, command)
+        if second_command is None:
+            return first
+        first_task = asyncio.create_task(call(url, bearer, command))
+        second_task = asyncio.create_task(
+            call(url, second_bearer, second_command)
+        )
+        return await asyncio.gather(first_task, second_task)
+
+    port = free_port()
+    with _callback_relay() as callback_env:
+        env = os.environ.copy()
+        env.update(callback_env)
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(Path(__file__)),
+                "--transport",
+                "http",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--path",
+                "/mcp",
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            wait_ready(port, process)
+            return asyncio.run(run(f"http://127.0.0.1:{port}/mcp"))
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+'''
+
+
+def _mcp_http_recipe(recipe_factory, root):
+    root.mkdir(parents=True, exist_ok=True)
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "clear",
+        suffix=_mcp_http_probe_suffix(),
+    )
+    return recipe
+
+
+def test_mcp_http_real_client_uses_bearer_scope(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    issued = tokens.create("http-client", scopes={"reader"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttp")
+    recipe.write_text(
+        f"require fastmcp\nserver probe http {issued.bearer!r} allowed\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcphttp.server"}):
+        tools, result, error = gateway("mcphttp server")
+
+    assert tools == ["gway"]
+    assert result == "ok"
+    assert error is None
+
+
+def test_mcp_http_scope_denial_is_tool_error_not_authentication_failure(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    issued = tokens.create("http-client", scopes={"reader"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.denied = gateway.wrap("denied", lambda: "no")
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpdenied")
+    recipe.write_text(
+        f"require fastmcp\nserver probe http {issued.bearer!r} denied\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcphttpdenied.server"}):
+        tools, result, error = gateway("mcphttpdenied server")
+
+    assert tools == ["gway"]
+    assert result is None
+    assert "Operation is not authorized: denied" in error
+    assert "Invalid bearer token" not in error
+
+
+@pytest.mark.parametrize("credential", ["__missing__", "gwt_missing_wrong"])
+def test_mcp_http_rejects_missing_and_invalid_bearer(
+    gateway,
+    recipe_factory,
+    required_runtime,
+    tmp_path,
+    monkeypatch,
+    credential,
+):
+    tokens = TokenRegistry(tmp_path / "security.sqlite")
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    recipe = _mcp_http_recipe(
+        recipe_factory,
+        tmp_path / (
+            "mcphttpmissing" if credential == "__missing__" else "mcphttpinvalid"
+        ),
+    )
+    value = repr(credential)
+    recipe.write_text(
+        f"require fastmcp\nserver probe http {value} clear\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    operation = recipe.parent.name.replace("-", "_") + ".server"
+    with gateway.authorized(operations={operation}):
+        tools, result, error = gateway(operation.replace(".", " "))
+
+    assert tools == ["gway"]
+    assert result is None
+    if credential == "__missing__":
+        assert "Bearer authentication required" in error
+    else:
+        assert "Invalid bearer token" in error
+
+
+def test_mcp_http_rejects_disabled_bearer(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    issued = tokens.create("http-client", scopes={"reader"})
+    tokens.disable("http-client")
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpdisabled")
+    recipe.write_text(
+        f"require fastmcp\nserver probe http {issued.bearer!r} allowed\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcphttpdisabled.server"}):
+        tools, result, error = gateway("mcphttpdisabled server")
+
+    assert tools == ["gway"]
+    assert result is None
+    assert "Invalid bearer token" in error
+
+
+def test_mcp_http_concurrent_clients_keep_distinct_scopes(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("alpha-scope", operations={"alpha"})
+    scopes.replace("beta-scope", operations={"beta"})
+    alpha_token = tokens.create("alpha-client", scopes={"alpha-scope"})
+    beta_token = tokens.create("beta-client", scopes={"beta-scope"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    gateway.alpha = gateway.wrap("alpha", lambda: "alpha-ok")
+    gateway.beta = gateway.wrap("beta", lambda: "beta-ok")
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpconcurrent")
+    recipe.write_text(
+        "require fastmcp\n"
+        f"server probe http {alpha_token.bearer!r} alpha "
+        f"{beta_token.bearer!r} beta\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcphttpconcurrent.server"}):
+        results = gateway("mcphttpconcurrent server")
+
+    assert results == [
+        (["gway"], "alpha-ok", None),
+        (["gway"], "beta-ok", None),
+    ]
+
+
+
+def _mcp_log_http_probe_suffix():
+    return r'''
+def probe_log_http(bearer):
+    import asyncio
+    import json
+    import os
+    import socket
+    import subprocess
+    import sys
+    import time
+
+    from fastmcp import Client
+    from fastmcp.client.auth import BearerAuth
+
+    def free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return listener.getsockname()[1]
+
+    def wait_ready(port, process):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError(f"MCP HTTP server exited with {process.returncode}")
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                    return
+            except OSError:
+                time.sleep(0.05)
+        raise RuntimeError("MCP HTTP server did not become ready")
+
+    async def run(url):
+        async with Client(url, auth=BearerAuth(bearer)) as client:
+            tools = [tool.name for tool in await client.list_tools()]
+            commands = [
+                "log sources",
+                "log read arthexis --limit 10",
+                "log tail arthexis --limit 1",
+                "log search timeout arthexis --limit 10",
+                "clear",
+            ]
+            results = []
+            for command in commands:
+                try:
+                    result = await client.call_tool("gway", {"command": command})
+                except Exception as exception:
+                    results.append({"error": str(exception)})
+                else:
+                    results.append({"value": json.loads(result.content[0].text)})
+            return tools, results
+
+    port = free_port()
+    with _callback_relay() as callback_env:
+        env = os.environ.copy()
+        env.update(callback_env)
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(Path(__file__)),
+                "--transport",
+                "http",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--path",
+                "/mcp",
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            wait_ready(port, process)
+            return asyncio.run(run(f"http://127.0.0.1:{port}/mcp"))
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+'''
+
+
+def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    security_path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(security_path)
+    tokens = TokenRegistry(security_path)
+    scopes.replace(
+        "logs-read",
+        operations={"log.sources", "log.read", "log.tail", "log.search"},
+        environment=(),
+    )
+    issued = tokens.create("logs-client", scopes={"logs-read"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    state = ServiceInstallState(tmp_path / "services-installed")
+    state.put(
+        "arthexis",
+        [
+            ServiceInstallRecord(
+                project="arthexis",
+                service="web",
+                backend_id="arthexis-web.service",
+                backend="systemd",
+                system=False,
+            ),
+        ],
+    )
+    monkeypatch.setattr(log_operations, "_install_state", lambda: state)
+    monkeypatch.setattr(log_operations, "_journal_available", lambda: True)
+
+    records = [
+        LogRecord(
+            timestamp=datetime(2026, 9, 22, 12, 0, tzinfo=timezone.utc),
+            source="arthexis/web",
+            message="startup complete",
+            level="INFO",
+            pid=101,
+            unit="arthexis-web.service",
+            metadata={},
+        ),
+        LogRecord(
+            timestamp=datetime(2026, 9, 22, 12, 1, tzinfo=timezone.utc),
+            source="arthexis/web",
+            message="timeout waiting for charger",
+            level="ERROR",
+            pid=101,
+            unit="arthexis-web.service",
+            metadata={},
+        ),
+    ]
+
+    def fake_read_journal(sources, *, grep=None, reverse=False, limit=None, **kwargs):
+        selected = list(records)
+        if grep is not None:
+            selected = [record for record in selected if "timeout" in record.message]
+        selected.sort(key=lambda record: record.timestamp, reverse=reverse)
+        if limit is not None:
+            selected = selected[: int(limit)]
+        return selected
+
+    monkeypatch.setattr(log_operations, "read_journal", fake_read_journal)
+
+    root = tmp_path / "mcplogs"
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "clear",
+        suffix=_mcp_log_http_probe_suffix(),
+    )
+    recipe.write_text(
+        f"require fastmcp\nserver probe_log_http {issued.bearer!r}\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcplogs.server"}):
+        tools, results = gateway("mcplogs server")
+
+    assert tools == ["gway"]
+
+    for index, command in enumerate(("sources", "read", "tail", "search")):
+        assert "value" in results[index], (command, results[index])
+
+    source_result = results[0]["value"]
+    assert [item["identity"] for item in source_result] == [
+        "gway",
+        "arthexis",
+        "arthexis/web",
+    ]
+
+    read_result = results[1]["value"]
+    assert [item["message"] for item in read_result] == [
+        "startup complete",
+        "timeout waiting for charger",
+    ]
+
+    tail_result = results[2]["value"]
+    assert [item["message"] for item in tail_result] == [
+        "timeout waiting for charger",
+    ]
+
+    search_result = results[3]["value"]
+    assert [item["message"] for item in search_result] == [
+        "timeout waiting for charger",
+    ]
+
+    assert "Operation is not authorized: clear" in results[4]["error"]
+    assert "GWAY_SECRET" not in repr(results)
+
+
+
+def test_maintained_mcp_recipe_serves_http_with_safe_defaults(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpmaintained"
+    root.mkdir()
+    maintained_rx = (sampler_root() / "mcp" / "server.rx").read_text(
+        encoding="utf-8"
+    )
+    maintained_py = (sampler_root() / "mcp" / "server.py").read_text(
+        encoding="utf-8"
+    )
+    maintained_py += (
+        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp'):\n"
+        "    return {'host': host, 'port': int(port), 'path': path}\n"
+    )
+    recipe = recipe_factory(
+        name="server",
+        root=root,
+        body=maintained_rx,
+        companion=maintained_py,
+    )
+
+    result = gateway(recipe)
+
+    assert result == {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "path": "/mcp",
+    }
+
+
+def test_mcp_serve_allows_explicit_http_bind_configuration(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpconfigured"
+    root.mkdir()
+    maintained_py = (sampler_root() / "mcp" / "server.py").read_text(
+        encoding="utf-8"
+    )
+    maintained_py += (
+        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp'):\n"
+        "    return {'host': host, 'port': int(port), 'path': path}\n"
+    )
+    recipe = recipe_factory(
+        name="server",
+        root=root,
+        body=(
+            "require fastmcp\n"
+            "server serve 127.0.0.2 8123 /custom-mcp\n"
+        ),
+        companion=maintained_py,
+    )
+
+    result = gateway(recipe)
+
+    assert result == {
+        "host": "127.0.0.2",
+        "port": 8123,
+        "path": "/custom-mcp",
+    }
