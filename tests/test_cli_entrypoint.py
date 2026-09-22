@@ -41,7 +41,7 @@ def test_cli_expression_resolves_supplied_context():
     assert completed.stdout.strip() == "MTY"
 
 
-def test_cli_default_logging_does_not_create_private_log_file(tmp_path):
+def test_cli_default_logging_uses_host_canonical_backend(tmp_path):
     env = os.environ.copy()
     env["GWAY_DATA_DIR"] = str(tmp_path)
 
@@ -63,7 +63,13 @@ def test_cli_default_logging_does_not_create_private_log_file(tmp_path):
 
     assert completed.returncode == 0
     assert completed.stdout == ""
-    assert not (tmp_path / "logs" / "gway.log").exists()
+    log_path = tmp_path / "logs" / "gway.log"
+    if os.path.exists("/run/systemd/journal/dev-log") or os.path.exists("/dev/log"):
+        assert not log_path.exists()
+    else:
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        assert payload["source"] == "gway"
+        assert payload["message"] == "reconciliation-test"
 
 
 def test_cli_file_logging_remains_explicit_compatibility_option(tmp_path):
