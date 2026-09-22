@@ -509,14 +509,14 @@ class Gateway(Resolver):
         return result
 
     def _environment_value(self, name):
-        """Resolve one environment value through the normal env operation."""
-        from .dispatch import dispatch_stage
-
-        value = dispatch_stage(
-            self,
-            ["env"],
-            args=(str(name), None),
-        )
+        """Resolve one environment value through the authorized env built-in."""
+        name = str(name)
+        self.authorize_operation("env", args=(name, None))
+        operation = self.ops.resolve("env")
+        if operation is None:
+            raise KeyError(name)
+        builtin = getattr(operation, "__wrapped__", operation)
+        value = builtin(name, None)
         if value is None:
             raise KeyError(name)
         return value
