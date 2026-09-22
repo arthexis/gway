@@ -4,6 +4,8 @@ import sys
 
 import pytest
 
+from gway.tokens import Token
+
 
 @pytest.fixture
 def recipe_factory(tmp_path):
@@ -55,3 +57,16 @@ def required_runtime(monkeypatch, tmp_path):
         lambda environment: state.python,
     )
     return state
+
+
+@pytest.fixture
+def token_values():
+    """Return plain token values from one loaded recipe command."""
+
+    def values(command):
+        return [
+            token.value if isinstance(token, Token) else token
+            for token in command["tokens"]
+        ]
+
+    return values
