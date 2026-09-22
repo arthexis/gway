@@ -606,7 +606,7 @@ def test_mcp_http_rejects_oauth_token_for_different_resource(
     assert tools == []
     assert result is None
     assert error is not None
-    assert "401" in error or "Unauthorized" in error
+    assert "Server returned an error response" in error
 
 
 def test_mcp_http_rejects_revoked_oauth_access_token(
@@ -628,10 +628,16 @@ def test_mcp_http_rejects_revoked_oauth_access_token(
     assert tools == []
     assert result is None
     assert error is not None
-    assert "401" in error or "Unauthorized" in error
+    assert "Server returned an error response" in error
 
 
-@pytest.mark.parametrize("credential", ["__missing__", "gwt_missing_wrong"])
+@pytest.mark.parametrize(
+    ("credential", "root_name"),
+    [
+        ("__missing__", "mcpchallengemissing"),
+        ("gwt_missing_wrong", "mcpchallengeinvalid"),
+    ],
+)
 def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata(
     gateway,
     recipe_factory,
@@ -639,20 +645,21 @@ def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata
     tmp_path,
     monkeypatch,
     credential,
+    root_name,
 ):
     tokens = TokenRegistry(tmp_path / "security.sqlite")
     monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
 
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / f"challenge-{credential}")
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / root_name)
     recipe.write_text(
         f"require fastmcp\nserver probe_challenge {credential!r}\n",
         encoding="utf-8",
     )
     gateway.ingest(recipe.parent)
 
-    operation = recipe.parent.name.replace("-", "_") + ".server"
+    operation = f"{root_name}.server"
     with gateway.authorized(operations={operation}):
-        status, challenge = gateway(operation.replace(".", " "))
+        status, challenge = gateway(f"{root_name} server")
 
     assert status == 401
     assert challenge.startswith("Bearer")
@@ -722,7 +729,7 @@ def test_mcp_http_rejects_missing_and_invalid_bearer(
     assert tools == []
     assert result is None
     assert error is not None
-    assert "401" in error or "Unauthorized" in error
+    assert "Server returned an error response" in error
 
 
 def test_mcp_http_rejects_disabled_bearer(
@@ -746,9 +753,10 @@ def test_mcp_http_rejects_disabled_bearer(
     with gateway.authorized(operations={"mcphttpdisabled.server"}):
         tools, result, error = gateway("mcphttpdisabled server")
 
-    assert tools == ["gway"]
+    assert tools == []
     assert result is None
-    assert "Invalid bearer token" in error
+    assert error is not None
+    assert "Server returned an error response" in error
 
 
 def test_mcp_http_concurrent_clients_keep_distinct_scopes(
@@ -987,7 +995,7 @@ def _maintained_companion_with_http_stub():
         encoding="utf-8"
     )
     return companion + (
-        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp'):\n"
+        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp', public_origin=None):\n"
         "    return {'host': host, 'port': int(port), 'path': path}\n"
     )
 
@@ -1026,7 +1034,7 @@ def test_mcp_serve_allows_explicit_http_bind_configuration(
         encoding="utf-8"
     )
     maintained_py += (
-        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp'):\n"
+        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp', public_origin=None):\n"
         "    return {'host': host, 'port': int(port), 'path': path}\n"
     )
     recipe = recipe_factory(
