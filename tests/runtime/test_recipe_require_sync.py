@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from gway.recipe_environment import (
+from gway.recipe.environment import (
     environment_python,
     recipe_environment,
     sync_python_environment,
@@ -37,7 +37,7 @@ def test_sync_creates_external_venv_and_persists_requirements(
     environment = recipe_environment(_runtime(), recipe)
     calls = []
     monkeypatch.setattr(
-        "gway.recipe_environment.subprocess.run",
+        "gway.recipe.environment.subprocess.run",
         _fake_uv_run(calls, environment),
     )
 
@@ -70,7 +70,7 @@ def test_sync_is_noop_when_desired_state_and_venv_are_intact(
     environment = recipe_environment(_runtime(), recipe)
     first_calls = []
     monkeypatch.setattr(
-        "gway.recipe_environment.subprocess.run",
+        "gway.recipe.environment.subprocess.run",
         _fake_uv_run(first_calls, environment),
     )
     sync_python_environment(environment, tmp_path / "uv", ["fastmcp"])
@@ -78,7 +78,7 @@ def test_sync_is_noop_when_desired_state_and_venv_are_intact(
     def forbidden(*args, **kwargs):
         raise AssertionError("uv should not run for unchanged desired state")
 
-    monkeypatch.setattr("gway.recipe_environment.subprocess.run", forbidden)
+    monkeypatch.setattr("gway.recipe.environment.subprocess.run", forbidden)
 
     assert sync_python_environment(
         environment, tmp_path / "uv", ["fastmcp"]
@@ -94,7 +94,7 @@ def test_sync_changed_requirements_reuses_venv_and_resyncs(
     environment = recipe_environment(_runtime(), recipe)
     calls = []
     monkeypatch.setattr(
-        "gway.recipe_environment.subprocess.run",
+        "gway.recipe.environment.subprocess.run",
         _fake_uv_run(calls, environment),
     )
 
@@ -125,7 +125,7 @@ def test_sync_recreates_missing_venv_even_when_metadata_matches(
     environment = recipe_environment(_runtime(), recipe)
     calls = []
     monkeypatch.setattr(
-        "gway.recipe_environment.subprocess.run",
+        "gway.recipe.environment.subprocess.run",
         _fake_uv_run(calls, environment),
     )
     sync_python_environment(environment, tmp_path / "uv", ["fastmcp"])
