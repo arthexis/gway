@@ -910,3 +910,66 @@ def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
 
     assert "Operation is not authorized: clear" in results[4]["error"]
     assert "GWAY_SECRET" not in repr(results)
+
+
+
+def test_maintained_mcp_recipe_serves_http_with_safe_defaults(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpmaintained"
+    root.mkdir()
+    maintained_rx = (sampler_root() / "mcp" / "server.rx").read_text(
+        encoding="utf-8"
+    )
+    maintained_py = (sampler_root() / "mcp" / "server.py").read_text(
+        encoding="utf-8"
+    )
+    maintained_py += (
+        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp'):\n"
+        "    return {'host': host, 'port': int(port), 'path': path}\n"
+    )
+    recipe = recipe_factory(
+        name="server",
+        root=root,
+        body=maintained_rx,
+        companion=maintained_py,
+    )
+
+    result = gateway(recipe)
+
+    assert result == {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "path": "/mcp",
+    }
+
+
+def test_mcp_serve_allows_explicit_http_bind_configuration(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpconfigured"
+    root.mkdir()
+    maintained_py = (sampler_root() / "mcp" / "server.py").read_text(
+        encoding="utf-8"
+    )
+    maintained_py += (
+        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp'):\n"
+        "    return {'host': host, 'port': int(port), 'path': path}\n"
+    )
+    recipe = recipe_factory(
+        name="server",
+        root=root,
+        body=(
+            "require fastmcp\n"
+            "server serve 127.0.0.2 8123 /custom-mcp\n"
+        ),
+        companion=maintained_py,
+    )
+
+    result = gateway(recipe)
+
+    assert result == {
+        "host": "127.0.0.2",
+        "port": 8123,
+        "path": "/custom-mcp",
+    }
