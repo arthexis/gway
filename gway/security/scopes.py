@@ -1,8 +1,6 @@
 """Named reusable authorization scopes."""
 
 from dataclasses import dataclass
-from pathlib import Path
-
 from ..cache import default_root
 from .state import SecurityState
 
