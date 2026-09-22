@@ -287,7 +287,7 @@ def test_mcp_gway_tool_rejects_non_json_result(
 def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
     gateway, recipe_factory, required_runtime, tmp_path
 ):
-    root = tmp_path / "mcp-stdio"
+    root = tmp_path / "mcpstdio"
     gateway.echo = gateway.wrap("echo_value", lambda value: value)
     probe = (
         "\n\ndef probe_stdio(command):\n"
@@ -312,8 +312,8 @@ def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
     recipe.write_text("require fastmcp\nserver probe stdio 'echo hello'\n", encoding="utf-8")
     gateway.ingest(root)
 
-    with gateway.authorized(operations={"mcp-stdio.server", "echo_value"}):
-        tools, result = gateway("mcp-stdio server")
+    with gateway.authorized(operations={"mcpstdio.server", "echo_value"}):
+        tools, result = gateway("mcpstdio server")
 
     assert tools == ["gway"]
     assert result == "hello"
@@ -322,7 +322,7 @@ def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
 def test_mcp_stdio_authorization_error_does_not_kill_server_session(
     gateway, recipe_factory, required_runtime, tmp_path
 ):
-    root = tmp_path / "mcp-stdio-error"
+    root = tmp_path / "mcpstdioerror"
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     gateway.denied = gateway.wrap("denied", lambda: "no")
     probe = (
@@ -352,8 +352,8 @@ def test_mcp_stdio_authorization_error_does_not_kill_server_session(
     recipe.write_text("require fastmcp\nserver probe stdio\n", encoding="utf-8")
     gateway.ingest(root)
 
-    with gateway.authorized(operations={"mcp-stdio-error.server", "allowed"}):
-        error, result = gateway("mcp-stdio-error server")
+    with gateway.authorized(operations={"mcpstdioerror.server", "allowed"}):
+        error, result = gateway("mcpstdioerror server")
 
     assert "Operation is not authorized: denied" in error
     assert result == "ok"
