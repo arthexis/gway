@@ -139,10 +139,11 @@ def test_envs_allows_full_environment_with_dunder_all(gateway, monkeypatch):
 
 
 def test_direct_recipe_path_is_denied_under_external_authority(
-    gateway, recipe_factory
+    gateway, tmp_path
 ):
     gateway.internal = gateway.wrap("internal", lambda: "ok")
-    recipe = recipe_factory(name="private", body="internal\n")
+    recipe = tmp_path / "private.rx"
+    recipe.write_text("internal\n", encoding="utf-8")
 
     with gateway.authorized(operations={"internal"}):
         with pytest.raises(AuthorizationError, match="Direct recipe paths"):
@@ -150,11 +151,12 @@ def test_direct_recipe_path_is_denied_under_external_authority(
 
 
 def test_authorized_ingested_recipe_encapsulates_internal_operations(
-    gateway, recipe_factory, tmp_path
+    gateway, tmp_path
 ):
     gateway.internal = gateway.wrap("internal", lambda: "ok")
     root = tmp_path / "recipes"
-    recipe_factory(name="deploy", body="internal\n", root=root)
+    root.mkdir()
+    (root / "deploy.rx").write_text("internal\n", encoding="utf-8")
     gateway.ingest(root)
 
     with gateway.authorized(operations={"recipes.deploy"}):
