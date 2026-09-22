@@ -2,6 +2,7 @@ import sqlite3
 
 import pytest
 
+from gway.security import scope as scope_commands
 from gway.security.scopes import EffectiveScope, Scope, ScopeRegistry
 from gway.security.state import SecurityState
 
@@ -171,3 +172,26 @@ def test_failed_replace_rolls_back_previous_scope(tmp_path, monkeypatch):
 
     monkeypatch.setattr(SecurityState, "connect", original_connect)
     assert registry.get("logs") == original
+
+
+
+def test_security_scope_gway_command_surface(gateway, tmp_path, monkeypatch):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    monkeypatch.setattr(scope_commands, "_registry", registry)
+
+    created = gateway("security scope create logs")
+    assert created == Scope("logs")
+
+    updated = gateway(
+        "security scope set logs log.read log.tail --environment GWAY_LOG_LEVEL"
+    )
+    assert updated == Scope(
+        "logs",
+        frozenset({"log.read", "log.tail"}),
+        frozenset({"GWAY_LOG_LEVEL"}),
+    )
+
+    assert gateway("security scope show logs") == updated
+    assert gateway("security scope list") == [updated]
+    assert gateway("security scope delete logs") is True
+    assert gateway("security scope list") == []
