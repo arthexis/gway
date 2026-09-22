@@ -147,14 +147,27 @@ HTTP defaults to loopback:
 127.0.0.1:8000/mcp
 ```
 
-Remote HTTP calls require:
+Remote HTTP calls require a bearer credential:
 
 ```text
-Authorization: Bearer <opaque-token>
+Authorization: Bearer <credential>
 ```
 
-The bearer is verified by the authoritative parent process. The FastMCP child does
-not construct or trust caller-supplied permission sets.
+The MCP resource accepts both native G-Way opaque tokens (`gwt_...`) and OAuth
+access tokens (`gwa_...`). OAuth access tokens must be bound to the exact public
+MCP protected resource, such as `https://remote.arthexis.com/mcp`.
+
+FastMCP enforces authentication at the HTTP resource boundary, so missing,
+invalid, expired, revoked, or wrong-resource credentials receive HTTP 401 before
+tool execution. Its `WWW-Authenticate` challenge points clients to the RFC 9728
+protected-resource metadata URL.
+
+Credential validation is still delegated to the authoritative parent Gateway.
+The FastMCP child does not open the security registry, construct permission sets,
+or treat OAuth scopes as a second authorization language. After authentication,
+the parent resolves the credential to current G-Way named scopes and executes
+`gway(command)` under that authority. Native and OAuth callers therefore share
+the same operation and environment authorization path.
 
 For network exposure, keep the MCP service loopback-bound and place an appropriate
 TLS reverse proxy or tunnel in front of it rather than adding certificate or proxy
@@ -205,13 +218,17 @@ The same `gway(command)` tool is used for every other authorized GWAY command.
 
 ## Security boundaries
 
-The transport maintains two separate credentials:
+The transport maintains separate credential classes:
 
-- the user-facing opaque bearer token used for GWAY authentication;
+- native G-Way opaque bearers used directly by trusted clients;
+- OAuth access tokens used by OAuth-capable remote clients;
 - an ephemeral private callback-relay token used only between the managed FastMCP
   process and its parent Gateway.
 
-They are not interchangeable. Raw bearer material must not be logged or persisted.
+They are not interchangeable. The callback credential never authorizes user
+operations, and raw user-facing bearer material must not be logged or persisted.
+OAuth access tokens are accepted only for the protected resource recorded on their
+grant.
 
 No wildcard operation scope is created implicitly, no new operation becomes
 authorized merely because it is later ingested, and no environment permission is
@@ -219,7 +236,7 @@ granted unless explicitly present in a scope.
 
 ## Deferred features
 
-The current MCP implementation intentionally does not add OAuth, generated
-per-operation MCP tools, wildcard scopes, wildcard environment grants, dedicated
-logging routes, background MCP tasks, MCP Apps/UI, OpenAPI conversion, remote
-plugin loading, or a second transport abstraction around FastMCP.
+The current MCP implementation intentionally does not add generated per-operation
+MCP tools, wildcard scopes, wildcard environment grants, dedicated logging routes,
+background MCP tasks, MCP Apps/UI, OpenAPI conversion, remote plugin loading, or a
+second transport abstraction around FastMCP.

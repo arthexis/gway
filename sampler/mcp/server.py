@@ -10,11 +10,61 @@ import struct
 import threading
 
 from fastmcp import FastMCP as _FastMCP
+from fastmcp.server.auth import TokenVerifier as _TokenVerifier
+from fastmcp.server.auth.auth import AccessToken as _AccessToken
 from fastmcp.server.dependencies import get_http_headers as _get_http_headers
 from fastmcp.server.dependencies import get_http_request as _get_http_request
 
 
-mcp = _FastMCP("GWAY")
+_DEFAULT_PUBLIC_ORIGIN = "http://127.0.0.1:8000"
+
+
+class _GwayTokenVerifier(_TokenVerifier):
+    """Delegate MCP bearer validation to the authoritative parent Gateway."""
+
+    def __init__(self):
+        super().__init__(
+            base_url=os.environ.get(
+                "GWAY_MCP_PUBLIC_ORIGIN",
+                _DEFAULT_PUBLIC_ORIGIN,
+            )
+        )
+        self.mcp_path = "/mcp"
+
+    def configure(self, *, public_origin=None, path="/mcp"):
+        if public_origin is not None:
+            self.base_url = str(public_origin).rstrip("/")
+        self.mcp_path = "/" + str(path).strip().strip("/")
+        return self
+
+    def get_routes(self, mcp_path=None):
+        self.mcp_path = mcp_path or self.mcp_path
+        self.set_mcp_path(self.mcp_path)
+        return []
+
+    @property
+    def resource(self):
+        return str(self._get_resource_url(self.mcp_path)).rstrip("/")
+
+    async def verify_token(self, token):
+        try:
+            identity = _parent().authenticate_bearer(token, self.resource)
+        except Exception:
+            return None
+        return _AccessToken(
+            token=token,
+            client_id=identity["client_id"],
+            scopes=list(identity["scopes"]),
+            expires_at=None,
+            claims={
+                "sub": identity["principal"],
+                "gway_kind": identity["kind"],
+            },
+        )
+
+
+_auth = _GwayTokenVerifier()
+mcp = _FastMCP("GWAY", auth=_auth)
 _FRAME = struct.Struct("!I")
 _CALLBACK_ENV = (
     "GWAY_MCP_CALLBACK_HOST",
@@ -81,11 +131,19 @@ class _SocketParentGateway:
     def execute(self, command):
         return self._request("gateway.execute", command=command)
 
-    def execute_authenticated(self, bearer, command):
+    def authenticate_bearer(self, bearer, resource=None):
+        return self._request(
+            "gateway.authenticate_bearer",
+            bearer=bearer,
+            resource=resource,
+        )
+
+    def execute_authenticated(self, bearer, command, resource=None):
         return self._request(
             "gateway.execute_authenticated",
             bearer=bearer,
             command=command,
+            resource=resource,
         )
 
 
@@ -104,15 +162,27 @@ def _callback_connection(stream, token):
         _send_json(stream, {"ok": False, "error": "Invalid MCP callback token"})
         return
     method = request.get("method")
-    if method not in {"gateway.execute", "gateway.execute_authenticated"}:
+    if method not in {
+        "gateway.execute",
+        "gateway.authenticate_bearer",
+        "gateway.execute_authenticated",
+    }:
         _send_json(stream, {"ok": False, "error": "Unsupported MCP callback method"})
         return
     try:
-        if method == "gateway.execute_authenticated":
+        if method == "gateway.authenticate_bearer":
+            result = _validate_result(
+                _gway_parent.authenticate_bearer(
+                    request["bearer"],
+                    request.get("resource"),
+                )
+            )
+        elif method == "gateway.execute_authenticated":
             result = _validate_result(
                 _gway_parent.execute_authenticated(
                     request["bearer"],
                     request["command"],
+                    request.get("resource"),
                 )
             )
         else:
@@ -193,13 +263,24 @@ def gway(command: str):
     parent = _parent()
     if _has_http_request():
         return _validate_result(
-            parent.execute_authenticated(_bearer_from_http(), command)
+            parent.execute_authenticated(
+                _bearer_from_http(),
+                command,
+                _auth.resource,
+            )
         )
     return _validate_result(parent.execute(command))
 
 
-def run_http(*, host="127.0.0.1", port=8000, path="/mcp"):
-    """Run the GWAY MCP server over Streamable HTTP."""
+def run_http(
+    *,
+    host="127.0.0.1",
+    port=8000,
+    path="/mcp",
+    public_origin=None,
+):
+    """Run the GWAY MCP server over authenticated Streamable HTTP."""
+    _auth.configure(public_origin=public_origin, path=path)
     return mcp.run(
         transport="http",
         host=host,
@@ -208,7 +289,12 @@ def run_http(*, host="127.0.0.1", port=8000, path="/mcp"):
     )
 
 
-def serve(host="127.0.0.1", port=8000, path="/mcp"):
+def serve(
+    host="127.0.0.1",
+    port=8000,
+    path="/mcp",
+    public_origin=None,
+):
     """Serve the maintained GWAY MCP endpoint until the supervisor stops it.
 
     Args:
@@ -216,7 +302,12 @@ def serve(host="127.0.0.1", port=8000, path="/mcp"):
         port: HTTP listen port. Defaults to 8000.
         path: Streamable HTTP endpoint path. Defaults to /mcp.
     """
-    return run_http(host=host, port=port, path=path)
+    return run_http(
+        host=host,
+        port=port,
+        path=path,
+        public_origin=public_origin,
+    )
 
 
 if __name__ == "__main__":
@@ -227,9 +318,18 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--path", default="/mcp")
+    parser.add_argument(
+        "--public-origin",
+        default=os.environ.get("GWAY_MCP_PUBLIC_ORIGIN"),
+    )
     args = parser.parse_args()
 
     if args.transport == "http":
-        run_http(host=args.host, port=args.port, path=args.path)
+        run_http(
+            host=args.host,
+            port=args.port,
+            path=args.path,
+            public_origin=args.public_origin,
+        )
     else:
         mcp.run(transport="stdio")
