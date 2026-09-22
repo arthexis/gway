@@ -249,7 +249,11 @@ class RemoteOAuthProtocol:
                     refresh_lifetime_seconds=self.refresh_lifetime_seconds,
                 )
             elif grant_type == "refresh_token":
-                requested_scope = params.get("scope")
+                if params.get("scope") is not None:
+                    raise OAuthProtocolError(
+                        "invalid_scope",
+                        "Refresh cannot change the granted G-Way scopes",
+                    )
                 issued = self.oauth.rotate_refresh(
                     self._required(params, "refresh_token"),
                     client_id=client_id,
@@ -257,12 +261,6 @@ class RemoteOAuthProtocol:
                     access_lifetime_seconds=self.access_lifetime_seconds,
                     refresh_lifetime_seconds=self.refresh_lifetime_seconds,
                 )
-                if requested_scope is not None:
-                    requested = frozenset(str(requested_scope).split())
-                    if requested != issued.grant.scopes:
-                        self.oauth.revoke(issued.access_token)
-                        self.oauth.revoke(issued.refresh_token)
-                        raise OAuthProtocolError("invalid_scope", "Refresh cannot change the granted G-Way scopes")
             else:
                 raise OAuthProtocolError("unsupported_grant_type")
         except OAuthAuthenticationError as error:
