@@ -223,7 +223,7 @@ def _mcp_companion_recipe(recipe_factory, root, command):
     return recipe_factory(
         name="server",
         root=root,
-        body=f"require fastmcp\\nserver gway {command!r}\\n",
+        body=f"require fastmcp\nserver gway {command!r}\n",
         companion=companion,
     )
 
