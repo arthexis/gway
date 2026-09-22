@@ -4,7 +4,7 @@ import argparse
 from collections.abc import Mapping
 import json
 from .gateway import Gateway
-from .recipes import execute_recipe, parse_recipe_context
+from .recipe import execute_recipe, parse_recipe_context
 from .dispatch import dispatch_program
 from .tokens import statements
 
