@@ -368,6 +368,92 @@ def probe_http(bearer, command, second_bearer=None, second_command=None):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+
+
+def probe_challenge(credential="__missing__"):
+    import http.client
+    import json
+    import os
+    import socket
+    import subprocess
+    import sys
+    import time
+
+    def free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return listener.getsockname()[1]
+
+    def wait_ready(port, process):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError(f"MCP HTTP server exited with {process.returncode}")
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                    return
+            except OSError:
+                time.sleep(0.05)
+        raise RuntimeError("MCP HTTP server did not become ready")
+
+    port = free_port()
+    with _callback_relay() as callback_env:
+        env = os.environ.copy()
+        env.update(callback_env)
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(Path(__file__)),
+                "--transport",
+                "http",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--path",
+                "/mcp",
+                "--public-origin",
+                "https://remote.example.test",
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            wait_ready(port, process)
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            }
+            if credential != "__missing__":
+                headers["Authorization"] = f"Bearer {credential}"
+            body = json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "1"},
+                    },
+                }
+            )
+            connection.request("POST", "/mcp", body=body, headers=headers)
+            response = connection.getresponse()
+            status = response.status
+            challenge = response.getheader("WWW-Authenticate")
+            response.read()
+            connection.close()
+            return status, challenge
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
 '''
 
 
@@ -405,6 +491,128 @@ def test_mcp_http_real_client_uses_bearer_scope(
     assert tools == ["gway"]
     assert result == "ok"
     assert error is None
+
+
+
+
+
+def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    oauth = OAuthRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    tokens.create("operator", scopes={"reader"})
+    oauth.link("chatgpt", "operator")
+    grant = oauth.create_grant(
+        "chatgpt",
+        "chatgpt-client",
+        scopes={"reader"},
+        resource=resource,
+    )
+    issued = oauth.issue_tokens(grant.id)
+    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda: oauth)
+    return scopes, tokens, oauth, issued
+
+
+def test_mcp_http_real_client_accepts_oauth_access_token(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    _, _, _, issued = _issued_oauth_token(tmp_path, monkeypatch)
+
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauth")
+    recipe.write_text(
+        f"require fastmcp\nserver probe http {issued.access_token!r} allowed\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcpoauth.server"}):
+        tools, result, error = gateway("mcpoauth server")
+
+    assert tools == ["gway"]
+    assert result == "ok"
+    assert error is None
+
+
+def test_mcp_http_rejects_oauth_token_for_different_resource(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    _, _, _, issued = _issued_oauth_token(
+        tmp_path,
+        monkeypatch,
+        resource="https://remote.example.test/api",
+    )
+
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauthwrongresource")
+    recipe.write_text(
+        f"require fastmcp\nserver probe http {issued.access_token!r} clear\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcpoauthwrongresource.server"}):
+        tools, result, error = gateway("mcpoauthwrongresource server")
+
+    assert tools == []
+    assert result is None
+    assert error is not None
+    assert "401" in error or "Unauthorized" in error
+
+
+def test_mcp_http_rejects_revoked_oauth_access_token(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    _, _, oauth, issued = _issued_oauth_token(tmp_path, monkeypatch)
+    oauth.revoke(issued.access_token)
+
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauthrevoked")
+    recipe.write_text(
+        f"require fastmcp\nserver probe http {issued.access_token!r} clear\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcpoauthrevoked.server"}):
+        tools, result, error = gateway("mcpoauthrevoked server")
+
+    assert tools == []
+    assert result is None
+    assert error is not None
+    assert "401" in error or "Unauthorized" in error
+
+
+@pytest.mark.parametrize("credential", ["__missing__", "gwt_missing_wrong"])
+def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata(
+    gateway,
+    recipe_factory,
+    required_runtime,
+    tmp_path,
+    monkeypatch,
+    credential,
+):
+    tokens = TokenRegistry(tmp_path / "security.sqlite")
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / f"challenge-{credential}")
+    recipe.write_text(
+        f"require fastmcp\nserver probe_challenge {credential!r}\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    operation = recipe.parent.name.replace("-", "_") + ".server"
+    with gateway.authorized(operations={operation}):
+        status, challenge = gateway(operation.replace(".", " "))
+
+    assert status == 401
+    assert challenge.startswith("Bearer")
+    assert (
+        'resource_metadata="'
+        "https://remote.example.test/.well-known/oauth-protected-resource/mcp"
+        '"' in challenge
+    )
 
 
 def test_mcp_http_scope_denial_is_tool_error_not_authentication_failure(
