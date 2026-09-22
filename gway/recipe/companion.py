@@ -459,7 +459,8 @@ def _service_parent_request(runtime, stream, request):
                 operations=identity.authority.operations,
                 environment=identity.authority.environment,
             ):
-                result = runtime(params["command"])
+                with runtime.external_authority():
+                    result = runtime(params["command"])
         else:
             raise LookupError(f"Unknown parent Gateway RPC method: {method}")
         response = {
