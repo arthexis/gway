@@ -240,7 +240,7 @@ def test_read_journal_wraps_process_failure(monkeypatch):
         raise subprocess.CalledProcessError(
             1,
             command,
-            stdout="",
+            output="",
             stderr="permission denied",
         )
 
