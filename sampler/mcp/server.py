@@ -208,6 +208,17 @@ def run_http(*, host="127.0.0.1", port=8000, path="/mcp"):
     )
 
 
+def serve(host="127.0.0.1", port=8000, path="/mcp"):
+    """Serve the maintained GWAY MCP endpoint until the supervisor stops it.
+
+    Args:
+        host: HTTP bind address. Defaults to loopback.
+        port: HTTP listen port. Defaults to 8000.
+        path: Streamable HTTP endpoint path. Defaults to /mcp.
+    """
+    return run_http(host=host, port=port, path=path)
+
+
 if __name__ == "__main__":
     import argparse
 
