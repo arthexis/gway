@@ -44,11 +44,13 @@ def test_remote_https_template_routes_public_oauth_surface_to_remote_auth():
         "location = / {",
         "location = /.well-known/oauth-protected-resource/mcp {",
         "location = /.well-known/oauth-authorization-server {",
-        "location ^~ /oauth/ {",
+        "location = /oauth/authorize {",
+        "location = /oauth/token {",
+        "location = /oauth/revoke {",
         "location = /login {",
         "location = /connect {",
         "location = /consent {",
-        "location ^~ /settings/ {",
+        "location = /settings/connections {",
     ):
         block = _block(content, marker)
         assert auth_target in block, marker
@@ -60,8 +62,10 @@ def test_remote_http_template_routes_same_application_topology_before_tls():
 
     assert "location = /mcp {" in content
     assert "location = / {" in content
-    assert "location ^~ /oauth/ {" in content
-    assert "location ^~ /settings/ {" in content
+    assert "location = /oauth/authorize {" in content
+    assert "location = /oauth/token {" in content
+    assert "location = /oauth/revoke {" in content
+    assert "location = /settings/connections {" in content
     assert "proxy_pass http://[mcp_host|127.0.0.1]:[mcp_port|8000];" in content
     assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in content
 
@@ -117,13 +121,63 @@ def test_remote_auth_routes_do_not_inherit_mcp_streaming_policy():
 
     for marker in (
         "location = / {",
-        "location ^~ /oauth/ {",
+        "location = /oauth/authorize {",
+        "location = /oauth/token {",
+        "location = /oauth/revoke {",
         "location = /login {",
         "location = /connect {",
         "location = /consent {",
-        "location ^~ /settings/ {",
+        "location = /settings/connections {",
     ):
         block = _block(content, marker)
         assert "proxy_buffering off;" not in block, marker
         assert "proxy_read_timeout" not in block, marker
         assert "proxy_send_timeout" not in block, marker
+
+
+
+def test_remote_http_acme_challenge_is_filesystem_owned_not_proxied():
+    content = _template("nginx-http-[site].conf")
+    marker = "location ^~ /.well-known/acme-challenge/ {"
+    block = _block(content, marker)
+
+    assert "root [acme_webroot|/var/www/gway-acme];" in block
+    assert "default_type text/plain;" in block
+    assert "proxy_pass" not in block
+
+
+def test_remote_https_redirect_server_preserves_acme_before_redirect():
+    content = _template("nginx-https-[site].conf")
+    first_server = content.split("\n}\n\nserver {", 1)[0]
+
+    assert "location ^~ /.well-known/acme-challenge/ {" in first_server
+    assert "root [acme_webroot|/var/www/gway-acme];" in first_server
+    assert "return 301 https://$host$request_uri;" in first_server
+    assert first_server.index("location ^~ /.well-known/acme-challenge/ {") < (
+        first_server.index("location / {")
+    )
+
+
+def test_remote_well_known_oauth_routes_are_exact_and_distinct_from_acme():
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+
+        assert "location = /.well-known/oauth-protected-resource/mcp {" in content
+        assert "location = /.well-known/oauth-authorization-server {" in content
+        assert "location ^~ /.well-known/ {" not in content
+        assert "location / .well-known" not in content
+
+
+def test_remote_auth_surface_does_not_publish_unimplemented_prefixes():
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+
+        assert "location ^~ /oauth/ {" not in content
+        assert "location ^~ /settings/ {" not in content
+        for route in (
+            "/oauth/authorize",
+            "/oauth/token",
+            "/oauth/revoke",
+            "/settings/connections",
+        ):
+            assert f"location = {route} {{" in content
