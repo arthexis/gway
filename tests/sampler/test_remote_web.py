@@ -85,3 +85,45 @@ def test_remote_templates_do_not_use_one_catch_all_application_upstream():
 
         assert "proxy_pass http://[host]:[port];" not in content
         assert "location / {\n        proxy_set_header" not in content
+
+
+
+def test_remote_mcp_route_has_streaming_proxy_semantics():
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+        block = _block(content, "location = /mcp {")
+
+        assert "proxy_http_version 1.1;" in block
+        assert 'proxy_set_header Connection "";' in block
+        assert "proxy_buffering off;" in block
+        assert "proxy_request_buffering off;" in block
+        assert "proxy_cache off;" in block
+        assert "proxy_read_timeout [mcp_read_timeout|300s];" in block
+        assert "proxy_send_timeout [mcp_send_timeout|300s];" in block
+
+
+def test_remote_mcp_route_is_exact_and_does_not_strip_prefix():
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+        block = _block(content, "location = /mcp {")
+
+        assert "location = /mcp {" in block
+        assert "proxy_pass http://[mcp_host|127.0.0.1]:[mcp_port|8000];" in block
+        assert "proxy_pass http://[mcp_host|127.0.0.1]:[mcp_port|8000]/;" not in block
+
+
+def test_remote_auth_routes_do_not_inherit_mcp_streaming_policy():
+    content = _template("nginx-https-[site].conf")
+
+    for marker in (
+        "location = / {",
+        "location ^~ /oauth/ {",
+        "location = /login {",
+        "location = /connect {",
+        "location = /consent {",
+        "location ^~ /settings/ {",
+    ):
+        block = _block(content, marker)
+        assert "proxy_buffering off;" not in block, marker
+        assert "proxy_read_timeout" not in block, marker
+        assert "proxy_send_timeout" not in block, marker
