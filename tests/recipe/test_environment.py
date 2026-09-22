@@ -23,6 +23,10 @@ def _fake_uv_run(calls, environment):
             python = environment_python(environment)
             python.parent.mkdir(parents=True, exist_ok=True)
             python.write_text("", encoding="utf-8")
+        elif argv[1:3] == ["pip", "compile"]:
+            source = Path(argv[5])
+            output = Path(argv[argv.index("--output-file") + 1])
+            output.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
         return SimpleNamespace(returncode=0)
 
     return run
@@ -168,8 +172,12 @@ def test_sync_creates_venv_and_persists_requirements(
     assert metadata["requirements"]["python"] == ["fastmcp", "cryptography>=42"]
     assert [call[0][1:3] for call in calls] == [
         ["venv", str(environment.venv)],
+        ["pip", "compile"],
         ["pip", "sync"],
     ]
+    assert (environment.root / "requirements.lock.txt").read_text(
+        encoding="utf-8"
+    ) == "fastmcp\ncryptography>=42\n"
     assert list(source.iterdir()) == [recipe]
 
 
@@ -193,11 +201,18 @@ def test_sync_reconciles_requirements_when_metadata_is_unchanged(
         ["fastmcp"],
     ) == environment_python(environment)
 
-    assert len(calls) == 1
-    argv, kwargs = calls[0]
-    assert argv[:3] == [str(tmp_path / "uv"), "pip", "sync"]
-    assert argv[-1] == str(environment.requirements_file)
-    assert kwargs["check"] is True
+    assert len(calls) == 2
+    compile_argv, compile_kwargs = calls[0]
+    sync_argv, sync_kwargs = calls[1]
+    assert compile_argv[:3] == [str(tmp_path / "uv"), "pip", "compile"]
+    assert compile_argv[-2:] == [
+        "--output-file",
+        str(environment.root / "requirements.lock.txt"),
+    ]
+    assert compile_kwargs["check"] is True
+    assert sync_argv[:3] == [str(tmp_path / "uv"), "pip", "sync"]
+    assert sync_argv[-1] == str(environment.root / "requirements.lock.txt")
+    assert sync_kwargs["check"] is True
 
 
 def test_sync_changed_requirements_reuses_venv(
@@ -220,11 +235,18 @@ def test_sync_changed_requirements_reuses_venv(
         ["fastmcp", "cryptography"],
     )
 
-    assert len(calls) == 1
-    argv, kwargs = calls[0]
-    assert argv[:3] == [str(tmp_path / "uv"), "pip", "sync"]
-    assert argv[-1] == str(environment.requirements_file)
-    assert kwargs["check"] is True
+    assert len(calls) == 2
+    compile_argv, compile_kwargs = calls[0]
+    sync_argv, sync_kwargs = calls[1]
+    assert compile_argv[:3] == [str(tmp_path / "uv"), "pip", "compile"]
+    assert compile_argv[-2:] == [
+        "--output-file",
+        str(environment.root / "requirements.lock.txt"),
+    ]
+    assert compile_kwargs["check"] is True
+    assert sync_argv[:3] == [str(tmp_path / "uv"), "pip", "sync"]
+    assert sync_argv[-1] == str(environment.root / "requirements.lock.txt")
+    assert sync_kwargs["check"] is True
 
 
 def test_sync_recreates_missing_venv(
@@ -244,7 +266,8 @@ def test_sync_recreates_missing_venv(
     calls.clear()
     sync_python_environment(environment, tmp_path / "uv", ["fastmcp"])
 
-    assert [call[0][1] for call in calls] == ["venv", "pip"]
+    assert [call[0][1] for call in calls] == ["venv", "pip", "pip"]
+    assert [call[0][2] for call in calls[1:]] == ["compile", "sync"]
 
 
 def test_sync_rejects_newline_package_specs(
