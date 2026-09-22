@@ -109,6 +109,10 @@ def test_require_bootstraps_uv_once_per_recipe_frame(gateway, monkeypatch, tmp_p
         return executable
 
     monkeypatch.setattr("gway.recipe.uv.ensure_uv", ensure_uv)
+    monkeypatch.setattr(
+        "gway.recipe.environment.sync_python_environment",
+        lambda environment, executable, requirements: environment.venv,
+    )
 
     def probe():
         return gateway._recipe_frames[-1].uv
