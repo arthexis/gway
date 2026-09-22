@@ -63,11 +63,10 @@ def test_read_expands_project_to_readable_members(catalog_state, monkeypatch):
 
 def test_zero_source_read_skips_unreadable_backends(catalog_state, monkeypatch):
     captured = {}
-    monkeypatch.setattr(
-        operations,
-        "read_journal",
-        lambda sources, **kwargs: captured.setdefault("sources", list(sources)) or [],
-    )
+    def fake_read(sources, **kwargs):
+        captured["sources"] = list(sources)
+        return []
+    monkeypatch.setattr(operations, "read_journal", fake_read)
     operations.read()
     assert [s.identity for s in captured["sources"]] == [
         "arthexis/web", "arthexis/worker", "gway"
@@ -103,10 +102,9 @@ def test_search_pushes_pattern_to_backend(catalog_state, monkeypatch):
 
 def test_lazy_recipe_source_works_through_public_operations(catalog_state, monkeypatch):
     captured = {}
-    monkeypatch.setattr(
-        operations,
-        "read_journal",
-        lambda sources, **kwargs: captured.setdefault("sources", list(sources)) or [],
-    )
+    def fake_read(sources, **kwargs):
+        captured["sources"] = list(sources)
+        return []
+    monkeypatch.setattr(operations, "read_journal", fake_read)
     operations.read("recipe/deploy")
     assert [s.identity for s in captured["sources"]] == ["recipe/deploy"]
