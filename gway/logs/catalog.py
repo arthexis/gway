@@ -1,7 +1,7 @@
 """Build and resolve the logical GWAY log-source namespace."""
 
 from .discovery import installed_sources
-from .identity import gway_identity
+from .identity import gway_identity, recipe_identity
 from .source import LogSource
 
 
@@ -62,6 +62,29 @@ def _project_members(project, available):
     ]
 
 
+
+def _lazy_source(identity):
+    """Return a concrete reserved-namespace source when it is directly addressable."""
+    if not isinstance(identity, str):
+        return None
+    prefix = "recipe/"
+    if not identity.startswith(prefix):
+        return None
+    name = identity[len(prefix):]
+    try:
+        canonical = recipe_identity(name)
+    except (TypeError, ValueError):
+        return None
+    if canonical != identity:
+        return None
+    return LogSource(
+        identity=canonical,
+        kind="recipe",
+        backend="journal",
+        backend_id=canonical,
+    )
+
+
 def resolve_sources(requested, available):
     """Expand logical selections into unique concrete log sources.
 
@@ -82,6 +105,8 @@ def resolve_sources(requested, available):
         selected = []
         for identity in requested:
             source = index.get(identity)
+            if source is None:
+                source = _lazy_source(identity)
             if source is None:
                 raise UnknownLogSource(identity)
             if source.kind == "project":
