@@ -3,12 +3,14 @@
 from contextlib import contextmanager as _contextmanager
 from contextvars import ContextVar as _ContextVar
 from itertools import count as _count
+import json as _json
 import logging as _logging
 from logging.handlers import TimedRotatingFileHandler as _TimedRotatingFileHandler
 from pathlib import Path as _Path
 import os as _os
 import socket as _socket
 import sys as _sys
+from datetime import datetime as _datetime, timezone as _timezone
 
 
 _DEFAULT_LEVEL = _logging.WARNING
@@ -26,7 +28,10 @@ _gway_logger.setLevel(_DEFAULT_LEVEL)
 logger = _gway_logger
 _instances = _count()
 _output_handler = None
-_log_source = _ContextVar("gway_log_source", default="gway")
+_log_source = _ContextVar(
+    "gway_log_source",
+    default=_os.environ.get("GWAY_LOG_SOURCE", "gway"),
+)
 
 
 def _current_source():
@@ -78,7 +83,7 @@ def _coerce_level(level):
 
 
 def default_log_path(*, system=False, root=None, **kwargs):
-    """Return the legacy durable GWAY log path without creating it."""
+    """Return the durable rotating-file GWAY log path without creating it."""
     if root is None:
         from .install.paths import data_root
 
@@ -110,6 +115,26 @@ def _journal_priority(level):
     if level >= _logging.INFO:
         return 6
     return 7
+
+
+class _JsonLogFormatter(_logging.Formatter):
+    """Render one portable durable log record as JSON Lines."""
+
+    def format(self, record):
+        source = getattr(record, "gway_source", _current_source())
+        payload = {
+            "timestamp": _datetime.fromtimestamp(
+                record.created,
+                tz=_timezone.utc,
+            ).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "source": source,
+            "message": record.getMessage(),
+            "pid": record.process,
+            "unit": None,
+        }
+        return _json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 class _JournalHandler(_logging.Handler):
@@ -209,8 +234,10 @@ def configure_output(
     _remove_output_handler()
 
     journal = False
+    durable_file = False
     if isinstance(destination, _Path):
         handler = _daily_file_handler(destination.expanduser())
+        durable_file = True
     else:
         selected = str(destination).strip()
         lowered = selected.lower()
@@ -223,21 +250,27 @@ def configure_output(
                 journal = True
         elif lowered == "file":
             handler = _daily_file_handler(default_log_path(system=system, root=root))
+            durable_file = True
         elif lowered == "stdout":
             handler = _logging.StreamHandler(_sys.stdout)
         elif lowered == "stderr":
             handler = _logging.StreamHandler(_sys.stderr)
         else:
             handler = _daily_file_handler(_Path(selected).expanduser())
+            durable_file = True
 
     handler.setLevel(numeric_level)
     handler.addFilter(_SourceFilter())
     handler.setFormatter(
         formatter
-        or _logging.Formatter(
-            "%(message)s"
-            if journal
-            else "%(asctime)s %(levelname)s %(name)s [%(gway_source)s] %(message)s"
+        or (
+            _JsonLogFormatter()
+            if durable_file
+            else _logging.Formatter(
+                "%(message)s"
+                if journal
+                else "%(asctime)s %(levelname)s %(name)s [%(gway_source)s] %(message)s"
+            )
         )
     )
     handler._gway_output_handler = True
