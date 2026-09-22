@@ -91,8 +91,9 @@ def _build_command(
         command.append("--user")
     command.extend(("--output=json", "--no-pager"))
 
+    unit_option = "--unit" if system else "--user-unit"
     for source in sources:
-        command.append(f"--unit={source.backend_id}")
+        command.append(f"{unit_option}={source.backend_id}")
 
     if since is not None:
         command.extend(("--since", str(since)))
@@ -143,7 +144,11 @@ def _priority(entry):
 
 
 def _entry_source(entry, sources):
-    unit = entry.get("_SYSTEMD_UNIT") or entry.get("UNIT")
+    unit = (
+        entry.get("_SYSTEMD_UNIT")
+        or entry.get("_SYSTEMD_USER_UNIT")
+        or entry.get("UNIT")
+    )
     if unit is not None:
         matches = [source for source in sources if source.backend_id == unit]
         if len(matches) == 1:
@@ -175,7 +180,11 @@ def _parse_entry(entry, sources):
         message=message,
         level=level,
         pid=_pid(entry),
-        unit=entry.get("_SYSTEMD_UNIT") or entry.get("UNIT"),
+        unit=(
+            entry.get("_SYSTEMD_UNIT")
+            or entry.get("_SYSTEMD_USER_UNIT")
+            or entry.get("UNIT")
+        ),
         metadata=metadata,
     )
 
