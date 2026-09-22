@@ -1,6 +1,9 @@
+from datetime import datetime, timezone
 import logging
 import gway.log as gway_log
 from gway import Gateway
+from gway.logs import LogRecord, LogSource
+from gway.logs import operations as log_operations
 
 
 def test_gateway_instances_use_unique_child_loggers():
@@ -137,7 +140,7 @@ def test_cli_log_level_controls_configured_output(
     )
 
     assert status == 0
-    assert "DEBUG gway cli-debug" in stdout
+    assert "DEBUG gway [gway] cli-debug" in stdout
     assert stderr == ""
 
 
@@ -178,3 +181,110 @@ def test_cli_restores_existing_output_handler(run_cli, tmp_path):
         gway_log._remove_output_handler()
         gway_log.logger.setLevel(logging.WARNING)
         gway_log.logger.propagate = True
+
+
+
+def test_log_query_operations_are_canonical_gateway_operations(gateway, monkeypatch):
+    monkeypatch.setattr(log_operations, "sources", lambda: [{"identity": "gway"}])
+    monkeypatch.setattr(
+        log_operations,
+        "read",
+        lambda *source, **kwargs: [{"source": source[0] if source else "gway"}],
+    )
+    monkeypatch.setattr(
+        log_operations,
+        "tail",
+        lambda *source, **kwargs: [{"source": source[0] if source else "gway"}],
+    )
+    monkeypatch.setattr(
+        log_operations,
+        "search",
+        lambda pattern, *source, **kwargs: [
+            {"source": source[0] if source else "gway", "message": pattern}
+        ],
+    )
+
+    assert gateway("log sources") == [{"identity": "gway"}]
+    assert gateway("log read gway") == [{"source": "gway"}]
+    assert gateway("log tail gway --limit 20") == [{"source": "gway"}]
+    assert gateway("log search timeout gway") == [
+        {"source": "gway", "message": "timeout"}
+    ]
+
+    family = gateway.ops["log"]
+    assert set(family) >= {"sources", "read", "tail", "search"}
+    assert family["sources"].__gway_operation__ == "log"
+    assert family["sources"].__gway_subject__ == "sources"
+    assert family["read"].__gway_operation__ == "log"
+    assert family["read"].__gway_subject__ == "read"
+    assert family["tail"].__gway_subject__ == "tail"
+    assert family["search"].__gway_subject__ == "search"
+
+
+def test_log_read_returns_structured_serializable_records_through_gateway(
+    gateway,
+    monkeypatch,
+):
+    selected = LogSource(
+        identity="gway",
+        kind="gway",
+        backend="journal",
+        backend_id="gway",
+    )
+    monkeypatch.setattr(
+        log_operations,
+        "_query_groups",
+        lambda requested: ([selected], []),
+    )
+    captured = {}
+
+    def fake_journal(sources, **kwargs):
+        captured["sources"] = list(sources)
+        captured["kwargs"] = kwargs
+        return [
+            LogRecord(
+                timestamp=datetime(
+                    2026,
+                    9,
+                    22,
+                    12,
+                    0,
+                    tzinfo=timezone.utc,
+                ),
+                source="gway",
+                message="accepted",
+                level="INFO",
+                pid=42,
+                unit=None,
+            )
+        ]
+
+    monkeypatch.setattr(log_operations, "read_journal", fake_journal)
+
+    result = gateway("log read gway --limit 10")
+
+    assert [source.identity for source in captured["sources"]] == ["gway"]
+    assert captured["kwargs"]["limit"] == 10
+    assert result == [
+        {
+            "timestamp": "2026-09-22T12:00:00+00:00",
+            "source": "gway",
+            "level": "INFO",
+            "message": "accepted",
+            "pid": 42,
+            "unit": None,
+        }
+    ]
+
+
+def test_log_empty_selection_never_means_whole_host_journal(gateway, monkeypatch):
+    captured = {}
+
+    def fake_read(*source, **kwargs):
+        captured["source"] = source
+        return []
+
+    monkeypatch.setattr(log_operations, "read", fake_read)
+
+    assert gateway("log read") == []
+    assert captured["source"] == ()

@@ -6,6 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from gway.launchable import Launchable
+from gway.service.model import Service
 from gway.service.runtime import ProcessBackend
 from gway.service.state import ProcessRecord, ServiceState, process_token, record_matches
 
@@ -246,3 +248,32 @@ def test_state_persistence_failure_reaps_spawned_service(
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=5)
+
+
+def test_process_backend_executes_service_launchable_command(tmp_path):
+    launchable = Launchable.operation("demo.worker", root=tmp_path)
+    service = Service.from_launchable(
+        "demo",
+        "worker",
+        tmp_path,
+        launchable,
+    )
+
+    command = ProcessBackend._command(service)
+
+    assert command == [
+        sys.executable,
+        "-m",
+        "gway",
+        "demo",
+        "worker",
+    ]
+
+
+def test_process_backend_propagates_service_log_identity(tmp_path):
+    launchable = Launchable.operation("demo.worker", root=tmp_path)
+    service = Service.from_launchable("demo", "worker", tmp_path, launchable)
+
+    environment = ProcessBackend._environment(service)
+
+    assert environment["GWAY_LOG_SOURCE"] == "demo/worker"

@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from .. import log as gway_log
+from ..logs import recipe_identity
 from ..tokens import statements
 from .frame import RecipeFrame
 from .loading import load_recipe
@@ -55,51 +57,53 @@ def execute_recipe(
         raise RuntimeError(f"Recipe cycle: {cycle}")
 
     stack.append(path)
+    source_identity = recipe_identity(path.stem)
     frames = getattr(runtime, "_recipe_frames", None)
     if frames is None:
         frames = []
         runtime._recipe_frames = frames
     frame = None
     try:
-        if context:
-            runtime.context.update(context)
+        with gway_log._source_scope(source_identity):
+            if context:
+                runtime.context.update(context)
 
-        commands, _ = load_recipe(path, section=section)
-        statement_list = []
-        for command in commands:
-            statement_list.extend(statements(command.get("tokens", ())))
+            commands, _ = load_recipe(path, section=section)
+            statement_list = []
+            for command in commands:
+                statement_list.extend(statements(command.get("tokens", ())))
 
-        if not statement_list:
-            return [], None
+            if not statement_list:
+                return [], None
 
-        from .environment import recipe_environment
+            from .environment import recipe_environment
 
-        preflight_requirements = collect_recipe_requirements(statement_list)
-        frame = RecipeFrame(
-            path=path,
-            statements=[list(statement) for statement in statement_list],
-            invocation_context=dict(context or {}),
-            section=section,
-            environment=recipe_environment(runtime, path),
-            preflight_requirements=preflight_requirements,
-        )
-        frames.append(frame)
+            preflight_requirements = collect_recipe_requirements(statement_list)
+            frame = RecipeFrame(
+                path=path,
+                statements=[list(statement) for statement in statement_list],
+                invocation_context=dict(context or {}),
+                section=section,
+                environment=recipe_environment(runtime, path),
+                preflight_requirements=preflight_requirements,
+            )
+            frames.append(frame)
 
-        if preflight_requirements:
-            prepare_required_companion(runtime, frame)
-        else:
-            ingest_companion(runtime, path)
+            if preflight_requirements:
+                prepare_required_companion(runtime, frame)
+            else:
+                ingest_companion(runtime, path)
 
-        from ..dispatch import dispatch_program
+            from ..dispatch import dispatch_program
 
-        if pipeline is _NO_PIPELINE:
-            return dispatch_program(runtime, statement_list, recipe_frame=frame)
-        return dispatch_program(
-            runtime,
-            statement_list,
-            pipeline=pipeline,
-            recipe_frame=frame,
-        )
+            if pipeline is _NO_PIPELINE:
+                return dispatch_program(runtime, statement_list, recipe_frame=frame)
+            return dispatch_program(
+                runtime,
+                statement_list,
+                pipeline=pipeline,
+                recipe_frame=frame,
+            )
     finally:
         if frame is not None and frame.companion_worker is not None:
             from .companion import unregister_worker_operations
