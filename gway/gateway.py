@@ -330,12 +330,12 @@ class Gateway(Resolver):
                 )
         else:
             if frame.uv is None:
-                from .uv import ensure_uv
+                from .recipe.uv import ensure_uv
 
                 frame.uv = ensure_uv(
                     system=getattr(frame.environment, "scope", "user") == "system"
                 )
-            from .recipe_environment import sync_python_environment
+            from .recipe.environment import sync_python_environment
 
             sync_python_environment(frame.environment, frame.uv, normalized)
 
@@ -345,7 +345,7 @@ class Gateway(Resolver):
                 requirements.append(package)
 
         if frame.companion_worker is not None and not frame.companion_registered:
-            from .companion import register_worker_operations
+            from .recipe.companion import register_worker_operations
 
             register_worker_operations(self, frame.companion_worker)
             frame.companion_registered = True
