@@ -30,7 +30,7 @@ def cli_main():
 
     from . import log as gway_log
 
-    log_kwargs = {"destination": args.logfile or "file"}
+    log_kwargs = {"destination": args.logfile}
     if args.log_level is not None:
         log_kwargs["level"] = args.log_level
     with gway_log.output_scope(**log_kwargs):
