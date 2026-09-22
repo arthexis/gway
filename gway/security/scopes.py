@@ -159,6 +159,69 @@ class ScopeRegistry:
             )
         return self.require(name)
 
+
+    def replace_many(self, definitions):
+        """Atomically converge multiple named scope definitions."""
+        normalized = {}
+        for name, definition in dict(definitions).items():
+            name = self._name(name)
+            definition = dict(definition)
+            unknown = set(definition) - {"operations", "environment"}
+            if unknown:
+                raise ValueError(
+                    f"Unknown scope fields for {name}: {', '.join(sorted(unknown))}"
+                )
+            normalized[name] = (
+                self._grants(definition.get("operations", ()), label="operation"),
+                self._grants(
+                    definition.get("environment", ()),
+                    label="environment",
+                ),
+            )
+
+        with self.state.connect() as connection:
+            for name in sorted(normalized):
+                operations, environment = normalized[name]
+                connection.execute(
+                    "INSERT INTO scopes (name) VALUES (?) "
+                    "ON CONFLICT(name) DO NOTHING",
+                    (name,),
+                )
+                row = connection.execute(
+                    "SELECT id FROM scopes WHERE name = ?",
+                    (name,),
+                ).fetchone()
+                scope_id = row["id"]
+                connection.execute(
+                    "DELETE FROM scope_operations WHERE scope_id = ?",
+                    (scope_id,),
+                )
+                connection.execute(
+                    "DELETE FROM scope_environment WHERE scope_id = ?",
+                    (scope_id,),
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO scope_operations (scope_id, operation)
+                    VALUES (?, ?)
+                    """,
+                    (
+                        (scope_id, operation)
+                        for operation in sorted(operations)
+                    ),
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO scope_environment (scope_id, variable_name)
+                    VALUES (?, ?)
+                    """,
+                    (
+                        (scope_id, variable_name)
+                        for variable_name in sorted(environment)
+                    ),
+                )
+        return [self.require(name) for name in sorted(normalized)]
+
     def remove(self, name):
         """Delete one scope and its grants."""
         if not self.path.is_file():
