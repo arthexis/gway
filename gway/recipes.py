@@ -292,7 +292,6 @@ def execute_recipe(
         if context:
             runtime.context.update(context)
 
-        ingest_companion(runtime, path)
         commands, _ = load_recipe(path, section=section)
         statement_list = []
         for command in commands:
@@ -303,14 +302,21 @@ def execute_recipe(
 
         from .recipe_environment import recipe_environment
 
+        preflight_requirements = collect_recipe_requirements(statement_list)
         frame = RecipeFrame(
             path=path,
             statements=[list(statement) for statement in statement_list],
             invocation_context=dict(context or {}),
             section=section,
             environment=recipe_environment(runtime, path),
+            preflight_requirements=preflight_requirements,
         )
         frames.append(frame)
+
+        if preflight_requirements:
+            _prepare_required_companion(runtime, frame)
+        else:
+            ingest_companion(runtime, path)
 
         from .dispatch import dispatch_program
 
@@ -323,6 +329,11 @@ def execute_recipe(
             recipe_frame=frame,
         )
     finally:
+        if frame is not None and frame.companion_worker is not None:
+            from .companion import unregister_worker_operations
+
+            unregister_worker_operations(runtime, frame.companion_worker)
+            frame.companion_worker.close()
         if frame is not None and frames and frames[-1] is frame:
             frames.pop()
         stack.pop()
