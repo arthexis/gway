@@ -1,6 +1,7 @@
 # file: gway/gateway.py
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 import inspect
 import threading
 
@@ -58,7 +59,14 @@ class Gateway(Resolver):
         self.journal = JournalManager(default_root() / "rollback")
         self._execution_depth = 0
         self._execution_suspension = None
-        self._authorization_stack = []
+        self._authorization_stack_var = ContextVar(
+            f"gway_authorization_stack_{id(self)}",
+            default=(),
+        )
+        self._capability_depth_var = ContextVar(
+            f"gway_capability_depth_{id(self)}",
+            default=0,
+        )
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
@@ -425,9 +433,15 @@ class Gateway(Resolver):
         return self.next()
 
     @property
+    def _authorization_stack(self):
+        """Return the execution-local external authorization stack."""
+        return self._authorization_stack_var.get()
+
+    @property
     def authorization(self):
         """Return the active external authorization context, if any."""
-        return self._authorization_stack[-1] if self._authorization_stack else None
+        stack = self._authorization_stack
+        return stack[-1] if stack else None
 
     @contextmanager
     def authorized(self, *, operations=(), environment=None, context=None):
@@ -438,7 +452,8 @@ class Gateway(Resolver):
             operations=operations,
             environment=environment,
         )
-        outermost = not self._authorization_stack
+        stack = self._authorization_stack
+        outermost = not stack
         previous_context = None
         previous_results = None
         previous_history = None
@@ -453,14 +468,11 @@ class Gateway(Resolver):
             if context:
                 self.context.update(context)
 
-        self._authorization_stack.append(authority)
+        token = self._authorization_stack_var.set((*stack, authority))
         try:
             yield authority
         finally:
-            if self._authorization_stack and self._authorization_stack[-1] is authority:
-                self._authorization_stack.pop()
-            else:
-                self._authorization_stack.remove(authority)
+            self._authorization_stack_var.reset(token)
             if outermost:
                 self.context.clear()
                 self.context.update(previous_context)
@@ -470,20 +482,17 @@ class Gateway(Resolver):
 
     @property
     def _capability_depth(self):
-        return getattr(self, "_Gateway__capability_depth", 0)
-
-    @_capability_depth.setter
-    def _capability_depth(self, value):
-        self.__capability_depth = value
+        """Return the execution-local trusted-capability nesting depth."""
+        return self._capability_depth_var.get()
 
     @contextmanager
     def trusted_capability(self):
         """Temporarily execute trusted implementation details under recipe authority."""
-        self._capability_depth += 1
+        token = self._capability_depth_var.set(self._capability_depth + 1)
         try:
             yield
         finally:
-            self._capability_depth -= 1
+            self._capability_depth_var.reset(token)
 
     @contextmanager
     def external_authority(self):
@@ -494,12 +503,11 @@ class Gateway(Resolver):
             raise AuthorizationError(
                 "External Gateway execution requires an authorization context"
             )
-        previous_depth = self._capability_depth
-        self._capability_depth = 0
+        token = self._capability_depth_var.set(0)
         try:
             yield self.authorization
         finally:
-            self._capability_depth = previous_depth
+            self._capability_depth_var.reset(token)
 
     def authorize_operation(self, operation, args=(), kwargs=None):
         """Authorize one canonical operation immediately before invocation."""
