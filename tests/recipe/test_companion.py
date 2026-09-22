@@ -300,7 +300,7 @@ def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
         "            async with Client(transport) as client:\n"
         "                tools = await client.list_tools()\n"
         "                result = await client.call_tool('gway', {'command': command})\n"
-        "                return [tool.name for tool in tools], result.data\n"
+        "                return [tool.name for tool in tools], result.content[0].text\n"
         "    return asyncio.run(run())\n"
     )
     recipe = _mcp_companion_recipe(
@@ -340,7 +340,7 @@ def test_mcp_stdio_authorization_error_does_not_kill_server_session(
         "                except Exception as exception:\n"
         "                    first_error = str(exception)\n"
         "                second = await client.call_tool('gway', {'command': 'allowed'})\n"
-        "                return first_error, second.data\n"
+        "                return first_error, second.content[0].text\n"
         "    return asyncio.run(run())\n"
     )
     recipe = _mcp_companion_recipe(
