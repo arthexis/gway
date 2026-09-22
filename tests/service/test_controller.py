@@ -1,10 +1,18 @@
+import asyncio
+import json
+import socket
 import time
 
 import pytest
 
+from fastmcp import Client
+from fastmcp.client.auth import BearerAuth
+
 from gway import Gateway
 from gway.install.service import ServiceInstallState
 from gway.sampler import root as sampler_root
+from gway.security.scopes import ScopeRegistry
+from gway.security.tokens import TokenRegistry
 from gway.service.model import Service
 
 
@@ -272,3 +280,104 @@ def test_installed_mcp_process_service_lifecycle(tmp_path, monkeypatch):
         "started_at": None,
         "stale": False,
     }
+
+
+
+def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypatch):
+    gateway = Gateway()
+    data_root = tmp_path / "gway-data"
+    cache_root = tmp_path / "gway-cache"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data_root))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(cache_root))
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+
+    deployment = tmp_path / "mcp-deployment"
+    deployment.mkdir()
+    source_root = sampler_root() / "mcp"
+    recipe = deployment / "server.rx"
+    recipe.write_text(
+        (source_root / "server.rx")
+        .read_text(encoding="utf-8")
+        .replace(" 8000 ", f" {port} "),
+        encoding="utf-8",
+    )
+    (deployment / "server.py").write_text(
+        (source_root / "server.py").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    scopes = ScopeRegistry()
+    scopes.replace("logs-read", operations={"log.sources"}, environment=())
+    issued = TokenRegistry().create("deployed-client", scopes={"logs-read"})
+
+    gateway._service_controller.install(
+        str(recipe),
+        backend="process",
+        name="mcp-server",
+        restart="no",
+    )
+    started = gateway._service_controller.start(
+        str(recipe),
+        name="mcp-server",
+    )
+
+    async def call():
+        async with Client(
+            f"http://127.0.0.1:{port}/mcp",
+            auth=BearerAuth(issued.bearer),
+        ) as client:
+            tools = [tool.name for tool in await client.list_tools()]
+            result = await client.call_tool("gway", {"command": "log sources"})
+            return tools, json.loads(result.content[0].text)
+
+    try:
+        assert started["running"] is True
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                    break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    status = gateway._service_controller.status(
+                        str(recipe),
+                        name="mcp-server",
+                    )
+                    raise AssertionError(
+                        f"deployed MCP service did not become ready: {status}"
+                    )
+                time.sleep(0.05)
+
+        tools, sources = asyncio.run(call())
+        assert tools == ["gway"]
+        assert any(item["identity"] == "gway" for item in sources)
+    finally:
+        stopped = gateway._service_controller.stop(
+            str(recipe),
+            name="mcp-server",
+        )
+
+    assert stopped["running"] is False
+
+
+def test_mcp_sampler_contains_no_service_manager_lifecycle_logic():
+    root = sampler_root() / "mcp"
+    text = "\n".join(
+        path.read_text(encoding="utf-8").casefold()
+        for path in sorted(root.glob("*"))
+        if path.suffix in {".py", ".rx"}
+    )
+
+    forbidden = (
+        "systemctl",
+        "daemon-reload",
+        "pidfile",
+        "daemonize",
+        "[service]",
+        "wantedby=",
+    )
+    for marker in forbidden:
+        assert marker not in text
