@@ -22,6 +22,7 @@ class RecipeFrame:
     remaining_statements: list[list[object]] = field(default_factory=list)
     invocation_context: dict[str, object] = field(default_factory=dict)
     section: str | None = None
+    environment: object | None = None
 
     def enter_statement(self, index):
         """Advance the cursor before one statement starts executing."""
@@ -233,11 +234,14 @@ def execute_recipe(
         if not statement_list:
             return [], None
 
+        from .recipe_environment import recipe_environment
+
         frame = RecipeFrame(
             path=path,
             statements=[list(statement) for statement in statement_list],
             invocation_context=dict(context or {}),
             section=section,
+            environment=recipe_environment(runtime, path),
         )
         frames.append(frame)
 
