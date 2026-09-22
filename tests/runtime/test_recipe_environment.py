@@ -5,7 +5,7 @@ import pytest
 
 from gway.install.model import Installation
 from gway.recipe.environment import recipe_environment
-from gway.recipes import execute_recipe
+from gway.recipe import execute_recipe
 
 @pytest.fixture(autouse=True)
 def _fake_uv(monkeypatch, tmp_path):
