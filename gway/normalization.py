@@ -43,7 +43,15 @@ def complete_arguments(
         ):
             value = parameter.default
         else:
-            value = runtime.find_value(name, _MISSING)
+            constrained_optional = (
+                getattr(runtime, "authorization", None) is not None
+                and parameter.default is not inspect.Parameter.empty
+            )
+            value = runtime.find_value(
+                name,
+                _MISSING,
+                include_environment=not constrained_optional,
+            )
             if value is _MISSING:
                 value = parameter.default
 
