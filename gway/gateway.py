@@ -86,7 +86,13 @@ class Gateway(Resolver):
             [
                 ("results", self.results),
                 ("context", self.context),
-                ("env", Environment()),
+                (
+                    "env",
+                    Environment(
+                        reader=self._environment_value,
+                        names=self._environment_names,
+                    ),
+                ),
             ]
         )
 
@@ -441,10 +447,27 @@ class Gateway(Resolver):
             else:
                 self._authorization_stack.remove(authority)
 
+    @property
+    def _capability_depth(self):
+        return getattr(self, "__capability_depth", 0)
+
+    @_capability_depth.setter
+    def _capability_depth(self, value):
+        self.__capability_depth = value
+
+    @contextmanager
+    def trusted_capability(self):
+        """Temporarily execute trusted implementation details under recipe authority."""
+        self._capability_depth += 1
+        try:
+            yield
+        finally:
+            self._capability_depth -= 1
+
     def authorize_operation(self, operation, args=(), kwargs=None):
         """Authorize one canonical operation immediately before invocation."""
         authority = self.authorization
-        if authority is None:
+        if authority is None or self._capability_depth:
             return
         authority.authorize_operation(operation)
         if operation == "env":
@@ -452,14 +475,55 @@ class Gateway(Resolver):
                 return
             authority.authorize_environment(str(args[0]))
 
+    def authorize_recipe_path(self, path):
+        """Reject direct recipe-path execution under external constrained authority."""
+        if self.authorization is None or self._capability_depth:
+            return
+        from .authorization import AuthorizationError
+
+        raise AuthorizationError(
+            "Direct recipe paths are not authorized; invoke an authorized recipe operation"
+        )
+
+    @contextmanager
+    def invocation_authority(self, operation):
+        """Encapsulate internals of an already-authorized trusted recipe operation."""
+        if (
+            self.authorization is not None
+            and not self._capability_depth
+            and getattr(operation, "__gway_source_kind__", None) == "recipe"
+        ):
+            with self.trusted_capability():
+                yield
+            return
+        yield
+
     def filter_operation_result(self, operation, result):
         """Filter sensitive operation results under constrained execution."""
         authority = self.authorization
-        if authority is None:
+        if authority is None or self._capability_depth:
             return result
         if operation == "envs":
             return authority.filter_environment(result)
         return result
+
+    def _environment_value(self, name):
+        """Resolve one environment value through the normal env operation."""
+        return self("env", str(name))
+
+    def _environment_names(self):
+        """Return only environment names visible to the active authority."""
+        import os
+
+        authority = self.authorization
+        if authority is None or self._capability_depth:
+            return tuple(os.environ)
+        allowed = authority.environment
+        if allowed is None:
+            return ()
+        if "__all__" in allowed:
+            return tuple(os.environ)
+        return tuple(name for name in allowed if name in os.environ)
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command through the unified dispatcher."""
@@ -508,6 +572,7 @@ class Gateway(Resolver):
                 args=call.args,
                 kwargs=call.kwargs,
             )
+            result = self.filter_operation_result(func_name, result)
             return publish(self, subject, result)
 
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
