@@ -310,9 +310,10 @@ def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
         suffix=probe,
     )
     recipe.write_text("require fastmcp\nserver probe stdio 'echo hello'\n", encoding="utf-8")
+    gateway.ingest(root)
 
-    with gateway.authorized(operations={"server.probe_stdio", "echo_value"}):
-        tools, result = gateway(recipe)
+    with gateway.authorized(operations={"mcp-stdio.server", "echo_value"}):
+        tools, result = gateway("mcp-stdio server")
 
     assert tools == ["gway"]
     assert result == "hello"
@@ -349,9 +350,10 @@ def test_mcp_stdio_authorization_error_does_not_kill_server_session(
         suffix=probe,
     )
     recipe.write_text("require fastmcp\nserver probe stdio\n", encoding="utf-8")
+    gateway.ingest(root)
 
-    with gateway.authorized(operations={"server.probe_stdio", "allowed"}):
-        error, result = gateway(recipe)
+    with gateway.authorized(operations={"mcp-stdio-error.server", "allowed"}):
+        error, result = gateway("mcp-stdio-error server")
 
     assert "Operation is not authorized: denied" in error
     assert result == "ok"
