@@ -1,7 +1,7 @@
 import pytest
 
 from gway.install.identity import RuntimeIdentity
-from gway.recipes import execute_recipe
+from gway.recipe import execute_recipe
 from gway.reload import (
     CheckpointState,
     ReloadCheckpoint,

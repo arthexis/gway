@@ -9,7 +9,7 @@ from gway.journal import (
     UncommittedJournalError,
     rollback_error_for,
 )
-from gway.recipes import execute_recipe
+from gway.recipe import execute_recipe
 
 
 def _record_finalization(gateway, monkeypatch):

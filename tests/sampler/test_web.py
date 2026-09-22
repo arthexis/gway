@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from gway.recipes import load_recipe, recipe_path
+from gway.recipe import load_recipe, recipe_path
 
 
 def sampler_root():

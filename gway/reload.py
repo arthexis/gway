@@ -868,7 +868,7 @@ def _frame_tokens(value):
 def resume_frames(runtime, checkpoint):
     """Resume or restart recipe execution from one adopted checkpoint."""
     from .dispatch import dispatch_pipeline, dispatch_program
-    from .recipes import execute_recipe, ingest_companion
+    from .recipe import execute_recipe, ingest_companion
     from pathlib import Path
 
     frames = [dict(frame) for frame in checkpoint.frames]

@@ -11,7 +11,8 @@ from .binding import bind_arguments, pipeline_boundary
 from .execution import Execution, Stage, Statement
 from .ingestion.base import expand_path
 from .operations import Cardinality, singularize, subject_cardinality
-from .recipes import execute_recipe, parse_recipe_context, recipe_path
+from .recipe import execute_recipe, parse_recipe_context
+from .recipe.resolve import resolve_recipe_stage
 from .semantic import AmbiguousKeyError, resolve_mapping_key
 from .tokens import is_literal, is_unquoted, statements, token_value, tokenize
 
@@ -592,42 +593,6 @@ def _invoke_resolved(runtime, resolution, *args, **kwargs):
     return normalized
 
 
-def _recipe_source(token):
-    return token if isinstance(token, os.PathLike) else token_value(token)
-
-
-def _split_recipe_stage(tokens):
-    """Split one recipe invocation from a following raw pipeline."""
-    tokens = list(tokens)
-    for index, token in enumerate(tokens[1:], start=1):
-        if is_unquoted(token) and token_value(token) == "-":
-            return tokens[:index], tokens[index + 1 :]
-    return tokens, []
-
-
-def _resolve_recipe_stage(runtime, tokens, *, pipeline=_MISSING):
-    """Resolve a recipe stage using explicit-path then operation-safe fallback."""
-    if not tokens:
-        return None
-
-    source = _recipe_source(tokens[0])
-    explicit = recipe_path(runtime, source, allow_bare=False)
-    if explicit is not None:
-        stage, remaining = _split_recipe_stage(tokens)
-        return explicit, stage[1:], remaining
-
-    bare = recipe_path(runtime, source, allow_bare=True)
-    if bare is None:
-        return None
-
-    try:
-        resolve_operation(runtime, tokens, pipeline=pipeline)
-    except LookupError:
-        stage, remaining = _split_recipe_stage(tokens)
-        return bare, stage[1:], remaining
-    return None
-
-
 def dispatch_stage(
     runtime,
     tokens,
@@ -799,7 +764,7 @@ def dispatch_pipeline(
             first = False
             continue
 
-        recipe = _resolve_recipe_stage(
+        recipe = resolve_recipe_stage(
             runtime,
             remaining,
             pipeline=current,
@@ -872,7 +837,11 @@ def dispatch_pipeline(
                     has_incoming=incoming is not _MISSING,
                 )
             )
-        current = result
+        current = (
+            _MISSING
+            if resolution.candidate.replace(".", " ") == "require"
+            else result
+        )
         first = False
 
     return results, current

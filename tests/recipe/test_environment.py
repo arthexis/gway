@@ -1,0 +1,262 @@
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from gway.install.model import Installation
+from gway.recipe.environment import (
+    environment_python,
+    recipe_environment,
+    sync_python_environment,
+)
+
+
+def _runtime(**installed):
+    return SimpleNamespace(_installed=installed)
+
+
+def _fake_uv_run(calls, environment):
+    def run(argv, **kwargs):
+        calls.append((list(argv), dict(kwargs)))
+        if argv[1] == "venv":
+            python = environment_python(environment)
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.write_text("", encoding="utf-8")
+        return SimpleNamespace(returncode=0)
+
+    return run
+
+
+def test_local_environment_uses_external_data_root(
+    monkeypatch, recipe_factory, tmp_path
+):
+    data = tmp_path / "data"
+    source = tmp_path / "source"
+    recipe = recipe_factory(root=source, body="clear\n")
+    monkeypatch.setenv("GWAY_DATA_DIR", str(data))
+
+    environment = recipe_environment(_runtime(), recipe)
+
+    assert environment.recipe == recipe.resolve()
+    assert environment.scope == "user"
+    assert environment.root.parent == data.resolve() / "recipes"
+    assert environment.venv == environment.root / "venv"
+    assert environment.metadata == environment.root / "metadata.json"
+    assert environment.requirements_file == environment.root / "requirements.txt"
+    assert not environment.root.exists()
+    assert list(source.iterdir()) == [recipe]
+
+
+def test_same_physical_recipe_keeps_environment_identity(
+    monkeypatch, recipe_factory, tmp_path
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    recipe = recipe_factory(
+        root=tmp_path / "tree" / "nested",
+        body="clear\n",
+    )
+    runtime = _runtime()
+
+    direct = recipe_environment(runtime, recipe)
+    relative = recipe_environment(runtime, recipe.parent / "." / recipe.name)
+
+    assert direct.key == relative.key
+    assert direct.identity == relative.identity
+    assert direct.root == relative.root
+
+
+def test_managed_environment_uses_source_and_relative_path(
+    monkeypatch, recipe_factory, tmp_path
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    installed = tmp_path / "projects" / "demo"
+    recipe = recipe_factory(
+        name="serve",
+        root=installed / "sampler" / "mcp",
+        body="clear\n",
+    )
+    installation = Installation(
+        name="demo",
+        source="https://github.com/example/demo.git",
+        install_path=installed,
+        scope="user",
+        requested_ref="main",
+        resolved_revision="abc123",
+    )
+
+    environment = recipe_environment(_runtime(demo=installation), recipe)
+
+    assert environment.identity == (
+        "managed:https://github.com/example/demo.git:sampler/mcp/serve.rx"
+    )
+    assert environment.source == installation.source
+    assert environment.relative_path == Path("sampler/mcp/serve.rx")
+    assert environment.resolved_revision == "abc123"
+
+
+def test_managed_revision_change_reuses_environment(
+    monkeypatch, recipe_factory, tmp_path
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    installed = tmp_path / "projects" / "demo"
+    recipe = recipe_factory(
+        name="mcp",
+        root=installed / "sampler",
+        body="clear\n",
+    )
+
+    def environment(revision):
+        installation = Installation(
+            name="demo",
+            source="https://github.com/example/demo.git",
+            install_path=installed,
+            resolved_revision=revision,
+        )
+        return recipe_environment(_runtime(demo=installation), recipe)
+
+    first = environment("abc123")
+    second = environment("def456")
+
+    assert first.key == second.key
+    assert first.root == second.root
+    assert first.resolved_revision == "abc123"
+    assert second.resolved_revision == "def456"
+
+
+def test_recipe_frame_exposes_environment_identity(
+    gateway, recipe_factory, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+
+    def probe():
+        return gateway._recipe_frames[-1].environment
+
+    gateway.wrap("environment probe", probe)
+    recipe = recipe_factory(body="environment probe\n")
+
+    environment = gateway(recipe)
+
+    assert environment.recipe == recipe.resolve()
+    assert environment.root.parent == (tmp_path / "data" / "recipes").resolve()
+
+
+def test_sync_creates_venv_and_persists_requirements(
+    monkeypatch, recipe_factory, tmp_path
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    source = tmp_path / "source"
+    recipe = recipe_factory(root=source, body="require fastmcp\n")
+    environment = recipe_environment(_runtime(), recipe)
+    calls = []
+    monkeypatch.setattr(
+        "gway.recipe.environment.subprocess.run",
+        _fake_uv_run(calls, environment),
+    )
+
+    python = sync_python_environment(
+        environment,
+        tmp_path / "uv",
+        ["fastmcp", "cryptography>=42"],
+    )
+
+    assert python == environment_python(environment)
+    assert environment.requirements_file.read_text(encoding="utf-8") == (
+        "fastmcp\ncryptography>=42\n"
+    )
+    metadata = json.loads(environment.metadata.read_text(encoding="utf-8"))
+    assert metadata["requirements"]["python"] == ["fastmcp", "cryptography>=42"]
+    assert [call[0][1:3] for call in calls] == [
+        ["venv", str(environment.venv)],
+        ["pip", "sync"],
+    ]
+    assert list(source.iterdir()) == [recipe]
+
+
+def test_sync_is_noop_when_state_is_intact(
+    monkeypatch, recipe_factory, tmp_path
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    recipe = recipe_factory(body="require fastmcp\n")
+    environment = recipe_environment(_runtime(), recipe)
+    calls = []
+    monkeypatch.setattr(
+        "gway.recipe.environment.subprocess.run",
+        _fake_uv_run(calls, environment),
+    )
+    sync_python_environment(environment, tmp_path / "uv", ["fastmcp"])
+
+    monkeypatch.setattr(
+        "gway.recipe.environment.subprocess.run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("uv should not run")
+        ),
+    )
+
+    assert sync_python_environment(
+        environment,
+        tmp_path / "uv",
+        ["fastmcp"],
+    ) == environment_python(environment)
+
+
+def test_sync_changed_requirements_reuses_venv(
+    monkeypatch, recipe_factory, tmp_path
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    recipe = recipe_factory(body="require fastmcp\n")
+    environment = recipe_environment(_runtime(), recipe)
+    calls = []
+    monkeypatch.setattr(
+        "gway.recipe.environment.subprocess.run",
+        _fake_uv_run(calls, environment),
+    )
+
+    sync_python_environment(environment, tmp_path / "uv", ["fastmcp"])
+    calls.clear()
+    sync_python_environment(
+        environment,
+        tmp_path / "uv",
+        ["fastmcp", "cryptography"],
+    )
+
+    assert len(calls) == 1
+    argv, kwargs = calls[0]
+    assert argv[:3] == [str(tmp_path / "uv"), "pip", "sync"]
+    assert argv[-1] == str(environment.requirements_file)
+    assert kwargs["check"] is True
+
+
+def test_sync_recreates_missing_venv(
+    monkeypatch, recipe_factory, tmp_path
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    recipe = recipe_factory(body="require fastmcp\n")
+    environment = recipe_environment(_runtime(), recipe)
+    calls = []
+    monkeypatch.setattr(
+        "gway.recipe.environment.subprocess.run",
+        _fake_uv_run(calls, environment),
+    )
+
+    sync_python_environment(environment, tmp_path / "uv", ["fastmcp"])
+    environment_python(environment).unlink()
+    calls.clear()
+    sync_python_environment(environment, tmp_path / "uv", ["fastmcp"])
+
+    assert [call[0][1] for call in calls] == ["venv", "pip"]
+
+
+def test_sync_rejects_newline_package_specs(
+    monkeypatch, recipe_factory, tmp_path
+):
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    recipe = recipe_factory(body="clear\n")
+    environment = recipe_environment(_runtime(), recipe)
+
+    with pytest.raises(ValueError, match="cannot contain newlines"):
+        sync_python_environment(
+            environment,
+            tmp_path / "uv",
+            ["fastmcp\nmalicious"],
+        )

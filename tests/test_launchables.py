@@ -2,7 +2,7 @@ import sys
 
 from gway.gateway import Gateway
 from gway.launchable import Launchable
-from gway.recipes import execute_recipe
+from gway.recipe import execute_recipe
 from gway.service.model import Service
 from gway.service.runtime import ProcessBackend
 

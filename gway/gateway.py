@@ -109,6 +109,7 @@ class Gateway(Resolver):
         self.commit = self.wrap("commit", self._commit_journal)
         self.rollback = self.wrap("rollback", self._rollback_journal)
         self.clear = self.wrap("clear", self._clear_context)
+        self.require = self.wrap("require", self._require)
         self.help = self.wrap("help", self._help)
         self.wrap("ingest", self.ingest)
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
@@ -293,6 +294,62 @@ class Gateway(Resolver):
         else:
             self.context.clear()
         return None
+
+    def _require(self, *packages: str, python: bool = True):
+        """Declare dependencies required by the currently executing recipe.
+
+        Python requirements are the default today. The explicit --python flag
+        is retained as a backend selector so other requirement types can be
+        introduced later without changing the basic command shape.
+
+        Args:
+            packages: One or more package requirement specifiers.
+            python: Select Python package requirements. Defaults to true.
+        """
+        frames = getattr(self, "_recipe_frames", ()) or ()
+        if not frames:
+            raise RuntimeError("require is only available during recipe execution")
+        if not packages:
+            raise TypeError("require needs at least one package")
+        if python is not True:
+            raise ValueError("require currently supports only Python requirements")
+
+        normalized = []
+        for package in packages:
+            if not isinstance(package, str) or not package.strip():
+                raise ValueError("require package names must be non-empty strings")
+            normalized.append(package.strip())
+
+        frame = frames[-1]
+        preflight = frame.preflight_requirements.get("python", [])
+        if preflight:
+            undeclared = [package for package in normalized if package not in preflight]
+            if undeclared:
+                raise RuntimeError(
+                    "require preflight mismatch for " + ", ".join(undeclared)
+                )
+        else:
+            if frame.uv is None:
+                from .recipe.uv import ensure_uv
+
+                frame.uv = ensure_uv(
+                    system=getattr(frame.environment, "scope", "user") == "system"
+                )
+            from .recipe.environment import sync_python_environment
+
+            sync_python_environment(frame.environment, frame.uv, normalized)
+
+        requirements = frame.requirements.setdefault("python", [])
+        for package in normalized:
+            if package not in requirements:
+                requirements.append(package)
+
+        if frame.companion_worker is not None and not frame.companion_registered:
+            from .recipe.companion import register_worker_operations
+
+            register_worker_operations(self, frame.companion_worker)
+            frame.companion_registered = True
+        return tuple(requirements)
 
     def _run_sampler_recipe(self, recipe_name, **context):
         """Run one maintained sampler recipe."""

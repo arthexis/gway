@@ -6,7 +6,7 @@ from .install import Installation, InstallRequest, InstallState, Stash, Uninstal
 from .launchable import Launchable, Launchables
 from .operations import Operations, Subjects
 from .console import cli_main, process
-from .recipes import load_recipe
+from .recipe import load_recipe
 from .sigil import Sigil, Resolver, Spool, __
 from .structs import Results
 

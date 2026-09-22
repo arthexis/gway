@@ -43,7 +43,7 @@ def _worker(connection, recipe, root):
         os.chdir(root)
 
         from gway import Gateway
-        from gway.recipes import execute_recipe
+        from gway.recipe import execute_recipe
 
         runtime = Gateway()
         _, value = execute_recipe(runtime, recipe)
