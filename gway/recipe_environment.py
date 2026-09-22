@@ -20,6 +20,7 @@ class RecipeEnvironment:
     root: Path
     venv: Path
     metadata: Path
+    requirements_file: Path
     scope: str = "user"
     source: str | None = None
     relative_path: Path | None = None
@@ -94,6 +95,7 @@ def recipe_environment(runtime, recipe_filename):
         root=root,
         venv=root / "venv",
         metadata=root / "metadata.json",
+        requirements_file=root / "requirements.txt",
         scope=provenance["scope"],
         source=provenance["source"],
         relative_path=provenance["relative_path"],
@@ -157,6 +159,8 @@ def sync_python_environment(environment, uv, requirements):
     requirements = tuple(dict.fromkeys(str(item).strip() for item in requirements))
     if not requirements or any(not item for item in requirements):
         raise ValueError("Python environment requires non-empty package specs")
+    if any("\n" in item or "\r" in item for item in requirements):
+        raise ValueError("Python package specs cannot contain newlines")
 
     desired = _metadata_payload(environment, requirements)
     python = environment_python(environment)
@@ -172,14 +176,21 @@ def sync_python_environment(environment, uv, requirements):
             check=True,
         )
 
+    temporary_requirements = environment.requirements_file.with_suffix(".tmp")
+    temporary_requirements.write_text(
+        "".join(f"{item}\n" for item in requirements),
+        encoding="utf-8",
+    )
+    temporary_requirements.replace(environment.requirements_file)
+
     subprocess.run(
         [
             str(uv),
             "pip",
-            "install",
+            "sync",
             "--python",
             str(python),
-            *requirements,
+            str(environment.requirements_file),
         ],
         check=True,
     )
