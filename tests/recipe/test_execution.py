@@ -63,6 +63,27 @@ def test_recipe_final_result_can_feed_following_pipeline_stage(
     assert gateway(f"{recipe} - combine C") == ("A", "B", "C")
 
 
+
+def test_recipe_publications_remain_available_after_recipe_returns(
+    gateway, recipe_factory
+):
+    gateway.load_config = gateway.wrap(
+        "load_config",
+        lambda: {"site": "MTY"},
+    )
+    gateway.make_report = gateway.wrap("make_report", lambda: "report")
+
+    def consume(report, site):
+        return report, site
+
+    gateway.consume = gateway.wrap("consume_report", consume)
+    recipe = recipe_factory(
+        name="prepare",
+        body="load config\nmake report\n",
+    )
+
+    assert gateway(f"{recipe} - consume") == ("report", "MTY")
+
 def test_pipeline_can_feed_first_statement_of_recipe(gateway, recipe_factory):
     marker = object()
     gateway.produce = gateway.wrap("produce_value", lambda: marker)
