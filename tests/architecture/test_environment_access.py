@@ -42,7 +42,7 @@ def test_direct_process_environment_access_is_centralized():
     violations = []
     for root_name in ('gway', 'sampler'):
         for path in sorted((ROOT / root_name).rglob('*.py')):
-            if path in ALLOWED or str(path.relative_to(ROOT)) in TRANSITIONAL_DIRECT_ENVIRONMENT_FILES:
+            if path in ALLOWED or tuple(path.relative_to(ROOT).parts) in TRANSITIONAL_DIRECT_ENVIRONMENT_FILES:
                 continue
             for lineno, expression in _environment_accesses(path):
                 violations.append(
