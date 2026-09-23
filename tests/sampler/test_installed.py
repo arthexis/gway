@@ -14,6 +14,18 @@ def test_sampler_recipe_resolves_default_and_children():
     assert "sampler" in default.parts
 
 
+def test_remote_sampler_recipe_resolves_default_and_children():
+    default = resolve("web/remote/expose")
+    http = resolve("web/remote/http")
+    https = resolve("web/remote/https")
+
+    assert default.name == "expose.rx"
+    assert http.name == "http.rx"
+    assert https.name == "https.rx"
+    assert default.parent == http.parent == https.parent
+    assert "sampler" in default.parts
+
+
 def test_sampler_recipe_is_available_through_gateway(monkeypatch):
     runtime = Gateway()
     observed = {}
