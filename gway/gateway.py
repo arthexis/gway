@@ -115,6 +115,17 @@ class Gateway(Resolver):
 
         ingest_module(self, builtin, transparent=True)
 
+        from .install.ops import install as install_operation
+
+        self.install = self.wrap(
+            "install",
+            lambda source, **kwargs: install_operation(
+                source,
+                cache=self.cache,
+                **kwargs,
+            ),
+        )
+
         from .filesystem import Filesystem
         from .rendering import Renderer
 
@@ -157,6 +168,7 @@ class Gateway(Resolver):
                 configured_cache = self.resolve("[cache_dir]", default=cache)
             self.cache = Cache(configured_cache)
         self.journal = JournalManager(self.cache.root / "rollback")
+        self.security_path = self.cache.root / "security" / "state.sqlite"
 
         with self.topics("log"):
             log_source = self.resolve("[source]", default="gway")
