@@ -24,12 +24,7 @@ class _GwayTokenVerifier(_TokenVerifier):
     """Delegate MCP bearer validation to the authoritative parent Gateway."""
 
     def __init__(self):
-        super().__init__(
-            base_url=os.environ.get(
-                "GWAY_MCP_PUBLIC_ORIGIN",
-                _DEFAULT_PUBLIC_ORIGIN,
-            )
-        )
+        super().__init__(base_url=_DEFAULT_PUBLIC_ORIGIN)
         self.mcp_path = "/mcp"
 
     def configure(self, *, public_origin=None, path="/mcp"):
@@ -342,14 +337,8 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--path", default="/mcp")
-    parser.add_argument(
-        "--endpoint",
-        default=os.environ.get("GWAY_MCP_ENDPOINT"),
-    )
-    parser.add_argument(
-        "--public-origin",
-        default=os.environ.get("GWAY_MCP_PUBLIC_ORIGIN"),
-    )
+    parser.add_argument("--endpoint")
+    parser.add_argument("--public-origin")
     args = parser.parse_args()
 
     if args.transport == "http":

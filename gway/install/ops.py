@@ -28,6 +28,7 @@ def install(
     force: bool = False,
     stash: bool = False,
     system: bool = False,
+    cache=None,
 ):
     """Converge one local or Git project installation toward requested state.
 
@@ -63,6 +64,7 @@ def install(
         artifact = materialize(
             resolved_source,
             ref=request.ref,
+            cache=cache,
         )
         return install_materialized(
             request,

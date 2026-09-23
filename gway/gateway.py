@@ -37,6 +37,7 @@ class Gateway(Resolver):
         **values,
     ):
         self.name = name
+        self._cache_explicit = cache is not None
         self.environment = process_environment
         self.bindings = Bindings()
         self.logger = gway_log._child(name, level=log_level)
@@ -56,11 +57,8 @@ class Gateway(Resolver):
 
         self.gway_identity = running_gway_identity()
 
-        from .cache import Cache, default_root
+        from .cache import Cache
         from .journal import JournalManager
-
-        self.cache = cache if isinstance(cache, Cache) else Cache(cache)
-        self.journal = JournalManager(default_root() / "rollback")
         self._execution_depth = 0
         self._execution_suspension = None
         self._authorization_stack_var = ContextVar(
@@ -118,6 +116,8 @@ class Gateway(Resolver):
 
         ingest_module(self, builtin, transparent=True)
 
+        self.install = self.wrap("install", self._install)
+
         from .filesystem import Filesystem
         from .rendering import Renderer
 
@@ -145,11 +145,26 @@ class Gateway(Resolver):
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
         self.reload = self.wrap("reload", self._reload)
 
+        from .providers.core import register as register_core_provider
         from .providers.godaddy import register as register_godaddy_provider
         from .config import bootstrap
 
+        register_core_provider(self)
         register_godaddy_provider(self)
         bootstrap(self)
+
+        if isinstance(cache, Cache):
+            self.cache = cache
+        else:
+            with self.topics("cache"):
+                configured_cache = self.resolve("[cache_dir]", default=cache)
+            self.cache = Cache(configured_cache)
+        self.journal = JournalManager(self.cache.root / "rollback")
+        self.security_path = self.cache.root / "security" / "state.sqlite"
+
+        with self.topics("log"):
+            log_source = self.resolve("[source]", default="gway")
+        gway_log._set_default_source(log_source)
 
         from .ingestion.python import ingest_python
         from .remote.service import register as register_remote_service
@@ -170,6 +185,36 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    def _install(self, source, *, ref=None, upgrade=True, force=False, stash=False, system=False):
+        """Converge one local or Git project installation toward requested state.
+
+        Args:
+            source: Local project path, Git source, GitHub shorthand, or known project identity.
+            ref: Branch, tag, or commit requested for Git sources.
+            upgrade: Replace an existing installation when the requested source state changes.
+            force: Discard drift in a dirty managed installation before reconciliation.
+            stash: Preserve a dirty managed installation before reconciliation.
+            system: Use system-wide data and launcher locations instead of user locations.
+        """
+        from .cache import Cache
+        from .install.ops import install as install_operation
+
+        if self._cache_explicit:
+            cache = self.cache
+        else:
+            with self.topics("cache"):
+                configured_cache = self.resolve("[cache_dir]", default=None)
+            cache = self.cache if configured_cache is None else Cache(configured_cache)
+        return install_operation(
+            source,
+            ref=ref,
+            upgrade=upgrade,
+            force=force,
+            stash=stash,
+            system=system,
+            cache=cache,
+        )
 
     def bind(self, semantic_key, *bindings, replace=True):
         """Register ordered physical bindings for one exact semantic key."""

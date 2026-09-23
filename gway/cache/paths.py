@@ -12,10 +12,6 @@ def default_root(*, environ=None, platform=None, home=None):
     platform = sys.platform if platform is None else platform
     home = Path.home() if home is None else Path(home)
 
-    override = environ.get("GWAY_CACHE_DIR")
-    if override:
-        return Path(override).expanduser()
-
     if platform.startswith("win"):
         base = environ.get("LOCALAPPDATA")
         if base:
