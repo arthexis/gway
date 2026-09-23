@@ -21,8 +21,6 @@ BACKEND_ENVIRONMENT = frozenset(
 
 INTEROP_ENVIRONMENT = frozenset({"DJANGO_SETTINGS_MODULE"})
 
-TRANSITIONAL_SEMANTIC_ENVIRONMENT = frozenset()
-
 
 class ProcessEnvironment(Mapping):
     """Literal process-environment access and child-environment construction."""
