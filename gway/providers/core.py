@@ -8,10 +8,10 @@ def register(gateway):
     declarations = {
         "cache.cache_dir": (env("CACHE_DIR"),),
         "log.source": (env("LOG_SOURCE"),),
-        "remote.mcp.endpoint": (env("REMOTE_MCP_ENDPOINT"),),
+        "mcp.remote.endpoint": (env("REMOTE_MCP_ENDPOINT"),),
         "mcp.endpoint": (env("MCP_ENDPOINT"),),
         "remote.endpoint": (env("REMOTE_ENDPOINT"),),
-        "remote.mcp.public_origin": (env("REMOTE_MCP_PUBLIC_ORIGIN"),),
+        "mcp.remote.public_origin": (env("REMOTE_MCP_PUBLIC_ORIGIN"),),
         "mcp.public_origin": (env("MCP_PUBLIC_ORIGIN"),),
         "remote.public_origin": (env("REMOTE_PUBLIC_ORIGIN"),),
     }
