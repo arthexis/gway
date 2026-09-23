@@ -209,12 +209,12 @@ establishes the MCP namespace:
 recipe mcp/server
 --host 127.0.0.1
 --port 8000
---path /mcp
+--route /mcp
 --endpoint https://remote.example.com/mcp
 ```
 
 `endpoint` is the canonical externally visible MCP resource URL. Its path must
-match the configured server path; the server derives the public origin used for
+match the configured server route; the server derives the public origin used for
 authentication metadata from that endpoint.
 
 
