@@ -402,13 +402,13 @@ def probe_challenge(credential="__missing__"):
         raise RuntimeError("MCP HTTP server did not become ready")
 
     port = free_port()
-    with _callback_relay() as callback_env:
-        env = os.environ.copy()
-        env.update(callback_env)
+    with _callback_relay() as bridge:
         process = subprocess.Popen(
             [
                 sys.executable,
                 str(Path(__file__)),
+                "--parent-bridge",
+                bridge,
                 "--transport",
                 "http",
                 "--host",
@@ -420,7 +420,6 @@ def probe_challenge(credential="__missing__"):
                 "--public-origin",
                 "https://remote.example.test",
             ],
-            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -849,13 +848,13 @@ def probe_log_http(bearer):
             return tools, results
 
     port = free_port()
-    with _callback_relay() as callback_env:
-        env = os.environ.copy()
-        env.update(callback_env)
+    with _callback_relay() as bridge:
         process = subprocess.Popen(
             [
                 sys.executable,
                 str(Path(__file__)),
+                "--parent-bridge",
+                bridge,
                 "--transport",
                 "http",
                 "--host",
@@ -867,7 +866,6 @@ def probe_log_http(bearer):
                 "--public-origin",
                 "https://remote.example.test",
             ],
-            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
