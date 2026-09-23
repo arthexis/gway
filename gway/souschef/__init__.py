@@ -3,7 +3,6 @@
 import signal
 import threading
 
-from ..install.paths import data_root
 from .executor import (
     RecipeExecutionError,
     RecipeExecutor,
@@ -54,7 +53,7 @@ def __main__(*, poll: float = 1.0):
     jobs = tuple(getattr(runtime, "_souschef_jobs", {}).values())
     engine = TriggerEngine(
         jobs,
-        state_root=data_root() / "souschef",
+        state_root=runtime.data_root() / "souschef",
         service_status=runtime._service_controller.status,
     )
 

@@ -126,7 +126,7 @@ def managed_paths(tmp_path):
     """Return explicit managed paths for direct transaction tests."""
     return install_paths(
         root=tmp_path / "data",
-        environ={"GWAY_BIN_DIR": str(tmp_path / "bin")},
+        bin_dir=tmp_path / "bin",
         platform=sys.platform,
         home=tmp_path / "home",
     )

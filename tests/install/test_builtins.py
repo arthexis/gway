@@ -23,7 +23,7 @@ def test_install_builtin_forwards_local_request(
     captured = {}
     sentinel = object()
 
-    def install_local(request):
+    def install_local(request, *, paths=None):
         captured["request"] = request
         return sentinel
 
@@ -64,7 +64,7 @@ def test_uninstall_builtin_forwards_request(
     captured = {}
     sentinel = object()
 
-    def uninstall_local(request):
+    def uninstall_local(request, *, paths=None):
         captured["request"] = request
         return sentinel
 

@@ -26,6 +26,17 @@ def test_discovery_application_routes_canonical_well_known_paths():
     assert status == 200
     assert authorization["issuer"] == "https://remote.example.test"
 
+    status, _, client = app.response(
+        "GET",
+        "/.well-known/gway-acceptance-client",
+    )
+    assert status == 200
+    assert client == {
+        "client_id": "https://remote.example.test/.well-known/gway-acceptance-client",
+        "redirect_uris": ["http://127.0.0.1:8765/callback"],
+        "token_endpoint_auth_methods": ["none"],
+    }
+
 
 def test_discovery_application_reserves_advertised_oauth_routes():
     metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")

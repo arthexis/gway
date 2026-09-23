@@ -1,37 +1,50 @@
+import pytest
+
 from gway import Gateway
 
 
-def test_remote_mcp_endpoint_prefers_joint_topic_binding(monkeypatch):
-    monkeypatch.setenv("GWAY_REMOTE_MCP_ENDPOINT", "https://joint.example/mcp")
-    monkeypatch.setenv("GWAY_MCP_ENDPOINT", "https://mcp.example/mcp")
-    monkeypatch.setenv("GWAY_REMOTE_ENDPOINT", "https://remote.example")
+@pytest.mark.parametrize(
+    "environment, expected",
+    [
+        (
+            {
+                "GWAY_REMOTE_MCP_ENDPOINT": "https://joint.example/mcp",
+                "GWAY_MCP_ENDPOINT": "https://mcp.example/mcp",
+                "GWAY_REMOTE_ENDPOINT": "https://remote.example",
+            },
+            "https://joint.example/mcp",
+        ),
+        (
+            {
+                "GWAY_MCP_ENDPOINT": "https://mcp.example/mcp",
+                "GWAY_REMOTE_ENDPOINT": "https://remote.example",
+            },
+            "https://mcp.example/mcp",
+        ),
+        (
+            {"GWAY_REMOTE_ENDPOINT": "https://remote.example"},
+            "https://remote.example",
+        ),
+    ],
+)
+def test_remote_mcp_endpoint_follows_semantic_specificity(
+    monkeypatch,
+    environment,
+    expected,
+):
+    for name in (
+        "GWAY_REMOTE_MCP_ENDPOINT",
+        "GWAY_MCP_ENDPOINT",
+        "GWAY_REMOTE_ENDPOINT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
 
     gateway = Gateway()
 
     with gateway.topics("remote", "mcp"):
-        assert gateway.resolve("[endpoint]") == "https://joint.example/mcp"
-
-
-def test_remote_mcp_endpoint_falls_back_to_mcp_topic(monkeypatch):
-    monkeypatch.delenv("GWAY_REMOTE_MCP_ENDPOINT", raising=False)
-    monkeypatch.setenv("GWAY_MCP_ENDPOINT", "https://mcp.example/mcp")
-    monkeypatch.setenv("GWAY_REMOTE_ENDPOINT", "https://remote.example")
-
-    gateway = Gateway()
-
-    with gateway.topics("remote", "mcp"):
-        assert gateway.resolve("[endpoint]") == "https://mcp.example/mcp"
-
-
-def test_remote_mcp_endpoint_falls_back_to_remote_topic(monkeypatch):
-    monkeypatch.delenv("GWAY_REMOTE_MCP_ENDPOINT", raising=False)
-    monkeypatch.delenv("GWAY_MCP_ENDPOINT", raising=False)
-    monkeypatch.setenv("GWAY_REMOTE_ENDPOINT", "https://remote.example")
-
-    gateway = Gateway()
-
-    with gateway.topics("remote", "mcp"):
-        assert gateway.resolve("[endpoint]") == "https://remote.example"
+        assert gateway.resolve("[endpoint]") == expected
 
 
 def test_remote_mcp_topic_order_is_equivalent(monkeypatch):

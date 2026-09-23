@@ -599,6 +599,16 @@ This distinction also illustrates why a one-word command is not subjectless. The
 surface token can encode a verbal operation and its corresponding nominal subject
 at the same time.
 
+Literal environment operations are interoperability surfaces, not Gway's
+preferred configuration API. `env NAME`, `set env NAME VALUE`,
+`clear env NAME`, service environment assignments, and child-process
+environment construction remain valid when the literal environment-variable
+identity is itself part of the external contract.
+
+Gway-owned configuration should instead be expressed semantically and resolved
+through bindings. For example, a recipe should prefer `[cache_dir]` or
+project semantic configuration over `env GWAY_CACHE_DIR`.
+
 ## Topic
 
 A **topic** is an independent semantic category that qualifies, groups, organizes,
@@ -2745,6 +2755,44 @@ For example:
 
 Each expression identifies a semantic value that Gway must resolve when the operation executes.
 
+### Semantic position
+
+A **semantic position** is the combination of the active topics and the subject
+being resolved.
+
+The sigil names the subject. The surrounding execution supplies the topics.
+Together they determine the semantic candidates Gway searches.
+
+Semantic specificity is evaluated before physical source type. A value bound to
+a more specific semantic position therefore outranks a broader value even when
+the broader value comes from a physically preferred representation.
+
+### Binding
+
+A **binding** associates a semantic key with one or more physical
+representations that may satisfy it.
+
+Examples of physical representations include:
+
+```text
+environment GODADDY_API_KEY
+environment GODADDY_KEY
+secret dns/godaddy/key
+file /run/secrets/godaddy_api_key
+```
+
+The binding belongs to configuration/provider infrastructure, not to the
+operation consuming the value. An operation asks for `[api_key]`; it does not
+need to know which environment name, file, secret store, or other backend
+supplied the value.
+
+A semantic key may have several ordered bindings. Missing optional bindings
+fall through to the next representation.
+
+For an environment binding declared as `NAME`, Gway may also accept
+`GWAY_NAME` as an optional Gway-specific physical spelling. That prefix is a
+physical representation detail, not part of the sigil or semantic identity.
+
 ### A sigil is not a variable
 
 A variable normally identifies a named storage location.
@@ -2765,7 +2813,7 @@ It means:
 
 > resolve the value that currently satisfies the semantic meaning `site`
 
-That value may come from context, environment, configuration, a previous operation, an adapter, or another supported source.
+That value may come from a previous result, context, configured semantic value, a registered physical binding, literal interoperability state, an adapter, or another supported source.
 
 The source may change without changing the meaning of the sigil.
 

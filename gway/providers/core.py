@@ -7,6 +7,10 @@ def declarations():
     """Return built-in physical bindings for core semantic settings."""
     return {
         "cache.cache_dir": (env("CACHE_DIR"),),
+        "user.data_dir": (env("DATA_DIR"),),
+        "system.data_dir": (env("SYSTEM_DATA_DIR"),),
+        "user.bin_dir": (env("BIN_DIR"),),
+        "system.bin_dir": (env("SYSTEM_BIN_DIR"),),
         "log.source": (env("LOG_SOURCE"),),
         "mcp.remote.endpoint": (env("REMOTE_MCP_ENDPOINT"),),
         "mcp.endpoint": (env("MCP_ENDPOINT"),),

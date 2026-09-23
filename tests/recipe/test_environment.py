@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,7 +14,11 @@ from gway.recipe.environment import (
 
 
 def _runtime(**installed):
-    return SimpleNamespace(_installed=installed)
+    root = Path(os.environ["GWAY_DATA_DIR"]).expanduser()
+    return SimpleNamespace(
+        _installed=installed,
+        data_root=lambda **kwargs: root,
+    )
 
 
 def _fake_uv_run(calls, environment):

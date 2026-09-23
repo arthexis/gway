@@ -6,33 +6,33 @@ import pytest
 from gway.recipe import uv
 
 
-def test_managed_uv_path_lives_under_gway_data(monkeypatch, tmp_path):
-    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+def test_managed_uv_path_lives_under_gway_data(tmp_path):
+    root = tmp_path / "data"
 
-    path = uv.managed_uv_path()
+    path = uv.managed_uv_path(root=root)
 
     assert path.parent == (tmp_path / "data" / "tools" / "uv").resolve()
     assert path.name in {"uv", "uv.exe"}
 
 
 def test_find_uv_prefers_gway_managed_binary(monkeypatch, tmp_path):
-    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
-    managed = uv.managed_uv_path()
+    root = tmp_path / "data"
+    managed = uv.managed_uv_path(root=root)
     managed.parent.mkdir(parents=True)
     managed.write_text("", encoding="utf-8")
     monkeypatch.setattr(uv.shutil, "which", lambda name: "/usr/bin/uv")
 
-    assert uv.find_uv() == managed.resolve()
+    assert uv.find_uv(root=root) == managed.resolve()
 
 
 def test_find_uv_falls_back_to_path(monkeypatch, tmp_path):
-    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    root = tmp_path / "data"
     external = tmp_path / "bin" / "uv"
     external.parent.mkdir(parents=True)
     external.write_text("", encoding="utf-8")
     monkeypatch.setattr(uv.shutil, "which", lambda name: str(external))
 
-    assert uv.find_uv() == external.resolve()
+    assert uv.find_uv(root=root) == external.resolve()
 
 
 def test_ensure_uv_bootstraps_only_when_missing(monkeypatch, tmp_path):
@@ -79,17 +79,17 @@ def test_posix_bootstrap_uses_unmanaged_install_without_path_mutation(
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(uv.subprocess, "run", run)
-    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    root = tmp_path / "data"
 
-    result = uv.bootstrap_uv()
+    result = uv.bootstrap_uv(root=root)
 
-    assert result == uv.managed_uv_path().resolve()
+    assert result == uv.managed_uv_path(root=root).resolve()
     argv, kwargs = calls[0]
     assert argv == ["sh"]
     assert kwargs["input"] == "# installer"
     assert kwargs["text"] is True
     assert kwargs["check"] is True
-    assert kwargs["env"]["UV_UNMANAGED_INSTALL"] == str(uv.managed_uv_root())
+    assert kwargs["env"]["UV_UNMANAGED_INSTALL"] == str(uv.managed_uv_root(root=root))
     assert kwargs["env"]["UV_NO_MODIFY_PATH"] == "1"
 
 
@@ -122,4 +122,4 @@ def test_require_resolves_uv_once_per_recipe_frame(
     )
 
     assert gateway(recipe) == executable
-    assert calls == [{"system": False}]
+    assert calls == [{"system": False, "root": gateway.data_root()}]

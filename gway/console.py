@@ -28,18 +28,29 @@ def cli_main():
     parser.add_argument("--resume", help=argparse.SUPPRESS)
     args, unknown = parser.parse_known_args()
 
+    runtime = Gateway(
+        debug=args.debug,
+        interactive=args.interactive,
+        timed=args.timed,
+        verbose=args.verbose,
+        silent=args.silent,
+    )
+
     from . import log as gway_log
 
-    log_kwargs = {"destination": args.logfile}
+    log_kwargs = {
+        "destination": args.logfile,
+        "root": runtime.data_root(),
+    }
     if args.log_level is not None:
         log_kwargs["level"] = args.log_level
     with gway_log.output_scope(**log_kwargs):
-        return _run_cli(parser, args, unknown)
+        return _run_cli(parser, args, unknown, runtime=runtime)
 
 
-def _run_cli(parser, args, unknown):
+def _run_cli(parser, args, unknown, *, runtime=None):
     """Execute one parsed CLI invocation within its configured log scope."""
-    runtime = Gateway(
+    runtime = runtime or Gateway(
         debug=args.debug,
         interactive=args.interactive,
         timed=args.timed,

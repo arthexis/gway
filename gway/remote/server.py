@@ -17,7 +17,18 @@ class RemoteDiscoveryApplication:
         if not isinstance(metadata, RemoteOAuthMetadata):
             raise TypeError("metadata must be RemoteOAuthMetadata")
         self.metadata = metadata
+        acceptance_client_id = (
+            metadata.issuer.rstrip("/") + "/.well-known/gway-acceptance-client"
+        )
         self.routes = {
+            "/.well-known/gway-acceptance-client": (
+                200,
+                lambda: {
+                    "client_id": acceptance_client_id,
+                    "redirect_uris": ["http://127.0.0.1:8765/callback"],
+                    "token_endpoint_auth_methods": ["none"],
+                },
+            ),
             metadata.protected_resource_metadata_path: (
                 200,
                 metadata.protected_resource_document,

@@ -53,9 +53,7 @@ class Gateway(Resolver):
         self.execution = None
         self.previous_execution = None
 
-        from .install.identity import running_gway_identity
-
-        self.gway_identity = running_gway_identity()
+        self.gway_identity = None
 
         from .cache import Cache
         from .journal import JournalManager
@@ -117,6 +115,7 @@ class Gateway(Resolver):
         ingest_module(self, builtin, transparent=True)
 
         self.install = self.wrap("install", self._install)
+        self.uninstall = self.wrap("uninstall", self._uninstall)
 
         from .filesystem import Filesystem
         from .rendering import Renderer
@@ -153,6 +152,10 @@ class Gateway(Resolver):
 
         register_core_provider(self)
         register_godaddy_provider(self)
+
+        from .install.identity import running_gway_identity
+
+        self.gway_identity = running_gway_identity(paths=self.install_paths())
         bootstrap(self)
 
         if isinstance(cache, Cache):
@@ -220,6 +223,35 @@ class Gateway(Resolver):
             selected[name] = value
         return ResultOnlyMapping(selected)
 
+    def data_root(self, *, system=False):
+        """Resolve Gway's durable data root through semantic configuration."""
+        from .install.paths import data_root
+
+        scope = "system" if system else "user"
+        with self.topics(scope):
+            configured = self.resolve("[data_dir]", default=None)
+        return data_root(system=system, data_dir=configured)
+
+    def bin_root(self, *, system=False):
+        """Resolve Gway's launcher directory through semantic configuration."""
+        from .install.paths import bin_root
+
+        scope = "system" if system else "user"
+        with self.topics(scope):
+            configured = self.resolve("[bin_dir]", default=None)
+        return bin_root(system=system, bin_dir=configured)
+
+    def install_paths(self, *, system=False, root=None):
+        """Return durable install paths from semantic roots plus platform defaults."""
+        from .install.paths import install_paths
+
+        return install_paths(
+            system=system,
+            root=root,
+            data_dir=None if root is not None else self.data_root(system=system),
+            bin_dir=self.bin_root(system=system),
+        )
+
     def _install(self, source, *, ref=None, upgrade=True, force=False, stash=False, system=False):
         """Converge one local or Git project installation toward requested state.
 
@@ -248,6 +280,17 @@ class Gateway(Resolver):
             stash=stash,
             system=system,
             cache=cache,
+            paths=self.install_paths(system=system),
+        )
+
+    def _uninstall(self, project, *, system=False):
+        """Converge one managed project toward absence."""
+        from .install.ops import uninstall as uninstall_operation
+
+        return uninstall_operation(
+            project,
+            system=system,
+            paths=self.install_paths(system=system),
         )
 
     def bind(self, semantic_key, *bindings, replace=True):

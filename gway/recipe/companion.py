@@ -41,7 +41,6 @@ def _write_message(stream, value):
 _WORKER = r"""
 import importlib.util
 import inspect
-import os
 import pickle
 from pathlib import Path
 import struct
@@ -49,6 +48,17 @@ import sys
 import traceback
 
 HEADER = struct.Struct("!Q")
+
+environment_path = Path(sys.argv[2]).expanduser().resolve()
+environment_spec = importlib.util.spec_from_file_location(
+    "_gway_process_environment",
+    environment_path,
+)
+if environment_spec is None or environment_spec.loader is None:
+    raise ImportError(f"Unable to load Gway environment substrate: {environment_path}")
+environment_module = importlib.util.module_from_spec(environment_spec)
+environment_spec.loader.exec_module(environment_module)
+process_environment = environment_module.process_environment
 
 
 def read_message():
@@ -234,23 +244,23 @@ while True:
             raise LookupError(f"Unknown companion RPC method: {method}")
         name = params["name"]
         environment = dict(params.get("environment") or {})
-        previous_environment = {key: os.environ.get(key) for key in environment}
+        previous_environment = {
+            key: process_environment.get(key)
+            for key in environment
+        }
         try:
             for key, value in environment.items():
                 if value is None:
-                    os.environ.pop(key, None)
+                    process_environment.remove(key)
                 else:
-                    os.environ[key] = str(value)
+                    process_environment.set(key, value)
             result = getattr(module, name)(
                 *params.get("args", ()),
                 **params.get("kwargs", {}),
             )
         finally:
             for key, value in previous_environment.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
+                process_environment.restore(key, value)
         write_message(
             {"type": "response", "id": request_id, "ok": True, "result": result}
         )
@@ -317,8 +327,16 @@ class CompanionWorker:
         # Preserve the venv interpreter path. Resolving it can collapse the
         # venv's python symlink to the base interpreter and lose site-packages.
         python = Path(python).expanduser().absolute()
+        environment_path = Path(__file__).resolve().parents[1] / "environment.py"
         process = subprocess.Popen(
-            [str(python), "-u", "-c", _WORKER, str(companion)],
+            [
+                str(python),
+                "-u",
+                "-c",
+                _WORKER,
+                str(companion),
+                str(environment_path),
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=None,

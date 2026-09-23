@@ -169,37 +169,57 @@ echo '[site]'
 
 Double quotes group text while retaining normal resolution behavior.
 
-## Recipe-scoped environment
+## Semantic configuration and recipe-scoped environment
 
-Recipes can override process environment for the remainder of the active recipe
-scope:
+Sigils identify semantic values. Their physical representation is deliberately
+separate from recipe syntax.
 
-~~~text
-set env GWAY_CACHE_DIR /var/lib/gway/cache
+Project-wide semantic values can be declared directly:
+
+~~~toml
+[tool.gway.variables]
+cache_dir = "/var/lib/gway/cache"
 ~~~
 
-The dashed spelling is equivalent:
+Physical compatibility can be declared independently with structured bindings:
 
-~~~text
-set-env GWAY_CACHE_DIR /var/lib/gway/cache
+~~~toml
+[[tool.gway.bindings]]
+topics = ["dns", "godaddy"]
+subject = "api_key"
+sources = [
+  { type = "env", value = "GODADDY_API_KEY", sensitive = true },
+  { type = "env", value = "GODADDY_KEY", sensitive = true },
+  { type = "secret", value = "dns/godaddy/key" },
+]
 ~~~
 
-The override is visible to following operations, child recipes, subprocesses,
-and managed companion calls. Nested recipes inherit the current value and may
-override it again. When a nested recipe returns, the outer value is restored;
-when the outer recipe returns or fails, the caller's original environment is
-restored.
+The recipe still asks for the semantic subject, for example `[api_key]`.
+It does not inspect those environment names or secret paths.
 
-Clear one variable for the current recipe scope with:
+Recipe-scoped environment remains available for literal interoperability.
+Use it when a downstream program's external contract requires a particular
+environment name:
+
+~~~text
+set env LEGACY_VENDOR_MODE production
+run legacy-tool
+~~~
+
+The dashed spelling `set-env` is equivalent. The override is visible to
+following operations, child recipes, subprocesses, and managed companion calls.
+Nested scopes restore their parent environment on exit.
+
+Clear a literal variable for the current recipe scope with:
 
 ~~~text
 clear env NAME
 clear-env NAME
 ~~~
 
-Environment state remains distinct from semantic context. Use recipe parameters
-for ambient semantic facts such as a deployment host or domain; use `set env`
-for actual process environment required by downstream execution.
+Do not use `env NAME`, `set env`, `clear env`, or service
+`--environment` as a substitute for semantic Gway configuration when a
+semantic value/binding exists.
 
 ## Companion Python files
 
@@ -723,29 +743,51 @@ Gway process, render, and filesystem primitives. Existing public DNS must
 already resolve to the host. The executable paths, Nginx directories, and ACME
 webroot can be overridden through recipe context when host conventions differ.
 
-### DNS credential convention
+### DNS credential semantics
 
-The maintained GoDaddy DNS backend uses host-persistent credentials. Explicit
-environment values take precedence:
-
-~~~text
-GODADDY_PAT
-GODADDY_API_KEY
-GODADDY_API_SECRET
-~~~
-
-When those are absent, system deployments read the conventional Gway secret
-store:
+The maintained GoDaddy DNS backend consumes semantic authentication subjects:
 
 ~~~text
-/etc/gway/secrets/dns/godaddy/pat
-/etc/gway/secrets/dns/godaddy/key
-/etc/gway/secrets/dns/godaddy/secret
+[pat]
+[api_key]
+[api_secret]
 ~~~
 
-The root can be overridden with `GWAY_SECRETS_DIR`. A PAT is preferred when
-present; otherwise `key` and `secret` are used together.
+With active topics `dns` and `godaddy`, Gway derives the normal semantic
+hierarchy. For `[api_key]`, for example:
 
-This keeps DNS credentials on the managed host across application redeployments
-and avoids requiring deployment workflows to copy provider secrets through CI.
+~~~text
+dns.godaddy.api_key
+godaddy.dns.api_key
+godaddy.api_key
+dns.api_key
+api_key
+~~~
 
+The provider implementation does not know whether the resolved value came from
+an environment variable, a project binding, or the managed secrets backend.
+
+Built-in GoDaddy bindings preserve common host representations such as
+`GODADDY_PAT`, `GODADDY_API_KEY`, `GODADDY_KEY`,
+`GODADDY_API_SECRET`, and `GODADDY_SECRET`. Environment bindings also accept
+the mechanically derived `GWAY_` form as a higher-precedence physical spelling
+within the same alias pair.
+
+The managed secrets backend may satisfy the same semantic values from relative
+secret names such as:
+
+~~~text
+dns/godaddy/pat
+dns/godaddy/key
+dns/godaddy/secret
+~~~
+
+Its physical root defaults to `/etc/gway/secrets` and may be relocated with
+the backend-specific `GWAY_SECRETS_DIR`. That variable configures the secrets
+backend itself; it is not a semantic DNS sigil.
+
+PAT remains preferred over the key/secret pair as an authentication choice.
+That preference is independent of which physical binding supplied each value.
+
+This keeps DNS recipes credential-free and lets deployment/storage conventions
+change without changing the operation or sigil syntax.
