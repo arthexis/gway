@@ -63,7 +63,16 @@ def _direct_environment_dependencies(path, *, function_name=None):
 
 def _implementation(record):
     implementation = inspect.unwrap(record.callable)
-    return getattr(implementation, "__func__", implementation)
+    implementation = getattr(implementation, "__func__", implementation)
+    if inspect.isfunction(implementation):
+        return implementation
+    if inspect.ismethod(implementation):
+        return implementation.__func__
+    if callable(implementation):
+        call = getattr(type(implementation), "__call__", None)
+        if call is not None:
+            return getattr(call, "__func__", call)
+    return None
 
 
 def test_registered_operations_do_not_depend_directly_on_environment_substrate():
@@ -72,6 +81,8 @@ def test_registered_operations_do_not_depend_directly_on_environment_substrate()
 
     for record in gateway.ops._registry.records.values():
         implementation = _implementation(record)
+        if implementation is None:
+            continue
         path_text = inspect.getsourcefile(implementation)
         if not path_text:
             continue
