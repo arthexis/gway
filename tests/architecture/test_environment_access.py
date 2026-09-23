@@ -20,7 +20,12 @@ def _is_import_os(node):
     )
 
 
-def _environment_accesses_source(source, *, filename="<architecture-fixture>"):
+def _environment_accesses_source(
+    source,
+    *,
+    filename="<architecture-fixture>",
+    scan_workers=True,
+):
     tree = ast.parse(source, filename=filename)
     os_aliases = set()
     direct_aliases = set()
@@ -79,6 +84,26 @@ def _environment_accesses_source(source, *, filename="<architecture-fixture>"):
             ) or _is_import_os(target):
                 violations.append((node.lineno, ast.unparse(node)))
 
+    if scan_workers:
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if not any(
+                isinstance(target, ast.Name) and target.id.endswith("_WORKER")
+                for target in targets
+            ):
+                continue
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                for lineno, expression in _environment_accesses_source(
+                    node.value.value,
+                    filename=f"{filename}:embedded-worker",
+                    scan_workers=False,
+                ):
+                    violations.append(
+                        (node.lineno + lineno - 1, f"embedded worker: {expression}")
+                    )
+
     return sorted(set(violations))
 
 
@@ -133,3 +158,17 @@ def test_environment_boundary_detects_representative_bypasses(source):
 )
 def test_environment_boundary_allows_unrelated_os_dependencies(source):
     assert _environment_accesses_source(source) == []
+
+
+
+def test_generated_worker_environment_access_is_also_enforced():
+    source = '''
+_WORKER = """
+import os
+value = os.environ.get("TOKEN")
+"""
+'''
+    violations = _environment_accesses_source(source)
+
+    assert violations
+    assert "embedded worker" in violations[0][1]
