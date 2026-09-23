@@ -50,3 +50,28 @@ def resolve_mapping_key(mapping: Mapping, requested):
 def mapping_value(mapping: Mapping, requested):
     """Return one semantic mapping value."""
     return mapping[resolve_mapping_key(mapping, requested)]
+
+
+def semantic_candidates(subject, topics=()):
+    """Return semantic lookup keys for one subject under ordered topics.
+
+    Topics describe contextual meaning while the subject names the value being
+    resolved. The complete topic combination is most specific, followed by each
+    individual topic from most-local to broadest, then the bare subject.
+    """
+    subject = str(subject).strip()
+    if not subject:
+        raise ValueError("semantic subject must be non-empty")
+
+    normalized_topics = tuple(str(topic).strip() for topic in topics)
+    if any(not topic for topic in normalized_topics):
+        raise ValueError("semantic topics must be non-empty")
+
+    candidates = []
+    if normalized_topics:
+        candidates.append(".".join((*normalized_topics, subject)))
+        candidates.extend(
+            f"{topic}.{subject}" for topic in reversed(normalized_topics)
+        )
+    candidates.append(subject)
+    return tuple(dict.fromkeys(candidates))
