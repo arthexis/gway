@@ -543,9 +543,43 @@ Changing topic may imply entering another conceptual domain or collection of
 subjects. Changing subject should allow the operation itself to remain semantically
 stable.
 
-This glossary does not yet define `topic` as a foundational term; the distinction
-is recorded here so that the word remains available for that broader role rather
-than being reused as a synonym for `subject`.
+### Topic
+
+A **topic** is a semantic context dimension that qualifies the meaning of a
+subject without replacing that subject.
+
+For example, resolving:
+
+```text
+[api_key]
+```
+
+while the active topics are:
+
+```text
+dns
+godaddy
+```
+
+places the subject `api_key` in the semantic position identified by those
+topics. Gway derives progressively broader candidates from that position.
+
+Topics are not a dotted namespace that must be written in one fixed order. The
+complete topic set identifies the same semantic position even when the topics
+are encountered in another order; the declared order only determines lookup
+preference among equivalent complete forms.
+
+For `dns`, `godaddy`, and `api_key`, Gway considers:
+
+```text
+dns.godaddy.api_key
+godaddy.dns.api_key
+godaddy.api_key
+dns.api_key
+api_key
+```
+
+Thus topic order affects lookup preference, not semantic identity.
 
 ### Subject specialization
 
@@ -638,6 +672,17 @@ This distinction also illustrates why a one-word command is not subjectless. The
 surface token can encode a verbal operation and its corresponding nominal subject
 at the same time.
 
+
+Literal environment operations are interoperability surfaces, not Gway's
+preferred configuration API. `env NAME`, `set env NAME VALUE`,
+`clear env NAME`, service environment assignments, and child-process
+environment construction remain valid when the literal environment-variable
+identity is itself part of the external contract.
+
+Gway-owned configuration should instead be expressed semantically and resolved
+through bindings. For example, a recipe should prefer `[cache_dir]` or
+project semantic configuration over `env GWAY_CACHE_DIR`.
+
 ## Relationship between Operation and Subject
 
 An operation answers:
@@ -720,6 +765,45 @@ For example:
 
 Each expression identifies a semantic value that Gway must resolve when the operation executes.
 
+### Semantic position
+
+A **semantic position** is the combination of the active topics and the subject
+being resolved.
+
+The sigil names the subject. The surrounding execution supplies the topics.
+Together they determine the ordered semantic candidates Gway searches.
+
+Semantic specificity is evaluated before physical source type. A value bound to
+`dns.godaddy.api_key` therefore outranks a broader `api_key` value even when
+the broader value comes from a physically preferred representation.
+
+### Binding
+
+A **binding** associates a semantic key with one or more physical
+representations that may satisfy it.
+
+Examples of physical representations include:
+
+```text
+environment GODADDY_API_KEY
+environment GODADDY_KEY
+secret dns/godaddy/key
+file /run/secrets/godaddy_api_key
+```
+
+The binding belongs to configuration/provider infrastructure, not to the
+operation consuming the value. An operation asks for `[api_key]`; it does not
+need to know which environment name, file, secret store, or other backend
+supplied the value.
+
+A semantic key may have several ordered bindings. Missing optional bindings
+fall through to the next representation.
+
+For an environment binding declared as `NAME`, Gway also accepts
+`GWAY_NAME` as an optional Gway-specific physical spelling and prefers it to
+`NAME` within that same alias pair. The prefix is physical only: it is never
+part of the sigil or semantic candidate name.
+
 ### A sigil is not a variable
 
 A variable normally identifies a named storage location.
@@ -740,7 +824,9 @@ It means:
 
 > resolve the value that currently satisfies the semantic meaning `site`
 
-That value may come from context, environment, configuration, a previous operation, an adapter, or another supported source.
+That value may come from a previous result, context, configured semantic value,
+a registered physical binding, literal interoperability state, an adapter, or
+another supported source.
 
 The source may change without changing the meaning of the sigil.
 

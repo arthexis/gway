@@ -157,11 +157,11 @@ names such as `certificate_path` and `log_path`.
 Do not solve this by mechanically prefixing every recipe parameter. Prefixes
 should distinguish concepts, not compensate for overusing ambient context.
 
-One practical warning is `path`: because environment variables participate in
-semantic resolution, a generic ambient `path` can collide with the process
-`PATH`. In that situation, choose the real concept instead of adding a
-namespace prefix. For an HTTP server, `route` is semantically better than
-`mcp_path`: it describes what the value means and avoids the ambient collision.
+One practical warning is `path`: generic semantic names can collide with
+other values that legitimately occupy the same semantic position. In that
+situation, choose the real concept instead of adding a defensive namespace
+prefix. For an HTTP server, `route` is semantically better than `mcp_path`:
+it describes what the value means.
 
 
 A useful rule is:
@@ -170,39 +170,47 @@ A useful rule is:
 > operations to share that meaning. Otherwise pass it directly to the operation
 > that needs it.
 
-## Environment is scoped execution state
+## Semantic configuration and environment interoperability
 
-Environment variables are not semantic context. They are execution state and
-can contain sensitive or process-specific configuration.
+Environment variables are not semantic context. They are literal execution
+state. Gway configuration should name meaning first and let bindings describe
+physical representations.
 
-`set env` creates a lexical override for the active recipe:
+For example, a project-wide cache location belongs in semantic configuration:
 
-```text
-set env GWAY_CACHE_DIR /var/lib/gway/cache
+```toml
+[tool.gway.variables]
+cache_dir = "/var/lib/gway/cache"
 ```
 
-Everything that runs afterward in that recipe sees the value. Child recipes
-inherit it. A child may override it again. When a child returns, the parent's
-value is restored; when the outer recipe returns, the original process
-environment is restored.
+A provider or deployment may instead register physical compatibility bindings
+for the same semantic value. The recipe still consumes `[cache_dir]`; it does
+not need to know which representation supplied it.
 
-The equivalent dashed operation spelling is:
-
-```text
-set-env GWAY_CACHE_DIR /var/lib/gway/cache
-```
-
-Use:
+`set env` remains available when a downstream external program requires a
+literal environment variable:
 
 ```text
-clear env NAME
+set env LEGACY_VENDOR_MODE production
+run legacy-tool
 ```
 
-(or `clear-env NAME`) to hide one variable for the remainder of the current
-recipe scope.
+Everything that runs afterward in that recipe sees the override. Child recipes
+inherit it, nested overrides restore correctly, and the original process
+environment is restored when the outer recipe finishes.
 
-Recipe environment and semantic context remain separate even though both flow
-downward. Do not move values between them merely for convenience.
+The dashed spelling `set-env` is equivalent. Use `clear env NAME` (or
+`clear-env NAME`) to hide one literal variable for the remainder of the
+current recipe scope.
+
+A useful rule is:
+
+> Semantic meaning belongs in context/configuration and bindings. Literal
+> environment identity belongs in `env` operations only when that identity is
+> part of an interoperability contract.
+
+Do not use `set env`, `env NAME`, or service `--environment` as an
+alternate configuration system for Gway itself.
 
 ## Design test
 
