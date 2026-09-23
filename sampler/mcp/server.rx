@@ -1,2 +1,2 @@
 require fastmcp>=4,<5
-server serve 127.0.0.1 8000 /mcp
+server serve [host|127.0.0.1] [port|8000] [route|/mcp] --endpoint [endpoint|http://127.0.0.1:8000/mcp]

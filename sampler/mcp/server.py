@@ -8,6 +8,7 @@ import secrets
 import socket
 import struct
 import threading
+from urllib.parse import urlsplit
 
 from fastmcp import FastMCP as _FastMCP
 from fastmcp.server.auth import TokenVerifier as _TokenVerifier
@@ -272,14 +273,35 @@ def gway(command: str):
     return _validate_result(parent.execute(command))
 
 
+def _endpoint_origin(endpoint, path):
+    if endpoint is None:
+        return None
+    parsed = urlsplit(str(endpoint))
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("MCP endpoint must be an absolute HTTP(S) URL")
+    endpoint_path = parsed.path or "/"
+    normalized_path = "/" + str(path).strip().strip("/")
+    if endpoint_path.rstrip("/") != normalized_path.rstrip("/"):
+        raise ValueError(
+            f"MCP endpoint path {endpoint_path!r} does not match local path "
+            f"{normalized_path!r}"
+        )
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def run_http(
     *,
     host="127.0.0.1",
     port=8000,
     path="/mcp",
+    endpoint=None,
     public_origin=None,
 ):
     """Run the GWAY MCP server over authenticated Streamable HTTP."""
+    if endpoint is not None and public_origin is not None:
+        raise ValueError("Use endpoint instead of public_origin, not both")
+    if endpoint is not None:
+        public_origin = _endpoint_origin(endpoint, path)
     _auth.configure(public_origin=public_origin, path=path)
     return mcp.run(
         transport="http",
@@ -293,6 +315,7 @@ def serve(
     host="127.0.0.1",
     port=8000,
     path="/mcp",
+    endpoint=None,
     public_origin=None,
 ):
     """Serve the maintained GWAY MCP endpoint until the supervisor stops it.
@@ -306,6 +329,7 @@ def serve(
         host=host,
         port=port,
         path=path,
+        endpoint=endpoint,
         public_origin=public_origin,
     )
 
@@ -319,6 +343,10 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--path", default="/mcp")
     parser.add_argument(
+        "--endpoint",
+        default=os.environ.get("GWAY_MCP_ENDPOINT"),
+    )
+    parser.add_argument(
         "--public-origin",
         default=os.environ.get("GWAY_MCP_PUBLIC_ORIGIN"),
     )
@@ -329,6 +357,7 @@ if __name__ == "__main__":
             host=args.host,
             port=args.port,
             path=args.path,
+            endpoint=args.endpoint,
             public_origin=args.public_origin,
         )
     else:
