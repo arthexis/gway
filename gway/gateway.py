@@ -195,6 +195,7 @@ class Gateway(Resolver):
         With no flags, return a detached snapshot of the current context.
         """
         from .publication import ResultOnlyMapping
+        from .semantic import resolve_mapping_key
 
         if not values:
             return ResultOnlyMapping(self.context)
@@ -202,9 +203,12 @@ class Gateway(Resolver):
         selected = {}
         for name, value in values.items():
             if value is True:
-                contextual = self.find_value(name, ...)
-                if contextual is not ...:
-                    value = contextual
+                try:
+                    key = resolve_mapping_key(self.context, name)
+                except KeyError:
+                    pass
+                else:
+                    value = self.context[key]
             selected[name] = value
         return ResultOnlyMapping(selected)
 
