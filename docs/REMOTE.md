@@ -21,12 +21,10 @@ separate reverse proxy exposes the public routes.
 
 ## Service lifecycle
 
-A systemd deployment can be installed with the ordinary service controller:
+A systemd deployment uses the ordinary service controller:
 
 ```text
-gway service install --backend systemd \
-  --environment GWAY_CACHE_DIR=/var/lib/gway/cache \
-  remote serve
+gway service install --backend systemd remote serve
 
 gway service start remote serve
 gway service status remote serve
@@ -34,16 +32,44 @@ gway service restart remote serve
 gway service stop remote serve
 ```
 
-The cache override is important for a system installation because OAuth links,
-grants, access tokens, refresh tokens, and named G-Way security policy live in:
+Gway-owned cache/data locations are semantic configuration, not service
+environment plumbing. A deployment that needs a shared cache location should
+configure `cache_dir` semantically, for example in the project's
+`pyproject.toml`:
+
+```toml
+[tool.gway.variables]
+cache_dir = "/var/lib/gway/cache"
+```
+
+Physical environment aliases such as `GWAY_CACHE_DIR` remain compatibility
+bindings, but service `--environment` should be reserved for literal
+environment contracts of the launched external program.
+
+OAuth links, grants, access tokens, refresh tokens, and named Gway security
+policy live under the Gateway-selected cache root at:
 
 ```text
-$GWAY_CACHE_DIR/security/state.sqlite
+<cache_dir>/security/state.sqlite
 ```
 
 That database is outside replaceable application code and outside the generated
-systemd unit. Reinstalling the service or upgrading G-Way therefore does not
+systemd unit. Reinstalling the service or upgrading Gway therefore does not
 reissue or discard OAuth state.
+
+Remote/MCP configuration follows the same topic hierarchy as other semantic
+values. With active topics `remote` and `mcp`, a subject such as
+`endpoint` may resolve through:
+
+```text
+remote.mcp.endpoint
+mcp.remote.endpoint
+mcp.endpoint
+remote.endpoint
+endpoint
+```
+
+This is the generic topic algorithm, not a Remote-specific resolver.
 
 For another deployment origin or protected-resource path, pass the normal
 `remote serve` arguments through service management, for example:
