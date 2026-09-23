@@ -574,41 +574,69 @@ same fundamental state transition intended
 
 This is one of the central composition principles of Gway.
 
-### Environment as both subject and operation
+### Env, environ, and environment
 
-`env` illustrates why the operation-subject distinction does not require every
-command to contain two words.
+`env` is a useful example of one surface word carrying both an operation and a
+subject, but the two semantic roles are not identical.
 
-An environment supplies external information and constraints to execution.
+The full English word **environment** is historically related to **environ**:
+to surround or encircle. The noun describes the surrounding conditions in which
+something exists or executes.
 
-Therefore the standalone operation:
+Gway uses that distinction directly:
+
+```text
+operation: env     # semantically: environ
+subject:   env     # semantically: environment
+```
+
+The operation is verbal. To `env` is to make the effective environment that
+already surrounds an execution observable to Gway.
+
+The subject is nominal. The environment is the surrounding execution state itself.
+
+This is not equivalent to getting an environment. The environment already exists
+as part of the execution context whether or not the `env` operation is invoked.
+Child processes and other execution within that scope may already consume that
+environment without Gway first retrieving or activating it.
+
+Therefore:
 
 ```text
 env
 ```
 
-can reasonably be understood as:
-
-```text
-operation: env
-subject:   env
-```
-
-Executing it exposes or reveals the current environment.
-
-More specialized forms can then distinguish another operation applied to that
-subject:
+does not mean:
 
 ```text
 get env
-set env
 ```
 
-or allow further semantic information to select a narrower interpretation.
+It means, conceptually:
 
-The one-word form is therefore not an arbitrary convenience command. It represents
-the case where the concept itself naturally supplies both the action and the
-subject of that action.
+```text
+environ environment
+```
+
+with both roles compressed into the conventional technical spelling `env`.
+
+Executing `env` makes the effective surrounding conditions visible as an
+observable Gway result. It does not create the environment and does not make the
+environment begin applying.
+
+More specialized operations may still act upon the environment explicitly:
+
+```text
+get env [name]
+set env [name] [value]
+```
+
+but those operations have different meanings from the standalone `env`
+operation.
+
+This distinction also illustrates why a one-word command is not subjectless. The
+surface token can encode a verbal operation and its corresponding nominal subject
+at the same time.
 
 ## Relationship between Operation and Subject
 
