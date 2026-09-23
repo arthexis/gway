@@ -214,3 +214,33 @@ def test_pipe_result_can_feed_next_operation_without_context_leak(gateway):
 
     assert gateway("pipe --site MTY - inspect") == "MTY"
     assert "site" not in gateway.context
+
+
+def test_default_publishes_flags_into_context_without_result(gateway):
+    gateway.context.clear()
+    history_size = len(gateway.results.history)
+
+    gateway("default --site MTY --enabled")
+
+    assert gateway.context == {"site": "MTY", "enabled": True}
+    assert len(gateway.results.history) == history_size
+
+
+def test_default_overrides_existing_context_values(gateway):
+    gateway.context.clear()
+    gateway.context.update({"site": "MTY", "keep": 1})
+
+    gateway("default --site GDL")
+
+    assert gateway.context == {"site": "GDL", "keep": 1}
+
+
+def test_default_with_no_flags_is_context_noop(gateway):
+    gateway.context.clear()
+    gateway.context["site"] = "MTY"
+    history_size = len(gateway.results.history)
+
+    gateway("default")
+
+    assert gateway.context == {"site": "MTY"}
+    assert len(gateway.results.history) == history_size
