@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
 import secrets
 import socket
@@ -10,7 +11,6 @@ import threading
 from urllib.parse import urlsplit
 
 from fastmcp import FastMCP as _FastMCP
-from gway.environment import process_environment
 from fastmcp.server.auth import TokenVerifier as _TokenVerifier
 from fastmcp.server.auth.auth import AccessToken as _AccessToken
 from fastmcp.server.dependencies import get_http_headers as _get_http_headers
@@ -25,7 +25,7 @@ class _GwayTokenVerifier(_TokenVerifier):
 
     def __init__(self):
         super().__init__(
-            base_url=process_environment.get(
+            base_url=os.environ.get(
                 "GWAY_MCP_PUBLIC_ORIGIN",
                 _DEFAULT_PUBLIC_ORIGIN,
             )
@@ -110,9 +110,9 @@ class _SocketParentGateway:
     """Parent-Gateway proxy used by a standalone stdio MCP subprocess."""
 
     def __init__(self):
-        self.host = process_environment[_CALLBACK_ENV[0]]
-        self.port = int(process_environment[_CALLBACK_ENV[1]])
-        self.token = process_environment[_CALLBACK_ENV[2]]
+        self.host = os.environ[_CALLBACK_ENV[0]]
+        self.port = int(os.environ[_CALLBACK_ENV[1]])
+        self.token = os.environ[_CALLBACK_ENV[2]]
 
     def _request(self, method, **params):
         with socket.create_connection((self.host, self.port), timeout=10) as stream:
@@ -152,7 +152,7 @@ def _parent():
     injected = globals().get("_gway_parent")
     if injected is not None:
         return injected
-    if all(process_environment.get(name) for name in _CALLBACK_ENV):
+    if all(os.environ.get(name) for name in _CALLBACK_ENV):
         return _SocketParentGateway()
     raise RuntimeError("GWAY parent bridge is not configured")
 
@@ -344,11 +344,11 @@ if __name__ == "__main__":
     parser.add_argument("--path", default="/mcp")
     parser.add_argument(
         "--endpoint",
-        default=process_environment.get("GWAY_MCP_ENDPOINT"),
+        default=os.environ.get("GWAY_MCP_ENDPOINT"),
     )
     parser.add_argument(
         "--public-origin",
-        default=process_environment.get("GWAY_MCP_PUBLIC_ORIGIN"),
+        default=os.environ.get("GWAY_MCP_PUBLIC_ORIGIN"),
     )
     args = parser.parse_args()
 
