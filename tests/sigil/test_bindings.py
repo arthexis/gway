@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from gway.bindings import env, file
+from gway.bindings import env, file, secret
 
 
 def test_multiple_environment_aliases_use_declared_order(gateway, monkeypatch):
@@ -106,3 +106,39 @@ def test_physical_binding_respects_order_insensitive_topics(gateway, monkeypatch
 
     with gateway.topics("godaddy", "dns"):
         assert gateway.resolve("[api_key]") == "bound"
+
+
+
+def test_secret_binding_uses_configured_root_and_marks_resolution_sensitive(
+    gateway, monkeypatch, tmp_path
+):
+    root = tmp_path / "secrets"
+    target = root / "service" / "vendor" / "token"
+    target.parent.mkdir(parents=True)
+    target.write_text("sensitive-value\n", encoding="utf-8")
+    monkeypatch.setenv("GWAY_SECRETS_DIR", str(root))
+    gateway.bind("service.vendor.token", secret("service/vendor/token"))
+
+    with gateway.topics("service", "vendor"):
+        assert gateway.resolve("[token]") == "sensitive-value"
+
+    resolution = gateway.bindings.resolution("service.vendor.token")
+    assert resolution.sensitive is True
+    assert resolution.source == "secret:service/vendor/token"
+
+
+def test_sensitive_environment_binding_preserves_provenance(
+    gateway, monkeypatch
+):
+    monkeypatch.setenv("VENDOR_TOKEN", "sensitive-value")
+    gateway.bind(
+        "service.vendor.token",
+        env("VENDOR_TOKEN", sensitive=True),
+    )
+
+    with gateway.topics("service", "vendor"):
+        assert gateway.resolve("[token]") == "sensitive-value"
+
+    resolution = gateway.bindings.resolution("service.vendor.token")
+    assert resolution.sensitive is True
+    assert resolution.source == "env:VENDOR_TOKEN"
