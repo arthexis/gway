@@ -278,3 +278,49 @@ def test_pyproject_binding_rejects_invalid_sources(
 
     with pytest.raises(ValueError, match=message):
         Gateway()
+
+
+def test_pyproject_secret_binding_uses_secrets_backend(tmp_path, monkeypatch):
+    root = tmp_path / "secrets"
+    target = root / "service" / "vendor" / "token"
+    target.parent.mkdir(parents=True)
+    target.write_text("from-secret-backend\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n'
+        '[[tool.gway.bindings]]\n'
+        'topics = ["service", "vendor"]\n'
+        'subject = "token"\n'
+        'sources = [{type = "secret", value = "service/vendor/token"}]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GWAY_SECRETS_DIR", str(root))
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    with runtime.topics("vendor", "service"):
+        assert runtime.resolve("[token]") == "from-secret-backend"
+
+
+def test_project_binding_can_replace_provider_defaults(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n'
+        '[[tool.gway.bindings]]\n'
+        'topics = ["dns", "godaddy"]\n'
+        'subject = "api_key"\n'
+        'replace = true\n'
+        'sources = [{type = "env", value = "PROJECT_GODADDY_KEY", sensitive = true}]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROJECT_GODADDY_KEY", "project-key")
+    monkeypatch.setenv("GODADDY_API_KEY", "provider-default")
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    with runtime.topics("dns", "godaddy"):
+        assert runtime.resolve("[api_key]") == "project-key"
