@@ -20,9 +20,20 @@ def definition(launchable, *, state_root):
 
 
 def register(runtime):
-    """Expose remote.serve and attach its stable service identity."""
+    """Expose remote operations and attach the server's stable service identity."""
+    from .acceptance import accept
     from .server import serve
 
+    runtime.wrap(
+        "remote.accept",
+        lambda resource, protocol=None: accept(
+            runtime,
+            resource,
+            protocol=protocol,
+        ),
+        op="accept",
+        sub="remote",
+    )
     runtime.wrap(
         "remote.serve",
         serve,
