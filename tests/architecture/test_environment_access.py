@@ -1,9 +1,6 @@
 import ast
 from pathlib import Path
 
-from gway.environment import TRANSITIONAL_DIRECT_ENVIRONMENT_FILES
-
-
 ROOT = Path(__file__).resolve().parents[2]
 ALLOWED = {ROOT / 'gway' / 'environment.py'}
 
@@ -42,7 +39,7 @@ def test_direct_process_environment_access_is_centralized():
     violations = []
     for root_name in ('gway', 'sampler'):
         for path in sorted((ROOT / root_name).rglob('*.py')):
-            if path in ALLOWED or tuple(path.relative_to(ROOT).parts) in TRANSITIONAL_DIRECT_ENVIRONMENT_FILES:
+            if path in ALLOWED:
                 continue
             for lineno, expression in _environment_accesses(path):
                 violations.append(
@@ -53,3 +50,10 @@ def test_direct_process_environment_access_is_centralized():
         'Direct process-environment access must go through gway.environment:\n'
         + '\n'.join(violations)
     )
+
+
+
+def test_transitional_direct_environment_inventory_is_empty():
+    from gway.environment import TRANSITIONAL_DIRECT_ENVIRONMENT_FILES
+
+    assert TRANSITIONAL_DIRECT_ENVIRONMENT_FILES == frozenset()
