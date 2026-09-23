@@ -283,3 +283,89 @@ def test_sync_rejects_newline_package_specs(
             tmp_path / "uv",
             ["fastmcp\nmalicious"],
         )
+
+
+
+def test_set_env_is_visible_to_following_recipe_operations_and_restored(
+    gateway, recipe_factory, monkeypatch
+):
+    monkeypatch.setenv("GWAY_SCOPED_TEST", "parent")
+
+    def probe():
+        import os
+
+        return os.environ.get("GWAY_SCOPED_TEST")
+
+    gateway.wrap("environment probe", probe)
+    recipe = recipe_factory(
+        body=(
+            "set env GWAY_SCOPED_TEST recipe\n"
+            "environment probe\n"
+        )
+    )
+
+    assert gateway(recipe) == "recipe"
+    assert probe() == "parent"
+
+
+def test_set_env_child_recipe_inherits_and_nested_override_does_not_leak(
+    gateway, recipe_factory, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("GWAY_SCOPED_TEST", "parent")
+
+    def probe():
+        import os
+
+        return os.environ.get("GWAY_SCOPED_TEST")
+
+    gateway.wrap("environment probe", probe)
+    root = tmp_path / "recipes"
+    child = recipe_factory(
+        name="child",
+        root=root,
+        body=(
+            "environment probe\n"
+            "set env GWAY_SCOPED_TEST child\n"
+            "environment probe\n"
+        ),
+    )
+    parent = recipe_factory(
+        name="parent",
+        root=root,
+        body=(
+            "set env GWAY_SCOPED_TEST outer\n"
+            "./child.rx\n"
+            "environment probe\n"
+        ),
+    )
+
+    gateway(parent)
+
+    assert probe() == "parent"
+
+
+def test_clear_env_is_scoped_and_restores_parent_value(
+    gateway, recipe_factory, monkeypatch
+):
+    monkeypatch.setenv("GWAY_SCOPED_TEST", "parent")
+
+    def probe():
+        import os
+
+        return os.environ.get("GWAY_SCOPED_TEST")
+
+    gateway.wrap("environment probe", probe)
+    recipe = recipe_factory(
+        body=(
+            "clear env GWAY_SCOPED_TEST\n"
+            "environment probe\n"
+        )
+    )
+
+    assert gateway(recipe) is None
+    assert probe() == "parent"
+
+
+def test_set_env_requires_active_recipe(gateway):
+    with pytest.raises(RuntimeError, match="only available during recipe execution"):
+        gateway("set env GWAY_SCOPED_TEST value")
