@@ -114,3 +114,28 @@ def test_literal_environment_builtins_use_interoperability_facade():
     assert _direct_environment_dependencies(path) == []
     text = path.read_text(encoding="utf-8")
     assert "from .interop import environment as literal_environment" in text
+
+
+
+def test_operation_dependency_check_detects_direct_environment_symbol(tmp_path):
+    path = tmp_path / "operation.py"
+    path.write_text(
+        "from gway.environment import process_environment\n"
+        "def deploy():\n"
+        "    return process_environment.get('VALUE')\n",
+        encoding="utf-8",
+    )
+
+    assert _direct_environment_dependencies(path, function_name="deploy")
+
+
+def test_operation_dependency_check_ignores_semantic_binding_dependency(tmp_path):
+    path = tmp_path / "provider.py"
+    path.write_text(
+        "from gway.bindings import env\n"
+        "def register(gateway):\n"
+        "    gateway.bind('demo.value', env('DEMO_VALUE'))\n",
+        encoding="utf-8",
+    )
+
+    assert _direct_environment_dependencies(path, function_name="register") == []
