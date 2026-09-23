@@ -26,14 +26,7 @@ BACKEND_ENVIRONMENT = frozenset(
 
 INTEROP_ENVIRONMENT = frozenset({"DJANGO_SETTINGS_MODULE"})
 
-TRANSITIONAL_SEMANTIC_ENVIRONMENT = frozenset(
-    {
-        "GWAY_BIN_DIR",
-        "GWAY_DATA_DIR",
-        "GWAY_SYSTEM_BIN_DIR",
-        "GWAY_SYSTEM_DATA_DIR",
-    }
-)
+TRANSITIONAL_SEMANTIC_ENVIRONMENT = frozenset()
 
 
 class ProcessEnvironment(Mapping):
