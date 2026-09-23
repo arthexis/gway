@@ -295,3 +295,21 @@ def test_process_backend_applies_service_environment(tmp_path, monkeypatch):
 
     assert environment["GWAY_CACHE_DIR"] == "/var/lib/gway/cache"
     assert environment["GWAY_LOG_SOURCE"] == "demo/worker"
+
+
+def test_process_backend_preserves_literal_legacy_environment_contract(
+    tmp_path, monkeypatch
+):
+    launchable = Launchable.operation("demo.worker", root=tmp_path)
+    service = Service.from_launchable(
+        "demo",
+        "worker",
+        tmp_path,
+        launchable,
+        environment=("VENDOR_LEGACY_MODE=compatible",),
+    )
+    monkeypatch.setenv("VENDOR_LEGACY_MODE", "host-default")
+
+    environment = ProcessBackend._environment(service)
+
+    assert environment["VENDOR_LEGACY_MODE"] == "compatible"
