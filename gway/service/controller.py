@@ -254,7 +254,6 @@ class Controller:
         )
 
         from ..install.service import get as get_backend
-        from ..install.paths import install_paths
 
         selected = get_backend(backend)
         paths = self.gateway.install_paths(system=system)
