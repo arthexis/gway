@@ -15,7 +15,7 @@ def test_gateway_snapshots_running_identity_once(monkeypatch):
     )
     calls = []
 
-    def identify():
+    def identify(**kwargs):
         calls.append(len(calls))
         return initial if len(calls) == 1 else later
 
@@ -34,7 +34,7 @@ def test_gateway_snapshots_running_identity_once(monkeypatch):
 def test_gateway_identity_is_none_for_unmanaged_runtime(monkeypatch):
     monkeypatch.setattr(
         "gway.install.identity.running_gway_identity",
-        lambda: None,
+        lambda **kwargs: None,
     )
 
     gateway = Gateway()
