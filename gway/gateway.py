@@ -6,6 +6,7 @@ import inspect
 import threading
 
 from .runner import invoke
+from .bindings import Bindings
 from . import log as gway_log
 from .normalization import complete_arguments
 from .environment import process_environment
@@ -37,6 +38,7 @@ class Gateway(Resolver):
     ):
         self.name = name
         self.environment = process_environment
+        self.bindings = Bindings()
         self.logger = gway_log._child(name, level=log_level)
         for level_name, level in gway_log._levels(self.logger).items():
             setattr(self, level_name, level)
@@ -100,6 +102,7 @@ class Gateway(Resolver):
             [
                 ("results", self.results),
                 ("context", self.context),
+                ("bindings", self.bindings),
                 (
                     "env",
                     Environment(
@@ -165,6 +168,10 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    def bind(self, semantic_key, *bindings):
+        """Register ordered physical bindings for one exact semantic key."""
+        return self.bindings.register(semantic_key, *bindings)
 
     @property
     def semantic_topics(self):
