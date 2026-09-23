@@ -41,6 +41,7 @@ def _write_message(stream, value):
 _WORKER = r"""
 import importlib.util
 import inspect
+import os
 import pickle
 from pathlib import Path
 import struct
