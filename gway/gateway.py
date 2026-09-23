@@ -8,6 +8,7 @@ import threading
 from .runner import invoke
 from . import log as gway_log
 from .normalization import complete_arguments
+from .environment import process_environment
 from .operations import registry_views, split_operation
 from .publication import publish
 from .sigil import Resolver
@@ -35,6 +36,7 @@ class Gateway(Resolver):
         **values,
     ):
         self.name = name
+        self.environment = process_environment
         self.logger = gway_log._child(name, level=log_level)
         for level_name, level in gway_log._levels(self.logger).items():
             setattr(self, level_name, level)
@@ -330,10 +332,8 @@ class Gateway(Resolver):
         return frames[-1]
 
     def _remember_environment_value(self, frame, name):
-        import os
-
         if name not in frame.environment_restore:
-            frame.environment_restore[name] = os.environ.get(name)
+            frame.environment_restore[name] = self.environment.get(name)
 
     def _set_environment(self, name, value):
         """Set one environment variable for the active recipe scope.
@@ -345,8 +345,6 @@ class Gateway(Resolver):
             name: Environment variable name.
             value: Environment variable value.
         """
-        import os
-
         frame = self._active_recipe_frame()
         name = str(name).strip()
         if not name or "=" in name or "\x00" in name:
@@ -355,7 +353,7 @@ class Gateway(Resolver):
         if "\x00" in value:
             raise ValueError("environment variable value cannot contain NUL")
         self._remember_environment_value(frame, name)
-        os.environ[name] = value
+        self.environment.set(name, value)
         return value
 
     def _clear_environment(self, name):
@@ -366,14 +364,12 @@ class Gateway(Resolver):
         Args:
             name: Environment variable name.
         """
-        import os
-
         frame = self._active_recipe_frame()
         name = str(name).strip()
         if not name or "=" in name or "\x00" in name:
             raise ValueError("environment variable name must be non-empty and contain no '='")
         self._remember_environment_value(frame, name)
-        os.environ.pop(name, None)
+        self.environment.remove(name)
         return None
 
     def _require(self, *packages: str, python: bool = True):
@@ -634,17 +630,15 @@ class Gateway(Resolver):
 
     def _environment_names(self):
         """Return only environment names visible to the active authority."""
-        import os
-
         authority = self.authorization
         if authority is None or self._capability_depth:
-            return tuple(os.environ)
+            return self.environment.names()
         allowed = authority.environment
         if allowed is None:
             return ()
         if "__all__" in allowed:
-            return tuple(os.environ)
-        return tuple(name for name in allowed if name in os.environ)
+            return self.environment.names()
+        return tuple(name for name in allowed if name in self.environment)
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command through the unified dispatcher."""
