@@ -12,7 +12,7 @@ import os
 # Transitional literal configuration reads consolidated during E1. E8 must drive
 # this inventory to empty rather than treating this module as a permanent escape
 # hatch for semantic configuration.
-TRANSITIONAL_DIRECT_ENVIRONMENT_FILES = frozenset({("sampler", "mcp", "server.py")})
+TRANSITIONAL_DIRECT_ENVIRONMENT_FILES = frozenset()
 
 BACKEND_ENVIRONMENT = frozenset(
     {
