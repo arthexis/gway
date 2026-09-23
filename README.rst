@@ -14,11 +14,17 @@ applications follow the business.**
 Quick start
 -----------
 
-Install GWAY:
+Install GWAY with Python 3.13 or newer:
 
 .. code-block:: bash
 
-   python -m pip install gway
+   python3.13 -m pip install gway
+
+Python 3.10 needs the TOML compatibility extra:
+
+.. code-block:: bash
+
+   python3.10 -m pip install "gway[toml]"
 
 Then run an operation:
 
@@ -53,6 +59,10 @@ cannot express the intent.
 Managed installations keep their installation state separately from the source
 checkout and disposable cache.
 
+See `docs/PROJECTS.md <https://github.com/arthexis/gway/blob/main/docs/PROJECTS.md>`_
+for the complete project-discovery contract and every project-level attribute
+GWAY currently reads.
+
 Recipes
 -------
 
@@ -67,7 +77,7 @@ for readable orchestration rather than as a replacement for Python.
 
 Advanced recipe behavior—including sigils, companion Python files, nested
 recipes, checks, repeat, rollback journals, reload/process handoff, and execution boundaries—is
-documented in ``docs/RECIPES.md``.
+documented in `docs/RECIPES.md <https://github.com/arthexis/gway/blob/main/docs/RECIPES.md>`_.
 
 Logging
 -------
@@ -84,27 +94,38 @@ files:
 
 Journald is used automatically when available. Otherwise GWAY uses structured
 rotating files. With no source argument, reads remain limited to GWAY-managed
-sources rather than the entire host journal. See ``docs/LOGGING.md`` for the
-source model, backend behavior, and portable query semantics.
+sources rather than the entire host journal. See
+`docs/LOGGING.md <https://github.com/arthexis/gway/blob/main/docs/LOGGING.md>`_
+for the source model, backend behavior, and portable query semantics.
 
 Documentation
 -------------
 
-- ``docs/RECIPES.md`` — complete recipe language and execution semantics.
-- ``docs/PLATFORM.md`` — GWAY's platform/application ownership boundary.
-- ``docs/LOGGING.md`` — unified logging sources, queries, and backend policy.
-- ``docs/MCP.md`` — MCP transport, authorization, token/scope, and deployment model.
-- ``docs/README.md`` — documentation index.
-- ``AGENTS.md`` — maintainer and automation guidance.
+- `docs/PROJECTS.md <https://github.com/arthexis/gway/blob/main/docs/PROJECTS.md>`_ — project discovery, standard metadata, GWAY variables, and Sous Chef attributes.
+- `docs/RECIPES.md <https://github.com/arthexis/gway/blob/main/docs/RECIPES.md>`_ — complete recipe language and execution semantics.
+- `docs/PLATFORM.md <https://github.com/arthexis/gway/blob/main/docs/PLATFORM.md>`_ — GWAY's platform/application ownership boundary.
+- `docs/LOGGING.md <https://github.com/arthexis/gway/blob/main/docs/LOGGING.md>`_ — unified logging sources, queries, and backend policy.
+- `docs/MCP.md <https://github.com/arthexis/gway/blob/main/docs/MCP.md>`_ — MCP transport, authorization, token/scope, and deployment model.
+- `docs/README.md <https://github.com/arthexis/gway/blob/main/docs/README.md>`_ — documentation index.
+- `GLOSSARY.md <https://github.com/arthexis/gway/blob/main/GLOSSARY.md>`_ — canonical GWAY terminology.
+- `AGENTS.md <https://github.com/arthexis/gway/blob/main/AGENTS.md>`_ — maintainer and automation guidance.
 
 Development
 -----------
 
-Install the active checkout with development tools:
+Install the active checkout with development tools.
+
+With Python 3.13 or newer:
 
 .. code-block:: bash
 
-   python -m pip install -e ".[dev,toml]"
+   python3.13 -m pip install -e ".[dev]"
+
+With Python 3.10, include the TOML compatibility extra:
+
+.. code-block:: bash
+
+   python3.10 -m pip install -e ".[dev,toml]"
 
 Run the test and quality suites:
 
