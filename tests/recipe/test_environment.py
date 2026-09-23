@@ -313,14 +313,18 @@ def test_set_env_child_recipe_inherits_and_nested_override_does_not_leak(
 ):
     monkeypatch.setenv("GWAY_SCOPED_TEST", "parent")
 
+    seen = []
+
     def probe():
         import os
 
-        return os.environ.get("GWAY_SCOPED_TEST")
+        value = os.environ.get("GWAY_SCOPED_TEST")
+        seen.append(value)
+        return value
 
     gateway.wrap("environment probe", probe)
     root = tmp_path / "recipes"
-    child = recipe_factory(
+    recipe_factory(
         name="child",
         root=root,
         body=(
@@ -341,6 +345,7 @@ def test_set_env_child_recipe_inherits_and_nested_override_does_not_leak(
 
     gateway(parent)
 
+    assert seen == ["outer", "child", "outer"]
     assert probe() == "parent"
 
 
