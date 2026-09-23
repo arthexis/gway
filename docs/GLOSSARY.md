@@ -223,6 +223,10 @@ If changing the supposed subject also changes what the verb fundamentally means,
 the model may actually contain multiple operations that happen to share an English
 word.
 
+Operations are not topic-scoped. Topics classify subjects, not operations. An
+operation remains available across any topics in which a compatible subject may
+appear.
+
 ### Operation versus implementation
 
 An operation defines semantic intent.
@@ -521,31 +525,45 @@ operation, but the semantic roles remain different.
 
 ### Subject and topic
 
-Early versions of Gway used **topic** where Gway now uses **subject**. The two
-concepts are useful, but they operate at different levels.
+A subject is the specific semantic entity an operation is about. A topic is an
+independent semantic category to which that subject belongs.
 
-A subject is the most specific entity an operation is about. A topic is a broader
-semantic grouping that may contain or organize multiple related subjects.
+A subject may belong to any number of topics, and those topics do not form a
+semantic hierarchy. Topic membership can organize, group, and disambiguate
+subjects without becoming part of the subject itself.
+
+Prefer the smallest expression that preserves the subject's complete semantic
+identity. A modifier belongs in a topic when removing it leaves the same kind of
+subject and merely removes categorization or context. A modifier remains part of
+the subject when removing it changes what entity the subject denotes.
+
+For example:
 
 ```text
-topic
-    a broader domain or collection of related subjects
-
-subject
-    the most specific entity about which this operation is being performed
+operation: read
+subject:   log
+topics:    Arthexis, remote, MCP
 ```
 
-The sampler is an existing example of something that can be understood as a topic:
-it groups related subjects without itself replacing their more specific semantic
-identities.
+Here `Arthexis`, `remote`, and `MCP` qualify the subject without changing the
+fact that the subject is a log.
 
-Changing topic may imply entering another conceptual domain or collection of
-subjects. Changing subject should allow the operation itself to remain semantically
-stable.
+By contrast:
 
-This glossary does not yet define `topic` as a foundational term; the distinction
-is recorded here so that the word remains available for that broader role rather
-than being reused as a synonym for `subject`.
+```text
+subject: API key
+```
+
+should not normally be reduced to:
+
+```text
+subject: key
+topic:   API
+```
+
+because `API key` is a distinct semantic entity from a generic `key`.
+
+See **Topic** for the complete topic model.
 
 ### Subject specialization
 
@@ -637,6 +655,266 @@ operation.
 This distinction also illustrates why a one-word command is not subjectless. The
 surface token can encode a verbal operation and its corresponding nominal subject
 at the same time.
+
+## Topic
+
+A **topic** is an independent semantic category that qualifies, groups, organizes,
+or disambiguates a subject without becoming part of that subject's intrinsic
+identity.
+
+Topics classify subjects. They do not classify operations.
+
+For example:
+
+```text
+operation: read
+subject:   log
+topics:    Arthexis, remote, MCP
+```
+
+The subject is `log`. The topics provide additional semantic context about that
+subject.
+
+### A subject may have multiple topics
+
+Topic membership is many-to-many.
+
+A subject may belong to several topics at the same time:
+
+```text
+subject: log
+topics:  Arthexis, remote, MCP
+```
+
+None of those topics contains the others. The subject belongs independently and
+equally to each applicable topic.
+
+Likewise, one topic may classify many different subjects.
+
+### Topics are not hierarchical
+
+Gway does not assign semantic meaning to a hierarchy between topics.
+
+An implementation may use directories, modules, objects, namespaces, or another
+hierarchical representation for practical reasons, but that implementation
+structure does not make the topics themselves hierarchical.
+
+Conceptually:
+
+```text
+topics: remote, MCP
+```
+
+does not mean:
+
+```text
+remote
+    └── MCP
+```
+
+and it does not mean:
+
+```text
+MCP
+    └── remote
+```
+
+The subject belongs to both topics independently.
+
+Implementation structure must not leak into semantic meaning.
+
+### Topic order must not change meaning
+
+Topics behave semantically like an unordered set, even when an implementation
+must inspect or resolve them in some order.
+
+Therefore:
+
+```text
+remote MCP
+MCP remote
+```
+
+should represent the same topic membership when they otherwise refer to the same
+subject and operation.
+
+There may be implementation-level priority rules used while searching for,
+combining, or resolving implementations. Those rules are implementation details;
+they must not create different semantic meanings for the same set of topics.
+
+An architecture in which `remote MCP` implements substantially different behavior
+from `MCP remote` is generally a code smell. If the two forms genuinely require
+different semantics, some distinction other than topic ordering is probably
+missing and should be represented explicitly.
+
+### Topics organize, group, and disambiguate subjects
+
+Topics provide useful context around subjects.
+
+They can organize related subjects, associate subjects that belong to the same
+semantic domain, and disambiguate a subject whose meaning would otherwise be
+unclear.
+
+For example:
+
+```text
+subject: log
+topics:  Arthexis, remote
+```
+
+still describes a log. The topics tell Gway more about which log and in what
+semantic context it participates.
+
+Topics may therefore help discovery, adapters, recipes, documentation, or
+implementation selection without becoming part of the subject itself.
+
+### Prefer the smallest semantically complete subject
+
+Subjects should usually be expressed as the smallest term that preserves their
+complete semantic identity.
+
+For example:
+
+```text
+subject: log
+topic:   Arthexis
+```
+
+is preferable to treating `Arthexis log` as a compound subject when `Arthexis`
+only categorizes whose or which domain's log is involved.
+
+This is not a rule that subjects must contain one word.
+
+A compound expression remains a single subject when the compound itself names a
+distinct semantic entity:
+
+```text
+subject: API key
+```
+
+An `API key` is not merely a generic `key` placed under an `API` topic if
+removing `API` changes what entity the subject denotes.
+
+A useful test is:
+
+> A modifier belongs in a topic when removing it leaves the same kind of subject
+> and merely removes categorization or context. A modifier remains part of the
+> subject when removing it changes the subject's semantic identity.
+
+### A subject is not implicitly listed as its own topic
+
+A subject can trivially be understood as belonging to a category named after
+itself, but that relationship is normally tautological.
+
+For example:
+
+```text
+subject: log
+topic:   log
+```
+
+is logically possible, but it usually adds no useful semantic information. The
+subject already establishes that the operation is about a log.
+
+Gway therefore does not treat every subject as implicitly having a same-named
+topic, and implementations should not manufacture such topic membership merely
+because it is technically true.
+
+Topics should contribute semantic information beyond the identity already supplied
+by the subject.
+
+This is not an absolute prohibition. The same word may legitimately occur as both
+subject and topic when those roles arise independently and the topic membership
+has semantic value. The rule is not to create topic membership merely by repeating
+the subject.
+
+### Topics classify subjects, not operations
+
+Operations are never grouped into topics.
+
+An operation describes an action or effect that may be meaningful across many
+different subjects:
+
+```text
+read log
+read file
+read socket
+read configuration
+```
+
+The operation remains `read`.
+
+Each subject may belong to its own set of topics, but `read` itself is not a
+member of those topics.
+
+For example:
+
+```text
+operation: read
+subject:   log
+topics:    Arthexis, remote
+```
+
+and:
+
+```text
+operation: read
+subject:   file
+topics:    configuration, local
+```
+
+use the same operation in different semantic contexts.
+
+Grouping `read` under any of those topics would incorrectly suggest that the
+operation is limited to that domain. An operation should apply to any subject for
+which its semantic effect is coherent.
+
+A useful invariant is:
+
+> Subjects may belong to topics. Operations do not.
+
+### Topic membership is semantic, not structural
+
+A topic should be assigned because a subject meaningfully belongs to that category,
+not merely because its implementation happens to live inside a particular module,
+directory, class, or object.
+
+For example, an implementation layout might contain:
+
+```text
+remote/
+    mcp/
+        ...
+```
+
+That structure may be convenient, but semantically it should still be understood
+as:
+
+```text
+topics: remote, MCP
+```
+
+rather than as a topic path.
+
+If the implementation were reorganized as:
+
+```text
+mcp/
+    remote/
+        ...
+```
+
+the semantic interpretation should remain unchanged.
+
+A useful invariant is:
+
+```text
+same operation
+same subject
+same set of topics
+different topic ordering or implementation layout
+same semantic meaning
+```
 
 ## Relationship between Operation and Subject
 
