@@ -644,11 +644,12 @@ def capture_reload_checkpoint(
     )
 
 
-def default_resume_command():
+def default_resume_command(runtime=None):
     """Return the managed GWAY launcher when available, else this interpreter."""
     from .install.paths import install_paths
 
-    launcher = install_paths().bin / "gway"
+    paths = install_paths() if runtime is None else runtime.install_paths()
+    launcher = paths.bin / "gway"
     if launcher.is_file():
         return [str(launcher)]
     return [sys.executable, "-m", "gway"]
@@ -744,7 +745,7 @@ def perform_reload(
         if target is None:
             from .install.identity import managed_gway_identity
 
-            target = managed_gway_identity()
+            target = managed_gway_identity(paths=runtime.install_paths())
         if target is None:
             raise ReloadError(
                 "Cannot evaluate reload --when changed: "
@@ -785,7 +786,9 @@ def perform_reload(
             source_identity=source_diagnostic,
             target_identity=target_diagnostic,
         )
-    selected = default_resume_command() if command is None else list(command)
+    if store is None:
+        store = ReloadStore(runtime.data_root() / "reload")
+    selected = default_resume_command(runtime) if command is None else list(command)
     process, handoff_checkpoint = handoff(
         runtime,
         checkpoint,
@@ -917,7 +920,11 @@ def resume_frames(runtime, checkpoint):
 
 def resume(checkpoint_id, *, store=None):
     """Adopt one suspended reload checkpoint and continue its recipe frames."""
-    store = ReloadStore() if store is None else store
+    if store is None:
+        from .gateway import Gateway
+
+        locator = Gateway()
+        store = ReloadStore(locator.data_root() / "reload")
     checkpoint = store.claim(checkpoint_id)
     runtime = None
     try:
