@@ -52,6 +52,56 @@ exist in that relevant place or context before.
 If an implementation called `create` does not bring about that kind of state
 transition, then it is not semantically implementing the `create` operation.
 
+### An operation is always verbal
+
+An operation is always **verbal in semantic role**: it describes an action, effect,
+or attempted state transition.
+
+This does not require the token naming the operation to already be a conventional
+English verb.
+
+For example:
+
+```text
+create user
+start service
+cook rice
+```
+
+use words that are plainly verbal.
+
+Other Gway words can occupy both operation and subject roles:
+
+```text
+log
+check
+```
+
+English already permits both verbal and nominal readings for these words.
+
+Some operations may use a word that is primarily nominal in ordinary English:
+
+```text
+env
+```
+
+In that case Gway gives the word an operational reading. The command is still
+semantically verbal because executing it performs an effect associated with the
+environment, such as exposing or constraining execution through environmental
+state.
+
+A useful naming test is therefore not merely:
+
+> Is this word an English verb?
+
+but:
+
+> What does it mean to perform this operation?
+
+If a proposed operation name cannot describe a coherent action or state
+transition, it is more likely naming a subject, topic, or other semantic role than
+an operation.
+
 ### Operations are effectful
 
 A Gway operation always produces an observable effect.
