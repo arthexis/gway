@@ -69,6 +69,10 @@ class Gateway(Resolver):
             f"gway_capability_depth_{id(self)}",
             default=0,
         )
+        self._semantic_topics_var = ContextVar(
+            f"gway_semantic_topics_{id(self)}",
+            default=(),
+        )
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
@@ -161,6 +165,23 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    @property
+    def semantic_topics(self):
+        """Return execution-local semantic topics from broadest to most-local."""
+        return self._semantic_topics_var.get()
+
+    @contextmanager
+    def topics(self, *topics):
+        """Temporarily extend the semantic topics used to resolve subjects."""
+        normalized = tuple(str(topic).strip() for topic in topics)
+        if not normalized or any(not topic for topic in normalized):
+            raise ValueError("semantic topics must be non-empty")
+        token = self._semantic_topics_var.set((*self.semantic_topics, *normalized))
+        try:
+            yield self.semantic_topics
+        finally:
+            self._semantic_topics_var.reset(token)
 
     @property
     def execution_depth(self):
