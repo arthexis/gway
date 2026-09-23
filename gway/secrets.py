@@ -18,7 +18,10 @@ def root():
 
 def path(*parts):
     """Return one path inside the configured secrets root."""
-    return root().joinpath(*(str(part) for part in parts))
+    relative = Path(*map(str, parts))
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("secret binding path must stay inside the secrets root")
+    return root().joinpath(relative)
 
 
 def read(*parts):
