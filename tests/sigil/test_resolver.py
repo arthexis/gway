@@ -118,3 +118,17 @@ def test_resolver_rejects_ambiguous_semantic_mapping_keys(gateway):
 
     with pytest.raises(KeyError, match="ambiguous"):
         gateway.resolve("[status code]")
+
+
+def test_environment_precedes_inline_fallback(gateway, monkeypatch):
+    monkeypatch.setenv("SITE", "environment")
+
+    assert gateway.resolve("[site|fallback]") == "environment"
+
+
+def test_inline_fallback_is_used_only_after_semantic_sources_are_missing(
+    gateway, monkeypatch
+):
+    monkeypatch.delenv("SITE", raising=False)
+
+    assert gateway.resolve("[site|fallback]") == "fallback"
