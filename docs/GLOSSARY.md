@@ -12,6 +12,17 @@ imply a meaningful distinction rather than stylistic variation.
 This glossary is expected to grow gradually as distinctions become useful in real
 Gway code.
 
+## Semantic index
+
+- [Operation](#operation) — a reusable semantic action or effect.
+- [Subject](#subject) — the entity an operation is about.
+- [Topic](#topic) — an independent category describing a subject.
+- [Chain](#chain) — an ordered composition of operations that can itself act as an operation.
+- [Command](#command) — the complete executable action requested by an operator.
+- [Glyph](#glyph) — a syntactic character or ordered character construction with defined meaning.
+- [Flag](#flag) — a subject trait matched by an operation parameter.
+- [Sigil](#sigil) — a semantic reference whose concrete value is resolved from context.
+
 ## Operation
 
 An **operation** is an effectful action that attempts to bring about a particular
@@ -243,23 +254,6 @@ may select an implementation without changing the meaning of the operation itsel
 
 This distinction allows Gway to compose operations semantically while adapters and
 subject-specific implementations handle mechanical differences.
-
-### Example
-
-```text
-create user
-create directory
-create DNS-record
-```
-
-`create` remains the operation.
-
-The subjects differ.
-
-The mechanisms differ.
-
-The invariant is that something appropriate to the subject exists afterward where
-no such instance existed before.
 
 ## Subject
 
@@ -526,71 +520,17 @@ operation, but the semantic roles remain different.
 ### Subject and topic
 
 A subject is the specific semantic entity an operation is about. A topic is an
-independent semantic category to which that subject belongs.
+independent category that describes a subject without becoming part of its
+intrinsic identity.
 
-A subject may belong to any number of topics, and those topics do not form a
-semantic hierarchy. Topic membership can organize, group, and disambiguate
-subjects without becoming part of the subject itself.
-
-Prefer the smallest expression that preserves the subject's complete semantic
-identity. A modifier belongs in a topic when removing it leaves the same kind of
-subject and merely removes categorization or context. A modifier remains part of
-the subject when removing it changes what entity the subject denotes.
-
-For example:
-
-```text
-operation: read
-subject:   log
-topics:    Arthexis, remote, MCP
-```
-
-Here `Arthexis`, `remote`, and `MCP` qualify the subject without changing the
-fact that the subject is a log.
-
-By contrast:
-
-```text
-subject: API key
-```
-
-should not normally be reduced to:
-
-```text
-subject: key
-topic:   API
-```
-
-because `API key` is a distinct semantic entity from a generic `key`.
-
-See **Topic** for the complete topic model.
+See [Topic](#topic) for topic membership, ordering, disambiguation, and the rule
+for distinguishing topics from compound subjects.
 
 ### Subject specialization
 
-Subjects allow one operation to support different mechanical implementations.
-
-Conceptually:
-
-```text
-cook rice
-    -> rice-specific cooking procedure
-
-cook steak
-    -> steak-specific cooking procedure
-```
-
-The subject therefore acts as a semantic specialization point.
-
-The important invariant is:
-
-```text
-same operation
-different subject
-different implementation allowed
-same fundamental state transition intended
-```
-
-This is one of the central composition principles of Gway.
+Subjects specialize how an otherwise stable operation is implemented without
+redefining that operation. See
+[The operation should survive a change of subject](#the-operation-should-survive-a-change-of-subject).
 
 ### Env, environ, and environment
 
@@ -915,72 +855,6 @@ same set of topics
 different topic ordering or implementation layout
 same semantic meaning
 ```
-
-## Relationship between Operation and Subject
-
-An operation answers:
-
-> What kind of change or effect is being requested?
-
-A subject answers:
-
-> What is that operation specifically about?
-
-Together they form one of the fundamental semantic units of Gway:
-
-```text
-operation + subject
-```
-
-For example:
-
-```text
-cook rice
-create user
-start service
-delete file
-```
-
-The operation supplies the invariant semantic transformation.
-
-The subject supplies enough specificity for Gway to determine how that
-transformation applies in this case.
-
-The same model also applies when one of the terms is implicit:
-
-```text
-copy [source] --to [target]
-```
-
-may semantically expand to:
-
-```text
-copy file [source] --to [target]
-```
-
-and a one-word form such as:
-
-```text
-log
-```
-
-may semantically represent:
-
-```text
-operation: log
-subject:   log
-```
-
-The surface syntax may therefore contain one word, two words, or additional
-arguments without changing the underlying model.
-
-A well-defined operation should retain its meaning when its subject changes.
-
-A well-defined subject should specialize the operation without redefining it.
-
-And a subject that is not explicitly written must still be recoverable from the
-semantics of the invocation.
-
 
 ## Chain
 
@@ -1346,44 +1220,9 @@ command
 
 ### Commands are the executable semantic unit
 
-Operations, subjects, topics, flags, sigils, identifiers, values, and glyphs
-describe pieces of Gway's language.
-
-A command brings those pieces together into something executable.
-
-Conceptually:
-
-```text
-glyphs
-    provide syntax
-
-identifiers
-    provide names
-
-sigils
-    provide unresolved semantic references
-
-flags
-    match operation parameters to subject traits
-
-topics
-    classify subjects
-
-subjects
-    identify what an operation is about
-
-operations
-    identify effects
-
-chains
-    compose operations in a significant left-to-right order
-
-commands
-    express complete executable actions
-```
-
-A command is therefore the highest-level executable semantic unit of ordinary
-Gway interaction.
+A command brings Gway's semantic and syntactic pieces together into something
+executable. See the [Semantic index](#semantic-index) for the roles of the
+individual concepts.
 
 ## Glyph
 
@@ -1878,24 +1717,8 @@ If only the subject possesses it, it may merely be a trait.
 
 A flag is the semantic correspondence between the two.
 
-### Relationship to the core semantic vocabulary
-
-```text
-operation
-    the effect being performed
-
-subject
-    the entity the effect is about
-
-topic
-    an independent category describing the subject
-
-flag
-    a subject trait matched by an operation parameter
-
-sigil
-    a semantic value that remains to be resolved
-```
+See the [Semantic index](#semantic-index) for how flags relate to the other core
+Gway concepts.
 
 ## Sigil
 
@@ -2071,18 +1894,8 @@ sigil:     [target]
 
 `[source]` and `[target]` identify meanings whose concrete values must still be supplied or discovered.
 
-This gives the three concepts distinct roles:
-
-``` text
-operation
-    what effect is performed
-
-subject
-    what the effect is about
-
-sigil
-    what semantic value belongs here
-```
+See the [Semantic index](#semantic-index) for the relationship between sigils and
+the other core Gway concepts.
 
 A sigil therefore allows a recipe to remain specific about meaning without becoming specific about storage or concrete value.
 
