@@ -113,7 +113,7 @@ But it is always present.
 For example:
 
 ```text
-copy file source target
+copy file [source] --to [target]
 ```
 
 can be understood as:
@@ -125,20 +125,20 @@ source:    source
 target:    target
 ```
 
-If Gway can determine that `source` is a filesystem path, the explicit word
+If Gway can determine that `[source]` resolves to a filesystem path, the explicit word
 `file` may be unnecessary:
 
 ```text
-copy source target
+copy [source] --to [target]
 ```
 
 The subject has not disappeared. It has been inferred.
 
-Likewise, if `source` identifies a SQL table, the same operation might resolve
+Likewise, if `[source]` identifies a SQL table, the same operation might resolve
 conceptually as:
 
 ```text
-copy SQL table-name target
+copy SQL [table] --to [target]
 ```
 
 The operation remains `copy`, while the subject changes according to the
@@ -238,7 +238,7 @@ What may be absent is only the **explicit spelling** of the subject.
 Consider:
 
 ```text
-copy file source target
+copy file [source] --to [target]
 ```
 
 Here the semantic structure is explicit:
@@ -253,7 +253,7 @@ target:    target
 But this could also be written:
 
 ```text
-copy source target
+copy [source] --to [target]
 ```
 
 if Gway already knows from the values involved that the subject is `file`.
@@ -265,7 +265,7 @@ operation: copy
 subject:   SQL
 ```
 
-because the source is recognized as a SQL table.
+because `[source]` is recognized as a SQL table.
 
 The subject is therefore part of the semantic interpretation even when no separate
 subject token appears in the command.
@@ -450,7 +450,7 @@ A subject does not require that relationship.
 For example:
 
 ```text
-copy file source target
+copy file [source] --to [target]
 ```
 
 has:
@@ -469,30 +469,33 @@ target:    target
 The subject and target may occasionally refer to the same concrete entity in some
 operation, but the semantic roles remain different.
 
-### The subject is not a topic
+### Subject and topic
 
-Early versions of Gway used **topic** for a similar concept.
+Early versions of Gway used **topic** where Gway now uses **subject**. The two
+concepts are useful, but they operate at different levels.
 
-The term was dropped because a topic naturally suggests a broader grouping of
-things that an action or discussion may be about.
-
-A subject is narrower.
-
-A useful distinction is:
+A subject is the most specific entity an operation is about. A topic is a broader
+semantic grouping that may contain or organize multiple related subjects.
 
 ```text
 topic
-    a broader domain or set of related things
+    a broader domain or collection of related subjects
 
 subject
     the most specific entity about which this operation is being performed
 ```
 
-A topic may contain many possible subjects.
+The sampler is an existing example of something that can be understood as a topic:
+it groups related subjects without itself replacing their more specific semantic
+identities.
 
-Changing topic may imply entering another conceptual domain entirely.
+Changing topic may imply entering another conceptual domain or collection of
+subjects. Changing subject should allow the operation itself to remain semantically
+stable.
 
-Changing subject should allow the operation itself to remain semantically stable.
+This glossary does not yet define `topic` as a foundational term; the distinction
+is recorded here so that the word remains available for that broader role rather
+than being reused as a synonym for `subject`.
 
 ### Subject specialization
 
@@ -590,13 +593,13 @@ transformation applies in this case.
 The same model also applies when one of the terms is implicit:
 
 ```text
-copy source target
+copy [source] --to [target]
 ```
 
 may semantically expand to:
 
 ```text
-copy file source target
+copy file [source] --to [target]
 ```
 
 and a one-word form such as:
