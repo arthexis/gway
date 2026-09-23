@@ -157,6 +157,13 @@ names such as `certificate_path` and `log_path`.
 Do not solve this by mechanically prefixing every recipe parameter. Prefixes
 should distinguish concepts, not compensate for overusing ambient context.
 
+One practical warning is `path`: because environment variables participate in
+semantic resolution, a generic ambient `path` can collide with the process
+`PATH`. In that situation, choose the real concept instead of adding a
+namespace prefix. For an HTTP server, `route` is semantically better than
+`mcp_path`: it describes what the value means and avoids the ambient collision.
+
+
 A useful rule is:
 
 > Put a value in recipe parameters/context only when you intend downstream
