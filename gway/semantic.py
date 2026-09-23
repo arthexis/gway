@@ -1,6 +1,7 @@
 """Shared semantic mapping-key resolution."""
 
 from collections.abc import Mapping
+from itertools import permutations
 import re
 
 
@@ -69,7 +70,8 @@ def semantic_candidates(subject, topics=()):
 
     candidates = []
     if normalized_topics:
-        candidates.append(".".join((*normalized_topics, subject)))
+        for ordered_topics in permutations(normalized_topics):
+            candidates.append(".".join((*ordered_topics, subject)))
         candidates.extend(
             f"{topic}.{subject}" for topic in reversed(normalized_topics)
         )
