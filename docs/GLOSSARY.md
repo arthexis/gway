@@ -982,6 +982,409 @@ And a subject that is not explicitly written must still be recoverable from the
 semantics of the invocation.
 
 
+## Chain
+
+A **chain** is an ordered sequence of connected operations whose outputs, context,
+or execution semantics cause them to participate in one larger action.
+
+For example:
+
+```text
+produce - transform - consume
+```
+
+contains three operations connected into one chain.
+
+Each operation retains its own semantic identity, but their composition also has
+meaning as a whole.
+
+### Chains are ordered
+
+A chain is always interpreted from left to right.
+
+The order of its operations is part of its semantic meaning.
+
+For example:
+
+```text
+read - transform - write
+```
+
+is not equivalent to:
+
+```text
+write - transform - read
+```
+
+even if both expressions contain the same operations.
+
+This distinguishes chains from semantic structures whose components may be
+unordered. Topics, for example, behave semantically like a set. Their ordering
+should not change meaning.
+
+A chain behaves differently:
+
+```text
+A - B - C
+```
+
+means that `A` precedes `B`, and `B` precedes `C`.
+
+Reordering those elements produces a different chain.
+
+### A chain is a composite operation
+
+A completed chain can itself be understood as an operation.
+
+Conceptually:
+
+```text
+operation A
+    -> operation B
+    -> operation C
+```
+
+forms:
+
+```text
+composite operation ABC
+```
+
+This does not erase the operations inside the chain.
+
+It means that, from outside the chain, the complete ordered composition can be
+treated as one action with its own input, effect, and result.
+
+This property allows chains to compose recursively. A chain may therefore
+participate wherever an operation can meaningfully participate, and a larger chain
+may contain another composite chain without requiring callers to understand its
+internal implementation.
+
+### Connections define the chain
+
+Operations do not form a chain merely because they appear near one another.
+
+They form a chain because Gway connects their execution through defined glyphs and
+semantic rules.
+
+For example:
+
+```text
+produce - consume
+```
+
+uses the pipeline glyph to transfer the previous raw result into the next
+operation.
+
+Other connective forms may preserve semantic context or establish another defined
+relationship between adjacent operations.
+
+The glyph determines how the operations are connected. Their left-to-right order
+determines when those connections apply.
+
+### Chains preserve operation semantics
+
+Composition should not redefine the individual operations inside a chain.
+
+If:
+
+```text
+read
+transform
+write
+```
+
+have established meanings independently, then:
+
+```text
+read - transform - write
+```
+
+should preserve those meanings while adding the semantics of their ordered
+connection.
+
+The chain expresses a larger action by composing operations, not by redefining
+them.
+
+### A chain has a boundary
+
+A chain can be treated as a unit once its composition is complete.
+
+From outside that boundary, callers may care about:
+
+```text
+input
+effect
+result
+```
+
+without needing to know every internal stage.
+
+This is what allows a recipe, embedded Gway call, or another chain to consume the
+result of a chain as though it came from one operation.
+
+A useful invariant is:
+
+> A chain is internally plural but externally singular.
+
+It contains multiple ordered operations, yet the completed chain can itself
+participate as one composite operation.
+
+## Command
+
+A **command** is a complete description of an action that an operator asks Gway to
+perform upon the system Gway is operating on or managing.
+
+A command may consist of one fully described operation or of an ordered chain of
+such operations.
+
+Conceptually:
+
+```text
+command
+    = complete operation
+      or
+      ordered chain of complete operations
+```
+
+### A command fully describes an intended action
+
+An operation by itself identifies the kind of effect being requested.
+
+A command provides the semantic and syntactic information necessary to express the
+actual action Gway should perform.
+
+That description may include:
+
+```text
+operation
+subject
+topics
+flags
+sigils
+identifiers
+values
+glyphs
+```
+
+as required by the particular invocation.
+
+For example:
+
+```text
+read log --tail 20
+```
+
+is a command containing an operation, a subject, and a flag with a value.
+
+A more complex command may contain a chain:
+
+```text
+read log --tail 20 - filter error - print
+```
+
+The chain contains several operations, but the complete expression remains one
+command because it describes one composite action requested of Gway.
+
+### A command is not tied to the command line
+
+A command is a Gway semantic and syntactic unit, not a concept owned by the shell
+or terminal.
+
+The CLI is one interface through which commands may be supplied, but it is not what
+defines them.
+
+Gway is designed so that every valid command can be expressed through the CLI.
+
+For example:
+
+```text
+gway read log --tail 20 - filter error - print
+```
+
+is a textual CLI representation of a Gway command.
+
+The command itself is:
+
+```text
+read log --tail 20 - filter error - print
+```
+
+rather than the fact that it happened to arrive through a command-line process.
+
+### Gway interfaces share one command language
+
+Gway expects the same command syntax and semantics to be usable through every
+interface that accepts Gway commands.
+
+The same command should therefore be transportable through interfaces such as:
+
+```text
+CLI
+recipes
+Python
+MCP
+remote execution
+embedded Gway runtimes
+```
+
+without requiring each interface to invent its own command language.
+
+Conceptually:
+
+```text
+same command
+    -> CLI
+    -> recipe
+    -> Python
+    -> MCP
+    -> remote interface
+```
+
+should preserve the same Gway meaning.
+
+An interface may package, transport, quote, serialize, or invoke that command
+differently, but once Gway receives it, the command should be interpreted using
+the same language.
+
+This provides an important invariant:
+
+> Gway has one command language and multiple interfaces.
+
+The CLI is therefore not a special dialect. It is the most direct textual surface
+for the same command syntax used throughout Gway.
+
+### Every command should be CLI-expressible
+
+Even when a command originates through another interface, Gway should preserve a
+CLI-expressible form for it.
+
+This gives the command language a concrete and inspectable textual representation.
+
+A command received remotely or constructed programmatically should not require
+semantics that cannot also be represented using ordinary Gway command syntax.
+
+This keeps commands portable, inspectable, reproducible, and documentable across
+interfaces.
+
+### The operator supplies the command
+
+The **operator** is whatever initiates the action.
+
+That may be:
+
+```text
+a person
+a recipe
+another application
+an MCP client
+a scheduler
+another Gway operation
+```
+
+The identity or nature of the operator does not redefine the command.
+
+The important relationship is:
+
+```text
+operator
+    requests
+
+command
+    which describes
+
+action
+    performed through Gway
+
+system
+    upon which that action operates
+```
+
+### Command versus operation
+
+An **operation** describes a reusable kind of effect.
+
+A **command** describes a particular action to perform.
+
+For example:
+
+```text
+copy
+```
+
+names an operation.
+
+But:
+
+```text
+copy file [source] --to [target]
+```
+
+is a command because it supplies the semantic structure needed to request a
+particular use of that operation.
+
+Likewise:
+
+```text
+produce - transform - consume
+```
+
+is a command whose primary operation is composite.
+
+A useful distinction is:
+
+```text
+operation
+    a reusable semantic action
+
+chain
+    an ordered composition of operations that can itself act as an operation
+
+command
+    the complete action requested by an operator
+```
+
+### Commands are the executable semantic unit
+
+Operations, subjects, topics, flags, sigils, identifiers, values, and glyphs
+describe pieces of Gway's language.
+
+A command brings those pieces together into something executable.
+
+Conceptually:
+
+```text
+glyphs
+    provide syntax
+
+identifiers
+    provide names
+
+sigils
+    provide unresolved semantic references
+
+flags
+    match operation parameters to subject traits
+
+topics
+    classify subjects
+
+subjects
+    identify what an operation is about
+
+operations
+    identify effects
+
+chains
+    compose operations in a significant left-to-right order
+
+commands
+    express complete executable actions
+```
+
+A command is therefore the highest-level executable semantic unit of ordinary
+Gway interaction.
+
 ## Glyph
 
 A **glyph** is a character or ordered sequence of characters that carries a
