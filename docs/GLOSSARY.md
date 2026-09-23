@@ -19,6 +19,7 @@ Gway code.
 - [Topic](#topic) — an independent category describing a subject.
 - [Context](#context) — the scoped semantic state available during execution.
 - [Result](#result) — the value produced by a completed operation.
+- [Pipe](#pipe) — explicit left-to-right transfer of a result into another operation.
 - [Chain](#chain) — an ordered composition of operations that can itself act as an operation.
 - [Command](#command) — the complete executable action requested by an operator.
 - [Glyph](#glyph) — a syntactic character or ordered character construction with defined meaning.
@@ -1136,7 +1137,7 @@ Publishing context outward is not the same as returning a result.
 An operation may return a raw result, publish semantic context, do both, or do
 neither.
 
-A pipeline may carry a raw result to the next operation while context publication
+A pipe may carry a raw result to the next operation while context publication
 makes named semantic values available more broadly.
 
 These are separate effects.
@@ -1166,9 +1167,9 @@ A useful invariant is:
 > Context is inherited inward, overridden locally, and published outward only
 > deliberately.
 
-### Context is not the raw pipeline
+### Context is not the raw pipe
 
-A pipeline transfers a particular raw result between connected operations.
+A pipe transfers a particular raw result between connected operations.
 
 Context carries named semantic state.
 
@@ -1178,7 +1179,7 @@ For example:
 produce - consume
 ```
 
-uses the pipeline glyph to transfer the previous raw result positionally.
+uses the pipe glyph to transfer the previous raw result positionally.
 
 By contrast:
 
@@ -1193,7 +1194,7 @@ through context even though the raw result is not transferred positionally.
 A useful distinction is:
 
 ```text
-pipeline
+pipe
     transfers a raw value through an ordered chain
 
 context
@@ -1431,9 +1432,9 @@ It is distinct from semantic context resolution.
 Without the connecting glyph, the raw result is not automatically transferred
 positionally merely because one operation happened before another.
 
-### A pipeline carries results, not context
+### A pipe carries results, not context
 
-The pipeline glyph connects operations through their results.
+The pipe glyph connects operations through their results.
 
 For example:
 
@@ -1444,7 +1445,7 @@ find charger - inspect
 can pass the charger result from `find` into `inspect`.
 
 The surrounding context may also be visible to both operations, but it is not what
-the pipeline glyph transfers.
+the pipe glyph transfers.
 
 A useful distinction is:
 
@@ -1452,7 +1453,7 @@ A useful distinction is:
 result
     a value produced by an operation
 
-pipeline
+pipe
     an ordered connection that transfers a result
 
 context
@@ -1553,7 +1554,7 @@ subject binding
 When Gway knows the subject associated with a result, that semantic identity can
 help resolve the next operation.
 
-For example, a pipeline may carry a concrete charger object while Gway also knows:
+For example, a pipe may carry a concrete charger object while Gway also knows:
 
 ```text
 subject: charger
@@ -1635,6 +1636,207 @@ A useful invariant is:
 
 > An operation produces a result; publication determines what Gway remembers
 > about it.
+
+## Pipe
+
+A **pipe** is the transfer of a result from one operation into another operation as
+positional input.
+
+For example:
+
+```text
+produce - consume
+```
+
+pipes the result of `produce` into `consume`.
+
+Conceptually:
+
+```text
+produce
+    -> result
+        -> pipe
+            -> consume
+```
+
+The standalone dash glyph expresses this connection in Gway command syntax.
+
+### Pipe is an operation
+
+As an operation, **pipe** means to produce a value so that it can be consumed as
+the result passed to another operation.
+
+This makes `pipe` the result-oriented counterpart of `default`.
+
+`default` promotes semantic values into surrounding context.
+
+`pipe` produces semantic values as a result.
+
+Conceptually:
+
+```text
+default
+    explicit semantic values
+        -> context
+
+pipe
+    explicit semantic values
+        -> result
+```
+
+### Pipe is also a subject
+
+A pipe can also be understood as the semantic connection through which a result is
+passed.
+
+In that role:
+
+```text
+operation: pipe
+subject:   pipe
+```
+
+is a natural one-word operation/subject pairing.
+
+The operation describes performing the transfer.
+
+The subject describes the result connection itself.
+
+### The pipe glyph connects operations
+
+The standalone dash glyph:
+
+```text
+ - 
+```
+
+expresses piping between operations.
+
+For example:
+
+```text
+read charger - inspect
+```
+
+means that the result produced by `read charger` becomes positional input to
+`inspect`.
+
+Pipe order is inherently left-to-right:
+
+```text
+A - B
+```
+
+pipes the result of `A` into `B`.
+
+### Pipe transfers results, not context
+
+Pipe and context are separate composition mechanisms.
+
+A pipe transfers the produced result:
+
+```text
+A - B
+```
+
+while context makes named semantic values available without requiring positional
+transfer.
+
+A useful distinction is:
+
+```text
+pipe
+    transfers a result
+
+context
+    exposes named semantic state
+```
+
+Both may participate in the same command.
+
+### `pipe` is the inverse complement of `default`
+
+The `default` and `pipe` operations provide opposite ways to introduce explicit
+semantic values into execution.
+
+For example:
+
+```text
+default --site MTY --role Watchtower
+```
+
+publishes those values into the containing context.
+
+By contrast:
+
+```text
+pipe --site MTY --role Watchtower
+```
+
+produces those semantic values as a mapping result without promoting them into the
+surrounding context merely because `pipe` was called.
+
+That result can then be passed explicitly:
+
+```text
+pipe --site MTY --role Watchtower - deploy
+```
+
+Conceptually:
+
+```text
+pipe
+    receives explicit semantic values
+    -> returns them as a mapping result
+
+default
+    receives explicit semantic values
+    -> publishes them into surrounding context
+```
+
+### Pipe preserves explicit data flow
+
+Using `pipe` makes the movement of semantic values part of the chain itself.
+
+For example:
+
+```text
+pipe --site MTY - deploy
+```
+
+means: construct this value here and pass it to the next operation.
+
+Whereas:
+
+```text
+default --site MTY
+deploy
+```
+
+means: establish this semantic value as ambient context and allow the later
+operation to consume it.
+
+### Pipe results may be mappings
+
+When several flags are supplied to `pipe`, the natural result is a semantic
+mapping.
+
+For example:
+
+```text
+pipe --site MTY --enabled --port 9000
+```
+
+can produce one mapping result containing those semantic values.
+
+That mapping remains a result rather than automatically becoming outer context.
+
+The next operation may consume it through normal Gway result adaptation.
+
+A useful invariant is:
+
+> `default` turns explicit values into context; `pipe` turns explicit values
+> into a result.
 
 ## Chain
 
@@ -1727,7 +1929,7 @@ For example:
 produce - consume
 ```
 
-uses the pipeline glyph to transfer the previous raw result into the next
+uses the pipe glyph to transfer the previous raw result into the next
 operation.
 
 Other connective forms may preserve semantic context or establish another defined
@@ -2126,7 +2328,7 @@ For example:
 producer - consumer
 ```
 
-contains the standalone operative dash glyph and therefore has pipeline semantics.
+contains the standalone operative dash glyph and therefore has pipe semantics.
 
 ### Identifier construction
 
@@ -2198,12 +2400,12 @@ The current vocabulary includes:
 | `[ ... ]` | operative | Forms a sigil and requests semantic resolution of its contents. |
 | `[[ ... ]]` | operative | Escapes sigil interpretation and yields one literal pair of brackets. |
 | `|` inside a sigil | operative | Separates a sigil lookup from its fallback value. |
-| `[N]` | operative | Selects a numbered value from the current pipeline-result snapshot where chain selectors are accepted. |
-| `[*]` | operative | Inserts the remaining values from the current pipeline-result snapshot where chain selectors are accepted. |
+| `[N]` | operative | Selects a numbered value from the current pipe-result snapshot where chain selectors are accepted. |
+| `[*]` | operative | Inserts the remaining values from the current pipe-result snapshot where chain selectors are accepted. |
 | `--identifier` | operative | Introduces an identifier as a flag or named operation parameter. |
 | `--no-identifier` | operative | Negates the corresponding boolean flag. |
 | bare `--` followed by whitespace/end | operative | Ends flag parsing; subsequent material is positional. At a recipe physical-line boundary it also continues the next substantive line positionally. |
-| standalone `-` surrounded by token boundaries | operative | Transfers the previous raw result positionally into the next pipeline stage. |
+| standalone `-` surrounded by token boundaries | operative | Transfers the previous raw result positionally into the next pipe stage. |
 | standalone `;` | operative | Ends a statement while preserving named semantic context and not transferring the previous raw result positionally. |
 | newline in a recipe | operative | Begins a new statement unless physical-line continuation applies. |
 | `-` inside an identifier | connective | Connects identifier components; semantically equivalent to underscore/space normalization in identifier lookup. |
