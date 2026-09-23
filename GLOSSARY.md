@@ -702,3 +702,195 @@ A well-defined subject should specialize the operation without redefining it.
 
 And a subject that is not explicitly written must still be recoverable from the
 semantics of the invocation.
+
+
+## Sigil
+
+A **sigil** is a symbolic semantic reference that identifies a meaning to be resolved from the execution context.
+
+A sigil specifies **what a value means**, not where that value is stored.
+
+For example:
+
+``` text
+[site]
+[domain]
+[charger serial]
+```
+
+Each expression identifies a semantic value that Gway must resolve when the operation executes.
+
+### A sigil is not a variable
+
+A variable normally identifies a named storage location.
+
+A sigil identifies semantic meaning.
+
+For example:
+
+``` text
+[site]
+```
+
+does not mean:
+
+> read the variable named `site`
+
+It means:
+
+> resolve the value that currently satisfies the semantic meaning `site`
+
+That value may come from context, environment, configuration, a previous operation, an adapter, or another supported source.
+
+The source may change without changing the meaning of the sigil.
+
+A useful distinction is:
+
+``` text
+variable
+    names storage
+
+sigil
+    identifies meaning
+```
+
+### Why Gway calls it a sigil
+
+The word **sigil** comes from Latin *sigillum*, meaning a small sign, mark, or seal.
+
+Historically, a sigil is a compact symbol that stands for an identity, name, intention, or meaning without being the thing itself.
+
+Gway uses the word in that sense.
+
+``` text
+[domain]
+```
+
+is not the domain itself. It is a sign that says:
+
+> the semantic value of `domain` belongs here
+
+Resolution later supplies the concrete value.
+
+This makes sigils especially useful in recipes, where the author often knows the role a value must play before knowing what concrete value will satisfy that role during execution.
+
+### The complete expression is the sigil
+
+In Gway, the whole expression is the sigil:
+
+``` text
+[site]
+```
+
+The brackets are the syntax that marks the expression as a semantic reference.
+
+This differs from languages where a sigil is only a prefix character used to mark a variable or indicate its type.
+
+Gway sigils primarily communicate semantic identity, not storage type or value type.
+
+### Sigils resolve at execution time
+
+A sigil remains symbolic until Gway resolves it against the current execution context.
+
+For example:
+
+``` text
+https://[domain]/mcp
+```
+
+contains literal text:
+
+``` text
+https://
+/mcp
+```
+
+and one semantic reference:
+
+``` text
+[domain]
+```
+
+At execution time, Gway may resolve it to:
+
+``` text
+https://remote.example.com/mcp
+```
+
+The recipe specifies what belongs in that position without hard-coding where the value must come from.
+
+### Sigils may identify structured meaning
+
+A sigil can represent more than a single flat name.
+
+For example:
+
+``` text
+[charger serial]
+```
+
+identifies `serial` within the semantic value identified by `charger`.
+
+Nested sigils can make part of that semantic path dynamic:
+
+``` text
+[chargers [index]]
+```
+
+Here `[index]` is itself resolved before it participates in resolving the outer sigil.
+
+This is another reason sigils should not be understood merely as variable substitution.
+
+### Sigils may carry fallbacks
+
+A sigil may provide a fallback value:
+
+``` text
+[role|Watchtower]
+```
+
+This means:
+
+> resolve `role`; if no value can be resolved, use `Watchtower`
+
+The fallback is part of sigil resolution rather than a separate recipe parameter mechanism.
+
+### Sigils express unresolved semantic roles
+
+Sigils are particularly useful for values whose semantic role is known but whose concrete value is supplied later.
+
+For example:
+
+``` text
+copy file [source] --to [target]
+```
+
+has:
+
+``` text
+operation: copy
+subject:   file
+sigil:     [source]
+sigil:     [target]
+```
+
+`copy` and `file` are already semantically resolved in the expression.
+
+`[source]` and `[target]` identify meanings whose concrete values must still be supplied or discovered.
+
+This gives the three concepts distinct roles:
+
+``` text
+operation
+    what effect is performed
+
+subject
+    what the effect is about
+
+sigil
+    what semantic value belongs here
+```
+
+A sigil therefore allows a recipe to remain specific about meaning without becoming specific about storage or concrete value.
+
+For a more detailed explanation of Sigil syntax, see the [Sigil syntax reference](<../reference/sigil-syntax.md>).
