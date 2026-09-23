@@ -321,7 +321,7 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
     recipe.write_text(
         (source_root / "server.rx")
         .read_text(encoding="utf-8")
-        .replace(" 8000 ", f" {port} "),
+        .replace("[mcp_port|8000]", str(port)),
         encoding="utf-8",
     )
     (deployment / "server.py").write_text(
