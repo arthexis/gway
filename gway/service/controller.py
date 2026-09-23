@@ -163,14 +163,13 @@ class Controller:
             return self.backend, definition
 
         from ..install.service import get as get_backend
-        from ..install.paths import install_paths
         from ..install.service import ServiceInstallState
 
         installation = getattr(self.gateway, "_installed", {}).get(definition.project)
         use_system = (
             installation.scope == "system" if installation is not None else system
         )
-        paths = install_paths(system=use_system)
+        paths = self.gateway.install_paths(system=use_system)
         records = ServiceInstallState(paths.root / "services-installed").get(
             definition.project
         )
@@ -258,7 +257,7 @@ class Controller:
         from ..install.paths import install_paths
 
         selected = get_backend(backend)
-        paths = install_paths(system=system)
+        paths = self.gateway.install_paths(system=system)
         timeout = self._timeout(timeout)
         install_kwargs = {}
         if backend == "systemd" and timeout is not None:
