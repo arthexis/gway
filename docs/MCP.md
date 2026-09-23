@@ -202,6 +202,22 @@ service stop --name mcp-server -- <server.rx>
 
 The exact recipe path depends on the installed sampler location.
 
+The recipe uses concise semantic context names because its subject already
+establishes the MCP namespace:
+
+```text
+recipe mcp/server
+--host 127.0.0.1
+--port 8000
+--path /mcp
+--endpoint https://remote.example.com/mcp
+```
+
+`endpoint` is the canonical externally visible MCP resource URL. Its path must
+match the configured server path; the server derives the public origin used for
+authentication metadata from that endpoint.
+
+
 ## Logging example
 
 Logging is an ordinary GWAY API, not a logging-specific MCP protocol. A client with
