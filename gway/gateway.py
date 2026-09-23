@@ -152,6 +152,11 @@ class Gateway(Resolver):
         self._service_controller = Controller(self)
         ingest_python(self, self._service_controller, path=("service",))
 
+        from .dns import Controller as DNSController
+
+        self._dns_controller = DNSController(self)
+        ingest_python(self, self._dns_controller, path=("dns",))
+
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
 
