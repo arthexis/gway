@@ -96,7 +96,7 @@ def _setup_project(root, *, settings=None):
                 "DJANGO_SETTINGS_MODULE is already configured as "
                 f"{current!r}, not {settings!r}"
             )
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", settings)
+        process_environment.setdefault("DJANGO_SETTINGS_MODULE", settings)
 
     django, registry = _load_django()
     if not getattr(registry, "ready", False):
