@@ -1,9 +1,10 @@
 """Durable installation data paths."""
 
 from dataclasses import dataclass
-import os
 from pathlib import Path
 import sys
+
+from ..environment import process_environment
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,7 @@ class InstallPaths:
 
 def data_root(*, system=False, environ=None, platform=None, home=None):
     """Return GWAY's durable data root without creating it."""
-    environ = os.environ if environ is None else environ
+    environ = process_environment if environ is None else environ
     platform = sys.platform if platform is None else platform
     home = Path.home() if home is None else Path(home)
 
@@ -55,7 +56,7 @@ def data_root(*, system=False, environ=None, platform=None, home=None):
 
 def bin_root(*, system=False, environ=None, platform=None, home=None):
     """Return the activation bin directory for one installation scope."""
-    environ = os.environ if environ is None else environ
+    environ = process_environment if environ is None else environ
     platform = sys.platform if platform is None else platform
     home = Path.home() if home is None else Path(home)
 
