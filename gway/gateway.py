@@ -37,6 +37,7 @@ class Gateway(Resolver):
         **values,
     ):
         self.name = name
+        self._cache_explicit = cache is not None
         self.environment = process_environment
         self.bindings = Bindings()
         self.logger = gway_log._child(name, level=log_level)
@@ -199,9 +200,12 @@ class Gateway(Resolver):
         from .cache import Cache
         from .install.ops import install as install_operation
 
-        with self.topics("cache"):
-            configured_cache = self.resolve("[cache_dir]", default=None)
-        cache = self.cache if configured_cache is None else Cache(configured_cache)
+        if self._cache_explicit:
+            cache = self.cache
+        else:
+            with self.topics("cache"):
+                configured_cache = self.resolve("[cache_dir]", default=None)
+            cache = self.cache if configured_cache is None else Cache(configured_cache)
         return install_operation(
             source,
             ref=ref,
