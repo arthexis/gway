@@ -11,25 +11,7 @@ permissions:
 
 jobs:
   regression:
-    name: Tests (Python 3.13)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.13'
-          cache: pip
-      - name: Install project and test tools
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e '.[dev,toml]'
-      - name: Full regression suite
-        run: python -m pytest -q
-
-  minimum-python:
-    name: Compatibility (Python 3.10)
+    name: Tests (Python 3.10)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -39,36 +21,53 @@ jobs:
         with:
           python-version: '3.10'
           cache: pip
-      - name: Install minimum-version test surface
+      - name: Install project and test tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,toml]'
+      - name: Full regression suite
+        run: python -m pytest -q
+
+  forward-compatibility:
+    name: Compatibility (Python 3.13)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install forward-compatibility surface
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[toml]' pytest
       - name: Compile supported source tree
         run: python -m compileall -q gway sampler
-      - name: Verify Python 3.10 compatibility contracts
+      - name: Verify newer-runtime contracts
         run: |
           python -m pytest -q tests/gateway/test_builtins.py -k toml
           python -m pytest -q tests/install/test_metadata.py
-          python -m pytest -q tests/install/test_systemd.py -k exception_note_fallback_supports_python_310_shape
       - name: CLI smoke
         run: python -m gway help install >/dev/null
 
   compatibility:
     name: python / Python compatibility
-    needs: [regression, minimum-python]
+    needs: [regression, forward-compatibility]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require regression and minimum Python compatibility
+      - name: Require baseline regression and forward compatibility
         env:
           REGRESSION_RESULT: ${{ needs.regression.result }}
-          MINIMUM_PYTHON_RESULT: ${{ needs.minimum-python.result }}
+          FORWARD_COMPATIBILITY_RESULT: ${{ needs.forward-compatibility.result }}
         run: |
           if [[ "$REGRESSION_RESULT" != "success" ]]; then
-            echo "Python 3.13 regression result: $REGRESSION_RESULT"
+            echo "Python 3.10 regression result: $REGRESSION_RESULT"
             exit 1
           fi
-          if [[ "$MINIMUM_PYTHON_RESULT" != "success" ]]; then
-            echo "Python 3.10 compatibility result: $MINIMUM_PYTHON_RESULT"
+          if [[ "$FORWARD_COMPATIBILITY_RESULT" != "success" ]]; then
+            echo "Python 3.13 compatibility result: $FORWARD_COMPATIBILITY_RESULT"
             exit 1
           fi
