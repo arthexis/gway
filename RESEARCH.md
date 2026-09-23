@@ -120,12 +120,21 @@ through the recipe. A deployment mode may similarly select a coherent branch.
 Conditionals that independently toggle many individual steps usually indicate
 that the recipe is trying to represent several different procedures at once.
 
-## Local parameters stay local
+## Recipe parameters are intentionally ambient
 
-Passing an explicit argument to a child recipe or operation is different from
-declaring an ambient semantic value.
+Gway recipe arguments become shared semantic context before the recipe runs.
+That is useful, but it means recipe authors should treat every recipe parameter
+as an ambient decision that downstream steps may consume.
 
 For example:
+
+```text
+gway ./deploy.rx --host 127.0.0.1 --domain remote.example.com
+```
+
+is appropriate when `host` and `domain` describe the deployment as a whole.
+
+The same rule applies when one recipe invokes another:
 
 ```text
 recipe mcp/server
@@ -135,11 +144,24 @@ recipe mcp/server
 --endpoint https://remote.example.com/mcp
 ```
 
-These values describe this invocation of `mcp/server`. They do not need
-artificial `mcp_` prefixes merely to protect hypothetical callers.
+Those names enter shared semantic context. They are still good names because the
+recipe is intentionally saying that these are the primary host, port, path, and
+endpoint for the procedure being composed.
 
-Promote a value into wider recipe context only when downstream composition
-actually benefits from sharing it.
+This is why generic context names must be chosen deliberately. If a parent
+recipe is about to orchestrate several unrelated paths, defining a generic
+`path` in ambient context is probably a mistake. Keep step-specific values as
+ordinary operation arguments, or give truly distinct ambient concepts semantic
+names such as `certificate_path` and `log_path`.
+
+Do not solve this by mechanically prefixing every recipe parameter. Prefixes
+should distinguish concepts, not compensate for overusing ambient context.
+
+A useful rule is:
+
+> Put a value in recipe parameters/context only when you intend downstream
+> operations to share that meaning. Otherwise pass it directly to the operation
+> that needs it.
 
 ## Environment is scoped execution state
 
