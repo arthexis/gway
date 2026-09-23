@@ -1,18 +1,13 @@
 """Central process-environment substrate.
 
 This module is the only production boundary that directly touches os.environ.
-Semantic configuration must not grow new dependencies on this API; literal-name
-reads outside interoperability paths are transitional until #1019 E6/E8 removes
-them.
+Semantic configuration must not grow new dependencies on this API. Infrastructure
+that needs literal process-environment behavior depends on this substrate rather
+than importing process-environment primitives directly.
 """
 
 from collections.abc import Mapping
 import os
-
-# Transitional literal configuration reads consolidated during E1. E8 must drive
-# this inventory to empty rather than treating this module as a permanent escape
-# hatch for semantic configuration.
-TRANSITIONAL_DIRECT_ENVIRONMENT_FILES = frozenset()
 
 BACKEND_ENVIRONMENT = frozenset(
     {
