@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from .. import log as gway_log
+from ..environment import process_environment
 from ..logs import recipe_identity
 from ..tokens import statements
 from .frame import RecipeFrame
@@ -111,13 +112,8 @@ def execute_recipe(
             unregister_worker_operations(runtime, frame.companion_worker)
             frame.companion_worker.close()
         if frame is not None:
-            import os
-
             for name, previous in reversed(tuple(frame.environment_restore.items())):
-                if previous is None:
-                    os.environ.pop(name, None)
-                else:
-                    os.environ[name] = previous
+                process_environment.restore(name, previous)
         if frame is not None and frames and frames[-1] is frame:
             frames.pop()
         stack.pop()

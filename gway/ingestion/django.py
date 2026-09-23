@@ -7,6 +7,8 @@ from importlib import import_module
 import inspect
 import os
 from pathlib import Path
+
+from ..environment import process_environment
 import sys
 
 from .base import IngestedOperation, normalize_path, register_operation, remember_object
@@ -88,13 +90,13 @@ def _setup_project(root, *, settings=None):
         sys.path.insert(0, str(root))
 
     if settings is not None:
-        current = os.environ.get("DJANGO_SETTINGS_MODULE")
+        current = process_environment.get("DJANGO_SETTINGS_MODULE")
         if current is not None and current != settings:
             raise RuntimeError(
                 "DJANGO_SETTINGS_MODULE is already configured as "
                 f"{current!r}, not {settings!r}"
             )
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", settings)
+        process_environment.setdefault("DJANGO_SETTINGS_MODULE", settings)
 
     django, registry = _load_django()
     if not getattr(registry, "ready", False):
@@ -603,7 +605,7 @@ def ingest_project(
         root, manage = _project_filesystem(source)
         settings = (
             settings
-            or os.environ.get("DJANGO_SETTINGS_MODULE")
+            or process_environment.get("DJANGO_SETTINGS_MODULE")
             or _settings_from_manage(manage)
         )
     elif isinstance(source, str):

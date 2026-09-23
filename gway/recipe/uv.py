@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from urllib.request import Request, urlopen
 
+from ..environment import environment_child
 from ..install.paths import data_root
 
 
@@ -49,9 +50,10 @@ def _download_text(url):
 def _bootstrap_posix(target):
     script = _download_text(UV_INSTALL_SH)
     target.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env["UV_UNMANAGED_INSTALL"] = str(target)
-    env["UV_NO_MODIFY_PATH"] = "1"
+    env = environment_child(overrides={
+        "UV_UNMANAGED_INSTALL": str(target),
+        "UV_NO_MODIFY_PATH": "1",
+    })
     subprocess.run(
         ["sh"],
         input=script,
@@ -63,9 +65,10 @@ def _bootstrap_posix(target):
 
 def _bootstrap_windows(target):
     target.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env["UV_UNMANAGED_INSTALL"] = str(target)
-    env["UV_NO_MODIFY_PATH"] = "1"
+    env = environment_child(overrides={
+        "UV_UNMANAGED_INSTALL": str(target),
+        "UV_NO_MODIFY_PATH": "1",
+    })
     command = (
         "irm '" + UV_INSTALL_PS1 + "' | iex"
     )

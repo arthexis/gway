@@ -2,13 +2,13 @@
 
 from dataclasses import dataclass
 import inspect
-import os
 import pickle
 from pathlib import Path
 import struct
 import subprocess
 import threading
 
+from ..environment import process_environment
 from ..ingestion.base import IngestedOperation, register_operation
 from ..security.authentication import authenticate_bearer
 from ..security.oauth import OAuthRegistry
@@ -379,7 +379,7 @@ class CompanionWorker:
         frames = getattr(runtime, "_recipe_frames", ()) or ()
         for frame in frames:
             for key in frame.environment_restore:
-                environment[key] = os.environ.get(key)
+                environment[key] = process_environment.get(key)
         with self._lock:
             return self._request(
                 runtime,

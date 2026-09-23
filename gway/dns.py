@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import socket
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from pathlib import Path
+
+from .environment import environment_value
 
 
 class Controller:
@@ -42,7 +43,7 @@ class Controller:
 
     @staticmethod
     def _secret_root():
-        configured = os.environ.get("GWAY_SECRETS_DIR", "").strip()
+        configured = environment_value("GWAY_SECRETS_DIR", "").strip()
         return Path(configured or "/etc/gway/secrets")
 
     @classmethod
@@ -57,17 +58,17 @@ class Controller:
 
     @classmethod
     def _auth_header(cls):
-        pat = os.environ.get("GODADDY_PAT", "").strip()
+        pat = environment_value("GODADDY_PAT", "").strip()
         if not pat:
             pat = cls._secret_value("dns", "godaddy", "pat")
         if pat:
             return f"Bearer {pat}"
 
-        key = os.environ.get("GODADDY_API_KEY", "").strip()
+        key = environment_value("GODADDY_API_KEY", "").strip()
         if not key:
             key = cls._secret_value("dns", "godaddy", "key")
 
-        secret = os.environ.get("GODADDY_API_SECRET", "").strip()
+        secret = environment_value("GODADDY_API_SECRET", "").strip()
         if not secret:
             secret = cls._secret_value("dns", "godaddy", "secret")
 

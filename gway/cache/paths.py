@@ -1,13 +1,14 @@
 """Platform-safe cache path selection."""
 
-import os
 from pathlib import Path
 import sys
+
+from ..environment import process_environment
 
 
 def default_root(*, environ=None, platform=None, home=None):
     """Return GWAY's per-user cache root without creating it."""
-    environ = os.environ if environ is None else environ
+    environ = process_environment if environ is None else environ
     platform = sys.platform if platform is None else platform
     home = Path.home() if home is None else Path(home)
 
