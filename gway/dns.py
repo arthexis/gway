@@ -48,7 +48,8 @@ class Controller:
             secret = self.gateway.resolve("[api_secret]", default=None)
 
         if not key or not secret:
-            raise RuntimeError(f"{backend} DNS credentials are not configured")
+            provider = {"godaddy": "GoDaddy"}.get(backend, backend)
+            raise RuntimeError(f"{provider} DNS credentials are not configured")
         return f"sso-key {key}:{secret}"
 
     def _request(self, method, url, *, payload=None, backend="godaddy"):
