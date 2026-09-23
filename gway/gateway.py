@@ -58,9 +58,6 @@ class Gateway(Resolver):
 
         from .cache import Cache, default_root
         from .journal import JournalManager
-
-        self.cache = cache if isinstance(cache, Cache) else Cache(cache)
-        self.journal = JournalManager(default_root() / "rollback")
         self._execution_depth = 0
         self._execution_suspension = None
         self._authorization_stack_var = ContextVar(
@@ -145,11 +142,25 @@ class Gateway(Resolver):
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
         self.reload = self.wrap("reload", self._reload)
 
+        from .providers.core import register as register_core_provider
         from .providers.godaddy import register as register_godaddy_provider
         from .config import bootstrap
 
+        register_core_provider(self)
         register_godaddy_provider(self)
         bootstrap(self)
+
+        if isinstance(cache, Cache):
+            self.cache = cache
+        else:
+            with self.topics("cache"):
+                configured_cache = self.resolve("[cache_dir]", default=cache)
+            self.cache = Cache(configured_cache)
+        self.journal = JournalManager(self.cache.root / "rollback")
+
+        with self.topics("log"):
+            log_source = self.resolve("[source]", default="gway")
+        gway_log._set_default_source(log_source)
 
         from .ingestion.python import ingest_python
         from .remote.service import register as register_remote_service
