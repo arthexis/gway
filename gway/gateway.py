@@ -124,6 +124,12 @@ class Gateway(Resolver):
         self.commit = self.wrap("commit", self._commit_journal)
         self.rollback = self.wrap("rollback", self._rollback_journal)
         self.clear = self.wrap("clear", self._clear_context)
+        self.set_env = self.wrap("set.env", self._set_environment, op="set", sub="env")
+        self.clear_env = self.wrap(
+            "clear.env", self._clear_environment, op="clear", sub="env"
+        )
+        self.ops.register_alias("set-env", self.set_env)
+        self.ops.register_alias("clear-env", self.clear_env)
         self.require = self.wrap("require", self._require)
         self.help = self.wrap("help", self._help)
         self.wrap("ingest", self.ingest)
@@ -310,6 +316,59 @@ class Gateway(Resolver):
                 self.context.pop(name, None)
         else:
             self.context.clear()
+        return None
+
+    def _active_recipe_frame(self):
+        frames = getattr(self, "_recipe_frames", ()) or ()
+        if not frames:
+            raise RuntimeError("environment mutation is only available during recipe execution")
+        return frames[-1]
+
+    def _remember_environment_value(self, frame, name):
+        import os
+
+        if name not in frame.environment_restore:
+            frame.environment_restore[name] = os.environ.get(name)
+
+    def _set_environment(self, name, value):
+        """Set one environment variable for the active recipe scope.
+
+        The override is inherited by downstream operations and child recipes,
+        then restored when the current recipe frame exits.
+
+        Args:
+            name: Environment variable name.
+            value: Environment variable value.
+        """
+        import os
+
+        frame = self._active_recipe_frame()
+        name = str(name).strip()
+        if not name or "=" in name or "\x00" in name:
+            raise ValueError("environment variable name must be non-empty and contain no '='")
+        value = str(value)
+        if "\x00" in value:
+            raise ValueError("environment variable value cannot contain NUL")
+        self._remember_environment_value(frame, name)
+        os.environ[name] = value
+        return value
+
+    def _clear_environment(self, name):
+        """Clear one environment variable for the active recipe scope.
+
+        The prior value, if any, is restored when the current recipe exits.
+
+        Args:
+            name: Environment variable name.
+        """
+        import os
+
+        frame = self._active_recipe_frame()
+        name = str(name).strip()
+        if not name or "=" in name or "\x00" in name:
+            raise ValueError("environment variable name must be non-empty and contain no '='")
+        self._remember_environment_value(frame, name)
+        os.environ.pop(name, None)
         return None
 
     def _require(self, *packages: str, python: bool = True):
@@ -517,7 +576,7 @@ class Gateway(Resolver):
         if authority is None or self._capability_depth:
             return
         authority.authorize_operation(operation)
-        if operation == "env":
+        if operation in {"env", "set.env", "clear.env"}:
             kwargs = {} if kwargs is None else kwargs
             name = args[0] if args else kwargs.get("name")
             if name is not None:
