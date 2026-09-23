@@ -1088,7 +1088,7 @@ The `default` operation is the canonical example of deliberate context
 publication.
 
 It accepts semantic context and publishes that context back into the containing
-scope.
+scope without producing or publishing an operation result.
 
 For example:
 
@@ -1765,7 +1765,7 @@ For example:
 default --site MTY --role Watchtower
 ```
 
-publishes those values into the containing context.
+publishes those values into the containing context without producing a new result.
 
 By contrast:
 
