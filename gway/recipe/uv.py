@@ -101,7 +101,10 @@ def bootstrap_uv(*, system=False, root=None):
 
 def ensure_uv(*, system=False, root=None):
     """Return a usable uv executable, bootstrapping one only when necessary."""
-    existing = find_uv(system=system, root=root)
+    kwargs = {"system": system}
+    if root is not None:
+        kwargs["root"] = root
+    existing = find_uv(**kwargs)
     if existing is not None:
         return existing
-    return bootstrap_uv(system=system, root=root)
+    return bootstrap_uv(**kwargs)
