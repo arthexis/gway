@@ -46,6 +46,7 @@ def test_remote_https_template_routes_public_oauth_surface_to_remote_auth():
         "location = / {",
         "location = /.well-known/oauth-protected-resource/mcp {",
         "location = /.well-known/oauth-authorization-server {",
+        "location = /.well-known/gway-acceptance-client {",
         "location = /oauth/authorize {",
         "location = /oauth/token {",
         "location = /oauth/revoke {",
@@ -155,6 +156,7 @@ def test_remote_well_known_oauth_routes_are_exact_and_distinct_from_acme():
 
         assert "location = /.well-known/oauth-protected-resource/mcp {" in content
         assert "location = /.well-known/oauth-authorization-server {" in content
+        assert "location = /.well-known/gway-acceptance-client {" in content
         assert "location ^~ /.well-known/ {" not in content
         assert "location / .well-known" not in content
 
@@ -357,6 +359,7 @@ def test_remote_https_public_contract_has_one_mcp_route_and_explicit_auth_routes
         "/",
         "/.well-known/oauth-protected-resource/mcp",
         "/.well-known/oauth-authorization-server",
+        "/.well-known/gway-acceptance-client",
         "/oauth/authorize",
         "/oauth/token",
         "/oauth/revoke",
