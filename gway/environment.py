@@ -14,15 +14,17 @@ import os
 # hatch for semantic configuration.
 TRANSITIONAL_DIRECT_ENVIRONMENT_FILES = frozenset({("sampler", "mcp", "server.py")})
 
-BACKEND_ENVIRONMENT = frozenset({"GWAY_SECRETS_DIR"})
+BACKEND_ENVIRONMENT = frozenset(
+    {
+        "GWAY_SECRETS_DIR",
+    }
+)
 
 TRANSITIONAL_SEMANTIC_ENVIRONMENT = frozenset(
     {
         "DJANGO_SETTINGS_MODULE",
         "GWAY_BIN_DIR",
-        "GWAY_CACHE_DIR",
         "GWAY_DATA_DIR",
-        "GWAY_LOG_SOURCE",
         "GWAY_MCP_ENDPOINT",
         "GWAY_MCP_PUBLIC_ORIGIN",
         "GWAY_SYSTEM_BIN_DIR",
