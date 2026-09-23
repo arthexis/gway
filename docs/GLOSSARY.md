@@ -18,6 +18,7 @@ Gway code.
 - [Subject](#subject) — the entity an operation is about.
 - [Topic](#topic) — an independent category describing a subject.
 - [Context](#context) — the scoped semantic state available during execution.
+- [Result](#result) — the value produced by a completed operation.
 - [Chain](#chain) — an ordered composition of operations that can itself act as an operation.
 - [Command](#command) — the complete executable action requested by an operator.
 - [Glyph](#glyph) — a syntactic character or ordered character construction with defined meaning.
@@ -1276,6 +1277,364 @@ It surrounds the execution in which multiple operations may participate.
 A useful invariant is:
 
 > Operations act within context; the nearest applicable semantic value wins.
+
+## Result
+
+A **result** is the value produced by a completed Gway operation.
+
+For example:
+
+```text
+read charger
+```
+
+may produce a charger object as its result.
+
+The result is the direct product of performing the operation. It is not itself
+the operation, the subject, or the surrounding context.
+
+Conceptually:
+
+```text
+operation
+    acts upon
+subject
+
+operation
+    produces
+result
+```
+
+### Every completed operation may produce a result
+
+An operation may produce any value appropriate to its semantics.
+
+A result may therefore be:
+
+```text
+a scalar
+an object
+a mapping
+a sequence
+an iterator
+a boolean
+None
+```
+
+or any other value that the operation legitimately returns.
+
+Gway does not require all results to have the same shape.
+
+The meaning of a result follows from the operation and subject that produced it.
+
+### A result is associated with its subject
+
+When an operation has a semantic subject, Gway may retain the result under that
+subject.
+
+For example, if:
+
+```text
+get charger
+```
+
+produces:
+
+```text
+CHG001
+```
+
+then the semantic relationship is:
+
+```text
+subject: charger
+result:  CHG001
+```
+
+That association allows later operations that understand the same subject to
+reuse the result semantically.
+
+A result therefore carries more meaning than merely occupying a position in a
+list of returned values.
+
+Its producing subject can remain relevant to subsequent Gway resolution.
+
+### Results have history
+
+Gway preserves completed results chronologically.
+
+Conceptually:
+
+```text
+operation A -> result A
+operation B -> result B
+operation C -> result C
+```
+
+creates a result history:
+
+```text
+result A
+result B
+result C
+```
+
+The most recently produced value is the current or last result.
+
+Result history allows later Gway semantics to refer to earlier produced values
+without requiring the operations that created them to execute again.
+
+### The last result is not the same as context
+
+The most recent result and the active context are distinct forms of execution
+state.
+
+A result answers:
+
+> What value did an operation produce?
+
+Context answers:
+
+> What semantic facts are currently available to execution?
+
+An operation may produce a result without publishing any new context.
+
+Likewise, an operation may deliberately publish context while returning a result
+that means something else.
+
+### Results can flow through chains
+
+A result may become the positional input to another operation when a chain
+connects them.
+
+For example:
+
+```text
+produce - consume
+```
+
+means that the result produced on the left participates as positional input to the
+operation on the right.
+
+Conceptually:
+
+```text
+produce
+    -> result
+        -> consume
+```
+
+This is raw result flow.
+
+It is distinct from semantic context resolution.
+
+Without the connecting glyph, the raw result is not automatically transferred
+positionally merely because one operation happened before another.
+
+### A pipeline carries results, not context
+
+The pipeline glyph connects operations through their results.
+
+For example:
+
+```text
+find charger - inspect
+```
+
+can pass the charger result from `find` into `inspect`.
+
+The surrounding context may also be visible to both operations, but it is not what
+the pipeline glyph transfers.
+
+A useful distinction is:
+
+```text
+result
+    a value produced by an operation
+
+pipeline
+    an ordered connection that transfers a result
+
+context
+    scoped semantic state available during execution
+```
+
+### A result can be published
+
+After an operation completes, Gway may **publish** its result.
+
+Publication makes the completed value available to later Gway execution according
+to its semantic identity.
+
+For a subject such as:
+
+```text
+charger
+```
+
+publication may establish:
+
+```text
+subject: charger
+result:  <charger value>
+```
+
+for later semantic reuse.
+
+Publication does not change what the result is.
+
+It changes where and how that result becomes available after it has been produced.
+
+### Mapping results can also contribute context
+
+A result may contain named semantic information.
+
+For example, an inspection operation might produce a mapping equivalent to:
+
+```text
+serial: ABC123
+online: true
+site: MTY
+```
+
+The mapping remains the operation's result as a whole.
+
+Its members may additionally be published into semantic context so later operations
+can consume meanings such as:
+
+```text
+--serial ABC123
+--online
+--site MTY
+```
+
+These are two related but distinct effects:
+
+```text
+result
+    the mapping produced by the operation
+
+context publication
+    semantic facts made available from that mapping
+```
+
+The result should not be understood as disappearing merely because some of its
+contents become context.
+
+### Publishing a new result may replace a subject's current result
+
+A subject can produce multiple results over time.
+
+For example:
+
+```text
+inspect charger
+inspect charger
+```
+
+may produce two different charger results.
+
+Both can remain part of chronological result history, while the most recently
+published result associated with the `charger` subject becomes the current
+semantic result for that subject.
+
+This gives Gway both:
+
+```text
+history
+    what was produced over time
+
+subject binding
+    the current result associated with a semantic subject
+```
+
+### A result can retain semantic identity through a chain
+
+When Gway knows the subject associated with a result, that semantic identity can
+help resolve the next operation.
+
+For example, a pipeline may carry a concrete charger object while Gway also knows:
+
+```text
+subject: charger
+```
+
+A following operation can then be interpreted against the `charger` subject
+without requiring the caller to redundantly spell that subject again when the
+meaning is unambiguous.
+
+The raw value and its semantic identity therefore complement one another:
+
+```text
+result value
+    what was produced
+
+result subject
+    what that value semantically represents
+```
+
+### A result is not necessarily persistent
+
+Results belong to execution state.
+
+They are not automatically durable data, configuration, or cache entries.
+
+Producing a result does not imply that Gway should persist it across unrelated
+executions.
+
+If a result needs durable storage, that must be an explicit semantic effect of an
+operation or subsystem designed to provide it.
+
+### A result is not an effect
+
+An operation may have effects beyond its returned value.
+
+For example:
+
+```text
+delete file
+```
+
+may modify the filesystem and also return a result describing what happened.
+
+The filesystem mutation is an effect.
+
+The returned value is the result.
+
+These concepts should not be conflated:
+
+```text
+effect
+    what execution changes or makes observable
+
+result
+    the value execution produces
+```
+
+### Result and publication are separate concepts
+
+A result exists because an operation produced a value.
+
+Publication determines how that value participates in subsequent Gway execution.
+
+Conceptually:
+
+```text
+operation
+    -> result
+        -> publication
+            -> result history
+            -> subject association
+            -> possibly semantic context
+```
+
+An implementation may deliberately suppress or specialize publication without
+changing the semantic fact that results and publication are separate stages.
+
+A useful invariant is:
+
+> An operation produces a result; publication determines what Gway remembers
+> about it.
 
 ## Chain
 
