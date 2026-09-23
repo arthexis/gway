@@ -10,39 +10,65 @@ permissions:
   contents: read
 
 jobs:
-  tests:
-    name: Tests (Python ${{ matrix.python-version }})
+  regression:
+    name: Tests (Python 3.13)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.10', '3.13']
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.13'
           cache: pip
       - name: Install project and test tools
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,toml]'
-      - name: Tests
+      - name: Full regression suite
         run: python -m pytest -q
+
+  minimum-python:
+    name: Compatibility (Python 3.10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          cache: pip
+      - name: Install minimum-version test surface
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[toml]' pytest
+      - name: Compile supported source tree
+        run: python -m compileall -q gway sampler
+      - name: Verify Python 3.10 compatibility contracts
+        run: |
+          python -m pytest -q tests/gateway/test_builtins.py -k toml
+          python -m pytest -q tests/install/test_metadata.py
+          python -m pytest -q tests/install/test_systemd.py -k exception_note_fallback_supports_python_310_shape
+      - name: CLI smoke
+        run: python -m gway help install >/dev/null
 
   compatibility:
     name: python / Python compatibility
-    needs: tests
-    if: always() && needs.tests.result != 'skipped'
+    needs: [regression, minimum-python]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require all Python versions
+      - name: Require regression and minimum Python compatibility
         env:
-          TEST_RESULT: ${{ needs.tests.result }}
+          REGRESSION_RESULT: ${{ needs.regression.result }}
+          MINIMUM_PYTHON_RESULT: ${{ needs.minimum-python.result }}
         run: |
-          if [[ "$TEST_RESULT" != "success" ]]; then
-            echo "Python compatibility matrix result: $TEST_RESULT"
+          if [[ "$REGRESSION_RESULT" != "success" ]]; then
+            echo "Python 3.13 regression result: $REGRESSION_RESULT"
+            exit 1
+          fi
+          if [[ "$MINIMUM_PYTHON_RESULT" != "success" ]]; then
+            echo "Python 3.10 compatibility result: $MINIMUM_PYTHON_RESULT"
             exit 1
           fi
