@@ -235,3 +235,46 @@ def test_companion_preserves_venv_python_symlink(
         gateway(recipe)
 
     assert captured["python"] == str(venv_python)
+
+
+
+def test_managed_companion_observes_scoped_recipe_environment(
+    gateway, recipe_factory, required_runtime, monkeypatch
+):
+    monkeypatch.setenv("GWAY_COMPANION_ENV_TEST", "parent")
+    recipe = recipe_factory(
+        body=(
+            "set env GWAY_COMPANION_ENV_TEST scoped\n"
+            "require placeholder\n"
+            "demo read_env\n"
+        ),
+        companion=(
+            "import os\n"
+            "def read_env():\n"
+            "    return os.environ.get('GWAY_COMPANION_ENV_TEST')\n"
+        ),
+    )
+
+    assert gateway(recipe) == "scoped"
+    assert os.environ["GWAY_COMPANION_ENV_TEST"] == "parent"
+
+
+def test_managed_companion_observes_scoped_clear_env(
+    gateway, recipe_factory, required_runtime, monkeypatch
+):
+    monkeypatch.setenv("GWAY_COMPANION_ENV_TEST", "parent")
+    recipe = recipe_factory(
+        body=(
+            "clear env GWAY_COMPANION_ENV_TEST\n"
+            "require placeholder\n"
+            "demo read_env\n"
+        ),
+        companion=(
+            "import os\n"
+            "def read_env():\n"
+            "    return os.environ.get('GWAY_COMPANION_ENV_TEST')\n"
+        ),
+    )
+
+    assert gateway(recipe) is None
+    assert os.environ["GWAY_COMPANION_ENV_TEST"] == "parent"
