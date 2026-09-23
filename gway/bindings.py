@@ -56,7 +56,7 @@ class Bindings(Mapping):
     def __init__(self):
         self._bindings = {}
 
-    def register(self, semantic_key, *bindings):
+    def register(self, semantic_key, *bindings, replace=True):
         key = str(semantic_key).strip()
         if not key:
             raise ValueError("semantic binding key must be non-empty")
@@ -66,8 +66,11 @@ class Bindings(Mapping):
             binding if isinstance(binding, Binding) else _coerce_binding(binding)
             for binding in bindings
         )
-        self._bindings[key] = normalized
-        return normalized
+        if replace or key not in self._bindings:
+            self._bindings[key] = normalized
+        else:
+            self._bindings[key] = (*self._bindings[key], *normalized)
+        return self._bindings[key]
 
     def __getitem__(self, semantic_key):
         bindings = self._bindings[semantic_key]
