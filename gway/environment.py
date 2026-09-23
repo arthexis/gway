@@ -60,6 +60,9 @@ class ProcessEnvironment(Mapping):
         os.environ[str(name)] = str(value)
         return str(value)
 
+    def setdefault(self, name, value):
+        return os.environ.setdefault(str(name), str(value))
+
     def remove(self, name):
         return os.environ.pop(str(name), None)
 
