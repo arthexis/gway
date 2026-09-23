@@ -161,8 +161,10 @@ class Gateway(Resolver):
         self._service_controller = Controller(self)
         ingest_python(self, self._service_controller, path=("service",))
 
+        from .providers.godaddy import register as register_godaddy_provider
         from .dns import Controller as DNSController
 
+        register_godaddy_provider(self)
         self._dns_controller = DNSController(self)
         ingest_python(self, self._dns_controller, path=("dns",))
 
