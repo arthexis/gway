@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 import inspect
-import os
 import pickle
 from pathlib import Path
 import struct
