@@ -138,6 +138,7 @@ def test_semantic_candidates_use_topics_then_subject(gateway):
     with gateway.topics("dns", "godaddy"):
         assert gateway.candidates("api_key") == (
             "dns.godaddy.api_key",
+            "godaddy.dns.api_key",
             "godaddy.api_key",
             "dns.api_key",
             "api_key",
@@ -148,6 +149,7 @@ def test_semantic_candidate_derivation_is_generic(gateway):
     with gateway.topics("database", "postgres"):
         assert gateway.candidates("password") == (
             "database.postgres.password",
+            "postgres.database.password",
             "postgres.password",
             "database.password",
             "password",
@@ -199,3 +201,18 @@ def test_semantic_topic_resolution_preserves_ambiguity_detection(gateway):
     with gateway.topics("dns", "godaddy"):
         with pytest.raises(KeyError, match="ambiguous"):
             gateway.resolve("[api_key]")
+
+
+def test_topic_order_is_semantically_equivalent(gateway):
+    gateway.context["dns.godaddy.api_key"] = "canonical"
+
+    with gateway.topics("godaddy", "dns"):
+        assert gateway.resolve("[api_key]") == "canonical"
+
+
+def test_declared_topic_order_is_preferred_when_both_orders_exist(gateway):
+    gateway.context["dns.godaddy.api_key"] = "declared"
+    gateway.context["godaddy.dns.api_key"] = "permuted"
+
+    with gateway.topics("dns", "godaddy"):
+        assert gateway.resolve("[api_key]") == "declared"
