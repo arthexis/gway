@@ -1821,6 +1821,33 @@ operation to consume it.
 When several flags are supplied to `pipe`, the natural result is a semantic
 mapping.
 
+An explicit flag value is used directly:
+
+```text
+pipe --site MTY
+```
+
+A bare flag first looks for the same semantic name in the current context:
+
+```text
+pipe --site
+```
+
+If context already contains a non-boolean value for `site`, that value is placed
+in the result. If the context does not contain `site`, the bare flag contributes
+`true`.
+
+Explicit values remain more specific than contextual values, so:
+
+```text
+pipe --site GDL
+```
+
+uses `GDL` even when the surrounding context contains another value for `site`.
+
+With no flags, `pipe` returns a detached mapping snapshot of the current context.
+
+
 For example:
 
 ```text
