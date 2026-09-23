@@ -115,16 +115,7 @@ class Gateway(Resolver):
 
         ingest_module(self, builtin, transparent=True)
 
-        from .install.ops import install as install_operation
-
-        self.install = self.wrap(
-            "install",
-            lambda source, **kwargs: install_operation(
-                source,
-                cache=self.cache,
-                **kwargs,
-            ),
-        )
+        self.install = self.wrap("install", self._install)
 
         from .filesystem import Filesystem
         from .rendering import Renderer
@@ -193,6 +184,33 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    def _install(self, source, *, ref=None, upgrade=True, force=False, stash=False, system=False):
+        """Converge one local or Git project installation toward requested state.
+
+        Args:
+            source: Local project path, Git source, GitHub shorthand, or known project identity.
+            ref: Branch, tag, or commit requested for Git sources.
+            upgrade: Replace an existing installation when the requested source state changes.
+            force: Discard drift in a dirty managed installation before reconciliation.
+            stash: Preserve a dirty managed installation before reconciliation.
+            system: Use system-wide data and launcher locations instead of user locations.
+        """
+        from .cache import Cache
+        from .install.ops import install as install_operation
+
+        with self.topics("cache"):
+            configured_cache = self.resolve("[cache_dir]", default=None)
+        cache = self.cache if configured_cache is None else Cache(configured_cache)
+        return install_operation(
+            source,
+            ref=ref,
+            upgrade=upgrade,
+            force=force,
+            stash=stash,
+            system=system,
+            cache=cache,
+        )
 
     def bind(self, semantic_key, *bindings, replace=True):
         """Register ordered physical bindings for one exact semantic key."""
