@@ -17,6 +17,7 @@ Gway code.
 - [Operation](#operation) — a reusable semantic action or effect.
 - [Subject](#subject) — the entity an operation is about.
 - [Topic](#topic) — an independent category describing a subject.
+- [Context](#context) — the scoped semantic state available during execution.
 - [Chain](#chain) — an ordered composition of operations that can itself act as an operation.
 - [Command](#command) — the complete executable action requested by an operator.
 - [Glyph](#glyph) — a syntactic character or ordered character construction with defined meaning.
@@ -855,6 +856,426 @@ same set of topics
 different topic ordering or implementation layout
 same semantic meaning
 ```
+
+## Context
+
+**Context** is the semantic state available around the execution of a Gway command.
+
+It contains information that is not necessarily written directly into the command
+but may still participate in interpreting or executing it.
+
+For example, an earlier operation or recipe invocation may establish:
+
+```text
+--site MTY
+```
+
+Later, a command containing:
+
+```text
+[site]
+```
+
+may resolve that semantic value without requiring `MTY` to be repeated.
+
+Context therefore allows Gway to carry semantic information across operations
+without forcing every command to restate everything it already knows.
+
+### Context is ambient semantic state
+
+Context surrounds an operation rather than being one of its intrinsic semantic
+parts.
+
+A command may explicitly provide an operation, subject, flags, sigils, values, and
+glyphs while context supplies additional semantic facts already available when
+that command executes.
+
+Conceptually:
+
+```text
+command
+    executes within
+context
+```
+
+The command expresses what should happen.
+
+The context supplies relevant semantic information already known to Gway.
+
+### Context can satisfy unresolved meaning
+
+Sigils are one of the clearest consumers of context.
+
+For example:
+
+```text
+[domain]
+```
+
+asks Gway to resolve the semantic meaning `domain`.
+
+If the current context was established with:
+
+```text
+--domain remote.example.com
+```
+
+then the sigil may resolve to:
+
+```text
+remote.example.com
+```
+
+without that concrete value being hard-coded into the command.
+
+### Context can participate in binding
+
+Context is not limited to explicit sigil resolution.
+
+Suppose an operation accepts the flag:
+
+```text
+--site
+```
+
+and the active context already contains a semantic value established through:
+
+```text
+--site MTY
+```
+
+Gway may use that contextual value to satisfy the operation's `site` parameter
+when no more specific value has been supplied.
+
+This works because the flag name carries semantic meaning shared between the
+operation, its subject, and the surrounding context.
+
+The information has not disappeared. It has become ambient.
+
+### Context names are semantic
+
+A context name is not intended to be an arbitrary variable name used merely to
+move data between operations.
+
+The identifier itself should describe a stable semantic meaning.
+
+For example:
+
+```text
+--site MTY
+```
+
+does not merely create a conveniently named variable called `site`.
+
+It establishes a semantic fact whose meaning is `site`.
+
+Other operations and subjects that understand the same flag are expected to
+interpret that meaning consistently.
+
+A useful rule is:
+
+> Shared context names should imply shared semantic meaning.
+
+Context therefore behaves differently from an ordinary collection of temporary
+programming variables.
+
+### Context has scope
+
+Context is not one flat global namespace.
+
+A semantic value may exist at different execution scopes, and the scope in which a
+value is introduced determines where that value is visible.
+
+For example, if a command supplies:
+
+```text
+inspect charger --site MTY
+```
+
+then `--site MTY` belongs to that operation invocation unless something
+explicitly publishes it into a broader scope.
+
+The operation may consume the value while it executes, but the surrounding
+container does not automatically acquire it merely because one child operation
+received it.
+
+### More specific scope overrides broader scope
+
+When the same semantic name exists at several scopes, the nearest applicable value
+wins.
+
+For example, suppose the surrounding container has:
+
+```text
+--site MTY
+```
+
+and one operation is invoked with:
+
+```text
+deploy service --site GDL
+```
+
+Then the operation sees:
+
+```text
+--site GDL
+```
+
+while the surrounding container continues to hold:
+
+```text
+--site MTY
+```
+
+after the operation completes.
+
+Conceptually:
+
+```text
+operation-local context
+    overrides
+container context
+    overrides
+more external context
+```
+
+A useful principle is:
+
+> Specific semantic information overrides more ambient semantic information.
+
+### Context does not propagate outward automatically
+
+Context inheritance is normally inward.
+
+A child operation may consume semantic values available from its parent or
+container scope.
+
+The reverse is not automatic.
+
+Values introduced inside an operation do not become part of the surrounding
+context merely because they existed during that invocation.
+
+A useful rule is:
+
+> Context flows inward by visibility, but outward only by publication.
+
+### Operations may deliberately publish context
+
+An operation may explicitly publish some or all of the context it receives into
+the surrounding container scope.
+
+Publication is therefore an operation behavior, not the default behavior of
+context itself.
+
+For example, an operation might receive:
+
+```text
+--site MTY
+--role Watchtower
+```
+
+and deliberately publish those semantic values outward.
+
+After publication, following operations in the containing scope may consume them
+without those values being written again.
+
+### `default` publishes context
+
+The `default` operation is the canonical example of deliberate context
+publication.
+
+It accepts semantic context and publishes that context back into the containing
+scope.
+
+For example:
+
+```text
+default --site MTY --role Watchtower
+```
+
+establishes those values as defaults available to later operations in the
+containing execution scope.
+
+For example:
+
+```text
+default --site MTY
+
+inspect charger
+deploy service --site GDL
+verify charger
+```
+
+may be understood as:
+
+```text
+container context:
+    --site MTY
+
+inspect charger
+    sees --site MTY
+
+deploy service --site GDL
+    sees --site GDL
+
+verify charger
+    sees --site MTY
+```
+
+The explicit value supplied to `deploy` overrides the default only for that
+operation.
+
+The surrounding context remains unchanged.
+
+### Publication and return values are different
+
+Publishing context outward is not the same as returning a result.
+
+An operation may return a raw result, publish semantic context, do both, or do
+neither.
+
+A pipeline may carry a raw result to the next operation while context publication
+makes named semantic values available more broadly.
+
+These are separate effects.
+
+### Context scopes compose
+
+Because context is scoped, nested execution can safely specialize semantic values.
+
+Conceptually:
+
+```text
+outer context
+    --site MTY
+
+    recipe context
+        --role Watchtower
+
+        operation context
+            --site GDL
+```
+
+The innermost operation sees the most specific applicable values while broader
+scopes retain their own values unless publication explicitly changes them.
+
+A useful invariant is:
+
+> Context is inherited inward, overridden locally, and published outward only
+> deliberately.
+
+### Context is not the raw pipeline
+
+A pipeline transfers a particular raw result between connected operations.
+
+Context carries named semantic state.
+
+For example:
+
+```text
+produce - consume
+```
+
+uses the pipeline glyph to transfer the previous raw result positionally.
+
+By contrast:
+
+```text
+produce
+consume
+```
+
+may still allow `consume` to use semantic values published by `produce`
+through context even though the raw result is not transferred positionally.
+
+A useful distinction is:
+
+```text
+pipeline
+    transfers a raw value through an ordered chain
+
+context
+    carries named semantic state across execution
+```
+
+### Context is semantic, not merely structural
+
+Context follows Gway's semantic naming rules.
+
+For example:
+
+```text
+--status-code 200
+```
+
+may correspond semantically to representations such as:
+
+```text
+status-code
+status_code
+status code
+```
+
+where Gway's identifier normalization makes that relationship unambiguous.
+
+The important fact is not the exact storage spelling. It is that all of those
+forms identify the same semantic concept.
+
+### Context is not environment
+
+Context and environment may both provide values during execution, but they are
+different concepts.
+
+The **environment** is part of the surrounding process or execution environment.
+
+The **context** is Gway's semantic execution state.
+
+Environment values may participate in semantic resolution, but the environment
+and context should not be treated as the same namespace.
+
+### Context is not storage
+
+Context should not be understood as a particular dictionary, object, database, or
+other storage implementation.
+
+Those may be mechanisms used to hold context.
+
+The semantic concept is broader:
+
+```text
+context
+    the semantic facts currently available to execution
+```
+
+Its implementation may change without changing what context means.
+
+### Context enables semantic compression
+
+One of the main purposes of context is to avoid repeating information that Gway
+already knows.
+
+If `--site MTY` has already been established semantically, later operations that
+share the meaning of `--site` may reuse it.
+
+This is another form of **semantic compression**:
+
+> Information that is already available unambiguously does not need to be written
+> again.
+
+Explicit information remains free to override it whenever the current command
+needs a different value.
+
+### Context belongs to execution, not to an operation
+
+An operation may consume context or publish into context, but context does not
+belong exclusively to that operation.
+
+It surrounds the execution in which multiple operations may participate.
+
+A useful invariant is:
+
+> Operations act within context; the nearest applicable semantic value wins.
 
 ## Chain
 
