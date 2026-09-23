@@ -283,3 +283,148 @@ def test_sync_rejects_newline_package_specs(
             tmp_path / "uv",
             ["fastmcp\nmalicious"],
         )
+
+
+
+def test_set_env_is_visible_to_following_recipe_operations_and_restored(
+    gateway, recipe_factory, monkeypatch
+):
+    monkeypatch.setenv("GWAY_SCOPED_TEST", "parent")
+
+    def probe():
+        import os
+
+        return os.environ.get("GWAY_SCOPED_TEST")
+
+    gateway.wrap("environment probe", probe)
+    recipe = recipe_factory(
+        body=(
+            "set env GWAY_SCOPED_TEST recipe\n"
+            "environment probe\n"
+        )
+    )
+
+    assert gateway(recipe) == "recipe"
+    assert probe() == "parent"
+
+
+def test_set_env_child_recipe_inherits_and_nested_override_does_not_leak(
+    gateway, recipe_factory, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("GWAY_SCOPED_TEST", "parent")
+
+    seen = []
+
+    def probe():
+        import os
+
+        value = os.environ.get("GWAY_SCOPED_TEST")
+        seen.append(value)
+        return value
+
+    gateway.wrap("environment probe", probe)
+    root = tmp_path / "recipes"
+    recipe_factory(
+        name="child",
+        root=root,
+        body=(
+            "environment probe\n"
+            "set env GWAY_SCOPED_TEST child\n"
+            "environment probe\n"
+        ),
+    )
+    parent = recipe_factory(
+        name="parent",
+        root=root,
+        body=(
+            "set env GWAY_SCOPED_TEST outer\n"
+            "./child.rx\n"
+            "environment probe\n"
+        ),
+    )
+
+    gateway(parent)
+
+    assert seen == ["outer", "child", "outer"]
+    assert probe() == "parent"
+
+
+def test_clear_env_is_scoped_and_restores_parent_value(
+    gateway, recipe_factory, monkeypatch
+):
+    monkeypatch.setenv("GWAY_SCOPED_TEST", "parent")
+
+    def probe():
+        import os
+
+        return os.environ.get("GWAY_SCOPED_TEST")
+
+    gateway.wrap("environment probe", probe)
+    recipe = recipe_factory(
+        body=(
+            "clear env GWAY_SCOPED_TEST\n"
+            "environment probe\n"
+        )
+    )
+
+    assert gateway(recipe) is None
+    assert probe() == "parent"
+
+
+def test_set_env_requires_active_recipe(gateway):
+    with pytest.raises(RuntimeError, match="only available during recipe execution"):
+        gateway("set env GWAY_SCOPED_TEST value")
+
+
+
+def test_set_env_restores_parent_value_after_recipe_failure(
+    gateway, recipe_factory, monkeypatch
+):
+    monkeypatch.setenv("GWAY_SCOPED_TEST", "parent")
+
+    def fail():
+        raise RuntimeError("boom")
+
+    gateway.wrap("environment fail", fail)
+    recipe = recipe_factory(
+        body=(
+            "set env GWAY_SCOPED_TEST recipe\n"
+            "environment fail\n"
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        gateway(recipe)
+
+    assert gateway("env GWAY_SCOPED_TEST") == "parent"
+
+
+def test_set_env_is_available_in_spaced_and_dashed_forms(
+    gateway, recipe_factory, monkeypatch
+):
+    monkeypatch.delenv("GWAY_SCOPED_TEST", raising=False)
+
+    def probe():
+        import os
+
+        return os.environ.get("GWAY_SCOPED_TEST")
+
+    gateway.wrap("environment probe", probe)
+    spaced = recipe_factory(
+        name="spaced",
+        body=(
+            "set env GWAY_SCOPED_TEST spaced\n"
+            "environment probe\n"
+        ),
+    )
+    dashed = recipe_factory(
+        name="dashed",
+        body=(
+            "set-env GWAY_SCOPED_TEST dashed\n"
+            "environment probe\n"
+        ),
+    )
+
+    assert gateway(spaced) == "spaced"
+    assert gateway(dashed) == "dashed"
+    assert gateway("env GWAY_SCOPED_TEST") is None

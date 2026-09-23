@@ -16,6 +16,7 @@ class RecipeFrame:
     invocation_context: dict[str, object] = field(default_factory=dict)
     section: str | None = None
     environment: object | None = None
+    environment_restore: dict[str, str | None] = field(default_factory=dict)
     requirements: dict[str, list[str]] = field(default_factory=dict)
     uv: Path | None = None
     preflight_requirements: dict[str, list[str]] = field(default_factory=dict)

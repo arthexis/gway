@@ -110,6 +110,14 @@ def execute_recipe(
 
             unregister_worker_operations(runtime, frame.companion_worker)
             frame.companion_worker.close()
+        if frame is not None:
+            import os
+
+            for name, previous in reversed(tuple(frame.environment_restore.items())):
+                if previous is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = previous
         if frame is not None and frames and frames[-1] is frame:
             frames.pop()
         stack.pop()

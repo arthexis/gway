@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import inspect
+import os
 import pickle
 from pathlib import Path
 import struct
@@ -40,6 +41,7 @@ def _write_message(stream, value):
 _WORKER = r"""
 import importlib.util
 import inspect
+import os
 import pickle
 from pathlib import Path
 import struct
@@ -231,10 +233,24 @@ while True:
         if method != "companion.call":
             raise LookupError(f"Unknown companion RPC method: {method}")
         name = params["name"]
-        result = getattr(module, name)(
-            *params.get("args", ()),
-            **params.get("kwargs", {}),
-        )
+        environment = dict(params.get("environment") or {})
+        previous_environment = {key: os.environ.get(key) for key in environment}
+        try:
+            for key, value in environment.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = str(value)
+            result = getattr(module, name)(
+                *params.get("args", ()),
+                **params.get("kwargs", {}),
+            )
+        finally:
+            for key, value in previous_environment.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
         write_message(
             {"type": "response", "id": request_id, "ok": True, "result": result}
         )
@@ -359,11 +375,21 @@ class CompanionWorker:
             return response.get("result")
 
     def call(self, runtime, name, args, kwargs):
+        environment = {}
+        frames = getattr(runtime, "_recipe_frames", ()) or ()
+        for frame in frames:
+            for key in frame.environment_restore:
+                environment[key] = os.environ.get(key)
         with self._lock:
             return self._request(
                 runtime,
                 "companion.call",
-                {"name": name, "args": tuple(args), "kwargs": dict(kwargs)},
+                {
+                    "name": name,
+                    "args": tuple(args),
+                    "kwargs": dict(kwargs),
+                    "environment": environment,
+                },
             )
 
     def close(self):
