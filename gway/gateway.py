@@ -145,8 +145,10 @@ class Gateway(Resolver):
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
         self.reload = self.wrap("reload", self._reload)
 
+        from .providers.godaddy import register as register_godaddy_provider
         from .config import bootstrap
 
+        register_godaddy_provider(self)
         bootstrap(self)
 
         from .ingestion.python import ingest_python
@@ -161,10 +163,8 @@ class Gateway(Resolver):
         self._service_controller = Controller(self)
         ingest_python(self, self._service_controller, path=("service",))
 
-        from .providers.godaddy import register as register_godaddy_provider
         from .dns import Controller as DNSController
 
-        register_godaddy_provider(self)
         self._dns_controller = DNSController(self)
         ingest_python(self, self._dns_controller, path=("dns",))
 
