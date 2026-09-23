@@ -169,9 +169,13 @@ class Gateway(Resolver):
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
 
-    def bind(self, semantic_key, *bindings):
+    def bind(self, semantic_key, *bindings, replace=True):
         """Register ordered physical bindings for one exact semantic key."""
-        return self.bindings.register(semantic_key, *bindings)
+        return self.bindings.register(
+            semantic_key,
+            *bindings,
+            replace=replace,
+        )
 
     @property
     def semantic_topics(self):
