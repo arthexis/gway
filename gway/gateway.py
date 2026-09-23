@@ -56,7 +56,7 @@ class Gateway(Resolver):
 
         self.gway_identity = running_gway_identity()
 
-        from .cache import Cache, default_root
+        from .cache import Cache
         from .journal import JournalManager
         self._execution_depth = 0
         self._execution_suspension = None
