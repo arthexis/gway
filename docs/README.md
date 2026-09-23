@@ -9,7 +9,7 @@ This directory documents the behavior implemented on the active branch.
 - [Recipes](RECIPES.md) — the authoritative implemented recipe language: execution, context, companion Python files, nested recipes, check, --unless, repeat, rollback journals, reload/process handoff, execution boundaries, and transaction safety.
 - [Logging](LOGGING.md) — logical sources, journal/rotating-file backends, read/tail/search semantics, platform defaults, and the ordinary GWAY operation contract used by MCP.
 - [MCP](MCP.md) — generic `gway(command)` transport, canonical authorization, scopes/tokens, HTTP deployment, service supervision, and logging examples.
-- [Glossary](../GLOSSARY.md) — canonical definitions for GWAY terminology.
+- [Glossary](GLOSSARY.md) — canonical definitions for GWAY terminology.
 
 The top-level [README](../README.rst) is intentionally concise and should orient readers rather than duplicate these guides. Agent-specific implementation and validation rules live in [AGENTS.md](../AGENTS.md); that file is an implementation/maintenance guide rather than a second user manual.
 
