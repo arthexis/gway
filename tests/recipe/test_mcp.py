@@ -1025,6 +1025,18 @@ def test_maintained_mcp_recipe_serves_http_with_safe_defaults(
     }
 
 
+def test_maintained_mcp_recipe_exposes_deployment_parameters():
+    recipe = (sampler_root() / "mcp" / "server.rx").read_text(encoding="utf-8")
+
+    assert "[mcp_host|127.0.0.1]" in recipe
+    assert "[mcp_port|8000]" in recipe
+    assert "[mcp_path|/mcp]" in recipe
+    assert (
+        "--public-origin [mcp_public_origin|http://127.0.0.1:8000]"
+        in recipe
+    )
+
+
 def test_mcp_serve_allows_explicit_http_bind_configuration(
     gateway, recipe_factory, required_runtime, tmp_path
 ):
