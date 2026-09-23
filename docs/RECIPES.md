@@ -169,6 +169,38 @@ echo '[site]'
 
 Double quotes group text while retaining normal resolution behavior.
 
+## Recipe-scoped environment
+
+Recipes can override process environment for the remainder of the active recipe
+scope:
+
+~~~text
+set env GWAY_CACHE_DIR /var/lib/gway/cache
+~~~
+
+The dashed spelling is equivalent:
+
+~~~text
+set-env GWAY_CACHE_DIR /var/lib/gway/cache
+~~~
+
+The override is visible to following operations, child recipes, subprocesses,
+and managed companion calls. Nested recipes inherit the current value and may
+override it again. When a nested recipe returns, the outer value is restored;
+when the outer recipe returns or fails, the caller's original environment is
+restored.
+
+Clear one variable for the current recipe scope with:
+
+~~~text
+clear env NAME
+clear-env NAME
+~~~
+
+Environment state remains distinct from semantic context. Use recipe parameters
+for ambient semantic facts such as a deployment host or domain; use `set env`
+for actual process environment required by downstream execution.
+
 ## Companion Python files
 
 Before executing a recipe, GWAY looks for a sibling Python file with the same stem:
