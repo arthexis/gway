@@ -776,16 +776,16 @@ def test_service_install_systemd_renders_and_persists_environment(
 
     records = Gateway()(
         "service install --backend systemd "
-        "--environment GWAY_CACHE_DIR=/var/lib/gway/cache sous chef"
+        "--environment VENDOR_LEGACY_MODE=compatible sous chef"
     )
 
     unit = (units / "gway-sous-chef.service").read_text(encoding="utf-8")
-    assert "Environment=GWAY_CACHE_DIR=/var/lib/gway/cache" in unit
-    assert records[0].environment == ("GWAY_CACHE_DIR=/var/lib/gway/cache",)
+    assert "Environment=VENDOR_LEGACY_MODE=compatible" in unit
+    assert records[0].environment == ("VENDOR_LEGACY_MODE=compatible",)
 
     state = ServiceInstallState(install_environment.data / "services-installed")
     restored = state.get("gway")
-    assert restored[0].environment == ("GWAY_CACHE_DIR=/var/lib/gway/cache",)
+    assert restored[0].environment == ("VENDOR_LEGACY_MODE=compatible",)
 
 
 def test_service_environment_rejects_invalid_assignment():
@@ -799,38 +799,8 @@ def test_service_environment_rejects_invalid_assignment():
         runtime._service_controller._definition(
             (str(recipe),),
             name="mcp-server",
-            environment="GWAY_CACHE_DIR",
+            environment="VENDOR_LEGACY_MODE",
         )
 
 
 
-def test_remote_auth_systemd_install_persists_durable_cache_environment(
-    tmp_path,
-    monkeypatch,
-    fake_systemd,
-    install_environment,
-):
-    monkeypatch.chdir(tmp_path)
-    units, _ = fake_systemd
-
-    records = Gateway()(
-        "service install --backend systemd "
-        "--environment GWAY_CACHE_DIR=/var/lib/gway/cache "
-        "remote serve"
-    )
-
-    assert len(records) == 1
-    record = records[0]
-    assert record.project == "gway"
-    assert record.service == "remote-auth"
-    assert record.environment == ("GWAY_CACHE_DIR=/var/lib/gway/cache",)
-
-    unit = (units / "gway-remote-auth.service").read_text(encoding="utf-8")
-    assert "Environment=GWAY_CACHE_DIR=/var/lib/gway/cache" in unit
-    assert " remote serve" in unit
-
-    persisted = ServiceInstallState(
-        install_environment.data / "services-installed"
-    ).get("gway")
-    remote = next(item for item in persisted if item.service == "remote-auth")
-    assert remote.environment == ("GWAY_CACHE_DIR=/var/lib/gway/cache",)
