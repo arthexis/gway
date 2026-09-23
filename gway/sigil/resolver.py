@@ -1,10 +1,10 @@
 """Resolver policy and source precedence."""
 
 from collections.abc import Mapping
-import os
 import re
 
 from .paths import follow_path
+from ..environment import process_environment
 from .resolution import resolve_text
 from ..semantic import AmbiguousKeyError, mapping_value
 from .value import Sigil
@@ -17,7 +17,7 @@ class Environment(Mapping):
     """Environment view whose reads may be mediated by the owning runtime."""
 
     def __init__(self, environ=None, *, reader=None, names=None):
-        self._environ = os.environ if environ is None else environ
+        self._environ = process_environment if environ is None else environ
         self._reader = reader
         self._names = names
 
