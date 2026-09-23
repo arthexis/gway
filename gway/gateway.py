@@ -133,6 +133,7 @@ class Gateway(Resolver):
         self.commit = self.wrap("commit", self._commit_journal)
         self.rollback = self.wrap("rollback", self._rollback_journal)
         self.clear = self.wrap("clear", self._clear_context)
+        self.default = self.wrap("default", self._default_context, op="default", sub="default")
         self.pipe = self.wrap("pipe", self._pipe_context, op="pipe", sub="pipe")
         self.set_env = self.wrap("set.env", self._set_environment, op="set", sub="env")
         self.clear_env = self.wrap(
@@ -186,6 +187,13 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    def _default_context(self, **values):
+        """Publish explicit semantic values into the containing context."""
+        from .publication import SKIP_PUBLICATION
+
+        self.context.update(values)
+        return SKIP_PUBLICATION
 
     def _pipe_context(self, **values):
         """Return selected semantic context as a result-only mapping.
