@@ -267,6 +267,18 @@ def _run(command, *, timeout):
     except subprocess.CalledProcessError as exc:
         stdout = _diagnostic_text(exc.stdout)
         stderr = _diagnostic_text(exc.stderr)
+        if (
+            exc.returncode == 1
+            and "--grep" in command
+            and not stdout
+            and not stderr
+        ):
+            return subprocess.CompletedProcess(
+                command,
+                exc.returncode,
+                stdout="",
+                stderr="",
+            )
         message = f"journal query failed with exit {exc.returncode}"
         if stderr:
             message += f": {stderr}"
