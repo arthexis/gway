@@ -68,10 +68,19 @@ def _implementation(record):
         return implementation
     if inspect.ismethod(implementation):
         return implementation.__func__
+    if inspect.isclass(implementation):
+        call = getattr(implementation, "__call__", None)
+        if inspect.isfunction(call):
+            return call
+        if inspect.ismethod(call):
+            return call.__func__
+        return None
     if callable(implementation):
         call = getattr(type(implementation), "__call__", None)
-        if call is not None:
-            return getattr(call, "__func__", call)
+        if inspect.isfunction(call):
+            return call
+        if inspect.ismethod(call):
+            return call.__func__
     return None
 
 
@@ -83,7 +92,10 @@ def test_registered_operations_do_not_depend_directly_on_environment_substrate()
         implementation = _implementation(record)
         if implementation is None:
             continue
-        path_text = inspect.getsourcefile(implementation)
+        try:
+            path_text = inspect.getsourcefile(implementation)
+        except (TypeError, OSError):
+            continue
         if not path_text:
             continue
         path = Path(path_text).resolve()
