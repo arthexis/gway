@@ -22,9 +22,9 @@ class Response:
 def test_dns_operations_are_registered():
     gateway = Gateway()
 
-    assert gateway.ops.resolve("dns create") is not None
-    assert gateway.ops.resolve("dns ready") is not None
-    assert gateway.ops.resolve("dns delete") is not None
+    assert gateway.ops.resolve("dns.create") is not None
+    assert gateway.ops.resolve("dns.ready") is not None
+    assert gateway.ops.resolve("dns.delete") is not None
 
 
 def test_dns_create_uses_proven_godaddy_v1_replace_shape(monkeypatch):
@@ -101,12 +101,14 @@ def test_dns_create_surfaces_provider_error_without_secret(monkeypatch):
     monkeypatch.setenv("GODADDY_API_SECRET", "secret")
 
     def open_(request, timeout):
+        from io import BytesIO
+
         raise HTTPError(
             request.full_url,
             403,
             "Forbidden",
             {},
-            type("Body", (), {"read": lambda self: b'{"message":"denied"}'})(),
+            BytesIO(b'{"message":"denied"}'),
         )
 
     monkeypatch.setattr("gway.dns.urlopen", open_)
