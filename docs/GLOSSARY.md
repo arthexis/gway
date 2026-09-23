@@ -982,6 +982,297 @@ And a subject that is not explicitly written must still be recoverable from the
 semantics of the invocation.
 
 
+## Flag
+
+A **flag** is a semantic value that is simultaneously:
+
+```text
+a parameter of an operation
+and
+a trait of a subject
+```
+
+When those two meanings correspond, Gway can expose that semantic relationship as
+a flag.
+
+For example, an operation may accept `path` as a parameter because the operation
+needs to know how to treat the subject with respect to a path.
+
+At the same time, the subject may meaningfully possess `path` as one of its
+traits.
+
+The matching concept can therefore be represented as:
+
+```text
+--path
+```
+
+The flag is not merely command-line syntax. It represents a semantic relationship
+between an operation and its subject.
+
+### A flag is an operation parameter
+
+From the perspective of the operation, a flag supplies information needed to
+specialize how the operation should be performed.
+
+Conceptually:
+
+```text
+operation(subject, flag=value)
+```
+
+For example, `--path` may tell an operation that path-oriented behavior should
+apply.
+
+The operation defines what accepting that parameter means.
+
+### A flag is a subject trait
+
+From the perspective of the subject, the same concept describes a characteristic
+that the subject possesses, supports, or can meaningfully be treated as having.
+
+Conceptually:
+
+```text
+subject
+    trait: path
+```
+
+The subject therefore provides the semantic reason that the parameter makes sense.
+
+A parameter with no meaningful relationship to the subject is merely an
+implementation argument. A subject trait that no operation can use is merely
+descriptive metadata.
+
+A flag arises when the two meanings meet.
+
+### Flags are smaller semantic units
+
+A flag normally represents a distinction that is not substantial enough, in the
+current invocation, to stand as the operation or subject by itself.
+
+It qualifies how an existing operation applies to an existing subject.
+
+This does not mean that the same word can never be an operation or subject
+elsewhere.
+
+For example, `path` can be an operation:
+
+```text
+path [value]
+```
+
+where the semantic effect is to interpret or convert some value into a path.
+
+It can also be a subject:
+
+```text
+inspect path
+```
+
+where `path` identifies the entity being inspected.
+
+And it can be a flag:
+
+```text
+some-operation some-subject --path
+```
+
+when `path` describes a trait of the subject that is also accepted as a parameter
+by the operation.
+
+The semantic role depends on how the concept participates in the invocation.
+
+### A flag qualifies rather than replaces
+
+A flag does not replace the operation or the subject.
+
+For example:
+
+```text
+operation: inspect
+subject:   file
+flag:      path
+```
+
+still has `inspect` as its operation and `file` as its subject.
+
+The flag contributes an additional semantic characteristic that affects how that
+operation applies to that subject.
+
+A useful distinction is:
+
+```text
+operation
+    what effect is requested
+
+subject
+    what entity the effect is about
+
+flag
+    what trait of the subject the operation should consider
+```
+
+### A bare flag means true
+
+Flags always have a truth interpretation.
+
+Writing a flag by itself assigns that flag the value `true`.
+
+For example:
+
+```text
+--recursive
+```
+
+means:
+
+```text
+recursive = true
+```
+
+There is no need to write:
+
+```text
+--recursive true
+```
+
+when the intended value is simply true.
+
+The presence of the flag is sufficient.
+
+### Flags can be negated
+
+A flag may be explicitly negated by prefixing the flag name with `no-`.
+
+For example:
+
+```text
+--no-recursive
+```
+
+means:
+
+```text
+recursive = false
+```
+
+This is the explicit negative counterpart of:
+
+```text
+--recursive
+```
+
+which means:
+
+```text
+recursive = true
+```
+
+The positive and negative forms refer to the same semantic flag. They do not
+define two different flags.
+
+### Flags may carry values
+
+A flag is not limited to boolean values.
+
+The bare form expresses truth:
+
+```text
+--timeout
+```
+
+but a flag may also provide a more detailed value when the semantic distinction
+requires one:
+
+```text
+--timeout 30
+--format json
+--path /srv/app
+```
+
+The supplied value refines the same semantic trait.
+
+Conceptually:
+
+```text
+--flag
+```
+
+means:
+
+```text
+flag = true
+```
+
+while:
+
+```text
+--flag value
+```
+
+means:
+
+```text
+flag = value
+```
+
+and:
+
+```text
+--no-flag
+```
+
+means:
+
+```text
+flag = false
+```
+
+Thus every flag has a boolean interpretation, while some flags additionally admit
+more specific values.
+
+### Flags should express meaningful traits
+
+Flags should not be created merely because an implementation happens to expose a
+boolean, keyword argument, configuration field, or CLI option.
+
+A useful Gway flag should correspond to a meaningful trait of the subject that the
+operation can consume.
+
+A useful test is:
+
+> Does this concept describe something meaningful about the subject, and does the
+> operation accept that same concept as a parameter?
+
+If both are true, the concept is a strong candidate for a flag.
+
+If only the operation cares about it, it may merely be an implementation
+parameter.
+
+If only the subject possesses it, it may merely be a trait.
+
+A flag is the semantic correspondence between the two.
+
+### Relationship to the core semantic vocabulary
+
+```text
+operation
+    the effect being performed
+
+subject
+    the entity the effect is about
+
+topic
+    an independent category describing the subject
+
+flag
+    a subject trait matched by an operation parameter
+
+sigil
+    a semantic value that remains to be resolved
+```
+
 ## Sigil
 
 A **sigil** is a symbolic semantic reference that identifies a meaning to be resolved from the execution context.
