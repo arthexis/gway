@@ -133,6 +133,7 @@ class Gateway(Resolver):
         self.commit = self.wrap("commit", self._commit_journal)
         self.rollback = self.wrap("rollback", self._rollback_journal)
         self.clear = self.wrap("clear", self._clear_context)
+        self.pipe = self.wrap("pipe", self._pipe_context, op="pipe", sub="pipe")
         self.set_env = self.wrap("set.env", self._set_environment, op="set", sub="env")
         self.clear_env = self.wrap(
             "clear.env", self._clear_environment, op="clear", sub="env"
@@ -185,6 +186,27 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    def _pipe_context(self, **values):
+        """Return selected semantic context as a result-only mapping.
+
+        Bare flags reuse an existing contextual value when one is available;
+        otherwise they contribute True. Explicit flag values always win.
+        With no flags, return a detached snapshot of the current context.
+        """
+        from .publication import ResultOnlyMapping
+
+        if not values:
+            return ResultOnlyMapping(self.context)
+
+        selected = {}
+        for name, value in values.items():
+            if value is True:
+                contextual = self.find_value(name, ...)
+                if contextual is not ...:
+                    value = contextual
+            selected[name] = value
+        return ResultOnlyMapping(selected)
 
     def _install(self, source, *, ref=None, upgrade=True, force=False, stash=False, system=False):
         """Converge one local or Git project installation toward requested state.
