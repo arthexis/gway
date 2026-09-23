@@ -69,12 +69,14 @@ def compile_binding_source(source):
     value = source.get("value")
     if value is None:
         raise ValueError("binding source requires value")
-    from .bindings import env, file
+    from .bindings import env, file, secret
 
     if kind == "env":
-        return env(value)
+        return env(value, sensitive=bool(source.get("sensitive", False)))
     if kind == "file":
         return file(value)
+    if kind == "secret":
+        return secret(value)
     raise ValueError(f"unknown binding source type: {kind!r}")
 
 

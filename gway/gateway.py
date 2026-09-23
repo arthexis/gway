@@ -145,8 +145,10 @@ class Gateway(Resolver):
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
         self.reload = self.wrap("reload", self._reload)
 
+        from .providers.godaddy import register as register_godaddy_provider
         from .config import bootstrap
 
+        register_godaddy_provider(self)
         bootstrap(self)
 
         from .ingestion.python import ingest_python

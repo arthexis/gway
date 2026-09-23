@@ -7,9 +7,6 @@ import socket
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
-from pathlib import Path
-
-from .environment import environment_value
 
 
 class Controller:
@@ -41,49 +38,24 @@ class Controller:
             return "@"
         return domain[: -(len(zone) + 1)]
 
-    @staticmethod
-    def _secret_root():
-        configured = environment_value("GWAY_SECRETS_DIR", "").strip()
-        return Path(configured or "/etc/gway/secrets")
+    def _auth_header(self, backend):
+        with self.gateway.topics("dns", backend):
+            pat = self.gateway.resolve("[pat]", default=None)
+            if pat:
+                return f"Bearer {pat}"
 
-    @classmethod
-    def _secret_value(cls, *parts):
-        path = cls._secret_root().joinpath(*parts)
-        try:
-            return path.read_text(encoding="utf-8").strip()
-        except FileNotFoundError:
-            return ""
-        except OSError as error:
-            raise RuntimeError(f"Unable to read Gway secret file: {path}") from error
-
-    @classmethod
-    def _auth_header(cls):
-        pat = environment_value("GODADDY_PAT", "").strip()
-        if not pat:
-            pat = cls._secret_value("dns", "godaddy", "pat")
-        if pat:
-            return f"Bearer {pat}"
-
-        key = environment_value("GODADDY_API_KEY", "").strip()
-        if not key:
-            key = cls._secret_value("dns", "godaddy", "key")
-
-        secret = environment_value("GODADDY_API_SECRET", "").strip()
-        if not secret:
-            secret = cls._secret_value("dns", "godaddy", "secret")
+            key = self.gateway.resolve("[api_key]", default=None)
+            secret = self.gateway.resolve("[api_secret]", default=None)
 
         if not key or not secret:
-            raise RuntimeError(
-                "GoDaddy DNS credentials are not configured in environment or "
-                f"{cls._secret_root() / 'dns' / 'godaddy'}"
-            )
+            provider = {"godaddy": "GoDaddy"}.get(backend, backend)
+            raise RuntimeError(f"{provider} DNS credentials are not configured")
         return f"sso-key {key}:{secret}"
 
-    @staticmethod
-    def _request(method, url, *, payload=None):
+    def _request(self, method, url, *, payload=None, backend="godaddy"):
         data = None
         headers = {
-            "Authorization": Controller._auth_header(),
+            "Authorization": self._auth_header(backend),
             "Accept": "application/json",
         }
         if payload is not None:
@@ -134,7 +106,7 @@ class Controller:
             zone: Authoritative DNS zone. Defaults to domain.
             ttl: Record TTL in seconds. Defaults to 600.
         """
-        self._backend(backend)
+        backend = self._backend(backend)
         domain, zone = self._zone(domain, zone)
         record_type = str(type).upper()
         name = self._record_name(domain, zone)
@@ -144,13 +116,13 @@ class Controller:
             f"{quote(name, safe='@._-')}"
         )
         payload = [{"data": str(value), "ttl": int(ttl)}]
-        self._request("PUT", url, payload=payload)
+        self._request("PUT", url, payload=payload, backend=backend)
         return {
             "domain": domain,
             "zone": zone,
             "type": record_type,
             "value": str(value),
-            "backend": "godaddy",
+            "backend": backend,
         }
 
     def ready(
@@ -206,7 +178,7 @@ class Controller:
             zone: Authoritative DNS zone. Defaults to domain.
         """
         del value
-        self._backend(backend)
+        backend = self._backend(backend)
         domain, zone = self._zone(domain, zone)
         record_type = str(type).upper()
         name = self._record_name(domain, zone)
@@ -215,10 +187,10 @@ class Controller:
             f"{quote(zone, safe='')}/records/{quote(record_type, safe='')}/"
             f"{quote(name, safe='@._-')}"
         )
-        self._request("DELETE", url)
+        self._request("DELETE", url, backend=backend)
         return {
             "domain": domain,
             "zone": zone,
             "type": record_type,
-            "backend": "godaddy",
+            "backend": backend,
         }
