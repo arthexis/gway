@@ -65,9 +65,10 @@ def _bootstrap_posix(target):
 
 def _bootstrap_windows(target):
     target.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env["UV_UNMANAGED_INSTALL"] = str(target)
-    env["UV_NO_MODIFY_PATH"] = "1"
+    env = environment_child(overrides={
+        "UV_UNMANAGED_INSTALL": str(target),
+        "UV_NO_MODIFY_PATH": "1",
+    })
     command = (
         "irm '" + UV_INSTALL_PS1 + "' | iex"
     )
