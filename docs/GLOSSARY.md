@@ -982,6 +982,227 @@ And a subject that is not explicitly written must still be recoverable from the
 semantics of the invocation.
 
 
+## Glyph
+
+A **glyph** is a character or ordered sequence of characters that carries a
+specific syntactic or semantic meaning in Gway.
+
+A glyph is defined by the complete construction Gway recognizes, including
+whitespace when whitespace participates in distinguishing one construction from
+another.
+
+For example:
+
+```text
+[ ... ]
+ - 
+--flag
+-- 
+```
+
+These are distinct constructions even when they reuse some of the same characters.
+
+### Glyphs may contain multiple characters
+
+A glyph does not have to be one character long.
+
+For example, the standalone dash used between operations is recognized as a
+different construction from a dash used inside an identifier, and `--flag` is
+different from a bare `--` followed by whitespace.
+
+The exact order and boundaries of the characters are part of the glyph.
+
+### Operative glyphs
+
+An **operative glyph** is a glyph that causes Gway to perform a specific parsing,
+resolution, composition, or execution action.
+
+When Gway recognizes an operative glyph, that construction is interpreted
+according to Gway semantics rather than passed through as ordinary data.
+
+For example:
+
+```text
+[site]
+```
+
+uses bracket glyphs to introduce sigil semantics.
+
+Likewise:
+
+```text
+producer - consumer
+```
+
+uses the standalone dash construction to transfer the previous raw result into the
+next operation.
+
+Anything outside Gway's defined operative glyph vocabulary remains available for
+ordinary identifier or value interpretation.
+
+### Glyph boundaries are significant
+
+Whitespace may participate in the identity of a glyph.
+
+For example:
+
+```text
+--flag
+```
+
+and:
+
+```text
+-- 
+```
+
+are different constructions.
+
+In `--flag`, the double dash introduces the immediately following identifier as a
+flag.
+
+A bare `--` followed by whitespace is an end-of-options boundary. Material after
+it is positional even when it begins with `--`. In recipes, a bare `--` at the
+end of a physical line also causes the next substantive line to continue the same
+logical operation as positional input.
+
+### Whitespace is contextually operative
+
+Whitespace normally separates lexical elements.
+
+When whitespace is not already part of another recognized glyph, Gway may use it
+as a semantic separator and may treat equivalent separator forms alike when doing
+so is unambiguous.
+
+This is why ordinary spaces can participate in semantic names without requiring
+the implementation representation to use the same spelling.
+
+Whitespace must not silently introduce a stronger interpretation when more than
+one semantic reading remains possible.
+
+### Connective glyphs
+
+A **connective glyph** joins components of an identifier without introducing a new
+semantic role.
+
+The single dash and underscore are connective glyphs when they occur inside an
+identifier:
+
+```text
+remote-service
+remote_service
+```
+
+In identifier semantics, Gway treats spaces, dashes, and underscores as equivalent
+separators when that normalization is unambiguous.
+
+This does not make every dash equivalent to an underscore.
+
+For example:
+
+```text
+producer - consumer
+```
+
+contains the standalone operative dash glyph and therefore has pipeline semantics.
+
+### Identifier construction
+
+An **identifier** is a sequence of non-operative glyphs occupying a naming role.
+
+Connective glyphs may participate in an identifier without creating a new semantic
+element.
+
+For example:
+
+```text
+status-code
+status_code
+status code
+```
+
+may denote the same semantic identifier.
+
+An operative glyph instead changes how the surrounding identifiers are
+interpreted.
+
+For example:
+
+```text
+--recursive
+```
+
+contains a flag-introducing glyph followed by the identifier `recursive`, while:
+
+```text
+[site]
+```
+
+uses bracket glyphs to make the identifier `site` a semantic reference.
+
+### Sigils are built from glyphs and identifiers
+
+A sigil can be understood lexically as one or more identifiers made operative by
+the sigil glyphs.
+
+For example:
+
+```text
+[site]
+```
+
+contains the identifier `site` inside the bracket construction.
+
+Likewise:
+
+```text
+[charger serial]
+```
+
+contains semantic identifiers whose relationship is interpreted according to
+sigil rules.
+
+The glyphs provide syntax. The identifiers provide semantic names.
+
+### Canonical glyph reference
+
+The glossary is the canonical user-facing inventory of Gway glyphs. The inventory
+must remain synchronized with the active parser and recipe grammar.
+
+The current vocabulary includes:
+
+| Glyph | Class | Meaning |
+| --- | --- | --- |
+| `[ ... ]` | operative | Forms a sigil and requests semantic resolution of its contents. |
+| `[[ ... ]]` | operative | Escapes sigil interpretation and yields one literal pair of brackets. |
+| `|` inside a sigil | operative | Separates a sigil lookup from its fallback value. |
+| `[N]` | operative | Selects a numbered value from the current pipeline-result snapshot where chain selectors are accepted. |
+| `[*]` | operative | Inserts the remaining values from the current pipeline-result snapshot where chain selectors are accepted. |
+| `--identifier` | operative | Introduces an identifier as a flag or named operation parameter. |
+| `--no-identifier` | operative | Negates the corresponding boolean flag. |
+| bare `--` followed by whitespace/end | operative | Ends flag parsing; subsequent material is positional. At a recipe physical-line boundary it also continues the next substantive line positionally. |
+| standalone `-` surrounded by token boundaries | operative | Transfers the previous raw result positionally into the next pipeline stage. |
+| standalone `;` | operative | Ends a statement while preserving named semantic context and not transferring the previous raw result positionally. |
+| newline in a recipe | operative | Begins a new statement unless physical-line continuation applies. |
+| `-` inside an identifier | connective | Connects identifier components; semantically equivalent to underscore/space normalization in identifier lookup. |
+| `_` inside an identifier | connective | Connects identifier components; semantically equivalent to dash/space normalization in identifier lookup. |
+| whitespace | contextual | Separates lexical elements and may participate in equivalent semantic identifier forms when unambiguous. |
+| `:` | glyph | Recognized as a distinct glyph when a grammar or value gives it meaning; otherwise it remains ordinary data. |
+| `,` | glyph | Recognized as a distinct glyph when a grammar or value gives it meaning; otherwise it remains ordinary data. |
+| single quotes `'...'` | operative quoting | Protect enclosed text as literal data from normal Gway structural interpretation. |
+| double quotes `"..."` | operative quoting | Groups enclosed text while retaining normal Gway resolution behavior. |
+| `\\` inside double quotes | operative quoting | Escapes the following character during tokenization. |
+
+This inventory describes the active lexical surface rather than claiming that every
+punctuation character is globally operative. A character such as `:` or `,` may
+be a glyph without being an operative glyph in every context.
+
+A useful compatibility rule is:
+
+> Gway syntax is defined positively by documented operative glyphs. Characters and
+> constructions outside that operative vocabulary remain ordinary input unless
+> another documented grammar gives them meaning.
+
 ## Flag
 
 A **flag** is a semantic value that is simultaneously:
