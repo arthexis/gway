@@ -6,7 +6,7 @@ import re
 from .paths import follow_path
 from ..environment import process_environment
 from .resolution import resolve_text
-from ..semantic import AmbiguousKeyError, mapping_value
+from ..semantic import AmbiguousKeyError, mapping_value, semantic_candidates
 from .value import Sigil
 
 _MISSING = object()
@@ -42,6 +42,15 @@ class Resolver:
     def __init__(self, search_order):
         self._search_order = list(search_order)
 
+    @property
+    def semantic_topics(self):
+        """Return active semantic topics for candidate derivation."""
+        return ()
+
+    def candidates(self, subject):
+        """Return semantic candidates for one subject under active topics."""
+        return semantic_candidates(subject, self.semantic_topics)
+
     def append_source(self, source, *, name=None):
         """Append a semantic source without assigning behavior to its name."""
         self._search_order.append((name or type(source).__name__, source))
@@ -66,21 +75,30 @@ class Resolver:
             raise last_exc
         raise KeyError("No arguments provided to resolve() or all were None")
 
-    def find_value(self, key, fallback=None, *, include_environment=True):
-        """Return the first matching value from the configured semantic sources."""
-        for _, source in self._search_order:
-            try:
-                if isinstance(source, Environment):
-                    if not include_environment:
-                        continue
-                    return source[key]
-                if isinstance(source, Mapping):
-                    return mapping_value(source, key)
-                return source[key]
-            except AmbiguousKeyError:
-                raise
-            except (KeyError, IndexError, TypeError):
-                continue
+    def find_value(
+        self,
+        key,
+        fallback=None,
+        *,
+        include_environment=True,
+        expand_topics=True,
+    ):
+        """Return the most-specific semantic value across ordered sources."""
+        candidates = self.candidates(key) if expand_topics else (key,)
+        for candidate in candidates:
+            for _, source in self._search_order:
+                try:
+                    if isinstance(source, Environment):
+                        if not include_environment:
+                            continue
+                        return source[candidate]
+                    if isinstance(source, Mapping):
+                        return mapping_value(source, candidate)
+                    return source[candidate]
+                except AmbiguousKeyError:
+                    raise
+                except (KeyError, IndexError, TypeError):
+                    continue
         return fallback
 
     def _lookup(self, key):
@@ -98,7 +116,7 @@ class Resolver:
 
         parts = re.split(r"[. ]+", key.replace("-", "_"))
         if len(parts) > 1:
-            base = self.find_value(parts[0], _MISSING)
+            base = self.find_value(parts[0], _MISSING, expand_topics=False)
             if base is not _MISSING:
                 try:
                     return follow_path(
