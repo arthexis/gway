@@ -8,6 +8,7 @@ import socket
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+from pathlib import Path
 
 
 class Controller:
@@ -40,22 +41,40 @@ class Controller:
         return domain[: -(len(zone) + 1)]
 
     @staticmethod
-    def _auth_header():
+    def _secret_root():
+        configured = os.environ.get("GWAY_SECRETS_DIR", "").strip()
+        return Path(configured or "/etc/gway/secrets")
+
+    @classmethod
+    def _secret_value(cls, *parts):
+        path = cls._secret_root().joinpath(*parts)
+        try:
+            return path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            return ""
+        except OSError as error:
+            raise RuntimeError(f"Unable to read Gway secret file: {path}") from error
+
+    @classmethod
+    def _auth_header(cls):
         pat = os.environ.get("GODADDY_PAT", "").strip()
+        if not pat:
+            pat = cls._secret_value("dns", "godaddy", "pat")
         if pat:
             return f"Bearer {pat}"
+
         key = os.environ.get("GODADDY_API_KEY", "").strip()
-        secret = os.environ.get("GODADDY_API_SECRET", "").strip()
-        missing = []
         if not key:
-            missing.append("GODADDY_API_KEY")
+            key = cls._secret_value("dns", "godaddy", "key")
+
+        secret = os.environ.get("GODADDY_API_SECRET", "").strip()
         if not secret:
-            missing.append("GODADDY_API_SECRET")
-        if missing:
+            secret = cls._secret_value("dns", "godaddy", "secret")
+
+        if not key or not secret:
             raise RuntimeError(
-                "GoDaddy DNS credentials are not configured: "
-                + ", ".join(missing)
-                + " (or set GODADDY_PAT)"
+                "GoDaddy DNS credentials are not configured in environment or "
+                f"{cls._secret_root() / 'dns' / 'godaddy'}"
             )
         return f"sso-key {key}:{secret}"
 

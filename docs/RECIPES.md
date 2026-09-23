@@ -722,3 +722,30 @@ an HTTP Nginx/ACME-webroot phase and an HTTPS Certbot/TLS phase using generic
 Gway process, render, and filesystem primitives. Existing public DNS must
 already resolve to the host. The executable paths, Nginx directories, and ACME
 webroot can be overridden through recipe context when host conventions differ.
+
+### DNS credential convention
+
+The maintained GoDaddy DNS backend uses host-persistent credentials. Explicit
+environment values take precedence:
+
+~~~text
+GODADDY_PAT
+GODADDY_API_KEY
+GODADDY_API_SECRET
+~~~
+
+When those are absent, system deployments read the conventional Gway secret
+store:
+
+~~~text
+/etc/gway/secrets/dns/godaddy/pat
+/etc/gway/secrets/dns/godaddy/key
+/etc/gway/secrets/dns/godaddy/secret
+~~~
+
+The root can be overridden with `GWAY_SECRETS_DIR`. A PAT is preferred when
+present; otherwise `key` and `secret` are used together.
+
+This keeps DNS credentials on the managed host across application redeployments
+and avoids requiring deployment workflows to copy provider secrets through CI.
+
