@@ -155,3 +155,126 @@ def test_environment_overrides_pyproject_semantic_variables(tmp_path, monkeypatc
     runtime = Gateway()
 
     assert runtime.resolve("[region]") == "production"
+
+
+def test_pyproject_bootstrap_registers_ordered_physical_bindings(
+    tmp_path, monkeypatch
+):
+    secret = tmp_path / "token"
+    secret.write_text("file-value\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n'
+        '[[tool.gway.bindings]]\n'
+        'topics = ["service", "vendor"]\n'
+        'subject = "token"\n'
+        'sources = [{type = "file", value = "' + str(secret) + '"}, '
+        '{type = "env", value = "VENDOR_TOKEN"}]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VENDOR_TOKEN", "environment-value")
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    with runtime.topics("service", "vendor"):
+        assert runtime.resolve("[token]") == "file-value"
+
+
+def test_pyproject_binding_topics_are_order_insensitive(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n'
+        '[[tool.gway.bindings]]\n'
+        'topics = ["godaddy", "dns"]\n'
+        'subject = "api_key"\n'
+        'sources = [{type = "env", value = "GODADDY_API_KEY"}]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GODADDY_API_KEY", "bound")
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    with runtime.topics("dns", "godaddy"):
+        assert runtime.resolve("[api_key]") == "bound"
+
+
+def test_pyproject_binding_declarations_compose_additively(tmp_path, monkeypatch):
+    secret = tmp_path / "fallback"
+    secret.write_text("fallback\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n'
+        '[[tool.gway.bindings]]\n'
+        'topics = ["service", "vendor"]\n'
+        'subject = "token"\n'
+        'sources = [{type = "env", value = "MISSING_VENDOR_TOKEN"}]\n'
+        '[[tool.gway.bindings]]\n'
+        'topics = ["vendor", "service"]\n'
+        'subject = "token"\n'
+        'sources = [{type = "file", value = "' + str(secret) + '"}]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    with runtime.topics("service", "vendor"):
+        assert runtime.resolve("[token]") == "fallback"
+
+
+def test_pyproject_binding_replace_discards_prior_sources(tmp_path, monkeypatch):
+    secret = tmp_path / "replacement"
+    secret.write_text("replacement\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n'
+        '[[tool.gway.bindings]]\n'
+        'topics = ["service", "vendor"]\n'
+        'subject = "token"\n'
+        'sources = [{type = "env", value = "VENDOR_TOKEN"}]\n'
+        '[[tool.gway.bindings]]\n'
+        'topics = ["service", "vendor"]\n'
+        'subject = "token"\n'
+        'replace = true\n'
+        'sources = [{type = "file", value = "' + str(secret) + '"}]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VENDOR_TOKEN", "old")
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    with runtime.topics("service", "vendor"):
+        assert runtime.resolve("[token]") == "replacement"
+
+
+@pytest.mark.parametrize(
+    "source, message",
+    [
+        ('{type = "unknown", value = "x"}', "unknown binding source type"),
+        ('{type = "env"}', "binding source requires value"),
+    ],
+)
+def test_pyproject_binding_rejects_invalid_sources(
+    tmp_path, monkeypatch, source, message
+):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n'
+        '[[tool.gway.bindings]]\n'
+        'topics = ["service"]\n'
+        'subject = "token"\n'
+        f"sources = [{source}]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    with pytest.raises(ValueError, match=message):
+        Gateway()
