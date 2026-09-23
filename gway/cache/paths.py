@@ -12,6 +12,13 @@ def default_root(*, environ=None, platform=None, home=None):
     platform = sys.platform if platform is None else platform
     home = Path.home() if home is None else Path(home)
 
+    if environ is process_environment:
+        from ..providers.core import resolve as resolve_core
+
+        override = resolve_core("cache_dir", topics=("cache",))
+        if override:
+            return Path(override).expanduser()
+
     if platform.startswith("win"):
         base = environ.get("LOCALAPPDATA")
         if base:
