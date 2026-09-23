@@ -995,7 +995,7 @@ def _maintained_companion_with_http_stub():
         encoding="utf-8"
     )
     return companion + (
-        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp', public_origin=None):\n"
+        "\n\ndef run_http(*, host='127.0.0.1', port=8000, path='/mcp', endpoint=None, public_origin=None):\n"
         "    return {'host': host, 'port': int(port), 'path': path}\n"
     )
 
@@ -1028,13 +1028,65 @@ def test_maintained_mcp_recipe_serves_http_with_safe_defaults(
 def test_maintained_mcp_recipe_exposes_deployment_parameters():
     recipe = (sampler_root() / "mcp" / "server.rx").read_text(encoding="utf-8")
 
-    assert "[mcp_host|127.0.0.1]" in recipe
-    assert "[mcp_port|8000]" in recipe
-    assert "[mcp_path|/mcp]" in recipe
-    assert (
-        "--public-origin [mcp_public_origin|http://127.0.0.1:8000]"
-        in recipe
+    assert "[host|127.0.0.1]" in recipe
+    assert "[port|8000]" in recipe
+    assert "[path|/mcp]" in recipe
+    assert "--endpoint [endpoint|http://127.0.0.1:8000/mcp]" in recipe
+    assert "mcp_host" not in recipe
+    assert "mcp_port" not in recipe
+    assert "mcp_public_origin" not in recipe
+
+
+def test_mcp_endpoint_derives_public_origin_and_requires_matching_path(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpendpoint"
+    root.mkdir()
+    maintained_py = (sampler_root() / "mcp" / "server.py").read_text(
+        encoding="utf-8"
     )
+    maintained_py += (
+        "\n\ndef run_http_probe(*, host='127.0.0.1', port=8000, path='/mcp', "
+        "endpoint=None):\n"
+        "    return _endpoint_origin(endpoint, path)\n"
+    )
+    recipe = recipe_factory(
+        name="server",
+        root=root,
+        body=(
+            "require fastmcp\n"
+            "server run_http_probe --endpoint https://remote.example.test/mcp\n"
+        ),
+        companion=maintained_py,
+    )
+
+    assert gateway(recipe) == "https://remote.example.test"
+
+
+def test_mcp_endpoint_rejects_path_mismatch(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpendpointmismatch"
+    root.mkdir()
+    maintained_py = (sampler_root() / "mcp" / "server.py").read_text(
+        encoding="utf-8"
+    )
+    maintained_py += (
+        "\n\ndef run_http_probe(endpoint, path='/mcp'):\n"
+        "    return _endpoint_origin(endpoint, path)\n"
+    )
+    recipe = recipe_factory(
+        name="server",
+        root=root,
+        body=(
+            "require fastmcp\n"
+            "server run_http_probe https://remote.example.test/other\n"
+        ),
+        companion=maintained_py,
+    )
+
+    with pytest.raises(ValueError, match="does not match local path"):
+        gateway(recipe)
 
 
 def test_mcp_serve_allows_explicit_http_bind_configuration(
