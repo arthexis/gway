@@ -796,7 +796,7 @@ python -m pip install pytest
 python -m pytest -q
 ```
 
-CI currently exercises the suite on Python 3.10 and Python 3.13.
+CI runs the full regression suite on Python 3.10, the primary supported baseline, and focused forward-compatibility checks on Python 3.13.
 
 When refactoring, preserve behavioral contracts first. Move/reorganize tests
 only after the implementation remains green, unless the change intentionally
