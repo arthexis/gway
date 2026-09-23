@@ -112,11 +112,11 @@ def _valid_installation(record, paths):
     )
 
 
-def discover_installations(*, system=False):
+def discover_installations(runtime, *, system=False):
     """Return valid Gway-managed installation records for one scope."""
-    from .install import InstallState, install_paths
+    from .install import InstallState
 
-    paths = install_paths(system=system)
+    paths = runtime.install_paths(system=system)
     state = InstallState(paths.state)
     return [
         record
@@ -260,7 +260,7 @@ def discover_managed_projects(runtime):
     discovered = {}
     for system in (False, True):
         try:
-            records = discover_installations(system=system)
+            records = discover_installations(runtime, system=system)
         except (OSError, PermissionError):
             continue
         for record in records:

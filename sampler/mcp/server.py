@@ -1,8 +1,8 @@
 """FastMCP surface for native GWAY command execution."""
 
 from contextlib import contextmanager
+import base64
 import json
-import os
 from pathlib import Path
 import secrets
 import socket
@@ -62,11 +62,29 @@ class _GwayTokenVerifier(_TokenVerifier):
 _auth = _GwayTokenVerifier()
 mcp = _FastMCP("GWAY", auth=_auth)
 _FRAME = struct.Struct("!I")
-_CALLBACK_ENV = (
-    "GWAY_MCP_CALLBACK_HOST",
-    "GWAY_MCP_CALLBACK_PORT",
-    "GWAY_MCP_CALLBACK_TOKEN",
-)
+def _encode_parent_bridge(host, port, token):
+    """Serialize one ephemeral parent-Gateway bridge bootstrap."""
+    payload = json.dumps(
+        {"host": str(host), "port": int(port), "token": str(token)},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii")
+
+
+def _decode_parent_bridge(value):
+    """Deserialize one ephemeral parent-Gateway bridge bootstrap."""
+    try:
+        payload = json.loads(
+            base64.urlsafe_b64decode(str(value).encode("ascii")).decode("utf-8")
+        )
+        host = str(payload["host"])
+        port = int(payload["port"])
+        token = str(payload["token"])
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exception:
+        raise ValueError("Invalid parent-Gateway bridge bootstrap") from exception
+    if not host or not token:
+        raise ValueError("Invalid parent-Gateway bridge bootstrap")
+    return host, port, token
 
 
 def _validate_result(value):
@@ -102,12 +120,16 @@ def _recv_json(stream):
 
 
 class _SocketParentGateway:
-    """Parent-Gateway proxy used by a standalone stdio MCP subprocess."""
+    """Parent-Gateway capability transported to a standalone subprocess."""
 
-    def __init__(self):
-        self.host = os.environ[_CALLBACK_ENV[0]]
-        self.port = int(os.environ[_CALLBACK_ENV[1]])
-        self.token = os.environ[_CALLBACK_ENV[2]]
+    def __init__(self, host, port, token):
+        self.host = str(host)
+        self.port = int(port)
+        self.token = str(token)
+
+    @classmethod
+    def from_bootstrap(cls, bootstrap):
+        return cls(*_decode_parent_bridge(bootstrap))
 
     def _request(self, method, **params):
         with socket.create_connection((self.host, self.port), timeout=10) as stream:
@@ -147,8 +169,6 @@ def _parent():
     injected = globals().get("_gway_parent")
     if injected is not None:
         return injected
-    if all(os.environ.get(name) for name in _CALLBACK_ENV):
-        return _SocketParentGateway()
     raise RuntimeError("GWAY parent bridge is not configured")
 
 
@@ -225,11 +245,7 @@ def _callback_relay():
     )
     thread.start()
     try:
-        yield {
-            _CALLBACK_ENV[0]: host,
-            _CALLBACK_ENV[1]: str(port),
-            _CALLBACK_ENV[2]: token,
-        }
+        yield _encode_parent_bridge(host, port, token)
     finally:
         stop.set()
         listener.close()
@@ -339,7 +355,11 @@ if __name__ == "__main__":
     parser.add_argument("--path", default="/mcp")
     parser.add_argument("--endpoint")
     parser.add_argument("--public-origin")
+    parser.add_argument("--parent-bridge", help=argparse.SUPPRESS)
     args = parser.parse_args()
+
+    if args.parent_bridge:
+        _gway_parent = _SocketParentGateway.from_bootstrap(args.parent_bridge)
 
     if args.transport == "http":
         run_http(

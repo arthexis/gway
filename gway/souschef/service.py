@@ -2,11 +2,10 @@
 
 from pathlib import Path
 
-from ..install.paths import data_root
 from ..service.model import Service
 
 
-def definition(launchable):
+def definition(launchable, *, state_root):
     """Return service policy for the normal Sous Chef launchable."""
     project_root = Path(__file__).resolve().parents[2]
     return Service(
@@ -16,7 +15,7 @@ def definition(launchable):
         launchable=launchable,
         description="Gway single-worker recipe scheduler",
         working_directory="{project}",
-        state_root=data_root() / "services",
+        state_root=Path(state_root),
     )
 
 
@@ -31,6 +30,9 @@ def register(runtime):
         sub="sous",
     )
     launchable = runtime.launchables["sous.chef"]
-    service = definition(launchable)
+    service = definition(
+        launchable,
+        state_root=runtime.data_root() / "services",
+    )
     runtime._service_presets[service.identity] = service
     return service

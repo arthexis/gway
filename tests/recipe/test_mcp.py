@@ -122,8 +122,11 @@ def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
         "    from fastmcp import Client\n"
         "    from fastmcp.client.transports import PythonStdioTransport\n"
         "    async def run():\n"
-        "        with _callback_relay() as env:\n"
-        "            transport = PythonStdioTransport(str(Path(__file__)), env=env)\n"
+        "        with _callback_relay() as bridge:\n"
+        "            transport = PythonStdioTransport(\n"
+        "                str(Path(__file__)),\n"
+        "                args=['--parent-bridge', bridge],\n"
+        "            )\n"
         "            async with Client(transport) as client:\n"
         "                tools = await client.list_tools()\n"
         "                result = await client.call_tool('gway', {'command': command})\n"
@@ -158,8 +161,11 @@ def test_mcp_stdio_authorization_error_does_not_kill_server_session(
         "    from fastmcp import Client\n"
         "    from fastmcp.client.transports import PythonStdioTransport\n"
         "    async def run():\n"
-        "        with _callback_relay() as env:\n"
-        "            transport = PythonStdioTransport(str(Path(__file__)), env=env)\n"
+        "        with _callback_relay() as bridge:\n"
+        "            transport = PythonStdioTransport(\n"
+        "                str(Path(__file__)),\n"
+        "                args=['--parent-bridge', bridge],\n"
+        "            )\n"
         "            async with Client(transport) as client:\n"
         "                first_error = None\n"
         "                try:\n"
@@ -336,13 +342,13 @@ def probe_http(bearer, command, second_bearer=None, second_command=None):
         return await asyncio.gather(first_task, second_task)
 
     port = free_port()
-    with _callback_relay() as callback_env:
-        env = os.environ.copy()
-        env.update(callback_env)
+    with _callback_relay() as bridge:
         process = subprocess.Popen(
             [
                 sys.executable,
                 str(Path(__file__)),
+                "--parent-bridge",
+                bridge,
                 "--transport",
                 "http",
                 "--host",
@@ -354,7 +360,6 @@ def probe_http(bearer, command, second_bearer=None, second_command=None):
                 "--public-origin",
                 "https://remote.example.test",
             ],
-            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -397,13 +402,13 @@ def probe_challenge(credential="__missing__"):
         raise RuntimeError("MCP HTTP server did not become ready")
 
     port = free_port()
-    with _callback_relay() as callback_env:
-        env = os.environ.copy()
-        env.update(callback_env)
+    with _callback_relay() as bridge:
         process = subprocess.Popen(
             [
                 sys.executable,
                 str(Path(__file__)),
+                "--parent-bridge",
+                bridge,
                 "--transport",
                 "http",
                 "--host",
@@ -415,7 +420,6 @@ def probe_challenge(credential="__missing__"):
                 "--public-origin",
                 "https://remote.example.test",
             ],
-            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -844,13 +848,13 @@ def probe_log_http(bearer):
             return tools, results
 
     port = free_port()
-    with _callback_relay() as callback_env:
-        env = os.environ.copy()
-        env.update(callback_env)
+    with _callback_relay() as bridge:
         process = subprocess.Popen(
             [
                 sys.executable,
                 str(Path(__file__)),
+                "--parent-bridge",
+                bridge,
                 "--transport",
                 "http",
                 "--host",
@@ -862,7 +866,6 @@ def probe_log_http(bearer):
                 "--public-origin",
                 "https://remote.example.test",
             ],
-            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )

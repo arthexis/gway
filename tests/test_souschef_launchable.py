@@ -37,7 +37,7 @@ def test_sous_chef_service_definition_wraps_existing_launchable(tmp_path):
         root=tmp_path,
     )
 
-    service = definition(launchable)
+    service = definition(launchable, state_root=tmp_path / "state")
 
     assert service.launchable is launchable
     assert service.name == "sous-chef"

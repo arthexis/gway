@@ -46,8 +46,10 @@ def prepare_required_companion(runtime, frame):
     from .environment import environment_python, sync_python_environment
     from .uv import ensure_uv
 
+    system = getattr(frame.environment, "scope", "user") == "system"
     frame.uv = ensure_uv(
-        system=getattr(frame.environment, "scope", "user") == "system"
+        system=system,
+        root=runtime.data_root(system=system),
     )
     sync_python_environment(frame.environment, frame.uv, requirements)
 

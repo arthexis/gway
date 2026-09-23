@@ -52,7 +52,7 @@ def test_public_reload_transfers_and_old_runtime_does_not_continue(
     monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
     monkeypatch.setattr(
         "gway.reload.default_resume_command",
-        lambda: ["/managed/bin/gway"],
+        lambda *args, **kwargs: ["/managed/bin/gway"],
     )
 
     recipe = tmp_path / "reload.rx"
@@ -76,7 +76,7 @@ def test_public_reload_timeout_is_captured_and_passed_to_handoff(
     captured = {}
 
     monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
-    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda *args, **kwargs: ["gway"])
 
     recipe = tmp_path / "reload.rx"
     recipe.write_text("reload --timeout 7.5\n", encoding="utf-8")
@@ -106,7 +106,7 @@ def test_reload_handoff_failure_rolls_back_and_does_not_run_following_statement(
         raise ReloadHandoffError(checkpoint, "handoff failed")
 
     monkeypatch.setattr("gway.reload.handoff", fail_handoff)
-    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda *args, **kwargs: ["gway"])
 
     recipe = tmp_path / "reload-fail.rx"
     recipe.write_text(
@@ -133,7 +133,7 @@ def test_reload_transfer_preserves_open_journal_for_successor(
     source, destination = rollback_paths
 
     monkeypatch.setattr("gway.reload.handoff", _fake_handoff())
-    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda *args, **kwargs: ["gway"])
 
     recipe = tmp_path / "reload-journal.rx"
     recipe.write_text(
@@ -197,7 +197,7 @@ def test_reload_when_changed_is_transparent_noop_when_identity_matches(
     gateway.after = gateway.wrap("after", after)
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
-        lambda: identity,
+        lambda **kwargs: identity,
     )
 
     recipe = tmp_path / "unchanged.rx"
@@ -227,10 +227,10 @@ def test_reload_when_changed_transfers_when_revision_differs(
     captured = {}
 
     monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
-    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda *args, **kwargs: ["gway"])
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
-        lambda: target,
+        lambda **kwargs: target,
     )
 
     recipe = tmp_path / "changed.rx"
@@ -263,10 +263,10 @@ def test_reload_when_changed_reloads_on_same_revision_different_fingerprint(
     gateway.gway_identity = source
 
     monkeypatch.setattr("gway.reload.handoff", _fake_handoff())
-    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda *args, **kwargs: ["gway"])
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
-        lambda: target,
+        lambda **kwargs: target,
     )
 
     recipe = tmp_path / "fingerprint-changed.rx"
@@ -297,7 +297,7 @@ def test_reload_when_changed_requires_installed_identity(
     )
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
-        lambda: None,
+        lambda **kwargs: None,
     )
     recipe = tmp_path / "missing-installed.rx"
     recipe.write_text("reload --when changed\n", encoding="utf-8")
@@ -330,7 +330,7 @@ def test_reload_when_changed_noop_leaves_open_journal_for_later_commit(
     gateway.gway_identity = identity
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
-        lambda: identity,
+        lambda **kwargs: identity,
     )
 
     recipe = tmp_path / "unchanged-journal.rx"
@@ -360,7 +360,7 @@ def test_reload_fresh_captures_structural_state_without_semantic_history(
     gateway.produce = gateway.wrap("produce_site", produce)
 
     monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
-    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda *args, **kwargs: ["gway"])
 
     recipe = tmp_path / "fresh.rx"
     recipe.write_text(
@@ -396,7 +396,7 @@ def test_reload_fresh_when_unchanged_is_transparent_noop(
     gateway.context["site"] = "MTY"
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
-        lambda: identity,
+        lambda **kwargs: identity,
     )
 
     def show(site):
@@ -439,7 +439,7 @@ def test_reload_restart_rolls_back_open_journals_before_handoff(
     monkeypatch.setattr(gateway.journal, "rollback", rollback)
 
     monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
-    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda *args, **kwargs: ["gway"])
 
     recipe = tmp_path / "restart.rx"
     recipe.write_text(
@@ -504,7 +504,7 @@ def test_reload_restart_from_nested_recipe_targets_top_level_invocation(
     captured = {}
 
     monkeypatch.setattr("gway.reload.handoff", _fake_handoff(captured))
-    monkeypatch.setattr("gway.reload.default_resume_command", lambda: ["gway"])
+    monkeypatch.setattr("gway.reload.default_resume_command", lambda *args, **kwargs: ["gway"])
 
     outer = tmp_path / "outer.rx"
     inner = tmp_path / "inner.rx"
@@ -534,7 +534,7 @@ def test_reload_restart_when_unchanged_does_not_rollback(
     gateway.gway_identity = identity
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
-        lambda: identity,
+        lambda **kwargs: identity,
     )
     rollbacks = []
     original = gateway.journal.rollback
@@ -602,7 +602,7 @@ def test_reload_when_changed_is_pipeline_transparent_when_unchanged(
     gateway.gway_identity = identity
     monkeypatch.setattr(
         "gway.install.identity.managed_gway_identity",
-        lambda: identity,
+        lambda **kwargs: identity,
     )
 
     def produce():
