@@ -107,8 +107,7 @@ Documentation
 - `docs/LOGGING.md <https://github.com/arthexis/gway/blob/main/docs/LOGGING.md>`_ — unified logging sources, queries, and backend policy.
 - `docs/MCP.md <https://github.com/arthexis/gway/blob/main/docs/MCP.md>`_ — MCP transport, authorization, token/scope, and deployment model.
 - `docs/README.md <https://github.com/arthexis/gway/blob/main/docs/README.md>`_ — documentation index.
-- `GLOSSARY.md <https://github.com/arthexis/gway/blob/main/GLOSSARY.md>`_ — canonical GWAY terminology.
-- `AGENTS.md <https://github.com/arthexis/gway/blob/main/AGENTS.md>`_ — maintainer and automation guidance.
+- `docs/GLOSSARY.md <https://github.com/arthexis/gway/blob/main/docs/GLOSSARY.md>`_ — canonical GWAY terminology.
 
 Development
 -----------

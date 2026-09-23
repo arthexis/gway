@@ -132,6 +132,8 @@ class Gateway(Resolver):
         self.commit = self.wrap("commit", self._commit_journal)
         self.rollback = self.wrap("rollback", self._rollback_journal)
         self.clear = self.wrap("clear", self._clear_context)
+        self.default = self.wrap("default", self._default_context, op="default", sub="default")
+        self.pipe = self.wrap("pipe", self._pipe_context, op="pipe", sub="pipe")
         self.set_env = self.wrap("set.env", self._set_environment, op="set", sub="env")
         self.clear_env = self.wrap(
             "clear.env", self._clear_environment, op="clear", sub="env"
@@ -188,6 +190,38 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    def _default_context(self, **values):
+        """Publish explicit semantic values into the containing context."""
+        from .publication import SKIP_PUBLICATION
+
+        self.context.update(values)
+        return SKIP_PUBLICATION
+
+    def _pipe_context(self, **values):
+        """Return selected semantic context as a result-only mapping.
+
+        Bare flags reuse an existing contextual value when one is available;
+        otherwise they contribute True. Explicit flag values always win.
+        With no flags, return a detached snapshot of the current context.
+        """
+        from .publication import ResultOnlyMapping
+        from .semantic import resolve_mapping_key
+
+        if not values:
+            return ResultOnlyMapping(self.context)
+
+        selected = {}
+        for name, value in values.items():
+            if value is True:
+                try:
+                    key = resolve_mapping_key(self.context, name)
+                except KeyError:
+                    pass
+                else:
+                    value = self.context[key]
+            selected[name] = value
+        return ResultOnlyMapping(selected)
 
     def data_root(self, *, system=False):
         """Resolve Gway's durable data root through semantic configuration."""
