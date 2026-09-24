@@ -1,3 +1,5 @@
+import inspect
+
 import gway.ingestion.django as django_ingestor
 from gway.ingestion.base import find_ingested
 
@@ -166,3 +168,65 @@ def test_adding_name_to_existing_mount_indexes_management_subject(
     assert command.value.mount is mount
     assert command.value.name == "migrate"
     assert gateway("migrate arthexis")["command"] == "migrate"
+
+
+def test_management_command_infers_external_non_mutating_handle_contract(
+    gateway,
+    django_project,
+    django_setup,
+    django_management,
+    monkeypatch,
+):
+    root, _ = django_project()
+    django_setup()
+    calls = django_management(commands={"fleet": "fleet"})
+
+    class FleetCommand:
+        def handle(self, *args, mutate=False, **options):
+            return None
+
+    command = FleetCommand()
+    monkeypatch.setattr(
+        django_ingestor,
+        "_management_command_handle",
+        lambda name: command.handle if name == "fleet" else None,
+    )
+
+    django_ingestor.ingest_project(gateway, root, name="arthexis")
+
+    result = gateway("fleet arthexis")
+
+    operation = gateway.ops.resolve("arthexis.fleet")
+    assert operation.mutates is False
+    assert operation.__gway_supports_no_mutate__ is True
+    assert "mutate" not in inspect.signature(operation).parameters
+    assert result == {
+        "command": "fleet",
+        "args": (),
+        "options": {"mutate": False},
+    }
+    assert calls[-1] == ("fleet", (), {"mutate": False})
+
+
+def test_management_command_without_mutate_remains_conservatively_mutating(
+    gateway,
+    django_project,
+    django_setup,
+    django_management,
+    monkeypatch,
+):
+    root, _ = django_project()
+    django_setup()
+    django_management(commands={"legacy": "legacy"})
+    monkeypatch.setattr(
+        django_ingestor,
+        "_management_command_handle",
+        lambda name: None,
+    )
+
+    django_ingestor.ingest_project(gateway, root, name="arthexis")
+    gateway("legacy arthexis")
+
+    operation = gateway.ops.resolve("arthexis.legacy")
+    assert operation.mutates is True
+    assert operation.__gway_supports_no_mutate__ is False
