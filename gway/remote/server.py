@@ -80,7 +80,11 @@ class RemoteApplication(RemoteDiscoveryApplication):
         super().__init__(metadata)
         self.runtime = runtime
         self._query_lock = threading.RLock()
-        self.actions = ActionsApplication(metadata, runtime=runtime)
+        actions_metadata = RemoteOAuthMetadata.from_origin(
+            metadata.issuer,
+            resource_path="/actions",
+        )
+        self.actions = ActionsApplication(actions_metadata, runtime=runtime)
         if account is None and runtime is not None:
             oauth = OAuthRegistry(runtime.security_path)
             account = RemoteAccountApplication(
@@ -92,6 +96,25 @@ class RemoteApplication(RemoteDiscoveryApplication):
             metadata,
             self.account,
             client_resolver=client_resolver,
+        )
+        self.actions_oauth = RemoteOAuthProtocol(
+            actions_metadata,
+            self.account,
+            client_resolver=client_resolver,
+        )
+        self.oauth_by_resource = {
+            metadata.resource: self.oauth,
+            actions_metadata.resource: self.actions_oauth,
+        }
+        self.routes[actions_metadata.protected_resource_metadata_path] = (
+            200,
+            actions_metadata.protected_resource_document,
+        )
+        authorization_document = metadata.authorization_server_document()
+        authorization_document["protected_resources"] = sorted(self.oauth_by_resource)
+        self.routes[metadata.authorization_server_metadata_path] = (
+            200,
+            lambda: authorization_document,
         )
 
     def _cookie(self, headers):
@@ -145,6 +168,13 @@ class RemoteApplication(RemoteDiscoveryApplication):
             headers = dict(headers)
             headers["set-cookie"] = self._cookie_header(session)
         return headers
+
+    def _oauth_for_resource(self, params):
+        resource = str((params or {}).get("resource") or "").strip()
+        protocol = self.oauth_by_resource.get(resource)
+        if protocol is None:
+            raise OAuthProtocolError("invalid_target")
+        return protocol
 
     @staticmethod
     def _bearer(headers):
@@ -242,7 +272,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 else self._form(body)
             )
             try:
-                self.oauth.stage_authorization(session, params)
+                self._oauth_for_resource(params).stage_authorization(session, params)
             except OAuthProtocolError as error:
                 return error.status, {"content-type": "application/json"}, error.payload()
             response_headers = self._with_cookie({}, session, created)
@@ -253,7 +283,8 @@ class RemoteApplication(RemoteDiscoveryApplication):
             if method != "POST":
                 return 405, {"allow": "POST"}, {"error": "method_not_allowed"}
             try:
-                payload = self.oauth.token(self._form(body))
+                params = self._form(body)
+                payload = self._oauth_for_resource(params).token(params)
             except OAuthProtocolError as error:
                 return error.status, {
                     "content-type": "application/json",
@@ -375,7 +406,12 @@ class RemoteApplication(RemoteDiscoveryApplication):
 
             if session.pending_redirect_uri:
                 try:
-                    destination = self.oauth.finish_authorization(session, grant)
+                    protocol = self.oauth if grant is None else self.oauth_by_resource.get(
+                        grant.resource
+                    )
+                    if protocol is None:
+                        raise OAuthProtocolError("invalid_target")
+                    destination = protocol.finish_authorization(session, grant)
                 except OAuthProtocolError as error:
                     return error.status, {"content-type": "application/json"}, error.payload()
                 return self._redirect(destination)
