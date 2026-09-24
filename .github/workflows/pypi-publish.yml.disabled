@@ -159,10 +159,69 @@ jobs:
         with:
           attestations: true
 
-  advance-version:
-    name: Open next-version PR
+  github-release:
+    name: Create GitHub Release
     needs: [build, publish]
     if: ${{ needs.publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download exact release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: gway-dists-${{ inputs.deployed_sha }}
+          path: dist/
+
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          (
+            cd dist
+            sha256sum * > SHA256SUMS
+          )
+
+      - name: Ensure release tag is unused
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -Eeuo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Release blocked: tag $TAG already exists." >&2
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release blocked: GitHub Release $TAG already exists." >&2
+            exit 1
+          fi
+
+      - name: Create tag and GitHub Release from deployed SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+          DEPLOYED_SHA: ${{ inputs.deployed_sha }}
+          WATCHTOWER_RUN: ${{ inputs.watchtower_run }}
+        run: |
+          set -Eeuo pipefail
+          git tag "$TAG" "$DEPLOYED_SHA"
+          git push origin "$TAG"
+          gh release create "$TAG" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "gway v$VERSION" \
+            --generate-notes \
+            --notes "Published from Watchtower-certified SHA `$DEPLOYED_SHA`.
+
+Certified by: $WATCHTOWER_RUN"
+
+  advance-version:
+    name: Open next-version PR
+    needs: [build, publish, github-release]
+    if: ${{ needs.publish.result == 'success' && needs.github-release.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
