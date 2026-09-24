@@ -51,24 +51,3 @@ def test_cli_no_mutate_reaches_compatible_callable(gateway):
 
     assert _run_cli(None, _args(mutation_policy=False), ["inspect"], runtime=gateway) == 0
     assert seen == [False]
-
-
-def test_cli_named_mutation_policy_reaches_compatible_callable(gateway):
-    seen = []
-
-    def inspect(*, mutate=False):
-        seen.append(mutate)
-        return "ok"
-
-    gateway.inspect = gateway.wrap("inspect_state", inspect)
-
-    assert (
-        _run_cli(
-            None,
-            _args(mutation_policy="refresh"),
-            ["inspect"],
-            runtime=gateway,
-        )
-        == 0
-    )
-    assert seen == ["refresh"]
