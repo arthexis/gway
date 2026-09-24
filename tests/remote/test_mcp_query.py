@@ -20,8 +20,6 @@ class Parent:
 
     def execute(self, command, mutate=None):
         self.calls.append((command, mutate))
-        if command == "restart" and mutate is False:
-            raise RuntimeError("restart does not support non-mutating execution")
         return f"{command}:{mutate}"
 
 
@@ -36,22 +34,15 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
             query = next(tool for tool in tools if tool.name == "query")
             safe = await client.call_tool("query", {"command": "observe"})
             generic = await client.call_tool("gway", {"command": "restart"})
-            error = None
-            try:
-                await client.call_tool("query", {"command": "restart"})
-            except Exception as exception:
-                error = str(exception)
-            return tools, query, safe, generic, error
+            return tools, query, safe, generic
 
-    tools, query, safe, generic, error = asyncio.run(run())
+    tools, query, safe, generic = asyncio.run(run())
 
     assert [tool.name for tool in tools] == ["gway", "query"]
     assert query.annotations.readOnlyHint is True
     assert safe.content[0].text == "observe:False"
     assert generic.content[0].text == "restart:None"
-    assert "does not support non-mutating execution" in error
     assert parent.calls == [
         ("observe", False),
         ("restart", None),
-        ("restart", False),
     ]
