@@ -112,3 +112,31 @@ def test_with_resource_path_preserves_validated_insecure_loopback_origin():
 
     assert actions.issuer == "http://127.0.0.1:9000"
     assert actions.resource == "http://127.0.0.1:9000/actions"
+
+
+def test_scoped_metadata_advertises_supported_scope():
+    metadata = RemoteOAuthMetadata.from_origin(
+        "https://remote.example.test",
+        scopes_supported=("chatgpt-logs",),
+    )
+
+    assert metadata.protected_resource_document()["scopes_supported"] == [
+        "chatgpt-logs"
+    ]
+    assert metadata.authorization_server_document()["scopes_supported"] == [
+        "chatgpt-logs"
+    ]
+
+
+def test_with_resource_path_can_override_supported_scopes():
+    metadata = RemoteOAuthMetadata.from_origin(
+        "https://remote.example.test",
+        scopes_supported=("chatgpt-logs",),
+    )
+
+    actions = metadata.with_resource_path(
+        "/actions",
+        scopes_supported=("chatgpt-actions",),
+    )
+
+    assert actions.scopes_supported == ("chatgpt-actions",)
