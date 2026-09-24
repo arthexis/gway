@@ -184,3 +184,11 @@ def test_remote_privacy_page_is_public_and_describes_actions_data():
     assert status == 405
     assert headers["allow"] == "GET"
     assert payload == {"error": "method_not_allowed"}
+
+
+def test_remote_application_keeps_mcp_default_scope_without_metadata_scope():
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+    app = RemoteApplication(metadata)
+
+    assert app.oauth.default_scope == "chatgpt-logs"
+    assert app.actions_oauth.default_scope == "chatgpt-actions"
