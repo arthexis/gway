@@ -57,7 +57,10 @@ def test_mcp_gway_tool_executes_native_pipeline_under_caller_authority(
     gateway.ingest(root)
 
     with gateway.authorized(operations={"mcp.server", "produce", "consume"}):
-        assert gateway("mcp server") == "hello!"
+        result = gateway("mcp server")
+
+    assert result.content[0].text == "hello!"
+    assert result.structured_content["result"] == "hello!"
 
 
 def test_mcp_gway_tool_rechecks_each_native_pipeline_operation(
