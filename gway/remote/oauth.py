@@ -135,15 +135,25 @@ class OAuthClientResolver:
 
 
 class RemoteOAuthProtocol:
-    """Authorization-code + PKCE behavior over the O0/O2 domain model."""
+    """Authorization-code behavior with PKCE policy over the O0/O2 domain model."""
 
     access_lifetime_seconds = 900
     refresh_lifetime_seconds = 2592000
 
-    def __init__(self, metadata, account, *, client_resolver=None):
+    def __init__(
+        self,
+        metadata,
+        account,
+        *,
+        client_resolver=None,
+        allow_confidential_without_pkce=False,
+    ):
         self.metadata = metadata
         self.account = account
         self.oauth = account.oauth
+        self.allow_confidential_without_pkce = bool(
+            allow_confidential_without_pkce
+        )
         self.clients = (
             OAuthClientResolver(self.oauth)
             if client_resolver is None
@@ -180,16 +190,36 @@ class RemoteOAuthProtocol:
         if resource != self.metadata.resource:
             raise OAuthProtocolError("invalid_target", "resource does not match this protected resource")
 
-        challenge = self._required(params, "code_challenge")
-        if self._required(params, "code_challenge_method") != "S256":
-            raise OAuthProtocolError("invalid_request", "PKCE S256 is required")
-        if len(challenge) != 43 or any(
-            character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-            for character in challenge
-        ):
+        challenge = str(params.get("code_challenge") or "").strip()
+        method = str(params.get("code_challenge_method") or "").strip()
+        pkce_required = not (
+            self.allow_confidential_without_pkce
+            and client.token_endpoint_auth_method
+            in {"client_secret_post", "client_secret_basic"}
+        )
+        if pkce_required and not challenge:
             raise OAuthProtocolError(
                 "invalid_request",
-                "PKCE S256 code_challenge is malformed",
+                "code_challenge is required",
+            )
+        if challenge:
+            if method != "S256":
+                raise OAuthProtocolError(
+                    "invalid_request",
+                    "PKCE S256 is required",
+                )
+            if len(challenge) != 43 or any(
+                character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+                for character in challenge
+            ):
+                raise OAuthProtocolError(
+                    "invalid_request",
+                    "PKCE S256 code_challenge is malformed",
+                )
+        elif method:
+            raise OAuthProtocolError(
+                "invalid_request",
+                "code_challenge is required when code_challenge_method is supplied",
             )
 
         scope = self._required(params, "scope")
@@ -213,8 +243,11 @@ class RemoteOAuthProtocol:
         redirect_uri = session.pending_redirect_uri
         state = session.pending_state
         challenge = session.pending_code_challenge
-        if not redirect_uri or not challenge:
-            raise OAuthProtocolError("invalid_request", "No OAuth authorization request is pending")
+        if not redirect_uri:
+            raise OAuthProtocolError(
+                "invalid_request",
+                "No OAuth authorization request is pending",
+            )
 
         try:
             if grant is None:
@@ -315,11 +348,12 @@ class RemoteOAuthProtocol:
                 "Dynamic OAuth clients must use public-client authentication",
                 status=401,
             )
-        return client_id
+        return client
 
     def token(self, params, *, headers=None):
         grant_type = self._required(params, "grant_type")
-        client_id = self._authenticate_token_client(params, headers)
+        client = self._authenticate_token_client(params, headers)
+        client_id = client.client_id
         resource = self._required(params, "resource")
         if resource != self.metadata.resource:
             raise OAuthProtocolError("invalid_target")
@@ -329,7 +363,9 @@ class RemoteOAuthProtocol:
                 grant = self.oauth.consume_authorization_code(
                     self._required(params, "code"),
                     redirect_uri=self._required(params, "redirect_uri"),
-                    code_verifier=self._required(params, "code_verifier"),
+                    code_verifier=(
+                        str(params.get("code_verifier") or "").strip() or None
+                    ),
                     client_id=client_id,
                     resource=resource,
                 )
