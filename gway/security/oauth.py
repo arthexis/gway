@@ -169,7 +169,7 @@ class OAuthRegistry:
         if not self.path.is_file():
             return None
         client_id = self._text(client_id, "OAuth client id")
-        with self.state.connect(readonly=True) as connection:
+        with self.state.connect() as connection:
             row = connection.execute(
                 """
                 SELECT client_id, metadata_url, redirect_uris, created_at, disabled
@@ -215,7 +215,7 @@ class OAuthRegistry:
         if not self.path.is_file():
             return None
         name = self._text(name, "OAuth link name")
-        with self.state.connect(readonly=True) as connection:
+        with self.state.connect() as connection:
             row = connection.execute(
                 """
                 SELECT oauth_links.name, tokens.name AS token_name,
@@ -281,7 +281,7 @@ class OAuthRegistry:
     def get_grant(self, grant_id):
         if not self.path.is_file():
             return None
-        with self.state.connect(readonly=True) as connection:
+        with self.state.connect() as connection:
             row = connection.execute(
                 """
                 SELECT oauth_grants.id, oauth_links.name AS link_name,
@@ -412,7 +412,7 @@ class OAuthRegistry:
             row["created_at"],
             row["revoked_at"],
         )
-        return grant, self.scopes.resolve(scope_names)
+        return grant, self.scopes.resolve(scope_names, readonly=True)
 
     def issue_authorization_code(
         self,
