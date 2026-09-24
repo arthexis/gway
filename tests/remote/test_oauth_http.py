@@ -18,7 +18,7 @@ from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
 
 
-pytestmark = pytest.mark.heavy
+pytestmark = pytest.mark.main
 
 
 CLIENT_ID = "chatgpt-client"
