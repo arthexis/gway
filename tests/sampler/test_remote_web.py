@@ -60,21 +60,17 @@ def test_remote_https_template_routes_public_oauth_surface_to_remote_auth():
         assert auth_target in block, marker
         assert "[mcp_host|127.0.0.1]:[mcp_port|8000]" not in block, marker
 
-def test_remote_http_template_routes_same_application_topology_before_tls():
+def test_remote_http_template_exposes_only_acme_and_https_redirect():
     content = _template("nginx-http-[site].conf")
 
-    assert "location = /mcp {" in content
-    assert "location = /query {" in content
-    assert "location = / {" in content
-    assert "location = /oauth/authorize {" in content
-    assert "location = /oauth/token {" in content
-    assert "location = /oauth/revoke {" in content
-    assert "location = /settings/connections {" in content
-    assert "proxy_pass http://[mcp_host|127.0.0.1]:[mcp_port|8000];" in content
-    assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in content
+    assert "location ^~ /.well-known/acme-challenge/ {" in content
+    assert "return 301 https://[domain]$request_uri;" in content
+    assert "proxy_pass" not in content
+    assert "location = /mcp {" not in content
+    assert "location = /oauth/token {" not in content
 
 def test_remote_templates_preserve_host_and_forwarded_request_context():
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
 
         assert "proxy_set_header Host $host;" in content
@@ -86,14 +82,14 @@ def test_remote_templates_preserve_host_and_forwarded_request_context():
         assert "proxy_set_header X-Forwarded-Proto $scheme;" in content
 
 def test_remote_templates_do_not_use_one_catch_all_application_upstream():
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
 
         assert "proxy_pass http://[host]:[port];" not in content
         assert "location / {\n        proxy_set_header" not in content
 
 def test_remote_mcp_route_has_streaming_proxy_semantics():
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
         block = _block(content, "location = /mcp {")
 
@@ -106,7 +102,7 @@ def test_remote_mcp_route_has_streaming_proxy_semantics():
         assert "proxy_send_timeout [mcp_send_timeout|300s];" in block
 
 def test_remote_mcp_route_is_exact_and_does_not_strip_prefix():
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
         block = _block(content, "location = /mcp {")
 
@@ -148,13 +144,13 @@ def test_remote_https_redirect_server_preserves_acme_before_redirect():
 
     assert "location ^~ /.well-known/acme-challenge/ {" in first_server
     assert "root [acme_webroot|/var/www/gway-acme];" in first_server
-    assert "return 301 https://$host$request_uri;" in first_server
+    assert "return 301 https://[domain]$request_uri;" in first_server
     assert first_server.index("location ^~ /.well-known/acme-challenge/ {") < (
         first_server.index("location / {")
     )
 
 def test_remote_well_known_oauth_routes_are_exact_and_distinct_from_acme():
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
 
         assert "location = /.well-known/oauth-protected-resource/mcp {" in content
@@ -164,7 +160,7 @@ def test_remote_well_known_oauth_routes_are_exact_and_distinct_from_acme():
         assert "location / .well-known" not in content
 
 def test_remote_auth_surface_does_not_publish_unimplemented_prefixes():
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
 
         assert "location ^~ /oauth/ {" not in content
@@ -380,18 +376,20 @@ def test_remote_https_public_contract_has_one_mcp_route_and_explicit_auth_routes
         assert mcp_target not in block, route
 
 
-def test_remote_https_contract_has_no_application_catch_all_proxy():
+def test_remote_https_contract_denies_unknown_application_paths():
     content = _template("nginx-https-[site].conf")
     tls_server = content.split("\n}\n\nserver {", 1)[1]
+    fallback = _block(tls_server, "location / {")
 
-    assert "location / {" not in tls_server
+    assert "return 404;" in fallback
+    assert "proxy_pass" not in fallback
     assert "location ^~ /oauth/ {" not in tls_server
     assert "location ^~ /settings/ {" not in tls_server
     assert "location ^~ /.well-known/ {" not in tls_server
 
 
 def test_remote_templates_default_both_application_upstreams_to_loopback():
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
 
         assert "[mcp_host|127.0.0.1]" in content
@@ -403,7 +401,7 @@ def test_remote_templates_default_both_application_upstreams_to_loopback():
 def test_remote_query_route_uses_auth_upstream_and_preserves_request_contract():
     auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
 
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
         block = _block(content, "location = /query {")
 
@@ -420,7 +418,7 @@ def test_remote_actions_routes_use_auth_upstream_and_preserve_contract():
     auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
     mcp_target = "[mcp_host|127.0.0.1]:[mcp_port|8000]"
 
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
 
         openapi = _block(content, "location = /actions/openapi.json {")
@@ -443,7 +441,7 @@ def test_remote_actions_routes_use_auth_upstream_and_preserve_contract():
 def test_remote_actions_protected_resource_route_is_explicit():
     auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
 
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
         marker = "location = /.well-known/oauth-protected-resource/actions {"
         block = _block(content, marker)
@@ -454,7 +452,7 @@ def test_remote_actions_protected_resource_route_is_explicit():
 
 
 def test_remote_public_contract_exposes_actions_without_catch_all():
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
 
         for route in (
@@ -489,7 +487,7 @@ def test_remote_actions_policy_does_not_grant_mutating_operations():
 def test_remote_privacy_route_is_explicit_and_uses_auth_upstream():
     auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
 
-    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+    for name in ("nginx-https-[site].conf",):
         content = _template(name)
         marker = "location = /privacy {"
         block = _block(content, marker)
@@ -497,3 +495,48 @@ def test_remote_privacy_route_is_explicit_and_uses_auth_upstream():
         assert marker in content
         assert auth_target in block
         assert "[mcp_host|127.0.0.1]:[mcp_port|8000]" not in block
+
+
+def test_remote_templates_reject_unknown_or_missing_hosts():
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+
+        assert 'if ($http_host = "") {' in content
+        assert "if ($host != [domain]) {" in content
+        assert content.count("return 444;") >= 2
+
+
+def test_remote_https_template_sets_safe_edge_defaults():
+    content = _template("nginx-https-[site].conf")
+
+    assert "server_tokens off;" in content
+    assert "ssl_protocols TLSv1.2 TLSv1.3;" in content
+    assert 'add_header Strict-Transport-Security "max-age=31536000" always;' in content
+    assert 'add_header X-Content-Type-Options "nosniff" always;' in content
+    assert 'add_header Referrer-Policy "same-origin" always;' in content
+
+
+def test_remote_https_rate_limits_login_and_token_only():
+    content = _template("nginx-https-[site].conf")
+    directive = "limit_req zone=gway_remote_auth_[site] burst=20 nodelay;"
+
+    assert (
+        "limit_req_zone $binary_remote_addr "
+        "zone=gway_remote_auth_[site]:10m rate=5r/s;"
+    ) in content
+    assert "limit_req_status 429;" in content
+    assert directive in _block(content, "location = /login {")
+    assert directive in _block(content, "location = /oauth/token {")
+    assert directive not in _block(content, "location = /mcp {")
+    assert directive not in _block(content, "location = /query {")
+
+
+def test_remote_no_store_routes_keep_security_headers():
+    content = _template("nginx-https-[site].conf")
+
+    for route in ("/query", "/actions/openapi.json", "/actions/query", "/actions/execute"):
+        block = _block(content, f"location = {route} {{")
+        assert 'add_header Cache-Control "no-store" always;' in block
+        assert 'add_header Strict-Transport-Security "max-age=31536000" always;' in block
+        assert 'add_header X-Content-Type-Options "nosniff" always;' in block
+        assert 'add_header Referrer-Policy "same-origin" always;' in block

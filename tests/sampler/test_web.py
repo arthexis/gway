@@ -88,7 +88,8 @@ def test_web_expose_http_template_matches_certbot_webroot():
     assert "server_name [domain];" in content
     assert "location ^~ /.well-known/acme-challenge/" in content
     assert "root [acme_webroot|/var/www/gway-acme];" in content
-    assert "proxy_pass http://[host]:[port];" in content
+    assert "return 301 https://[domain]$request_uri;" in content
+    assert "proxy_pass http://[host]:[port];" not in content
     assert "listen 443 ssl;" not in content
 
 
@@ -97,7 +98,7 @@ def test_web_expose_https_template_serves_tls_and_preserves_acme():
 
     assert "listen 80;" in content
     assert "location ^~ /.well-known/acme-challenge/" in content
-    assert "return 301 https://$host$request_uri;" in content
+    assert "return 301 https://[domain]$request_uri;" in content
     assert "listen 443 ssl;" in content
     assert "listen [[::]]:443 ssl;" in content
     assert "ssl_certificate /etc/letsencrypt/live/[domain]/fullchain.pem;" in content
@@ -211,3 +212,22 @@ def test_godaddy_setup_uses_generic_input_and_secret_store():
         "secret write dns godaddy key [godaddy_key]",
         "secret write dns godaddy secret [godaddy_secret]",
     ]
+
+
+def test_web_expose_templates_reject_unknown_or_missing_hosts():
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = (sampler_root() / name).read_text(encoding="utf-8")
+
+        assert 'if ($http_host = "") {' in content
+        assert "if ($host != [domain]) {" in content
+        assert content.count("return 444;") >= 2
+
+
+def test_web_expose_https_template_sets_safe_edge_defaults():
+    content = (sampler_root() / "nginx-https-[site].conf").read_text(encoding="utf-8")
+
+    assert "server_tokens off;" in content
+    assert "ssl_protocols TLSv1.2 TLSv1.3;" in content
+    assert 'add_header Strict-Transport-Security "max-age=31536000" always;' in content
+    assert 'add_header X-Content-Type-Options "nosniff" always;' in content
+    assert 'add_header Referrer-Policy "same-origin" always;' in content
