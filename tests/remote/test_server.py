@@ -67,7 +67,6 @@ def test_discovery_application_rejects_writes_and_unknown_paths():
     assert payload == {"error": "not_found"}
 
 
-@pytest.mark.main
 def test_real_loopback_http_serves_both_discovery_documents():
     server = build_server(
         "127.0.0.1",
@@ -107,7 +106,6 @@ def test_real_loopback_http_serves_both_discovery_documents():
         thread.join(timeout=2)
 
 
-@pytest.mark.main
 def test_real_http_rejects_non_get_discovery_request():
     server = build_server(
         "127.0.0.1",
