@@ -3,11 +3,14 @@
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import threading
 from urllib.parse import parse_qs, urlsplit
 
 from ..authorization import AuthorizationError
 from ..mutation import MutationError
 from ..security.authentication import BearerAuthenticationError
+from ..security.oauth import OAuthRegistry
+from ..security.tokens import TokenRegistry
 from .account import RemoteAccountApplication
 from .metadata import RemoteOAuthMetadata
 from .oauth import OAuthProtocolError, RemoteOAuthProtocol
@@ -75,6 +78,13 @@ class RemoteApplication(RemoteDiscoveryApplication):
     ):
         super().__init__(metadata)
         self.runtime = runtime
+        self._query_lock = threading.RLock()
+        if account is None and runtime is not None:
+            oauth = OAuthRegistry(runtime.security_path)
+            account = RemoteAccountApplication(
+                oauth=oauth,
+                tokens=TokenRegistry(runtime.security_path),
+            )
         self.account = RemoteAccountApplication() if account is None else account
         self.oauth = RemoteOAuthProtocol(
             metadata,
@@ -171,12 +181,13 @@ class RemoteApplication(RemoteDiscoveryApplication):
 
         try:
             bearer = self._bearer(headers)
-            result = self.runtime.execute_authenticated(
-                bearer,
-                command,
-                resource=self.metadata.resource,
-                mutate=False,
-            )
+            with self._query_lock:
+                result = self.runtime.execute_authenticated(
+                    bearer,
+                    command,
+                    resource=self.metadata.resource,
+                    mutate=False,
+                )
         except BearerAuthenticationError:
             return 401, {
                 **response_headers,
