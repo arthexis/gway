@@ -98,7 +98,8 @@ def test_real_loopback_http_serves_both_discovery_documents():
         assert protected["authorization_servers"] == ["http://127.0.0.1:9000"]
         assert authorization["issuer"] == "http://127.0.0.1:9000"
         assert authorization["protected_resources"] == [
-            "http://127.0.0.1:9000/mcp"
+            "http://127.0.0.1:9000/actions",
+            "http://127.0.0.1:9000/mcp",
         ]
     finally:
         server.shutdown()
