@@ -1,0 +1,131 @@
+name: GitHub Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview branch pruning without deleting anything
+        required: true
+        type: boolean
+        default: true
+      keep_branches:
+        description: Additional comma-separated branches to preserve
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  prune-branches:
+    name: Prune obsolete branches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find and prune authorized branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          EXTRA_KEEP_BRANCHES: ${{ inputs.keep_branches }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          default_branch="$(gh api "repos/$REPOSITORY" --jq '.default_branch')"
+          echo "Repository: $REPOSITORY"
+          echo "Default branch: $default_branch"
+          echo "Dry run: $DRY_RUN"
+
+          declare -A keep=()
+          keep["$default_branch"]=1
+          keep["release/1.0.0"]=1
+
+          IFS=',' read -ra extra_keep <<< "$EXTRA_KEEP_BRANCHES"
+          for branch in "${extra_keep[@]}"; do
+            branch="${branch#"${branch%%[![:space:]]*}"}"
+            branch="${branch%"${branch##*[![:space:]]}"}"
+            [[ -n "$branch" ]] && keep["$branch"]=1
+          done
+
+          while IFS= read -r branch; do
+            [[ -n "$branch" ]] && keep["$branch"]=1
+          done < <(
+            gh pr list               --repo "$REPOSITORY"               --state open               --limit 1000               --json headRefName,baseRefName               --jq '.[] | .headRefName, .baseRefName'
+          )
+
+          mapfile -t branches < <(
+            gh api --paginate "repos/$REPOSITORY/branches?per_page=100"               --jq '.[] | [.name, .commit.sha, .protected] | @tsv'
+          )
+
+          candidates=()
+          skipped=()
+
+          for row in "${branches[@]}"; do
+            IFS=$'\t' read -r branch sha protected <<< "$row"
+
+            if [[ -n "${keep[$branch]:-}" ]]; then
+              skipped+=("$branch (kept)")
+              continue
+            fi
+
+            if [[ "$protected" == "true" ]]; then
+              skipped+=("$branch (protected)")
+              continue
+            fi
+
+            compare_json="$(gh api "repos/$REPOSITORY/compare/$default_branch...$branch" 2>/dev/null || true)"
+            ahead_by=""
+            if [[ -n "$compare_json" ]]; then
+              ahead_by="$(jq -r '.ahead_by // empty' <<< "$compare_json")"
+            fi
+
+            if [[ "$ahead_by" == "0" ]]; then
+              candidates+=("$branch")
+              continue
+            fi
+
+            merged_head_sha="$(
+              gh pr list                 --repo "$REPOSITORY"                 --state merged                 --head "$branch"                 --limit 100                 --json headRefOid,mergedAt                 --jq 'sort_by(.mergedAt) | last | .headRefOid // empty'
+            )"
+
+            if [[ -n "$merged_head_sha" && "$merged_head_sha" == "$sha" ]]; then
+              candidates+=("$branch")
+              continue
+            fi
+
+            skipped+=("$branch (has unique or unverified commits)")
+          done
+
+          {
+            echo "## GitHub Maintenance"
+            echo
+            echo "**Mode:** $([[ "$DRY_RUN" == "true" ]] && echo "dry run" || echo "delete")"
+            echo
+            echo "### Authorized for pruning (${#candidates[@]})"
+            if (( ${#candidates[@]} == 0 )); then
+              echo "None."
+            else
+              printf -- '- `%s`\n' "${candidates[@]}"
+            fi
+            echo
+            echo "### Preserved (${#skipped[@]})"
+            if (( ${#skipped[@]} == 0 )); then
+              echo "None."
+            else
+              printf -- '- %s\n' "${skipped[@]}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          printf 'Authorized for pruning: %d branch(es)\n' "${#candidates[@]}"
+
+          if [[ "$DRY_RUN" == "true" ]]; then
+            printf 'DRY RUN: would delete %s\n' "${candidates[@]}"
+            exit 0
+          fi
+
+          for branch in "${candidates[@]}"; do
+            echo "Deleting $branch"
+            gh api               --method DELETE               "repos/$REPOSITORY/git/refs/heads/$branch"
+          done
