@@ -13,7 +13,25 @@ class SecurityState:
     def __init__(self, path):
         self.path = Path(path).expanduser().resolve()
 
-    def connect(self):
+    def connect(self, *, readonly=False):
+        if readonly:
+            if not self.path.is_file():
+                raise FileNotFoundError(self.path)
+            connection = sqlite3.connect(
+                self.path.as_uri() + "?mode=ro",
+                uri=True,
+            )
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if version != _SCHEMA_VERSION:
+                connection.close()
+                raise RuntimeError(
+                    "Security state requires writable schema migration before "
+                    f"read-only access: {version} != {_SCHEMA_VERSION}"
+                )
+            return connection
+
         self.path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
