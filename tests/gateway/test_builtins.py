@@ -244,3 +244,35 @@ def test_default_with_no_flags_is_context_noop(gateway):
 
     assert gateway.context == {"site": "MTY"}
     assert len(gateway.results.history) == history_size
+
+
+
+def test_observational_builtins_support_non_mutating_execution(
+    gateway,
+    monkeypatch,
+):
+    monkeypatch.setenv("GWAY_QUERY_ENV", "visible")
+    gateway.context.clear()
+    gateway.context["site"] = "MTY"
+
+    assert gateway.execute("env GWAY_QUERY_ENV", mutate=False) == "visible"
+    assert gateway.execute("envs", mutate=False)["GWAY_QUERY_ENV"] == "visible"
+    assert gateway.execute("pipe --site", mutate=False) == {"site": "MTY"}
+
+    for name in ("env", "envs", "pipe"):
+        assert gateway.ops.resolve(name).mutates is False
+
+
+
+def test_toml_operations_support_non_mutating_execution(gateway, tmp_path):
+    path = tmp_path / "query.toml"
+    path.write_text('site = "MTY"\n', encoding="utf-8")
+
+    assert gateway.execute("toml", 'answer = 42', mutate=False) == {"answer": 42}
+    assert gateway.execute("toml loads", 'answer = 42', mutate=False) == {"answer": 42}
+    assert gateway.execute("toml load", str(path), mutate=False) == {"site": "MTY"}
+
+    family = gateway.ops["toml"]
+    for name in (None, "loads", "load"):
+        operation = gateway.ops.resolve("toml") if name is None else family[name]
+        assert operation.mutates is False

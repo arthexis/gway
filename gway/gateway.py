@@ -2,13 +2,19 @@
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-import inspect
 import threading
 
 from .runner import invoke
 from .bindings import Bindings
 from . import log as gway_log
 from .normalization import complete_arguments
+from .mutation import (
+    MUTATE_UNSET,
+    MutationError,
+    mutates,
+    public_signature,
+    supports_no_mutate,
+)
 from .environment import process_environment
 from .operations import registry_views, split_operation
 from .publication import publish
@@ -66,6 +72,10 @@ class Gateway(Resolver):
         self._capability_depth_var = ContextVar(
             f"gway_capability_depth_{id(self)}",
             default=0,
+        )
+        self._mutation_policy_var = ContextVar(
+            f"gway_mutation_policy_{id(self)}",
+            default=MUTATE_UNSET,
         )
         self._semantic_topics_var = ContextVar(
             f"gway_semantic_topics_{id(self)}",
@@ -198,7 +208,7 @@ class Gateway(Resolver):
         self.context.update(values)
         return SKIP_PUBLICATION
 
-    def _pipe_context(self, **values):
+    def _pipe_context(self, *, mutate=False, **values):
         """Return selected semantic context as a result-only mapping.
 
         Bare flags reuse an existing contextual value when one is available;
@@ -749,6 +759,56 @@ class Gateway(Resolver):
             "Direct recipe paths are not authorized; invoke an authorized recipe operation"
         )
 
+    @property
+    def mutation_policy(self):
+        """Return the active trusted mutation policy, or MUTATE_UNSET."""
+        return self._mutation_policy_var.get()
+
+    @property
+    def mutation_allowed(self):
+        """Return whether the active execution may intentionally mutate state."""
+        return self.mutation_policy is not False
+
+    @contextmanager
+    def mutation_scope(self, *, mutate=MUTATE_UNSET):
+        """Apply a trusted mutation policy to this execution and nested calls.
+
+        An outer False policy is a monotonic ceiling: nested execution cannot
+        re-enable mutation. Other values are propagated to compatible
+        callables, while MUTATE_UNSET preserves the inherited/default policy.
+        """
+        current = self.mutation_policy
+        if current is False:
+            policy = False
+        elif mutate is MUTATE_UNSET:
+            policy = current
+        else:
+            policy = mutate
+        token = self._mutation_policy_var.set(policy)
+        try:
+            yield policy
+        finally:
+            self._mutation_policy_var.reset(token)
+
+    @contextmanager
+    def observational_state_scope(self):
+        """Restore Gway-owned runtime bookkeeping after observational execution."""
+        context = dict(self.context)
+        result_map = dict(self.results.maps[0])
+        result_history = list(self.results.history)
+        execution = self.execution
+        previous_execution = self.previous_execution
+        try:
+            yield
+        finally:
+            self.context.clear()
+            self.context.update(context)
+            self.results.maps[0].clear()
+            self.results.maps[0].update(result_map)
+            self.results.history[:] = result_history
+            self.execution = execution
+            self.previous_execution = previous_execution
+
     @contextmanager
     def invocation_authority(self, operation):
         """Encapsulate internals of an already-authorized trusted recipe operation."""
@@ -796,11 +856,46 @@ class Gateway(Resolver):
             return self.environment.names()
         return tuple(name for name in allowed if name in self.environment)
 
-    def __call__(self, command, *args, **kwargs):
-        """Execute a GWAY command through the unified dispatcher."""
+    def execute(self, command, *args, mutate=MUTATE_UNSET, **kwargs):
+        """Execute a GWAY command under a trusted mutation policy."""
         from .dispatch import dispatch
 
-        return dispatch(self, command, *args, **kwargs)
+        observational = self.mutation_policy is not False and mutate is False
+        with self.mutation_scope(mutate=mutate):
+            if observational:
+                with self.observational_state_scope():
+                    return dispatch(self, command, *args, **kwargs)
+            return dispatch(self, command, *args, **kwargs)
+
+    def execute_authenticated(
+        self,
+        bearer,
+        command,
+        *,
+        resource=None,
+        mutate=MUTATE_UNSET,
+    ):
+        """Authenticate one bearer and execute under its current authority."""
+        from .security.authentication import authenticate_bearer
+
+        identity = authenticate_bearer(
+            bearer,
+            resource=resource,
+            path=self.security_path,
+        )
+        with self.authorized(
+            operations=identity.authority.operations,
+            environment=identity.authority.environment,
+        ):
+            with self.external_authority():
+                return self.execute(command, mutate=mutate)
+
+    def __call__(self, command, *args, **kwargs):
+        """Execute a GWAY command while preserving inherited mutation policy."""
+        from .dispatch import dispatch
+
+        with self.mutation_scope():
+            return dispatch(self, command, *args, **kwargs)
 
     def chain(self, command, *args, **kwargs):
         """Create a scoped manual pipeline rooted in an initial command."""
@@ -828,6 +923,15 @@ class Gateway(Resolver):
         subject = self.subject(func_name) if op is None else sub
 
         def wrapped(*args, **kwargs):
+            mutation_policy = self.mutation_policy
+            supports_mutation_policy = supports_no_mutate(func_obj)
+            if mutation_policy is False and not supports_mutation_policy:
+                raise MutationError(
+                    f"{func_name!r} does not support non-mutating execution"
+                )
+            if mutation_policy is not MUTATE_UNSET and supports_mutation_policy:
+                kwargs = dict(kwargs)
+                kwargs["mutate"] = mutation_policy
             call = complete_arguments(
                 self,
                 subject,
@@ -849,11 +953,12 @@ class Gateway(Resolver):
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
         wrapped.__doc__ = getattr(func_obj, "__doc__", None)
         wrapped.__wrapped__ = func_obj
-        if receiver is not None:
-            signature = inspect.signature(func_obj)
-            parameters = tuple(signature.parameters.values())
-            if parameters:
-                wrapped.__signature__ = signature.replace(parameters=parameters[1:])
+        signature = public_signature(func_obj, receiver=receiver is not None)
+        if signature is not None:
+            wrapped.__signature__ = signature
+        wrapped.mutates = mutates(func_obj)
+        wrapped.__gway_mutates__ = wrapped.mutates
+        wrapped.__gway_supports_no_mutate__ = supports_no_mutate(func_obj)
         wrapped.__gway_operation__ = op or func_name
         wrapped.__gway_subject__ = subject
         wrapped.__gway_receiver__ = receiver

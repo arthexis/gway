@@ -26,14 +26,14 @@ def create(name):
     return registry().create(name)
 
 
-def show(name):
+def show(name, *, mutate=True):
     """Return one named security scope."""
-    return registry().require(name)
+    return registry().require(name, readonly=not mutate)
 
 
-def list():
+def list(*, mutate=True):
     """Return all named security scopes."""
-    return registry().all()
+    return registry().all(readonly=not mutate)
 
 
 def delete(name):
@@ -58,9 +58,9 @@ def set(name, *operations, environment=None):
     )
 
 
-def resolve(*names):
+def resolve(*names, mutate=True):
     """Return the union of named security scopes."""
-    return registry().resolve(names)
+    return registry().resolve(names, readonly=not mutate)
 
 
 

@@ -44,6 +44,7 @@ def test_remote_https_template_routes_public_oauth_surface_to_remote_auth():
 
     for marker in (
         "location = / {",
+        "location = /query {",
         "location = /.well-known/oauth-protected-resource/mcp {",
         "location = /.well-known/oauth-authorization-server {",
         "location = /.well-known/gway-acceptance-client {",
@@ -63,6 +64,7 @@ def test_remote_http_template_routes_same_application_topology_before_tls():
     content = _template("nginx-http-[site].conf")
 
     assert "location = /mcp {" in content
+    assert "location = /query {" in content
     assert "location = / {" in content
     assert "location = /oauth/authorize {" in content
     assert "location = /oauth/token {" in content
@@ -117,6 +119,7 @@ def test_remote_auth_routes_do_not_inherit_mcp_streaming_policy():
 
     for marker in (
         "location = / {",
+        "location = /query {",
         "location = /oauth/authorize {",
         "location = /oauth/token {",
         "location = /oauth/revoke {",
@@ -357,6 +360,7 @@ def test_remote_https_public_contract_has_one_mcp_route_and_explicit_auth_routes
 
     auth_routes = (
         "/",
+        "/query",
         "/.well-known/oauth-protected-resource/mcp",
         "/.well-known/oauth-authorization-server",
         "/.well-known/gway-acceptance-client",
@@ -392,3 +396,20 @@ def test_remote_templates_default_both_application_upstreams_to_loopback():
         assert "[mcp_host|127.0.0.1]" in content
         assert "[auth_host|127.0.0.1]" in content
         assert "0.0.0.0" not in content
+
+
+
+def test_remote_query_route_uses_auth_upstream_and_preserves_request_contract():
+    auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
+
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+        block = _block(content, "location = /query {")
+
+        assert auth_target in block
+        assert "[mcp_host|127.0.0.1]:[mcp_port|8000]" not in block
+        assert "proxy_set_header Authorization $http_authorization;" in block
+        assert "proxy_cache off;" in block
+        assert 'add_header Cache-Control "no-store" always;' in block
+        assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in block
+        assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001]/;" not in block

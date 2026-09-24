@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 from gway.souschef import (
     RecipeExecutionError,
     RecipeExecutor,
@@ -29,6 +31,7 @@ def test_recipe_executor_uses_canonical_recipe_evaluator(
     assert output.read_text(encoding="utf-8") == "done"
 
 
+@pytest.mark.main
 def test_recipe_failure_does_not_stop_later_scheduler_work(
     tmp_path, job_factory, recipe_factory
 ):
@@ -64,6 +67,7 @@ def test_recipe_failure_does_not_stop_later_scheduler_work(
     assert output.read_text(encoding="utf-8") == "after"
 
 
+@pytest.mark.main
 def test_timed_out_recipe_is_terminated_and_scheduler_continues(
     tmp_path, job_factory, recipe_factory
 ):

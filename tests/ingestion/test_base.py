@@ -1,3 +1,5 @@
+import inspect
+
 import pytest
 
 from gway.ingestion import (
@@ -84,3 +86,43 @@ def test_register_operations_preserves_input_order(gateway):
     )
 
     assert [item() for item in wrapped] == [1, 2]
+
+
+def test_ingested_operation_infers_reserved_mutation_contract():
+    def reader(*, mutate=False):
+        return mutate
+
+    def writer():
+        return None
+
+    read_operation = IngestedOperation(("demo", "reader"), reader)
+    write_operation = IngestedOperation(("demo", "writer"), writer)
+
+    assert read_operation.mutates is False
+    assert read_operation.supports_no_mutate is True
+    assert write_operation.mutates is True
+    assert write_operation.supports_no_mutate is False
+
+
+def test_registered_operation_exposes_mutates_and_hides_reserved_parameter(gateway):
+    def status(value="ok", *, mutate=False):
+        return value, mutate
+
+    wrapped = register_operation(
+        gateway,
+        IngestedOperation(("demo", "status"), status),
+    )
+
+    assert wrapped.mutates is False
+    assert wrapped.__gway_mutates__ is False
+    assert wrapped.__gway_supports_no_mutate__ is True
+    assert "mutate" not in inspect.signature(wrapped).parameters
+    assert gateway("demo status ready") == ("ready", False)
+
+
+def test_mutate_parameter_must_have_boolean_default():
+    def ambiguous(*, mutate=None):
+        return mutate
+
+    with pytest.raises(TypeError, match="must default to True or False"):
+        IngestedOperation(("demo", "ambiguous"), ambiguous).mutates

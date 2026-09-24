@@ -412,7 +412,7 @@ class OAuthRegistry:
             row["created_at"],
             row["revoked_at"],
         )
-        return grant, self.scopes.resolve(scope_names)
+        return grant, self.scopes.resolve(scope_names, readonly=True)
 
     def issue_authorization_code(
         self,
@@ -561,7 +561,7 @@ class OAuthRegistry:
 
     def authenticate_access(self, bearer):
         public_id = self._public_id(bearer, "gwa")
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=True) as connection:
             row = connection.execute(
                 """
                 SELECT grant_id, token_hash, expires_at, revoked_at

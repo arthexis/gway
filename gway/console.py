@@ -1,12 +1,53 @@
 # file: gway/console.py
 
 import argparse
+from contextlib import nullcontext
 from collections.abc import Mapping
 import json
+import sys
 from .gateway import Gateway
+from .mutation import MUTATE_UNSET
 from .recipe import execute_recipe, parse_recipe_context
 from .dispatch import dispatch_program
 from .tokens import statements
+
+
+def _coerce_mutation_policy(value):
+    """Coerce explicit CLI mutation policy values without restricting future modes."""
+    lowered = value.casefold()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    return value
+
+
+def _extract_mutation_policy(argv):
+    """Extract unambiguous Gateway-global mutation flags from argv.
+
+    Bare --mutate means True. Specific policies use --mutate=<value> so the
+    first command token is never consumed accidentally. Once -M/--no-mutate
+    appears, later flags cannot re-enable mutation in the same invocation.
+    """
+    policy = MUTATE_UNSET
+    remaining = []
+    for token in argv:
+        if token in {"-M", "--no-mutate"}:
+            policy = False
+            continue
+        if token == "--mutate":
+            if policy is not False:
+                policy = True
+            continue
+        if token.startswith("--mutate="):
+            value = token.split("=", 1)[1]
+            if not value:
+                raise ValueError("--mutate requires a non-empty value after '='")
+            if policy is not False:
+                policy = _coerce_mutation_policy(value)
+            continue
+        remaining.append(token)
+    return policy, remaining
 
 
 def cli_main():
@@ -25,8 +66,25 @@ def cli_main():
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-z", "--silent", action="store_true")
     parser.add_argument("-e", "--expression")
+    mutation = parser.add_mutually_exclusive_group()
+    mutation.add_argument(
+        "-M",
+        "--no-mutate",
+        action="store_true",
+        help="prohibit mutation for this invocation",
+    )
+    mutation.add_argument(
+        "--mutate",
+        action="store_true",
+        help="enable mutation policy; use --mutate=<value> for a specific policy",
+    )
     parser.add_argument("--resume", help=argparse.SUPPRESS)
-    args, unknown = parser.parse_known_args()
+    try:
+        mutation_policy, argv = _extract_mutation_policy(sys.argv[1:])
+    except ValueError as exception:
+        parser.error(str(exception))
+    args, unknown = parser.parse_known_args(argv)
+    args.mutation_policy = mutation_policy
 
     runtime = Gateway(
         debug=args.debug,
@@ -61,26 +119,34 @@ def _run_cli(parser, args, unknown, *, runtime=None):
     from .reload import ReloadTransferred
 
     try:
-        if args.resume:
-            if unknown:
-                parser.error("--resume does not accept additional arguments")
-            from .reload import resume
-
-            output = resume(args.resume)
-        elif args.recipe:
-            _, output = execute_recipe(
-                runtime,
-                args.recipe,
-                context=parse_recipe_context(unknown),
+        mutation_policy = getattr(args, "mutation_policy", MUTATE_UNSET)
+        with runtime.mutation_scope(mutate=mutation_policy):
+            state_scope = (
+                runtime.observational_state_scope()
+                if runtime.mutation_policy is False
+                else nullcontext()
             )
-        elif args.expression:
-            runtime.context.update(parse_recipe_context(unknown))
-            output = runtime.resolve(args.expression)
-        elif unknown:
-            _, output = process([unknown], gw_instance=runtime)
-        else:
-            parser.print_help()
-            return 0
+            with state_scope:
+                if args.resume:
+                    if unknown:
+                        parser.error("--resume does not accept additional arguments")
+                    from .reload import resume
+
+                    output = resume(args.resume)
+                elif args.recipe:
+                    _, output = execute_recipe(
+                        runtime,
+                        args.recipe,
+                        context=parse_recipe_context(unknown),
+                    )
+                elif args.expression:
+                    runtime.context.update(parse_recipe_context(unknown))
+                    output = runtime.resolve(args.expression)
+                elif unknown:
+                    _, output = process([unknown], gw_instance=runtime)
+                else:
+                    parser.print_help()
+                    return 0
     except ReloadTransferred as transfer:
         from .reload import ReloadSuccessorError, supervise_successor
 

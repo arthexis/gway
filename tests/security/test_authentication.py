@@ -76,3 +76,36 @@ def test_oauth_bearer_requires_exact_resource_and_tracks_live_scope(tmp_path):
 def test_unsupported_bearers_fail_uniformly(tmp_path, bearer):
     with pytest.raises(BearerAuthenticationError, match="Invalid bearer token"):
         authenticate_bearer(bearer, path=tmp_path / "security.sqlite")
+
+
+
+def test_bearer_authentication_does_not_modify_security_database(tmp_path):
+    scopes, tokens, oauth = _registries(tmp_path)
+    scopes.replace("reader", operations={"log.read"})
+    native = tokens.create("native-client", scopes={"reader"})
+    tokens.create("operator", scopes={"reader"})
+    oauth.link("chatgpt", "operator")
+    grant = oauth.create_grant(
+        "chatgpt",
+        "chatgpt-client",
+        scopes={"reader"},
+        resource=RESOURCE,
+    )
+    issued = oauth.issue_tokens(grant.id)
+    path = tokens.path
+    before = path.read_bytes()
+
+    native_identity = authenticate_bearer(
+        native.bearer,
+        resource=RESOURCE,
+        path=path,
+    )
+    oauth_identity = authenticate_bearer(
+        issued.access_token,
+        resource=RESOURCE,
+        path=path,
+    )
+
+    assert native_identity.authority.operations == frozenset({"log.read"})
+    assert oauth_identity.authority.operations == frozenset({"log.read"})
+    assert path.read_bytes() == before

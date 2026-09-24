@@ -146,8 +146,11 @@ class _SocketParentGateway:
             raise RuntimeError(response.get("error") or "Parent Gateway request failed")
         return response.get("result")
 
-    def execute(self, command):
-        return self._request("gateway.execute", command=command)
+    def execute(self, command, mutate=None):
+        params = {"command": command}
+        if mutate is not None:
+            params["mutate"] = mutate
+        return self._request("gateway.execute", **params)
 
     def authenticate_bearer(self, bearer, resource=None):
         return self._request(
@@ -156,13 +159,15 @@ class _SocketParentGateway:
             resource=resource,
         )
 
-    def execute_authenticated(self, bearer, command, resource=None):
-        return self._request(
-            "gateway.execute_authenticated",
-            bearer=bearer,
-            command=command,
-            resource=resource,
-        )
+    def execute_authenticated(self, bearer, command, resource=None, mutate=None):
+        params = {
+            "bearer": bearer,
+            "command": command,
+            "resource": resource,
+        }
+        if mutate is not None:
+            params["mutate"] = mutate
+        return self._request("gateway.execute_authenticated", **params)
 
 
 def _parent():
@@ -194,15 +199,24 @@ def _callback_connection(stream, token):
                 )
             )
         elif method == "gateway.execute_authenticated":
+            kwargs = {}
+            if "mutate" in request:
+                kwargs["mutate"] = request["mutate"]
             result = _validate_result(
                 _gway_parent.execute_authenticated(
                     request["bearer"],
                     request["command"],
                     request.get("resource"),
+                    **kwargs,
                 )
             )
         else:
-            result = _validate_result(_gway_parent.execute(request["command"]))
+            kwargs = {}
+            if "mutate" in request:
+                kwargs["mutate"] = request["mutate"]
+            result = _validate_result(
+                _gway_parent.execute(request["command"], **kwargs)
+            )
         response = {"ok": True, "result": result}
     except BaseException as exception:
         response = {
@@ -282,6 +296,24 @@ def gway(command: str):
             )
         )
     return _validate_result(parent.execute(command))
+
+@mcp.tool(
+    run_in_thread=False,
+    annotations={"readOnlyHint": True},
+)
+def query(command: str):
+    """Execute one native GWAY command with mutation disabled."""
+    parent = _parent()
+    if _has_http_request():
+        return _validate_result(
+            parent.execute_authenticated(
+                _bearer_from_http(),
+                command,
+                _auth.resource,
+                mutate=False,
+            )
+        )
+    return _validate_result(parent.execute(command, mutate=False))
 
 
 def _endpoint_origin(endpoint, path):

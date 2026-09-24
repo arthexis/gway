@@ -331,3 +331,31 @@ def test_security_token_create_accepts_expiry_flag(gateway, tmp_path, monkeypatc
 
     assert bearer.startswith("gwt_")
     assert gateway("security token show reader").expires_at == expires
+
+
+
+def test_security_token_reads_support_forced_non_mutation(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.create("logs")
+    tokens.create("reader", scopes={"logs"})
+    monkeypatch.setattr(scope_commands, "_registry", scopes)
+    monkeypatch.setattr(token_commands, "_registry", tokens)
+    before = path.read_bytes()
+
+    shown = gateway.execute("security token show reader", mutate=False)
+    listed = gateway.execute("security token list", mutate=False)
+
+    assert shown.name == "reader"
+    assert listed == [shown]
+    assert path.read_bytes() == before
+
+    show = gateway.ops.resolve("security.token.show")
+    listing = gateway.ops.resolve("security.token.list")
+    assert show.mutates is True
+    assert listing.mutates is True

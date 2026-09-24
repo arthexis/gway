@@ -288,3 +288,39 @@ def test_log_empty_selection_never_means_whole_host_journal(gateway, monkeypatch
 
     assert gateway("log read") == []
     assert captured["source"] == ()
+
+
+
+def test_log_query_operations_support_non_mutating_gateway_execution(
+    gateway,
+    monkeypatch,
+):
+    monkeypatch.setattr(log_operations, "sources", lambda: [{"identity": "gway"}])
+    monkeypatch.setattr(
+        log_operations,
+        "read",
+        lambda *source, **kwargs: [{"source": source[0] if source else "gway"}],
+    )
+    monkeypatch.setattr(
+        log_operations,
+        "tail",
+        lambda *source, **kwargs: [{"source": source[0] if source else "gway"}],
+    )
+    monkeypatch.setattr(
+        log_operations,
+        "search",
+        lambda pattern, *source, **kwargs: [{"message": pattern}],
+    )
+
+    assert gateway.execute("log sources", mutate=False) == [{"identity": "gway"}]
+    assert gateway.execute("log read gway", mutate=False) == [{"source": "gway"}]
+    assert gateway.execute("log tail gway --limit 1", mutate=False) == [
+        {"source": "gway"}
+    ]
+    assert gateway.execute("log search timeout gway", mutate=False) == [
+        {"message": "timeout"}
+    ]
+
+    family = gateway.ops["log"]
+    for name in ("sources", "read", "tail", "search"):
+        assert family[name].mutates is False

@@ -25,8 +25,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,toml]'
+      - name: PR regression suite
+        if: github.event_name == 'pull_request'
+        run: python -m pytest -q --durations=20 -m "not main"
       - name: Full regression suite
-        run: python -m pytest -q
+        if: github.event_name != 'pull_request'
+        run: python -m pytest -q --durations=20
 
   forward-compatibility:
     name: Compatibility (Python 3.13)
