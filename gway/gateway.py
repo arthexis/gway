@@ -2,7 +2,6 @@
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-import inspect
 import threading
 
 from .runner import invoke
