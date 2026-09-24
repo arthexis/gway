@@ -209,7 +209,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 "message": str(error),
             }
 
-        return 200, response_headers, {"result": result}
+        return 200, response_headers, {"result": self._json_safe(result)}
 
     def response(self, method, path, *, headers=None, body=b""):
         method = str(method).upper()
