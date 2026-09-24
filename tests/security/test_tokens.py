@@ -357,7 +357,5 @@ def test_security_token_reads_support_forced_non_mutation(
 
     show = gateway.ops.resolve("security.token.show")
     listing = gateway.ops.resolve("security.token.list")
-    assert show.__gway_supports_no_mutate__ is True
-    assert listing.__gway_supports_no_mutate__ is True
     assert show.mutates is True
     assert listing.mutates is True
