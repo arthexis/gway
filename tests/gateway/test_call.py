@@ -136,3 +136,56 @@ def test_nested_plain_gateway_call_inherits_non_mutating_execution(gateway):
     gateway.parent = gateway.wrap("parent", parent)
 
     assert gateway.execute("parent", mutate=False) is False
+
+
+
+def test_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway):
+    gateway.context["seed"] = "before"
+    gateway.results.insert("seed", "before")
+    previous_execution = gateway.execution
+    previous_previous_execution = gateway.previous_execution
+
+    def inspect(*, mutate=False):
+        return {"observed": "value", "mutate": mutate}
+
+    gateway.inspect = gateway.wrap("inspect_state", inspect)
+
+    result = gateway.execute("inspect", mutate=False)
+
+    assert result == {"observed": "value", "mutate": False}
+    assert gateway.context == {"seed": "before"}
+    assert gateway.results.get_results() == {"seed": "before"}
+    assert gateway.results.history == ["before"]
+    assert gateway.execution is previous_execution
+    assert gateway.previous_execution is previous_previous_execution
+
+
+def test_repeated_non_mutating_execution_does_not_grow_result_history(gateway):
+    def inspect(*, mutate=False):
+        return "ok"
+
+    gateway.inspect = gateway.wrap("inspect_state", inspect)
+    initial_history = list(gateway.results.history)
+
+    for _ in range(25):
+        assert gateway.execute("inspect", mutate=False) == "ok"
+
+    assert gateway.results.history == initial_history
+
+
+def test_failed_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway):
+    gateway.context["seed"] = "before"
+    gateway.results.insert("seed", "before")
+
+    def inspect(*, mutate=False):
+        gateway.context["temporary"] = True
+        raise ValueError("boom")
+
+    gateway.inspect = gateway.wrap("inspect_state", inspect)
+
+    with pytest.raises(ValueError, match="boom"):
+        gateway.execute("inspect", mutate=False)
+
+    assert gateway.context == {"seed": "before"}
+    assert gateway.results.get_results() == {"seed": "before"}
+    assert gateway.results.history == ["before"]
