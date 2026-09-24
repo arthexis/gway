@@ -183,6 +183,7 @@ class Gateway(Resolver):
 
         from .ingestion.python import ingest_python
         from .security.client import Controller as OAuthClientController
+        from .security.token import Controller as TokenController
         from .remote.service import register as register_remote_service
         from .service.controller import Controller
         from .souschef.controller import Controller as SousChefController
@@ -198,6 +199,12 @@ class Gateway(Resolver):
             self,
             self._oauth_client_controller,
             path=("security", "oauth", "client"),
+        )
+        self._token_controller = TokenController(self)
+        ingest_python(
+            self,
+            self._token_controller,
+            path=("security", "token"),
         )
 
         from .dns import Controller as DNSController
