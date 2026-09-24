@@ -1,6 +1,6 @@
 import sqlite3
 
-from gway.security import oauth_client as oauth_client_commands
+from gway.security import client as oauth_client_commands
 from gway.security.oauth import OAuthClient, OAuthRegistry
 
 
