@@ -9,6 +9,7 @@ from .runner import invoke
 from .bindings import Bindings
 from . import log as gway_log
 from .normalization import complete_arguments
+from .mutation import mutates, public_signature, supports_no_mutate
 from .environment import process_environment
 from .operations import registry_views, split_operation
 from .publication import publish
@@ -849,11 +850,12 @@ class Gateway(Resolver):
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
         wrapped.__doc__ = getattr(func_obj, "__doc__", None)
         wrapped.__wrapped__ = func_obj
-        if receiver is not None:
-            signature = inspect.signature(func_obj)
-            parameters = tuple(signature.parameters.values())
-            if parameters:
-                wrapped.__signature__ = signature.replace(parameters=parameters[1:])
+        signature = public_signature(func_obj, receiver=receiver is not None)
+        if signature is not None:
+            wrapped.__signature__ = signature
+        wrapped.mutates = mutates(func_obj)
+        wrapped.__gway_mutates__ = wrapped.mutates
+        wrapped.__gway_supports_no_mutate__ = supports_no_mutate(func_obj)
         wrapped.__gway_operation__ = op or func_name
         wrapped.__gway_subject__ = subject
         wrapped.__gway_receiver__ = receiver
