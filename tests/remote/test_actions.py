@@ -14,7 +14,7 @@ def _remote(gateway, *, operations):
     issued = tokens.create("actions-client", scopes={"actions-test"})
     metadata = RemoteOAuthMetadata.from_origin(
         "https://remote.example.test",
-        resource_path="/mcp",
+        resource_path="/actions",
     )
     return ActionsApplication(metadata, runtime=gateway), issued.bearer
 
@@ -343,4 +343,50 @@ def test_remote_server_delegates_openapi_document(gateway):
     assert set(document["paths"]) == {
         "/actions/query",
         "/actions/execute",
+    }
+
+
+def test_remote_server_publishes_distinct_actions_oauth_resource(gateway):
+    from gway.remote.server import RemoteApplication
+
+    metadata = RemoteOAuthMetadata.from_origin(
+        "https://remote.example.test",
+        resource_path="/mcp",
+    )
+    application = RemoteApplication(metadata, runtime=gateway)
+
+    status, _, document = application.response(
+        "GET",
+        "/.well-known/oauth-protected-resource/actions",
+    )
+
+    assert status == 200
+    assert document["resource"] == "https://remote.example.test/actions"
+    assert document["authorization_servers"] == ["https://remote.example.test"]
+
+    status, _, server = application.response(
+        "GET",
+        "/.well-known/oauth-authorization-server",
+    )
+
+    assert status == 200
+    assert set(server["protected_resources"]) == {
+        "https://remote.example.test/mcp",
+        "https://remote.example.test/actions",
+    }
+
+
+def test_remote_server_routes_actions_oauth_resource(gateway):
+    from gway.remote.server import RemoteApplication
+
+    metadata = RemoteOAuthMetadata.from_origin(
+        "https://remote.example.test",
+        resource_path="/mcp",
+    )
+    application = RemoteApplication(metadata, runtime=gateway)
+
+    assert application.actions.metadata.resource == "https://remote.example.test/actions"
+    assert set(application.oauth_by_resource) == {
+        "https://remote.example.test/mcp",
+        "https://remote.example.test/actions",
     }
