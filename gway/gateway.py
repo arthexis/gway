@@ -8,7 +8,13 @@ from .runner import invoke
 from .bindings import Bindings
 from . import log as gway_log
 from .normalization import complete_arguments
-from .mutation import MutationError, mutates, public_signature, supports_no_mutate
+from .mutation import (
+    MUTATE_UNSET,
+    MutationError,
+    mutates,
+    public_signature,
+    supports_no_mutate,
+)
 from .environment import process_environment
 from .operations import registry_views, split_operation
 from .publication import publish
@@ -67,9 +73,9 @@ class Gateway(Resolver):
             f"gway_capability_depth_{id(self)}",
             default=0,
         )
-        self._mutation_allowed_var = ContextVar(
-            f"gway_mutation_allowed_{id(self)}",
-            default=True,
+        self._mutation_policy_var = ContextVar(
+            f"gway_mutation_policy_{id(self)}",
+            default=MUTATE_UNSET,
         )
         self._semantic_topics_var = ContextVar(
             f"gway_semantic_topics_{id(self)}",
@@ -754,23 +760,35 @@ class Gateway(Resolver):
         )
 
     @property
+    def mutation_policy(self):
+        """Return the active trusted mutation policy, or MUTATE_UNSET."""
+        return self._mutation_policy_var.get()
+
+    @property
     def mutation_allowed(self):
         """Return whether the active execution may intentionally mutate state."""
-        return self._mutation_allowed_var.get()
+        return self.mutation_policy is not False
 
     @contextmanager
-    def mutation_scope(self, *, mutate=True):
-        """Constrain mutation for this execution and all nested execution.
+    def mutation_scope(self, *, mutate=MUTATE_UNSET):
+        """Apply a trusted mutation policy to this execution and nested calls.
 
-        Once mutation is disabled by an outer scope, nested scopes cannot
-        re-enable it.
+        An outer False policy is a monotonic ceiling: nested execution cannot
+        re-enable mutation. Other values are propagated to compatible
+        callables, while MUTATE_UNSET preserves the inherited/default policy.
         """
-        allowed = self.mutation_allowed and bool(mutate)
-        token = self._mutation_allowed_var.set(allowed)
+        current = self.mutation_policy
+        if current is False:
+            policy = False
+        elif mutate is MUTATE_UNSET:
+            policy = current
+        else:
+            policy = mutate
+        token = self._mutation_policy_var.set(policy)
         try:
-            yield allowed
+            yield policy
         finally:
-            self._mutation_allowed_var.reset(token)
+            self._mutation_policy_var.reset(token)
 
     @contextmanager
     def observational_state_scope(self):
@@ -838,11 +856,11 @@ class Gateway(Resolver):
             return self.environment.names()
         return tuple(name for name in allowed if name in self.environment)
 
-    def execute(self, command, *args, mutate=True, **kwargs):
-        """Execute a GWAY command under a monotonic mutation constraint."""
+    def execute(self, command, *args, mutate=MUTATE_UNSET, **kwargs):
+        """Execute a GWAY command under a trusted mutation policy."""
         from .dispatch import dispatch
 
-        observational = self.mutation_allowed and not bool(mutate)
+        observational = self.mutation_policy is not False and mutate is False
         with self.mutation_scope(mutate=mutate):
             if observational:
                 with self.observational_state_scope():
@@ -850,10 +868,10 @@ class Gateway(Resolver):
             return dispatch(self, command, *args, **kwargs)
 
     def __call__(self, command, *args, **kwargs):
-        """Execute a GWAY command with normal mutation authority."""
+        """Execute a GWAY command while preserving inherited mutation policy."""
         from .dispatch import dispatch
 
-        with self.mutation_scope(mutate=True):
+        with self.mutation_scope():
             return dispatch(self, command, *args, **kwargs)
 
     def chain(self, command, *args, **kwargs):
@@ -882,13 +900,15 @@ class Gateway(Resolver):
         subject = self.subject(func_name) if op is None else sub
 
         def wrapped(*args, **kwargs):
-            if not self.mutation_allowed:
-                if not supports_no_mutate(func_obj):
-                    raise MutationError(
-                        f"{func_name!r} does not support non-mutating execution"
-                    )
+            mutation_policy = self.mutation_policy
+            supports_mutation_policy = supports_no_mutate(func_obj)
+            if mutation_policy is False and not supports_mutation_policy:
+                raise MutationError(
+                    f"{func_name!r} does not support non-mutating execution"
+                )
+            if mutation_policy is not MUTATE_UNSET and supports_mutation_policy:
                 kwargs = dict(kwargs)
-                kwargs["mutate"] = False
+                kwargs["mutate"] = mutation_policy
             call = complete_arguments(
                 self,
                 subject,
