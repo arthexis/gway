@@ -48,7 +48,11 @@ def test_authorization_server_document_advertises_only_designed_flow():
         "refresh_token",
     ]
     assert document["code_challenge_methods_supported"] == ["S256"]
-    assert document["token_endpoint_auth_methods_supported"] == ["none"]
+    assert document["token_endpoint_auth_methods_supported"] == [
+        "none",
+        "client_secret_post",
+        "client_secret_basic",
+    ]
     assert document["client_id_metadata_document_supported"] is True
     assert document["protected_resources"] == [
         "https://remote.example.test/mcp"
