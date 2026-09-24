@@ -13,6 +13,7 @@ def _remote(gateway, *, operations):
     scopes = ScopeRegistry(gateway.security_path)
     tokens = TokenRegistry(gateway.security_path)
     scopes.replace("query-test", operations=set(operations))
+    tokens.remove("query-client")
     issued = tokens.create("query-client", scopes={"query-test"})
     metadata = RemoteOAuthMetadata.from_origin(
         "https://remote.example.test",
