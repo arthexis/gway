@@ -331,3 +331,45 @@ def test_security_token_create_accepts_expiry_flag(gateway, tmp_path, monkeypatc
 
     assert bearer.startswith("gwt_")
     assert gateway("security token show reader").expires_at == expires
+
+
+
+def test_token_authentication_is_byte_preserving_read_only(tmp_path):
+    scopes, tokens = _registries(tmp_path)
+    scopes.replace("logs", operations={"log.read"})
+    issued = tokens.create("reader", scopes={"logs"})
+    before = tokens.path.read_bytes()
+
+    authenticated = tokens.authenticate(issued.bearer)
+
+    assert authenticated.authority.operations == frozenset({"log.read"})
+    assert tokens.path.read_bytes() == before
+
+
+def test_security_token_reads_support_forced_non_mutation(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.create("logs")
+    tokens.create("reader", scopes={"logs"})
+    monkeypatch.setattr(scope_commands, "_registry", scopes)
+    monkeypatch.setattr(token_commands, "_registry", tokens)
+    before = path.read_bytes()
+
+    shown = gateway.execute("security token show reader", mutate=False)
+    listed = gateway.execute("security token list", mutate=False)
+
+    assert shown.name == "reader"
+    assert listed == [shown]
+    assert path.read_bytes() == before
+
+    show = gateway.ops.resolve("security.token.show")
+    listing = gateway.ops.resolve("security.token.list")
+    assert show.__gway_supports_no_mutate__ is True
+    assert listing.__gway_supports_no_mutate__ is True
+    assert show.mutates is True
+    assert listing.mutates is True
