@@ -1,9 +1,7 @@
 name: Watchtower Deploy Trigger
 
 on:
-  workflow_run:
-    workflows: ["python / Python compatibility"]
-    types: [completed]
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -13,21 +11,14 @@ permissions:
 jobs:
   trigger:
     name: Trigger Arthexis Watchtower Deploy
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push'
-      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Confirm automatic deployment gate
-        if: github.event_name == 'workflow_run'
+      - name: Confirm main deployment source
+        if: github.event_name == 'push'
         env:
-          GWAY_SHA: ${{ github.event.workflow_run.head_sha }}
+          GWAY_SHA: ${{ github.sha }}
         run: |
-          echo "python_compatibility=success"
           echo "gway_sha=${GWAY_SHA}"
 
       - name: Dispatch Watchtower Deploy
