@@ -425,3 +425,36 @@ def test_existing_public_oauth_client_remains_secretless(tmp_path):
             "mcp-client",
             client_secret="unexpected",
         )
+
+
+def test_authorization_code_can_explicitly_record_no_pkce(tmp_path):
+    _, _, oauth, grant = _linked_grant(tmp_path)
+    issued = oauth.issue_authorization_code(
+        grant.id,
+        redirect_uri="https://chatgpt.com/callback",
+        code_challenge=None,
+    )
+
+    consumed = oauth.consume_authorization_code(
+        issued.code,
+        redirect_uri="https://chatgpt.com/callback",
+        code_verifier=None,
+    )
+
+    assert consumed == grant
+
+
+def test_non_pkce_authorization_code_rejects_unexpected_verifier(tmp_path):
+    _, _, oauth, grant = _linked_grant(tmp_path)
+    issued = oauth.issue_authorization_code(
+        grant.id,
+        redirect_uri="https://chatgpt.com/callback",
+        code_challenge=None,
+    )
+
+    with pytest.raises(OAuthAuthenticationError):
+        oauth.consume_authorization_code(
+            issued.code,
+            redirect_uri="https://chatgpt.com/callback",
+            code_verifier="unexpected",
+        )
