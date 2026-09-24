@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
+from ..mutation import mutates, supports_no_mutate
+
 
 def normalize_path(path):
     """Return an ingestion path as a non-empty tuple of string segments."""
@@ -97,6 +99,14 @@ class IngestedOperation:
     def name(self):
         return canonical_name(self.path)
 
+    @property
+    def mutates(self):
+        return mutates(self.callable)
+
+    @property
+    def supports_no_mutate(self):
+        return supports_no_mutate(self.callable)
+
 
 def register_operation(gateway, operation):
     """Wrap and register one discovered callable on a Gateway."""
@@ -114,6 +124,9 @@ def register_operation(gateway, operation):
     wrapped.__gway_source_kind__ = operation.kind
     wrapped.__gway_path__ = operation.path
     wrapped.__gway_metadata__ = operation.metadata
+    wrapped.mutates = operation.mutates
+    wrapped.__gway_mutates__ = operation.mutates
+    wrapped.__gway_supports_no_mutate__ = operation.supports_no_mutate
 
     root = operation.metadata.get("root")
     if root is None and isinstance(operation.source, str):
