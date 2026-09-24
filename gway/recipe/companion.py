@@ -138,13 +138,15 @@ class ParentGateway:
             resource=resource,
         )
 
-    def execute_authenticated(self, bearer, command, resource=None):
-        return request_parent(
-            "gateway.execute_authenticated",
-            bearer=bearer,
-            command=command,
-            resource=resource,
-        )
+    def execute_authenticated(self, bearer, command, resource=None, mutate=None):
+        params = {
+            "bearer": bearer,
+            "command": command,
+            "resource": resource,
+        }
+        if mutate is not None:
+            params["mutate"] = mutate
+        return request_parent("gateway.execute_authenticated", **params)
 
 
 def safe_default(value):
@@ -537,7 +539,10 @@ def _service_parent_request(runtime, stream, request):
                     environment=identity.authority.environment,
                 ):
                     with runtime.external_authority():
-                        result = runtime(params["command"])
+                        result = runtime.execute(
+                            params["command"],
+                            mutate=params.get("mutate", True),
+                        )
         else:
             raise LookupError(f"Unknown parent Gateway RPC method: {method}")
         response = {
