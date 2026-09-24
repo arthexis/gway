@@ -333,6 +333,44 @@ class RemoteApplication(RemoteDiscoveryApplication):
         if route in self.routes:
             return super().response(method, path, headers=headers, body=body)
 
+        if route == "/privacy":
+            if method != "GET":
+                return 405, {"allow": "GET"}, {"error": "method_not_allowed"}
+            return self._html(
+                200,
+                "<!doctype html><html><head><title>G-Way Remote Privacy Policy</title></head>"
+                "<body><h1>G-Way Remote Privacy Policy</h1>"
+                "<p>G-Way Remote provides authenticated access to G-Way commands for "
+                "connected clients such as ChatGPT Actions.</p>"
+                "<h2>Data processed</h2>"
+                "<p>The service may process OAuth client identifiers, authorization "
+                "codes, access and refresh tokens, G-Way command strings, and command "
+                "results such as requested log output.</p>"
+                "<h2>Purpose</h2>"
+                "<p>Data is processed only to authenticate the connection, authorize "
+                "requested G-Way operations, execute those operations, and return results.</p>"
+                "<h2>Storage and retention</h2>"
+                "<p>OAuth client registrations, grants, and token state are stored in the "
+                "service security registry until revoked, expired, rotated, or deleted. "
+                "Command requests and results are not intentionally stored by this privacy "
+                "page or the Actions transport itself; operational service logs may retain "
+                "limited request metadata needed for security and reliability.</p>"
+                "<h2>Sharing</h2>"
+                "<p>The service does not sell personal data. Data is shared only with the "
+                "connected client as needed to provide the requested operation and with "
+                "infrastructure providers required to operate the service.</p>"
+                "<h2>Security</h2>"
+                "<p>OAuth credentials are used for authentication and authorization. "
+                "Users should not intentionally place passwords, private keys, or other "
+                "secrets in G-Way commands or log output.</p>"
+                "<h2>Contact and deletion</h2>"
+                "<p>Connections and OAuth grants can be revoked through the service. "
+                "For privacy questions or deletion requests, contact the operator of "
+                "remote.arthexis.com.</p>"
+                "<p>Last updated: 2026-09-24.</p>"
+                "</body></html>",
+            )
+
         if route == "/login":
             if method != "GET":
                 return 405, {"allow": "GET"}, {"error": "method_not_allowed"}
