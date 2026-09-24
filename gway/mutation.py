@@ -28,10 +28,13 @@ def mutation_parameter(callable_):
         raise TypeError(
             "reserved mutate parameter must be positional-or-keyword or keyword-only"
         )
-    if parameter.default is inspect.Parameter.empty or not isinstance(
-        parameter.default, bool
+    if parameter.default is inspect.Parameter.empty or (
+        parameter.default is not MUTATE_UNSET
+        and not isinstance(parameter.default, bool)
     ):
-        raise TypeError("reserved mutate parameter must default to True or False")
+        raise TypeError(
+            "reserved mutate parameter must default to True, False, or Gway's unset policy"
+        )
     return parameter
 
 
@@ -47,7 +50,9 @@ def mutates(callable_):
     as mutating.
     """
     parameter = mutation_parameter(callable_)
-    return True if parameter is None else parameter.default
+    if parameter is None or parameter.default is MUTATE_UNSET:
+        return True
+    return parameter.default
 
 
 def public_signature(callable_, *, receiver=False):
