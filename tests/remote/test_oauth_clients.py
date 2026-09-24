@@ -331,3 +331,40 @@ def test_default_protocol_still_requires_pkce_for_confidential_client(tmp_path):
         )
 
     assert captured.value.description == "code_challenge is required"
+
+
+def test_actions_compatibility_keeps_pkce_required_for_public_clients(tmp_path):
+    path = tmp_path / "public.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    oauth = OAuthRegistry(path)
+    scopes.replace("chatgpt-actions", operations={"help"})
+    tokens.create("operator", scopes={"chatgpt-actions"})
+    oauth.link("chatgpt", "operator")
+    client = oauth.create_client(
+        "public-actions-client",
+        redirect_uris={REDIRECT_URI},
+    )
+    account = RemoteAccountApplication(oauth=oauth, tokens=tokens)
+    protocol = RemoteOAuthProtocol(
+        RemoteOAuthMetadata.from_origin(
+            "https://remote.example.test",
+            resource_path="/actions",
+        ),
+        account,
+        allow_confidential_without_pkce=True,
+    )
+
+    with pytest.raises(OAuthProtocolError) as captured:
+        protocol.stage_authorization(
+            account.new_session(),
+            {
+                "response_type": "code",
+                "client_id": client.client_id,
+                "redirect_uri": REDIRECT_URI,
+                "resource": ACTIONS_RESOURCE,
+                "scope": "chatgpt-actions",
+            },
+        )
+
+    assert captured.value.description == "code_challenge is required"
