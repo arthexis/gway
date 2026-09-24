@@ -164,3 +164,23 @@ def test_chatgpt_actions_client_keeps_explicit_oauth_resource_strict():
         assert error.error == "invalid_target"
     else:
         raise AssertionError("Explicit invalid OAuth resource unexpectedly accepted")
+
+
+def test_remote_privacy_page_is_public_and_describes_actions_data():
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+    app = RemoteApplication(metadata)
+
+    status, headers, body = app.response("GET", "/privacy")
+
+    assert status == 200
+    assert headers["content-type"] == "text/html; charset=utf-8"
+    assert "G-Way Remote Privacy Policy" in body
+    assert "ChatGPT Actions" in body
+    assert "OAuth client identifiers" in body
+    assert "G-Way command strings" in body
+    assert "does not sell personal data" in body
+
+    status, headers, payload = app.response("POST", "/privacy")
+    assert status == 405
+    assert headers["allow"] == "GET"
+    assert payload == {"error": "method_not_allowed"}
