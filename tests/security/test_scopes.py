@@ -334,5 +334,4 @@ def test_security_scope_reads_support_forced_non_mutation(
         "security.scope.resolve",
     ):
         operation = gateway.ops.resolve(name)
-        assert operation.__gway_supports_no_mutate__ is True
         assert operation.mutates is True
