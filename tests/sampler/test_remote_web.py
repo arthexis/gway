@@ -185,6 +185,7 @@ def test_remote_expose_package_has_deployment_recipes():
         "http.rx",
         "https.rx",
         "cleanup-http.rx",
+        "actions-policy.rx",
         "nginx-http-[site].conf",
         "nginx-https-[site].conf",
     ):
@@ -466,3 +467,20 @@ def test_remote_public_contract_exposes_actions_without_catch_all():
 
         assert "location ^~ /actions/ {" not in content
         assert "location /actions/ {" not in content
+
+
+def test_remote_actions_policy_is_exactly_limited_initial_scope():
+    assert _commands("actions-policy.rx") == [
+        "security scope set chatgpt-actions "
+        "help log.sources log.read log.tail log.search"
+    ]
+
+
+def test_remote_actions_policy_does_not_grant_mutating_operations():
+    command = _commands("actions-policy.rx")[0]
+
+    assert "service" not in command
+    assert "install" not in command
+    assert "set env" not in command
+    assert "security token" not in command
+    assert "security oauth" not in command
