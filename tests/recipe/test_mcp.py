@@ -293,7 +293,7 @@ def test_parent_authenticated_execution_rejects_disabled_token(
 
 def _mcp_http_probe_suffix():
     return r'''
-def probe_http(bearer, command, second_bearer=None, second_command=None):
+def probe_http(bearer, command, second_bearer=None, second_command=None, tool="gway"):
     import asyncio
     import os
     import socket
@@ -327,7 +327,7 @@ def probe_http(bearer, command, second_bearer=None, second_command=None):
             async with Client(url, auth=auth) as client:
                 tools = await client.list_tools()
                 try:
-                    result = await client.call_tool("gway", {"command": value})
+                    result = await client.call_tool(tool, {"command": value})
                 except Exception as exception:
                     return [tool.name for tool in tools], None, str(exception)
                 return [tool.name for tool in tools], result.content[0].text, None
@@ -502,6 +502,59 @@ def test_mcp_http_real_client_uses_bearer_scope(
 
 
 
+
+
+
+def test_mcp_http_query_uses_bearer_scope_and_forces_no_mutation(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    _, _, issued = _issued_token(
+        tmp_path,
+        monkeypatch,
+        operations=("observe", "restart"),
+        token="http-query-client",
+    )
+    seen = []
+
+    def observe(*, mutate=False):
+        seen.append(("observe", mutate))
+        return "observed"
+
+    def restart():
+        seen.append(("restart", True))
+        return "restarted"
+
+    gateway.observe = gateway.wrap("observe", observe)
+    gateway.restart = gateway.wrap("restart", restart)
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpquery")
+    recipe.write_text(
+        "require fastmcp\n"
+        f"server probe http {issued.bearer!r} observe --tool query\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcphttpquery.server"}):
+        tools, result, error = gateway("mcphttpquery server")
+
+    assert tools == ["gway", "query"]
+    assert result == "observed"
+    assert error is None
+    assert seen == [("observe", False)]
+
+    recipe.write_text(
+        "require fastmcp\n"
+        f"server probe http {issued.bearer!r} restart --tool query\n",
+        encoding="utf-8",
+    )
+
+    with gateway.authorized(operations={"mcphttpquery.server"}):
+        tools, result, error = gateway("mcphttpquery server")
+
+    assert tools == ["gway", "query"]
+    assert result is None
+    assert "does not support non-mutating execution" in error
+    assert seen == [("observe", False)]
 
 def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
     path = tmp_path / "security.sqlite"
