@@ -14,18 +14,89 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Dispatch Watchtower Deploy
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Classify Gway change
+        id: classify
         shell: bash
         env:
-          WATCHTOWER_DEPLOY_TOKEN: ${{ secrets.WATCHTOWER_DEPLOY_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
 
+          if [[ "$EVENT_NAME" != "push" ]]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -z "$BEFORE_SHA" || "$BEFORE_SHA" =~ ^0+$ ]]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch --no-tags origin "$BEFORE_SHA" "$CURRENT_SHA" >/dev/null 2>&1 || true
+
+          BEFORE_SHA="$BEFORE_SHA" CURRENT_SHA="$CURRENT_SHA" python - <<'PY'
+          import os
+          import re
+          import subprocess
+
+          before = os.environ["BEFORE_SHA"]
+          current = os.environ["CURRENT_SHA"]
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", before, current], text=True
+          ).splitlines()
+
+          version_only = False
+          if changed == ["pyproject.toml"]:
+              old = subprocess.check_output(["git", "show", f"{before}:pyproject.toml"], text=True)
+              new = subprocess.check_output(["git", "show", f"{current}:pyproject.toml"], text=True)
+              pattern = re.compile(r'(?m)^(version\s*=\s*")[^"]+(".*)$')
+              if pattern.search(old) and pattern.search(new):
+                  old_normalized = pattern.sub(r'\1<VERSION>\2', old, count=1)
+                  new_normalized = pattern.sub(r'\1<VERSION>\2', new, count=1)
+                  version_only = old != new and old_normalized == new_normalized
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"deploy={'false' if version_only else 'true'}\n")
+
+          print("version_only=" + ("true" if version_only else "false"))
+          PY
+
+      - name: Dispatch Watchtower Deploy with exact Gway SHA
+        if: steps.classify.outputs.deploy == 'true'
+        shell: bash
+        env:
+          WATCHTOWER_DEPLOY_TOKEN: ${{ secrets.WATCHTOWER_DEPLOY_TOKEN }}
+          GWAY_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
           if [[ -z "${WATCHTOWER_DEPLOY_TOKEN}" ]]; then
             echo "WATCHTOWER_DEPLOY_TOKEN Actions secret is required." >&2
             exit 1
           fi
 
-          curl --fail --silent --show-error             --request POST             --header "Accept: application/vnd.github+json"             --header "Authorization: Bearer ${WATCHTOWER_DEPLOY_TOKEN}"             --header "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/arthexis/arthexis/actions/workflows/watchtower-deploy.yml/dispatches"             --data '{"ref":"main"}'
+          payload="$(python - <<'PY'
+          import json
+          import os
+          print(json.dumps({
+              "ref": "main",
+              "inputs": {"gway_sha": os.environ["GWAY_SHA"]},
+          }))
+          PY
+          )"
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${WATCHTOWER_DEPLOY_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/arthexis/arthexis/actions/workflows/watchtower-deploy.yml/dispatches" \
+            --data "$payload"
 
           echo "watchtower_deploy=dispatched"
+          echo "gway_sha=${GWAY_SHA}"
