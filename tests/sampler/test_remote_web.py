@@ -413,3 +413,56 @@ def test_remote_query_route_uses_auth_upstream_and_preserves_request_contract():
         assert 'add_header Cache-Control "no-store" always;' in block
         assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in block
         assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001]/;" not in block
+
+
+def test_remote_actions_routes_use_auth_upstream_and_preserve_contract():
+    auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
+    mcp_target = "[mcp_host|127.0.0.1]:[mcp_port|8000]"
+
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+
+        openapi = _block(content, "location = /actions/openapi.json {")
+        assert auth_target in openapi
+        assert mcp_target not in openapi
+        assert "proxy_buffering off;" not in openapi
+
+        for route in ("/actions/query", "/actions/execute"):
+            block = _block(content, f"location = {route} {{")
+            assert auth_target in block
+            assert mcp_target not in block
+            assert "proxy_set_header Authorization $http_authorization;" in block
+            assert "proxy_cache off;" in block
+            assert 'add_header Cache-Control "no-store" always;' in block
+            assert "proxy_buffering off;" not in block
+            assert "proxy_read_timeout" not in block
+            assert "proxy_send_timeout" not in block
+
+
+def test_remote_actions_protected_resource_route_is_explicit():
+    auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
+
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+        marker = "location = /.well-known/oauth-protected-resource/actions {"
+        block = _block(content, marker)
+
+        assert marker in content
+        assert auth_target in block
+        assert "[mcp_host|127.0.0.1]:[mcp_port|8000]" not in block
+
+
+def test_remote_public_contract_exposes_actions_without_catch_all():
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+
+        for route in (
+            "/actions/openapi.json",
+            "/actions/query",
+            "/actions/execute",
+            "/.well-known/oauth-protected-resource/actions",
+        ):
+            assert f"location = {route} {{" in content
+
+        assert "location ^~ /actions/ {" not in content
+        assert "location /actions/ {" not in content
