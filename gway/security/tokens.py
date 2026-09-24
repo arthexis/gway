@@ -116,7 +116,7 @@ class TokenRegistry:
         if not self.path.is_file():
             return None
         name = self._name(name)
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=True) as connection:
             row = connection.execute(
                 """
                 SELECT id, name, public_id, disabled, created_at, expires_at
@@ -138,7 +138,7 @@ class TokenRegistry:
         """Return all token metadata in stable name order."""
         if not self.path.is_file():
             return []
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=True) as connection:
             rows = connection.execute(
                 """
                 SELECT id, name, public_id, disabled, created_at, expires_at
@@ -286,7 +286,7 @@ class TokenRegistry:
         if not self.path.is_file():
             raise AuthenticationError()
 
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=True) as connection:
             row = connection.execute(
                 """
                 SELECT id, name, public_id, token_hash, disabled, created_at, expires_at
