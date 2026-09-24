@@ -195,3 +195,40 @@ def test_failed_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway
     assert gateway.context == initial_context
     assert gateway.results.get_results() == initial_results
     assert gateway.results.history == initial_history
+
+
+
+def test_named_mutation_policy_propagates_to_compatible_callable(gateway):
+    seen = []
+
+    def refresh(*, mutate=False):
+        seen.append(mutate)
+        return mutate
+
+    gateway.refresh = gateway.wrap("refresh_state", refresh)
+
+    assert gateway.execute("refresh", mutate="cache") == "cache"
+    assert seen == ["cache"]
+
+
+def test_named_mutation_policy_ignores_callable_without_contract(gateway):
+    gateway.inspect = gateway.wrap("inspect_state", lambda: "ok")
+
+    assert gateway.execute("inspect", mutate="refresh") == "ok"
+
+
+def test_outer_no_mutate_blocks_nested_named_policy(gateway):
+    seen = []
+
+    def child(*, mutate=True):
+        seen.append(mutate)
+        return mutate
+
+    def parent(*, mutate=True):
+        return gateway.execute("child", mutate="refresh")
+
+    gateway.child = gateway.wrap("child", child)
+    gateway.parent = gateway.wrap("parent", parent)
+
+    assert gateway.execute("parent", mutate=False) is False
+    assert seen == [False]
