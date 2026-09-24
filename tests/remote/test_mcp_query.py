@@ -40,22 +40,24 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
 
     assert [tool.name for tool in tools] == ["gway", "query"]
     gway = next(tool for tool in tools if tool.name == "gway")
-    assert query.annotations.readOnlyHint is True
-    assert query.annotations.destructiveHint is False
-    assert query.annotations.openWorldHint is True
-    assert gway.annotations.readOnlyHint is False
-    assert gway.annotations.destructiveHint is True
-    assert gway.annotations.openWorldHint is True
+    assert query.annotations.read_only_hint is True
+    assert query.annotations.destructive_hint is False
+    assert query.annotations.open_world_hint is True
+    assert gway.annotations.read_only_hint is False
+    assert gway.annotations.destructive_hint is True
+    assert gway.annotations.open_world_hint is True
 
-    assert query.outputSchema is not None
-    assert gway.outputSchema is not None
-    assert set(query.outputSchema["required"]) == {
+    assert query.output_schema is not None
+    assert gway.output_schema is not None
+    assert set(query.output_schema["required"]) == {
         "ok",
         "result",
         "result_type",
         "output",
     }
 
+    assert safe.content[0].text == "observe:False"
+    assert generic.content[0].text == "restart:None"
     assert safe.structured_content == {
         "ok": True,
         "result": "observe:False",
@@ -78,13 +80,13 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
 def test_mcp_execution_envelope_classifies_json_result_shapes():
     server = _server_module()
 
-    assert server._envelope({"a": 1}).model_dump() == {
+    assert server._envelope({"a": 1}) == {
         "ok": True,
         "result": {"a": 1},
         "result_type": "mapping",
         "output": [],
     }
-    assert server._envelope([1, 2]).result_type == "sequence"
-    assert server._envelope(3.5).result_type == "number"
-    assert server._envelope(True).result_type == "boolean"
-    assert server._envelope(None).result_type == "null"
+    assert server._envelope([1, 2])["result_type"] == "sequence"
+    assert server._envelope(3.5)["result_type"] == "number"
+    assert server._envelope(True)["result_type"] == "boolean"
+    assert server._envelope(None)["result_type"] == "null"
