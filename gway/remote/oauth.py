@@ -148,15 +148,11 @@ class RemoteOAuthProtocol:
         account,
         *,
         client_resolver=None,
-        allow_confidential_without_pkce=False,
         default_scope=None,
     ):
         self.metadata = metadata
         self.account = account
         self.oauth = account.oauth
-        self.allow_confidential_without_pkce = bool(
-            allow_confidential_without_pkce
-        )
         self.default_scope = (
             None if default_scope is None else str(default_scope).strip() or None
         )
@@ -198,12 +194,7 @@ class RemoteOAuthProtocol:
 
         challenge = str(params.get("code_challenge") or "").strip()
         method = str(params.get("code_challenge_method") or "").strip()
-        pkce_required = not (
-            self.allow_confidential_without_pkce
-            and client.token_endpoint_auth_method
-            in {"client_secret_post", "client_secret_basic"}
-        )
-        if pkce_required and not challenge:
+        if not challenge:
             raise OAuthProtocolError(
                 "invalid_request",
                 "code_challenge is required",
