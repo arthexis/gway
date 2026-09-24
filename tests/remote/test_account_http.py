@@ -13,9 +13,6 @@ from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
 
 
-pytestmark = pytest.mark.main
-
-
 def _csrf(html):
     match = re.search(r'name="csrf" value="([^"]+)"', html)
     assert match is not None
