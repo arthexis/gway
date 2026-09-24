@@ -230,3 +230,31 @@ def test_actions_results_are_json_safe(gateway):
     assert status == 200
     assert sorted(payload["result"]["items"]) == ["one", "two"]
     json.dumps(payload)
+
+
+def test_remote_server_delegates_actions_namespace(gateway):
+    from gway.remote.server import RemoteApplication
+
+    scopes = ScopeRegistry(gateway.security_path)
+    tokens = TokenRegistry(gateway.security_path)
+    scopes.replace("actions-delegation", operations={"help"})
+    tokens.remove("actions-delegation-client")
+    issued = tokens.create(
+        "actions-delegation-client",
+        scopes={"actions-delegation"},
+    )
+    metadata = RemoteOAuthMetadata.from_origin(
+        "https://remote.example.test",
+        resource_path="/mcp",
+    )
+    application = RemoteApplication(metadata, runtime=gateway)
+
+    status, _, payload = _post(
+        application,
+        issued.bearer,
+        "/actions/query",
+        "help help",
+    )
+
+    assert status == 200
+    assert "result" in payload
