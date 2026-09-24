@@ -293,7 +293,7 @@ def test_installed_mcp_process_service_lifecycle(tmp_path, monkeypatch):
 
 
 
-@pytest.mark.heavy
+@pytest.mark.main
 def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypatch):
     gateway = Gateway()
     captured_process = {}
@@ -410,7 +410,7 @@ def test_mcp_sampler_contains_no_service_manager_lifecycle_logic():
 
 
 
-@pytest.mark.heavy
+@pytest.mark.main
 def test_required_service_companion_repairs_missing_dependency(
     tmp_path,
     monkeypatch,
