@@ -3,8 +3,6 @@ import threading
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-import pytest
-
 from gway.remote.metadata import RemoteOAuthMetadata
 from gway.remote.server import RemoteDiscoveryApplication, build_server
 
