@@ -1,46 +1,84 @@
 name: Watchtower Deploy Trigger
 
 on:
-  push:
+  workflow_run:
+    workflows: ["python / Python compatibility"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   trigger:
     name: Trigger Arthexis Watchtower Deploy
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-          persist-credentials: false
-
-      - name: Classify Gway change
-        id: classify
+      - name: Resolve validated Gway main SHA
+        id: validated
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
-          BEFORE_SHA: ${{ github.event.before }}
-          CURRENT_SHA: ${{ github.sha }}
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -Eeuo pipefail
 
-          if [[ "$EVENT_NAME" != "push" ]]; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          remote_main="$(git ls-remote https://github.com/arthexis/gway.git refs/heads/main | awk '{print $1}')"
+          test -n "$remote_main"
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            sha="$VALIDATED_SHA"
+            test -n "$sha"
+            if [[ "$sha" != "$remote_main" ]]; then
+              echo "Validated Gway SHA $sha is stale; current main is $remote_main." >&2
+              exit 1
+            fi
+          else
+            sha="$remote_main"
+            conclusion="$(
+              gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/python-compatibility.yml/runs?branch=main&event=push&head_sha=$sha&status=completed&per_page=20" \
+                --jq '.workflow_runs | map(select(.conclusion == "success")) | first | .conclusion // empty'
+            )"
+            if [[ "$conclusion" != "success" ]]; then
+              echo "Manual deploy blocked: Gway main $sha has no successful full Python compatibility run." >&2
+              exit 1
+            fi
           fi
-          if [[ -z "$BEFORE_SHA" || "$BEFORE_SHA" =~ ^0+$ ]]; then
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "validated_gway_sha=$sha"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.validated.outputs.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Classify validated Gway change
+        id: classify
+        shell: bash
+        env:
+          CURRENT_SHA: ${{ steps.validated.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+
+          before="$(git rev-parse "$CURRENT_SHA^" 2>/dev/null || true)"
+          if [[ -z "$before" ]]; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          git fetch --no-tags origin "$BEFORE_SHA" "$CURRENT_SHA" >/dev/null 2>&1 || true
-
-          BEFORE_SHA="$BEFORE_SHA" CURRENT_SHA="$CURRENT_SHA" python - <<'PY'
+          BEFORE_SHA="$before" CURRENT_SHA="$CURRENT_SHA" python - <<'PY'
           import os
           import re
           import subprocess
@@ -53,8 +91,12 @@ jobs:
 
           version_only = False
           if changed == ["pyproject.toml"]:
-              old = subprocess.check_output(["git", "show", f"{before}:pyproject.toml"], text=True)
-              new = subprocess.check_output(["git", "show", f"{current}:pyproject.toml"], text=True)
+              old = subprocess.check_output(
+                  ["git", "show", f"{before}:pyproject.toml"], text=True
+              )
+              new = subprocess.check_output(
+                  ["git", "show", f"{current}:pyproject.toml"], text=True
+              )
               pattern = re.compile(r'(?m)^(version\s*=\s*")[^"]+(".*)$')
               if pattern.search(old) and pattern.search(new):
                   old_normalized = pattern.sub(r'\1<VERSION>\2', old, count=1)
@@ -63,16 +105,15 @@ jobs:
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"deploy={'false' if version_only else 'true'}\n")
-
           print("version_only=" + ("true" if version_only else "false"))
           PY
 
-      - name: Dispatch Watchtower Deploy with exact Gway SHA
+      - name: Dispatch Watchtower Deploy with exact validated Gway SHA
         if: steps.classify.outputs.deploy == 'true'
         shell: bash
         env:
           WATCHTOWER_DEPLOY_TOKEN: ${{ secrets.WATCHTOWER_DEPLOY_TOKEN }}
-          GWAY_SHA: ${{ github.sha }}
+          GWAY_SHA: ${{ steps.validated.outputs.sha }}
         run: |
           set -Eeuo pipefail
           if [[ -z "${WATCHTOWER_DEPLOY_TOKEN}" ]]; then
