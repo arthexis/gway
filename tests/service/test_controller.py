@@ -412,7 +412,6 @@ def test_mcp_sampler_contains_no_service_manager_lifecycle_logic():
 
 
 
-@pytest.mark.main
 def test_required_service_companion_repairs_missing_dependency(
     tmp_path,
     monkeypatch,
