@@ -111,12 +111,12 @@ class TokenRegistry:
             expires_at=row["expires_at"],
         )
 
-    def get(self, name):
+    def get(self, name, *, readonly=False):
         """Return safe token metadata without exposing credential material."""
         if not self.path.is_file():
             return None
         name = self._name(name)
-        with self.state.connect(readonly=True) as connection:
+        with self.state.connect(readonly=readonly) as connection:
             row = connection.execute(
                 """
                 SELECT id, name, public_id, disabled, created_at, expires_at
@@ -127,18 +127,18 @@ class TokenRegistry:
             ).fetchone()
             return self._from_row(connection, row)
 
-    def require(self, name):
+    def require(self, name, *, readonly=False):
         """Return safe metadata or fail when the named token does not exist."""
-        token = self.get(name)
+        token = self.get(name, readonly=readonly)
         if token is None:
             raise LookupError(f"Unknown security token: {name}")
         return token
 
-    def all(self):
+    def all(self, *, readonly=False):
         """Return all token metadata in stable name order."""
         if not self.path.is_file():
             return []
-        with self.state.connect(readonly=True) as connection:
+        with self.state.connect(readonly=readonly) as connection:
             rows = connection.execute(
                 """
                 SELECT id, name, public_id, disabled, created_at, expires_at
@@ -280,13 +280,13 @@ class TokenRegistry:
         scopes.discard(str(scope))
         return self.replace_scopes(name, scopes)
 
-    def authenticate(self, bearer):
+    def authenticate(self, bearer, *, readonly=True):
         """Authenticate an opaque bearer and resolve its reusable scope policy."""
         public_id = self._public_id(bearer)
         if not self.path.is_file():
             raise AuthenticationError()
 
-        with self.state.connect(readonly=True) as connection:
+        with self.state.connect(readonly=readonly) as connection:
             row = connection.execute(
                 """
                 SELECT id, name, public_id, token_hash, disabled, created_at, expires_at
@@ -306,5 +306,5 @@ class TokenRegistry:
                 raise AuthenticationError()
             token = self._from_row(connection, row)
 
-        authority = self.scopes.resolve(token.scopes)
+        authority = self.scopes.resolve(token.scopes, readonly=readonly)
         return AuthenticatedToken(token, authority)
