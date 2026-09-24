@@ -76,7 +76,7 @@ def test_remote_auth_systemd_rendering_uses_generic_backend():
     assert "daemon-reload" not in rendered
 
 
-@pytest.mark.heavy
+@pytest.mark.main
 def test_remote_auth_process_service_start_status_restart_stop(tmp_path, monkeypatch):
     data_root = tmp_path / "data"
     cache_root = tmp_path / "cache"
