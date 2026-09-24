@@ -199,7 +199,6 @@ def test_duplicate_token_name_fails(tmp_path):
 def test_security_token_gway_command_surface(gateway, tmp_path, monkeypatch):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
-    tokens = TokenRegistry(path)
     scopes.create("logs")
 
     monkeypatch.setattr(scope_commands, "_registry", scopes)
@@ -320,7 +319,6 @@ def test_token_expiry_requires_aware_iso_timestamp(tmp_path, expires):
 def test_security_token_create_accepts_expiry_flag(gateway, tmp_path, monkeypatch):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
-    tokens = TokenRegistry(path)
     scopes.create("logs")
     monkeypatch.setattr(scope_commands, "_registry", scopes)
     gateway.security_path = path
