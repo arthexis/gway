@@ -30,7 +30,7 @@ def _linked_grant(tmp_path):
     return scopes, tokens, oauth, grant
 
 
-def test_security_state_migrates_v4_to_v5_without_losing_existing_policy(tmp_path):
+def test_security_state_migrates_v4_to_v6_without_losing_existing_policy(tmp_path):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
     tokens = TokenRegistry(path)
@@ -50,7 +50,7 @@ def test_security_state_migrates_v4_to_v5_without_losing_existing_policy(tmp_pat
     assert scopes.require("logs").operations == frozenset({"log.read"})
     assert tokens.require("reader") == issued.token
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 6
         tables = {
             row[0]
             for row in connection.execute(
@@ -298,3 +298,84 @@ def test_grant_resource_binds_code_and_refresh_exchange(tmp_path):
         resource="https://remote.example/mcp",
     )
     assert rotated.grant.resource == "https://remote.example/mcp"
+
+
+def test_confidential_oauth_client_secret_is_issued_once_and_hashed(tmp_path):
+    _, _, oauth = _registries(tmp_path)
+
+    issued = oauth.create_client(
+        "chatgpt-actions",
+        redirect_uris={"https://chatgpt.com/callback"},
+        confidential=True,
+    )
+
+    assert issued.client.client_id == "chatgpt-actions"
+    assert issued.client.token_endpoint_auth_method == "client_secret_post"
+    assert issued.client_secret.startswith("gwcs_")
+
+    loaded = oauth.get_client("chatgpt-actions")
+    assert loaded == issued.client
+    assert not hasattr(loaded, "client_secret")
+
+    with sqlite3.connect(oauth.path) as connection:
+        row = connection.execute(
+            """
+            SELECT client_secret_hash, token_endpoint_auth_method
+            FROM oauth_clients
+            WHERE client_id = ?
+            """,
+            ("chatgpt-actions",),
+        ).fetchone()
+        dump = "\n".join(connection.iterdump())
+
+    assert row[0] == oauth._hash(issued.client_secret)
+    assert row[1] == "client_secret_post"
+    assert issued.client_secret not in dump
+
+
+def test_confidential_oauth_client_authentication_requires_matching_secret(tmp_path):
+    _, _, oauth = _registries(tmp_path)
+    issued = oauth.create_client(
+        "chatgpt-actions",
+        redirect_uris={"https://chatgpt.com/callback"},
+        confidential=True,
+    )
+
+    authenticated = oauth.authenticate_client(
+        "chatgpt-actions",
+        client_secret=issued.client_secret,
+        token_endpoint_auth_method="client_secret_post",
+    )
+
+    assert authenticated == issued.client
+
+    with pytest.raises(OAuthAuthenticationError):
+        oauth.authenticate_client(
+            "chatgpt-actions",
+            client_secret="wrong",
+            token_endpoint_auth_method="client_secret_post",
+        )
+
+    with pytest.raises(OAuthAuthenticationError):
+        oauth.authenticate_client(
+            "chatgpt-actions",
+            token_endpoint_auth_method="client_secret_post",
+        )
+
+
+def test_existing_public_oauth_client_remains_secretless(tmp_path):
+    _, _, oauth = _registries(tmp_path)
+
+    client = oauth.create_client(
+        "mcp-client",
+        redirect_uris={"https://client.example/callback"},
+    )
+
+    assert client.token_endpoint_auth_method == "none"
+    assert oauth.authenticate_client("mcp-client") == client
+
+    with pytest.raises(OAuthAuthenticationError):
+        oauth.authenticate_client(
+            "mcp-client",
+            client_secret="unexpected",
+        )
