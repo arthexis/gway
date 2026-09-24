@@ -4,7 +4,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from gway.remote.metadata import RemoteOAuthMetadata
-from gway.remote.server import RemoteDiscoveryApplication, build_server
+from gway.remote.oauth import OAuthProtocolError
+from gway.remote.server import RemoteApplication, RemoteDiscoveryApplication, build_server
 
 
 def test_discovery_application_routes_canonical_well_known_paths():
@@ -133,3 +134,30 @@ def test_real_http_rejects_non_get_discovery_request():
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_chatgpt_actions_client_infers_missing_oauth_resource():
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+    app = RemoteApplication(metadata)
+    params = {"client_id": "chatgpt-actions-client"}
+
+    protocol = app._oauth_for_resource(params)
+
+    assert protocol is app.actions_oauth
+    assert params["resource"] == "https://remote.example.test/actions"
+
+
+def test_chatgpt_actions_client_keeps_explicit_oauth_resource_strict():
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+    app = RemoteApplication(metadata)
+    params = {
+        "client_id": "chatgpt-actions-client",
+        "resource": "https://remote.example.test/not-actions",
+    }
+
+    try:
+        app._oauth_for_resource(params)
+    except OAuthProtocolError as error:
+        assert error.error == "invalid_target"
+    else:
+        raise AssertionError("Explicit invalid OAuth resource unexpectedly accepted")
