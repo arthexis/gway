@@ -80,15 +80,7 @@ jobs:
             exit 1
           fi
 
-          payload="$(python - <<'PY'
-          import json
-          import os
-          print(json.dumps({
-              "ref": "main",
-              "inputs": {"gway_sha": os.environ["GWAY_SHA"]},
-          }))
-          PY
-          )"
+          payload="$(printf '{"ref":"main","inputs":{"gway_sha":"%s"}}' "$GWAY_SHA")"
 
           curl --fail --silent --show-error \
             --request POST \
