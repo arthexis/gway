@@ -158,6 +158,7 @@ class ActionsApplication:
                 },
             },
             "components": {
+                "schemas": {},
                 "securitySchemes": {
                     "oauth2": {
                         "type": "oauth2",
