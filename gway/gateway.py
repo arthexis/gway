@@ -625,13 +625,14 @@ class Gateway(Resolver):
             restart=restart,
         )
 
-    def _help(self, *operation: str, verbose=False):
+    def _help(self, *operation: str, verbose=False, mutate=False):
         """Return documentation for one Gway operation.
 
         Args:
             operation: Operation name parts, including an optional semantic subject.
             verbose: Include the full docstring and merged parameter details.
         """
+        del mutate
         from .documentation import render
         from .dispatch import resolve_operation
         from .tokens import tokenize
