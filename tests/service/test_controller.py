@@ -515,8 +515,8 @@ def test_service_list_and_inspect_support_non_mutating_execution(service_gateway
     assert any(item["service"] == "remote-auth" for item in listed)
     assert inspected["service"] == "worker"
 
-    assert gateway.ops.resolve("service.list").__gway_supports_no_mutate__ is True
-    assert gateway.ops.resolve("service.inspect").__gway_supports_no_mutate__ is True
+    assert gateway.ops.resolve("service.list").mutates is False
+    assert gateway.ops.resolve("service.inspect").mutates is False
 
 
 def test_service_status_remains_rejected_under_non_mutating_execution(
