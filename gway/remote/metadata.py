@@ -33,6 +33,7 @@ class RemoteOAuthMetadata:
 
     issuer: str
     resource: str
+    scopes_supported: tuple[str, ...] = ()
 
     @classmethod
     def from_origin(
@@ -40,6 +41,7 @@ class RemoteOAuthMetadata:
         origin,
         *,
         resource_path="/mcp",
+        scopes_supported=(),
         allow_insecure_loopback=False,
     ):
         origin = _public_url(
@@ -56,9 +58,14 @@ class RemoteOAuthMetadata:
         resource = urlunsplit(
             (parsed.scheme, parsed.netloc, resource_path, "", "")
         )
-        return cls(origin, resource)
+        scopes_supported = tuple(
+            str(scope).strip()
+            for scope in scopes_supported
+            if str(scope).strip()
+        )
+        return cls(origin, resource, scopes_supported)
 
-    def with_resource_path(self, resource_path):
+    def with_resource_path(self, resource_path, *, scopes_supported=None):
         """Return metadata for another protected resource on the same issuer."""
         resource_path = "/" + str(resource_path).strip().strip("/")
         if resource_path == "/":
@@ -67,7 +74,15 @@ class RemoteOAuthMetadata:
         resource = urlunsplit(
             (parsed.scheme, parsed.netloc, resource_path, "", "")
         )
-        return type(self)(self.issuer, resource)
+        if scopes_supported is None:
+            scopes_supported = self.scopes_supported
+        else:
+            scopes_supported = tuple(
+                str(scope).strip()
+                for scope in scopes_supported
+                if str(scope).strip()
+            )
+        return type(self)(self.issuer, resource, tuple(scopes_supported))
 
     @property
     def authorization_endpoint(self):
@@ -91,11 +106,14 @@ class RemoteOAuthMetadata:
         return "/.well-known/oauth-authorization-server"
 
     def protected_resource_document(self):
-        return {
+        document = {
             "resource": self.resource,
             "authorization_servers": [self.issuer],
             "bearer_methods_supported": ["header"],
         }
+        if self.scopes_supported:
+            document["scopes_supported"] = list(self.scopes_supported)
+        return document
 
     def authorization_server_document(self):
         return {
@@ -114,4 +132,5 @@ class RemoteOAuthMetadata:
             ],
             "client_id_metadata_document_supported": True,
             "protected_resources": [self.resource],
+            "scopes_supported": list(self.scopes_supported),
         }

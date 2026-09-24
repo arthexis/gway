@@ -81,7 +81,10 @@ class RemoteApplication(RemoteDiscoveryApplication):
         super().__init__(metadata)
         self.runtime = runtime
         self._query_lock = threading.RLock()
-        actions_metadata = metadata.with_resource_path("/actions")
+        actions_metadata = metadata.with_resource_path(
+            "/actions",
+            scopes_supported=("chatgpt-actions",),
+        )
         self.actions = ActionsApplication(actions_metadata, runtime=runtime)
         if account is None and runtime is not None:
             oauth = OAuthRegistry(runtime.security_path)
@@ -111,6 +114,13 @@ class RemoteApplication(RemoteDiscoveryApplication):
         )
         authorization_document = metadata.authorization_server_document()
         authorization_document["protected_resources"] = sorted(self.oauth_by_resource)
+        authorization_document["scopes_supported"] = sorted(
+            {
+                scope
+                for protocol in self.oauth_by_resource.values()
+                for scope in protocol.metadata.scopes_supported
+            }
+        )
         self.routes[metadata.authorization_server_metadata_path] = (
             200,
             lambda: authorization_document,
@@ -570,6 +580,7 @@ def build_server(
     metadata = RemoteOAuthMetadata.from_origin(
         public_origin,
         resource_path=resource_path,
+        scopes_supported=("chatgpt-logs",),
         allow_insecure_loopback=allow_insecure_loopback,
     )
     application = RemoteApplication(

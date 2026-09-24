@@ -224,7 +224,11 @@ class RemoteOAuthProtocol:
                 "code_challenge is required when code_challenge_method is supplied",
             )
 
-        scope = self._required(params, "scope")
+        scope = str(params.get("scope") or "").strip()
+        if not scope:
+            if len(self.metadata.scopes_supported) != 1:
+                raise OAuthProtocolError("invalid_request", "scope is required")
+            scope = self.metadata.scopes_supported[0]
         self.account.stage_consent(
             session,
             client_id,
