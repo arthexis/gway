@@ -177,7 +177,6 @@ def test_failed_replace_rolls_back_previous_scope(tmp_path, monkeypatch):
 def test_security_scope_gway_command_surface(gateway, tmp_path):
     path = tmp_path / "security.sqlite"
     gateway.security_path = path
-    registry = ScopeRegistry(path)
 
     created = gateway("security scope create logs")
     assert created == Scope("logs")
