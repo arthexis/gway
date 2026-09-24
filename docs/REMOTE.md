@@ -115,10 +115,14 @@ The public routing contract is:
 
 /
 /.well-known/oauth-protected-resource/mcp
+/.well-known/oauth-protected-resource/actions
 /.well-known/oauth-authorization-server
 /oauth/authorize
 /oauth/token
 /oauth/revoke
+/actions/openapi.json
+/actions/query
+/actions/execute
 /login
 /connect
 /consent
@@ -126,8 +130,10 @@ The public routing contract is:
     -> remote-auth upstream
 ```
 
-Only those application routes are exposed. There is no generic OAuth,
-settings, well-known, or application catch-all proxy.
+Only those application routes are exposed. The Actions routes are fixed
+transport endpoints: the OpenAPI document describes only query/execute and
+does not enumerate the Gway operation catalog. There is no generic OAuth,
+Actions, settings, well-known, or application catch-all proxy.
 
 The HTTP listener reserves `/.well-known/acme-challenge/` for the local ACME
 webroot. After a certificate exists, all other HTTP traffic redirects to HTTPS.
