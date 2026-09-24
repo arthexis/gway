@@ -576,7 +576,12 @@ class OAuthRegistry:
         lifetime_seconds=300,
     ):
         redirect_uri = self._text(redirect_uri, "OAuth redirect URI")
-        code_challenge = self._text(code_challenge, "PKCE code challenge")
+        code_challenge = (
+            ""
+            if code_challenge in (None, "")
+            else self._text(code_challenge, "PKCE code challenge")
+        )
+        code_challenge_method = "S256" if code_challenge else "none"
         public_id, code = self._secret("gwc")
         del public_id
         expires_at = self._expiry(lifetime_seconds)
@@ -587,13 +592,14 @@ class OAuthRegistry:
                 INSERT INTO oauth_authorization_codes (
                     grant_id, code_hash, redirect_uri, code_challenge,
                     code_challenge_method, created_at, expires_at, consumed_at
-                ) VALUES (?, ?, ?, ?, 'S256', ?, ?, NULL)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
                 """,
                 (
                     int(grant_id),
                     self._hash(code),
                     redirect_uri,
                     code_challenge,
+                    code_challenge_method,
                     self._now().isoformat(),
                     expires_at,
                 ),
@@ -658,7 +664,11 @@ class OAuthRegistry:
         resource=None,
     ):
         redirect_uri = self._text(redirect_uri, "OAuth redirect URI")
-        code_verifier = self._text(code_verifier, "PKCE code verifier")
+        code_verifier = (
+            None
+            if code_verifier in (None, "")
+            else self._text(code_verifier, "PKCE code verifier")
+        )
         client_id = (
             None if client_id is None else self._text(client_id, "OAuth client id")
         )
@@ -682,11 +692,15 @@ class OAuthRegistry:
                 raise OAuthAuthenticationError()
             if row["redirect_uri"] != redirect_uri:
                 raise OAuthAuthenticationError()
-            if row["code_challenge_method"] != "S256":
-                raise OAuthAuthenticationError()
-            if not secrets.compare_digest(
-                row["code_challenge"], self._pkce(code_verifier)
-            ):
+            if row["code_challenge_method"] == "S256":
+                if code_verifier is None or not secrets.compare_digest(
+                    row["code_challenge"], self._pkce(code_verifier)
+                ):
+                    raise OAuthAuthenticationError()
+            elif row["code_challenge_method"] == "none":
+                if row["code_challenge"] or code_verifier is not None:
+                    raise OAuthAuthenticationError()
+            else:
                 raise OAuthAuthenticationError()
             active = self._active_grant(connection, row["grant_id"])
             if client_id is not None and active["client_id"] != client_id:
