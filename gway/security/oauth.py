@@ -211,11 +211,11 @@ class OAuthRegistry:
             return client
         return IssuedOAuthClient(client, client_secret)
 
-    def get_client(self, client_id):
+    def get_client(self, client_id, *, readonly=False):
         if not self.path.is_file():
             return None
         client_id = self._text(client_id, "OAuth client id")
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=readonly) as connection:
             row = connection.execute(
                 """
                 SELECT client_id, metadata_url, redirect_uris,
@@ -284,6 +284,61 @@ class OAuthRegistry:
         ):
             raise OAuthAuthenticationError()
         return client
+
+    def require_client(self, client_id, *, readonly=False):
+        """Return safe OAuth client metadata or fail when it is unknown."""
+        client = self.get_client(client_id, readonly=readonly)
+        if client is None:
+            raise LookupError(f"Unknown OAuth client: {client_id}")
+        return client
+
+    def clients(self, *, readonly=False):
+        """Return all registered OAuth clients in stable client-id order."""
+        if not self.path.is_file():
+            return []
+        with self.state.connect(readonly=readonly) as connection:
+            rows = connection.execute(
+                """
+                SELECT client_id
+                FROM oauth_clients
+                ORDER BY client_id
+                """
+            ).fetchall()
+        return [
+            self.require_client(row["client_id"], readonly=readonly)
+            for row in rows
+        ]
+
+    def remove_client(self, client_id):
+        """Delete one OAuth client registration."""
+        if not self.path.is_file():
+            return False
+        client_id = self._text(client_id, "OAuth client id")
+        with self.state.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM oauth_clients WHERE client_id = ?",
+                (client_id,),
+            )
+        return bool(cursor.rowcount)
+
+    def disable_client(self, client_id):
+        """Disable one OAuth client without removing its metadata."""
+        return self._set_client_disabled(client_id, True)
+
+    def enable_client(self, client_id):
+        """Re-enable one disabled OAuth client."""
+        return self._set_client_disabled(client_id, False)
+
+    def _set_client_disabled(self, client_id, disabled):
+        client_id = self._text(client_id, "OAuth client id")
+        with self.state.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE oauth_clients SET disabled = ? WHERE client_id = ?",
+                (int(disabled), client_id),
+            )
+            if not cursor.rowcount:
+                raise LookupError(f"Unknown OAuth client: {client_id}")
+        return self.require_client(client_id)
 
     def link(self, name, token_name):
         name = self._text(name, "OAuth link name")
