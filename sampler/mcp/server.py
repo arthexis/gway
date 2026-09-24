@@ -9,10 +9,8 @@ import socket
 import struct
 import threading
 from urllib.parse import urlsplit
-from typing import Any, Literal
-
 from fastmcp import FastMCP as _FastMCP
-from pydantic import BaseModel
+from fastmcp.tools import ToolResult
 from fastmcp.server.auth import TokenVerifier as _TokenVerifier
 from fastmcp.server.auth.auth import AccessToken as _AccessToken
 from fastmcp.server.dependencies import get_http_headers as _get_http_headers
@@ -22,27 +20,41 @@ from fastmcp.server.dependencies import get_http_request as _get_http_request
 _DEFAULT_PUBLIC_ORIGIN = "http://127.0.0.1:8000"
 
 
-class OutputRecord(BaseModel):
-    """One captured console/output record from GWAY execution."""
-
-    stream: Literal["stdout", "stderr"]
-    text: str
-
-
-class ExecutionEnvelope(BaseModel):
-    """Stable structured MCP result around an arbitrary GWAY value."""
-
-    ok: bool
-    result: Any
-    result_type: Literal[
-        "mapping",
-        "sequence",
-        "string",
-        "number",
-        "boolean",
-        "null",
-    ]
-    output: list[OutputRecord]
+_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "ok": {"type": "boolean"},
+        "result": {},
+        "result_type": {
+            "type": "string",
+            "enum": [
+                "mapping",
+                "sequence",
+                "string",
+                "number",
+                "boolean",
+                "null",
+            ],
+        },
+        "output": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "stream": {
+                        "type": "string",
+                        "enum": ["stdout", "stderr"],
+                    },
+                    "text": {"type": "string"},
+                },
+                "required": ["stream", "text"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["ok", "result", "result_type", "output"],
+    "additionalProperties": False,
+}
 
 
 class _GwayTokenVerifier(_TokenVerifier):
@@ -142,11 +154,25 @@ def _result_type(value):
 
 def _envelope(value):
     value = _validate_result(value)
-    return ExecutionEnvelope(
-        ok=True,
-        result=value,
-        result_type=_result_type(value),
-        output=[],
+    return {
+        "ok": True,
+        "result": value,
+        "result_type": _result_type(value),
+        "output": [],
+    }
+
+
+def _content_text(value):
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, allow_nan=False, separators=(",", ":"))
+
+
+def _tool_result(value):
+    value = _validate_result(value)
+    return ToolResult(
+        content=_content_text(value),
+        structured_content=_envelope(value),
     )
 
 
@@ -338,39 +364,41 @@ def _has_http_request():
 
 @mcp.tool(
     run_in_thread=False,
+    output_schema=_OUTPUT_SCHEMA,
     annotations={
         "readOnlyHint": False,
         "destructiveHint": True,
         "openWorldHint": True,
     },
 )
-def gway(command: str) -> ExecutionEnvelope:
+def gway(command: str):
     """Execute one native GWAY command under the caller's active authorization."""
     parent = _parent()
     if _has_http_request():
-        return _envelope(
+        return _tool_result(
             parent.execute_authenticated(
                 _bearer_from_http(),
                 command,
                 _auth.resource,
             )
         )
-    return _envelope(parent.execute(command))
+    return _tool_result(parent.execute(command))
 
 
 @mcp.tool(
     run_in_thread=False,
+    output_schema=_OUTPUT_SCHEMA,
     annotations={
         "readOnlyHint": True,
         "destructiveHint": False,
         "openWorldHint": True,
     },
 )
-def query(command: str) -> ExecutionEnvelope:
+def query(command: str):
     """Execute one native GWAY command with mutation disabled."""
     parent = _parent()
     if _has_http_request():
-        return _envelope(
+        return _tool_result(
             parent.execute_authenticated(
                 _bearer_from_http(),
                 command,
@@ -378,7 +406,7 @@ def query(command: str) -> ExecutionEnvelope:
                 mutate=False,
             )
         )
-    return _envelope(parent.execute(command, mutate=False))
+    return _tool_result(parent.execute(command, mutate=False))
 
 
 def _endpoint_origin(endpoint, path):
