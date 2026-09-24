@@ -244,3 +244,22 @@ def test_default_with_no_flags_is_context_noop(gateway):
 
     assert gateway.context == {"site": "MTY"}
     assert len(gateway.results.history) == history_size
+
+
+
+def test_observational_builtins_support_non_mutating_execution(
+    gateway,
+    monkeypatch,
+):
+    monkeypatch.setenv("GWAY_QUERY_ENV", "visible")
+    gateway.context.clear()
+    gateway.context["site"] = "MTY"
+
+    assert gateway.execute("env GWAY_QUERY_ENV", mutate=False) == "visible"
+    assert gateway.execute("envs", mutate=False)["GWAY_QUERY_ENV"] == "visible"
+    assert gateway.execute("pipe --site", mutate=False) == {"site": "MTY"}
+
+    for name in ("env", "envs", "pipe"):
+        operation = gateway.ops.resolve(name)
+        assert operation.__gway_supports_no_mutate__ is True
+        assert operation.mutates is False
