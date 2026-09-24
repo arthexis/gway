@@ -24,11 +24,17 @@ class SecurityState:
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA foreign_keys = ON")
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version != _SCHEMA_VERSION:
+            if version > _SCHEMA_VERSION:
+                connection.close()
+                raise RuntimeError(
+                    "Security state schema is newer than this GWAY version: "
+                    f"{version} > {_SCHEMA_VERSION}"
+                )
+            if version < _SCHEMA_VERSION:
                 connection.close()
                 raise RuntimeError(
                     "Security state requires writable schema migration before "
-                    f"read-only access: {version} != {_SCHEMA_VERSION}"
+                    f"read-only access: {version} < {_SCHEMA_VERSION}"
                 )
             return connection
 
