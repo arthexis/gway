@@ -182,6 +182,7 @@ class Gateway(Resolver):
         gway_log._set_default_source(log_source)
 
         from .ingestion.python import ingest_python
+        from .security import client as security_client_commands
         from .remote.service import register as register_remote_service
         from .service.controller import Controller
         from .souschef.controller import Controller as SousChefController
@@ -192,6 +193,11 @@ class Gateway(Resolver):
 
         self._service_controller = Controller(self)
         ingest_python(self, self._service_controller, path=("service",))
+        ingest_python(
+            self,
+            security_client_commands,
+            path=("security", "oauth", "client"),
+        )
 
         from .dns import Controller as DNSController
 
