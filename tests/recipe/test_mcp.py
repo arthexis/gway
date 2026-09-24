@@ -148,7 +148,7 @@ def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
     with gateway.authorized(operations={"mcpstdio.server", "echo_value"}):
         tools, result = gateway("mcpstdio server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result == "hello"
 
 
@@ -495,7 +495,7 @@ def test_mcp_http_real_client_uses_bearer_scope(
     with gateway.authorized(operations={"mcphttp.server"}):
         tools, result, error = gateway("mcphttp server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result == "ok"
     assert error is None
 
@@ -538,7 +538,7 @@ def test_mcp_http_real_client_accepts_oauth_access_token(
     with gateway.authorized(operations={"mcpoauth.server"}):
         tools, result, error = gateway("mcpoauth server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result == "ok"
     assert error is None
 
@@ -564,10 +564,10 @@ def test_mcp_http_oauth_token_uses_live_named_scope_after_issuance(
         results = gateway("mcpoauthlive server")
 
     first, second = results
-    assert first[0] == ["gway"]
+    assert first[0] == ["gway", "query"]
     assert first[1] is None
     assert "Operation is not authorized: allowed" in first[2]
-    assert second == (["gway"], "new", None)
+    assert second == (["gway", "query"], "new", None)
 
 
 def test_mcp_http_oauth_authority_does_not_inherit_trusted_recipe_capability(
@@ -585,7 +585,7 @@ def test_mcp_http_oauth_authority_does_not_inherit_trusted_recipe_capability(
     with gateway.authorized(operations={"mcpoauthcapability.server"}):
         tools, result, error = gateway("mcpoauthcapability server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result is None
     assert "Operation is not authorized: clear" in error
     assert "401" not in error
@@ -698,7 +698,7 @@ def test_mcp_http_scope_denial_is_tool_error_not_authentication_failure(
     with gateway.authorized(operations={"mcphttpdenied.server"}):
         tools, result, error = gateway("mcphttpdenied server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result is None
     assert "Operation is not authorized: denied" in error
     assert "Invalid bearer token" not in error
@@ -793,8 +793,8 @@ def test_mcp_http_concurrent_clients_keep_distinct_scopes(
         results = gateway("mcphttpconcurrent server")
 
     assert results == [
-        (["gway"], "alpha-ok", None),
-        (["gway"], "beta-ok", None),
+        (["gway", "query"], "alpha-ok", None),
+        (["gway", "query"], "beta-ok", None),
     ]
 
 
@@ -963,7 +963,7 @@ def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
     with gateway.authorized(operations={"mcplogs.server"}):
         tools, results = gateway("mcplogs server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
 
     for index, command in enumerate(("sources", "read", "tail", "search")):
         assert "value" in results[index], (command, results[index])
@@ -1126,3 +1126,114 @@ def test_mcp_serve_allows_explicit_http_bind_configuration(
         "port": 8123,
         "path": "/custom-mcp",
     }
+
+
+
+def test_mcp_stdio_query_is_listed_read_only_and_enforces_no_mutation(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpstdioquery"
+    seen = []
+
+    def observe(*, mutate=False):
+        seen.append(("observe", mutate))
+        return "observed"
+
+    def restart():
+        seen.append(("restart", True))
+        return "restarted"
+
+    gateway.observe = gateway.wrap("observe", observe)
+    gateway.restart = gateway.wrap("restart", restart)
+
+    probe = (
+        "\n\ndef probe_query():\n"
+        "    import asyncio\n"
+        "    from fastmcp import Client\n"
+        "    from fastmcp.client.transports import PythonStdioTransport\n"
+        "    async def run():\n"
+        "        with _callback_relay() as bridge:\n"
+        "            transport = PythonStdioTransport(\n"
+        "                str(Path(__file__)),\n"
+        "                args=['--parent-bridge', bridge],\n"
+        "            )\n"
+        "            async with Client(transport) as client:\n"
+        "                tools = await client.list_tools()\n"
+        "                query_tool = next(tool for tool in tools if tool.name == 'query')\n"
+        "                safe = await client.call_tool('query', {'command': 'observe'})\n"
+        "                error = None\n"
+        "                try:\n"
+        "                    await client.call_tool('query', {'command': 'restart'})\n"
+        "                except Exception as exception:\n"
+        "                    error = str(exception)\n"
+        "                annotation = getattr(query_tool, 'annotations', None)\n"
+        "                read_only = getattr(annotation, 'readOnlyHint', None)\n"
+        "                if read_only is None and isinstance(annotation, dict):\n"
+        "                    read_only = annotation.get('readOnlyHint')\n"
+        "                return [tool.name for tool in tools], read_only, safe.content[0].text, error\n"
+        "    return asyncio.run(run())\n"
+    )
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "observe",
+        suffix=probe,
+    )
+    recipe.write_text("require fastmcp\nserver probe query\n", encoding="utf-8")
+    gateway.ingest(root)
+
+    with gateway.authorized(
+        operations={"mcpstdioquery.server", "observe", "restart"}
+    ):
+        tools, read_only, result, error = gateway("mcpstdioquery server")
+
+    assert tools == ["gway", "query"]
+    assert read_only is True
+    assert result == "observed"
+    assert "does not support non-mutating execution" in error
+    assert seen == [("observe", False)]
+
+
+def test_mcp_query_does_not_change_generic_gway_mutation_behavior(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpgwaymutating"
+    seen = []
+
+    def mutate_now():
+        seen.append("mutated")
+        return "done"
+
+    gateway.mutate_now = gateway.wrap("mutate_now", mutate_now)
+    probe = (
+        "\n\ndef probe_gway_mutation():\n"
+        "    import asyncio\n"
+        "    from fastmcp import Client\n"
+        "    from fastmcp.client.transports import PythonStdioTransport\n"
+        "    async def run():\n"
+        "        with _callback_relay() as bridge:\n"
+        "            transport = PythonStdioTransport(str(Path(__file__)), args=['--parent-bridge', bridge])\n"
+        "            async with Client(transport) as client:\n"
+        "                result = await client.call_tool('gway', {'command': 'mutate_now'})\n"
+        "                return result.content[0].text\n"
+        "    return asyncio.run(run())\n"
+    )
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "mutate_now",
+        suffix=probe,
+    )
+    recipe.write_text(
+        "require fastmcp\nserver probe_gway_mutation\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(root)
+
+    with gateway.authorized(
+        operations={"mcpgwaymutating.server", "mutate_now"}
+    ):
+        result = gateway("mcpgwaymutating server")
+
+    assert result == "done"
+    assert seen == ["mutated"]
