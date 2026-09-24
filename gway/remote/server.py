@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 from ..authorization import AuthorizationError
 from ..mutation import MutationError
 from ..security.authentication import BearerAuthenticationError
-from ..security.oauth import OAuthRegistry
+from ..security.oauth import OAuthAuthenticationError, OAuthRegistry
 from ..security.tokens import TokenRegistry
 from .account import RemoteAccountApplication
 from .actions import ActionsApplication
@@ -68,7 +68,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
     """Discovery plus O2 browser session, bearer linking, and consent."""
 
     cookie_name = "gway_remote_session"
-    actions_compat_client_id = "chatgpt-actions-client"
+    actions_compat_scope = "chatgpt-actions"
 
     def __init__(
         self,
@@ -168,16 +168,30 @@ class RemoteApplication(RemoteDiscoveryApplication):
         return headers
 
     def _oauth_for_resource(self, params):
-        resource = str((params or {}).get("resource") or "").strip()
-        client_id = str((params or {}).get("client_id") or "").strip()
+        params = {} if params is None else params
+        resource = str(params.get("resource") or "").strip()
 
-        # GPT Actions does not expose an RFC 8707 resource-indicator setting.
-        # Keep explicit resource values strict, but infer the Actions resource
-        # for the registered compatibility client when ChatGPT omits it.
-        if not resource and client_id == self.actions_compat_client_id:
-            resource = self.actions.metadata.resource
+        if not resource:
+            scopes = set(str(params.get("scope") or "").split())
+            if self.actions_compat_scope in scopes:
+                resource = self.actions.metadata.resource
+
+        if not resource:
+            try:
+                grant_type = str(params.get("grant_type") or "").strip()
+                if grant_type == "authorization_code":
+                    resource = self.account.oauth.authorization_code_resource(
+                        params.get("code")
+                    )
+                elif grant_type == "refresh_token":
+                    resource = self.account.oauth.refresh_token_resource(
+                        params.get("refresh_token")
+                    )
+            except OAuthAuthenticationError as error:
+                raise OAuthProtocolError("invalid_grant") from error
+
+        if resource:
             params["resource"] = resource
-
         protocol = self.oauth_by_resource.get(resource)
         if protocol is None:
             raise OAuthProtocolError("invalid_target")
