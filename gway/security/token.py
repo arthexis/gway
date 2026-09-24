@@ -25,12 +25,12 @@ def create(name, *scopes, expires=None):
     return registry().create(name, scopes=scopes, expires_at=expires).bearer
 
 
-def show(name):
+def show(name, *, mutate=False):
     """Return safe metadata for one named token."""
     return registry().require(name)
 
 
-def list():
+def list(*, mutate=False):
     """Return safe metadata for all named tokens."""
     return registry().all()
 
