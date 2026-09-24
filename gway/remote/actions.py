@@ -22,6 +22,157 @@ class ActionsApplication:
         self.runtime = runtime
         self._execution_lock = threading.RLock()
 
+    def openapi_document(self):
+        """Return the stable GPT Actions transport contract."""
+
+        command_schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["command"],
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A complete Gway command string.",
+                }
+            },
+        }
+        result_schema = {
+            "type": "object",
+            "required": ["result"],
+            "properties": {
+                "result": {},
+            },
+            "additionalProperties": False,
+        }
+        error_schema = {
+            "type": "object",
+            "required": ["error"],
+            "properties": {
+                "error": {"type": "string"},
+                "message": {"type": "string"},
+            },
+            "additionalProperties": True,
+        }
+
+        def operation(operation_id, summary, description):
+            return {
+                "operationId": operation_id,
+                "summary": summary,
+                "description": description,
+                "security": [{"oauth2": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": command_schema,
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Gway command result.",
+                        "content": {
+                            "application/json": {
+                                "schema": result_schema,
+                            }
+                        },
+                    },
+                    "400": {
+                        "description": "Invalid request or Gway command.",
+                        "content": {
+                            "application/json": {
+                                "schema": error_schema,
+                            }
+                        },
+                    },
+                    "401": {
+                        "description": "Missing or invalid bearer token.",
+                        "content": {
+                            "application/json": {
+                                "schema": error_schema,
+                            }
+                        },
+                    },
+                    "403": {
+                        "description": "The authenticated Gway scope does not authorize the command.",
+                        "content": {
+                            "application/json": {
+                                "schema": error_schema,
+                            }
+                        },
+                    },
+                    "409": {
+                        "description": "The requested command violates the read-only mutation ceiling.",
+                        "content": {
+                            "application/json": {
+                                "schema": error_schema,
+                            }
+                        },
+                    },
+                    "503": {
+                        "description": "The remote Actions runtime is unavailable.",
+                        "content": {
+                            "application/json": {
+                                "schema": error_schema,
+                            }
+                        },
+                    },
+                },
+            }
+
+        return {
+            "openapi": "3.1.0",
+            "info": {
+                "title": "Gway Remote Actions",
+                "version": "1.0.0",
+                "description": (
+                    "Stable GPT Actions transport for executing Gway command strings. "
+                    "Gway operations are discovered through Gway itself, not enumerated "
+                    "in this OpenAPI document."
+                ),
+            },
+            "servers": [{"url": self.metadata.issuer}],
+            "paths": {
+                "/actions/query": {
+                    "post": operation(
+                        "queryGway",
+                        "Execute a read-only Gway command",
+                        (
+                            "Execute one Gway command under the authenticated user's "
+                            "current named scopes with a hard non-mutating ceiling. "
+                            "Use Gway help when command syntax needs discovery."
+                        ),
+                    )
+                },
+                "/actions/execute": {
+                    "post": operation(
+                        "executeGway",
+                        "Execute an authorized Gway command",
+                        (
+                            "Execute one Gway command under the authenticated user's "
+                            "current named scopes. Mutation is possible only when the "
+                            "specific canonical Gway operation is authorized."
+                        ),
+                    )
+                },
+            },
+            "components": {
+                "securitySchemes": {
+                    "oauth2": {
+                        "type": "oauth2",
+                        "flows": {
+                            "authorizationCode": {
+                                "authorizationUrl": self.metadata.authorization_endpoint,
+                                "tokenUrl": self.metadata.token_endpoint,
+                                "scopes": {},
+                            }
+                        },
+                    }
+                }
+            },
+        }
+
     @staticmethod
     def _bearer(headers):
         authorization = (headers or {}).get("authorization", "")
@@ -135,6 +286,11 @@ class ActionsApplication:
         method = str(method).upper()
         route = urlsplit(str(path)).path
         headers = {str(k).casefold(): str(v) for k, v in (headers or {}).items()}
+
+        if route == "/actions/openapi.json":
+            if method != "GET":
+                return 405, {"allow": "GET"}, {"error": "method_not_allowed"}
+            return 200, {"content-type": "application/json"}, self.openapi_document()
 
         if route == "/actions/query":
             return self._execute(method, headers, body, mutate=False)
