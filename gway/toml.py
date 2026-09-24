@@ -11,7 +11,7 @@ def _backend():
     return _import_module("tomli")
 
 
-def loads(value):
+def loads(value, *, mutate=False):
     """Parse TOML text into a Python mapping.
 
     Args:
@@ -20,7 +20,7 @@ def loads(value):
     return _backend().loads(value)
 
 
-def load(path):
+def load(path, *, mutate=False):
     """Parse a TOML file from a filesystem path.
 
     Args:
@@ -30,7 +30,7 @@ def load(path):
         return _backend().load(stream)
 
 
-def __main__(value):
+def __main__(value, *, mutate=False):
     """Parse TOML text using the stable top-level toml operation.
 
     Args:

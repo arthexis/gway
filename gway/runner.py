@@ -65,7 +65,11 @@ def invoke(runtime, name, func, args=(), kwargs=None):
             result = _run_awaitable(result)
         return result
     finally:
-        if start is not None and hasattr(runtime, "logger"):
+        if (
+            start is not None
+            and hasattr(runtime, "logger")
+            and getattr(runtime, "mutation_allowed", True)
+        ):
             runtime.logger.info(
                 "[timed] %s took %.3fs",
                 name,

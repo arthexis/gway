@@ -12,6 +12,7 @@ from ..environment import process_environment
 import sys
 
 from .base import IngestedOperation, normalize_path, register_operation, remember_object
+from ..mutation import mutation_parameter
 
 
 @dataclass
@@ -430,6 +431,24 @@ def _management_api():
     return management.get_commands, management.call_command
 
 
+def _management_command_handle(command_name):
+    """Return one Django command's external handle callable when inspectable."""
+    try:
+        management = import_module("django.core.management")
+    except ModuleNotFoundError as exc:
+        if exc.name == "django" or str(exc.name).startswith("django."):
+            return None
+        raise
+
+    try:
+        app_name = management.get_commands()[command_name]
+        command = management.load_command_class(app_name, command_name)
+    except (KeyError, LookupError, TypeError):
+        return None
+    handle = getattr(command, "handle", None)
+    return handle if callable(handle) else None
+
+
 @dataclass(frozen=True)
 class DjangoCommand:
     """Lazy reference to one command on one named Django project."""
@@ -444,6 +463,22 @@ def _command_callable(command_name):
     def invoke(*args, **options):
         _, call_command = _management_api()
         return call_command(command_name, *args, **options)
+
+    handle = _management_command_handle(command_name)
+    parameter = None if handle is None else mutation_parameter(handle)
+    if parameter is not None:
+        invoke.__signature__ = inspect.Signature(
+            (
+                inspect.Parameter("args", inspect.Parameter.VAR_POSITIONAL),
+                inspect.Parameter(
+                    "mutate",
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=parameter.default,
+                    annotation=parameter.annotation,
+                ),
+                inspect.Parameter("options", inspect.Parameter.VAR_KEYWORD),
+            )
+        )
 
     invoke.__name__ = str(command_name)
     invoke.__doc__ = f"Run Django management command {command_name!r}."

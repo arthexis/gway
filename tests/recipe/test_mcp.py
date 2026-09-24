@@ -12,6 +12,9 @@ from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
 
 
+pytestmark = pytest.mark.main
+
+
 MCP_PUBLIC_ORIGIN = "https://remote.example.test"
 MCP_RESOURCE = f"{MCP_PUBLIC_ORIGIN}/mcp"
 
@@ -145,7 +148,7 @@ def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
     with gateway.authorized(operations={"mcpstdio.server", "echo_value"}):
         tools, result = gateway("mcpstdio server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result == "hello"
 
 
@@ -290,7 +293,7 @@ def test_parent_authenticated_execution_rejects_disabled_token(
 
 def _mcp_http_probe_suffix():
     return r'''
-def probe_http(bearer, command, second_bearer=None, second_command=None):
+def probe_http(bearer, command, second_bearer=None, second_command=None, tool="gway"):
     import asyncio
     import os
     import socket
@@ -324,7 +327,7 @@ def probe_http(bearer, command, second_bearer=None, second_command=None):
             async with Client(url, auth=auth) as client:
                 tools = await client.list_tools()
                 try:
-                    result = await client.call_tool("gway", {"command": value})
+                    result = await client.call_tool(tool, {"command": value})
                 except Exception as exception:
                     return [tool.name for tool in tools], None, str(exception)
                 return [tool.name for tool in tools], result.content[0].text, None
@@ -492,13 +495,66 @@ def test_mcp_http_real_client_uses_bearer_scope(
     with gateway.authorized(operations={"mcphttp.server"}):
         tools, result, error = gateway("mcphttp server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result == "ok"
     assert error is None
 
 
 
 
+
+
+
+def test_mcp_http_query_uses_bearer_scope_and_forces_no_mutation(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    _, _, issued = _issued_token(
+        tmp_path,
+        monkeypatch,
+        operations=("observe", "restart"),
+        token="http-query-client",
+    )
+    seen = []
+
+    def observe(*, mutate=False):
+        seen.append(("observe", mutate))
+        return "observed"
+
+    def restart():
+        seen.append(("restart", True))
+        return "restarted"
+
+    gateway.observe = gateway.wrap("observe", observe)
+    gateway.restart = gateway.wrap("restart", restart)
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpquery")
+    recipe.write_text(
+        "require fastmcp\n"
+        f"server probe http {issued.bearer!r} observe --tool query\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(recipe.parent)
+
+    with gateway.authorized(operations={"mcphttpquery.server"}):
+        tools, result, error = gateway("mcphttpquery server")
+
+    assert tools == ["gway", "query"]
+    assert result == "observed"
+    assert error is None
+    assert seen == [("observe", False)]
+
+    recipe.write_text(
+        "require fastmcp\n"
+        f"server probe http {issued.bearer!r} restart --tool query\n",
+        encoding="utf-8",
+    )
+
+    with gateway.authorized(operations={"mcphttpquery.server"}):
+        tools, result, error = gateway("mcphttpquery server")
+
+    assert tools == ["gway", "query"]
+    assert result is None
+    assert "does not support non-mutating execution" in error
+    assert seen == [("observe", False)]
 
 def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
     path = tmp_path / "security.sqlite"
@@ -535,7 +591,7 @@ def test_mcp_http_real_client_accepts_oauth_access_token(
     with gateway.authorized(operations={"mcpoauth.server"}):
         tools, result, error = gateway("mcpoauth server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result == "ok"
     assert error is None
 
@@ -561,10 +617,10 @@ def test_mcp_http_oauth_token_uses_live_named_scope_after_issuance(
         results = gateway("mcpoauthlive server")
 
     first, second = results
-    assert first[0] == ["gway"]
+    assert first[0] == ["gway", "query"]
     assert first[1] is None
     assert "Operation is not authorized: allowed" in first[2]
-    assert second == (["gway"], "new", None)
+    assert second == (["gway", "query"], "new", None)
 
 
 def test_mcp_http_oauth_authority_does_not_inherit_trusted_recipe_capability(
@@ -582,7 +638,7 @@ def test_mcp_http_oauth_authority_does_not_inherit_trusted_recipe_capability(
     with gateway.authorized(operations={"mcpoauthcapability.server"}):
         tools, result, error = gateway("mcpoauthcapability server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result is None
     assert "Operation is not authorized: clear" in error
     assert "401" not in error
@@ -695,7 +751,7 @@ def test_mcp_http_scope_denial_is_tool_error_not_authentication_failure(
     with gateway.authorized(operations={"mcphttpdenied.server"}):
         tools, result, error = gateway("mcphttpdenied server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
     assert result is None
     assert "Operation is not authorized: denied" in error
     assert "Invalid bearer token" not in error
@@ -790,15 +846,15 @@ def test_mcp_http_concurrent_clients_keep_distinct_scopes(
         results = gateway("mcphttpconcurrent server")
 
     assert results == [
-        (["gway"], "alpha-ok", None),
-        (["gway"], "beta-ok", None),
+        (["gway", "query"], "alpha-ok", None),
+        (["gway", "query"], "beta-ok", None),
     ]
 
 
 
 def _mcp_log_http_probe_suffix():
     return r'''
-def probe_log_http(bearer):
+def probe_log_http(bearer, tool="gway", extra_command="clear"):
     import asyncio
     import json
     import os
@@ -835,12 +891,12 @@ def probe_log_http(bearer):
                 "log read arthexis --limit 10",
                 "log tail arthexis --limit 1",
                 "log search timeout arthexis --limit 10",
-                "clear",
+                extra_command,
             ]
             results = []
             for command in commands:
                 try:
-                    result = await client.call_tool("gway", {"command": command})
+                    result = await client.call_tool(tool, {"command": command})
                 except Exception as exception:
                     results.append({"error": str(exception)})
                 else:
@@ -880,6 +936,193 @@ def probe_log_http(bearer):
                 process.kill()
                 process.wait(timeout=5)
 '''
+
+
+
+def _issued_chatgpt_logs_oauth(tmp_path, monkeypatch, *, extra_operations=()):
+    security_path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(security_path)
+    tokens = TokenRegistry(security_path)
+    oauth = OAuthRegistry(security_path)
+    operations = {
+        "log.sources",
+        "log.read",
+        "log.tail",
+        "log.search",
+        *extra_operations,
+    }
+    scopes.replace(
+        "chatgpt-logs",
+        operations=operations,
+        environment=(),
+    )
+    tokens.create("chatgpt-operator", scopes={"chatgpt-logs"})
+    oauth.link("chatgpt", "chatgpt-operator")
+    grant = oauth.create_grant(
+        "chatgpt",
+        "chatgpt-client",
+        scopes={"chatgpt-logs"},
+        resource=MCP_RESOURCE,
+    )
+    issued = oauth.issue_tokens(grant.id)
+    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda: oauth)
+    return scopes, tokens, oauth, issued
+
+
+def _install_log_acceptance_fixture(tmp_path, monkeypatch):
+    state = ServiceInstallState(tmp_path / "services-installed")
+    state.put(
+        "arthexis",
+        [
+            ServiceInstallRecord(
+                project="arthexis",
+                service="web",
+                backend_id="arthexis-web.service",
+                backend="systemd",
+                system=False,
+            ),
+        ],
+    )
+    monkeypatch.setattr(log_operations, "_install_state", lambda: state)
+    monkeypatch.setattr(log_operations, "_journal_available", lambda: True)
+
+    records = [
+        LogRecord(
+            timestamp=datetime(2026, 9, 22, 12, 0, tzinfo=timezone.utc),
+            source="arthexis/web",
+            message="startup complete",
+            level="INFO",
+            pid=101,
+            unit="arthexis-web.service",
+            metadata={},
+        ),
+        LogRecord(
+            timestamp=datetime(2026, 9, 22, 12, 1, tzinfo=timezone.utc),
+            source="arthexis/web",
+            message="timeout waiting for charger",
+            level="ERROR",
+            pid=101,
+            unit="arthexis-web.service",
+            metadata={},
+        ),
+    ]
+
+    def fake_read_journal(sources, *, grep=None, reverse=False, limit=None, **kwargs):
+        selected = list(records)
+        if grep is not None:
+            selected = [record for record in selected if "timeout" in record.message]
+        selected.sort(key=lambda record: record.timestamp, reverse=reverse)
+        if limit is not None:
+            selected = selected[: int(limit)]
+        return selected
+
+    monkeypatch.setattr(log_operations, "read_journal", fake_read_journal)
+
+
+def _assert_chatgpt_log_results(tools, results):
+    assert tools == ["gway", "query"]
+    for index, command in enumerate(("sources", "read", "tail", "search")):
+        assert "value" in results[index], (command, results[index])
+
+    assert [item["identity"] for item in results[0]["value"]] == [
+        "gway",
+        "arthexis",
+        "arthexis/web",
+    ]
+    assert [item["message"] for item in results[1]["value"]] == [
+        "startup complete",
+        "timeout waiting for charger",
+    ]
+    assert [item["message"] for item in results[2]["value"]] == [
+        "timeout waiting for charger",
+    ]
+    assert [item["message"] for item in results[3]["value"]] == [
+        "timeout waiting for charger",
+    ]
+
+
+def test_chatgpt_logs_oauth_query_acceptance_and_refresh(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    scopes, _, oauth, issued = _issued_chatgpt_logs_oauth(tmp_path, monkeypatch)
+    _install_log_acceptance_fixture(tmp_path, monkeypatch)
+
+    root = tmp_path / "mcpchatgptlogs"
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "clear",
+        suffix=_mcp_log_http_probe_suffix(),
+    )
+    recipe.write_text(
+        "require fastmcp\n"
+        f"server probe_log_http {issued.access_token!r} --tool query "
+        "--extra-command 'service status arthexis'\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcpchatgptlogs.server"}):
+        tools, results = gateway("mcpchatgptlogs server")
+
+    _assert_chatgpt_log_results(tools, results)
+    assert "Operation is not authorized: service.status" in results[4]["error"]
+
+    refreshed = oauth.rotate_refresh(
+        issued.refresh_token,
+        client_id="chatgpt-client",
+        resource=MCP_RESOURCE,
+    )
+    scopes.replace(
+        "chatgpt-logs",
+        operations={"log.sources", "log.read", "log.tail", "log.search"},
+        environment=(),
+    )
+    recipe.write_text(
+        "require fastmcp\n"
+        f"server probe_log_http {refreshed.access_token!r} --tool query\n",
+        encoding="utf-8",
+    )
+
+    with gateway.authorized(operations={"mcpchatgptlogs.server"}):
+        refreshed_tools, refreshed_results = gateway("mcpchatgptlogs server")
+
+    _assert_chatgpt_log_results(refreshed_tools, refreshed_results)
+    assert "Operation is not authorized: clear" in refreshed_results[4]["error"]
+    assert "GWAY_SECRET" not in repr((results, refreshed_results))
+
+
+def test_chatgpt_query_mutation_ceiling_survives_broader_oauth_scope(
+    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
+):
+    _, _, oauth, issued = _issued_chatgpt_logs_oauth(
+        tmp_path,
+        monkeypatch,
+        extra_operations={"restart"},
+    )
+    called = []
+
+    def restart():
+        called.append(True)
+        return "restarted"
+
+    gateway.restart = gateway.wrap("restart", restart)
+    root = tmp_path / "mcpchatgptmutation"
+    recipe = _mcp_http_recipe(recipe_factory, root)
+    recipe.write_text(
+        "require fastmcp\n"
+        f"server probe http {issued.access_token!r} restart --tool query\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcpchatgptmutation.server"}):
+        tools, result, error = gateway("mcpchatgptmutation server")
+
+    assert tools == ["gway", "query"]
+    assert result is None
+    assert "does not support non-mutating execution" in error
+    assert called == []
 
 
 def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
@@ -960,7 +1203,7 @@ def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
     with gateway.authorized(operations={"mcplogs.server"}):
         tools, results = gateway("mcplogs server")
 
-    assert tools == ["gway"]
+    assert tools == ["gway", "query"]
 
     for index, command in enumerate(("sources", "read", "tail", "search")):
         assert "value" in results[index], (command, results[index])
@@ -1123,3 +1366,114 @@ def test_mcp_serve_allows_explicit_http_bind_configuration(
         "port": 8123,
         "path": "/custom-mcp",
     }
+
+
+
+def test_mcp_stdio_query_is_listed_read_only_and_enforces_no_mutation(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpstdioquery"
+    seen = []
+
+    def observe(*, mutate=False):
+        seen.append(("observe", mutate))
+        return "observed"
+
+    def restart():
+        seen.append(("restart", True))
+        return "restarted"
+
+    gateway.observe = gateway.wrap("observe", observe)
+    gateway.restart = gateway.wrap("restart", restart)
+
+    probe = (
+        "\n\ndef probe_query():\n"
+        "    import asyncio\n"
+        "    from fastmcp import Client\n"
+        "    from fastmcp.client.transports import PythonStdioTransport\n"
+        "    async def run():\n"
+        "        with _callback_relay() as bridge:\n"
+        "            transport = PythonStdioTransport(\n"
+        "                str(Path(__file__)),\n"
+        "                args=['--parent-bridge', bridge],\n"
+        "            )\n"
+        "            async with Client(transport) as client:\n"
+        "                tools = await client.list_tools()\n"
+        "                query_tool = next(tool for tool in tools if tool.name == 'query')\n"
+        "                safe = await client.call_tool('query', {'command': 'observe'})\n"
+        "                error = None\n"
+        "                try:\n"
+        "                    await client.call_tool('query', {'command': 'restart'})\n"
+        "                except Exception as exception:\n"
+        "                    error = str(exception)\n"
+        "                annotation = getattr(query_tool, 'annotations', None)\n"
+        "                read_only = getattr(annotation, 'readOnlyHint', None)\n"
+        "                if read_only is None and isinstance(annotation, dict):\n"
+        "                    read_only = annotation.get('readOnlyHint')\n"
+        "                return [tool.name for tool in tools], read_only, safe.content[0].text, error\n"
+        "    return asyncio.run(run())\n"
+    )
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "observe",
+        suffix=probe,
+    )
+    recipe.write_text("require fastmcp\nserver probe query\n", encoding="utf-8")
+    gateway.ingest(root)
+
+    with gateway.authorized(
+        operations={"mcpstdioquery.server", "observe", "restart"}
+    ):
+        tools, read_only, result, error = gateway("mcpstdioquery server")
+
+    assert tools == ["gway", "query"]
+    assert read_only is True
+    assert result == "observed"
+    assert "does not support non-mutating execution" in error
+    assert seen == [("observe", False)]
+
+
+def test_mcp_query_does_not_change_generic_gway_mutation_behavior(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpgwaymutating"
+    seen = []
+
+    def mutate_now():
+        seen.append("mutated")
+        return "done"
+
+    gateway.mutate_now = gateway.wrap("mutate_now", mutate_now)
+    probe = (
+        "\n\ndef probe_gway_mutation():\n"
+        "    import asyncio\n"
+        "    from fastmcp import Client\n"
+        "    from fastmcp.client.transports import PythonStdioTransport\n"
+        "    async def run():\n"
+        "        with _callback_relay() as bridge:\n"
+        "            transport = PythonStdioTransport(str(Path(__file__)), args=['--parent-bridge', bridge])\n"
+        "            async with Client(transport) as client:\n"
+        "                result = await client.call_tool('gway', {'command': 'mutate_now'})\n"
+        "                return result.content[0].text\n"
+        "    return asyncio.run(run())\n"
+    )
+    recipe = _mcp_companion_recipe(
+        recipe_factory,
+        root,
+        "mutate_now",
+        suffix=probe,
+    )
+    recipe.write_text(
+        "require fastmcp\nserver probe_gway_mutation\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(root)
+
+    with gateway.authorized(
+        operations={"mcpgwaymutating.server", "mutate_now"}
+    ):
+        result = gateway("mcpgwaymutating server")
+
+    assert result == "done"
+    assert seen == ["mutated"]

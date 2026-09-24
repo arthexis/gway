@@ -403,7 +403,7 @@ def _child(name="gw", level=None):
 
 
 
-def sources():
+def sources(*, mutate=False):
     """List selectable GWAY-managed log sources."""
     from .logs.operations import sources as _sources
 
@@ -415,6 +415,7 @@ def read(
     since: str = None,
     until: str = None,
     limit: int = None,
+    mutate=False,
 ):
     """Read bounded records from GWAY-managed log sources."""
     from .logs.operations import read as _read
@@ -426,6 +427,7 @@ def tail(
     *source: str,
     since: str = None,
     limit: int = 100,
+    mutate=False,
 ):
     """Return the newest records from GWAY-managed log sources."""
     from .logs.operations import tail as _tail
@@ -439,6 +441,7 @@ def search(
     since: str = None,
     until: str = None,
     limit: int = None,
+    mutate=False,
 ):
     """Search message content in GWAY-managed log sources."""
     from .logs.operations import search as _search

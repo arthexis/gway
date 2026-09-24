@@ -3,8 +3,13 @@ import os
 from pathlib import Path
 import subprocess
 
+import pytest
+
 from gway.install import InstallState
 import gway.install.source as install_source
+
+
+pytestmark = pytest.mark.main
 
 
 def _self_remote(tmp_path, git):

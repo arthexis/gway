@@ -5,6 +5,7 @@ from .gateway import Gateway, gw
 from .install import Installation, InstallRequest, InstallState, Stash, UninstallRequest
 from .launchable import Launchable, Launchables
 from .operations import Operations, Subjects
+from .mutation import MutationError
 from .console import cli_main, process
 from .recipe import load_recipe
 from .sigil import Sigil, Resolver, Spool, __
@@ -18,6 +19,7 @@ __all__ = [
     "InstallState",
     "Launchable",
     "Launchables",
+    "MutationError",
     "Stash",
     "Operations",
     "Subjects",

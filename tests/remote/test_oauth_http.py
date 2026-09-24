@@ -18,6 +18,9 @@ from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
 
 
+pytestmark = pytest.mark.main
+
+
 CLIENT_ID = "chatgpt-client"
 REDIRECT_URI = "https://client.example/callback"
 RESOURCE = "http://127.0.0.1:9000/mcp"

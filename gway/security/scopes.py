@@ -79,30 +79,30 @@ class ScopeRegistry:
         )
         return Scope(row["name"], operations, environment)
 
-    def get(self, name):
+    def get(self, name, *, readonly=False):
         """Return one scope, or None without creating state."""
         if not self.path.is_file():
             return None
         name = self._name(name)
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=readonly) as connection:
             row = connection.execute(
                 "SELECT id, name FROM scopes WHERE name = ?",
                 (name,),
             ).fetchone()
             return self._row_scope(connection, row)
 
-    def require(self, name):
+    def require(self, name, *, readonly=False):
         """Return one scope or fail explicitly when it does not exist."""
-        scope = self.get(name)
+        scope = self.get(name, readonly=readonly)
         if scope is None:
             raise LookupError(f"Unknown security scope: {name}")
         return scope
 
-    def all(self):
+    def all(self, *, readonly=False):
         """Return all scopes in stable name order."""
         if not self.path.is_file():
             return []
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=readonly) as connection:
             rows = connection.execute(
                 "SELECT id, name FROM scopes ORDER BY name"
             ).fetchall()
@@ -231,12 +231,12 @@ class ScopeRegistry:
             cursor = connection.execute("DELETE FROM scopes WHERE name = ?", (name,))
         return bool(cursor.rowcount)
 
-    def resolve(self, names):
+    def resolve(self, names, *, readonly=False):
         """Union named scopes into one effective authority."""
         operations = builtins.set()
         environment = builtins.set()
         for name in names:
-            scope = self.require(name)
+            scope = self.require(name, readonly=readonly)
             operations.update(scope.operations)
             environment.update(scope.environment)
         return EffectiveScope(frozenset(operations), frozenset(environment))

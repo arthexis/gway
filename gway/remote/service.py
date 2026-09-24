@@ -24,6 +24,21 @@ def register(runtime):
     from .acceptance import accept
     from .server import serve
 
+    def serve_remote(
+        host="127.0.0.1",
+        port=8001,
+        *,
+        public_origin="https://remote.arthexis.com",
+        resource_path="/mcp",
+    ):
+        return serve(
+            host,
+            port,
+            public_origin=public_origin,
+            resource_path=resource_path,
+            runtime=runtime,
+        )
+
     runtime.wrap(
         "remote.accept",
         lambda resource, protocol=None: accept(
@@ -36,7 +51,7 @@ def register(runtime):
     )
     runtime.wrap(
         "remote.serve",
-        serve,
+        serve_remote,
         op="serve",
         sub="remote",
     )

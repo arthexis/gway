@@ -128,8 +128,11 @@ class ParentGateway:
             kwargs=dict(kwargs),
         )
 
-    def execute(self, command):
-        return request_parent("gateway.execute", command=command)
+    def execute(self, command, mutate=None):
+        params = {"command": command}
+        if mutate is not None:
+            params["mutate"] = mutate
+        return request_parent("gateway.execute", **params)
 
     def authenticate_bearer(self, bearer, resource=None):
         return request_parent(
@@ -138,13 +141,15 @@ class ParentGateway:
             resource=resource,
         )
 
-    def execute_authenticated(self, bearer, command, resource=None):
-        return request_parent(
-            "gateway.execute_authenticated",
-            bearer=bearer,
-            command=command,
-            resource=resource,
-        )
+    def execute_authenticated(self, bearer, command, resource=None, mutate=None):
+        params = {
+            "bearer": bearer,
+            "command": command,
+            "resource": resource,
+        }
+        if mutate is not None:
+            params["mutate"] = mutate
+        return request_parent("gateway.execute_authenticated", **params)
 
 
 def safe_default(value):
@@ -508,7 +513,13 @@ def _service_parent_request(runtime, stream, request):
             )
         elif method == "gateway.execute":
             with runtime.external_authority():
-                result = runtime(params["command"])
+                if "mutate" in params:
+                    result = runtime.execute(
+                        params["command"],
+                        mutate=params["mutate"],
+                    )
+                else:
+                    result = runtime(params["command"])
         elif method in {
             "gateway.authenticate_bearer",
             "gateway.execute_authenticated",
@@ -537,7 +548,13 @@ def _service_parent_request(runtime, stream, request):
                     environment=identity.authority.environment,
                 ):
                     with runtime.external_authority():
-                        result = runtime(params["command"])
+                        if "mutate" in params:
+                            result = runtime.execute(
+                                params["command"],
+                                mutate=params["mutate"],
+                            )
+                        else:
+                            result = runtime.execute(params["command"])
         else:
             raise LookupError(f"Unknown parent Gateway RPC method: {method}")
         response = {
