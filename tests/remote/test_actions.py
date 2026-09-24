@@ -258,3 +258,89 @@ def test_remote_server_delegates_actions_namespace(gateway):
 
     assert status == 200
     assert "result" in payload
+
+
+def test_actions_openapi_exposes_only_fixed_transport_operations(gateway):
+    application, _ = _remote(gateway, operations=set())
+
+    status, headers, document = application.response(
+        "GET",
+        "/actions/openapi.json",
+    )
+
+    assert status == 200
+    assert headers["content-type"] == "application/json"
+    assert document["openapi"] == "3.1.0"
+    assert document["servers"] == [{"url": "https://remote.example.test"}]
+    assert set(document["paths"]) == {
+        "/actions/query",
+        "/actions/execute",
+    }
+    assert document["paths"]["/actions/query"]["post"]["operationId"] == "queryGway"
+    assert document["paths"]["/actions/execute"]["post"]["operationId"] == "executeGway"
+
+    serialized = json.dumps(document)
+    assert "log.read" not in serialized
+    assert "log.search" not in serialized
+    assert "log.tail" not in serialized
+    assert "log.sources" not in serialized
+
+
+def test_actions_openapi_requires_command_and_documents_boundaries(gateway):
+    application, _ = _remote(gateway, operations=set())
+    document = application.openapi_document()
+
+    query = document["paths"]["/actions/query"]["post"]
+    execute = document["paths"]["/actions/execute"]["post"]
+    schema = query["requestBody"]["content"]["application/json"]["schema"]
+
+    assert schema["required"] == ["command"]
+    assert schema["properties"]["command"]["type"] == "string"
+    assert "non-mutating ceiling" in query["description"]
+    assert "specific canonical Gway operation is authorized" in execute["description"]
+
+
+def test_actions_openapi_uses_remote_oauth_metadata(gateway):
+    application, _ = _remote(gateway, operations=set())
+    document = application.openapi_document()
+
+    oauth = document["components"]["securitySchemes"]["oauth2"]
+    flow = oauth["flows"]["authorizationCode"]
+
+    assert flow["authorizationUrl"] == "https://remote.example.test/oauth/authorize"
+    assert flow["tokenUrl"] == "https://remote.example.test/oauth/token"
+
+
+def test_actions_openapi_allows_only_get(gateway):
+    application, _ = _remote(gateway, operations=set())
+
+    status, headers, payload = application.response(
+        "POST",
+        "/actions/openapi.json",
+        body=b"{}",
+    )
+
+    assert status == 405
+    assert headers["allow"] == "GET"
+    assert payload["error"] == "method_not_allowed"
+
+
+def test_remote_server_delegates_openapi_document(gateway):
+    from gway.remote.server import RemoteApplication
+
+    metadata = RemoteOAuthMetadata.from_origin(
+        "https://remote.example.test",
+        resource_path="/mcp",
+    )
+    application = RemoteApplication(metadata, runtime=gateway)
+
+    status, _, document = application.response(
+        "GET",
+        "/actions/openapi.json",
+    )
+
+    assert status == 200
+    assert set(document["paths"]) == {
+        "/actions/query",
+        "/actions/execute",
+    }
