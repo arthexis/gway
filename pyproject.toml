@@ -41,6 +41,10 @@ include = ["gway*"]
     "sampler/web/expose/*.rx",
     "sampler/web/expose/*.conf",
 ]
+"share/gway/sampler/web/remote" = [
+    "sampler/web/remote/*.rx",
+    "sampler/web/remote/*.conf",
+]
 "share/gway/sampler/arthexis" = ["sampler/arthexis/*.rx"]
 "share/gway/sampler/mcp" = [
     "sampler/mcp/*.rx",

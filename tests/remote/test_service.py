@@ -130,9 +130,10 @@ def test_remote_security_state_survives_service_reinstall_and_fresh_gateway(
     monkeypatch.setenv("GWAY_DATA_DIR", str(data_root))
     monkeypatch.setenv("GWAY_CACHE_DIR", str(cache_root))
 
-    scopes = ScopeRegistry()
-    tokens = TokenRegistry()
-    oauth = OAuthRegistry()
+    first = Gateway()
+    scopes = ScopeRegistry(first.security_path)
+    tokens = TokenRegistry(first.security_path)
+    oauth = OAuthRegistry(first.security_path)
     scopes.replace("chatgpt-logs", operations={"log.read"})
     tokens.create("operator", scopes={"chatgpt-logs"})
     oauth.link("chatgpt", "operator")
@@ -144,7 +145,6 @@ def test_remote_security_state_survives_service_reinstall_and_fresh_gateway(
     )
     issued = oauth.issue_tokens(grant.id)
 
-    first = Gateway()
     first._service_controller.install(
         "remote",
         "serve",
@@ -164,7 +164,9 @@ def test_remote_security_state_survives_service_reinstall_and_fresh_gateway(
     definition = fresh._service_controller._definition(("remote", "serve"))
     assert definition.identity == ("gway", "remote-auth")
 
-    authenticated = OAuthRegistry().authenticate_access(issued.access_token)
+    authenticated = OAuthRegistry(fresh.security_path).authenticate_access(
+        issued.access_token
+    )
     assert authenticated.grant.id == grant.id
     assert authenticated.authority.operations == frozenset({"log.read"})
 

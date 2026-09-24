@@ -234,6 +234,24 @@ def test_read_journal_rejects_aggregate_and_non_journal_sources():
         )
 
 
+
+def test_read_journal_search_no_match_returns_empty(monkeypatch):
+    selected = [_service_source("arthexis/web", "arthexis-web.service")]
+
+    def no_match(command, **kwargs):
+        assert "--grep" in command
+        raise subprocess.CalledProcessError(
+            1,
+            command,
+            output="",
+            stderr="",
+        )
+
+    monkeypatch.setattr("gway.logs.journal.subprocess.run", no_match)
+
+    assert read_journal(selected, grep="definitely-no-match") == []
+
+
 def test_read_journal_wraps_process_failure(monkeypatch):
     selected = [_service_source("arthexis/web", "arthexis-web.service")]
 

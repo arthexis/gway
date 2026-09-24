@@ -507,16 +507,23 @@ history. It is a context-control operation, not a full Gateway reset.
 
 ## Results and context
 
-Gateway resolution currently searches sources in this order:
+Gateway resolution derives semantic candidates from the active topics plus the
+requested subject. For each candidate it searches the ordered runtime sources:
 
 ```text
 results
 context
-environment
+registered bindings / configured semantic sources
+literal environment compatibility
 ```
 
-That precedence matters. A published result with a matching name shadows an
-ordinary context value, which shadows an environment variable.
+Semantic specificity is the outer ordering dimension. A more-specific candidate
+is exhausted before Gway broadens to the next semantic candidate, so a specific
+binding is not displaced merely because a broader value comes from a different
+physical source.
+
+Literal environment lookup remains the lowest-level compatibility source; it is
+not the preferred API for Gway-owned configuration.
 
 Published results are retained under their semantic subject:
 
@@ -540,6 +547,51 @@ inspect_charger() -> {"serial": "ABC", "online": True}
 ```
 
 Publishing another value under the same subject replaces the previous value.
+
+## Semantic configuration and physical bindings
+
+Sigils name semantic subjects. Active topics supply the surrounding semantic
+position. Given topics `dns`, `godaddy` and subject `api_key`, Gway derives:
+
+```text
+dns.godaddy.api_key
+godaddy.dns.api_key
+godaddy.api_key
+dns.api_key
+api_key
+```
+
+The complete topic permutations identify the same semantic position; declared
+topic order determines preference, not identity.
+
+Physical representations belong in bindings rather than operations. Project
+configuration may declare them with structured `[[tool.gway.bindings]]`
+entries:
+
+```toml
+[[tool.gway.bindings]]
+topics = ["dns", "godaddy"]
+subject = "api_key"
+sources = [
+  { type = "env", value = "GODADDY_API_KEY", sensitive = true },
+  { type = "secret", value = "dns/godaddy/key" },
+]
+```
+
+Environment, file, and secret bindings are ordered physical sources for the same
+semantic value. An environment alias such as `GODADDY_API_KEY` also accepts
+`GWAY_GODADDY_API_KEY`; the prefixed spelling wins only within that physical
+alias pair. Semantic specificity still outranks that preference.
+
+Direct semantic values belong under `[tool.gway.variables]`. Gway-owned
+operations/providers consume semantic parameters or sigils and must not discover
+their own environment names or secret-file paths.
+
+Literal environment operations are an interoperability surface. `env NAME`,
+`set env NAME VALUE`, `clear env NAME`, child-process environments, and
+service `--environment` remain valid when the literal environment identity is
+part of an external contract. They must not be used as an alternate Gway
+configuration system.
 
 ## Sigils
 
@@ -744,7 +796,7 @@ python -m pip install pytest
 python -m pytest -q
 ```
 
-CI currently exercises the suite on Python 3.10 and Python 3.13.
+CI runs the full regression suite on Python 3.10, the primary supported baseline, and focused forward-compatibility checks on Python 3.13.
 
 When refactoring, preserve behavioral contracts first. Move/reorganize tests
 only after the implementation remains green, unless the change intentionally
@@ -1063,8 +1115,10 @@ entry maps one command name to a `module:callable` target. GWAY creates an
 executable launcher that prepends the durable managed project to `sys.path`
 and invokes that target with the same Python interpreter running the installer.
 User launchers default to `~/.local/bin`; system launchers default to
-`/usr/local/bin`. `GWAY_BIN_DIR` and `GWAY_SYSTEM_BIN_DIR` override those
-locations.
+`/usr/local/bin`. Gateway-owned overrides resolve semantically through
+`bin_dir` under the user/system topic. Legacy `GWAY_BIN_DIR` and
+`GWAY_SYSTEM_BIN_DIR` spellings remain physical compatibility bindings rather
+than the semantic API.
 
 Launcher ownership is recorded under durable `launchers/` metadata. Project
 directory replacement, launcher replacement, and SQLite state update form one
@@ -1135,8 +1189,10 @@ selects desired repository state.
 Durable installation state is separate from the disposable cache. User data
 uses the platform data directory (`$XDG_DATA_HOME/gway` or
 `~/.local/share/gway` on Linux), while system data uses a system location
-(`/var/lib/gway` on Linux). `GWAY_DATA_DIR` and
-`GWAY_SYSTEM_DATA_DIR` override those roots. Each scope reserves:
+(`/var/lib/gway` on Linux). Gateway-owned overrides resolve through the
+semantic `data_dir` subject under the user/system topic. Legacy
+`GWAY_DATA_DIR` and `GWAY_SYSTEM_DATA_DIR` spellings are compatibility
+bindings. Each scope reserves:
 
 ```text
 projects/
@@ -1154,6 +1210,17 @@ source identity, requested ref, resolved revision, fingerprint, install path,
 scope, and installation timestamp. Cache deletion must never remove these
 records or durable project/stash data.
 
+## Ephemeral runtime capabilities
+
+Not every semantic value is persistent configuration. Some meanings exist only
+for one execution boundary. The parent-Gateway bridge used by managed companion
+and standalone MCP subprocesses is one example.
+
+Consumers depend on the parent-Gateway capability, not on host/port/token
+transport details. A launcher may serialize that capability while crossing a
+process boundary, but the serialization is private IPC representation rather
+than environment-based Gway configuration.
+
 ## Cache
 
 GWAY has a general-purpose namespaced cache available as `Gateway.cache`. The
@@ -1165,10 +1232,12 @@ macOS:       ~/Library/Caches/gway
 Windows:     %LOCALAPPDATA%/gway/cache
 ```
 
-`GWAY_CACHE_DIR` overrides the default and is the preferred mechanism for
-system/service deployments that need a shared location such as
-`/var/cache/gway`. A caller may also construct `Gateway(cache=...)` with a
-root path or an existing `Cache` instance.
+The Gateway resolves the semantic `cache_dir` subject under the `cache`
+topic before constructing its cache. Projects can set it directly under
+`[tool.gway.variables]`, while `GWAY_CACHE_DIR` remains a physical
+compatibility binding rather than the preferred configuration API. A caller may
+also construct `Gateway(cache=...)` with a root path or an existing `Cache`
+instance; an explicit constructor value wins.
 
 Cache construction is lazy: creating a Gateway does not create cache
 directories. A namespace is created only when a feature actually stores

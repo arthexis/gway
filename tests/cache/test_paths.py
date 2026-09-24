@@ -1,17 +1,15 @@
 from gway.cache import default_root
 
 
-def test_cache_override_wins_on_every_platform(tmp_path):
-    override = tmp_path / "shared-cache"
+def test_gateway_cache_dir_resolves_legacy_environment_binding(tmp_path, monkeypatch):
+    from gway import Gateway
 
-    assert (
-        default_root(
-            environ={"GWAY_CACHE_DIR": str(override)},
-            platform="linux",
-            home=tmp_path / "home",
-        )
-        == override
-    )
+    override = tmp_path / "shared-cache"
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(override))
+
+    gateway = Gateway()
+
+    assert gateway.cache.root == override.resolve()
 
 
 def test_linux_cache_uses_xdg_cache_home(tmp_path):

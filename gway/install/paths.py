@@ -1,9 +1,10 @@
 """Durable installation data paths."""
 
 from dataclasses import dataclass
-import os
 from pathlib import Path
 import sys
+
+from ..environment import process_environment
 
 
 @dataclass(frozen=True)
@@ -19,16 +20,14 @@ class InstallPaths:
     scope: str
 
 
-def data_root(*, system=False, environ=None, platform=None, home=None):
-    """Return GWAY's durable data root without creating it."""
-    environ = os.environ if environ is None else environ
+def data_root(*, system=False, data_dir=None, environ=None, platform=None, home=None):
+    """Return GWAY's platform data root or one explicit semantic override."""
+    environ = process_environment if environ is None else environ
     platform = sys.platform if platform is None else platform
     home = Path.home() if home is None else Path(home)
 
-    override_name = "GWAY_SYSTEM_DATA_DIR" if system else "GWAY_DATA_DIR"
-    override = environ.get(override_name)
-    if override:
-        return Path(override).expanduser()
+    if data_dir is not None:
+        return Path(data_dir).expanduser()
 
     if system:
         if platform.startswith("win"):
@@ -53,16 +52,14 @@ def data_root(*, system=False, environ=None, platform=None, home=None):
     return home / ".local" / "share" / "gway"
 
 
-def bin_root(*, system=False, environ=None, platform=None, home=None):
-    """Return the activation bin directory for one installation scope."""
-    environ = os.environ if environ is None else environ
+def bin_root(*, system=False, bin_dir=None, environ=None, platform=None, home=None):
+    """Return the platform activation bin directory or one explicit override."""
+    environ = process_environment if environ is None else environ
     platform = sys.platform if platform is None else platform
     home = Path.home() if home is None else Path(home)
 
-    override_name = "GWAY_SYSTEM_BIN_DIR" if system else "GWAY_BIN_DIR"
-    override = environ.get(override_name)
-    if override:
-        return Path(override).expanduser()
+    if bin_dir is not None:
+        return Path(bin_dir).expanduser()
 
     if platform.startswith("win"):
         base = environ.get("PROGRAMDATA" if system else "LOCALAPPDATA")
@@ -77,12 +74,21 @@ def bin_root(*, system=False, environ=None, platform=None, home=None):
     return home / ".local" / "bin"
 
 
-def install_paths(*, system=False, root=None, **kwargs):
-    """Return all durable paths for one installation scope."""
+def install_paths(
+    *,
+    system=False,
+    root=None,
+    data_dir=None,
+    bin_dir=None,
+    **kwargs,
+):
+    """Return all durable paths from platform defaults or explicit values."""
     selected = (
-        data_root(system=system, **kwargs) if root is None else Path(root).expanduser()
+        data_root(system=system, data_dir=data_dir, **kwargs)
+        if root is None
+        else Path(root).expanduser()
     ).resolve()
-    selected_bin = bin_root(system=system, **kwargs).resolve()
+    selected_bin = bin_root(system=system, bin_dir=bin_dir, **kwargs).resolve()
     return InstallPaths(
         root=selected,
         projects=selected / "projects",

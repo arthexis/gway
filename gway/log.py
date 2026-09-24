@@ -12,7 +12,6 @@ import socket as _socket
 import sys as _sys
 from datetime import datetime as _datetime, timezone as _timezone
 
-
 _DEFAULT_LEVEL = _logging.WARNING
 _DEFAULT_OUTPUT_LEVEL = _logging.INFO
 _DEFAULT_LOG_FILENAME = "gway.log"
@@ -30,13 +29,20 @@ _instances = _count()
 _output_handler = None
 _log_source = _ContextVar(
     "gway_log_source",
-    default=_os.environ.get("GWAY_LOG_SOURCE", "gway"),
+    default="gway",
 )
 
 
 def _current_source():
     """Return the logical log source for the current execution context."""
     return _log_source.get()
+
+
+def _set_default_source(identity):
+    """Set the current execution's default semantic log source."""
+    value = _validate_source(identity)
+    _log_source.set(value)
+    return value
 
 
 def _validate_source(identity):

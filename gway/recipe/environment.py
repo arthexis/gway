@@ -7,7 +7,6 @@ import json
 import os
 import subprocess
 
-from ..install.paths import data_root
 
 
 @dataclass(frozen=True)
@@ -84,7 +83,7 @@ def recipe_environment(runtime, recipe_filename):
     identity = provenance["identity"]
     key = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     root = (
-        data_root(system=provenance["scope"] == "system").expanduser().resolve()
+        runtime.data_root(system=provenance["scope"] == "system").expanduser().resolve()
         / "recipes"
         / key
     )

@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from ..environment import environment_child
 import signal
 import subprocess
 import sys
@@ -69,7 +70,7 @@ class ProcessBackend:
 
     @staticmethod
     def _environment(service):
-        environment = os.environ.copy()
+        environment = environment_child()
         for assignment in service.environment:
             name, value = assignment.split("=", 1)
             environment[name] = value

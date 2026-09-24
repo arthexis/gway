@@ -28,6 +28,8 @@ def install(
     force: bool = False,
     stash: bool = False,
     system: bool = False,
+    cache=None,
+    paths=None,
 ):
     """Converge one local or Git project installation toward requested state.
 
@@ -51,7 +53,7 @@ def install(
     from .transaction import install_local, install_materialized
 
     if _local_intent(source):
-        return install_local(request)
+        return install_local(request, paths=paths)
 
     from .source import named_source
 
@@ -63,6 +65,7 @@ def install(
         artifact = materialize(
             resolved_source,
             ref=request.ref,
+            cache=cache,
         )
         return install_materialized(
             request,
@@ -70,12 +73,13 @@ def install(
             source_identity=artifact.source,
             requested_ref=artifact.requested_ref,
             resolved_revision=artifact.resolved_revision,
+            paths=paths,
         )
 
-    return install_local(request)
+    return install_local(request, paths=paths)
 
 
-def uninstall(project, *, system: bool = False):
+def uninstall(project, *, system: bool = False, paths=None):
     """Converge one managed project toward absence.
 
     Args:
@@ -89,4 +93,4 @@ def uninstall(project, *, system: bool = False):
 
     from .transaction import uninstall_local
 
-    return uninstall_local(request)
+    return uninstall_local(request, paths=paths)

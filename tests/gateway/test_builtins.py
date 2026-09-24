@@ -158,3 +158,89 @@ def test_clear_builtin_does_not_remove_published_result_history(gateway):
 
     assert gateway.context == {}
     assert gateway.results["site"] == "MTY"
+
+
+def test_pipe_without_flags_returns_detached_context_snapshot(gateway):
+    gateway.context.clear()
+    gateway.context.update({"site": "MTY", "role": "Watchtower"})
+
+    result = gateway("pipe")
+
+    assert result == {"site": "MTY", "role": "Watchtower"}
+    assert result is not gateway.context
+    result["site"] = "GDL"
+    assert gateway.context["site"] == "MTY"
+
+
+def test_pipe_explicit_flags_returns_result_without_publishing_context(gateway):
+    gateway.context.clear()
+    result = gateway("pipe --site MTY --enabled")
+
+    assert result == {"site": "MTY", "enabled": True}
+    assert gateway.context == {}
+
+
+def test_pipe_bare_flag_reuses_existing_context_value(gateway):
+    gateway.context.clear()
+    gateway.context.update({"site": "MTY", "enabled": False})
+
+    assert gateway("pipe --site") == {"site": "MTY"}
+    assert gateway("pipe --enabled") == {"enabled": False}
+    assert gateway.context == {"site": "MTY", "enabled": False}
+
+
+def test_pipe_bare_unknown_flag_defaults_to_true(gateway):
+    gateway.context.clear()
+
+    assert gateway("pipe --enabled") == {"enabled": True}
+    assert gateway.context == {}
+
+
+def test_pipe_explicit_value_overrides_existing_context(gateway):
+    gateway.context.clear()
+    gateway.context["site"] = "MTY"
+
+    assert gateway("pipe --site GDL") == {"site": "GDL"}
+    assert gateway.context["site"] == "MTY"
+
+
+def test_pipe_result_can_feed_next_operation_without_context_leak(gateway):
+    gateway.context.clear()
+
+    def inspect(values):
+        return values["site"]
+
+    gateway.inspect = gateway.wrap("inspect", inspect)
+
+    assert gateway("pipe --site MTY - inspect") == "MTY"
+    assert "site" not in gateway.context
+
+
+def test_default_publishes_flags_into_context_without_result(gateway):
+    gateway.context.clear()
+    history_size = len(gateway.results.history)
+
+    gateway("default --site MTY --enabled")
+
+    assert gateway.context == {"site": "MTY", "enabled": True}
+    assert len(gateway.results.history) == history_size
+
+
+def test_default_overrides_existing_context_values(gateway):
+    gateway.context.clear()
+    gateway.context.update({"site": "MTY", "keep": 1})
+
+    gateway("default --site GDL")
+
+    assert gateway.context == {"site": "GDL", "keep": 1}
+
+
+def test_default_with_no_flags_is_context_noop(gateway):
+    gateway.context.clear()
+    gateway.context["site"] = "MTY"
+    history_size = len(gateway.results.history)
+
+    gateway("default")
+
+    assert gateway.context == {"site": "MTY"}
+    assert len(gateway.results.history) == history_size

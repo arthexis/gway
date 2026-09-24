@@ -246,3 +246,14 @@ def test_default_journal_output_does_not_dual_write_file(
     assert isinstance(handler, gway_log._JournalHandler)
     assert fake.payloads == [b"<14>gway: journal only"]
     assert not (tmp_path / "logs" / "gway.log").exists()
+
+
+
+def test_gateway_log_source_resolves_semantic_environment_binding(monkeypatch):
+    from gway import Gateway
+
+    monkeypatch.setenv("GWAY_LOG_SOURCE", "semantic-source")
+
+    Gateway()
+
+    assert gway_log._current_source() == "semantic-source"

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from urllib.request import Request, urlopen
 
+from ..environment import environment_child
 from ..install.paths import data_root
 
 
@@ -13,24 +14,21 @@ UV_INSTALL_SH = "https://astral.sh/uv/install.sh"
 UV_INSTALL_PS1 = "https://astral.sh/uv/install.ps1"
 
 
-def managed_uv_root(*, system=False):
+def managed_uv_root(*, system=False, root=None):
     """Return Gway's managed uv installation directory without creating it."""
-    return (
-        data_root(system=system).expanduser().resolve()
-        / "tools"
-        / "uv"
-    )
+    base = data_root(system=system) if root is None else Path(root)
+    return base.expanduser().resolve() / "tools" / "uv"
 
 
-def managed_uv_path(*, system=False):
+def managed_uv_path(*, system=False, root=None):
     """Return the expected Gway-managed uv executable path."""
     name = "uv.exe" if os.name == "nt" else "uv"
-    return managed_uv_root(system=system) / name
+    return managed_uv_root(system=system, root=root) / name
 
 
-def find_uv(*, system=False):
+def find_uv(*, system=False, root=None):
     """Return the preferred usable uv executable, if one is already available."""
-    managed = managed_uv_path(system=system)
+    managed = managed_uv_path(system=system, root=root)
     if managed.is_file():
         return managed.resolve()
 
@@ -49,9 +47,10 @@ def _download_text(url):
 def _bootstrap_posix(target):
     script = _download_text(UV_INSTALL_SH)
     target.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env["UV_UNMANAGED_INSTALL"] = str(target)
-    env["UV_NO_MODIFY_PATH"] = "1"
+    env = environment_child(overrides={
+        "UV_UNMANAGED_INSTALL": str(target),
+        "UV_NO_MODIFY_PATH": "1",
+    })
     subprocess.run(
         ["sh"],
         input=script,
@@ -63,9 +62,10 @@ def _bootstrap_posix(target):
 
 def _bootstrap_windows(target):
     target.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env["UV_UNMANAGED_INSTALL"] = str(target)
-    env["UV_NO_MODIFY_PATH"] = "1"
+    env = environment_child(overrides={
+        "UV_UNMANAGED_INSTALL": str(target),
+        "UV_NO_MODIFY_PATH": "1",
+    })
     command = (
         "irm '" + UV_INSTALL_PS1 + "' | iex"
     )
@@ -83,15 +83,15 @@ def _bootstrap_windows(target):
     )
 
 
-def bootstrap_uv(*, system=False):
+def bootstrap_uv(*, system=False, root=None):
     """Install uv into Gway-managed durable storage and return its executable."""
-    target = managed_uv_root(system=system)
+    target = managed_uv_root(system=system, root=root)
     if os.name == "nt":
         _bootstrap_windows(target)
     else:
         _bootstrap_posix(target)
 
-    executable = managed_uv_path(system=system)
+    executable = managed_uv_path(system=system, root=root)
     if not executable.is_file():
         raise RuntimeError(
             f"uv installer completed without creating expected executable: {executable}"
@@ -99,9 +99,12 @@ def bootstrap_uv(*, system=False):
     return executable.resolve()
 
 
-def ensure_uv(*, system=False):
+def ensure_uv(*, system=False, root=None):
     """Return a usable uv executable, bootstrapping one only when necessary."""
-    existing = find_uv(system=system)
+    kwargs = {"system": system}
+    if root is not None:
+        kwargs["root"] = root
+    existing = find_uv(**kwargs)
     if existing is not None:
         return existing
-    return bootstrap_uv(system=system)
+    return bootstrap_uv(**kwargs)

@@ -6,8 +6,10 @@ import inspect
 import threading
 
 from .runner import invoke
+from .bindings import Bindings
 from . import log as gway_log
 from .normalization import complete_arguments
+from .environment import process_environment
 from .operations import registry_views, split_operation
 from .publication import publish
 from .sigil import Resolver
@@ -35,6 +37,9 @@ class Gateway(Resolver):
         **values,
     ):
         self.name = name
+        self._cache_explicit = cache is not None
+        self.environment = process_environment
+        self.bindings = Bindings()
         self.logger = gway_log._child(name, level=log_level)
         for level_name, level in gway_log._levels(self.logger).items():
             setattr(self, level_name, level)
@@ -48,15 +53,10 @@ class Gateway(Resolver):
         self.execution = None
         self.previous_execution = None
 
-        from .install.identity import running_gway_identity
+        self.gway_identity = None
 
-        self.gway_identity = running_gway_identity()
-
-        from .cache import Cache, default_root
+        from .cache import Cache
         from .journal import JournalManager
-
-        self.cache = cache if isinstance(cache, Cache) else Cache(cache)
-        self.journal = JournalManager(default_root() / "rollback")
         self._execution_depth = 0
         self._execution_suspension = None
         self._authorization_stack_var = ContextVar(
@@ -66,6 +66,10 @@ class Gateway(Resolver):
         self._capability_depth_var = ContextVar(
             f"gway_capability_depth_{id(self)}",
             default=0,
+        )
+        self._semantic_topics_var = ContextVar(
+            f"gway_semantic_topics_{id(self)}",
+            default=(),
         )
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
@@ -94,6 +98,7 @@ class Gateway(Resolver):
             [
                 ("results", self.results),
                 ("context", self.context),
+                ("bindings", self.bindings),
                 (
                     "env",
                     Environment(
@@ -108,6 +113,9 @@ class Gateway(Resolver):
         from .ingestion.python import ingest_module
 
         ingest_module(self, builtin, transparent=True)
+
+        self.install = self.wrap("install", self._install)
+        self.uninstall = self.wrap("uninstall", self._uninstall)
 
         from .filesystem import Filesystem
         from .rendering import Renderer
@@ -124,6 +132,8 @@ class Gateway(Resolver):
         self.commit = self.wrap("commit", self._commit_journal)
         self.rollback = self.wrap("rollback", self._rollback_journal)
         self.clear = self.wrap("clear", self._clear_context)
+        self.default = self.wrap("default", self._default_context, op="default", sub="default")
+        self.pipe = self.wrap("pipe", self._pipe_context, op="pipe", sub="pipe")
         self.set_env = self.wrap("set.env", self._set_environment, op="set", sub="env")
         self.clear_env = self.wrap(
             "clear.env", self._clear_environment, op="clear", sub="env"
@@ -136,9 +146,30 @@ class Gateway(Resolver):
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
         self.reload = self.wrap("reload", self._reload)
 
+        from .providers.core import register as register_core_provider
+        from .providers.godaddy import register as register_godaddy_provider
         from .config import bootstrap
 
+        register_core_provider(self)
+        register_godaddy_provider(self)
+
+        from .install.identity import running_gway_identity
+
+        self.gway_identity = running_gway_identity(paths=self.install_paths())
         bootstrap(self)
+
+        if isinstance(cache, Cache):
+            self.cache = cache
+        else:
+            with self.topics("cache"):
+                configured_cache = self.resolve("[cache_dir]", default=cache)
+            self.cache = Cache(configured_cache)
+        self.journal = JournalManager(self.cache.root / "rollback")
+        self.security_path = self.cache.root / "security" / "state.sqlite"
+
+        with self.topics("log"):
+            log_source = self.resolve("[source]", default="gway")
+        gway_log._set_default_source(log_source)
 
         from .ingestion.python import ingest_python
         from .remote.service import register as register_remote_service
@@ -159,6 +190,133 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    def _default_context(self, **values):
+        """Publish explicit semantic values into the containing context."""
+        from .publication import SKIP_PUBLICATION
+
+        self.context.update(values)
+        return SKIP_PUBLICATION
+
+    def _pipe_context(self, **values):
+        """Return selected semantic context as a result-only mapping.
+
+        Bare flags reuse an existing contextual value when one is available;
+        otherwise they contribute True. Explicit flag values always win.
+        With no flags, return a detached snapshot of the current context.
+        """
+        from .publication import ResultOnlyMapping
+        from .semantic import resolve_mapping_key
+
+        if not values:
+            return ResultOnlyMapping(self.context)
+
+        selected = {}
+        for name, value in values.items():
+            if value is True:
+                try:
+                    key = resolve_mapping_key(self.context, name)
+                except KeyError:
+                    pass
+                else:
+                    value = self.context[key]
+            selected[name] = value
+        return ResultOnlyMapping(selected)
+
+    def data_root(self, *, system=False):
+        """Resolve Gway's durable data root through semantic configuration."""
+        from .install.paths import data_root
+
+        scope = "system" if system else "user"
+        with self.topics(scope):
+            configured = self.resolve("[data_dir]", default=None)
+        return data_root(system=system, data_dir=configured)
+
+    def bin_root(self, *, system=False):
+        """Resolve Gway's launcher directory through semantic configuration."""
+        from .install.paths import bin_root
+
+        scope = "system" if system else "user"
+        with self.topics(scope):
+            configured = self.resolve("[bin_dir]", default=None)
+        return bin_root(system=system, bin_dir=configured)
+
+    def install_paths(self, *, system=False, root=None):
+        """Return durable install paths from semantic roots plus platform defaults."""
+        from .install.paths import install_paths
+
+        return install_paths(
+            system=system,
+            root=root,
+            data_dir=None if root is not None else self.data_root(system=system),
+            bin_dir=self.bin_root(system=system),
+        )
+
+    def _install(self, source, *, ref=None, upgrade=True, force=False, stash=False, system=False):
+        """Converge one local or Git project installation toward requested state.
+
+        Args:
+            source: Local project path, Git source, GitHub shorthand, or known project identity.
+            ref: Branch, tag, or commit requested for Git sources.
+            upgrade: Replace an existing installation when the requested source state changes.
+            force: Discard drift in a dirty managed installation before reconciliation.
+            stash: Preserve a dirty managed installation before reconciliation.
+            system: Use system-wide data and launcher locations instead of user locations.
+        """
+        from .cache import Cache
+        from .install.ops import install as install_operation
+
+        if self._cache_explicit:
+            cache = self.cache
+        else:
+            with self.topics("cache"):
+                configured_cache = self.resolve("[cache_dir]", default=None)
+            cache = self.cache if configured_cache is None else Cache(configured_cache)
+        return install_operation(
+            source,
+            ref=ref,
+            upgrade=upgrade,
+            force=force,
+            stash=stash,
+            system=system,
+            cache=cache,
+            paths=self.install_paths(system=system),
+        )
+
+    def _uninstall(self, project, *, system=False):
+        """Converge one managed project toward absence."""
+        from .install.ops import uninstall as uninstall_operation
+
+        return uninstall_operation(
+            project,
+            system=system,
+            paths=self.install_paths(system=system),
+        )
+
+    def bind(self, semantic_key, *bindings, replace=True):
+        """Register ordered physical bindings for one exact semantic key."""
+        return self.bindings.register(
+            semantic_key,
+            *bindings,
+            replace=replace,
+        )
+
+    @property
+    def semantic_topics(self):
+        """Return execution-local semantic topics from broadest to most-local."""
+        return self._semantic_topics_var.get()
+
+    @contextmanager
+    def topics(self, *topics):
+        """Temporarily extend the semantic topics used to resolve subjects."""
+        normalized = tuple(str(topic).strip() for topic in topics)
+        if not normalized or any(not topic for topic in normalized):
+            raise ValueError("semantic topics must be non-empty")
+        token = self._semantic_topics_var.set((*self.semantic_topics, *normalized))
+        try:
+            yield self.semantic_topics
+        finally:
+            self._semantic_topics_var.reset(token)
 
     @property
     def execution_depth(self):
@@ -330,10 +488,8 @@ class Gateway(Resolver):
         return frames[-1]
 
     def _remember_environment_value(self, frame, name):
-        import os
-
         if name not in frame.environment_restore:
-            frame.environment_restore[name] = os.environ.get(name)
+            frame.environment_restore[name] = self.environment.get(name)
 
     def _set_environment(self, name, value):
         """Set one environment variable for the active recipe scope.
@@ -345,8 +501,6 @@ class Gateway(Resolver):
             name: Environment variable name.
             value: Environment variable value.
         """
-        import os
-
         frame = self._active_recipe_frame()
         name = str(name).strip()
         if not name or "=" in name or "\x00" in name:
@@ -355,7 +509,7 @@ class Gateway(Resolver):
         if "\x00" in value:
             raise ValueError("environment variable value cannot contain NUL")
         self._remember_environment_value(frame, name)
-        os.environ[name] = value
+        self.environment.set(name, value)
         return value
 
     def _clear_environment(self, name):
@@ -366,14 +520,12 @@ class Gateway(Resolver):
         Args:
             name: Environment variable name.
         """
-        import os
-
         frame = self._active_recipe_frame()
         name = str(name).strip()
         if not name or "=" in name or "\x00" in name:
             raise ValueError("environment variable name must be non-empty and contain no '='")
         self._remember_environment_value(frame, name)
-        os.environ.pop(name, None)
+        self.environment.remove(name)
         return None
 
     def _require(self, *packages: str, python: bool = True):
@@ -634,17 +786,15 @@ class Gateway(Resolver):
 
     def _environment_names(self):
         """Return only environment names visible to the active authority."""
-        import os
-
         authority = self.authorization
         if authority is None or self._capability_depth:
-            return tuple(os.environ)
+            return self.environment.names()
         allowed = authority.environment
         if allowed is None:
             return ()
         if "__all__" in allowed:
-            return tuple(os.environ)
-        return tuple(name for name in allowed if name in os.environ)
+            return self.environment.names()
+        return tuple(name for name in allowed if name in self.environment)
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command through the unified dispatcher."""

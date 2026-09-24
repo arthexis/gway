@@ -32,6 +32,72 @@ def project_variables(data):
     return dict(variables)
 
 
+
+def project_bindings(data):
+    """Return physical binding declarations from [tool.gway]."""
+    if not isinstance(data, dict):
+        return ()
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    bindings = gway.get("bindings") if isinstance(gway, dict) else None
+    if bindings is None:
+        return ()
+    if not isinstance(bindings, list):
+        raise ValueError("[[tool.gway.bindings]] must be an array of tables")
+    return tuple(bindings)
+
+
+def semantic_binding_key(topics, subject):
+    """Return a deterministic exact key for structured semantic identity."""
+    if not isinstance(topics, (list, tuple)):
+        raise ValueError("binding topics must be an array")
+    normalized_topics = tuple(str(topic).strip() for topic in topics)
+    if not normalized_topics or any(not topic for topic in normalized_topics):
+        raise ValueError("binding topics must contain non-empty values")
+    subject = str(subject).strip()
+    if not subject:
+        raise ValueError("binding subject must be non-empty")
+    canonical_topics = tuple(sorted(normalized_topics, key=str.casefold))
+    return ".".join((*canonical_topics, subject))
+
+
+def compile_binding_source(source):
+    """Compile one declarative physical source into an E3 binding object."""
+    if not isinstance(source, dict):
+        raise ValueError("binding source must be a table")
+    kind = str(source.get("type", "")).strip().lower()
+    value = source.get("value")
+    if value is None:
+        raise ValueError("binding source requires value")
+    from .bindings import env, file, secret
+
+    if kind == "env":
+        return env(value, sensitive=bool(source.get("sensitive", False)))
+    if kind == "file":
+        return file(value)
+    if kind == "secret":
+        return secret(value)
+    raise ValueError(f"unknown binding source type: {kind!r}")
+
+
+def register_binding_declarations(runtime, declarations):
+    """Compile and register structured semantic binding declarations."""
+    registered = []
+    for declaration in declarations:
+        if not isinstance(declaration, dict):
+            raise ValueError("binding declaration must be a table")
+        topics = declaration.get("topics")
+        subject = declaration.get("subject")
+        sources = declaration.get("sources")
+        if not isinstance(sources, list) or not sources:
+            raise ValueError("binding declaration requires non-empty sources")
+        key = semantic_binding_key(topics, subject)
+        bindings = tuple(compile_binding_source(source) for source in sources)
+        replace = bool(declaration.get("replace", False))
+        runtime.bind(key, *bindings, replace=replace)
+        registered.append(key)
+    return tuple(registered)
+
 def _valid_installation(record, paths):
     """Return whether one registry record still names a managed project tree."""
     expected = (paths.projects / record.name).resolve()
@@ -46,11 +112,11 @@ def _valid_installation(record, paths):
     )
 
 
-def discover_installations(*, system=False):
+def discover_installations(runtime, *, system=False):
     """Return valid Gway-managed installation records for one scope."""
-    from .install import InstallState, install_paths
+    from .install import InstallState
 
-    paths = install_paths(system=system)
+    paths = runtime.install_paths(system=system)
     state = InstallState(paths.state)
     return [
         record
@@ -194,7 +260,7 @@ def discover_managed_projects(runtime):
     discovered = {}
     for system in (False, True):
         try:
-            records = discover_installations(system=system)
+            records = discover_installations(runtime, system=system)
         except (OSError, PermissionError):
             continue
         for record in records:
@@ -265,6 +331,10 @@ def bootstrap(runtime, *, start=None):
     variables = project_variables(data)
     if variables:
         runtime.append_source(variables, name="pyproject")
+
+    bindings = project_bindings(data)
+    if bindings:
+        register_binding_declarations(runtime, bindings)
 
     project_data = data.get("project") if isinstance(data, dict) else None
     project_name = project_data.get("name") if isinstance(project_data, dict) else None

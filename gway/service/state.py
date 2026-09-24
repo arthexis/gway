@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+
+from ..environment import environment_child
 import subprocess
 import tempfile
 
@@ -90,7 +92,7 @@ def _ps_process_token(pid):
             check=False,
             capture_output=True,
             text=True,
-            env={**os.environ, "LC_ALL": "C"},
+            env=environment_child(overrides={"LC_ALL": "C"}),
             timeout=2,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired, ValueError):

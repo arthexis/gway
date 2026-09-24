@@ -39,16 +39,12 @@ def test_system_data_root_is_separate_from_user_data(tmp_path):
     )
 
 
-def test_data_root_overrides_are_scope_specific(tmp_path):
+def test_data_root_accepts_explicit_semantic_override(tmp_path):
     user = tmp_path / "user"
     system = tmp_path / "system"
-    environ = {
-        "GWAY_DATA_DIR": str(user),
-        "GWAY_SYSTEM_DATA_DIR": str(system),
-    }
 
-    assert data_root(environ=environ, platform="linux") == user
-    assert data_root(system=True, environ=environ, platform="linux") == system
+    assert data_root(data_dir=user, platform="linux") == user
+    assert data_root(system=True, data_dir=system, platform="linux") == system
 
 
 def test_install_paths_are_durable_and_lazy(tmp_path):
@@ -96,13 +92,33 @@ def test_system_bin_root_uses_usr_local_bin_by_default(tmp_path):
     )
 
 
-def test_bin_root_overrides_are_scope_specific(tmp_path):
+def test_bin_root_accepts_explicit_semantic_override(tmp_path):
     user = tmp_path / "user-bin"
     system = tmp_path / "system-bin"
-    environ = {
-        "GWAY_BIN_DIR": str(user),
-        "GWAY_SYSTEM_BIN_DIR": str(system),
-    }
 
-    assert bin_root(environ=environ, platform="linux") == user
-    assert bin_root(system=True, environ=environ, platform="linux") == system
+    assert bin_root(bin_dir=user, platform="linux") == user
+    assert bin_root(system=True, bin_dir=system, platform="linux") == system
+
+
+
+def test_gateway_resolves_legacy_path_environment_as_semantic_bindings(
+    tmp_path,
+    monkeypatch,
+):
+    from gway import Gateway
+
+    user_data = tmp_path / "user-data"
+    user_bin = tmp_path / "user-bin"
+    system_data = tmp_path / "system-data"
+    system_bin = tmp_path / "system-bin"
+    monkeypatch.setenv("GWAY_DATA_DIR", str(user_data))
+    monkeypatch.setenv("GWAY_BIN_DIR", str(user_bin))
+    monkeypatch.setenv("GWAY_SYSTEM_DATA_DIR", str(system_data))
+    monkeypatch.setenv("GWAY_SYSTEM_BIN_DIR", str(system_bin))
+
+    gateway = Gateway()
+
+    assert gateway.data_root() == user_data
+    assert gateway.bin_root() == user_bin
+    assert gateway.data_root(system=True) == system_data
+    assert gateway.bin_root(system=True) == system_bin
