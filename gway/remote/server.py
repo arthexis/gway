@@ -12,6 +12,7 @@ from ..security.authentication import BearerAuthenticationError
 from ..security.oauth import OAuthRegistry
 from ..security.tokens import TokenRegistry
 from .account import RemoteAccountApplication
+from .actions import ActionsApplication
 from .metadata import RemoteOAuthMetadata
 from .oauth import OAuthProtocolError, RemoteOAuthProtocol
 
@@ -78,7 +79,8 @@ class RemoteApplication(RemoteDiscoveryApplication):
     ):
         super().__init__(metadata)
         self.runtime = runtime
-        self._execution_lock = threading.RLock()
+        self._query_lock = threading.RLock()
+        self.actions = ActionsApplication(metadata, runtime=runtime)
         if account is None and runtime is not None:
             oauth = OAuthRegistry(runtime.security_path)
             account = RemoteAccountApplication(
@@ -209,7 +211,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 "message": str(error),
             }
 
-        return 200, response_headers, {"result": self._json_safe(result)}
+        return 200, response_headers, {"result": result}
 
     def response(self, method, path, *, headers=None, body=b""):
         method = str(method).upper()
@@ -220,11 +222,13 @@ class RemoteApplication(RemoteDiscoveryApplication):
         if route == "/query":
             return self._query(method, split, headers)
 
-        if route == "/actions/query":
-            return self._action(method, headers, body, mutate=False)
-
-        if route == "/actions/execute":
-            return self._action(method, headers, body, mutate=None)
+        if route.startswith("/actions/"):
+            return self.actions.response(
+                method,
+                path,
+                headers=headers,
+                body=body,
+            )
 
         if route == "/oauth/authorize":
             if method not in {"GET", "POST"}:
