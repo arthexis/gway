@@ -12,7 +12,7 @@ from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
 
 
-pytestmark = pytest.mark.heavy
+pytestmark = pytest.mark.main
 
 
 MCP_PUBLIC_ORIGIN = "https://remote.example.test"
