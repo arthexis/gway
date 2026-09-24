@@ -115,14 +115,11 @@ The public routing contract is:
 
 /
 /.well-known/oauth-protected-resource/mcp
-/.well-known/oauth-protected-resource/actions
 /.well-known/oauth-authorization-server
 /oauth/authorize
 /oauth/token
 /oauth/revoke
-/actions/openapi.json
-/actions/query
-/actions/execute
+/query
 /login
 /connect
 /consent
@@ -130,14 +127,12 @@ The public routing contract is:
     -> remote-auth upstream
 ```
 
-Only those application routes are exposed. The Actions routes are fixed
-transport endpoints: the OpenAPI document describes only query/execute and
-does not enumerate the Gway operation catalog. There is no generic OAuth,
-Actions, settings, well-known, or application catch-all proxy.
+Only those application routes are exposed. There is no generic OAuth,
+settings, well-known, or application catch-all proxy.
 
 The HTTP listener reserves `/.well-known/acme-challenge/` for the local ACME
 webroot and redirects every other request to the canonical HTTPS origin. It
-never proxies MCP, OAuth, Actions, or account traffic in cleartext, including
+never proxies MCP, OAuth, or account traffic in cleartext, including
 during initial certificate bootstrap. The OAuth well-known endpoints are served
 only through the HTTPS application server, so certificate renewal and OAuth
 discovery do not compete for route ownership.
@@ -181,44 +176,3 @@ of leaving an invalid configuration active.
 
 Cleanup removes only the nginx site files. Certificates and the shared ACME
 webroot are preserved.
-
-## GPT Actions provisioning
-
-The initial GPT Actions authorization policy is intentionally limited to
-documentation and logs:
-
-```text
-help
-log.sources
-log.read
-log.tail
-log.search
-```
-
-Converge that policy with the remote sampler:
-
-```text
-gway sampler/web/remote/actions-policy.rx
-```
-
-The corresponding named scope is `chatgpt-actions`.
-
-Register the GPT as a confidential OAuth client only after the GPT editor
-provides its exact callback URI. The client secret is returned once and only its
-hash is persisted:
-
-```text
-gway security oauth client create chatgpt-actions-client <callback-uri> \
-  --confidential \
-  --method client_secret_post
-```
-
-Use `security oauth client show` or `list` to inspect safe metadata. They
-never expose the client secret. If the GPT editor requires HTTP Basic client
-authentication instead, create the client with
-`--method client_secret_basic`.
-
-The OAuth client is not itself a permission grant. The browser consent flow
-still creates a grant for the `chatgpt-actions` named scope and the
-`https://remote.arthexis.com/actions` protected resource.
-

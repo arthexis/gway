@@ -4,7 +4,6 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from gway.remote.metadata import RemoteOAuthMetadata
-from gway.remote.oauth import OAuthProtocolError
 from gway.remote.server import RemoteApplication, RemoteDiscoveryApplication, build_server
 
 
@@ -96,10 +95,7 @@ def test_real_loopback_http_serves_both_discovery_documents():
         assert protected["resource"] == "http://127.0.0.1:9000/mcp"
         assert protected["authorization_servers"] == ["http://127.0.0.1:9000"]
         assert authorization["issuer"] == "http://127.0.0.1:9000"
-        assert authorization["protected_resources"] == [
-            "http://127.0.0.1:9000/actions",
-            "http://127.0.0.1:9000/mcp",
-        ]
+        assert authorization["protected_resources"] == ["http://127.0.0.1:9000/mcp"]
     finally:
         server.shutdown()
         server.server_close()
@@ -135,38 +131,7 @@ def test_real_http_rejects_non_get_discovery_request():
         server.server_close()
         thread.join(timeout=2)
 
-
-def test_chatgpt_actions_scope_infers_missing_oauth_resource_for_any_client_name():
-    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
-    app = RemoteApplication(metadata)
-    params = {
-        "client_id": "Actions Client",
-        "scope": "chatgpt-actions",
-    }
-
-    protocol = app._oauth_for_resource(params)
-
-    assert protocol is app.actions_oauth
-    assert params["resource"] == "https://remote.example.test/actions"
-
-
-def test_chatgpt_actions_client_keeps_explicit_oauth_resource_strict():
-    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
-    app = RemoteApplication(metadata)
-    params = {
-        "client_id": "chatgpt-actions-client",
-        "resource": "https://remote.example.test/not-actions",
-    }
-
-    try:
-        app._oauth_for_resource(params)
-    except OAuthProtocolError as error:
-        assert error.error == "invalid_target"
-    else:
-        raise AssertionError("Explicit invalid OAuth resource unexpectedly accepted")
-
-
-def test_remote_privacy_page_is_public_and_describes_actions_data():
+def test_remote_privacy_page_is_public_and_describes_remote_data():
     metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
     app = RemoteApplication(metadata)
 
@@ -175,7 +140,7 @@ def test_remote_privacy_page_is_public_and_describes_actions_data():
     assert status == 200
     assert headers["content-type"] == "text/html; charset=utf-8"
     assert "G-Way Remote Privacy Policy" in body
-    assert "ChatGPT Actions" in body
+    assert "connected MCP clients" in body
     assert "OAuth client identifiers" in body
     assert "G-Way command strings" in body
     assert "does not sell personal data" in body
@@ -191,4 +156,3 @@ def test_remote_application_keeps_mcp_default_scope_without_metadata_scope():
     app = RemoteApplication(metadata)
 
     assert app.oauth.default_scope == "chatgpt-logs"
-    assert app.actions_oauth.default_scope == "chatgpt-actions"

@@ -356,15 +356,15 @@ def test_security_token_reads_support_forced_non_mutation(
 def test_security_token_commands_share_gateway_security_path(gateway, tmp_path):
     path = tmp_path / "security.sqlite"
     gateway.security_path = path
-    ScopeRegistry(path).create("chatgpt-actions")
+    ScopeRegistry(path).create("mcp-remote")
 
     bearer = gateway(
-        "security token create actions-link chatgpt-actions"
+        "security token create mcp-link mcp-remote"
     )
 
     assert bearer.startswith("gwt_")
-    registered = TokenRegistry(path).require("actions-link")
-    assert registered.scopes == frozenset({"chatgpt-actions"})
+    registered = TokenRegistry(path).require("mcp-link")
+    assert registered.scopes == frozenset({"mcp-remote"})
 
 
 def test_scope_then_token_commands_share_gateway_security_path(gateway, tmp_path):

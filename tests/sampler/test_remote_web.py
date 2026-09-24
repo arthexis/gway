@@ -181,7 +181,6 @@ def test_remote_expose_package_has_deployment_recipes():
         "http.rx",
         "https.rx",
         "cleanup-http.rx",
-        "actions-policy.rx",
         "nginx-http-[site].conf",
         "nginx-https-[site].conf",
     ):
@@ -414,76 +413,6 @@ def test_remote_query_route_uses_auth_upstream_and_preserves_request_contract():
         assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001]/;" not in block
 
 
-def test_remote_actions_routes_use_auth_upstream_and_preserve_contract():
-    auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
-    mcp_target = "[mcp_host|127.0.0.1]:[mcp_port|8000]"
-
-    for name in ("nginx-https-[site].conf",):
-        content = _template(name)
-
-        openapi = _block(content, "location = /actions/openapi.json {")
-        assert auth_target in openapi
-        assert mcp_target not in openapi
-        assert "proxy_buffering off;" not in openapi
-
-        for route in ("/actions/query", "/actions/execute"):
-            block = _block(content, f"location = {route} {{")
-            assert auth_target in block
-            assert mcp_target not in block
-            assert "proxy_set_header Authorization $http_authorization;" in block
-            assert "proxy_cache off;" in block
-            assert 'add_header Cache-Control "no-store" always;' in block
-            assert "proxy_buffering off;" not in block
-            assert "proxy_read_timeout" not in block
-            assert "proxy_send_timeout" not in block
-
-
-def test_remote_actions_protected_resource_route_is_explicit():
-    auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
-
-    for name in ("nginx-https-[site].conf",):
-        content = _template(name)
-        marker = "location = /.well-known/oauth-protected-resource/actions {"
-        block = _block(content, marker)
-
-        assert marker in content
-        assert auth_target in block
-        assert "[mcp_host|127.0.0.1]:[mcp_port|8000]" not in block
-
-
-def test_remote_public_contract_exposes_actions_without_catch_all():
-    for name in ("nginx-https-[site].conf",):
-        content = _template(name)
-
-        for route in (
-            "/actions/openapi.json",
-            "/actions/query",
-            "/actions/execute",
-            "/.well-known/oauth-protected-resource/actions",
-        ):
-            assert f"location = {route} {{" in content
-
-        assert "location ^~ /actions/ {" not in content
-        assert "location /actions/ {" not in content
-
-
-def test_remote_actions_policy_is_exactly_limited_initial_scope():
-    assert _commands("actions-policy.rx") == [
-        "security scope set chatgpt-actions "
-        "help log.sources log.read log.tail log.search"
-    ]
-
-
-def test_remote_actions_policy_does_not_grant_mutating_operations():
-    command = _commands("actions-policy.rx")[0]
-
-    assert "service" not in command
-    assert "install" not in command
-    assert "set env" not in command
-    assert "security token" not in command
-    assert "security oauth" not in command
-
-
 def test_remote_privacy_route_is_explicit_and_uses_auth_upstream():
     auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
 
@@ -534,7 +463,7 @@ def test_remote_https_rate_limits_login_and_token_only():
 def test_remote_no_store_routes_keep_security_headers():
     content = _template("nginx-https-[site].conf")
 
-    for route in ("/query", "/actions/openapi.json", "/actions/query", "/actions/execute"):
+    for route in ("/query",):
         block = _block(content, f"location = {route} {{")
         assert 'add_header Cache-Control "no-store" always;' in block
         assert 'add_header Strict-Transport-Security "max-age=31536000" always;' in block
