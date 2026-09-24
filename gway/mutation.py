@@ -6,6 +6,10 @@ import inspect
 MUTATE_PARAMETER = "mutate"
 
 
+class MutationError(RuntimeError):
+    """Raised when an operation cannot honor a non-mutating execution."""
+
+
 def mutation_parameter(callable_):
     """Return the reserved mutate parameter declared by a callable, if any."""
     try:
