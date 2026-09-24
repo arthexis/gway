@@ -26,7 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,toml]'
       - name: Full regression suite
-        run: python -m pytest -q
+        run: python -m pytest -q --durations=20
 
   forward-compatibility:
     name: Compatibility (Python 3.13)
