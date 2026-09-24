@@ -58,6 +58,17 @@ class RemoteOAuthMetadata:
         )
         return cls(origin, resource)
 
+    def with_resource_path(self, resource_path):
+        """Return metadata for another protected resource on the same issuer."""
+        resource_path = "/" + str(resource_path).strip().strip("/")
+        if resource_path == "/":
+            raise ValueError("OAuth protected resource path must be non-empty")
+        parsed = urlsplit(self.issuer)
+        resource = urlunsplit(
+            (parsed.scheme, parsed.netloc, resource_path, "", "")
+        )
+        return type(self)(self.issuer, resource)
+
     @property
     def authorization_endpoint(self):
         return f"{self.issuer}/oauth/authorize"

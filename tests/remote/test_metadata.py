@@ -100,3 +100,15 @@ def test_resource_path_is_normalized_but_must_be_non_empty():
             "https://remote.example.test",
             resource_path="/",
         )
+
+
+def test_with_resource_path_preserves_validated_insecure_loopback_origin():
+    metadata = RemoteOAuthMetadata.from_origin(
+        "http://127.0.0.1:9000",
+        allow_insecure_loopback=True,
+    )
+
+    actions = metadata.with_resource_path("/actions")
+
+    assert actions.issuer == "http://127.0.0.1:9000"
+    assert actions.resource == "http://127.0.0.1:9000/actions"
