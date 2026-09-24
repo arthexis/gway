@@ -3,7 +3,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from gway.security import scope as scope_commands
 from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import (
     AuthenticatedToken,
@@ -196,13 +195,12 @@ def test_duplicate_token_name_fails(tmp_path):
         tokens.create("reader", scopes={"logs"})
 
 
-def test_security_token_gway_command_surface(gateway, tmp_path, monkeypatch):
+def test_security_token_gway_command_surface(gateway, tmp_path):
     path = tmp_path / "security.sqlite"
+    gateway.security_path = path
     scopes = ScopeRegistry(path)
     scopes.create("logs")
 
-    monkeypatch.setattr(scope_commands, "_registry", scopes)
-    gateway.security_path = path
 
     bearer = gateway("security token create reader logs")
     assert bearer.startswith("gwt_")
@@ -316,12 +314,11 @@ def test_token_expiry_requires_aware_iso_timestamp(tmp_path, expires):
         tokens.create("reader", scopes={"logs"}, expires_at=expires)
 
 
-def test_security_token_create_accepts_expiry_flag(gateway, tmp_path, monkeypatch):
+def test_security_token_create_accepts_expiry_flag(gateway, tmp_path):
     path = tmp_path / "security.sqlite"
+    gateway.security_path = path
     scopes = ScopeRegistry(path)
     scopes.create("logs")
-    monkeypatch.setattr(scope_commands, "_registry", scopes)
-    gateway.security_path = path
     expires = "2099-01-01T00:00:00+00:00"
 
     bearer = gateway(f"security token create reader logs --expires {expires}")
@@ -334,14 +331,12 @@ def test_security_token_create_accepts_expiry_flag(gateway, tmp_path, monkeypatc
 def test_security_token_reads_support_forced_non_mutation(
     gateway,
     tmp_path,
-    monkeypatch,
 ):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
     tokens = TokenRegistry(path)
     scopes.create("logs")
     tokens.create("reader", scopes={"logs"})
-    monkeypatch.setattr(scope_commands, "_registry", scopes)
     gateway.security_path = path
     before = path.read_bytes()
 
@@ -370,3 +365,15 @@ def test_security_token_commands_share_gateway_security_path(gateway, tmp_path):
     assert bearer.startswith("gwt_")
     registered = TokenRegistry(path).require("actions-link")
     assert registered.scopes == frozenset({"chatgpt-actions"})
+
+
+def test_scope_then_token_commands_share_gateway_security_path(gateway, tmp_path):
+    path = tmp_path / "security.sqlite"
+    gateway.security_path = path
+
+    gateway("security scope create logs")
+    bearer = gateway("security token create reader logs")
+
+    assert bearer.startswith("gwt_")
+    assert ScopeRegistry(path).require("logs").name == "logs"
+    assert TokenRegistry(path).require("reader").scopes == frozenset({"logs"})
