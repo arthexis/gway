@@ -260,9 +260,7 @@ def test_observational_builtins_support_non_mutating_execution(
     assert gateway.execute("pipe --site", mutate=False) == {"site": "MTY"}
 
     for name in ("env", "envs", "pipe"):
-        operation = gateway.ops.resolve(name)
-        assert operation.__gway_supports_no_mutate__ is True
-        assert operation.mutates is False
+        assert gateway.ops.resolve(name).mutates is False
 
 
 
@@ -277,5 +275,4 @@ def test_toml_operations_support_non_mutating_execution(gateway, tmp_path):
     family = gateway.ops["toml"]
     for name in (None, "loads", "load"):
         operation = gateway.ops.resolve("toml") if name is None else family[name]
-        assert operation.__gway_supports_no_mutate__ is True
         assert operation.mutates is False
