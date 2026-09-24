@@ -12,7 +12,6 @@ from ..security.authentication import BearerAuthenticationError
 from ..security.oauth import OAuthAuthenticationError, OAuthRegistry
 from ..security.tokens import TokenRegistry
 from .account import RemoteAccountApplication
-from .actions import ActionsApplication
 from .metadata import RemoteOAuthMetadata
 from .oauth import OAuthProtocolError, RemoteOAuthProtocol
 
@@ -68,7 +67,6 @@ class RemoteApplication(RemoteDiscoveryApplication):
     """Discovery plus O2 browser session, bearer linking, and consent."""
 
     cookie_name = "gway_remote_session"
-    actions_compat_scope = "chatgpt-actions"
 
     def __init__(
         self,
@@ -81,11 +79,6 @@ class RemoteApplication(RemoteDiscoveryApplication):
         super().__init__(metadata)
         self.runtime = runtime
         self._query_lock = threading.RLock()
-        actions_metadata = metadata.with_resource_path(
-            "/actions",
-            scopes_supported=("chatgpt-actions",),
-        )
-        self.actions = ActionsApplication(actions_metadata, runtime=runtime)
         if account is None and runtime is not None:
             oauth = OAuthRegistry(runtime.security_path)
             account = RemoteAccountApplication(
@@ -99,21 +92,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
             client_resolver=client_resolver,
             default_scope="chatgpt-logs",
         )
-        self.actions_oauth = RemoteOAuthProtocol(
-            actions_metadata,
-            self.account,
-            client_resolver=client_resolver,
-            allow_confidential_without_pkce=True,
-            default_scope="chatgpt-actions",
-        )
-        self.oauth_by_resource = {
-            metadata.resource: self.oauth,
-            actions_metadata.resource: self.actions_oauth,
-        }
-        self.routes[actions_metadata.protected_resource_metadata_path] = (
-            200,
-            actions_metadata.protected_resource_document,
-        )
+        self.oauth_by_resource = {metadata.resource: self.oauth}
         authorization_document = metadata.authorization_server_document()
         authorization_document["protected_resources"] = sorted(self.oauth_by_resource)
         authorization_document["scopes_supported"] = sorted(
@@ -183,11 +162,6 @@ class RemoteApplication(RemoteDiscoveryApplication):
     def _oauth_for_resource(self, params):
         params = {} if params is None else params
         resource = str(params.get("resource") or "").strip()
-
-        if not resource:
-            scopes = set(str(params.get("scope") or "").split())
-            if self.actions_compat_scope in scopes:
-                resource = self.actions.metadata.resource
 
         if not resource:
             try:
@@ -286,14 +260,6 @@ class RemoteApplication(RemoteDiscoveryApplication):
         if route == "/query":
             return self._query(method, split, headers)
 
-        if route.startswith("/actions/"):
-            return self.actions.response(
-                method,
-                path,
-                headers=headers,
-                body=body,
-            )
-
         if route == "/oauth/authorize":
             if method not in {"GET", "POST"}:
                 return 405, {"allow": "GET, POST"}, {"error": "method_not_allowed"}
@@ -354,7 +320,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 "<!doctype html><html><head><title>G-Way Remote Privacy Policy</title></head>"
                 "<body><h1>G-Way Remote Privacy Policy</h1>"
                 "<p>G-Way Remote provides authenticated access to G-Way commands for "
-                "connected clients such as ChatGPT Actions.</p>"
+                "connected MCP clients.</p>"
                 "<h2>Data processed</h2>"
                 "<p>The service may process OAuth client identifiers, authorization "
                 "codes, access and refresh tokens, G-Way command strings, and command "
@@ -366,7 +332,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 "<p>OAuth client registrations, grants, and token state are stored in the "
                 "service security registry until revoked, expired, rotated, or deleted. "
                 "Command requests and results are not intentionally stored by this privacy "
-                "page or the Actions transport itself; operational service logs may retain "
+                 "page or the remote transport itself; operational service logs may retain "
                 "limited request metadata needed for security and reliability.</p>"
                 "<h2>Sharing</h2>"
                 "<p>The service does not sell personal data. Data is shared only with the "
