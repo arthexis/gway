@@ -173,3 +173,44 @@ of leaving an invalid configuration active.
 
 Cleanup removes only the nginx site files. Certificates and the shared ACME
 webroot are preserved.
+
+## GPT Actions provisioning
+
+The initial GPT Actions authorization policy is intentionally limited to
+documentation and logs:
+
+```text
+help
+log.sources
+log.read
+log.tail
+log.search
+```
+
+Converge that policy with the remote sampler:
+
+```text
+gway sampler/web/remote/actions-policy.rx
+```
+
+The corresponding named scope is `chatgpt-actions`.
+
+Register the GPT as a confidential OAuth client only after the GPT editor
+provides its exact callback URI. The client secret is returned once and only its
+hash is persisted:
+
+```text
+gway security oauth client create chatgpt-actions-client <callback-uri> \
+  --confidential \
+  --method client_secret_post
+```
+
+Use `security oauth client show` or `list` to inspect safe metadata. They
+never expose the client secret. If the GPT editor requires HTTP Basic client
+authentication instead, create the client with
+`--method client_secret_basic`.
+
+The OAuth client is not itself a permission grant. The browser consent flow
+still creates a grant for the `chatgpt-actions` named scope and the
+`https://remote.arthexis.com/actions` protected resource.
+
