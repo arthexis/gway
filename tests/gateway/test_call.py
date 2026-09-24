@@ -106,7 +106,16 @@ def test_normal_execution_preserves_callable_mutation_default(gateway):
     assert gateway("refresh_default") is True
 
 
-def test_nested_execution_cannot_reenable_mutation(gateway):
+@pytest.mark.parametrize(
+    "nested",
+    [
+        lambda gateway: gateway.execute("child", mutate=True),
+        lambda gateway: gateway("child"),
+        lambda gateway: gateway.execute("child", mutate="refresh"),
+    ],
+    ids=("explicit-true", "plain-call", "named-policy"),
+)
+def test_outer_no_mutate_is_monotonic_across_nested_execution(gateway, nested):
     seen = []
 
     def child(*, mutate=True):
@@ -115,7 +124,7 @@ def test_nested_execution_cannot_reenable_mutation(gateway):
 
     def parent(*, mutate=True):
         seen.append(("parent", mutate))
-        return gateway.execute("child", mutate=True)
+        return nested(gateway)
 
     gateway.child = gateway.wrap("child", child)
     gateway.parent = gateway.wrap("parent", parent)
@@ -125,42 +134,32 @@ def test_nested_execution_cannot_reenable_mutation(gateway):
     assert gateway.mutation_allowed is True
 
 
-def test_nested_plain_gateway_call_inherits_non_mutating_execution(gateway):
-    def child(*, mutate=True):
-        return mutate
 
-    def parent(*, mutate=True):
-        return gateway("child")
-
-    gateway.child = gateway.wrap("child", child)
-    gateway.parent = gateway.wrap("parent", parent)
-
-    assert gateway.execute("parent", mutate=False) is False
-
+def _runtime_bookkeeping(gateway):
+    return (
+        dict(gateway.context),
+        dict(gateway.results.get_results()),
+        list(gateway.results.history),
+        gateway.execution,
+        gateway.previous_execution,
+    )
 
 
 def test_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway):
     gateway.context["seed"] = "before"
     gateway.results.insert("seed", "before")
-    initial_context = dict(gateway.context)
-    initial_results = dict(gateway.results.get_results())
-    initial_history = list(gateway.results.history)
-    previous_execution = gateway.execution
-    previous_previous_execution = gateway.previous_execution
+    before = _runtime_bookkeeping(gateway)
 
     def inspect(*, mutate=False):
         return {"observed": "value", "mutate": mutate}
 
     gateway.inspect = gateway.wrap("inspect_state", inspect)
 
-    result = gateway.execute("inspect", mutate=False)
-
-    assert result == {"observed": "value", "mutate": False}
-    assert gateway.context == initial_context
-    assert gateway.results.get_results() == initial_results
-    assert gateway.results.history == initial_history
-    assert gateway.execution is previous_execution
-    assert gateway.previous_execution is previous_previous_execution
+    assert gateway.execute("inspect", mutate=False) == {
+        "observed": "value",
+        "mutate": False,
+    }
+    assert _runtime_bookkeeping(gateway) == before
 
 
 def test_repeated_non_mutating_execution_does_not_grow_result_history(gateway):
@@ -179,9 +178,7 @@ def test_repeated_non_mutating_execution_does_not_grow_result_history(gateway):
 def test_failed_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway):
     gateway.context["seed"] = "before"
     gateway.results.insert("seed", "before")
-    initial_context = dict(gateway.context)
-    initial_results = dict(gateway.results.get_results())
-    initial_history = list(gateway.results.history)
+    before = _runtime_bookkeeping(gateway)
 
     def inspect(*, mutate=False):
         gateway.context["temporary"] = True
@@ -192,9 +189,7 @@ def test_failed_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway
     with pytest.raises(ValueError, match="boom"):
         gateway.execute("inspect", mutate=False)
 
-    assert gateway.context == initial_context
-    assert gateway.results.get_results() == initial_results
-    assert gateway.results.history == initial_history
+    assert _runtime_bookkeeping(gateway) == before
 
 
 
@@ -215,20 +210,3 @@ def test_named_mutation_policy_ignores_callable_without_contract(gateway):
     gateway.inspect = gateway.wrap("inspect_state", lambda: "ok")
 
     assert gateway.execute("inspect", mutate="refresh") == "ok"
-
-
-def test_outer_no_mutate_blocks_nested_named_policy(gateway):
-    seen = []
-
-    def child(*, mutate=True):
-        seen.append(mutate)
-        return mutate
-
-    def parent(*, mutate=True):
-        return gateway.execute("child", mutate="refresh")
-
-    gateway.child = gateway.wrap("child", child)
-    gateway.parent = gateway.wrap("parent", parent)
-
-    assert gateway.execute("parent", mutate=False) is False
-    assert seen == [False]
