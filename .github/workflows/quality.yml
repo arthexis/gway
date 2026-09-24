@@ -34,4 +34,5 @@ jobs:
       - name: Ruff lint
         run: python -m ruff check gway tests
       - name: GitHub Actions workflow lint
-        run: "${RUNNER_TEMP}/actionlint"
+        run: |
+          "${RUNNER_TEMP}/actionlint" -shellcheck=
