@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from gway.security import scope as scope_commands
-from gway.security import token as token_commands
 from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import (
     AuthenticatedToken,
@@ -204,7 +203,7 @@ def test_security_token_gway_command_surface(gateway, tmp_path, monkeypatch):
     scopes.create("logs")
 
     monkeypatch.setattr(scope_commands, "_registry", scopes)
-    monkeypatch.setattr(token_commands, "_registry", tokens)
+    gateway.security_path = path
 
     bearer = gateway("security token create reader logs")
     assert bearer.startswith("gwt_")
@@ -324,7 +323,7 @@ def test_security_token_create_accepts_expiry_flag(gateway, tmp_path, monkeypatc
     tokens = TokenRegistry(path)
     scopes.create("logs")
     monkeypatch.setattr(scope_commands, "_registry", scopes)
-    monkeypatch.setattr(token_commands, "_registry", tokens)
+    gateway.security_path = path
     expires = "2099-01-01T00:00:00+00:00"
 
     bearer = gateway(f"security token create reader logs --expires {expires}")
@@ -345,7 +344,7 @@ def test_security_token_reads_support_forced_non_mutation(
     scopes.create("logs")
     tokens.create("reader", scopes={"logs"})
     monkeypatch.setattr(scope_commands, "_registry", scopes)
-    monkeypatch.setattr(token_commands, "_registry", tokens)
+    gateway.security_path = path
     before = path.read_bytes()
 
     shown = gateway.execute("security token show reader", mutate=False)
@@ -359,3 +358,17 @@ def test_security_token_reads_support_forced_non_mutation(
     listing = gateway.ops.resolve("security.token.list")
     assert show.mutates is True
     assert listing.mutates is True
+
+
+def test_security_token_commands_share_gateway_security_path(gateway, tmp_path):
+    path = tmp_path / "security.sqlite"
+    gateway.security_path = path
+    ScopeRegistry(path).create("chatgpt-actions")
+
+    bearer = gateway(
+        "security token create actions-link chatgpt-actions"
+    )
+
+    assert bearer.startswith("gwt_")
+    registered = TokenRegistry(path).require("actions-link")
+    assert registered.scopes == frozenset({"chatgpt-actions"})
