@@ -84,7 +84,7 @@ class ScopeRegistry:
         if not self.path.is_file():
             return None
         name = self._name(name)
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=True) as connection:
             row = connection.execute(
                 "SELECT id, name FROM scopes WHERE name = ?",
                 (name,),
@@ -102,7 +102,7 @@ class ScopeRegistry:
         """Return all scopes in stable name order."""
         if not self.path.is_file():
             return []
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=True) as connection:
             rows = connection.execute(
                 "SELECT id, name FROM scopes ORDER BY name"
             ).fetchall()
