@@ -527,9 +527,9 @@ def _service_parent_request(runtime, stream, request):
             bearer = params["bearer"]
             registry_args = {}
             if str(bearer).startswith("gwt_"):
-                registry_args["tokens"] = TokenRegistry()
+                registry_args["tokens"] = TokenRegistry(runtime.security_path)
             elif str(bearer).startswith("gwa_"):
-                registry_args["oauth"] = OAuthRegistry()
+                registry_args["oauth"] = OAuthRegistry(runtime.security_path)
             identity = authenticate_bearer(
                 bearer,
                 resource=params.get("resource"),
