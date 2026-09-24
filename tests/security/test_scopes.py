@@ -290,3 +290,49 @@ def test_scope_toml_rejects_unknown_fields(tmp_path):
         registry.replace_many(
             {"logs": {"operations": ["log.read"], "wildcard": ["*"]}}
         )
+
+
+
+def test_readonly_security_state_never_migrates_schema(tmp_path):
+    path = tmp_path / "security.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE scopes (id INTEGER PRIMARY KEY, name TEXT)")
+        connection.execute("PRAGMA user_version = 1")
+
+    state = SecurityState(path)
+
+    with pytest.raises(RuntimeError, match="requires writable schema migration"):
+        state.connect(readonly=True)
+
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+
+
+def test_security_scope_reads_support_forced_non_mutation(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "security.sqlite"
+    registry = ScopeRegistry(path)
+    registry.replace("logs", operations={"log.read"})
+    monkeypatch.setattr(scope_commands, "_registry", registry)
+    before = path.read_bytes()
+
+    shown = gateway.execute("security scope show logs", mutate=False)
+    listed = gateway.execute("security scope list", mutate=False)
+    resolved = gateway.execute("security scope resolve logs", mutate=False)
+
+    assert shown.name == "logs"
+    assert listed == [shown]
+    assert resolved.operations == frozenset({"log.read"})
+    assert path.read_bytes() == before
+
+    for name in (
+        "security.scope.show",
+        "security.scope.list",
+        "security.scope.resolve",
+    ):
+        operation = gateway.ops.resolve(name)
+        assert operation.__gway_supports_no_mutate__ is True
+        assert operation.mutates is True
