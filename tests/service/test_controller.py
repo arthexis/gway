@@ -293,9 +293,7 @@ def test_installed_mcp_process_service_lifecycle(tmp_path, monkeypatch):
 
 
 
-@pytest.mark.main
 def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypatch):
-    gateway = Gateway()
     captured_process = {}
     real_popen = subprocess.Popen
 
@@ -310,6 +308,7 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
     cache_root = tmp_path / "gway-cache"
     monkeypatch.setenv("GWAY_DATA_DIR", str(data_root))
     monkeypatch.setenv("GWAY_CACHE_DIR", str(cache_root))
+    gateway = Gateway()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))
@@ -330,9 +329,12 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
         encoding="utf-8",
     )
 
-    scopes = ScopeRegistry()
+    scopes = ScopeRegistry(gateway.security_path)
     scopes.replace("logs-read", operations={"log.sources"}, environment=())
-    issued = TokenRegistry().create("deployed-client", scopes={"logs-read"})
+    issued = TokenRegistry(gateway.security_path).create(
+        "deployed-client",
+        scopes={"logs-read"},
+    )
 
     gateway._service_controller.install(
         str(recipe),
