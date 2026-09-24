@@ -182,7 +182,7 @@ class Gateway(Resolver):
         gway_log._set_default_source(log_source)
 
         from .ingestion.python import ingest_python
-        from .security import client as security_client_commands
+        from .security.client import Controller as OAuthClientController
         from .remote.service import register as register_remote_service
         from .service.controller import Controller
         from .souschef.controller import Controller as SousChefController
@@ -193,9 +193,10 @@ class Gateway(Resolver):
 
         self._service_controller = Controller(self)
         ingest_python(self, self._service_controller, path=("service",))
+        self._oauth_client_controller = OAuthClientController(self)
         ingest_python(
             self,
-            security_client_commands,
+            self._oauth_client_controller,
             path=("security", "oauth", "client"),
         )
 
