@@ -9,8 +9,10 @@ import socket
 import struct
 import threading
 from urllib.parse import urlsplit
+from typing import Any, Literal
 
 from fastmcp import FastMCP as _FastMCP
+from pydantic import BaseModel
 from fastmcp.server.auth import TokenVerifier as _TokenVerifier
 from fastmcp.server.auth.auth import AccessToken as _AccessToken
 from fastmcp.server.dependencies import get_http_headers as _get_http_headers
@@ -18,6 +20,29 @@ from fastmcp.server.dependencies import get_http_request as _get_http_request
 
 
 _DEFAULT_PUBLIC_ORIGIN = "http://127.0.0.1:8000"
+
+
+class OutputRecord(BaseModel):
+    """One captured console/output record from GWAY execution."""
+
+    stream: Literal["stdout", "stderr"]
+    text: str
+
+
+class ExecutionEnvelope(BaseModel):
+    """Stable structured MCP result around an arbitrary GWAY value."""
+
+    ok: bool
+    result: Any
+    result_type: Literal[
+        "mapping",
+        "sequence",
+        "string",
+        "number",
+        "boolean",
+        "null",
+    ]
+    output: list[OutputRecord]
 
 
 class _GwayTokenVerifier(_TokenVerifier):
@@ -95,6 +120,34 @@ def _validate_result(value):
             f"GWAY result is not MCP-serializable: {type(value).__name__}"
         ) from exception
     return value
+
+
+def _result_type(value):
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, dict):
+        return "mapping"
+    if isinstance(value, (list, tuple)):
+        return "sequence"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, (int, float)):
+        return "number"
+    raise TypeError(
+        f"GWAY result has no MCP envelope type: {type(value).__name__}"
+    )
+
+
+def _envelope(value):
+    value = _validate_result(value)
+    return ExecutionEnvelope(
+        ok=True,
+        result=value,
+        result_type=_result_type(value),
+        output=[],
+    )
 
 
 def _send_json(stream, value):
@@ -283,29 +336,41 @@ def _has_http_request():
     return True
 
 
-@mcp.tool(run_in_thread=False)
-def gway(command: str):
+@mcp.tool(
+    run_in_thread=False,
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "openWorldHint": True,
+    },
+)
+def gway(command: str) -> ExecutionEnvelope:
     """Execute one native GWAY command under the caller's active authorization."""
     parent = _parent()
     if _has_http_request():
-        return _validate_result(
+        return _envelope(
             parent.execute_authenticated(
                 _bearer_from_http(),
                 command,
                 _auth.resource,
             )
         )
-    return _validate_result(parent.execute(command))
+    return _envelope(parent.execute(command))
+
 
 @mcp.tool(
     run_in_thread=False,
-    annotations={"readOnlyHint": True},
+    annotations={
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
 )
-def query(command: str):
+def query(command: str) -> ExecutionEnvelope:
     """Execute one native GWAY command with mutation disabled."""
     parent = _parent()
     if _has_http_request():
-        return _validate_result(
+        return _envelope(
             parent.execute_authenticated(
                 _bearer_from_http(),
                 command,
@@ -313,7 +378,7 @@ def query(command: str):
                 mutate=False,
             )
         )
-    return _validate_result(parent.execute(command, mutate=False))
+    return _envelope(parent.execute(command, mutate=False))
 
 
 def _endpoint_origin(endpoint, path):
