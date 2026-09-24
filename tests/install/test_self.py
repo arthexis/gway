@@ -9,7 +9,7 @@ from gway.install import InstallState
 import gway.install.source as install_source
 
 
-pytestmark = pytest.mark.heavy
+pytestmark = pytest.mark.main
 
 
 def _self_remote(tmp_path, git):
