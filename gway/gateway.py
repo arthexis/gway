@@ -828,7 +828,10 @@ class Gateway(Resolver):
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command with normal mutation authority."""
-        return self.execute(command, *args, **kwargs)
+        from .dispatch import dispatch
+
+        with self.mutation_scope(mutate=True):
+            return dispatch(self, command, *args, **kwargs)
 
     def chain(self, command, *args, **kwargs):
         """Create a scoped manual pipeline rooted in an initial command."""
