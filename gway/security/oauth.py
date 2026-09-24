@@ -602,6 +602,52 @@ class OAuthRegistry:
             self.get_grant(grant_id), code, redirect_uri, expires_at
         )
 
+    def authorization_code_resource(self, code):
+        """Return the active grant resource bound to an authorization code."""
+        code_hash = self._hash(code)
+        with self.state.connect(readonly=True) as connection:
+            row = connection.execute(
+                """
+                SELECT grant_id, expires_at, consumed_at
+                FROM oauth_authorization_codes
+                WHERE code_hash = ?
+                """,
+                (code_hash,),
+            ).fetchone()
+            if (
+                row is None
+                or row["consumed_at"] is not None
+                or datetime.fromisoformat(row["expires_at"]) <= self._now()
+            ):
+                raise OAuthAuthenticationError()
+            active = self._active_grant(connection, row["grant_id"])
+            return active["resource"]
+
+    def refresh_token_resource(self, refresh_token):
+        """Return the active grant resource bound to a refresh token."""
+        public_id = self._public_id(refresh_token, "gwr")
+        with self.state.connect(readonly=True) as connection:
+            row = connection.execute(
+                """
+                SELECT grant_id, token_hash, expires_at, revoked_at, rotated_at
+                FROM oauth_refresh_tokens
+                WHERE public_id = ?
+                """,
+                (public_id,),
+            ).fetchone()
+            if (
+                row is None
+                or row["revoked_at"] is not None
+                or row["rotated_at"] is not None
+                or datetime.fromisoformat(row["expires_at"]) <= self._now()
+                or not secrets.compare_digest(
+                    row["token_hash"], self._hash(refresh_token)
+                )
+            ):
+                raise OAuthAuthenticationError()
+            active = self._active_grant(connection, row["grant_id"])
+            return active["resource"]
+
     def consume_authorization_code(
         self,
         code,

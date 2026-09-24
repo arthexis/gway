@@ -136,10 +136,13 @@ def test_real_http_rejects_non_get_discovery_request():
         thread.join(timeout=2)
 
 
-def test_chatgpt_actions_client_infers_missing_oauth_resource():
+def test_chatgpt_actions_scope_infers_missing_oauth_resource_for_any_client_name():
     metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
     app = RemoteApplication(metadata)
-    params = {"client_id": "chatgpt-actions-client"}
+    params = {
+        "client_id": "Actions Client",
+        "scope": "chatgpt-actions",
+    }
 
     protocol = app._oauth_for_resource(params)
 

@@ -300,6 +300,52 @@ def test_grant_resource_binds_code_and_refresh_exchange(tmp_path):
     assert rotated.grant.resource == "https://remote.example/mcp"
 
 
+def test_oauth_credentials_reveal_only_their_bound_resource_for_routing(tmp_path):
+    scopes, tokens, oauth = _registries(tmp_path)
+    scopes.create("actions")
+    tokens.create("operator", scopes={"actions"})
+    oauth.link("chatgpt", "operator")
+    grant = oauth.create_grant(
+        "chatgpt",
+        "Actions Client",
+        scopes={"actions"},
+        resource="https://remote.example/actions",
+    )
+    verifier = "v" * 64
+    code = oauth.issue_authorization_code(
+        grant.id,
+        redirect_uri="https://chatgpt.com/callback",
+        code_challenge=_challenge(verifier),
+    )
+
+    assert oauth.authorization_code_resource(code.code) == "https://remote.example/actions"
+
+    consumed = oauth.consume_authorization_code(
+        code.code,
+        redirect_uri="https://chatgpt.com/callback",
+        code_verifier=verifier,
+        client_id="Actions Client",
+        resource="https://remote.example/actions",
+    )
+    issued = oauth.issue_tokens(consumed.id)
+
+    assert (
+        oauth.refresh_token_resource(issued.refresh_token)
+        == "https://remote.example/actions"
+    )
+
+    with pytest.raises(OAuthAuthenticationError):
+        oauth.authorization_code_resource(code.code)
+
+    oauth.rotate_refresh(
+        issued.refresh_token,
+        client_id="Actions Client",
+        resource="https://remote.example/actions",
+    )
+    with pytest.raises(OAuthAuthenticationError):
+        oauth.refresh_token_resource(issued.refresh_token)
+
+
 def test_confidential_oauth_client_secret_is_issued_once_and_hashed(tmp_path):
     _, _, oauth = _registries(tmp_path)
 
