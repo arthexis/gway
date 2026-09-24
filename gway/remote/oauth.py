@@ -1,10 +1,12 @@
 """OAuth authorization-code protocol for the shared remote service."""
 
 from dataclasses import dataclass
+import base64
+import binascii
 import ipaddress
 import json
 import socket
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote_plus, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from ..security.oauth import OAuthAuthenticationError
@@ -30,6 +32,7 @@ class OAuthProtocolError(ValueError):
 class ResolvedOAuthClient:
     client_id: str
     redirect_uris: frozenset[str]
+    token_endpoint_auth_method: str = "none"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -105,7 +108,11 @@ class OAuthClientResolver:
         if registered is not None:
             if registered.disabled:
                 raise OAuthProtocolError("invalid_client", "OAuth client is disabled")
-            return ResolvedOAuthClient(client_id, registered.redirect_uris)
+            return ResolvedOAuthClient(
+                client_id,
+                registered.redirect_uris,
+                registered.token_endpoint_auth_method,
+            )
 
         self._client_url(client_id)
         document = self.fetcher(client_id)
@@ -124,7 +131,7 @@ class OAuthClientResolver:
             methods = ["none"] if method is None else [method]
         if not isinstance(methods, list) or "none" not in methods:
             raise OAuthProtocolError("invalid_client", "CIMD client must support public-client token exchange")
-        return ResolvedOAuthClient(client_id, redirects)
+        return ResolvedOAuthClient(client_id, redirects, "none")
 
 
 class RemoteOAuthProtocol:
@@ -233,9 +240,86 @@ class RemoteOAuthProtocol:
         finally:
             self._clear_pending_authorization(session)
 
-    def token(self, params):
+    @staticmethod
+    def _basic_client(headers):
+        authorization = str((headers or {}).get("authorization") or "")
+        scheme, separator, credential = authorization.partition(" ")
+        if not separator or scheme.casefold() != "basic":
+            return None
+        try:
+            decoded = base64.b64decode(
+                credential.strip(),
+                validate=True,
+            ).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError):
+            raise OAuthProtocolError(
+                "invalid_client",
+                "Malformed HTTP Basic client credentials",
+                status=401,
+            ) from None
+        client_id, separator, client_secret = decoded.partition(":")
+        if not separator:
+            raise OAuthProtocolError(
+                "invalid_client",
+                "Malformed HTTP Basic client credentials",
+                status=401,
+            )
+        return unquote_plus(client_id), unquote_plus(client_secret)
+
+    def _authenticate_token_client(self, params, headers=None):
+        basic = self._basic_client(headers)
+        form_secret = params.get("client_secret")
+
+        if basic is not None:
+            if form_secret not in (None, ""):
+                raise OAuthProtocolError(
+                    "invalid_request",
+                    "Use only one OAuth client authentication method",
+                )
+            client_id, client_secret = basic
+            method = "client_secret_basic"
+        else:
+            client_id = self._required(params, "client_id")
+            if form_secret not in (None, ""):
+                client_secret = str(form_secret)
+                method = "client_secret_post"
+            else:
+                client_secret = None
+                method = "none"
+
+        client = self.clients.resolve(client_id)
+        if method != client.token_endpoint_auth_method:
+            raise OAuthProtocolError(
+                "invalid_client",
+                "OAuth client authentication method does not match registration",
+                status=401,
+            )
+
+        registered = self.oauth.get_client(client_id)
+        if registered is not None:
+            try:
+                self.oauth.authenticate_client(
+                    client_id,
+                    client_secret=client_secret,
+                    token_endpoint_auth_method=method,
+                )
+            except OAuthAuthenticationError as error:
+                raise OAuthProtocolError(
+                    "invalid_client",
+                    "OAuth client authentication failed",
+                    status=401,
+                ) from error
+        elif method != "none":
+            raise OAuthProtocolError(
+                "invalid_client",
+                "Dynamic OAuth clients must use public-client authentication",
+                status=401,
+            )
+        return client_id
+
+    def token(self, params, *, headers=None):
         grant_type = self._required(params, "grant_type")
-        client_id = self._required(params, "client_id")
+        client_id = self._authenticate_token_client(params, headers)
         resource = self._required(params, "resource")
         if resource != self.metadata.resource:
             raise OAuthProtocolError("invalid_target")

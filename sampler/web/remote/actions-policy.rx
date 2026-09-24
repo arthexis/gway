@@ -1,0 +1,2 @@
+# Converge the initial GPT Actions authorization policy.
+security scope set chatgpt-actions help log.sources log.read log.tail log.search

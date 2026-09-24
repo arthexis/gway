@@ -163,3 +163,9 @@ def test_cli_verbose_interactive_uses_same_parameter_documentation(
     assert "Environment variable name to read." in output
     assert "Required" in output
     assert "documented-value" in output
+
+
+def test_help_supports_non_mutating_execution(gateway):
+    output = gateway.execute("help log read", mutate=False)
+
+    assert output.startswith("log read(")
