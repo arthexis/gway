@@ -278,6 +278,8 @@ def test_actions_openapi_exposes_only_fixed_transport_operations(gateway):
     }
     assert document["paths"]["/actions/query"]["post"]["operationId"] == "queryGway"
     assert document["paths"]["/actions/execute"]["post"]["operationId"] == "executeGway"
+    assert isinstance(document["components"]["schemas"], dict)
+    assert document["components"]["schemas"] == {}
 
     serialized = json.dumps(document)
     assert "log.read" not in serialized
