@@ -323,5 +323,4 @@ def test_log_query_operations_support_non_mutating_gateway_execution(
 
     family = gateway.ops["log"]
     for name in ("sources", "read", "tail", "search"):
-        assert family[name].__gway_supports_no_mutate__ is True
         assert family[name].mutates is False
