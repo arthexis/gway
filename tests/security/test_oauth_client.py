@@ -1,6 +1,5 @@
 import sqlite3
 
-from gway.security import client as oauth_client_commands
 from gway.security.oauth import OAuthClient, OAuthRegistry
 
 
@@ -45,9 +44,9 @@ def test_oauth_client_secret_never_appears_in_safe_metadata(tmp_path):
     assert issued.client_secret not in dump
 
 
-def test_security_oauth_client_gway_command_surface(gateway, tmp_path, monkeypatch):
-    oauth = OAuthRegistry(tmp_path / "security.sqlite")
-    monkeypatch.setattr(oauth_client_commands, "_registry", oauth)
+def test_security_oauth_client_gway_command_surface(gateway, tmp_path):
+    gateway.cache.root = tmp_path
+    gateway.security_path = tmp_path / "security.sqlite"
 
     secret = gateway(
         "security oauth client create chatgpt-actions-client "
@@ -76,14 +75,14 @@ def test_security_oauth_client_gway_command_surface(gateway, tmp_path, monkeypat
 def test_security_oauth_client_reads_support_forced_non_mutation(
     gateway,
     tmp_path,
-    monkeypatch,
 ):
-    oauth = OAuthRegistry(tmp_path / "security.sqlite")
+    gateway.cache.root = tmp_path
+    gateway.security_path = tmp_path / "security.sqlite"
+    oauth = OAuthRegistry(gateway.security_path)
     oauth.create_client(
         "public-client",
         redirect_uris={"https://client.example/callback"},
     )
-    monkeypatch.setattr(oauth_client_commands, "_registry", oauth)
     before = oauth.path.read_bytes()
 
     shown = gateway.execute(
@@ -98,3 +97,19 @@ def test_security_oauth_client_reads_support_forced_non_mutation(
     assert shown.client_id == "public-client"
     assert listed == [shown]
     assert oauth.path.read_bytes() == before
+
+
+def test_security_oauth_client_commands_share_gateway_security_path(gateway, tmp_path):
+    gateway.cache.root = tmp_path / "cache"
+    gateway.security_path = gateway.cache.root / "security" / "state.sqlite"
+
+    secret = gateway(
+        "security oauth client create actions-client "
+        "https://chatgpt.com/callback "
+        "--confidential --method client_secret_post"
+    )
+
+    assert secret.startswith("gwcs_")
+    registered = OAuthRegistry(gateway.security_path).require_client("actions-client")
+    assert registered.client_id == "actions-client"
+    assert registered.redirect_uris == frozenset({"https://chatgpt.com/callback"})
