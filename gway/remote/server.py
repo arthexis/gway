@@ -80,10 +80,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
         super().__init__(metadata)
         self.runtime = runtime
         self._query_lock = threading.RLock()
-        actions_metadata = RemoteOAuthMetadata.from_origin(
-            metadata.issuer,
-            resource_path="/actions",
-        )
+        actions_metadata = metadata.with_resource_path("/actions")
         self.actions = ActionsApplication(actions_metadata, runtime=runtime)
         if account is None and runtime is not None:
             oauth = OAuthRegistry(runtime.security_path)
