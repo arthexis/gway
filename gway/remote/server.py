@@ -97,12 +97,14 @@ class RemoteApplication(RemoteDiscoveryApplication):
             metadata,
             self.account,
             client_resolver=client_resolver,
+            default_scope="chatgpt-logs",
         )
         self.actions_oauth = RemoteOAuthProtocol(
             actions_metadata,
             self.account,
             client_resolver=client_resolver,
             allow_confidential_without_pkce=True,
+            default_scope="chatgpt-actions",
         )
         self.oauth_by_resource = {
             metadata.resource: self.oauth,
