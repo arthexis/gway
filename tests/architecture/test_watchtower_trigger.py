@@ -1,13 +1,17 @@
 from pathlib import Path
 
 
-def test_gway_main_dispatches_watchtower_deploy() -> None:
+def test_gway_main_dispatches_watchtower_deploy_after_compatibility() -> None:
     workflow = Path(".github/workflows/watchtower-deploy-trigger.yml").read_text(
         encoding="utf-8"
     )
 
-    assert "push:" in workflow
+    assert "workflow_run:" in workflow
+    assert 'workflows: ["python / Python compatibility"]' in workflow
+    assert "types: [completed]" in workflow
     assert "branches: [main]" in workflow
+    assert "github.event.workflow_run.conclusion == 'success'" in workflow
+    assert "github.event.workflow_run.event == 'push'" in workflow
     assert "schedule:" not in workflow
     assert "WATCHTOWER_DEPLOY_TOKEN: ${{ secrets.WATCHTOWER_DEPLOY_TOKEN }}" in workflow
     assert (
