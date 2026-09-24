@@ -66,5 +66,5 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 markers = [
-    "heavy: end-to-end or process/network integration coverage omitted from ordinary PR regression runs",
+    "main: established regression or acceptance coverage run on main validation rather than ordinary PR iterations",
 ]
