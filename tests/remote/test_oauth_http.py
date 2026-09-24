@@ -337,7 +337,7 @@ def test_cimd_resolver_accepts_public_client_metadata_without_registration(tmp_p
         fetcher=lambda url: {
             "client_id": url,
             "redirect_uris": ["https://chatgpt.example/callback"],
-            "token_endpoint_auth_methods": ["none"],
+            "token_endpoint_auth_methods_supported": ["none", "private_key_jwt"],
         },
     )
 
@@ -345,3 +345,20 @@ def test_cimd_resolver_accepts_public_client_metadata_without_registration(tmp_p
 
     assert client.client_id == client_id
     assert client.redirect_uris == frozenset({"https://chatgpt.example/callback"})
+
+
+def test_cimd_resolver_accepts_legacy_token_auth_methods_field(tmp_path):
+    oauth = OAuthRegistry(tmp_path / "security.sqlite")
+    client_id = "https://chatgpt.example/oauth/legacy-client.json"
+    resolver = OAuthClientResolver(
+        oauth,
+        fetcher=lambda url: {
+            "client_id": url,
+            "redirect_uris": ["https://chatgpt.example/callback"],
+            "token_endpoint_auth_methods": ["none"],
+        },
+    )
+
+    client = resolver.resolve(client_id)
+
+    assert client.token_endpoint_auth_method == "none"
