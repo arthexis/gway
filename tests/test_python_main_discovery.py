@@ -1,3 +1,4 @@
+from pathlib import Path
 import sys
 
 from gway.gateway import Gateway
@@ -127,3 +128,18 @@ def test_gateway_bootstrap_discovers_src_layout_nested_package_main(
     result = runtime("acme worker job-1")
 
     assert result["ARGS"] == ["job-1"]
+
+
+def test_project_import_never_evicts_running_gway_package(tmp_path):
+    import gway
+    from gway.project import _evict_foreign_module
+
+    original = sys.modules["gway"]
+    foreign_root = tmp_path / "checkout"
+    (foreign_root / "gway").mkdir(parents=True)
+    (foreign_root / "gway" / "__init__.py").write_text("", encoding="utf-8")
+
+    _evict_foreign_module("gway.souschef", (foreign_root,))
+
+    assert sys.modules["gway"] is original
+    assert Path(gway.__file__).resolve() == Path(original.__file__).resolve()
