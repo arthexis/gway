@@ -362,3 +362,29 @@ def test_cimd_resolver_accepts_legacy_token_auth_methods_field(tmp_path):
     client = resolver.resolve(client_id)
 
     assert client.token_endpoint_auth_method == "none"
+
+
+def test_authorize_defaults_missing_scope_to_mcp_resource_scope(tmp_path):
+    _, _, _, _, server, thread, connection = _setup(tmp_path)
+    try:
+        query = urlencode(
+            {
+                "response_type": "code",
+                "client_id": CLIENT_ID,
+                "redirect_uri": REDIRECT_URI,
+                "resource": RESOURCE,
+                "code_challenge": _challenge("v" * 64),
+                "code_challenge_method": "S256",
+            }
+        )
+        connection.request("GET", f"/oauth/authorize?{query}")
+        response = connection.getresponse()
+
+        assert response.status == 303
+        assert response.getheader("Location") == "/connect"
+        response.read()
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
