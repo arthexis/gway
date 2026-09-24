@@ -1,5 +1,5 @@
 """Reusable GWAY security primitives."""
 
-from . import scope, token
+from . import oauth_client, scope, token
 
-__all__ = ["scope", "token"]
+__all__ = ["oauth_client", "scope", "token"]
