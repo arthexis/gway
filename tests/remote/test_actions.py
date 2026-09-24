@@ -194,3 +194,39 @@ def test_actions_allow_only_post(gateway):
         assert status == 405
         assert response_headers["allow"] == "POST"
         assert payload["error"] == "method_not_allowed"
+
+
+def test_actions_reject_invalid_utf8_json(gateway):
+    application, bearer = _remote(gateway, operations=set())
+
+    status, _, payload = application.response(
+        "POST",
+        "/actions/query",
+        headers={
+            "Authorization": f"Bearer {bearer}",
+            "Content-Type": "application/json",
+        },
+        body=b"\xff",
+    )
+
+    assert status == 400
+    assert payload["error"] == "invalid_request"
+
+
+def test_actions_results_are_json_safe(gateway):
+    def values():
+        return {"items": {"one", "two"}}
+
+    gateway.values = gateway.wrap("values", values)
+    application, bearer = _remote(gateway, operations={"values"})
+
+    status, _, payload = _post(
+        application,
+        bearer,
+        "/actions/execute",
+        "values",
+    )
+
+    assert status == 200
+    assert sorted(payload["result"]["items"]) == ["one", "two"]
+    json.dumps(payload)
