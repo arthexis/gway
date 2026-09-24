@@ -867,6 +867,29 @@ class Gateway(Resolver):
                     return dispatch(self, command, *args, **kwargs)
             return dispatch(self, command, *args, **kwargs)
 
+    def execute_authenticated(
+        self,
+        bearer,
+        command,
+        *,
+        resource=None,
+        mutate=MUTATE_UNSET,
+    ):
+        """Authenticate one bearer and execute under its current authority."""
+        from .security.authentication import authenticate_bearer
+
+        identity = authenticate_bearer(
+            bearer,
+            resource=resource,
+            path=self.security_path,
+        )
+        with self.authorized(
+            operations=identity.authority.operations,
+            environment=identity.authority.environment,
+        ):
+            with self.external_authority():
+                return self.execute(command, mutate=mutate)
+
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command while preserving inherited mutation policy."""
         from .dispatch import dispatch
