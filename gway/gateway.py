@@ -208,7 +208,7 @@ class Gateway(Resolver):
         self.context.update(values)
         return SKIP_PUBLICATION
 
-    def _pipe_context(self, **values):
+    def _pipe_context(self, *, mutate=False, **values):
         """Return selected semantic context as a result-only mapping.
 
         Bare flags reuse an existing contextual value when one is available;
