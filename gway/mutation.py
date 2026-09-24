@@ -4,6 +4,7 @@ import inspect
 
 
 MUTATE_PARAMETER = "mutate"
+MUTATE_UNSET = object()
 
 
 class MutationError(RuntimeError):
