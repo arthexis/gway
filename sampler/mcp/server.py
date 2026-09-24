@@ -146,8 +146,11 @@ class _SocketParentGateway:
             raise RuntimeError(response.get("error") or "Parent Gateway request failed")
         return response.get("result")
 
-    def execute(self, command):
-        return self._request("gateway.execute", command=command)
+    def execute(self, command, mutate=None):
+        params = {"command": command}
+        if mutate is not None:
+            params["mutate"] = mutate
+        return self._request("gateway.execute", **params)
 
     def authenticate_bearer(self, bearer, resource=None):
         return self._request(
@@ -208,7 +211,12 @@ def _callback_connection(stream, token):
                 )
             )
         else:
-            result = _validate_result(_gway_parent.execute(request["command"]))
+            kwargs = {}
+            if "mutate" in request:
+                kwargs["mutate"] = request["mutate"]
+            result = _validate_result(
+                _gway_parent.execute(request["command"], **kwargs)
+            )
         response = {"ok": True, "result": result}
     except BaseException as exception:
         response = {
@@ -305,11 +313,7 @@ def query(command: str):
                 mutate=False,
             )
         )
-    return _validate_result(parent.execute_authenticated(
-        "__stdio__",
-        command,
-        mutate=False,
-    ))
+    return _validate_result(parent.execute(command, mutate=False))
 
 
 def _endpoint_origin(endpoint, path):
