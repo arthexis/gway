@@ -99,6 +99,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
             actions_metadata,
             self.account,
             client_resolver=client_resolver,
+            allow_confidential_without_pkce=True,
         )
         self.oauth_by_resource = {
             metadata.resource: self.oauth,
