@@ -284,7 +284,10 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 return 405, {"allow": "POST"}, {"error": "method_not_allowed"}
             try:
                 params = self._form(body)
-                payload = self._oauth_for_resource(params).token(params)
+                payload = self._oauth_for_resource(params).token(
+                    params,
+                    headers=headers,
+                )
             except OAuthProtocolError as error:
                 return error.status, {
                     "content-type": "application/json",
