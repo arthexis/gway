@@ -1,5 +1,4 @@
 from io import BytesIO
-from types import SimpleNamespace
 
 from gway.recipe import companion
 from gway.security.scopes import EffectiveScope
