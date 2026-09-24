@@ -1,4 +1,4 @@
-"""GWAY command facade for named security scopes."""
+"""Gateway-bound named security scope commands."""
 
 from pathlib import Path
 
@@ -7,95 +7,92 @@ try:
 except ModuleNotFoundError:
     import tomli as _toml
 
-from .scopes import ScopeRegistry as _ScopeRegistry
+from .scopes import ScopeRegistry
 
 
-_registry = None
+__all__ = ()
 
 
-def registry():
-    """Return the process-local default scope registry."""
-    global _registry
-    if _registry is None:
-        _registry = _ScopeRegistry()
-    return _registry
+class Controller:
+    """Manage named scopes in the active Gateway security registry."""
 
+    def __init__(self, gateway):
+        self.gateway = gateway
 
-def create(name):
-    """Create an empty named security scope."""
-    return registry().create(name)
+    @property
+    def registry(self):
+        """Return the scope registry bound to the active Gateway security path."""
+        return ScopeRegistry(self.gateway.security_path)
 
+    def create(self, name):
+        """Create an empty named security scope."""
+        return self.registry.create(name)
 
-def show(name, *, mutate=True):
-    """Return one named security scope."""
-    return registry().require(name, readonly=not mutate)
+    def show(self, name, *, mutate=True):
+        """Return one named security scope."""
+        return self.registry.require(name, readonly=not mutate)
 
+    def list(self, *, mutate=True):
+        """Return all named security scopes."""
+        return self.registry.all(readonly=not mutate)
 
-def list(*, mutate=True):
-    """Return all named security scopes."""
-    return registry().all(readonly=not mutate)
+    def delete(self, name):
+        """Delete one named security scope."""
+        return self.registry.remove(name)
 
-
-def delete(name):
-    """Delete one named security scope."""
-    return registry().remove(name)
-
-
-def set(name, *operations, environment=None):
-    """Replace one scope using operation grants and optional environment names."""
-    if environment is None:
-        environment_values = ()
-    elif isinstance(environment, str):
-        environment_values = tuple(
-            item.strip() for item in environment.split(",") if item.strip()
+    def set(self, name, *operations, environment=None):
+        """Replace one scope using operation grants and optional environment names."""
+        if environment is None:
+            environment_values = ()
+        elif isinstance(environment, str):
+            environment_values = tuple(
+                item.strip() for item in environment.split(",") if item.strip()
+            )
+        else:
+            environment_values = tuple(environment)
+        return self.registry.replace(
+            name,
+            operations=operations,
+            environment=environment_values,
         )
-    else:
-        environment_values = tuple(environment)
-    return registry().replace(
-        name,
-        operations=operations,
-        environment=environment_values,
-    )
 
+    def resolve(self, *names, mutate=True):
+        """Return the union of named security scopes."""
+        return self.registry.resolve(names, readonly=not mutate)
 
-def resolve(*names, mutate=True):
-    """Return the union of named security scopes."""
-    return registry().resolve(names, readonly=not mutate)
+    def apply(self, path):
+        """Apply scope definitions from a TOML file transactionally."""
+        path = Path(path).expanduser()
+        with path.open("rb") as stream:
+            document = _toml.load(stream)
+        scopes = document.get("scopes")
+        if not isinstance(scopes, dict):
+            raise ValueError("scope TOML requires a [scopes] table")
+        return self.registry.replace_many(scopes)
 
+    @staticmethod
+    def _toml_string(value):
+        value = str(value)
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
-
-def apply(path):
-    """Apply scope definitions from a TOML file transactionally."""
-    path = Path(path).expanduser()
-    with path.open("rb") as stream:
-        document = _toml.load(stream)
-    scopes = document.get("scopes")
-    if not isinstance(scopes, dict):
-        raise ValueError("scope TOML requires a [scopes] table")
-    return registry().replace_many(scopes)
-
-
-def _toml_string(value):
-    value = str(value)
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def export(to=None):
-    """Export all scopes as stable TOML, optionally writing to a file."""
-    lines = []
-    for scope in registry().all():
-        lines.append(f"[scopes.{_toml_string(scope.name)}]")
-        operations = ", ".join(_toml_string(value) for value in sorted(scope.operations))
-        environment = ", ".join(
-            _toml_string(value) for value in sorted(scope.environment)
-        )
-        lines.append(f"operations = [{operations}]")
-        lines.append(f"environment = [{environment}]")
-        lines.append("")
-    rendered = "\n".join(lines)
-    if to is None:
-        return rendered
-    path = Path(to).expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(rendered, encoding="utf-8")
-    return str(path)
+    def export(self, to=None):
+        """Export all scopes as stable TOML, optionally writing to a file."""
+        lines = []
+        for scope in self.registry.all():
+            lines.append(f"[scopes.{self._toml_string(scope.name)}]")
+            operations = ", ".join(
+                self._toml_string(value) for value in sorted(scope.operations)
+            )
+            environment = ", ".join(
+                self._toml_string(value) for value in sorted(scope.environment)
+            )
+            lines.append(f"operations = [{operations}]")
+            lines.append(f"environment = [{environment}]")
+            lines.append("")
+        rendered = "\n".join(lines)
+        if to is None:
+            return rendered
+        path = Path(to).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(rendered, encoding="utf-8")
+        return str(path)

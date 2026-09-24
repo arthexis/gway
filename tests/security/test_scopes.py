@@ -2,7 +2,6 @@ import sqlite3
 
 import pytest
 
-from gway.security import scope as scope_commands
 from gway.security.scopes import EffectiveScope, Scope, ScopeRegistry
 from gway.security.state import SecurityState
 
@@ -175,9 +174,9 @@ def test_failed_replace_rolls_back_previous_scope(tmp_path, monkeypatch):
 
 
 
-def test_security_scope_gway_command_surface(gateway, tmp_path, monkeypatch):
-    registry = ScopeRegistry(tmp_path / "security.sqlite")
-    monkeypatch.setattr(scope_commands, "_registry", registry)
+def test_security_scope_gway_command_surface(gateway, tmp_path):
+    path = tmp_path / "security.sqlite"
+    gateway.security_path = path
 
     created = gateway("security scope create logs")
     assert created == Scope("logs")
@@ -198,9 +197,10 @@ def test_security_scope_gway_command_surface(gateway, tmp_path, monkeypatch):
 
 
 
-def test_scope_toml_apply_and_export_round_trip(gateway, tmp_path, monkeypatch):
-    registry = ScopeRegistry(tmp_path / "security.sqlite")
-    monkeypatch.setattr(scope_commands, "_registry", registry)
+def test_scope_toml_apply_and_export_round_trip(gateway, tmp_path):
+    path = tmp_path / "security.sqlite"
+    gateway.security_path = path
+    registry = ScopeRegistry(path)
     source = tmp_path / "scopes.toml"
     source.write_text(
         """
@@ -229,8 +229,9 @@ environment = ["SITE"]
     assert gateway(f"security scope export --to {exported}") == str(exported)
     assert "[scopes.\"logs-read\"]" in exported.read_text(encoding="utf-8")
 
-    replacement = ScopeRegistry(tmp_path / "replacement.sqlite")
-    monkeypatch.setattr(scope_commands, "_registry", replacement)
+    replacement_path = tmp_path / "replacement.sqlite"
+    gateway.security_path = replacement_path
+    replacement = ScopeRegistry(replacement_path)
     gateway(f"security scope apply {exported}")
 
     assert replacement.all() == registry.all()
@@ -311,12 +312,11 @@ def test_readonly_security_state_never_migrates_schema(tmp_path):
 def test_security_scope_reads_support_forced_non_mutation(
     gateway,
     tmp_path,
-    monkeypatch,
 ):
     path = tmp_path / "security.sqlite"
+    gateway.security_path = path
     registry = ScopeRegistry(path)
     registry.replace("logs", operations={"log.read"})
-    monkeypatch.setattr(scope_commands, "_registry", registry)
     before = path.read_bytes()
 
     shown = gateway.execute("security scope show logs", mutate=False)

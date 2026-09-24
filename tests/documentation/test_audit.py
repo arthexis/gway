@@ -36,6 +36,23 @@ def _public_builtin_commands():
             "security oauth client delete",
             "security oauth client disable",
             "security oauth client enable",
+            "security scope create",
+            "security scope show",
+            "security scope list",
+            "security scope delete",
+            "security scope set",
+            "security scope resolve",
+            "security scope apply",
+            "security scope export",
+            "security token create",
+            "security token show",
+            "security token list",
+            "security token delete",
+            "security token disable",
+            "security token enable",
+            "security token set",
+            "security token bind",
+            "security token unbind",
         }
     )
     return sorted(commands)
