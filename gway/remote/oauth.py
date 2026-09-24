@@ -125,7 +125,9 @@ class OAuthClientResolver:
         if not redirects:
             raise OAuthProtocolError("invalid_client", "CIMD redirect_uris are required")
 
-        methods = document.get("token_endpoint_auth_methods")
+        methods = document.get("token_endpoint_auth_methods_supported")
+        if methods is None:
+            methods = document.get("token_endpoint_auth_methods")
         if methods is None:
             method = document.get("token_endpoint_auth_method")
             methods = ["none"] if method is None else [method]
