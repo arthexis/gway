@@ -3,17 +3,12 @@ import re
 import threading
 from urllib.parse import urlencode
 
-import pytest
-
 from gway.remote.account import RemoteAccountApplication
 from gway.remote.server import build_server
 from gway.remote.session import RemoteSessionStore
 from gway.security.oauth import OAuthRegistry
 from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
-
-
-pytestmark = pytest.mark.main
 
 
 def _csrf(html):
