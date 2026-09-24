@@ -5,9 +5,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from urllib.parse import parse_qs, urlsplit
 
+from ..authorization import AuthorizationError
+from ..mutation import MutationError
+from ..security.authentication import BearerAuthenticationError
 from .account import RemoteAccountApplication
 from .metadata import RemoteOAuthMetadata
 from .oauth import OAuthProtocolError, RemoteOAuthProtocol
+
+
+MAX_QUERY_COMMAND_BYTES = 16 * 1024
 
 
 class RemoteDiscoveryApplication:
@@ -59,8 +65,16 @@ class RemoteApplication(RemoteDiscoveryApplication):
 
     cookie_name = "gway_remote_session"
 
-    def __init__(self, metadata, *, account=None, client_resolver=None):
+    def __init__(
+        self,
+        metadata,
+        *,
+        account=None,
+        client_resolver=None,
+        runtime=None,
+    ):
         super().__init__(metadata)
+        self.runtime = runtime
         self.account = RemoteAccountApplication() if account is None else account
         self.oauth = RemoteOAuthProtocol(
             metadata,
@@ -120,11 +134,80 @@ class RemoteApplication(RemoteDiscoveryApplication):
             headers["set-cookie"] = self._cookie_header(session)
         return headers
 
+    @staticmethod
+    def _bearer(headers):
+        authorization = (headers or {}).get("authorization", "")
+        scheme, separator, credential = authorization.partition(" ")
+        if not separator or scheme.casefold() != "bearer" or not credential.strip():
+            raise BearerAuthenticationError()
+        return credential.strip()
+
+    def _query(self, method, split, headers):
+        response_headers = {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+            "pragma": "no-cache",
+        }
+        if method != "GET":
+            return 405, {**response_headers, "allow": "GET"}, {
+                "error": "method_not_allowed"
+            }
+        if self.runtime is None:
+            return 503, response_headers, {"error": "query_unavailable"}
+
+        params = parse_qs(split.query, keep_blank_values=True)
+        values = params.get("c")
+        if not values or not values[-1].strip():
+            return 400, response_headers, {
+                "error": "invalid_query",
+                "message": "Query parameter 'c' is required",
+            }
+        command = values[-1]
+        if len(command.encode("utf-8")) > MAX_QUERY_COMMAND_BYTES:
+            return 400, response_headers, {
+                "error": "query_too_large",
+                "message": "Query command exceeds the maximum size",
+            }
+
+        try:
+            bearer = self._bearer(headers)
+            result = self.runtime.execute_authenticated(
+                bearer,
+                command,
+                resource=self.metadata.resource,
+                mutate=False,
+            )
+        except BearerAuthenticationError:
+            return 401, {
+                **response_headers,
+                "www-authenticate": "Bearer",
+            }, {"error": "invalid_bearer"}
+        except AuthorizationError as error:
+            return 403, response_headers, {
+                "error": "not_authorized",
+                "message": str(error),
+            }
+        except MutationError as error:
+            return 409, response_headers, {
+                "error": "mutation_not_allowed",
+                "message": str(error),
+            }
+        except (LookupError, TypeError, ValueError) as error:
+            return 400, response_headers, {
+                "error": "invalid_command",
+                "message": str(error),
+            }
+
+        return 200, response_headers, {"result": result}
+
     def response(self, method, path, *, headers=None, body=b""):
         method = str(method).upper()
         split = urlsplit(str(path))
         route = split.path
         headers = {str(k).casefold(): str(v) for k, v in (headers or {}).items()}
+
+        if route == "/query":
+            return self._query(method, split, headers)
 
         if route == "/oauth/authorize":
             if method not in {"GET", "POST"}:
@@ -361,6 +444,7 @@ def build_server(
     allow_insecure_loopback=False,
     account=None,
     client_resolver=None,
+    runtime=None,
 ):
     """Build the remote HTTP server without starting its lifecycle."""
     metadata = RemoteOAuthMetadata.from_origin(
@@ -372,6 +456,7 @@ def build_server(
         metadata,
         account=account,
         client_resolver=client_resolver,
+        runtime=runtime,
     )
     return ThreadingHTTPServer((str(host), int(port)), _handler(application))
 
@@ -382,6 +467,7 @@ def serve(
     *,
     public_origin="https://remote.arthexis.com",
     resource_path="/mcp",
+    runtime=None,
 ):
     """Serve remote OAuth discovery and browser linking until stopped."""
     server = build_server(
@@ -389,6 +475,7 @@ def serve(
         port,
         public_origin=public_origin,
         resource_path=resource_path,
+        runtime=runtime,
     )
     try:
         return server.serve_forever()
