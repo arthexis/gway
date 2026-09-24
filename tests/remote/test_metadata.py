@@ -108,10 +108,10 @@ def test_with_resource_path_preserves_validated_insecure_loopback_origin():
         allow_insecure_loopback=True,
     )
 
-    actions = metadata.with_resource_path("/actions")
+    alternate = metadata.with_resource_path("/alternate")
 
-    assert actions.issuer == "http://127.0.0.1:9000"
-    assert actions.resource == "http://127.0.0.1:9000/actions"
+    assert alternate.issuer == "http://127.0.0.1:9000"
+    assert alternate.resource == "http://127.0.0.1:9000/alternate"
 
 
 def test_scoped_metadata_advertises_supported_scope():
@@ -134,9 +134,9 @@ def test_with_resource_path_can_override_supported_scopes():
         scopes_supported=("chatgpt-logs",),
     )
 
-    actions = metadata.with_resource_path(
-        "/actions",
-        scopes_supported=("chatgpt-actions",),
+    alternate = metadata.with_resource_path(
+        "/alternate",
+        scopes_supported=("alternate-scope",),
     )
 
-    assert actions.scopes_supported == ("chatgpt-actions",)
+    assert alternate.scopes_supported == ("alternate-scope",)
