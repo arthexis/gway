@@ -1,6 +1,5 @@
 from urllib.parse import urlencode
 
-from gway.authorization import AuthorizationError
 from gway.remote.metadata import RemoteOAuthMetadata
 from gway.remote.server import MAX_QUERY_COMMAND_BYTES, RemoteApplication
 from gway.security.scopes import ScopeRegistry
