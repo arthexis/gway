@@ -334,18 +334,6 @@ def test_security_token_create_accepts_expiry_flag(gateway, tmp_path, monkeypatc
 
 
 
-def test_token_authentication_is_byte_preserving_read_only(tmp_path):
-    scopes, tokens = _registries(tmp_path)
-    scopes.replace("logs", operations={"log.read"})
-    issued = tokens.create("reader", scopes={"logs"})
-    before = tokens.path.read_bytes()
-
-    authenticated = tokens.authenticate(issued.bearer)
-
-    assert authenticated.authority.operations == frozenset({"log.read"})
-    assert tokens.path.read_bytes() == before
-
-
 def test_security_token_reads_support_forced_non_mutation(
     gateway,
     tmp_path,
