@@ -773,6 +773,25 @@ class Gateway(Resolver):
             self._mutation_allowed_var.reset(token)
 
     @contextmanager
+    def observational_state_scope(self):
+        """Restore Gway-owned runtime bookkeeping after observational execution."""
+        context = dict(self.context)
+        result_map = dict(self.results.maps[0])
+        result_history = list(self.results.history)
+        execution = self.execution
+        previous_execution = self.previous_execution
+        try:
+            yield
+        finally:
+            self.context.clear()
+            self.context.update(context)
+            self.results.maps[0].clear()
+            self.results.maps[0].update(result_map)
+            self.results.history[:] = result_history
+            self.execution = execution
+            self.previous_execution = previous_execution
+
+    @contextmanager
     def invocation_authority(self, operation):
         """Encapsulate internals of an already-authorized trusted recipe operation."""
         if (
@@ -823,7 +842,11 @@ class Gateway(Resolver):
         """Execute a GWAY command under a monotonic mutation constraint."""
         from .dispatch import dispatch
 
+        observational = self.mutation_allowed and not bool(mutate)
         with self.mutation_scope(mutate=mutate):
+            if observational:
+                with self.observational_state_scope():
+                    return dispatch(self, command, *args, **kwargs)
             return dispatch(self, command, *args, **kwargs)
 
     def __call__(self, command, *args, **kwargs):
