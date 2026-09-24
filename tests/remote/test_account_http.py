@@ -3,8 +3,6 @@ import re
 import threading
 from urllib.parse import urlencode
 
-import pytest
-
 from gway.remote.account import RemoteAccountApplication
 from gway.remote.server import build_server
 from gway.remote.session import RemoteSessionStore
