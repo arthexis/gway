@@ -8,7 +8,7 @@ from .runner import invoke
 from .bindings import Bindings
 from . import log as gway_log
 from .normalization import complete_arguments
-from .mutation import mutates, public_signature, supports_no_mutate
+from .mutation import MutationError, mutates, public_signature, supports_no_mutate
 from .environment import process_environment
 from .operations import registry_views, split_operation
 from .publication import publish
@@ -66,6 +66,10 @@ class Gateway(Resolver):
         self._capability_depth_var = ContextVar(
             f"gway_capability_depth_{id(self)}",
             default=0,
+        )
+        self._mutation_allowed_var = ContextVar(
+            f"gway_mutation_allowed_{id(self)}",
+            default=True,
         )
         self._semantic_topics_var = ContextVar(
             f"gway_semantic_topics_{id(self)}",
@@ -749,6 +753,25 @@ class Gateway(Resolver):
             "Direct recipe paths are not authorized; invoke an authorized recipe operation"
         )
 
+    @property
+    def mutation_allowed(self):
+        """Return whether the active execution may intentionally mutate state."""
+        return self._mutation_allowed_var.get()
+
+    @contextmanager
+    def mutation_scope(self, *, mutate=True):
+        """Constrain mutation for this execution and all nested execution.
+
+        Once mutation is disabled by an outer scope, nested scopes cannot
+        re-enable it.
+        """
+        allowed = self.mutation_allowed and bool(mutate)
+        token = self._mutation_allowed_var.set(allowed)
+        try:
+            yield allowed
+        finally:
+            self._mutation_allowed_var.reset(token)
+
     @contextmanager
     def invocation_authority(self, operation):
         """Encapsulate internals of an already-authorized trusted recipe operation."""
@@ -796,11 +819,16 @@ class Gateway(Resolver):
             return self.environment.names()
         return tuple(name for name in allowed if name in self.environment)
 
-    def __call__(self, command, *args, **kwargs):
-        """Execute a GWAY command through the unified dispatcher."""
+    def execute(self, command, *args, mutate=True, **kwargs):
+        """Execute a GWAY command under a monotonic mutation constraint."""
         from .dispatch import dispatch
 
-        return dispatch(self, command, *args, **kwargs)
+        with self.mutation_scope(mutate=mutate):
+            return dispatch(self, command, *args, **kwargs)
+
+    def __call__(self, command, *args, **kwargs):
+        """Execute a GWAY command with normal mutation authority."""
+        return self.execute(command, *args, **kwargs)
 
     def chain(self, command, *args, **kwargs):
         """Create a scoped manual pipeline rooted in an initial command."""
@@ -828,6 +856,13 @@ class Gateway(Resolver):
         subject = self.subject(func_name) if op is None else sub
 
         def wrapped(*args, **kwargs):
+            if not self.mutation_allowed:
+                if not supports_no_mutate(func_obj):
+                    raise MutationError(
+                        f"{func_name!r} does not support non-mutating execution"
+                    )
+                kwargs = dict(kwargs)
+                kwargs["mutate"] = False
             call = complete_arguments(
                 self,
                 subject,
