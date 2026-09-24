@@ -484,3 +484,16 @@ def test_remote_actions_policy_does_not_grant_mutating_operations():
     assert "set env" not in command
     assert "security token" not in command
     assert "security oauth" not in command
+
+
+def test_remote_privacy_route_is_explicit_and_uses_auth_upstream():
+    auth_target = "[auth_host|127.0.0.1]:[auth_port|8001]"
+
+    for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
+        content = _template(name)
+        marker = "location = /privacy {"
+        block = _block(content, marker)
+
+        assert marker in content
+        assert auth_target in block
+        assert "[mcp_host|127.0.0.1]:[mcp_port|8000]" not in block
