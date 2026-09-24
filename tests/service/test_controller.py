@@ -378,7 +378,7 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
                 time.sleep(0.05)
 
         tools, sources = asyncio.run(call())
-        assert tools == ["gway"]
+        assert tools == ["gway", "query"]
         assert any(item["identity"] == "gway" for item in sources)
     finally:
         stopped = gateway._service_controller.stop(
@@ -503,3 +503,31 @@ def test_required_service_companion_repairs_missing_dependency(
         assert marker.read_text(encoding="utf-8") == "requiredrequired"
     finally:
         gateway._service_controller.stop(str(recipe), name="required-service")
+
+
+
+def test_service_list_and_inspect_support_non_mutating_execution(service_gateway):
+    gateway, _ = service_gateway
+
+    listed = gateway.execute("service list", mutate=False)
+    inspected = gateway.execute("service inspect worker", mutate=False)
+
+    assert any(item["service"] == "remote-auth" for item in listed)
+    assert inspected["service"] == "worker"
+
+    assert gateway.ops.resolve("service.list").__gway_supports_no_mutate__ is True
+    assert gateway.ops.resolve("service.inspect").__gway_supports_no_mutate__ is True
+
+
+def test_service_status_remains_rejected_under_non_mutating_execution(
+    service_gateway,
+):
+    gateway, backend = service_gateway
+
+    with pytest.raises(
+        RuntimeError,
+        match="does not support non-mutating execution",
+    ):
+        gateway.execute("service status worker", mutate=False)
+
+    assert backend.calls == []
