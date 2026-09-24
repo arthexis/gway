@@ -149,12 +149,16 @@ class RemoteOAuthProtocol:
         *,
         client_resolver=None,
         allow_confidential_without_pkce=False,
+        default_scope=None,
     ):
         self.metadata = metadata
         self.account = account
         self.oauth = account.oauth
         self.allow_confidential_without_pkce = bool(
             allow_confidential_without_pkce
+        )
+        self.default_scope = (
+            None if default_scope is None else str(default_scope).strip() or None
         )
         self.clients = (
             OAuthClientResolver(self.oauth)
@@ -226,9 +230,11 @@ class RemoteOAuthProtocol:
 
         scope = str(params.get("scope") or "").strip()
         if not scope:
-            if len(self.metadata.scopes_supported) != 1:
-                raise OAuthProtocolError("invalid_request", "scope is required")
+            scope = self.default_scope
+        if not scope and len(self.metadata.scopes_supported) == 1:
             scope = self.metadata.scopes_supported[0]
+        if not scope:
+            raise OAuthProtocolError("invalid_request", "scope is required")
         self.account.stage_consent(
             session,
             client_id,
