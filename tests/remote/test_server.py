@@ -4,7 +4,6 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from gway.remote.metadata import RemoteOAuthMetadata
-from gway.remote.oauth import OAuthProtocolError
 from gway.remote.server import RemoteApplication, RemoteDiscoveryApplication, build_server
 
 
