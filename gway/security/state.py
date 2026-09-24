@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-_SCHEMA_VERSION = 5
+_SCHEMA_VERSION = 6
 
 
 class SecurityState:
@@ -98,6 +98,8 @@ class SecurityState:
                 client_id TEXT NOT NULL UNIQUE,
                 metadata_url TEXT,
                 redirect_uris TEXT NOT NULL DEFAULT '[]',
+                client_secret_hash TEXT,
+                token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none',
                 created_at TEXT NOT NULL,
                 disabled INTEGER NOT NULL DEFAULT 0
             );
@@ -180,5 +182,19 @@ class SecurityState:
             }
             if "resource" not in columns:
                 connection.execute("ALTER TABLE oauth_grants ADD COLUMN resource TEXT")
+        if version < 6:
+            columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(oauth_clients)")
+            }
+            if "client_secret_hash" not in columns:
+                connection.execute(
+                    "ALTER TABLE oauth_clients ADD COLUMN client_secret_hash TEXT"
+                )
+            if "token_endpoint_auth_method" not in columns:
+                connection.execute(
+                    "ALTER TABLE oauth_clients ADD COLUMN "
+                    "token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none'"
+                )
         if version < _SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
