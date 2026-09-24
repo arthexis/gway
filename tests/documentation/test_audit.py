@@ -11,8 +11,9 @@ def _public_builtin_commands():
     commands = set()
 
     def visit(module, prefix=()):
+        public = getattr(module, "__all__", None)
         for name, value in vars(module).items():
-            if name.startswith("_"):
+            if name.startswith("_") or (public is not None and name not in public):
                 continue
             if isinstance(value, ModuleType) and value.__name__.startswith("gway."):
                 visit(value, (*prefix, name))
@@ -25,7 +26,18 @@ def _public_builtin_commands():
             commands.add(" ".join(prefix))
 
     visit(builtin)
-    commands.update({"help", "clear"})
+    commands.update(
+        {
+            "help",
+            "clear",
+            "security oauth client create",
+            "security oauth client show",
+            "security oauth client list",
+            "security oauth client delete",
+            "security oauth client disable",
+            "security oauth client enable",
+        }
+    )
     return sorted(commands)
 
 
