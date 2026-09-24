@@ -142,6 +142,9 @@ def test_nested_plain_gateway_call_inherits_non_mutating_execution(gateway):
 def test_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway):
     gateway.context["seed"] = "before"
     gateway.results.insert("seed", "before")
+    initial_context = dict(gateway.context)
+    initial_results = dict(gateway.results.get_results())
+    initial_history = list(gateway.results.history)
     previous_execution = gateway.execution
     previous_previous_execution = gateway.previous_execution
 
@@ -153,9 +156,9 @@ def test_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway):
     result = gateway.execute("inspect", mutate=False)
 
     assert result == {"observed": "value", "mutate": False}
-    assert gateway.context == {"seed": "before"}
-    assert gateway.results.get_results() == {"seed": "before"}
-    assert gateway.results.history == ["before"]
+    assert gateway.context == initial_context
+    assert gateway.results.get_results() == initial_results
+    assert gateway.results.history == initial_history
     assert gateway.execution is previous_execution
     assert gateway.previous_execution is previous_previous_execution
 
@@ -176,6 +179,9 @@ def test_repeated_non_mutating_execution_does_not_grow_result_history(gateway):
 def test_failed_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway):
     gateway.context["seed"] = "before"
     gateway.results.insert("seed", "before")
+    initial_context = dict(gateway.context)
+    initial_results = dict(gateway.results.get_results())
+    initial_history = list(gateway.results.history)
 
     def inspect(*, mutate=False):
         gateway.context["temporary"] = True
@@ -186,6 +192,6 @@ def test_failed_non_mutating_execution_restores_gway_runtime_bookkeeping(gateway
     with pytest.raises(ValueError, match="boom"):
         gateway.execute("inspect", mutate=False)
 
-    assert gateway.context == {"seed": "before"}
-    assert gateway.results.get_results() == {"seed": "before"}
-    assert gateway.results.history == ["before"]
+    assert gateway.context == initial_context
+    assert gateway.results.get_results() == initial_results
+    assert gateway.results.history == initial_history
