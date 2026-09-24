@@ -117,7 +117,7 @@ class Controller:
             )
         return replace(definition, **policy) if policy else definition
 
-    def list(self, project=None):
+    def list(self, project=None, *, mutate=False):
         """List named service presets.
 
         Ordinary operations and recipes are serviceable without appearing here.
@@ -139,7 +139,7 @@ class Controller:
             )
         ]
 
-    def inspect(self, *target):
+    def inspect(self, *target, mutate=False):
         """Inspect service policy inferred for an operation or recipe invocation."""
         definition = self._definition(target)
         return {
