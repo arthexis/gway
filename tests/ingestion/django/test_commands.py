@@ -230,3 +230,38 @@ def test_management_command_without_mutate_remains_conservatively_mutating(
     operation = gateway.ops.resolve("arthexis.legacy")
     assert operation.mutates is True
     assert operation.__gway_supports_no_mutate__ is False
+
+
+
+def test_management_command_executes_under_non_mutating_gateway_mode(
+    gateway,
+    django_project,
+    django_setup,
+    django_management,
+    monkeypatch,
+):
+    root, _ = django_project()
+    django_setup()
+    calls = django_management(commands={"fleet": "fleet"})
+
+    class FleetCommand:
+        def handle(self, *args, mutate=False, **options):
+            return None
+
+    command = FleetCommand()
+    monkeypatch.setattr(
+        django_ingestor,
+        "_management_command_handle",
+        lambda name: command.handle if name == "fleet" else None,
+    )
+
+    django_ingestor.ingest_project(gateway, root, name="arthexis")
+
+    result = gateway.execute("fleet arthexis", mutate=False)
+
+    assert result == {
+        "command": "fleet",
+        "args": (),
+        "options": {"mutate": False},
+    }
+    assert calls == [("fleet", (), {"mutate": False})]
