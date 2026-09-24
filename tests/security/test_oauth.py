@@ -307,9 +307,9 @@ def test_oauth_credentials_reveal_only_their_bound_resource_for_routing(tmp_path
     oauth.link("chatgpt", "operator")
     grant = oauth.create_grant(
         "chatgpt",
-        "Actions Client",
+        "MCP Client",
         scopes={"actions"},
-        resource="https://remote.example/actions",
+        resource="https://remote.example/mcp",
     )
     verifier = "v" * 64
     code = oauth.issue_authorization_code(
@@ -318,20 +318,20 @@ def test_oauth_credentials_reveal_only_their_bound_resource_for_routing(tmp_path
         code_challenge=_challenge(verifier),
     )
 
-    assert oauth.authorization_code_resource(code.code) == "https://remote.example/actions"
+    assert oauth.authorization_code_resource(code.code) == "https://remote.example/mcp"
 
     consumed = oauth.consume_authorization_code(
         code.code,
         redirect_uri="https://chatgpt.com/callback",
         code_verifier=verifier,
-        client_id="Actions Client",
-        resource="https://remote.example/actions",
+        client_id="MCP Client",
+        resource="https://remote.example/mcp",
     )
     issued = oauth.issue_tokens(consumed.id)
 
     assert (
         oauth.refresh_token_resource(issued.refresh_token)
-        == "https://remote.example/actions"
+        == "https://remote.example/mcp"
     )
 
     with pytest.raises(OAuthAuthenticationError):
@@ -339,8 +339,8 @@ def test_oauth_credentials_reveal_only_their_bound_resource_for_routing(tmp_path
 
     oauth.rotate_refresh(
         issued.refresh_token,
-        client_id="Actions Client",
-        resource="https://remote.example/actions",
+        client_id="MCP Client",
+        resource="https://remote.example/mcp",
     )
     with pytest.raises(OAuthAuthenticationError):
         oauth.refresh_token_resource(issued.refresh_token)
@@ -350,16 +350,16 @@ def test_confidential_oauth_client_secret_is_issued_once_and_hashed(tmp_path):
     _, _, oauth = _registries(tmp_path)
 
     issued = oauth.create_client(
-        "chatgpt-actions",
+        "mcp-confidential-client",
         redirect_uris={"https://chatgpt.com/callback"},
         confidential=True,
     )
 
-    assert issued.client.client_id == "chatgpt-actions"
+    assert issued.client.client_id == "mcp-confidential-client"
     assert issued.client.token_endpoint_auth_method == "client_secret_post"
     assert issued.client_secret.startswith("gwcs_")
 
-    loaded = oauth.get_client("chatgpt-actions")
+    loaded = oauth.get_client("mcp-confidential-client")
     assert loaded == issued.client
     assert not hasattr(loaded, "client_secret")
 
@@ -370,7 +370,7 @@ def test_confidential_oauth_client_secret_is_issued_once_and_hashed(tmp_path):
             FROM oauth_clients
             WHERE client_id = ?
             """,
-            ("chatgpt-actions",),
+            ("mcp-confidential-client",),
         ).fetchone()
         dump = "\n".join(connection.iterdump())
 
@@ -382,13 +382,13 @@ def test_confidential_oauth_client_secret_is_issued_once_and_hashed(tmp_path):
 def test_confidential_oauth_client_authentication_requires_matching_secret(tmp_path):
     _, _, oauth = _registries(tmp_path)
     issued = oauth.create_client(
-        "chatgpt-actions",
+        "mcp-confidential-client",
         redirect_uris={"https://chatgpt.com/callback"},
         confidential=True,
     )
 
     authenticated = oauth.authenticate_client(
-        "chatgpt-actions",
+        "mcp-confidential-client",
         client_secret=issued.client_secret,
         token_endpoint_auth_method="client_secret_post",
     )
@@ -397,14 +397,14 @@ def test_confidential_oauth_client_authentication_requires_matching_secret(tmp_p
 
     with pytest.raises(OAuthAuthenticationError):
         oauth.authenticate_client(
-            "chatgpt-actions",
+            "mcp-confidential-client",
             client_secret="wrong",
             token_endpoint_auth_method="client_secret_post",
         )
 
     with pytest.raises(OAuthAuthenticationError):
         oauth.authenticate_client(
-            "chatgpt-actions",
+            "mcp-confidential-client",
             token_endpoint_auth_method="client_secret_post",
         )
 
