@@ -45,8 +45,15 @@ def _belongs_to_roots(module, roots):
 
 
 def _evict_foreign_module(name, roots):
-    """Drop a cached top-level module tree owned by another project."""
+    """Drop a cached top-level module tree owned by another project.
+
+    Never replace Gway's own runtime package after process startup. A local
+    Gway checkout may be the current project, but switching package trees
+    mid-process would duplicate class identities and corrupt the runtime.
+    """
     top = name.split(".", 1)[0]
+    if top == __package__.split(".", 1)[0]:
+        return
     existing = sys.modules.get(top)
     if existing is None or _belongs_to_roots(existing, roots):
         return
