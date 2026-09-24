@@ -263,3 +263,19 @@ def test_observational_builtins_support_non_mutating_execution(
         operation = gateway.ops.resolve(name)
         assert operation.__gway_supports_no_mutate__ is True
         assert operation.mutates is False
+
+
+
+def test_toml_operations_support_non_mutating_execution(gateway, tmp_path):
+    path = tmp_path / "query.toml"
+    path.write_text('site = "MTY"\n', encoding="utf-8")
+
+    assert gateway.execute("toml", 'answer = 42', mutate=False) == {"answer": 42}
+    assert gateway.execute("toml loads", 'answer = 42', mutate=False) == {"answer": 42}
+    assert gateway.execute("toml load", str(path), mutate=False) == {"site": "MTY"}
+
+    family = gateway.ops["toml"]
+    for name in (None, "loads", "load"):
+        operation = gateway.ops.resolve("toml") if name is None else family[name]
+        assert operation.__gway_supports_no_mutate__ is True
+        assert operation.mutates is False
