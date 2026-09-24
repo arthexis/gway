@@ -1,7 +1,7 @@
 import json
 
 from gway.remote.metadata import RemoteOAuthMetadata
-from gway.remote.server import MAX_QUERY_COMMAND_BYTES, RemoteApplication
+from gway.remote.actions import MAX_ACTION_COMMAND_BYTES, ActionsApplication
 from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
 
@@ -16,7 +16,7 @@ def _remote(gateway, *, operations):
         "https://remote.example.test",
         resource_path="/mcp",
     )
-    return RemoteApplication(metadata, runtime=gateway), issued.bearer
+    return ActionsApplication(metadata, runtime=gateway), issued.bearer
 
 
 def _post(application, bearer, route, command):
@@ -168,7 +168,7 @@ def test_actions_validate_json_request_shape(gateway):
 
 def test_actions_reject_oversized_commands(gateway):
     application, bearer = _remote(gateway, operations=set())
-    oversized = "x" * (MAX_QUERY_COMMAND_BYTES + 1)
+    oversized = "x" * (MAX_ACTION_COMMAND_BYTES + 1)
 
     status, _, payload = _post(
         application,
