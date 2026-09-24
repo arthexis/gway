@@ -68,6 +68,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
     """Discovery plus O2 browser session, bearer linking, and consent."""
 
     cookie_name = "gway_remote_session"
+    actions_compat_client_id = "chatgpt-actions-client"
 
     def __init__(
         self,
@@ -168,6 +169,15 @@ class RemoteApplication(RemoteDiscoveryApplication):
 
     def _oauth_for_resource(self, params):
         resource = str((params or {}).get("resource") or "").strip()
+        client_id = str((params or {}).get("client_id") or "").strip()
+
+        # GPT Actions does not expose an RFC 8707 resource-indicator setting.
+        # Keep explicit resource values strict, but infer the Actions resource
+        # for the registered compatibility client when ChatGPT omits it.
+        if not resource and client_id == self.actions_compat_client_id:
+            resource = self.actions.metadata.resource
+            params["resource"] = resource
+
         protocol = self.oauth_by_resource.get(resource)
         if protocol is None:
             raise OAuthProtocolError("invalid_target")
