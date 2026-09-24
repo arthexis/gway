@@ -25,8 +25,15 @@ class OAuthClient:
     client_id: str
     redirect_uris: frozenset[str]
     metadata_url: str | None
+    token_endpoint_auth_method: str
     disabled: bool
     created_at: str
+
+
+@dataclass(frozen=True)
+class IssuedOAuthClient:
+    client: OAuthClient
+    client_secret: str
 
 
 @dataclass(frozen=True)
@@ -136,24 +143,60 @@ class OAuthRegistry:
         digest = hashlib.sha256(verifier.encode("ascii")).digest()
         return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
-    def create_client(self, client_id, *, redirect_uris=(), metadata_url=None):
+    def create_client(
+        self,
+        client_id,
+        *,
+        redirect_uris=(),
+        metadata_url=None,
+        confidential=False,
+        token_endpoint_auth_method=None,
+    ):
         client_id = self._text(client_id, "OAuth client id")
         redirects = frozenset(
             self._text(uri, "OAuth redirect URI") for uri in redirect_uris
         )
+        if token_endpoint_auth_method is None:
+            token_endpoint_auth_method = (
+                "client_secret_post" if confidential else "none"
+            )
+        token_endpoint_auth_method = self._text(
+            token_endpoint_auth_method,
+            "OAuth token endpoint auth method",
+        )
+        allowed_methods = {"none", "client_secret_post", "client_secret_basic"}
+        if token_endpoint_auth_method not in allowed_methods:
+            raise ValueError(
+                "Unsupported OAuth token endpoint auth method: "
+                + token_endpoint_auth_method
+            )
+        if confidential and token_endpoint_auth_method == "none":
+            raise ValueError("Confidential OAuth clients require client authentication")
+        if not confidential and token_endpoint_auth_method != "none":
+            confidential = True
+
+        client_secret = None
+        client_secret_hash = None
+        if confidential:
+            _, client_secret = self._secret("gwcs")
+            client_secret_hash = self._hash(client_secret)
         created_at = self._now().isoformat()
         with self.state.connect() as connection:
             try:
                 connection.execute(
                     """
                     INSERT INTO oauth_clients (
-                        client_id, metadata_url, redirect_uris, created_at, disabled
-                    ) VALUES (?, ?, ?, ?, 0)
+                        client_id, metadata_url, redirect_uris,
+                        client_secret_hash, token_endpoint_auth_method,
+                        created_at, disabled
+                    ) VALUES (?, ?, ?, ?, ?, ?, 0)
                     """,
                     (
                         client_id,
                         None if metadata_url is None else str(metadata_url),
                         json.dumps(sorted(redirects)),
+                        client_secret_hash,
+                        token_endpoint_auth_method,
                         created_at,
                     ),
                 )
@@ -163,7 +206,10 @@ class OAuthRegistry:
                 ).fetchone():
                     raise ValueError(f"OAuth client already exists: {client_id}") from None
                 raise
-        return self.get_client(client_id)
+        client = self.get_client(client_id)
+        if client_secret is None:
+            return client
+        return IssuedOAuthClient(client, client_secret)
 
     def get_client(self, client_id):
         if not self.path.is_file():
@@ -172,7 +218,8 @@ class OAuthRegistry:
         with self.state.connect() as connection:
             row = connection.execute(
                 """
-                SELECT client_id, metadata_url, redirect_uris, created_at, disabled
+                SELECT client_id, metadata_url, redirect_uris,
+                       token_endpoint_auth_method, created_at, disabled
                 FROM oauth_clients WHERE client_id = ?
                 """,
                 (client_id,),
@@ -183,9 +230,60 @@ class OAuthRegistry:
             row["client_id"],
             frozenset(json.loads(row["redirect_uris"])),
             row["metadata_url"],
+            row["token_endpoint_auth_method"],
             bool(row["disabled"]),
             row["created_at"],
         )
+
+    def authenticate_client(
+        self,
+        client_id,
+        *,
+        client_secret=None,
+        token_endpoint_auth_method=None,
+    ):
+        client_id = self._text(client_id, "OAuth client id")
+        client = self.get_client(client_id)
+        if client is None or client.disabled:
+            raise OAuthAuthenticationError()
+        expected_method = client.token_endpoint_auth_method
+        actual_method = (
+            expected_method
+            if token_endpoint_auth_method is None
+            else self._text(
+                token_endpoint_auth_method,
+                "OAuth token endpoint auth method",
+            )
+        )
+        if actual_method != expected_method:
+            raise OAuthAuthenticationError()
+        if expected_method == "none":
+            if client_secret not in (None, ""):
+                raise OAuthAuthenticationError()
+            return client
+
+        secret = str(client_secret or "")
+        if not secret:
+            raise OAuthAuthenticationError()
+        with self.state.connect(readonly=True) as connection:
+            row = connection.execute(
+                """
+                SELECT client_secret_hash
+                FROM oauth_clients
+                WHERE client_id = ?
+                """,
+                (client_id,),
+            ).fetchone()
+        if (
+            row is None
+            or not row["client_secret_hash"]
+            or not secrets.compare_digest(
+                row["client_secret_hash"],
+                self._hash(secret),
+            )
+        ):
+            raise OAuthAuthenticationError()
+        return client
 
     def link(self, name, token_name):
         name = self._text(name, "OAuth link name")
