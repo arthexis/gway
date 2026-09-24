@@ -3,6 +3,9 @@
 from .tokens import TokenRegistry
 
 
+__all__ = ()
+
+
 class Controller:
     """Manage opaque bearer tokens in the active Gateway security registry."""
 
