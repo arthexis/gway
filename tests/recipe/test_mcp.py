@@ -32,7 +32,7 @@ def _issued_token(
     tokens = TokenRegistry(path)
     scopes.replace(scope, operations=set(operations))
     issued = tokens.create(token, scopes={scope})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
     return scopes, tokens, issued
 
 
@@ -235,7 +235,7 @@ def test_parent_authenticated_execution_denies_operation_outside_token_scope(
     tokens = TokenRegistry(path)
     scopes.replace("reader", operations={"allowed"})
     issued = tokens.create("client", scopes={"reader"})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
     gateway.denied = gateway.wrap("denied", lambda: "no")
     recipe = _authenticated_parent_recipe(
@@ -255,7 +255,7 @@ def test_parent_authenticated_execution_rejects_invalid_bearer_uniformly(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
     tokens = TokenRegistry(tmp_path / "security.sqlite")
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
     recipe = _authenticated_parent_recipe(
         recipe_factory,
@@ -571,7 +571,7 @@ def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
         resource=resource,
     )
     issued = oauth.issue_tokens(grant.id)
-    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda: oauth)
+    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda path=None: oauth)
     return scopes, tokens, oauth, issued
 
 
@@ -708,7 +708,7 @@ def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata
     root_name,
 ):
     tokens = TokenRegistry(tmp_path / "security.sqlite")
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
     recipe = _mcp_http_recipe(recipe_factory, tmp_path / root_name)
     recipe.write_text(
@@ -738,7 +738,7 @@ def test_mcp_http_scope_denial_is_tool_error_not_authentication_failure(
     tokens = TokenRegistry(path)
     scopes.replace("reader", operations={"allowed"})
     issued = tokens.create("http-client", scopes={"reader"})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
     gateway.denied = gateway.wrap("denied", lambda: "no")
     recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpdenied")
@@ -767,7 +767,7 @@ def test_mcp_http_rejects_missing_and_invalid_bearer(
     credential,
 ):
     tokens = TokenRegistry(tmp_path / "security.sqlite")
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
     recipe = _mcp_http_recipe(
         recipe_factory,
@@ -829,7 +829,7 @@ def test_mcp_http_concurrent_clients_keep_distinct_scopes(
     scopes.replace("beta-scope", operations={"beta"})
     alpha_token = tokens.create("alpha-client", scopes={"alpha-scope"})
     beta_token = tokens.create("beta-client", scopes={"beta-scope"})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
     gateway.alpha = gateway.wrap("alpha", lambda: "alpha-ok")
     gateway.beta = gateway.wrap("beta", lambda: "beta-ok")
@@ -965,7 +965,7 @@ def _issued_chatgpt_logs_oauth(tmp_path, monkeypatch, *, extra_operations=()):
         resource=MCP_RESOURCE,
     )
     issued = oauth.issue_tokens(grant.id)
-    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda: oauth)
+    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda path=None: oauth)
     return scopes, tokens, oauth, issued
 
 
@@ -1137,7 +1137,7 @@ def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
         environment=(),
     )
     issued = tokens.create("logs-client", scopes={"logs-read"})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda: tokens)
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
     state = ServiceInstallState(tmp_path / "services-installed")
     state.put(
