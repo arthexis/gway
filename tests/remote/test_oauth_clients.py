@@ -284,3 +284,50 @@ def test_actions_compatibility_still_requires_pkce_for_public_client(tmp_path):
         )
 
     assert captured.value.description == "code_challenge is required"
+
+
+def test_actions_confidential_authorization_accepts_missing_pkce(tmp_path):
+    oauth, _, client, _ = _protocol(tmp_path, method="client_secret_post")
+    metadata = RemoteOAuthMetadata.from_origin(
+        "https://remote.example.test",
+        resource_path="/actions",
+    )
+    account = RemoteAccountApplication(oauth=oauth, tokens=TokenRegistry(oauth.path))
+    protocol = RemoteOAuthProtocol(
+        metadata,
+        account,
+        allow_confidential_without_pkce=True,
+    )
+    session = account.new_session()
+
+    protocol.stage_authorization(
+        session,
+        {
+            "response_type": "code",
+            "client_id": client.client.client_id,
+            "redirect_uri": REDIRECT_URI,
+            "resource": ACTIONS_RESOURCE,
+            "scope": "chatgpt-actions",
+        },
+    )
+
+    assert session.pending_code_challenge == ""
+
+
+def test_default_protocol_still_requires_pkce_for_confidential_client(tmp_path):
+    _, protocol, client, _ = _protocol(tmp_path, method="client_secret_post")
+    session = protocol.account.new_session()
+
+    with pytest.raises(OAuthProtocolError) as captured:
+        protocol.stage_authorization(
+            session,
+            {
+                "response_type": "code",
+                "client_id": client.client.client_id,
+                "redirect_uri": REDIRECT_URI,
+                "resource": ACTIONS_RESOURCE,
+                "scope": "chatgpt-actions",
+            },
+        )
+
+    assert captured.value.description == "code_challenge is required"
