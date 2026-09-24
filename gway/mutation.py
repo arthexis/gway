@@ -33,7 +33,8 @@ def mutation_parameter(callable_):
         and not isinstance(parameter.default, bool)
     ):
         raise TypeError(
-            "reserved mutate parameter must default to True, False, or Gway's unset policy"
+            "reserved mutate parameter must default to True or False "
+            "(or Gway's internal unset policy)"
         )
     return parameter
 
