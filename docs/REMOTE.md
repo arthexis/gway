@@ -136,10 +136,11 @@ does not enumerate the Gway operation catalog. There is no generic OAuth,
 Actions, settings, well-known, or application catch-all proxy.
 
 The HTTP listener reserves `/.well-known/acme-challenge/` for the local ACME
-webroot. After a certificate exists, all other HTTP traffic redirects to HTTPS.
-The OAuth well-known endpoints are served only through the HTTPS application
-server, so certificate renewal and OAuth discovery do not compete for route
-ownership.
+webroot and redirects every other request to the canonical HTTPS origin. It
+never proxies MCP, OAuth, Actions, or account traffic in cleartext, including
+during initial certificate bootstrap. The OAuth well-known endpoints are served
+only through the HTTPS application server, so certificate renewal and OAuth
+discovery do not compete for route ownership.
 
 The MCP location is an exact `/mcp` route and keeps the upstream path intact.
 It uses HTTP/1.1, disables proxy/request buffering and proxy cache, clears the
@@ -149,6 +150,13 @@ timeouts can be overridden with `mcp_read_timeout` and `mcp_send_timeout`.
 Both upstream services remain loopback-bound. Nginx is the only public network
 edge and performs TLS termination and path routing only; it does not perform
 OAuth or G-Way authorization.
+
+The edge rejects requests with a missing Host header or a Host value other than
+the configured domain before proxying. HTTPS permits TLS 1.2 and 1.3, suppresses
+Nginx version disclosure, emits HSTS, `nosniff`, and a same-origin referrer
+policy, and returns 404 for undeclared application paths. The interactive login
+and OAuth token endpoints share a conservative per-client rate limit; MCP and
+read-only query traffic are not subject to that limit.
 
 ## Remote exposure lifecycle
 
