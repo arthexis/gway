@@ -536,6 +536,11 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
         if semantic is not None:
             return semantic
 
+    from .sampler import expand as expand_sampler
+
+    if expand_sampler(runtime, tokens):
+        return resolve_operation(runtime, tokens, pipeline=pipeline)
+
     raise LookupError(f"Unable to resolve operation: {' '.join(values)}")
 
 
