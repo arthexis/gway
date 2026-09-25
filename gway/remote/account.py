@@ -53,8 +53,10 @@ class RemoteAccountApplication:
         session.pending_client_id = client_id
         session.requested_scopes = scopes
         # Until S2 adds explicit scope selection, preserve the existing consent
-        # behavior by treating the requested set as the provisional selection.
-        session.selected_scopes = scopes
+        # behavior with a provisional selection constrained by any linked bearer.
+        session.selected_scopes = (
+            scopes & session.available_scopes if session.link_name else scopes
+        )
         session.pending_resource = None if resource is None else str(resource).strip()
         session.approved_grant_id = None
         return session
@@ -85,6 +87,10 @@ class RemoteAccountApplication:
         self.oauth.link(link_name, identity.token.name)
         session.link_name = link_name
         session.available_scopes = frozenset(identity.token.scopes)
+        if session.requested_scopes:
+            session.selected_scopes = (
+                session.requested_scopes & session.available_scopes
+            )
         session.approved_grant_id = None
         self.sessions.rotate(session)
         return self.oauth.get_link(link_name)
@@ -103,13 +109,6 @@ class RemoteAccountApplication:
         token = self.tokens.require(link.token_name)
         current_scopes = frozenset(token.scopes)
         session.available_scopes = current_scopes
-
-        unavailable_requested = session.requested_scopes - current_scopes
-        if unavailable_requested:
-            raise PermissionError(
-                "Requested scopes are no longer available: "
-                + ", ".join(sorted(unavailable_requested))
-            )
 
         invalid_selection = session.selected_scopes - session.requested_scopes
         if invalid_selection:
