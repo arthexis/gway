@@ -273,3 +273,35 @@ def test_real_http_consent_allows_selecting_subset_of_multiple_scopes(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_consent_renders_operation_preview_for_each_selected_scope(tmp_path):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    oauth = OAuthRegistry(path)
+    scopes.replace(
+        "alpha",
+        operations={f"alpha.{index}" for index in range(8)},
+        environment=(),
+    )
+    scopes.replace(
+        "beta",
+        operations={f"beta.{index}" for index in range(8)},
+        environment=(),
+    )
+    issued = tokens.create("operator", scopes={"alpha", "beta"})
+    account = RemoteAccountApplication(
+        oauth=oauth,
+        tokens=tokens,
+        sessions=RemoteSessionStore(lifetime_seconds=300),
+    )
+    session = account.new_session()
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"alpha", "beta"})
+
+    html = account.consent_page(session)
+
+    assert "alpha.0" in html
+    assert "beta.0" in html
+    assert html.count("…and 2 more") >= 2
