@@ -35,15 +35,6 @@ def labels_from(item: dict[str, Any]) -> set[str]:
     return result
 
 
-def issue_should_be_eligible(
-    *, approved: bool, in_progress: bool, on_hold: bool, has_active_pr: bool
-) -> bool | None:
-    """Return desired eligible state, or None when on-hold freezes mutation."""
-    if on_hold:
-        return None
-    return approved and not in_progress and not has_active_pr
-
-
 def parse_parent_issue(body: str | None) -> int | None:
     if not body:
         return None
@@ -70,8 +61,7 @@ class GitHub:
         return proc.stdout
 
     def api_json(self, endpoint: str) -> Any:
-        raw = self._run("api", endpoint)
-        return json.loads(raw)
+        return json.loads(self._run("api", endpoint))
 
     def ensure_eligible_label(self) -> None:
         endpoint = f"repos/{self.repository}/labels/eligible"
@@ -94,7 +84,7 @@ class GitHub:
             "-f",
             "color=FBCA04",
             "-f",
-            "description=Approved work eligible for manual admission",
+            "description=Automation may start work on this issue",
         )
 
     def add_label(self, number: int, label: str) -> None:
@@ -143,7 +133,7 @@ class GitHub:
             f"body={body}",
         )
 
-    def approved_issues(self) -> list[dict[str, Any]]:
+    def open_issues(self) -> list[dict[str, Any]]:
         raw = self._run(
             "issue",
             "list",
@@ -151,8 +141,6 @@ class GitHub:
             self.repository,
             "--state",
             "open",
-            "--label",
-            "approved",
             "--limit",
             "1000",
             "--json",
@@ -168,6 +156,14 @@ def active_parent_map(pulls: list[dict[str, Any]]) -> dict[int, list[int]]:
         if parent is not None:
             result.setdefault(parent, []).append(int(pr["number"]))
     return result
+
+
+def ensure_reciprocal_link(gh: GitHub, parent: int, pr: int) -> None:
+    marker = f"{MARKER_PREFIX}{pr} -->"
+    for comment in gh.comments(parent):
+        if marker in (comment.get("body") or ""):
+            return
+    gh.add_comment(parent, f"{marker}\nImplementation PR: #{pr}\n")
 
 
 def reconcile_pr(gh: GitHub, number: int) -> int | None:
@@ -188,17 +184,7 @@ def reconcile_pr(gh: GitHub, number: int) -> int | None:
     if state.approved and state.open and state.draft:
         print(f"PR #{number}: approved; marking Ready for Review.")
         gh.pr_ready(number)
-        state = ItemState(
-            open=state.open,
-            draft=False,
-            approved=state.approved,
-            in_progress=state.in_progress,
-            on_hold=state.on_hold,
-        )
 
-    # in-progress is a live worker claim, not a state inferred from Draft/Ready.
-    # Workers acquire and release it explicitly. The reconciler only clears it
-    # once the PR is no longer open.
     if not state.open and state.in_progress:
         print(f"PR #{number}: closed; releasing stale in-progress claim.")
         gh.remove_label(number, "in-progress")
@@ -207,25 +193,9 @@ def reconcile_pr(gh: GitHub, number: int) -> int | None:
     if parent is not None:
         ensure_reciprocal_link(gh, parent, number)
         if state.open:
-            # A linked PR prevents duplicate admission of the parent issue, but
-            # does not mean somebody is actively working on it right now.
+            # A linked PR removes the parent from the unstarted admission queue.
             gh.remove_label(parent, "eligible")
-        else:
-            # Closing a linked PR does not release a worker-owned claim on the
-            # parent issue. The worker that acquired in-progress must release it.
-            pass
     return parent
-
-
-def ensure_reciprocal_link(gh: GitHub, parent: int, pr: int) -> None:
-    marker = f"{MARKER_PREFIX}{pr} -->"
-    for comment in gh.comments(parent):
-        if marker in (comment.get("body") or ""):
-            return
-    gh.add_comment(
-        parent,
-        f"{marker}\nImplementation PR: #{pr}\n",
-    )
 
 
 def reconcile_issue(
@@ -234,6 +204,7 @@ def reconcile_issue(
     issue = gh.issue(issue_number)
     if "pull_request" in issue:
         return
+
     if issue.get("state") != "open":
         gh.remove_label(issue_number, "eligible")
         gh.remove_label(issue_number, "in-progress")
@@ -246,30 +217,14 @@ def reconcile_issue(
 
     if active is None:
         active = active_parent_map(gh.open_pulls())
-    has_active_pr = bool(active.get(issue_number))
-
-    if has_active_pr:
-        # The linked PR is enough to suppress duplicate admission. Active work
-        # remains an explicit worker-owned in-progress claim.
-        gh.remove_label(issue_number, "eligible")
-        return
-
-    should_eligible = issue_should_be_eligible(
-        approved="approved" in labels,
-        in_progress="in-progress" in labels,
-        on_hold=False,
-        has_active_pr=False,
-    )
-    if should_eligible and "eligible" not in labels:
-        print(f"Issue #{issue_number}: approved and idle; adding eligible.")
-        gh.add_label(issue_number, "eligible")
-    elif not should_eligible and "eligible" in labels:
+    if active.get(issue_number):
+        # eligible is an explicit admission gate for work not yet represented by a PR.
         gh.remove_label(issue_number, "eligible")
 
 
-def reconcile_all_approved_issues(gh: GitHub) -> None:
+def reconcile_all(gh: GitHub) -> None:
     active = active_parent_map(gh.open_pulls())
-    for issue in gh.approved_issues():
+    for issue in gh.open_issues():
         reconcile_issue(gh, int(issue["number"]), active)
 
 
@@ -277,23 +232,6 @@ def run_self_tests() -> None:
     assert parse_parent_issue("Parent: #1084") == 1084
     assert parse_parent_issue("Closes #12") == 12
     assert parse_parent_issue("no parent") is None
-
-    assert issue_should_be_eligible(
-        approved=True, in_progress=False, on_hold=False, has_active_pr=False
-    )
-    assert not issue_should_be_eligible(
-        approved=True, in_progress=True, on_hold=False, has_active_pr=False
-    )
-    assert not issue_should_be_eligible(
-        approved=True, in_progress=False, on_hold=False, has_active_pr=True
-    )
-    assert (
-        issue_should_be_eligible(
-            approved=True, in_progress=False, on_hold=True, has_active_pr=False
-        )
-        is None
-    )
-
     print("development-state reconciler self-tests passed")
 
 
@@ -324,7 +262,7 @@ def main() -> None:
     if parent is not None:
         reconcile_issue(gh, parent)
     if args.all or (args.pr is None and args.issue is None):
-        reconcile_all_approved_issues(gh)
+        reconcile_all(gh)
 
 
 if __name__ == "__main__":
