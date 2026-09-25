@@ -60,6 +60,27 @@ class AppSpec:
     name: str | None = None
     views: tuple[ViewSpec, ...] = ()
 
+    def __post_init__(self):
+        unique_views = []
+        occupied = set()
+
+        for view in self.views:
+            if view in unique_views:
+                continue
+
+            for route in view.routes:
+                key = (route.route, route.method)
+                if key in occupied:
+                    raise ValueError(
+                        f"Conflicting view for {route.method} {route.route}: "
+                        f"{view.callable_name}"
+                    )
+                occupied.add(key)
+
+            unique_views.append(view)
+
+        object.__setattr__(self, "views", tuple(unique_views))
+
     @property
     def routes(self) -> tuple[RouteSpec, ...]:
         """Return all concrete route mappings in composition order."""
@@ -69,16 +90,4 @@ class AppSpec:
         """Return a copy containing one additional non-conflicting view."""
         if view in self.views:
             return self
-
-        occupied = {(route.route, route.method) for route in self.routes}
-        conflicts = [
-            route for route in view.routes if (route.route, route.method) in occupied
-        ]
-        if conflicts:
-            route = conflicts[0]
-            raise ValueError(
-                f"Conflicting view for {route.method} {route.route}: "
-                f"{view.callable_name}"
-            )
-
         return AppSpec(name=self.name, views=(*self.views, view))
