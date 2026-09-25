@@ -1,11 +1,10 @@
 """HTTP surface for G-Way remote OAuth discovery and browser linking."""
 
 from http.cookies import SimpleCookie
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import json
 import threading
 from urllib.parse import parse_qs, urlsplit
 
+from ..appserver import build_server as build_application_server
 from ..authorization import AuthorizationError
 from ..dispatch import resolve_operation
 from ..mutation import MutationError
@@ -540,45 +539,6 @@ class RemoteApplication(RemoteDiscoveryApplication):
         return 404, {}, {"error": "not_found"}
 
 
-def _encode(payload, content_type):
-    if isinstance(payload, bytes):
-        return payload
-    if content_type.startswith("application/json"):
-        return json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    return str(payload).encode("utf-8")
-
-
-def _handler(application):
-    class Handler(BaseHTTPRequestHandler):
-        def _respond(self):
-            length = int(self.headers.get("content-length", "0") or 0)
-            body = self.rfile.read(length) if length else b""
-            status, headers, payload = application.response(
-                self.command,
-                self.path,
-                headers=dict(self.headers.items()),
-                body=body,
-            )
-            content_type = headers.get("content-type", "application/json")
-            encoded = _encode(payload, content_type)
-            self.send_response(status)
-            for name, value in headers.items():
-                self.send_header(name, value)
-            self.send_header("content-length", str(len(encoded)))
-            self.end_headers()
-            self.wfile.write(encoded)
-
-        do_GET = _respond
-        do_POST = _respond
-        do_PUT = _respond
-        do_DELETE = _respond
-
-        def log_message(self, format, *args):
-            return None
-
-    return Handler
-
-
 def build_server(
     host="127.0.0.1",
     port=8001,
@@ -603,7 +563,7 @@ def build_server(
         client_resolver=client_resolver,
         runtime=runtime,
     )
-    return ThreadingHTTPServer((str(host), int(port)), _handler(application))
+    return build_application_server(application, host, port)
 
 
 def serve(
