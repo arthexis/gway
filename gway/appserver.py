@@ -6,6 +6,13 @@ import json
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from .appadapter import InMemoryAdapter
+from .appschema import (
+    SchemaReferenceError,
+    SchemaValidationError,
+    dump_schema_value,
+    resolve_schema,
+    validate_schema,
+)
 from .appspec import AppSpec
 
 
@@ -65,14 +72,18 @@ def _body_value(request):
     return request.body
 
 
-def _binding_arguments(mapping, request, path_values):
+_UNSET = object()
+
+
+def _binding_arguments(mapping, request, path_values, *, decoded_body=_UNSET):
     """Extract only recipe-declared HTTP inputs into handler arguments."""
     arguments = {}
     query = parse_qs(request.split.query, keep_blank_values=True)
     body_bindings = tuple(
         binding for binding in mapping.bindings if binding.source == "body"
     )
-    decoded_body = _body_value(request) if body_bindings else None
+    if decoded_body is _UNSET:
+        decoded_body = _body_value(request) if body_bindings else None
 
     for binding in mapping.bindings:
         if binding.source == "query":
@@ -157,7 +168,32 @@ class ApplicationHTTPAdapter:
 
         mapping, path_values = selected
         try:
-            arguments = _binding_arguments(mapping, request, path_values)
+            handler = self.dispatch.resolve_handler(mapping)
+            decoded_body = _UNSET
+            if mapping.body_model:
+                schema = resolve_schema(
+                    self.gateway,
+                    handler,
+                    mapping.body_model,
+                )
+                decoded_body = validate_schema(
+                    schema,
+                    _body_value(request),
+                )
+                body_bindings = tuple(
+                    binding
+                    for binding in mapping.bindings
+                    if binding.source == "body"
+                )
+                if len(body_bindings) > 1:
+                    decoded_body = dump_schema_value(decoded_body)
+
+            arguments = _binding_arguments(
+                mapping,
+                request,
+                path_values,
+                decoded_body=decoded_body,
+            )
             with self.gateway.request_scope(context=context):
                 result = self.dispatch.invoke(
                     mapping,
@@ -168,6 +204,11 @@ class ApplicationHTTPAdapter:
                 "error": "invalid_request",
                 "message": str(error),
             }
+        except (SchemaReferenceError, SchemaValidationError) as error:
+            return 422, {}, {
+                "error": "invalid_body",
+                "message": str(error),
+            }
         except TypeError as error:
             if "missing required argument:" not in str(error):
                 raise
@@ -175,6 +216,33 @@ class ApplicationHTTPAdapter:
                 "error": "invalid_request",
                 "message": str(error),
             }
+
+        if mapping.response_model:
+            try:
+                schema = resolve_schema(
+                    self.gateway,
+                    handler,
+                    mapping.response_model,
+                )
+                if (
+                    isinstance(result, tuple)
+                    and len(result) == 3
+                    and isinstance(result[0], int)
+                ):
+                    status, headers, payload = result
+                    payload = dump_schema_value(
+                        validate_schema(schema, payload)
+                    )
+                    result = (status, headers, payload)
+                else:
+                    result = dump_schema_value(
+                        validate_schema(schema, result)
+                    )
+            except (SchemaReferenceError, SchemaValidationError) as error:
+                return 500, {}, {
+                    "error": "invalid_response",
+                    "message": str(error),
+                }
 
         return normalize_response(result)
 
