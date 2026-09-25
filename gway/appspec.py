@@ -99,6 +99,8 @@ class ViewSpec:
             methods = ("GET", "HEAD") if static else ("GET",)
         if static and methods == ("GET",):
             methods = ("GET", "HEAD")
+        if static and any(method not in {"GET", "HEAD"} for method in methods):
+            raise ValueError("static views support only GET and HEAD")
         bindings = tuple(self.bindings)
         names = set()
         for binding in bindings:
