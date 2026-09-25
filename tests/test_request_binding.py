@@ -39,7 +39,7 @@ def test_path_bindings_match_named_route_segments(gateway):
     gateway.wrap("catalog.user", user)
     gateway("setup app --topic catalog")
     app = gateway(
-        "view user --route /users/{user_id} --path user_id"
+        "view user --route /users/{user_id} --path-params user_id"
     )
     application = ApplicationHTTPAdapter(gateway, app)
 
@@ -54,7 +54,7 @@ def test_literal_route_wins_over_path_template(gateway):
     gateway.wrap("catalog.named", lambda: {"kind": "literal"})
     gateway.wrap("catalog.user", lambda user_id: {"kind": "user", "id": user_id})
     gateway("setup app --topic catalog")
-    gateway("view user --route /users/{user_id} --path user_id")
+    gateway("view user --route /users/{user_id} --path-params user_id")
     app = gateway("view named --route /users/new")
     application = ApplicationHTTPAdapter(gateway, app)
 
