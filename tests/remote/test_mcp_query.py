@@ -119,6 +119,78 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
 
 
 
+def test_mcp_tools_expose_real_gateway_multi_statement_results(gateway):
+    server = _server_module()
+
+    def observe_alpha(*, mutate=False):
+        return f"A:{mutate}"
+
+    def observe_beta(*, mutate=False):
+        return f"B:{mutate}"
+
+    gateway.first = gateway.wrap("read_alpha", observe_alpha)
+    gateway.second = gateway.wrap("read_beta", observe_beta)
+    server._gway_parent = gateway
+
+    async def run():
+        async with Client(server.mcp) as client:
+            query_result = await client.call_tool(
+                "query",
+                {"command": "first ; second"},
+            )
+            gway_result = await client.call_tool(
+                "gway",
+                {"command": "first ; second"},
+            )
+            return query_result, gway_result
+
+    query_result, gway_result = asyncio.run(run())
+
+    assert query_result.structured_content["result"] == {
+        "results": [
+            {"subject": "alpha", "result": "A:False"},
+            {"subject": "beta", "result": "B:False"},
+        ]
+    }
+    assert gway_result.structured_content["result"] == {
+        "results": [
+            {"subject": "alpha", "result": "A:False"},
+            {"subject": "beta", "result": "B:False"},
+        ]
+    }
+
+
+def test_mcp_gway_rechecks_each_real_multi_statement_operation(gateway):
+    server = _server_module()
+    calls = []
+
+    gateway.first = gateway.wrap("read_alpha", lambda: "A")
+
+    def second():
+        calls.append("second")
+        return "B"
+
+    gateway.second = gateway.wrap("read_beta", second)
+    server._gway_parent = gateway
+
+    async def run():
+        async with Client(server.mcp) as client:
+            await client.call_tool(
+                "gway",
+                {"command": "first ; second"},
+            )
+
+    with gateway.authorized(operations={"read_alpha"}):
+        try:
+            asyncio.run(run())
+        except Exception as exception:
+            assert "Operation is not authorized: read_beta" in str(exception)
+        else:
+            raise AssertionError("multi-statement authorization unexpectedly succeeded")
+
+    assert calls == []
+
+
 def test_mcp_execution_envelope_classifies_json_result_shapes():
     server = _server_module()
 
