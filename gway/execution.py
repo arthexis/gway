@@ -16,6 +16,8 @@ class Stage:
     incoming: object
     outgoing: object
     statement: int
+    subject: str | None = None
+    published: bool = True
     has_incoming: bool = False
     kind: str = "operation"
 
@@ -62,6 +64,33 @@ class Statement:
         self.stages.append(stage)
         return stage
 
+    @property
+    def final(self):
+        """Return the final recorded stage, if any."""
+        return self.stages[-1] if self.stages else None
+
+    @property
+    def subject(self):
+        """Return the resolved subject of the final published stage."""
+        final = self.final
+        if final is None or not final.published:
+            return None
+        return final.subject
+
+    @property
+    def result(self):
+        """Return the final published stage result without semantic reverse lookup."""
+        final = self.final
+        if final is None or not final.published:
+            return None
+        return final.outgoing
+
+    @property
+    def published(self):
+        """Return whether the final stage contributed a new semantic publication."""
+        final = self.final
+        return final is not None and final.published
+
     def replay(self, runtime, *, pipeline=_UNSET):
         """Replay this statement in stage order."""
         if not self.stages:
@@ -97,6 +126,11 @@ class Execution:
     def last(self):
         stages = self.stages
         return stages[-1] if stages else None
+
+    @property
+    def outputs(self):
+        """Return ordered completed statement records for presentation layers."""
+        return tuple(statement for statement in self.statements if statement.published)
 
     def replay(self, runtime):
         """Replay all statements without pipeline transfer between them."""
