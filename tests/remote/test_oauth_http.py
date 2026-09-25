@@ -107,13 +107,7 @@ def _authorization_code(connection, issued_bearer, *, verifier="v" * 64):
     connection.request("GET", "/consent", headers={"Cookie": second_cookie})
     response = connection.getresponse()
     consent_csrf = _csrf(response.read().decode())
-    form = urlencode(
-        {
-            "csrf": consent_csrf,
-            "decision": "approve",
-            "scope": "chatgpt-logs",
-        }
-    )
+    form = urlencode({"csrf": consent_csrf, "decision": "approve"})
     connection.request(
         "POST",
         "/consent",
