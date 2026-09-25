@@ -63,11 +63,12 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
     assert gway.annotations.open_world_hint is True
     assert "observation and diagnosis" in query.description
     assert "semicolons" in query.description
-    assert "guide <task>" in query.description
     assert "help <operation>" in query.description
+    assert "including null" in query.description
     assert "mutation is required" in gway.description
     assert "semicolons" in gway.description
     assert "investigate through query first" in gway.description
+    assert "including null" in gway.description
 
     assert query.output_schema is not None
     assert gway.output_schema is not None
