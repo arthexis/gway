@@ -68,15 +68,6 @@ jobs:
           set -euo pipefail
 
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-          on_hold="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$pr_json"
-          )"
-          if [[ "$on_hold" == "true" ]]; then
-            echo "PR #$PR_NUMBER is on hold; automation is disabled."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           approved="$(
             jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
           )"
@@ -109,6 +100,15 @@ jobs:
 
           if [[ "$state" != "open" || "$draft" == "true" ]]; then
             echo "PR #$PR_NUMBER is not an open, non-draft PR."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          on_hold="$(
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$pr_json"
+          )"
+          if [[ "$on_hold" == "true" ]]; then
+            echo "PR #$PR_NUMBER is on hold; auto-merge is disabled."
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
