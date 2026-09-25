@@ -98,6 +98,10 @@ class Gateway(Resolver):
 
         ingest_module(self, builtin, transparent=True)
 
+        from .application import register as register_application
+
+        register_application(self)
+
         self.install = self.wrap("install", self._install)
         self.uninstall = self.wrap("uninstall", self._uninstall)
 
