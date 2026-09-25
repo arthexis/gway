@@ -55,3 +55,41 @@ def test_transparent_final_stage_is_not_marked_as_new_statement_publication(gate
     assert statement.published is False
     assert statement.subject is None
     assert statement.result is None
+
+
+def test_empty_recipe_stage_is_not_a_phantom_publication(gateway, recipe_factory):
+    recipe = recipe_factory(name="empty", body="")
+
+    assert gateway(recipe) is None
+
+    statement = gateway.previous_execution.statements[0]
+    assert statement.published is False
+    assert statement.subject is None
+    assert statement.result is None
+
+
+def test_transparent_recipe_final_stage_is_not_a_phantom_publication(
+    gateway,
+    recipe_factory,
+):
+    recipe = recipe_factory(name="configure", body="default --site MTY\n")
+
+    gateway(recipe)
+
+    statement = gateway.previous_execution.statements[0]
+    assert statement.published is False
+    assert statement.subject is None
+    assert statement.result is None
+    assert gateway.context["site"] == "MTY"
+
+
+def test_recipe_stage_uses_nested_final_semantic_subject(gateway, recipe_factory):
+    gateway.read = gateway.wrap("read_status", lambda: "ok")
+    recipe = recipe_factory(name="probe", body="read\n")
+
+    assert gateway(recipe) == "ok"
+
+    statement = gateway.previous_execution.statements[0]
+    assert statement.published is True
+    assert statement.subject == "status"
+    assert statement.result == "ok"
