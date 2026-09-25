@@ -4,7 +4,6 @@ from http.cookies import SimpleCookie
 import threading
 from urllib.parse import parse_qs, urlsplit
 
-from ..appserver import build_server as build_application_server
 from ..authorization import AuthorizationError
 from ..dispatch import resolve_operation
 from ..mutation import MutationError
@@ -273,8 +272,12 @@ class RemoteApplication(RemoteDiscoveryApplication):
         headers = {str(k).casefold(): str(v) for k, v in (headers or {}).items()}
 
         if self.browser is not None:
-            from ..appadapter import MethodNotAllowed, RouteNotFound
+            from ..sampler import load as load_sampler
             from .browser import BrowserRequest
+
+            web_app = load_sampler("web/app")
+            MethodNotAllowed = web_app.MethodNotAllowed
+            RouteNotFound = web_app.RouteNotFound
 
             request = BrowserRequest(
                 method=method,
@@ -563,7 +566,10 @@ def build_server(
         client_resolver=client_resolver,
         runtime=runtime,
     )
-    return build_application_server(application, host, port)
+
+    from ..sampler import load as load_sampler
+
+    return load_sampler("web/app").build_server(application, host, port)
 
 
 def serve(
