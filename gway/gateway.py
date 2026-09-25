@@ -253,6 +253,11 @@ class Gateway(Resolver):
         """Return the rollback journal manager owned by the active request."""
         return self.request_state.journal
 
+    @journal.setter
+    def journal(self, value):
+        """Replace the rollback journal manager for the active request."""
+        self.request_state.journal = value
+
     @property
     def _authorization_stack_var(self):
         return self.request_state.authorization_stack
