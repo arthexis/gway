@@ -40,7 +40,10 @@ class BindingSpec:
     def __post_init__(self):
         name = str(self.name).strip()
         source = str(self.source).strip().casefold()
-        key = name if self.key is None else str(self.key).strip()
+        if self.key is None:
+            key = name.replace("_", "-") if source == "header" else name
+        else:
+            key = str(self.key).strip()
         if not name:
             raise ValueError("binding name cannot be empty")
         if source not in {"query", "path", "header", "body"}:
