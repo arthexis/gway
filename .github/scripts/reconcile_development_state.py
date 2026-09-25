@@ -185,10 +185,6 @@ def reconcile_pr(gh: GitHub, number: int) -> int | None:
         print(f"PR #{number}: approved; marking Ready for Review.")
         gh.pr_ready(number)
 
-    if state.approved and state.open and state.in_progress:
-        print(f"PR #{number}: approved; releasing stale in-progress claim.")
-        gh.remove_label(number, "in-progress")
-
     if not state.open and state.in_progress:
         print(f"PR #{number}: closed; releasing stale in-progress claim.")
         gh.remove_label(number, "in-progress")
