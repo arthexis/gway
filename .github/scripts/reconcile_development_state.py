@@ -35,17 +35,6 @@ def labels_from(item: dict[str, Any]) -> set[str]:
     return result
 
 
-def desired_pr_in_progress(state: ItemState) -> bool | None:
-    """Return desired in-progress state, or None when on-hold freezes mutation."""
-    if state.on_hold:
-        return None
-    if not state.open:
-        return False
-    if state.approved:
-        return False
-    return state.draft
-
-
 def issue_should_be_eligible(
     *, approved: bool, in_progress: bool, on_hold: bool, has_active_pr: bool
 ) -> bool | None:
@@ -207,23 +196,20 @@ def reconcile_pr(gh: GitHub, number: int) -> int | None:
             on_hold=state.on_hold,
         )
 
-    desired = desired_pr_in_progress(state)
-    if desired is True and not state.in_progress:
-        print(f"PR #{number}: draft work is active; adding in-progress.")
-        gh.add_label(number, "in-progress")
-    elif desired is False and state.in_progress:
-        print(f"PR #{number}: no additional branch work indicated; removing in-progress.")
+    # in-progress is a live worker claim, not a state inferred from Draft/Ready.
+    # Workers acquire and release it explicitly. The reconciler only clears it
+    # once the PR is no longer open.
+    if not state.open and state.in_progress:
+        print(f"PR #{number}: closed; releasing stale in-progress claim.")
         gh.remove_label(number, "in-progress")
 
     parent = parse_parent_issue(pr.get("body"))
     if parent is not None:
         ensure_reciprocal_link(gh, parent, number)
         if state.open:
+            # A linked PR prevents duplicate admission of the parent issue, but
+            # does not mean somebody is actively working on it right now.
             gh.remove_label(parent, "eligible")
-            parent_issue = gh.issue(parent)
-            parent_labels = labels_from(parent_issue)
-            if "on hold" not in parent_labels and "in-progress" not in parent_labels:
-                gh.add_label(parent, "in-progress")
         else:
             active = active_parent_map(gh.open_pulls())
             if not active.get(parent):
@@ -269,10 +255,9 @@ def reconcile_issue(
     has_active_pr = bool(active.get(issue_number))
 
     if has_active_pr:
+        # The linked PR is enough to suppress duplicate admission. Active work
+        # remains an explicit worker-owned in-progress claim.
         gh.remove_label(issue_number, "eligible")
-        if "in-progress" not in labels:
-            print(f"Issue #{issue_number}: active linked PR found; adding in-progress.")
-            gh.add_label(issue_number, "in-progress")
         return
 
     should_eligible = issue_should_be_eligible(
@@ -315,10 +300,6 @@ def run_self_tests() -> None:
         is None
     )
 
-    assert desired_pr_in_progress(ItemState(True, True, False, False, False))
-    assert not desired_pr_in_progress(ItemState(True, False, False, True, False))
-    assert not desired_pr_in_progress(ItemState(True, True, True, True, False))
-    assert desired_pr_in_progress(ItemState(True, True, False, False, True)) is None
     print("development-state reconciler self-tests passed")
 
 
