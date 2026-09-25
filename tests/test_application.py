@@ -98,6 +98,8 @@ def test_view_replace_only_replaces_claimed_route_methods(gateway):
 
 
 def test_app_composition_operations_are_declared_non_mutating(gateway):
+    gateway("setup app remote")
+
     assert gateway.setup_app.mutates is False
     assert gateway.view_app.mutates is False
 
@@ -313,4 +315,6 @@ def test_serve_app_consumes_semantic_app_context(gateway, monkeypatch):
 
 
 def test_serve_app_is_mutating_lifecycle_operation(gateway):
+    gateway("setup app remote")
+
     assert gateway.serve_app.mutates is True
