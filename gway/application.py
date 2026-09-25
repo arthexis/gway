@@ -75,7 +75,7 @@ class Controller:
         method=None,
         name=None,
         query: tuple[str, ...] = (),
-        path: tuple[str, ...] = (),
+        path_params: tuple[str, ...] = (),
         header: tuple[str, ...] = (),
         body: tuple[str, ...] = (),
         replace: bool = False,
@@ -91,7 +91,7 @@ class Controller:
             method: Singular HTTP method convenience alias.
             name: Optional view name.
             query: Handler arguments sourced from query parameters.
-            path: Handler arguments sourced from named route segments.
+            path_params: Handler arguments sourced from named route segments.
             header: Handler arguments sourced from HTTP headers.
             body: Handler arguments sourced from the request body.
             replace: Replace existing mappings for the same route/methods.
@@ -108,7 +108,7 @@ class Controller:
             BindingSpec(binding, source)
             for source, values in (
                 ("query", query),
-                ("path", path),
+                ("path", path_params),
                 ("header", header),
                 ("body", body),
             )
