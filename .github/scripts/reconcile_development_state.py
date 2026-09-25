@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 PARENT_RE = re.compile(
-    r"(?im)\\b(?:parent|closes|fixes|resolves)\\s*:?[ \\t]*(?:https://github\\.com/[^/]+/[^/]+/issues/)?#?(\\d+)\\b"
+    r"(?im)\b(?:parent|closes|fixes|resolves)\s*:?[ \t]*(?:https://github\.com/[^/]+/[^/]+/issues/)?#?(\d+)\b"
 )
 MARKER_PREFIX = "<!-- development-state:pr="
 
