@@ -580,7 +580,8 @@ def test_concurrent_request_boundaries_do_not_finalize_each_others_journals(gate
         with gateway.request_scope():
             session = gateway.journal.session_id
             with gateway.execution_scope():
-                gateway.journal.prepare("deploy")
+                entry = gateway.journal.prepare("deploy", kind="test")
+                gateway.journal.mark_applied("deploy", entry.sequence)
                 opened.wait()
                 finalized.wait()
                 gateway.journal.commit("deploy")
