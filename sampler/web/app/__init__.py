@@ -1,5 +1,6 @@
 """Optional web application sampler capability."""
 
+from . import adapter, server
 from .adapter import HandlerNotFound, InMemoryAdapter, MethodNotAllowed, RouteNotFound
 from .application import register
 from .appspec import AppSpec, BindingSpec, RouteSpec, ViewSpec
@@ -8,6 +9,7 @@ from .server import ApplicationHTTPAdapter, ApplicationRequest, build_app_server
 
 __all__ = [
     "AppSpec",
+    "adapter",
     "ApplicationHTTPAdapter",
     "ApplicationRequest",
     "BindingSpec",
@@ -23,4 +25,5 @@ __all__ = [
     "build_server",
     "register",
     "serve_app",
+    "server",
 ]
