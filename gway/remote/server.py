@@ -401,7 +401,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 return status, {}, {"error": "connection_failed"}
             destination = (
                 "/consent"
-                if session.pending_client_id and session.requested_scopes
+                if session.pending_client_id and session.pending_scopes
                 else "/settings/connections"
             )
             response_headers = {"set-cookie": self._cookie_header(session)}
@@ -438,14 +438,12 @@ class RemoteApplication(RemoteDiscoveryApplication):
 
             if method != "POST":
                 return 405, {"allow": "GET, POST"}, {"error": "method_not_allowed"}
-            values = self._form_values(body)
-            form = {name: items[-1] for name, items in values.items()}
+            form = self._form(body)
             try:
                 grant = self.account.decide_consent(
                     session,
                     csrf=form.get("csrf"),
                     decision=form.get("decision"),
-                    scopes=values.get("scope", []),
                 )
             except PermissionError:
                 return 403, {}, {"error": "consent_failed"}
