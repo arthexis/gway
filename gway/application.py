@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from .appspec import AppSpec, BindingSpec, ViewSpec
+from .binding import Literal
 
 
 class Controller:
@@ -11,16 +12,44 @@ class Controller:
     def __init__(self, gateway):
         self.gateway = gateway
 
-    def setup_app(self, name=None, *, topic=None, route="/", mutate=False):
+    def setup_app(
+        self,
+        name=None,
+        *,
+        topic=None,
+        route="/",
+        templates=None,
+        template: Literal = None,
+        mutate=False,
+    ):
         """Create a framework-neutral application specification.
 
         Args:
             name: Optional application name; inferred from the topic leaf when omitted.
             topic: Optional semantic handler-resolution root.
             route: Optional base route composed with each view-local route.
+            templates: Optional recipe-relative template directory.
+            template: Optional default template expression for handler-backed views.
         """
         del mutate
-        return AppSpec(name=name, topic=topic, route=route)
+        template_root = None
+        if templates is not None or template is not None:
+            from .recipe import recipe_base
+
+            if templates is None:
+                template_root = str(recipe_base(self.gateway).resolve())
+            else:
+                resolved = Path(str(self.gateway.resolve(str(templates)))).expanduser()
+                if not resolved.is_absolute():
+                    resolved = recipe_base(self.gateway) / resolved
+                template_root = str(resolved.resolve())
+        return AppSpec(
+            name=name,
+            topic=topic,
+            route=route,
+            templates=template_root,
+            template=None if template is None else str(template),
+        )
 
     def _canonical_handler(self, handler, *, app=None):
         raw = str(handler).strip()
@@ -85,6 +114,8 @@ class Controller:
         static=None,
         directory: bool = False,
         content_type=None,
+        auth=None,
+        template: Literal = None,
         replace: bool = False,
         mutate=False,
     ):
@@ -106,6 +137,8 @@ class Controller:
             static: Optional static file or directory source.
             directory: Treat the static source as a directory mount.
             content_type: Optional static response content-type override.
+            auth: Optional named request policy applied before handler invocation.
+            template: Optional sigil-aware text template used to render handler output.
             replace: Replace existing mappings for the same route/methods.
         """
         del mutate
@@ -115,15 +148,36 @@ class Controller:
             raise ValueError("use either --method or --methods, not both")
 
         selected_methods = (method,) if method is not None else methods
+        if static is not None and (auth is not None or template is not None):
+            raise ValueError("static views do not support auth or templates")
+        if template is not None and app.templates is None:
+            from .recipe import recipe_base
+
+            app = AppSpec(
+                name=app.name,
+                topic=app.topic,
+                route=app.route,
+                views=app.views,
+                templates=str(recipe_base(self.gateway).resolve()),
+                template=app.template,
+            )
         if handler is None and static is None:
             raise ValueError("view requires a handler or --static")
         if handler is not None and static is not None:
             raise ValueError("view accepts either a handler or --static, not both")
 
         canonical = None
+        auth_policy = None
         static_source = None
         if static is None:
             canonical = self._canonical_handler(handler, app=app)
+            if auth is not None:
+                raw_auth = str(auth).strip()
+                auth_policy = (
+                    "public"
+                    if raw_auth == "public"
+                    else self._canonical_handler(raw_auth, app=app)
+                )
         else:
             from .recipe import recipe_base
 
@@ -153,6 +207,8 @@ class Controller:
             static=static_source,
             directory=directory,
             content_type=None if content_type is None else str(content_type),
+            auth=auth_policy,
+            template=None if template is None else str(template),
         )
         return app.replace(view) if replace else app.add(view)
 

@@ -69,6 +69,8 @@ class RouteSpec:
     static: str | None = None
     directory: bool = False
     content_type: str | None = None
+    auth: str | None = None
+    template: str | None = None
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,8 @@ class ViewSpec:
     static: str | None = None
     directory: bool = False
     content_type: str | None = None
+    auth: str | None = None
+    template: str | None = None
 
     def __post_init__(self):
         static = None if self.static is None else str(self.static).strip()
@@ -139,6 +143,8 @@ class ViewSpec:
                 static=self.static,
                 directory=self.directory,
                 content_type=self.content_type,
+                auth=self.auth,
+                template=self.template,
             )
             for method in self.methods
         )
@@ -152,6 +158,8 @@ class AppSpec:
     topic: str | None = None
     route: str = "/"
     views: tuple[ViewSpec, ...] = ()
+    templates: str | None = None
+    template: str | None = None
 
     def __post_init__(self):
         topic = None if self.topic is None else str(self.topic).strip().strip(".")
@@ -193,6 +201,10 @@ class AppSpec:
                 static=mapping.static,
                 directory=mapping.directory,
                 content_type=mapping.content_type,
+                auth=mapping.auth,
+                template=mapping.template or (
+                    None if mapping.static else self.template
+                ),
             )
             for mapping in view.routes
         )
@@ -211,6 +223,8 @@ class AppSpec:
             topic=self.topic,
             route=self.route,
             views=(*self.views, view),
+            templates=self.templates,
+            template=self.template,
         )
 
     def replace(self, view: ViewSpec):
@@ -249,6 +263,8 @@ class AppSpec:
                     static=existing.static,
                     directory=existing.directory,
                     content_type=existing.content_type,
+                    auth=existing.auth,
+                    template=existing.template,
                 )
             )
         return AppSpec(
@@ -256,4 +272,6 @@ class AppSpec:
             topic=self.topic,
             route=self.route,
             views=(*retained, view),
+            templates=self.templates,
+            template=self.template,
         )
