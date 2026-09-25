@@ -281,6 +281,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 method=method,
                 path=str(path),
                 headers=headers,
+                application=self,
                 body=body,
             )
             try:
