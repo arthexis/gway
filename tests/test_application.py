@@ -282,3 +282,35 @@ def test_explicit_app_name_overrides_topic_inference(gateway):
 
     assert app.name == "portal"
     assert app.topic == "remote.browser"
+
+
+def test_start_app_consumes_semantic_app_context(gateway, monkeypatch):
+    calls = {}
+
+    def fake_serve(runtime, app, host="127.0.0.1", port=8000, *, context=None):
+        calls.update(
+            runtime=runtime,
+            app=app,
+            host=host,
+            port=port,
+            context=context,
+        )
+        return "served"
+
+    monkeypatch.setattr("gway.appserver.serve_app", fake_serve)
+    app = gateway("setup app --topic demo")
+
+    result = gateway("start app --host 127.0.0.2 --port 8123")
+
+    assert result == "served"
+    assert calls == {
+        "runtime": gateway,
+        "app": app,
+        "host": "127.0.0.2",
+        "port": 8123,
+        "context": None,
+    }
+
+
+def test_start_app_is_mutating_lifecycle_operation(gateway):
+    assert gateway.start_app.mutates is True
