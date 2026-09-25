@@ -63,6 +63,50 @@ def test_mcp_gway_tool_executes_native_pipeline_under_caller_authority(
     assert result.structured_content["result"] == "hello!"
 
 
+def test_mcp_gway_tool_exposes_multi_statement_aggregate(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpaggregate"
+    gateway.first = gateway.wrap("read_alpha", lambda: "A")
+    gateway.second = gateway.wrap("read_beta", lambda: "B")
+    _mcp_companion_recipe(recipe_factory, root, "first ; second")
+    gateway.ingest(root)
+
+    with gateway.authorized(
+        operations={"mcpaggregate.server", "read_alpha", "read_beta"}
+    ):
+        result = gateway("mcpaggregate server")
+
+    assert result.structured_content["result"] == {
+        "results": [
+            {"subject": "alpha", "result": "A"},
+            {"subject": "beta", "result": "B"},
+        ]
+    }
+
+
+def test_mcp_gway_tool_rechecks_each_multi_statement_operation(
+    gateway, recipe_factory, required_runtime, tmp_path
+):
+    root = tmp_path / "mcpmultiauth"
+    calls = []
+    gateway.first = gateway.wrap("read_alpha", lambda: "A")
+
+    def second():
+        calls.append("second")
+        return "B"
+
+    gateway.second = gateway.wrap("read_beta", second)
+    _mcp_companion_recipe(recipe_factory, root, "first ; second")
+    gateway.ingest(root)
+
+    with gateway.authorized(operations={"mcpmultiauth.server", "read_alpha"}):
+        with pytest.raises(RuntimeError, match="Operation is not authorized: read_beta"):
+            gateway("mcpmultiauth server")
+
+    assert calls == []
+
+
 def test_mcp_gway_tool_rechecks_each_native_pipeline_operation(
     gateway, recipe_factory, required_runtime, tmp_path
 ):
