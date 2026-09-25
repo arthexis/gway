@@ -161,22 +161,6 @@ jobs:
             echo "OPENAI_API_KEY is not configured; CI Autofix cannot run." >> "${GITHUB_STEP_SUMMARY}"
           fi
 
-      - name: Mark this head as attempted
-        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
-          HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
-          FAILED_WORKFLOW: ${{ steps.resolve.outputs.failed_workflow }}
-          FAILED_RUN_ID: ${{ steps.resolve.outputs.failed_run_id }}
-        run: |
-          gh pr comment "${PR_NUMBER}" \
-            --repo "${REPOSITORY}" \
-            --body "<!-- ci-autofix-attempt:${HEAD_SHA} -->
-          CI Autofix is attempting a minimal repair for **${FAILED_WORKFLOW}** failure on \`${HEAD_SHA:0:12}\` (run \`${FAILED_RUN_ID}\`)."
-
       - name: Check out pull request head
         if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
         uses: actions/checkout@v7
@@ -192,11 +176,11 @@ jobs:
           python-version: '3.10'
           cache: pip
 
-      - name: Install project and validation tools
+      - name: Install standalone validation tools
         if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e '.[dev,toml]' build
+          python -m pip install ruff pytest build tomli
 
       - name: Capture failed CI logs
         if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
@@ -213,15 +197,31 @@ jobs:
           fi
           echo ".ci-autofix-failure.log" >> .git/info/exclude
 
+      - name: Mark this head as attempted
+        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
+          FAILED_WORKFLOW: ${{ steps.resolve.outputs.failed_workflow }}
+          FAILED_RUN_ID: ${{ steps.resolve.outputs.failed_run_id }}
+        run: |
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${REPOSITORY}" \
+            --body "<!-- ci-autofix-attempt:${HEAD_SHA} -->
+          CI Autofix is attempting a minimal repair for **${FAILED_WORKFLOW}** failure on \`${HEAD_SHA:0:12}\` (run \`${FAILED_RUN_ID}\`)."
+
       - name: Run Codex autofix
         if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
         id: codex
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          permission-profile: ":workspace"
+          sandbox: workspace-write
           effort: high
-          allow-bot-users: github-actions
+          allow-bots: true
           prompt: |
             You are repairing a failing CI check on the current Gway pull-request branch.
 
@@ -247,17 +247,30 @@ jobs:
           set -Eeuo pipefail
           rm -f .ci-autofix-failure.log
 
-          changed="$(git diff --name-only HEAD)"
+          changed="$(
+            git ls-files --modified --deleted --others --exclude-standard
+          )"
           if [[ -z "${changed}" ]]; then
             echo "present=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
-          if grep -q '^\.github/workflows/' <<< "${changed}"; then
-            echo "Codex attempted to modify workflow definitions; refusing automatic push." >&2
-            git diff -- .github/workflows/
-            git restore --staged --worktree .github/workflows/
-            changed="$(git diff --name-only HEAD)"
+          workflow_changes="$(
+            printf '%s\n' "${changed}" | grep '^\.github/workflows/' || true
+          )"
+          if [[ -n "${workflow_changes}" ]]; then
+            echo "Codex attempted to modify workflow definitions; removing those changes." >&2
+            while IFS= read -r path; do
+              [[ -n "${path}" ]] || continue
+              if git ls-files --error-unmatch "${path}" >/dev/null 2>&1; then
+                git restore --staged --worktree -- "${path}"
+              else
+                rm -f -- "${path}"
+              fi
+            done <<< "${workflow_changes}"
+            changed="$(
+              git ls-files --modified --deleted --others --exclude-standard
+            )"
           fi
 
           if [[ -z "${changed}" ]]; then
@@ -276,19 +289,26 @@ jobs:
           validation_log="${RUNNER_TEMP}/ci-autofix-validation.log"
           : > "${validation_log}"
 
-          python -m ruff check gway tests >> "${validation_log}" 2>&1
-          ruff_status=$?
+          python -m pip install -e '.[dev,toml]' >> "${validation_log}" 2>&1
+          install_status=$?
 
-          python -m pytest -q >> "${validation_log}" 2>&1
-          pytest_status=$?
-
-          python -m build >> "${validation_log}" 2>&1
-          build_status=$?
+          if (( install_status == 0 )); then
+            python -m ruff check gway tests >> "${validation_log}" 2>&1
+            ruff_status=$?
+            python -m pytest -q >> "${validation_log}" 2>&1
+            pytest_status=$?
+            python -m build >> "${validation_log}" 2>&1
+            build_status=$?
+          else
+            ruff_status=1
+            pytest_status=1
+            build_status=1
+          fi
 
           set -e
           cat "${validation_log}"
 
-          if (( ruff_status == 0 && pytest_status == 0 && build_status == 0 )); then
+          if (( install_status == 0 && ruff_status == 0 && pytest_status == 0 && build_status == 0 )); then
             echo "passed=true" >> "${GITHUB_OUTPUT}"
           else
             echo "passed=false" >> "${GITHUB_OUTPUT}"
