@@ -260,7 +260,12 @@ def test_checked_semantic_key_can_bind_later_consumer_parameter(gateway):
 
     gateway.consume_status = gateway.wrap("consume_status", consume_status)
 
-    assert gateway("probe ; check --status-code 200 ; consume_status") == 200
+    assert gateway("probe ; check --status-code 200 ; consume_status") == {
+        "results": [
+            {"subject": None, "result": {"Status Code": 200}},
+            {"subject": "status", "result": 200},
+        ]
+    }
 
 
 def test_check_failure_rolls_back_named_journal(gateway, rollback_paths):
@@ -299,7 +304,12 @@ def test_successful_check_does_not_trigger_rollback(gateway, rollback_paths):
         "mutate_and_pass_check - check --true --rollback deploy ; commit deploy"
     )
 
-    assert result == "deploy"
+    assert result == {
+        "results": [
+            {"subject": "and_pass_check", "result": True},
+            {"subject": None, "result": "deploy"},
+        ]
+    }
     assert destination.read_text(encoding="utf-8") == "source"
     assert gateway.journal.get("deploy") is None
 
@@ -426,7 +436,12 @@ def test_check_unless_true_does_not_trigger_rollback(gateway, rollback_paths):
         "--rollback deploy ; commit deploy"
     )
 
-    assert result == "deploy"
+    assert result == {
+        "results": [
+            {"subject": None, "result": {"status": "disabled"}},
+            {"subject": None, "result": "deploy"},
+        ]
+    }
     assert destination.read_text(encoding="utf-8") == "source"
     assert gateway.journal.get("deploy") is None
 
