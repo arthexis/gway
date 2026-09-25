@@ -43,6 +43,14 @@ jobs:
           fi
 
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
+          on_hold="$(
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$pr_json"
+          )"
+          if [[ "$on_hold" == "true" ]]; then
+            echo "PR #$pr_number is on hold; CI auto-fix is disabled."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ "$(jq -r '.state' <<< "$pr_json")" != "open" ]]; then
             echo "PR #$pr_number is not open."
             echo "eligible=false" >> "$GITHUB_OUTPUT"
@@ -176,7 +184,15 @@ jobs:
             exit 0
           fi
 
-          current_head="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          current_pr="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          on_hold="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$current_pr")"
+          if [[ "$on_hold" == "true" ]]; then
+            echo "PR #$PR_NUMBER was put on hold during CI auto-fix; refusing to push changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          current_head="$(jq -r '.head.sha' <<< "$current_pr")"
           if [[ "$current_head" != "$EXPECTED_HEAD" ]]; then
             echo "PR head moved from $EXPECTED_HEAD to $current_head; refusing to push a stale repair."
             exit 1

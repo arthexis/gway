@@ -90,11 +90,19 @@ jobs:
           )
 
           has_workflow=false
+          on_hold=false
           for label in "${labels[@]}"; do
             case "${label}" in
               workflow) has_workflow=true ;;
+              "on hold") on_hold=true ;;
             esac
           done
+
+          if [[ "${on_hold}" == "true" ]]; then
+            echo "PR #${pr_number} is on hold; CI autofix is disabled."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
 
           if [[ "${has_workflow}" == "true" ]]; then
             echo "PR #${pr_number} is labeled workflow; automatic code repair is disabled."
@@ -318,7 +326,15 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          current_head="$(gh pr view "${PR_NUMBER}" --repo "${REPOSITORY}" --json headRefOid --jq '.headRefOid')"
+          current_pr="$(gh pr view "${PR_NUMBER}" --repo "${REPOSITORY}" --json headRefOid,labels)"
+          on_hold="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "${current_pr}")"
+          if [[ "${on_hold}" == "true" ]]; then
+            echo "PR #${PR_NUMBER} was put on hold during CI autofix; refusing to push changes."
+            echo "pushed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          current_head="$(jq -r '.headRefOid' <<< "${current_pr}")"
           if [[ "${current_head}" != "${EXPECTED_HEAD_SHA}" ]]; then
             echo "PR head moved to ${current_head}; refusing to overwrite newer work."
             echo "pushed=false" >> "${GITHUB_OUTPUT}"
