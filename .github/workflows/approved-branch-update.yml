@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request_target:
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -41,7 +41,7 @@ jobs:
 
           update_pr() {
             local pr_number="$1"
-            local pr_json state head_repo base_ref head_sha base_sha compare_json behind_by
+            local pr_json state head_repo base_ref head_sha live_base_sha compare_json behind_by
             local current_json current_head update_output update_status
 
             pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
@@ -75,8 +75,8 @@ jobs:
             fi
 
             head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
-            base_sha="$(jq -r '.base.sha' <<< "$pr_json")"
-            compare_json="$(gh api "repos/$REPOSITORY/compare/$base_sha...$head_sha")"
+            live_base_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/$base_ref" --jq '.object.sha')"
+            compare_json="$(gh api "repos/$REPOSITORY/compare/$live_base_sha...$head_sha")"
             behind_by="$(jq -r '.behind_by' <<< "$compare_json")"
 
             if (( behind_by == 0 )); then

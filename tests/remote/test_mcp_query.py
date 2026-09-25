@@ -20,6 +20,13 @@ class Parent:
 
     def execute(self, command, mutate=None):
         self.calls.append((command, mutate))
+        if command == "one ; two":
+            return {
+                "results": [
+                    {"subject": "one", "result": 1},
+                    {"subject": "two", "result": 2},
+                ]
+            }
         return f"{command}:{mutate}"
 
 
@@ -34,9 +41,17 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
             query = next(tool for tool in tools if tool.name == "query")
             safe = await client.call_tool("query", {"command": "observe"})
             generic = await client.call_tool("gway", {"command": "restart"})
-            return tools, query, safe, generic
+            query_aggregate = await client.call_tool(
+                "query",
+                {"command": "one ; two"},
+            )
+            gway_aggregate = await client.call_tool(
+                "gway",
+                {"command": "one ; two"},
+            )
+            return tools, query, safe, generic, query_aggregate, gway_aggregate
 
-    tools, query, safe, generic = asyncio.run(run())
+    tools, query, safe, generic, query_aggregate, gway_aggregate = asyncio.run(run())
 
     assert [tool.name for tool in tools] == ["gway", "query"]
     gway = next(tool for tool in tools if tool.name == "gway")
@@ -46,6 +61,18 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
     assert gway.annotations.read_only_hint is False
     assert gway.annotations.destructive_hint is True
     assert gway.annotations.open_world_hint is True
+
+    query_description = " ".join(query.description.split())
+    gway_description = " ".join(gway.description.split())
+
+    assert "observation and diagnosis" in query_description
+    assert "semicolons" in query_description
+    assert "help <operation>" in query_description
+    assert "including null" in query_description
+    assert "mutation is required" in gway_description
+    assert "semicolons" in gway_description
+    assert "investigate through query first" in gway_description
+    assert "including null" in gway_description
 
     assert query.output_schema is not None
     assert gway.output_schema is not None
@@ -70,11 +97,136 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
         "result_type": "string",
         "output": [],
     }
+    expected_aggregate = {
+        "results": [
+            {"subject": "one", "result": 1},
+            {"subject": "two", "result": 2},
+        ]
+    }
+    assert query_aggregate.structured_content == {
+        "ok": True,
+        "result": expected_aggregate,
+        "result_type": "mapping",
+        "output": [],
+    }
+    assert gway_aggregate.structured_content == {
+        "ok": True,
+        "result": expected_aggregate,
+        "result_type": "mapping",
+        "output": [],
+    }
     assert parent.calls == [
         ("observe", False),
         ("restart", None),
+        ("one ; two", False),
+        ("one ; two", None),
     ]
 
+
+
+def test_mcp_tools_expose_real_gateway_multi_statement_results(gateway):
+    server = _server_module()
+
+    def observe_alpha(*, mutate=False):
+        return f"A:{mutate}"
+
+    def observe_beta(*, mutate=False):
+        return f"B:{mutate}"
+
+    gateway.first = gateway.wrap("read_alpha", observe_alpha)
+    gateway.second = gateway.wrap("read_beta", observe_beta)
+    server._gway_parent = gateway
+
+    async def run():
+        async with Client(server.mcp) as client:
+            query_result = await client.call_tool(
+                "query",
+                {"command": "first ; second"},
+            )
+            gway_result = await client.call_tool(
+                "gway",
+                {"command": "first ; second"},
+            )
+            return query_result, gway_result
+
+    query_result, gway_result = asyncio.run(run())
+
+    assert query_result.structured_content["result"] == {
+        "results": [
+            {"subject": "alpha", "result": "A:False"},
+            {"subject": "beta", "result": "B:False"},
+        ]
+    }
+    assert gway_result.structured_content["result"] == {
+        "results": [
+            {"subject": "alpha", "result": "A:False"},
+            {"subject": "beta", "result": "B:False"},
+        ]
+    }
+
+
+def test_mcp_gway_rechecks_each_real_multi_statement_operation(gateway):
+    server = _server_module()
+    calls = []
+
+    gateway.first = gateway.wrap("read_alpha", lambda: "A")
+
+    def second():
+        calls.append("second")
+        return "B"
+
+    gateway.second = gateway.wrap("read_beta", second)
+    server._gway_parent = gateway
+
+    async def run():
+        async with Client(server.mcp) as client:
+            await client.call_tool(
+                "gway",
+                {"command": "first ; second"},
+            )
+
+    with gateway.authorized(operations={"read_alpha"}):
+        try:
+            asyncio.run(run())
+        except Exception as exception:
+            assert "Operation is not authorized: read_beta" in str(exception)
+        else:
+            raise AssertionError("multi-statement authorization unexpectedly succeeded")
+
+    assert calls == []
+
+
+def test_mcp_query_rejects_mutating_later_statement(gateway):
+    server = _server_module()
+    calls = []
+
+    def first(*, mutate=True):
+        calls.append(("first", mutate))
+        return "A"
+
+    def second():
+        calls.append(("second", None))
+        return "B"
+
+    gateway.first = gateway.wrap("read_alpha", first)
+    gateway.second = gateway.wrap("restart_service", second)
+    server._gway_parent = gateway
+
+    async def run():
+        async with Client(server.mcp) as client:
+            await client.call_tool(
+                "query",
+                {"command": "first ; second"},
+            )
+
+    try:
+        asyncio.run(run())
+    except Exception as exception:
+        assert "does not support non-mutating execution" in str(exception)
+    else:
+        raise AssertionError("query unexpectedly allowed a mutating later statement")
+
+    assert calls == [("first", False)]
 
 
 def test_mcp_execution_envelope_classifies_json_result_shapes():
