@@ -9,6 +9,15 @@ def _route_from_callable(callable_name: str) -> str:
     return f"/{subject}"
 
 
+def _route_pattern_key(route: str) -> tuple[str, ...]:
+    """Normalize named route segments for conflict detection."""
+    parts = route.strip("/").split("/") if route != "/" else ()
+    return tuple(
+        "{}" if part.startswith("{") and part.endswith("}") else part
+        for part in parts
+    )
+
+
 def _join_route(base: str | None, route: str) -> str:
     """Compose an application base route with one view-local route."""
     base = "/" if base is None else str(base).strip()
@@ -125,7 +134,7 @@ class AppSpec:
             if view in unique_views:
                 continue
             for mapping in self._routes_for(view):
-                key = (mapping.route, mapping.method)
+                key = (_route_pattern_key(mapping.route), mapping.method)
                 if key in occupied:
                     raise ValueError(
                         f"Conflicting view for {mapping.method} {mapping.route}: "
@@ -166,7 +175,8 @@ class AppSpec:
     def replace(self, view: ViewSpec):
         """Replace only route/method mappings claimed by the supplied view."""
         replacements = {
-            (mapping.route, mapping.method) for mapping in self._routes_for(view)
+            (_route_pattern_key(mapping.route), mapping.method)
+            for mapping in self._routes_for(view)
         }
         retained = []
         for existing in self.views:
@@ -174,7 +184,9 @@ class AppSpec:
                 method
                 for method in existing.methods
                 if (
-                    _join_route(self.route, existing.resolved_route),
+                    _route_pattern_key(
+                        _join_route(self.route, existing.resolved_route)
+                    ),
                     method,
                 )
                 not in replacements
