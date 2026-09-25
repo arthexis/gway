@@ -285,11 +285,12 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 body=body,
             )
             try:
-                return self.browser.request(
-                    route,
-                    method,
-                    arguments={"request": request},
-                )
+                with self.runtime.request_scope():
+                    return self.browser.request(
+                        route,
+                        method,
+                        arguments={"request": request},
+                    )
             except RouteNotFound:
                 pass
             except MethodNotAllowed:
@@ -353,6 +354,9 @@ class RemoteApplication(RemoteDiscoveryApplication):
 
         if route in self.routes:
             return super().response(method, path, headers=headers, body=body)
+
+        if self.browser is not None:
+            return 404, {}, {"error": "not_found"}
 
         if route == "/privacy":
             if method != "GET":
