@@ -372,7 +372,16 @@ def _has_http_request():
     },
 )
 def gway(command: str):
-    """Execute one native GWAY command under the caller's active authorization."""
+    """Execute authorized GWAY commands, including state changes.
+
+    Use this tool when mutation is required. Combine independent commands with
+    semicolons; each published statement contributes its final result, including
+    null when an operation explicitly returns None. Use a dash only when the
+    next stage should consume the previous raw result. Prefer maintained
+    project/node recipes over manually reproducing their internals, investigate
+    through query first when mutation is unnecessary, and use help <operation>
+    for exact syntax.
+    """
     parent = _parent()
     if _has_http_request():
         return _tool_result(
@@ -395,7 +404,15 @@ def gway(command: str):
     },
 )
 def query(command: str):
-    """Execute one native GWAY command with mutation disabled."""
+    """Investigate GWAY state with mutation disabled.
+
+    Prefer this tool for observation and diagnosis. Combine independent
+    observations with semicolons; each published statement contributes its
+    final result, including null when an operation explicitly returns None. Use
+    a dash only when the next stage should consume the previous raw result.
+    Use help <operation> for exact syntax and prefer maintained project/node
+    recipes over manually reproducing their internals.
+    """
     parent = _parent()
     if _has_http_request():
         return _tool_result(
