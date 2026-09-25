@@ -414,25 +414,27 @@ def read(
     *source: str,
     since: str = None,
     until: str = None,
-    limit: int = None,
+    limit: int = 100,
+    all: bool = False,
     mutate=False,
 ):
-    """Read bounded records from GWAY-managed log sources."""
+    """Read bounded records from selected GWAY-managed log sources."""
     from .logs.operations import read as _read
 
-    return _read(*source, since=since, until=until, limit=limit)
+    return _read(*source, since=since, until=until, limit=limit, all=all)
 
 
 def tail(
     *source: str,
     since: str = None,
     limit: int = 100,
+    all: bool = False,
     mutate=False,
 ):
-    """Return the newest records from GWAY-managed log sources."""
+    """Return the newest records from selected GWAY-managed log sources."""
     from .logs.operations import tail as _tail
 
-    return _tail(*source, since=since, limit=limit)
+    return _tail(*source, since=since, limit=limit, all=all)
 
 
 def search(
@@ -440,10 +442,11 @@ def search(
     *source: str,
     since: str = None,
     until: str = None,
-    limit: int = None,
+    limit: int = 100,
+    all: bool = False,
     mutate=False,
 ):
-    """Search message content in GWAY-managed log sources."""
+    """Search message content in selected GWAY-managed log sources."""
     from .logs.operations import search as _search
 
     return _search(
@@ -452,4 +455,5 @@ def search(
         since=since,
         until=until,
         limit=limit,
+        all=all,
     )
