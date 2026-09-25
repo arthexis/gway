@@ -121,9 +121,11 @@ jobs:
         run: npm install --global @openai/codex
 
       - name: Ask Codex to repair CI
+        id: codex
         if: steps.pr.outputs.eligible == 'true'
+        continue-on-error: true
         env:
-          CODEX_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -140,8 +142,21 @@ jobs:
           If the failure is clearly transient or cannot be safely fixed from the repository, make no changes and explain why.
           "
 
+      - name: Report Codex failure
+        if: steps.pr.outputs.eligible == 'true' && steps.codex.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          ATTEMPT: ${{ steps.pr.outputs.attempt }}
+        shell: bash
+        run: |
+          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
+            --method POST \
+            -f body="<!-- ci-autofix -->CI auto-fix attempt $ATTEMPT could not run Codex successfully. Check the CI Auto-Fix workflow logs and OPENAI_API_KEY configuration."
+
       - name: Push repair if Codex changed files
-        if: steps.pr.outputs.eligible == 'true'
+        if: steps.pr.outputs.eligible == 'true' && steps.codex.outcome == 'success'
         id: push
         env:
           GH_TOKEN: ${{ github.token }}
