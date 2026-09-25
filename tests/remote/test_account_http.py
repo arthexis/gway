@@ -3,6 +3,7 @@ import re
 import threading
 from urllib.parse import urlencode
 
+from gway import Gateway
 from gway.remote.account import RemoteAccountApplication
 from gway.remote.server import build_server
 from gway.remote.session import RemoteSessionStore
@@ -37,12 +38,14 @@ def test_real_http_browser_link_consent_and_revoke_flow(tmp_path):
         tokens=tokens,
         sessions=RemoteSessionStore(lifetime_seconds=300),
     )
+    runtime = Gateway(cache=tmp_path / "gway-cache")
     server = build_server(
         "127.0.0.1",
         0,
         public_origin="http://127.0.0.1:9000",
         allow_insecure_loopback=True,
         account=account,
+        runtime=runtime,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
