@@ -104,6 +104,32 @@ class Controller:
         )
         return app.replace(view) if replace else app.add(view)
 
+    def start_app(
+        self,
+        *,
+        app: AppSpec,
+        host="127.0.0.1",
+        port=8000,
+    ):
+        """Run the current application locally in the foreground.
+
+        Args:
+            app: Current AppSpec, normally inherited from semantic context.
+            host: Local bind address.
+            port: Local TCP port.
+        """
+        if not isinstance(app, AppSpec):
+            raise TypeError("start app requires an AppSpec")
+
+        from .appserver import serve_app
+
+        return serve_app(
+            self.gateway,
+            app,
+            host=host,
+            port=port,
+        )
+
 
 def register(gateway):
     """Register application composition operations on one Gateway."""
@@ -122,4 +148,10 @@ def register(gateway):
         sub="app",
     )
     gateway.ops.register_alias("view", gateway.view_app)
+    gateway.start_app = gateway.wrap(
+        "start.app",
+        controller.start_app,
+        op="start",
+        sub="app",
+    )
     return controller
