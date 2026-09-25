@@ -1,12 +1,14 @@
 import pytest
 
-from gway.appadapter import (
-    HandlerNotFound,
-    InMemoryAdapter,
-    MethodNotAllowed,
-    RouteNotFound,
-)
-from gway.appspec import AppSpec, ViewSpec
+from gway.sampler import load as load_sampler
+
+web_app = load_sampler("web/app")
+HandlerNotFound = web_app.HandlerNotFound
+InMemoryAdapter = web_app.InMemoryAdapter
+MethodNotAllowed = web_app.MethodNotAllowed
+RouteNotFound = web_app.RouteNotFound
+AppSpec = web_app.AppSpec
+ViewSpec = web_app.ViewSpec
 from gway.ingestion.base import remember_object
 from gway.ingestion.python import ingest_python
 def _register_handler(gateway, name):
@@ -299,7 +301,7 @@ def test_serve_app_consumes_semantic_app_context(gateway, monkeypatch):
         )
         return "served"
 
-    monkeypatch.setattr("gway.appserver.serve_app", fake_serve)
+    monkeypatch.setattr(web_app.server, "serve_app", fake_serve)
     app = gateway("setup app --topic demo")
 
     result = gateway("serve app --host 127.0.0.2 --port 8123")
