@@ -65,6 +65,30 @@ def test_explicit_repeat_target(gateway):
     assert calls == [1, 2, 3]
 
 
+def test_explicit_repeat_target_preserves_semantic_subject(gateway):
+    gateway.first = gateway.wrap("read_alpha", lambda: "A")
+    gateway.second = gateway.wrap("read_beta", lambda: "B")
+
+    assert gateway("first ; repeat second") == {
+        "results": [
+            {"subject": "alpha", "result": "A"},
+            {"subject": "beta", "result": "B"},
+        ]
+    }
+
+
+def test_repeat_options_are_not_reresolved_after_replay(gateway):
+    gateway.context["repeat_times"] = 1
+
+    def probe():
+        gateway.context["repeat_times"] = "not-an-int"
+        return "done"
+
+    gateway.probe = gateway.wrap("read_status", probe)
+
+    assert gateway("repeat probe --times [repeat_times]") == "done"
+
+
 def test_repeat_until_operation_gate_receives_latest_result(gateway):
     calls = _counter(gateway)
 
