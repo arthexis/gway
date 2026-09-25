@@ -3,12 +3,6 @@ name: Approved Auto-Merge
 on:
   pull_request_target:
     types: [labeled, unlabeled, synchronize, reopened, ready_for_review]
-  pull_request_review:
-    types: [submitted, edited, dismissed]
-  pull_request_review_comment:
-    types: [created, edited, deleted]
-  pull_request_review_thread:
-    types: [resolved, unresolved]
   workflow_run:
     workflows:
       - "python / Package"
@@ -127,31 +121,8 @@ jobs:
             exit 0
           fi
 
-          owner="${REPOSITORY%%/*}"
-          repo="${REPOSITORY#*/}"
-          threads="$(
-            gh api graphql --paginate               -f owner="$owner"               -f repo="$repo"               -F number="$PR_NUMBER"               -f query='
-                query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
-                  repository(owner: $owner, name: $repo) {
-                    pullRequest(number: $number) {
-                      reviewThreads(first: 100, after: $endCursor) {
-                        nodes { isResolved }
-                        pageInfo { hasNextPage endCursor }
-                      }
-                    }
-                  }
-                }'
-          )"
-          unresolved="$(
-            jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' <<< "$threads"
-          )"
-          if [[ "$unresolved" != "0" ]]; then
-            echo "PR #$PR_NUMBER has $unresolved unresolved review thread(s)."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "All auto-merge gates are satisfied for PR #$PR_NUMBER."
+          echo "Approval, freshness, and CI gates are satisfied for PR #$PR_NUMBER."
+          echo "Review-thread resolution is enforced by the protected branch ruleset."
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
