@@ -176,7 +176,6 @@ class RemoteAccountApplication:
             "client_id": session.pending_client_id,
             "resource": session.pending_resource,
             "scopes": bearer_scopes,
-            "requested_scopes": frozenset(session.pending_scopes),
             "operations": frozenset(operations),
             "environment": frozenset(environment),
             "permission_summary": self.permission_summary(bearer_scopes),
