@@ -32,7 +32,11 @@ class ApplicationHTTPAdapter:
         self.gateway = gateway
         self.app = app
         self.dispatch = InMemoryAdapter(gateway, app)
-        self.context = {} if context is None else dict(context)
+        self.context = (
+            dict(gateway.context)
+            if context is None
+            else dict(context)
+        )
 
     def response(self, method, path, *, headers=None, body=b""):
         """Dispatch one HTTP request through the composed application."""
