@@ -89,22 +89,12 @@ jobs:
             jq -r '.labels[].name | ascii_downcase' <<< "${pr_json}"
           )
 
-          has_ready=false
-          has_in_progress=false
           has_workflow=false
           for label in "${labels[@]}"; do
             case "${label}" in
-              ready) has_ready=true ;;
-              in-progress|"in progress") has_in_progress=true ;;
               workflow) has_workflow=true ;;
             esac
           done
-
-          if [[ "${has_ready}" != "true" && "${has_in_progress}" != "true" ]]; then
-            echo "PR #${pr_number} is neither Ready nor In-Progress; skipping."
-            echo "eligible=false" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
 
           if [[ "${has_workflow}" == "true" ]]; then
             echo "PR #${pr_number} is labeled workflow; automatic code repair is disabled."
