@@ -5,6 +5,7 @@ from pathlib import Path
 from .appspec import AppSpec, BindingSpec, ViewSpec
 from .appexposure import ExposureSpec, LocalAppService, apply_exposure
 from .binding import Literal
+from .publication import SKIP_PUBLICATION
 
 
 class Controller:
@@ -259,10 +260,14 @@ class Controller:
         if existing is None:
             self._exposures[key] = exposure
         if not mutate:
-            return exposure
-        if existing is not None:
-            return existing
-        return apply_exposure(self.gateway, exposure)
+            result = exposure
+        elif existing is not None:
+            result = existing
+        else:
+            result = apply_exposure(self.gateway, exposure)
+
+        self.gateway.results.insert("exposure", result)
+        return SKIP_PUBLICATION
 
     def start_app(
         self,
