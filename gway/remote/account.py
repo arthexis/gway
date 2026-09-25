@@ -155,15 +155,14 @@ class RemoteAccountApplication:
             raise PermissionError("G-Way connection is revoked")
         token = self.tokens.require(link.token_name)
         bearer_scopes = frozenset(token.scopes)
-        if not bearer_scopes:
-            raise PermissionError("Linked bearer has no scopes")
-
         missing_requested = session.pending_scopes - bearer_scopes
         if missing_requested:
             raise PermissionError(
                 "Requested scopes are not available from the linked bearer: "
                 + ", ".join(sorted(missing_requested))
             )
+        if not bearer_scopes:
+            raise PermissionError("Linked bearer has no scopes")
 
         operations = set()
         environment = set()
