@@ -1,7 +1,7 @@
-setup app remote-browser
-view remote.browser.index --route /
-view remote.browser.login --route /login
-view remote.browser.privacy --route /privacy
-view remote.browser.connect --route /connect --methods GET,POST
-view remote.browser.consent --route /consent --methods GET,POST
-view remote.browser.connections --route /settings/connections --methods GET,POST
+setup app --topic remote.browser
+view index --route /
+view login
+view privacy
+view connect --methods GET,POST
+view consent --methods GET,POST
+view connections --route /settings/connections --methods GET,POST
