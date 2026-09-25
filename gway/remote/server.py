@@ -136,14 +136,10 @@ class RemoteApplication(RemoteDiscoveryApplication):
         return "; ".join(parts)
 
     @staticmethod
-    def _form_values(body):
+    def _form(body):
         if isinstance(body, bytes):
             body = body.decode("utf-8")
-        return parse_qs(str(body), keep_blank_values=True)
-
-    @classmethod
-    def _form(cls, body):
-        parsed = cls._form_values(body)
+        parsed = parse_qs(str(body), keep_blank_values=True)
         return {name: values[-1] for name, values in parsed.items()}
 
     @staticmethod
