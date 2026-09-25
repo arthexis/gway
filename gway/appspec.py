@@ -91,3 +91,30 @@ class AppSpec:
         if view in self.views:
             return self
         return AppSpec(name=self.name, views=(*self.views, view))
+
+    def replace(self, view: ViewSpec):
+        """Replace only route/method mappings claimed by the supplied view."""
+        replacements = {(route.route, route.method) for route in view.routes}
+        retained = []
+
+        for existing in self.views:
+            remaining_methods = tuple(
+                method
+                for method in existing.methods
+                if (existing.resolved_route, method) not in replacements
+            )
+            if not remaining_methods:
+                continue
+            if remaining_methods == existing.methods:
+                retained.append(existing)
+                continue
+            retained.append(
+                ViewSpec(
+                    existing.callable_name,
+                    route=existing.route,
+                    methods=remaining_methods,
+                    name=existing.name,
+                )
+            )
+
+        return AppSpec(name=self.name, views=(*retained, view))
