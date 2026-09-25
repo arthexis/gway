@@ -202,7 +202,9 @@ class AppSpec:
                 directory=mapping.directory,
                 content_type=mapping.content_type,
                 auth=mapping.auth,
-                template=mapping.template or self.template,
+                template=mapping.template or (
+                    None if mapping.static else self.template
+                ),
             )
             for mapping in view.routes
         )
