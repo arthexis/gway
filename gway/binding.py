@@ -4,7 +4,7 @@ import inspect
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Annotated, get_args, get_origin
+from typing import get_args, get_origin
 
 from .operations import singularize
 from .sigil import Sigil
@@ -19,22 +19,6 @@ class Literal(str):
     """String value protected from signature-based coercion."""
 
 
-class Explicit:
-    """Annotation marker for parameters that must be supplied explicitly."""
-
-
-def base_annotation(annotation):
-    """Return the concrete type beneath an Annotated parameter."""
-    return get_args(annotation)[0] if get_origin(annotation) is Annotated else annotation
-
-
-def is_explicit_annotation(annotation):
-    """Return whether semantic completion must ignore runtime context."""
-    if get_origin(annotation) is not Annotated:
-        return False
-    return Explicit in get_args(annotation)[1:]
-
-
 @dataclass(frozen=True)
 class BoundCall:
     args: tuple
@@ -47,20 +31,17 @@ class _PipelineValue:
 
 
 def _sequence_annotation(annotation):
-    annotation = base_annotation(annotation)
     origin = get_origin(annotation)
     target = origin or annotation
     return target in {list, tuple, set, frozenset, Sequence}
 
 
 def _sequence_element_annotation(annotation):
-    annotation = base_annotation(annotation)
     arguments = get_args(annotation)
     return arguments[0] if arguments else str
 
 
 def _convert_scalar(value, annotation):
-    annotation = base_annotation(annotation)
     if annotation in (inspect.Parameter.empty, str):
         return value
     if annotation is bool and isinstance(value, str):
@@ -130,7 +111,7 @@ def convert_argument(token, parameter, runtime):
     """Convert one explicit token according to literal, sigil, and annotation rules."""
     literal = is_literal(token)
     value = token_value(token)
-    annotation = base_annotation(parameter.annotation)
+    annotation = parameter.annotation
 
     if literal or annotation is Literal:
         return Literal(value)
@@ -167,7 +148,7 @@ def _variadic_parameter(signature):
 
 
 def _is_boolean_parameter(parameter):
-    return base_annotation(parameter.annotation) is bool or isinstance(parameter.default, bool)
+    return parameter.annotation is bool or isinstance(parameter.default, bool)
 
 
 def _option_details(signature, token):
@@ -211,7 +192,7 @@ def _greedy_parameter(signature):
     if _variadic_parameter(signature) is not None:
         return None
     positional = _positional_parameters(signature)
-    if positional and base_annotation(positional[-1].annotation) is str:
+    if positional and positional[-1].annotation is str:
         return positional[-1]
     return None
 
