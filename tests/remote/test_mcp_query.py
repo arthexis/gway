@@ -68,7 +68,7 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
     assert "mutation is required" in gway.description
     assert "semicolons" in gway.description
     assert "investigate through query first" in " ".join(gway.description.split())
-    assert "including null" in gway.description
+    assert "including null" in " ".join(gway.description.split())
 
     assert query.output_schema is not None
     assert gway.output_schema is not None
