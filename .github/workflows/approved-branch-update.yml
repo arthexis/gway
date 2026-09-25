@@ -21,18 +21,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_PATH: ${{ github.event_path }}
         shell: bash
         run: |
           set -euo pipefail
 
           if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
-            label="$(jq -r '.label.name // empty' "$EVENT_PATH")"
+            label="$(jq -r '.label.name // empty' "$GITHUB_EVENT_PATH")"
             if [[ "$label" != "Approved" ]]; then
               echo "Ignoring non-Approved label event."
               exit 0
             fi
-            pr_numbers=("$(jq -r '.pull_request.number' "$EVENT_PATH")")
+            pr_numbers=("$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")")
           else
             mapfile -t pr_numbers < <(
               gh pr list                 --repo "$REPOSITORY"                 --state open                 --label Approved                 --limit 1000                 --json number                 --jq '.[].number'
