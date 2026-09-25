@@ -271,7 +271,13 @@ class Gateway(Resolver):
 
     @contextmanager
     def request_scope(self, *, context=None):
-        """Select fresh semantic/execution state for one logical request."""
+        """Select state for one logical request, reusing nested request scopes."""
+        if self.in_request:
+            if context:
+                self.context.update(context)
+            yield self.request_state
+            return
+
         from .journal import JournalManager
 
         state = RequestState(
