@@ -64,8 +64,8 @@ jobs:
               return
             fi
 
-            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$pr_json" >/dev/null; then
-              echo "PR #$pr_number: on hold; skipping."
+            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on-hold")' <<< "$pr_json" >/dev/null; then
+              echo "PR #$pr_number: on-hold; skipping."
               return
             fi
 
@@ -92,7 +92,7 @@ jobs:
               return
             fi
 
-            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on hold" or . == "in-progress")' <<< "$current_json" >/dev/null; then
+            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "in-progress")' <<< "$current_json" >/dev/null; then
               echo "PR #$pr_number: became unavailable before claim; skipping."
               return
             fi
