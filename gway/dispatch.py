@@ -803,6 +803,8 @@ def dispatch_pipeline(
                         incoming=None if current is _MISSING else current,
                         outgoing=result,
                         statement=statement.index,
+                        subject=path.stem,
+                        published=True,
                         has_incoming=current is not _MISSING,
                         kind="recipe",
                     )
@@ -823,6 +825,7 @@ def dispatch_pipeline(
 
         incoming = current
         resolution = resolve_operation(runtime, stage, pipeline=incoming)
+        history_size = len(runtime.results.history)
         result = dispatch_stage(
             runtime,
             stage,
@@ -830,6 +833,7 @@ def dispatch_pipeline(
             args=stage_args,
             kwargs=stage_kwargs,
         )
+        published = len(runtime.results.history) > history_size
         results.append(result)
         if statement is not None:
             statement.append(
@@ -840,6 +844,8 @@ def dispatch_pipeline(
                     incoming=None if incoming is _MISSING else incoming,
                     outgoing=result,
                     statement=statement.index,
+                    subject=resolution.subject,
+                    published=published,
                     has_incoming=incoming is not _MISSING,
                 )
             )
