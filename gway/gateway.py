@@ -1,8 +1,7 @@
 # file: gway/gateway.py
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
-import threading
 
 from .runner import invoke
 from .bindings import Bindings
@@ -20,13 +19,11 @@ from .operations import registry_views, split_operation
 from .publication import publish
 from .sigil import Resolver
 from .sigil.resolver import Environment
-from .structs import Results
+from .state import RequestMapping, RequestState
 
 
 class Gateway(Resolver):
-    """Minimal GWAY runtime: resolution, callable wrapping, and shared context."""
-
-    _thread_local = threading.local()
+    """Minimal GWAY runtime: resolution, callable wrapping, and request-local context."""
 
     def __init__(
         self,
@@ -56,44 +53,21 @@ class Gateway(Resolver):
         self.launchables = Launchables()
         self._service_presets = {}
         self._ingested = {}
-        self.execution = None
-        self.previous_execution = None
 
         self.gway_identity = None
 
         from .cache import Cache
         from .journal import JournalManager
-        self._execution_depth = 0
-        self._execution_suspension = None
-        self._authorization_stack_var = ContextVar(
-            f"gway_authorization_stack_{id(self)}",
-            default=(),
-        )
-        self._capability_depth_var = ContextVar(
-            f"gway_capability_depth_{id(self)}",
-            default=0,
-        )
-        self._mutation_policy_var = ContextVar(
-            f"gway_mutation_policy_{id(self)}",
-            default=MUTATE_UNSET,
-        )
-        self._semantic_topics_var = ContextVar(
-            f"gway_semantic_topics_{id(self)}",
-            default=(),
+        self._root_state = RequestState()
+        self._request_state_var = ContextVar(
+            f"gway_request_state_{id(self)}",
+            default=None,
         )
         self.debug_enabled = bool(debug)
         self.verbose = bool(verbose)
         self.silent = bool(silent)
         self.interactive_enabled = bool(interactive)
         self.timed_enabled = bool(timed)
-
-        if not hasattr(type(self)._thread_local, "context"):
-            type(self)._thread_local.context = {}
-        if not hasattr(type(self)._thread_local, "results"):
-            type(self)._thread_local.results = Results()
-
-        self.context = type(self)._thread_local.context
-        self.results = type(self)._thread_local.results
 
         if context:
             self.context.update(context)
@@ -106,8 +80,8 @@ class Gateway(Resolver):
 
         super().__init__(
             [
-                ("results", self.results),
-                ("context", self.context),
+                ("results", RequestMapping(self, "results")),
+                ("context", RequestMapping(self, "context")),
                 ("bindings", self.bindings),
                 (
                     "env",
@@ -221,6 +195,88 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+
+    @property
+    def request_state(self):
+        """Return the state container selected for this logical request."""
+        return self._request_state_var.get() or self._root_state
+
+    @property
+    def in_request(self):
+        """Return whether an explicit request-local state is active."""
+        return self._request_state_var.get() is not None
+
+    @property
+    def context(self):
+        """Return semantic context for the active request."""
+        return self.request_state.context
+
+    @property
+    def results(self):
+        """Return semantic results for the active request."""
+        return self.request_state.results
+
+    @property
+    def execution(self):
+        return self.request_state.execution
+
+    @execution.setter
+    def execution(self, value):
+        self.request_state.execution = value
+
+    @property
+    def previous_execution(self):
+        return self.request_state.previous_execution
+
+    @previous_execution.setter
+    def previous_execution(self, value):
+        self.request_state.previous_execution = value
+
+    @property
+    def _execution_depth(self):
+        return self.request_state.execution_depth
+
+    @_execution_depth.setter
+    def _execution_depth(self, value):
+        self.request_state.execution_depth = value
+
+    @property
+    def _execution_suspension(self):
+        return self.request_state.execution_suspension
+
+    @_execution_suspension.setter
+    def _execution_suspension(self, value):
+        self.request_state.execution_suspension = value
+
+    @property
+    def _authorization_stack_var(self):
+        return self.request_state.authorization_stack
+
+    @property
+    def _capability_depth_var(self):
+        return self.request_state.capability_depth
+
+    @property
+    def _mutation_policy_var(self):
+        return self.request_state.mutation_policy
+
+    @property
+    def _semantic_topics_var(self):
+        return self.request_state.semantic_topics
+
+    @contextmanager
+    def request_scope(self, *, context=None):
+        """Select fresh semantic/execution state for one logical request."""
+        state = RequestState()
+        state.context["verbose"] = self.verbose
+        state.context["silent"] = self.silent
+        if context:
+            state.context.update(context)
+        token = self._request_state_var.set(state)
+        try:
+            yield state
+        finally:
+            self._request_state_var.reset(token)
 
     def _default_context(self, **values):
         """Publish explicit semantic values into the containing context."""
@@ -695,40 +751,26 @@ class Gateway(Resolver):
 
     @contextmanager
     def authorized(self, *, operations=(), environment=None, context=None):
-        """Constrain one external request and isolate its semantic state."""
+        """Constrain one external request using request-local semantic state."""
         from .authorization import Authorization
 
         authority = Authorization.create(
             operations=operations,
             environment=environment,
         )
-        stack = self._authorization_stack
-        outermost = not stack
-        previous_context = None
-        previous_results = None
-        previous_history = None
-        if outermost:
-            previous_context = dict(self.context)
-            previous_results = dict(self.results.maps[0])
-            previous_history = list(self.results.history)
-            self.context.clear()
-            self.results.clear()
-            self.context["verbose"] = self.verbose
-            self.context["silent"] = self.silent
-            if context:
-                self.context.update(context)
-
-        token = self._authorization_stack_var.set((*stack, authority))
-        try:
-            yield authority
-        finally:
-            self._authorization_stack_var.reset(token)
-            if outermost:
-                self.context.clear()
-                self.context.update(previous_context)
-                self.results.clear()
-                self.results.maps[0].update(previous_results)
-                self.results.history.extend(previous_history)
+        outermost = self.authorization is None
+        scope = (
+            self.request_scope(context=context)
+            if outermost and not self.in_request
+            else nullcontext()
+        )
+        with scope:
+            stack = self._authorization_stack
+            token = self._authorization_stack_var.set((*stack, authority))
+            try:
+                yield authority
+            finally:
+                self._authorization_stack_var.reset(token)
 
     @property
     def _capability_depth(self):
@@ -905,12 +947,13 @@ class Gateway(Resolver):
             resource=resource,
             path=self.security_path,
         )
-        with self.authorized(
-            operations=identity.authority.operations,
-            environment=identity.authority.environment,
-        ):
-            with self.external_authority():
-                return self.execute(command, mutate=mutate)
+        with self.request_scope():
+            with self.authorized(
+                operations=identity.authority.operations,
+                environment=identity.authority.environment,
+            ):
+                with self.external_authority():
+                    return self.execute(command, mutate=mutate)
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command while preserving inherited mutation policy."""
