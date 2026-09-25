@@ -1,0 +1,401 @@
+name: CI Autofix
+
+on:
+  workflow_run:
+    workflows:
+      - "python / Quality"
+      - "python / Package"
+      - "python / Python compatibility"
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ci-autofix-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  autofix:
+    name: Codex CI Autofix
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      (github.event.workflow_run.event == 'pull_request' ||
+       github.event.workflow_run.event == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Resolve eligible pull request
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          FAILED_RUN_ID: ${{ github.event.workflow_run.id }}
+          FAILED_WORKFLOW: ${{ github.event.workflow_run.name }}
+          FAILED_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          FAILED_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EVENT_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          set -Eeuo pipefail
+
+          pr_number="${EVENT_PR_NUMBER}"
+          if [[ -z "${pr_number}" ]]; then
+            pr_number="$(
+              gh pr list \
+                --repo "${REPOSITORY}" \
+                --state open \
+                --head "${FAILED_HEAD_BRANCH}" \
+                --json number,headRefOid \
+                --jq ".[] | select(.headRefOid == \"${FAILED_HEAD_SHA}\") | .number" \
+                | head -n 1
+            )"
+          fi
+
+          if [[ -z "${pr_number}" ]]; then
+            echo "No open PR owns failed head ${FAILED_HEAD_SHA}; skipping."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          pr_json="$(gh api "repos/${REPOSITORY}/pulls/${pr_number}")"
+          state="$(jq -r '.state' <<< "${pr_json}")"
+          head_sha="$(jq -r '.head.sha' <<< "${pr_json}")"
+          head_ref="$(jq -r '.head.ref' <<< "${pr_json}")"
+          head_repo="$(jq -r '.head.repo.full_name // ""' <<< "${pr_json}")"
+
+          if [[ "${state}" != "open" ]]; then
+            echo "PR #${pr_number} is not open; skipping."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${head_repo}" != "${REPOSITORY}" ]]; then
+            echo "PR #${pr_number} is not a same-repository PR; skipping."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${head_sha}" != "${FAILED_HEAD_SHA}" ]]; then
+            echo "PR #${pr_number} moved from failed head ${FAILED_HEAD_SHA} to ${head_sha}; skipping stale failure."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          mapfile -t labels < <(
+            jq -r '.labels[].name | ascii_downcase' <<< "${pr_json}"
+          )
+
+          has_ready=false
+          has_in_progress=false
+          has_workflow=false
+          for label in "${labels[@]}"; do
+            case "${label}" in
+              ready) has_ready=true ;;
+              in-progress|"in progress") has_in_progress=true ;;
+              workflow) has_workflow=true ;;
+            esac
+          done
+
+          if [[ "${has_ready}" != "true" && "${has_in_progress}" != "true" ]]; then
+            echo "PR #${pr_number} is neither Ready nor In-Progress; skipping."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${has_workflow}" == "true" ]]; then
+            echo "PR #${pr_number} is labeled workflow; automatic code repair is disabled."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          marker="<!-- ci-autofix-attempt:${FAILED_HEAD_SHA} -->"
+          if gh api --paginate "repos/${REPOSITORY}/issues/${pr_number}/comments" \
+              --jq '.[].body' | grep -Fq "${marker}"; then
+            echo "Head ${FAILED_HEAD_SHA} already received an autofix attempt; skipping duplicate failure event."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          consecutive=0
+          cursor="${FAILED_HEAD_SHA}"
+          while (( consecutive < 2 )) && [[ -n "${cursor}" ]]; do
+            commit_json="$(gh api "repos/${REPOSITORY}/commits/${cursor}")"
+            subject="$(jq -r '.commit.message | split("\n")[0]' <<< "${commit_json}")"
+            if [[ "${subject}" != ci:\ codex\ autofix* ]]; then
+              break
+            fi
+            consecutive=$((consecutive + 1))
+            cursor="$(jq -r '.parents[0].sha // ""' <<< "${commit_json}")"
+          done
+
+          if (( consecutive >= 2 )); then
+            echo "Two consecutive Codex autofix commits already failed; human attention is required."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          {
+            echo "eligible=true"
+            echo "pr_number=${pr_number}"
+            echo "head_ref=${head_ref}"
+            echo "head_sha=${head_sha}"
+            echo "failed_run_id=${FAILED_RUN_ID}"
+            echo "failed_workflow=${FAILED_WORKFLOW}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Check Codex API key
+        if: steps.resolve.outputs.eligible == 'true'
+        id: api-key
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [[ -n "${OPENAI_API_KEY}" ]]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "OPENAI_API_KEY is not configured; CI Autofix cannot run." >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Check out pull request head
+        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.resolve.outputs.head_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.10
+        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Install standalone validation tools
+        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff pytest build tomli
+
+      - name: Capture failed CI logs
+        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          FAILED_RUN_ID: ${{ steps.resolve.outputs.failed_run_id }}
+        run: |
+          set -Eeuo pipefail
+          log=".ci-autofix-failure.log"
+          if ! gh run view "${FAILED_RUN_ID}" --repo "${REPOSITORY}" --log-failed > "${log}"; then
+            gh run view "${FAILED_RUN_ID}" --repo "${REPOSITORY}" --log > "${log}"
+          fi
+          echo ".ci-autofix-failure.log" >> .git/info/exclude
+
+      - name: Mark this head as attempted
+        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
+          FAILED_WORKFLOW: ${{ steps.resolve.outputs.failed_workflow }}
+          FAILED_RUN_ID: ${{ steps.resolve.outputs.failed_run_id }}
+        run: |
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${REPOSITORY}" \
+            --body "<!-- ci-autofix-attempt:${HEAD_SHA} -->
+          CI Autofix is attempting a minimal repair for **${FAILED_WORKFLOW}** failure on \`${HEAD_SHA:0:12}\` (run \`${FAILED_RUN_ID}\`)."
+
+      - name: Run Codex autofix
+        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          sandbox: workspace-write
+          effort: high
+          allow-bots: true
+          prompt: |
+            You are repairing a failing CI check on the current Gway pull-request branch.
+
+            Read AGENTS.md first and follow it as the authoritative repository guide.
+            Read .ci-autofix-failure.log for the failed GitHub Actions output.
+
+            Make the smallest correct change that fixes the CI failure when the failure
+            was caused by this pull request. Preserve the intended behavior of the PR.
+            Do not commit or push. Do not edit anything under .github/workflows/.
+            Do not weaken, skip, delete, or mark tests solely to obtain a green run.
+            Add or improve a regression test when that is useful to prove the fix.
+
+            Run the narrow failing test/check first, then the relevant broader local
+            validation. If the failure is unrelated, flaky, external, secret/config
+            dependent, deployment-specific, or architecturally ambiguous, make no code
+            changes and explain why human attention is needed.
+
+      - name: Inspect candidate changes
+        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        id: changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f .ci-autofix-failure.log
+
+          changed="$(
+            git ls-files --modified --deleted --others --exclude-standard
+          )"
+          if [[ -z "${changed}" ]]; then
+            echo "present=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          workflow_changes="$(
+            printf '%s\n' "${changed}" | grep '^\.github/workflows/' || true
+          )"
+          if [[ -n "${workflow_changes}" ]]; then
+            echo "Codex attempted to modify workflow definitions; removing those changes." >&2
+            while IFS= read -r path; do
+              [[ -n "${path}" ]] || continue
+              if git ls-files --error-unmatch "${path}" >/dev/null 2>&1; then
+                git restore --staged --worktree -- "${path}"
+              else
+                rm -f -- "${path}"
+              fi
+            done <<< "${workflow_changes}"
+            changed="$(
+              git ls-files --modified --deleted --others --exclude-standard
+            )"
+          fi
+
+          if [[ -z "${changed}" ]]; then
+            echo "present=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "present=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Validate candidate
+        if: steps.changes.outputs.present == 'true'
+        id: validate
+        shell: bash
+        run: |
+          set +e
+          validation_log="${RUNNER_TEMP}/ci-autofix-validation.log"
+          : > "${validation_log}"
+
+          python -m pip install -e '.[dev,toml]' >> "${validation_log}" 2>&1
+          install_status=$?
+
+          if (( install_status == 0 )); then
+            python -m ruff check gway tests >> "${validation_log}" 2>&1
+            ruff_status=$?
+            python -m pytest -q >> "${validation_log}" 2>&1
+            pytest_status=$?
+            python -m build >> "${validation_log}" 2>&1
+            build_status=$?
+          else
+            ruff_status=1
+            pytest_status=1
+            build_status=1
+          fi
+
+          set -e
+          cat "${validation_log}"
+
+          if (( install_status == 0 && ruff_status == 0 && pytest_status == 0 && build_status == 0 )); then
+            echo "passed=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "passed=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Commit and push autofix
+        if: steps.changes.outputs.present == 'true' && steps.validate.outputs.passed == 'true'
+        id: push
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          EXPECTED_HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
+          HEAD_REF: ${{ steps.resolve.outputs.head_ref }}
+          FAILED_WORKFLOW: ${{ steps.resolve.outputs.failed_workflow }}
+        run: |
+          set -Eeuo pipefail
+
+          current_head="$(gh pr view "${PR_NUMBER}" --repo "${REPOSITORY}" --json headRefOid --jq '.headRefOid')"
+          if [[ "${current_head}" != "${EXPECTED_HEAD_SHA}" ]]; then
+            echo "PR head moved to ${current_head}; refusing to overwrite newer work."
+            echo "pushed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ci: codex autofix ${FAILED_WORKFLOW}"
+
+          gh auth setup-git
+          git push origin "HEAD:${HEAD_REF}"
+
+          new_sha="$(git rev-parse HEAD)"
+          {
+            echo "pushed=true"
+            echo "new_sha=${new_sha}"
+          } >> "${GITHUB_OUTPUT}"
+
+          # Pushes made with GITHUB_TOKEN do not recursively start PR workflows.
+          # Dispatch the normal CI surfaces explicitly on the repaired branch.
+          gh workflow run quality.yml --repo "${REPOSITORY}" --ref "${HEAD_REF}"
+          gh workflow run package.yml --repo "${REPOSITORY}" --ref "${HEAD_REF}"
+          gh workflow run python-compatibility.yml --repo "${REPOSITORY}" --ref "${HEAD_REF}"
+
+      - name: Report successful autofix
+        if: steps.push.outputs.pushed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          NEW_SHA: ${{ steps.push.outputs.new_sha }}
+        run: |
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${REPOSITORY}" \
+            --body "CI Autofix committed \`${NEW_SHA:0:12}\` and dispatched the normal Quality, Package, and Python compatibility checks."
+
+      - name: Report when human attention is required
+        if: >-
+          steps.resolve.outputs.eligible == 'true' &&
+          steps.api-key.outputs.configured == 'true' &&
+          steps.push.outputs.pushed != 'true' &&
+          (steps.changes.outputs.present != 'true' || steps.validate.outputs.passed == 'false')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          CODEX_FINAL_MESSAGE: ${{ steps.codex.outputs.final-message }}
+          VALIDATION_PASSED: ${{ steps.validate.outputs.passed }}
+        run: |
+          {
+            echo "CI Autofix did not push a repair for this head."
+            if [[ "${VALIDATION_PASSED}" == "false" ]]; then
+              echo
+              echo "The candidate did not pass the local Ruff, pytest, and build gates."
+            fi
+            if [[ -n "${CODEX_FINAL_MESSAGE}" ]]; then
+              echo
+              echo "Codex report:"
+              echo
+              printf '%s\n' "${CODEX_FINAL_MESSAGE}"
+            fi
+          } > "${RUNNER_TEMP}/ci-autofix-comment.md"
+
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${REPOSITORY}" \
+            --body-file "${RUNNER_TEMP}/ci-autofix-comment.md"
