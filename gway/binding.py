@@ -124,6 +124,33 @@ def convert_argument(token, parameter, runtime):
     return _convert_scalar(value, annotation)
 
 
+
+def coerce_native_arguments(func, arguments, *, runtime):
+    """Coerce explicit keyword values with the callable's normal annotations."""
+    signature = inspect.signature(func)
+    converted = {}
+    for name, value in dict(arguments).items():
+        parameter = signature.parameters.get(name)
+        if parameter is None:
+            converted[name] = value
+            continue
+        annotation = parameter.annotation
+        if annotation is inspect.Parameter.empty:
+            converted[name] = value
+        elif _sequence_annotation(annotation):
+            converted[name] = (
+                _convert_sequence(value, annotation)
+                if isinstance(value, (str, list, tuple, set, frozenset))
+                else value
+            )
+        elif isinstance(value, str):
+            converted[name] = _convert_scalar(value, annotation)
+        else:
+            converted[name] = value
+    signature.bind_partial(**converted)
+    return converted
+
+
 def _positional_parameters(signature):
     return [
         parameter
