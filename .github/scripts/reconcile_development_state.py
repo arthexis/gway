@@ -178,11 +178,11 @@ def reconcile_pr(gh: GitHub, number: int) -> int | None:
         draft=bool(pr.get("draft")),
         approved="approved" in labels,
         in_progress="in-progress" in labels,
-        on_hold="on hold" in labels,
+        on_hold="on-hold" in labels,
     )
 
     if state.on_hold:
-        print(f"PR #{number}: on hold; leaving development state unchanged.")
+        print(f"PR #{number}: on-hold; leaving development state unchanged.")
         return parse_parent_issue(pr.get("body"))
 
     if state.approved and state.open and state.draft:
@@ -240,8 +240,8 @@ def reconcile_issue(
         return
 
     labels = labels_from(issue)
-    if "on hold" in labels:
-        print(f"Issue #{issue_number}: on hold; leaving development state unchanged.")
+    if "on-hold" in labels:
+        print(f"Issue #{issue_number}: on-hold; leaving development state unchanged.")
         return
 
     if active is None:
