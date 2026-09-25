@@ -1,6 +1,11 @@
 import pytest
 
-from gway.appspec import AppSpec, RouteSpec, ViewSpec
+from gway.sampler import load as load_sampler
+
+web_app = load_sampler("web/app")
+AppSpec = web_app.AppSpec
+RouteSpec = web_app.RouteSpec
+ViewSpec = web_app.ViewSpec
 
 
 def test_app_spec_composes_views_without_mutating_original():
