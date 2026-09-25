@@ -141,6 +141,61 @@ def test_repeat_defaults_to_one_iteration(gateway):
     assert calls == [1, 2]
 
 
+@pytest.mark.parametrize(
+    ("option", "context_key", "context_value", "expected_calls"),
+    [
+        ("--times", "repeat_times", 3, 4),
+        ("--max", "repeat_max", 3, 3),
+    ],
+)
+def test_repeat_typed_integer_controls_resolve_sigils(
+    gateway,
+    option,
+    context_key,
+    context_value,
+    expected_calls,
+):
+    calls = _counter(gateway)
+    gateway.context[context_key] = context_value
+    gateway("probe")
+
+    if option == "--times":
+        result = gateway(f"repeat {option} [{context_key}]")
+    else:
+        gateway.ready = gateway.wrap("ready", lambda value: value >= 3)
+        result = gateway(f"repeat --until ready {option} [{context_key}]")
+
+    assert result == expected_calls
+    assert calls == list(range(1, expected_calls + 1))
+
+
+def test_repeat_interval_resolves_sigil_before_float_coercion(gateway, monkeypatch):
+    _counter(gateway)
+    sleeps = []
+    gateway.context["repeat_interval"] = 0.25
+    gateway("probe")
+    monkeypatch.setattr("gway.dispatch.time.sleep", sleeps.append)
+
+    gateway("repeat --times 3 --interval [repeat_interval]")
+
+    assert sleeps == [0.25, 0.25]
+
+
+def test_repeat_typed_controls_resolve_sigil_fallbacks(gateway, monkeypatch):
+    calls = _counter(gateway)
+    sleeps = []
+    gateway("probe")
+    monkeypatch.setattr("gway.dispatch.time.sleep", sleeps.append)
+
+    result = gateway(
+        "repeat --times [missing_times|2] --interval [missing_interval|0.5]"
+    )
+
+    assert result == 3
+    assert calls == [1, 2, 3]
+    assert sleeps == [0.5]
+
+
 def test_repeat_interval_sleeps_only_between_attempts(gateway, monkeypatch):
     _counter(gateway)
     sleeps = []

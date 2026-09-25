@@ -394,6 +394,19 @@ repeat --times 3 --interval 1
 repeat --until ready --max 10 --interval 1
 ~~~
 
+The numeric repeat controls `--times`, `--max`, and `--interval` use the
+same semantic resolution rules as ordinary operation arguments. They may
+therefore read context-backed sigils and inline fallbacks before numeric
+coercion:
+
+~~~text
+repeat --times [retry_count]
+repeat --until ready --max [retry_limit|10]
+repeat --while pending --max [retry_limit|10] --interval [retry_delay|1]
+~~~
+
+The resolved values must still be valid for the corresponding numeric control.
+
 Conditional repeats default to 100 attempts when --max is omitted. Reaching the limit raises RepeatLimitError.
 
 --times cannot be combined with --while or --until, and --while and --until are mutually exclusive.
