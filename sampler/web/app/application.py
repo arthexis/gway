@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from gway.appspec import AppSpec, BindingSpec, ViewSpec
-from gway.appexposure import ExposureSpec, LocalAppService, apply_exposure
+from .appspec import AppSpec, BindingSpec, ViewSpec
+from .exposure import ExposureSpec, LocalAppService, apply_exposure
 from gway.binding import Literal
 from gway.publication import SKIP_PUBLICATION
 
@@ -286,7 +286,7 @@ class Controller:
         if not isinstance(app, AppSpec):
             raise TypeError("serve app requires an AppSpec")
 
-        from gway.appserver import serve_app
+        from .server import serve_app
 
         return serve_app(
             self.gateway,
