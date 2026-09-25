@@ -57,8 +57,9 @@ def test_transparent_final_stage_is_not_marked_as_new_statement_publication(gate
     assert statement.result is None
 
 
-def test_empty_recipe_stage_is_not_a_phantom_publication(gateway, recipe_factory):
-    recipe = recipe_factory(name="empty", body="")
+def test_empty_recipe_stage_is_not_a_phantom_publication(gateway, tmp_path):
+    recipe = tmp_path / "empty.rx"
+    recipe.write_text("", encoding="utf-8")
 
     assert gateway(recipe) is None
 
@@ -70,9 +71,10 @@ def test_empty_recipe_stage_is_not_a_phantom_publication(gateway, recipe_factory
 
 def test_transparent_recipe_final_stage_is_not_a_phantom_publication(
     gateway,
-    recipe_factory,
+    tmp_path,
 ):
-    recipe = recipe_factory(name="configure", body="default --site MTY\n")
+    recipe = tmp_path / "configure.rx"
+    recipe.write_text("default --site MTY\n", encoding="utf-8")
 
     gateway(recipe)
 
@@ -83,9 +85,10 @@ def test_transparent_recipe_final_stage_is_not_a_phantom_publication(
     assert gateway.context["site"] == "MTY"
 
 
-def test_recipe_stage_uses_nested_final_semantic_subject(gateway, recipe_factory):
+def test_recipe_stage_uses_nested_final_semantic_subject(gateway, tmp_path):
     gateway.read = gateway.wrap("read_status", lambda: "ok")
-    recipe = recipe_factory(name="probe", body="read\n")
+    recipe = tmp_path / "probe.rx"
+    recipe.write_text("read\n", encoding="utf-8")
 
     assert gateway(recipe) == "ok"
 
