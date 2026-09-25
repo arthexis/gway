@@ -1,4 +1,6 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 
@@ -568,3 +570,36 @@ def test_failed_boundary_preserves_primary_for_nonaggregate_journal_error(
     recovery = rollback_error_for(primary)
     assert isinstance(recovery, JournalError)
     assert "cannot recover deploy" in str(recovery)
+
+
+def test_concurrent_request_boundaries_do_not_finalize_each_others_journals(gateway):
+    opened = Barrier(2)
+    finalized = Barrier(2)
+
+    def owner():
+        with gateway.request_scope():
+            session = gateway.journal.session_id
+            with gateway.execution_scope():
+                gateway.journal.prepare("deploy")
+                opened.wait()
+                finalized.wait()
+                gateway.journal.commit("deploy")
+            return session
+
+    def observer():
+        opened.wait()
+        with gateway.request_scope():
+            session = gateway.journal.session_id
+            with gateway.execution_scope():
+                pass
+        finalized.wait()
+        return session
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        owner_future = pool.submit(owner)
+        observer_future = pool.submit(observer)
+        owner_session = owner_future.result()
+        observer_session = observer_future.result()
+
+    assert owner_session != observer_session
+    assert gateway.journal.open_names() == ()
