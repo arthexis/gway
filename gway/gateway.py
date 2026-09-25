@@ -148,7 +148,7 @@ class Gateway(Resolver):
             with self.topics("cache"):
                 configured_cache = self.resolve("[cache_dir]", default=cache)
             self.cache = Cache(configured_cache)
-        self.journal = JournalManager(self.cache.root / "rollback")
+        self._root_state.journal = JournalManager(self.cache.root / "rollback")
         self.security_path = self.cache.root / "security" / "state.sqlite"
 
         with self.topics("log"):
@@ -249,6 +249,11 @@ class Gateway(Resolver):
         self.request_state.execution_suspension = value
 
     @property
+    def journal(self):
+        """Return the rollback journal manager owned by the active request."""
+        return self.request_state.journal
+
+    @property
     def _authorization_stack_var(self):
         return self.request_state.authorization_stack
 
@@ -267,7 +272,11 @@ class Gateway(Resolver):
     @contextmanager
     def request_scope(self, *, context=None):
         """Select fresh semantic/execution state for one logical request."""
-        state = RequestState()
+        from .journal import JournalManager
+
+        state = RequestState(
+            journal=JournalManager(self.cache.root / "rollback"),
+        )
         state.context["verbose"] = self.verbose
         state.context["silent"] = self.silent
         if context:
