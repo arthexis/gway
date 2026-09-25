@@ -32,7 +32,9 @@ jobs:
           /tmp/clean-install/bin/python -m pip install dist/*.whl
           /tmp/clean-install/bin/python -m pip check
           /tmp/clean-install/bin/python -c "import gway; from gway import Gateway; Gateway(); print('gway import OK')"
-          SOURCE_SAMPLER="$PWD/sampler" /tmp/clean-install/bin/python - <<'PY'
+          SOURCE_SAMPLER="$PWD/sampler"
+          cd /tmp
+          SOURCE_SAMPLER="$SOURCE_SAMPLER" /tmp/clean-install/bin/python - <<'PY'
           import hashlib
           import os
           from pathlib import Path
