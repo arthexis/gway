@@ -196,6 +196,26 @@ def _repeat_target(runtime, statement, target):
     return replay
 
 
+def _repeat_presentation_subject(runtime, statement, target):
+    """Return the semantic subject whose replay result repeat presents."""
+    if target is not None:
+        return None
+    if statement is not None and statement.stages:
+        return statement.subject
+    execution = getattr(runtime, "execution", None)
+    if (
+        statement is not None
+        and execution is not None
+        and statement.index > 0
+        and statement.index <= len(execution.statements) - 1
+    ):
+        return execution.statements[statement.index - 1].subject
+    previous = getattr(runtime, "previous_execution", None)
+    if previous is not None and previous.last is not None:
+        return previous.last.subject
+    return None
+
+
 def _execute_repeat(runtime, tokens, *, statement=None):
     """Execute repeat control flow against semantic replay targets."""
     options = _repeat_options(tokens)
@@ -750,6 +770,11 @@ def dispatch_pipeline(
             if recipe_frame is not None:
                 recipe_frame.set_pipeline_remaining(remaining)
             result = _execute_repeat(runtime, stage, statement=statement)
+            if statement is not None:
+                statement.present_as(
+                    _repeat_presentation_subject(runtime, statement, _repeat_options(stage)["target"]),
+                    result,
+                )
             results.append(result)
             current = result
             first = False
