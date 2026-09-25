@@ -58,7 +58,7 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Disarm when approval is removed
-        if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'Approved'
+        if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'unlabeled'
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -66,7 +66,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          approved="$(
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
+          )"
+
+          if [[ "$approved" != "true" ]]; then
+            gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
+          fi
 
       - name: Validate approval gate
         if: steps.pr.outputs.skip != 'true'
@@ -93,7 +101,7 @@ jobs:
           fi
 
           approved="$(
-            jq -r '[.labels[].name] | any(. == "Approved")' <<< "$pr_json"
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
           )"
           if [[ "$approved" != "true" ]]; then
             echo "PR #$PR_NUMBER does not have the Approved label."

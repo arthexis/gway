@@ -27,7 +27,7 @@ jobs:
 
           if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
             label="$(jq -r '.label.name // empty' "$GITHUB_EVENT_PATH")"
-            if [[ "$label" != "Approved" ]]; then
+            if [[ "${label,,}" != "approved" ]]; then
               echo "Ignoring non-Approved label event."
               exit 0
             fi
@@ -55,7 +55,7 @@ jobs:
               continue
             fi
 
-            approved="$(jq -r '[.labels[].name] | any(. == "Approved")' <<< "$pr_json")"
+            approved="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json")"
             if [[ "$approved" != "true" ]]; then
               echo "PR #$pr_number is no longer Approved; skipping."
               continue
