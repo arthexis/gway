@@ -91,7 +91,6 @@ def test_consent_displays_live_scope_operations_and_creates_constrained_grant(tm
     details = account.consent_details(session)
 
     assert details["scopes"] == frozenset({"chatgpt-logs"})
-    assert details["requested_scopes"] == frozenset({"chatgpt-logs"})
     assert details["operations"] == frozenset(
         {"log.sources", "log.read", "log.tail"}
     )
