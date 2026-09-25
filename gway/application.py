@@ -269,7 +269,7 @@ class Controller:
         self.gateway.results.insert("exposure", result)
         return SKIP_PUBLICATION
 
-    def start_app(
+    def serve_app(
         self,
         *,
         app: AppSpec,
@@ -284,7 +284,7 @@ class Controller:
             port: Local TCP port.
         """
         if not isinstance(app, AppSpec):
-            raise TypeError("start app requires an AppSpec")
+            raise TypeError("serve app requires an AppSpec")
 
         from .appserver import serve_app
 
@@ -313,10 +313,10 @@ def register(gateway):
         sub="app",
     )
     gateway.ops.register_alias("view", gateway.view_app)
-    gateway.start_app = gateway.wrap(
-        "start.app",
-        controller.start_app,
-        op="start",
+    gateway.serve_app = gateway.wrap(
+        "serve.app",
+        controller.serve_app,
+        op="serve",
         sub="app",
     )
     gateway.expose_app = gateway.wrap(
