@@ -94,49 +94,93 @@ def load(name):
     return module
 
 
-def expand(runtime, tokens):
-    """Lazily load one sampler fallback route for an unresolved semantic command."""
-    values = [
-        str(getattr(token, "value", token)).replace("-", "_")
+def _semantic_values(tokens):
+    """Return normalized semantic spellings from one unresolved command."""
+    return tuple(
+        value
         for token in tokens
-        if str(getattr(token, "value", token))
-    ]
+        if (value := str(getattr(token, "value", token)).strip().replace("-", "_"))
+        and not value.startswith("--")
+    )
+
+
+def _fallback_routes():
+    """Return sampler capability packages in deterministic semantic-search order."""
+    sampler_root = root()
+    if not sampler_root.is_dir():
+        return ()
+
+    routes = []
+    for package in sampler_root.rglob("__init__.py"):
+        route = package.parent
+        relative = route.relative_to(sampler_root)
+        if not relative.parts:
+            continue
+        routes.append(relative)
+    return tuple(sorted(routes, key=lambda item: (len(item.parts), item.parts)))
+
+
+def _route_score(route, values):
+    """Prefer sampler routes whose semantic path overlaps the unresolved command."""
+    normalized = tuple(part.replace("-", "_") for part in route.parts)
+    overlap = sum(part in values for part in normalized)
+    leaf = normalized[-1] in values
+    return (leaf, overlap, -len(normalized))
+
+
+def fallback_routes(tokens):
+    """Yield sampler capability routes ordered for one unresolved semantic command."""
+    values = _semantic_values(tokens)
+    routes = _fallback_routes()
+    return tuple(
+        sorted(
+            routes,
+            key=lambda route: (
+                -int(_route_score(route, values)[0]),
+                -_route_score(route, values)[1],
+                -_route_score(route, values)[2],
+                route.parts,
+            ),
+        )
+    )
+
+
+def expand(runtime, tokens):
+    """Load exactly one next sampler fallback route after ordinary resolution misses."""
+    values = _semantic_values(tokens)
     if not values:
         return False
 
-    subject = values[1] if len(values) >= 2 else values[0]
     loaded = getattr(runtime, "_sampler_routes", None)
     if loaded is None:
         loaded = set()
         runtime._sampler_routes = loaded
 
     candidates = []
-    sampler_root = root()
-    if not sampler_root.is_dir():
-        return False
-    for semantic_root in sorted(item for item in sampler_root.iterdir() if item.is_dir()):
-        route = semantic_root / subject
-        package = route / "__init__.py"
-        if package.is_file():
-            candidates.append((semantic_root.name, route, package))
+    for relative in fallback_routes(tokens):
+        route = (root() / relative).resolve()
+        if route not in loaded:
+            candidates.append((relative, route))
 
-    if len(candidates) > 1:
-        names = ", ".join(name for name, _, _ in candidates)
-        raise LookupError(
-            f"Ambiguous sampler fallback for {subject!r}: {names}"
-        )
     if not candidates:
         return False
 
-    semantic_root, route, _ = candidates[0]
-    key = route.resolve()
-    if key in loaded:
-        return False
+    best_score = _route_score(candidates[0][0], values)
+    equally_relevant = [
+        relative
+        for relative, _ in candidates
+        if _route_score(relative, values) == best_score
+    ]
+    if (best_score[0] or best_score[1]) and len(equally_relevant) > 1:
+        names = ", ".join(str(route) for route in equally_relevant)
+        raise LookupError(
+            f"Ambiguous sampler fallback for {' '.join(values)!r}: {names}"
+        )
 
-    module = load(f"{semantic_root}/{subject}")
+    relative, route = candidates[0]
+    module = load(str(relative))
     register = getattr(module, "register", None)
-    if not callable(register):
-        raise TypeError(f"Sampler route has no register(runtime): {route}")
-    register(runtime)
-    loaded.add(key)
+    if callable(register):
+        register(runtime)
+    loaded.add(route)
     return True
