@@ -1,0 +1,71 @@
+name: Development State Reconciler
+
+on:
+  issues:
+    types: [opened, reopened, closed, labeled, unlabeled]
+  pull_request_target:
+    types: [opened, reopened, closed, labeled, unlabeled, converted_to_draft, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Optional Issue number to reconcile
+        required: false
+        type: number
+      pr_number:
+        description: Optional PR number to reconcile
+        required: false
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: development-state-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile development state
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_ISSUE: ${{ inputs.issue_number }}
+          INPUT_PR: ${{ inputs.pr_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          script=".github/scripts/reconcile_development_state.py"
+
+          case "$EVENT_NAME" in
+            issues)
+              python "$script" --issue "$ISSUE_NUMBER"
+              ;;
+            pull_request_target)
+              python "$script" --pr "$EVENT_PR_NUMBER"
+              ;;
+            workflow_dispatch)
+              args=()
+              if [[ -n "${INPUT_ISSUE:-}" ]]; then
+                args+=(--issue "$INPUT_ISSUE")
+              fi
+              if [[ -n "${INPUT_PR:-}" ]]; then
+                args+=(--pr "$INPUT_PR")
+              fi
+              if (( ${#args[@]} == 0 )); then
+                args+=(--all)
+              fi
+              python "$script" "${args[@]}"
+              ;;
+          esac
