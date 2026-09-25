@@ -37,23 +37,6 @@ include-package-data = true
 [tool.setuptools.packages.find]
 include = ["gway*"]
 
-[tool.setuptools.data-files]
-"share/gway/sampler/web/expose" = [
-    "sampler/web/expose/*.rx",
-    "sampler/web/expose/*.conf",
-]
-"share/gway/sampler/web/remote" = [
-    "sampler/web/remote/*.rx",
-    "sampler/web/remote/*.conf",
-]
-"share/gway/sampler/arthexis" = ["sampler/arthexis/*.rx"]
-"share/gway/sampler/mcp" = [
-    "sampler/mcp/*.rx",
-    "sampler/mcp/*.py",
-]
-"share/gway/sampler/remote" = ["sampler/remote/*.rx"]
-
-
 [tool.ruff]
 target-version = "py310"
 line-length = 88
