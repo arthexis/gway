@@ -62,7 +62,7 @@ def test_empty_recipe_stage_is_not_a_phantom_publication(gateway, recipe_factory
 
     assert gateway(recipe) is None
 
-    statement = gateway.previous_execution.statements[0]
+    statement = gateway.execution.statements[0]
     assert statement.published is False
     assert statement.subject is None
     assert statement.result is None
