@@ -11,6 +11,9 @@ import os as _os
 import socket as _socket
 import sys as _sys
 from datetime import datetime as _datetime, timezone as _timezone
+from typing import Annotated as _Annotated
+
+from .binding import Explicit as _Explicit
 
 _DEFAULT_LEVEL = _logging.WARNING
 _DEFAULT_OUTPUT_LEVEL = _logging.INFO
@@ -415,7 +418,7 @@ def read(
     since: str = None,
     until: str = None,
     limit: int = 100,
-    all: bool = False,
+    all: _Annotated[bool, _Explicit] = False,
     mutate=False,
 ):
     """Read bounded records from selected GWAY-managed log sources."""
@@ -428,7 +431,7 @@ def tail(
     *source: str,
     since: str = None,
     limit: int = 100,
-    all: bool = False,
+    all: _Annotated[bool, _Explicit] = False,
     mutate=False,
 ):
     """Return the newest records from selected GWAY-managed log sources."""
@@ -443,7 +446,7 @@ def search(
     since: str = None,
     until: str = None,
     limit: int = 100,
-    all: bool = False,
+    all: _Annotated[bool, _Explicit] = False,
     mutate=False,
 ):
     """Search message content in selected GWAY-managed log sources."""
