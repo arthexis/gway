@@ -1,10 +1,10 @@
-name: Approved Branch Update
+name: Branch Update
 
 on:
   push:
     branches: [main]
   pull_request_target:
-    types: [labeled, reopened, ready_for_review]
+    types: [opened, reopened]
   workflow_dispatch:
 
 permissions:
@@ -12,11 +12,11 @@ permissions:
   pull-requests: write
 
 jobs:
-  update-approved:
-    name: Update stale Approved PRs
+  update-stale:
+    name: Update stale PRs
     runs-on: ubuntu-latest
     steps:
-      - name: Find and update stale Approved PRs
+      - name: Find and update stale PRs
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH_UPDATE_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
@@ -30,13 +30,23 @@ jobs:
             pr_numbers=("$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")")
           else
             mapfile -t pr_numbers < <(
-              gh pr list                 --repo "$REPOSITORY"                 --state open                 --label Approved                 --limit 1000                 --json number                 --jq '.[].number'
+              gh pr list \
+                --repo "$REPOSITORY" \
+                --state open \
+                --limit 1000 \
+                --json number \
+                --jq '.[].number'
             )
           fi
 
           if (( ${#pr_numbers[@]} == 0 )); then
-            echo "No open Approved pull requests."
+            echo "No open pull requests."
             exit 0
+          fi
+
+          if [[ -z "${BRANCH_UPDATE_TOKEN:-}" ]]; then
+            echo "::error::BRANCH_UPDATE_TOKEN is not configured; refusing to update PRs with github.token because bot-authored updates suppress normal PR CI."
+            exit 1
           fi
 
           for pr_number in "${pr_numbers[@]}"; do
@@ -46,14 +56,9 @@ jobs:
               continue
             fi
 
-            if [[ "$(jq -r '.draft' <<< "$pr_json")" == "true" ]]; then
-              echo "PR #$pr_number is draft; skipping."
-              continue
-            fi
-
-            approved="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json")"
-            if [[ "$approved" != "true" ]]; then
-              echo "PR #$pr_number is no longer Approved; skipping."
+            head_repo="$(jq -r '.head.repo.full_name // empty' <<< "$pr_json")"
+            if [[ "$head_repo" != "$REPOSITORY" ]]; then
+              echo "PR #$pr_number is from a fork; skipping automatic branch update."
               continue
             fi
 
@@ -69,11 +74,6 @@ jobs:
             fi
 
             echo "Updating PR #$pr_number ($behind_by commit(s) behind $base_ref)."
-
-            if [[ -z "${BRANCH_UPDATE_TOKEN:-}" ]]; then
-              echo "::error::BRANCH_UPDATE_TOKEN is not configured; refusing to update the PR with github.token because bot-authored updates suppress normal PR CI."
-              exit 1
-            fi
 
             if GH_TOKEN="$BRANCH_UPDATE_TOKEN" gh api \
               --method PUT \
