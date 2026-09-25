@@ -6,6 +6,27 @@ from dataclasses import dataclass, field
 _UNSET = object()
 
 
+@dataclass(frozen=True)
+class PresentationResult:
+    """One observable statement result at an invocation boundary."""
+
+    subject: str | None
+    result: object
+
+    def as_record(self):
+        return {"subject": self.subject, "result": self.result}
+
+
+class PresentationResults(tuple):
+    """Ordered, duplicate-preserving presentation results."""
+
+    def getall(self, subject):
+        return tuple(entry.result for entry in self if entry.subject == subject)
+
+    def as_records(self):
+        return [entry.as_record() for entry in self]
+
+
 @dataclass
 class Stage:
     """One completed semantic dispatch stage."""
@@ -131,6 +152,23 @@ class Execution:
     def outputs(self):
         """Return ordered completed statement records for presentation layers."""
         return tuple(statement for statement in self.statements if statement.published)
+
+    @property
+    def presentation_results(self):
+        """Return ordered semantic results without collapsing duplicate subjects."""
+        return PresentationResults(
+            PresentationResult(statement.subject, statement.result)
+            for statement in self.outputs
+        )
+
+    def present(self, fallback=None):
+        """Return scalar compatibility output or a multi-result presentation envelope."""
+        results = self.presentation_results
+        if not results:
+            return fallback
+        if len(results) == 1:
+            return results[0].result
+        return {"results": results.as_records()}
 
     def replay(self, runtime):
         """Replay all statements without pipeline transfer between them."""
