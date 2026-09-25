@@ -1,7 +1,12 @@
 import pytest
 
-from gway.appserver import ApplicationHTTPAdapter
-from gway.appspec import AppSpec, BindingSpec, ViewSpec
+from gway.sampler import load as load_sampler
+
+web_app = load_sampler("web/app")
+ApplicationHTTPAdapter = web_app.ApplicationHTTPAdapter
+AppSpec = web_app.AppSpec
+BindingSpec = web_app.BindingSpec
+ViewSpec = web_app.ViewSpec
 
 
 def test_view_declares_query_bindings_and_reuses_gway_coercion(gateway):
