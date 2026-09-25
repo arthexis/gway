@@ -224,6 +224,16 @@ def reconcile_pr(gh: GitHub, number: int) -> int | None:
             parent_labels = labels_from(parent_issue)
             if "on hold" not in parent_labels and "in-progress" not in parent_labels:
                 gh.add_label(parent, "in-progress")
+        else:
+            active = active_parent_map(gh.open_pulls())
+            if not active.get(parent):
+                parent_issue = gh.issue(parent)
+                parent_labels = labels_from(parent_issue)
+                if "on hold" not in parent_labels and "in-progress" in parent_labels:
+                    print(
+                        f"Issue #{parent}: final linked PR closed; releasing in-progress."
+                    )
+                    gh.remove_label(parent, "in-progress")
     return parent
 
 
