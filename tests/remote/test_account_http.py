@@ -95,9 +95,7 @@ def test_real_http_browser_link_consent_and_revoke_flow(tmp_path):
         assert "log.search" in consent_html
         consent_csrf = _csrf(consent_html)
 
-        form = urlencode(
-            {"csrf": consent_csrf, "decision": "approve", "scope": "chatgpt-logs"}
-        )
+        form = urlencode({"csrf": consent_csrf, "decision": "approve"})
         connection.request(
             "POST",
             "/consent",
@@ -186,7 +184,7 @@ def test_secure_public_origin_marks_browser_cookie_secure(tmp_path):
         thread.join(timeout=2)
 
 
-def test_real_http_consent_allows_selecting_subset_of_multiple_scopes(tmp_path):
+def test_real_http_consent_is_informational_and_grants_full_bearer_scope_set(tmp_path):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
     tokens = TokenRegistry(path)
@@ -214,7 +212,7 @@ def test_real_http_consent_allows_selecting_subset_of_multiple_scopes(tmp_path):
     try:
         connection.request(
             "GET",
-            "/consent?client_id=client&scope=read%20write",
+            "/consent?client_id=client&scope=read",
         )
         response = connection.getresponse()
         first_cookie = _cookie(response.getheader("Set-Cookie"))
@@ -241,21 +239,16 @@ def test_real_http_consent_allows_selecting_subset_of_multiple_scopes(tmp_path):
         response = connection.getresponse()
         html = response.read().decode()
         consent_csrf = _csrf(html)
-        assert 'name="scope" value="read"' in html
-        assert 'name="scope" value="write"' in html
+        assert "<strong>read</strong>" in html
+        assert "<strong>write</strong>" in html
+        assert 'name="scope"' not in html
+        assert "informational" in html
         assert "1 operations" in html
-        assert "environment names" in html
 
         connection.request(
             "POST",
             "/consent",
-            body=urlencode(
-                {
-                    "csrf": consent_csrf,
-                    "decision": "approve",
-                    "scope": "read",
-                }
-            ),
+            body=urlencode({"csrf": consent_csrf, "decision": "approve"}),
             headers={
                 "Cookie": second_cookie,
                 "Content-Type": "application/x-www-form-urlencoded",
@@ -267,15 +260,14 @@ def test_real_http_consent_allows_selecting_subset_of_multiple_scopes(tmp_path):
 
         session = account.sessions.require(second_cookie.split("=", 1)[1])
         grant = oauth.get_grant(session.approved_grant_id)
-        assert grant.scopes == frozenset({"read"})
+        assert grant.scopes == frozenset({"read", "write"})
     finally:
         connection.close()
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
 
-
-def test_consent_renders_operation_preview_for_each_selected_scope(tmp_path):
+def test_consent_renders_preview_and_expandable_full_operations_per_scope(tmp_path):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
     tokens = TokenRegistry(path)
@@ -305,3 +297,6 @@ def test_consent_renders_operation_preview_for_each_selected_scope(tmp_path):
     assert "alpha.0" in html
     assert "beta.0" in html
     assert html.count("…and 2 more") >= 2
+    assert html.count("See all 8 operations") >= 2
+    assert "alpha.7" in html
+    assert "beta.7" in html
