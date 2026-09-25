@@ -6,7 +6,7 @@ from gway.appadapter import (
     MethodNotAllowed,
     RouteNotFound,
 )
-from gway.appspec import AppSpec
+from gway.appspec import AppSpec, ViewSpec
 def _register_handler(gateway, name):
     def handler():
         return name
@@ -174,7 +174,7 @@ def test_in_memory_adapter_reports_disallowed_method(gateway):
 
 def test_in_memory_adapter_reports_unavailable_handler(gateway):
     app = AppSpec().add(
-        __import__("gway.appspec", fromlist=["ViewSpec"]).ViewSpec(
+        ViewSpec(
             "remote.missing",
             route="/missing-handler",
         )
