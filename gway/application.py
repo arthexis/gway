@@ -9,16 +9,18 @@ class Controller:
     def __init__(self, gateway):
         self.gateway = gateway
 
-    def setup_app(self, name=None, *, mutate=False):
-        """Create a new framework-neutral application specification.
+    def setup_app(self, name=None, *, topic=None, route="/", mutate=False):
+        """Create a framework-neutral application specification.
 
         Args:
-            name: Optional application name.
+            name: Optional application name; inferred from the topic leaf when omitted.
+            topic: Optional semantic handler-resolution root.
+            route: Optional base route composed with each view-local route.
         """
         del mutate
-        return AppSpec(name=name)
+        return AppSpec(name=name, topic=topic, route=route)
 
-    def _canonical_handler(self, handler):
+    def _canonical_handler(self, handler, *, app=None):
         raw = str(handler).strip()
         if not raw:
             raise ValueError("view handler must be a non-empty operation identity")
@@ -27,9 +29,19 @@ class Controller:
         from .tokens import tokenize
 
         canonical = raw.replace(" ", ".")
-        try:
-            resolution = resolve_operation(self.gateway, tokenize(canonical))
-        except LookupError:
+        candidates = [canonical]
+        if app is not None and app.topic and "." not in canonical:
+            candidates.insert(0, f"{app.topic}.{canonical}")
+
+        resolution = None
+        for candidate in candidates:
+            try:
+                resolution = resolve_operation(self.gateway, tokenize(candidate))
+            except LookupError:
+                continue
+            if not resolution.arguments:
+                break
+        else:
             resolution = None
         if resolution is not None and not resolution.arguments:
             return self.gateway.ops.canonical_name(
@@ -83,7 +95,7 @@ class Controller:
             raise ValueError("use either --method or --methods, not both")
 
         selected_methods = (method,) if method is not None else methods
-        canonical = self._canonical_handler(handler)
+        canonical = self._canonical_handler(handler, app=app)
         view = ViewSpec(
             canonical,
             route=route,

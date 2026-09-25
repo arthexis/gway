@@ -251,3 +251,34 @@ def test_in_memory_adapter_forwards_handler_arguments_named_route_and_method(gat
         "/echo",
         arguments={"route": "handler-route", "method": "handler-method"},
     ) == ("handler-route", "handler-method")
+
+
+def test_setup_app_infers_name_from_topic_and_composes_base_route(gateway):
+    gateway.wrap("remote.settings.profile", lambda: "profile")
+
+    app = gateway("setup app --topic remote.settings --route /settings")
+    app = gateway("view profile")
+
+    assert app.name == "settings"
+    assert app.topic == "remote.settings"
+    assert app.route == "/settings"
+    assert [(route.route, route.handler) for route in app.routes] == [
+        ("/settings/profile", "remote.settings.profile")
+    ]
+
+
+def test_app_topic_preferred_over_ambiguous_global_leaf(gateway):
+    gateway.wrap("remote.browser.connect", lambda: "browser")
+    gateway.wrap("admin.connect", lambda: "admin")
+
+    gateway("setup app --topic remote.browser")
+    app = gateway("view connect")
+
+    assert app.views[0].callable_name == "remote.browser.connect"
+
+
+def test_explicit_app_name_overrides_topic_inference(gateway):
+    app = gateway("setup app portal --topic remote.browser")
+
+    assert app.name == "portal"
+    assert app.topic == "remote.browser"

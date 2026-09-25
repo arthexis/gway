@@ -117,6 +117,12 @@ class RemoteApplication(RemoteDiscoveryApplication):
             lambda: authorization_document,
         )
 
+        self.browser = None
+        if runtime is not None:
+            from .browser import compose as compose_browser
+
+            self.browser = compose_browser(runtime, self)
+
     def _cookie(self, headers):
         value = (headers or {}).get("cookie", "")
         cookie = SimpleCookie()
@@ -267,6 +273,33 @@ class RemoteApplication(RemoteDiscoveryApplication):
         route = split.path
         headers = {str(k).casefold(): str(v) for k, v in (headers or {}).items()}
 
+        if self.browser is not None:
+            from ..appadapter import MethodNotAllowed, RouteNotFound
+            from .browser import BrowserRequest
+
+            request = BrowserRequest(
+                method=method,
+                path=str(path),
+                headers=headers,
+                application=self,
+                body=body,
+            )
+            try:
+                with self.runtime.request_scope():
+                    return self.browser.request(
+                        route,
+                        method,
+                        arguments={"request": request},
+                    )
+            except RouteNotFound:
+                pass
+            except MethodNotAllowed:
+                allowed = ", ".join(
+                    item.method for item in self.browser.app.routes
+                    if item.route == route
+                )
+                return 405, {"allow": allowed}, {"error": "method_not_allowed"}
+
         if route == "/query":
             return self._query(method, split, headers)
 
@@ -321,6 +354,9 @@ class RemoteApplication(RemoteDiscoveryApplication):
 
         if route in self.routes:
             return super().response(method, path, headers=headers, body=body)
+
+        if self.browser is not None:
+            return 404, {}, {"error": "not_found"}
 
         if route == "/privacy":
             if method != "GET":

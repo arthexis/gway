@@ -1,0 +1,7 @@
+setup app --topic remote.browser
+view index --route /
+view login
+view privacy
+view connect --methods GET,POST
+view consent --methods GET,POST
+view connections --route /settings/connections --methods GET,POST
