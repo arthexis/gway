@@ -103,6 +103,7 @@ def test_consent_displays_live_scope_operations_and_creates_constrained_grant(tm
         session,
         csrf=session.csrf,
         decision="approve",
+        scopes={"chatgpt-logs"},
     )
 
     assert grant.client_id == "https://chatgpt.com/client.json"
@@ -156,6 +157,7 @@ def test_revoke_connection_invalidates_existing_grant(tmp_path):
         session,
         csrf=session.csrf,
         decision="approve",
+        scopes={"logs"},
     )
     csrf = session.csrf
 
