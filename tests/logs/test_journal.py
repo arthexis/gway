@@ -178,6 +178,32 @@ def test_read_journal_groups_user_and_system_scopes(monkeypatch):
     ]
 
 
+def test_read_journal_limit_keeps_newest_window_across_scopes(monkeypatch):
+    user = _service_source("arthexis/web", "arthexis-web.service", system=False)
+    system = _service_source("infra/watch", "infra-watch.service", system=True)
+
+    def fake_run(command, **kwargs):
+        if "--user" in command:
+            stdout = _unit_entry(
+                "arthexis-web.service",
+                1_700_000_000_000_000,
+                "older",
+            )
+        else:
+            stdout = _unit_entry(
+                "infra-watch.service",
+                1_700_000_001_000_000,
+                "newer",
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("gway.logs.journal.subprocess.run", fake_run)
+
+    records = read_journal([user, system], limit=1)
+
+    assert [record.message for record in records] == ["newer"]
+
+
 def test_read_journal_uses_one_query_for_multiple_sources_same_scope(monkeypatch):
     calls = []
     sources = [
