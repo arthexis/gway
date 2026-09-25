@@ -172,7 +172,8 @@ def _read(
 
     records.sort(key=lambda record: record.timestamp, reverse=reverse)
     if limit is not None:
-        records = records[: int(limit)]
+        limit = int(limit)
+        records = records[:limit] if reverse else records[-limit:]
     return [_record_dict(record) for record in records]
 
 
