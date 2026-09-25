@@ -28,21 +28,21 @@ class ExposureSpec:
 
     service: LocalAppService
     domain: str
-    path: str = "/"
+    route: str = "/"
     site: str | None = None
     email: str | None = None
     adapter: str = "nginx-certbot"
 
     def __post_init__(self):
         domain = str(self.domain).strip().lower()
-        path = "/" + str(self.path or "/").strip("/")
-        if path == "//":
-            path = "/"
+        route = "/" + str(self.route or "/").strip("/")
+        if route == "//":
+            route = "/"
         if not domain:
             raise ValueError("exposure domain cannot be empty")
         site = self.site or domain.replace(".", "-")
         object.__setattr__(self, "domain", domain)
-        object.__setattr__(self, "path", path)
+        object.__setattr__(self, "route", route)
         object.__setattr__(self, "site", str(site).strip())
 
 
@@ -50,9 +50,9 @@ def apply_exposure(gateway, exposure):
     """Apply one exposure through the maintained web exposure sampler."""
     if exposure.adapter != "nginx-certbot":
         raise ValueError(f"unsupported exposure adapter: {exposure.adapter}")
-    if exposure.path != "/":
+    if exposure.route != "/":
         raise NotImplementedError(
-            "the nginx-certbot exposure adapter currently supports only path /"
+            "the nginx-certbot exposure adapter currently supports only route /"
         )
     if not exposure.email:
         raise ValueError("applied HTTPS exposure requires --email")
