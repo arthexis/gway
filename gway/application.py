@@ -1,5 +1,7 @@
 """Recipe-facing application composition operations."""
 
+from pathlib import Path
+
 from .appspec import AppSpec, BindingSpec, ViewSpec
 
 
@@ -67,7 +69,7 @@ class Controller:
 
     def view_app(
         self,
-        handler: object,
+        handler: object = None,
         *,
         app: AppSpec,
         route=None,
@@ -80,6 +82,9 @@ class Controller:
         body: tuple[str, ...] = (),
         body_model=None,
         response_model=None,
+        static=None,
+        directory: bool = False,
+        content_type=None,
         replace: bool = False,
         mutate=False,
     ):
@@ -98,6 +103,9 @@ class Controller:
             body: Handler arguments sourced from the request body.
             body_model: Optional schema reference used to validate the request body.
             response_model: Optional schema reference used to validate/serialize results.
+            static: Optional static file or directory source.
+            directory: Treat the static source as a directory mount.
+            content_type: Optional static response content-type override.
             replace: Replace existing mappings for the same route/methods.
         """
         del mutate
@@ -107,7 +115,23 @@ class Controller:
             raise ValueError("use either --method or --methods, not both")
 
         selected_methods = (method,) if method is not None else methods
-        canonical = self._canonical_handler(handler, app=app)
+        if handler is None and static is None:
+            raise ValueError("view requires a handler or --static")
+        if handler is not None and static is not None:
+            raise ValueError("view accepts either a handler or --static, not both")
+
+        canonical = None
+        static_source = None
+        if static is None:
+            canonical = self._canonical_handler(handler, app=app)
+        else:
+            from .recipe import recipe_base
+
+            resolved = Path(str(self.gateway.resolve(str(static)))).expanduser()
+            if not resolved.is_absolute():
+                resolved = recipe_base(self.gateway) / resolved
+            static_source = str(resolved.resolve())
+
         bindings = tuple(
             BindingSpec(binding, source)
             for source, values in (
@@ -126,6 +150,9 @@ class Controller:
             bindings=bindings,
             body_model=None if body_model is None else str(body_model),
             response_model=None if response_model is None else str(response_model),
+            static=static_source,
+            directory=directory,
+            content_type=None if content_type is None else str(content_type),
         )
         return app.replace(view) if replace else app.add(view)
 
