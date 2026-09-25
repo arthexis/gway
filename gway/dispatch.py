@@ -780,7 +780,7 @@ def dispatch_pipeline(
             result = _execute_repeat(runtime, stage, statement=statement)
             if statement is not None:
                 statement.present_as(
-                    _repeat_presentation_subject(runtime, statement, _repeat_options(stage)["target"]),
+                    _repeat_presentation_subject(runtime, statement, _repeat_options(runtime, stage)["target"]),
                     result,
                 )
             results.append(result)
