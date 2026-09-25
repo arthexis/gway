@@ -140,10 +140,41 @@ class RemoteAccountApplication:
             "environment": frozenset(environment),
         }
 
+    def select_scopes(self, session, scopes):
+        scopes = _scopes(scopes)
+        if not scopes:
+            raise ValueError("At least one scope must be selected")
+        if not session.link_name:
+            raise PermissionError("G-Way connection required")
+        if not session.pending_client_id or not session.requested_scopes:
+            raise ValueError("No pending consent request")
+
+        link = self.oauth.get_link(session.link_name)
+        if link is None or link.revoked_at is not None:
+            raise PermissionError("G-Way connection is revoked")
+        token = self.tokens.require(link.token_name)
+        current_scopes = frozenset(token.scopes)
+        session.available_scopes = current_scopes
+
+        candidates = session.requested_scopes & current_scopes
+        invalid = scopes - candidates
+        if invalid:
+            raise PermissionError(
+                "Selected scopes are not delegable: " + ", ".join(sorted(invalid))
+            )
+        session.selected_scopes = scopes
+        return scopes
+
     def consent_page(self, session):
         details = self.consent_details(session)
+        candidates = details["requested_scopes"] & details["available_scopes"]
+        selected = details["scopes"]
         scope_items = "".join(
-            f"<li>{escape(name)}</li>" for name in sorted(details["scopes"])
+            "<li><label>"
+            f'<input type="checkbox" name="scope" value="{escape(name)}"'
+            + (" checked" if name in selected else "")
+            + f"> {escape(name)}</label></li>"
+            for name in sorted(candidates)
         )
         operation_items = "".join(
             f"<li>{escape(name)}</li>" for name in sorted(details["operations"])
@@ -167,13 +198,16 @@ class RemoteAccountApplication:
             "</form>",
         )
 
-    def decide_consent(self, session, *, csrf, decision):
+    def decide_consent(self, session, *, csrf, decision, scopes=None):
         if not secrets.compare_digest(session.csrf, str(csrf or "")):
             raise PermissionError("Invalid CSRF token")
-        details = self.consent_details(session)
         decision = str(decision or "").strip().casefold()
         if decision not in {"approve", "deny"}:
             raise ValueError("Consent decision must be approve or deny")
+
+        if decision == "approve":
+            self.select_scopes(session, scopes)
+        details = self.consent_details(session)
 
         grant = None
         if decision == "approve":
