@@ -92,6 +92,10 @@ class ViewSpec:
             if binding.name in names:
                 raise ValueError(f"duplicate view binding: {binding.name}")
             names.add(binding.name)
+        if self.body_model and not any(
+            binding.source == "body" for binding in bindings
+        ):
+            raise ValueError("body_model requires at least one body binding")
         object.__setattr__(self, "methods", methods)
         object.__setattr__(self, "bindings", bindings)
 
