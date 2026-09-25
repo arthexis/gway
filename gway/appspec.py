@@ -9,6 +9,15 @@ def _route_from_callable(callable_name: str) -> str:
     return f"/{subject}"
 
 
+def _route_pattern_key(route: str) -> tuple[str, ...]:
+    """Normalize named route segments for conflict detection."""
+    parts = route.strip("/").split("/") if route != "/" else ()
+    return tuple(
+        "{}" if part.startswith("{") and part.endswith("}") else part
+        for part in parts
+    )
+
+
 def _join_route(base: str | None, route: str) -> str:
     """Compose an application base route with one view-local route."""
     base = "/" if base is None else str(base).strip()
@@ -21,6 +30,32 @@ def _join_route(base: str | None, route: str) -> str:
 
 
 @dataclass(frozen=True)
+class BindingSpec:
+    """Describe one declared HTTP input bound to a handler argument."""
+
+    name: str
+    source: str
+    key: str | None = None
+
+    def __post_init__(self):
+        name = str(self.name).strip()
+        source = str(self.source).strip().casefold()
+        if self.key is None:
+            key = name.replace("_", "-") if source == "header" else name
+        else:
+            key = str(self.key).strip()
+        if not name:
+            raise ValueError("binding name cannot be empty")
+        if source not in {"query", "path", "header", "body"}:
+            raise ValueError(f"unsupported binding source: {source!r}")
+        if not key:
+            raise ValueError("binding key cannot be empty")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "source", source)
+        object.__setattr__(self, "key", key)
+
+
+@dataclass(frozen=True)
 class RouteSpec:
     """Describe one concrete HTTP route mapping."""
 
@@ -28,6 +63,7 @@ class RouteSpec:
     method: str
     handler: str
     name: str | None = None
+    bindings: tuple[BindingSpec, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -38,12 +74,22 @@ class ViewSpec:
     route: str | None = None
     methods: tuple[str, ...] = ("GET",)
     name: str | None = None
+    bindings: tuple[BindingSpec, ...] = ()
 
     def __post_init__(self):
         methods = tuple(dict.fromkeys(method.upper() for method in self.methods))
         if not methods:
             methods = ("GET",)
+        bindings = tuple(self.bindings)
+        names = set()
+        for binding in bindings:
+            if not isinstance(binding, BindingSpec):
+                raise TypeError("view bindings must be BindingSpec instances")
+            if binding.name in names:
+                raise ValueError(f"duplicate view binding: {binding.name}")
+            names.add(binding.name)
         object.__setattr__(self, "methods", methods)
+        object.__setattr__(self, "bindings", bindings)
 
     @property
     def resolved_route(self) -> str:
@@ -59,6 +105,7 @@ class ViewSpec:
                 method=method,
                 handler=self.callable_name,
                 name=self.name,
+                bindings=self.bindings,
             )
             for method in self.methods
         )
@@ -90,7 +137,7 @@ class AppSpec:
             if view in unique_views:
                 continue
             for mapping in self._routes_for(view):
-                key = (mapping.route, mapping.method)
+                key = (_route_pattern_key(mapping.route), mapping.method)
                 if key in occupied:
                     raise ValueError(
                         f"Conflicting view for {mapping.method} {mapping.route}: "
@@ -107,6 +154,7 @@ class AppSpec:
                 method=mapping.method,
                 handler=mapping.handler,
                 name=mapping.name,
+                bindings=mapping.bindings,
             )
             for mapping in view.routes
         )
@@ -130,7 +178,8 @@ class AppSpec:
     def replace(self, view: ViewSpec):
         """Replace only route/method mappings claimed by the supplied view."""
         replacements = {
-            (mapping.route, mapping.method) for mapping in self._routes_for(view)
+            (_route_pattern_key(mapping.route), mapping.method)
+            for mapping in self._routes_for(view)
         }
         retained = []
         for existing in self.views:
@@ -138,7 +187,9 @@ class AppSpec:
                 method
                 for method in existing.methods
                 if (
-                    _join_route(self.route, existing.resolved_route),
+                    _route_pattern_key(
+                        _join_route(self.route, existing.resolved_route)
+                    ),
                     method,
                 )
                 not in replacements
@@ -154,6 +205,7 @@ class AppSpec:
                     route=existing.route,
                     methods=remaining_methods,
                     name=existing.name,
+                    bindings=existing.bindings,
                 )
             )
         return AppSpec(

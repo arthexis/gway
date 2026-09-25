@@ -45,11 +45,11 @@ class InMemoryAdapter:
             f"{method} is not allowed for {route}; allowed methods: {allowed}"
         )
 
-    def request(self, route: str, method: str = "GET", arguments=None):
-        """Invoke one route while keeping transport fields separate from handler inputs."""
-        mapping = self.resolve(route, method)
+    def invoke(self, mapping: RouteSpec, arguments=None):
+        """Invoke one already-resolved mapping with ordinary handler arguments."""
         arguments = {} if arguments is None else dict(arguments)
 
+        from .binding import coerce_native_arguments
         from .dispatch import resolve_operation
         from .tokens import tokenize
 
@@ -65,4 +65,14 @@ class InMemoryAdapter:
                 f"Route {mapping.method} {mapping.route} does not reference a "
                 f"canonical handler operation: {mapping.handler!r}"
             )
+        arguments = coerce_native_arguments(
+            resolution.callable,
+            arguments,
+            runtime=self.gateway,
+        )
         return self.gateway(mapping.handler, **arguments)
+
+    def request(self, route: str, method: str = "GET", arguments=None):
+        """Invoke one route while keeping transport fields separate from handler inputs."""
+        mapping = self.resolve(route, method)
+        return self.invoke(mapping, arguments=arguments)
