@@ -1,5 +1,11 @@
 import pytest
 
+from gway.appadapter import (
+    HandlerNotFound,
+    InMemoryAdapter,
+    MethodNotAllowed,
+    RouteNotFound,
+)
 from gway.appspec import AppSpec
 def _register_handler(gateway, name):
     def handler():
@@ -116,3 +122,77 @@ def test_recipe_companion_handler_composes_by_short_identity(gateway, tmp_path):
     assert app.name == "remote"
     assert app.views[0].callable_name == "remote.health_status"
     assert app.views[0].resolved_route == "/health"
+
+
+
+def test_in_memory_adapter_dispatches_get_and_preserves_return_value(gateway):
+    def health(name="world"):
+        return {"hello": name}
+
+    gateway.wrap("remote.health", health)
+    app = gateway("setup app remote")
+    app = gateway("view health --route /health")
+
+    adapter = InMemoryAdapter(gateway, app)
+
+    assert adapter.request("/health", name="Ada") == {"hello": "Ada"}
+
+
+def test_in_memory_adapter_dispatches_method_specific_handlers(gateway):
+    gateway.wrap("remote.read_resource", lambda resource_id: f"read:{resource_id}")
+    gateway.wrap("remote.write_resource", lambda resource_id: f"write:{resource_id}")
+    gateway("setup app remote")
+    gateway("view read_resource --route /resource --method GET")
+    app = gateway("view write_resource --route /resource --method POST")
+
+    adapter = InMemoryAdapter(gateway, app)
+
+    assert adapter.request("/resource", "GET", resource_id="42") == "read:42"
+    assert adapter.request("/resource", "post", resource_id="42") == "write:42"
+
+
+def test_in_memory_adapter_reports_missing_route(gateway):
+    adapter = InMemoryAdapter(gateway, AppSpec())
+
+    with pytest.raises(RouteNotFound, match=r"No route registered for /missing"):
+        adapter.request("/missing")
+
+
+def test_in_memory_adapter_reports_disallowed_method(gateway):
+    gateway.wrap("remote.health", lambda: "ok")
+    gateway("setup app remote")
+    app = gateway("view health --route /health --method GET")
+
+    adapter = InMemoryAdapter(gateway, app)
+
+    with pytest.raises(
+        MethodNotAllowed,
+        match=r"POST is not allowed for /health; allowed methods: GET",
+    ):
+        adapter.request("/health", "POST")
+
+
+def test_in_memory_adapter_reports_unavailable_handler(gateway):
+    app = AppSpec().add(
+        __import__("gway.appspec", fromlist=["ViewSpec"]).ViewSpec(
+            "remote.missing",
+            route="/missing-handler",
+        )
+    )
+    adapter = InMemoryAdapter(gateway, app)
+
+    with pytest.raises(HandlerNotFound, match="remote.missing"):
+        adapter.request("/missing-handler")
+
+
+def test_in_memory_adapter_uses_gateway_signature_binding_errors(gateway):
+    def create_user(name, age: int):
+        return {"name": name, "age": age}
+
+    gateway.wrap("remote.create_user", create_user)
+    gateway("setup app remote")
+    app = gateway("view create_user --route /users --method POST")
+    adapter = InMemoryAdapter(gateway, app)
+
+    with pytest.raises(TypeError, match="missing required argument: age"):
+        adapter.request("/users", "POST", name="Ada")
