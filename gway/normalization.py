@@ -2,7 +2,7 @@
 
 import inspect
 
-from .binding import BoundCall, Literal, is_explicit_annotation
+from .binding import BoundCall, Literal
 from .mutation import MUTATE_PARAMETER
 from .sigil import Sigil, Spool
 
@@ -38,7 +38,7 @@ def complete_arguments(
     for name, parameter in signature.parameters.items():
         if name in bound.arguments:
             value = bound.arguments[name]
-        elif name == MUTATE_PARAMETER or is_explicit_annotation(parameter.annotation):
+        elif name == MUTATE_PARAMETER:
             value = parameter.default
         elif parameter.kind in (
             inspect.Parameter.VAR_POSITIONAL,
