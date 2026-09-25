@@ -263,6 +263,7 @@ jobs:
       - name: Run Codex autofix
         if: steps.claim.outputs.claimed == 'true'
         id: codex
+        continue-on-error: true
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -434,10 +435,15 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
           CODEX_FINAL_MESSAGE: ${{ steps.codex.outputs.final-message }}
+          CODEX_OUTCOME: ${{ steps.codex.outcome }}
           VALIDATION_PASSED: ${{ steps.validate.outputs.passed }}
         run: |
           {
             echo "CI Autofix did not push a repair for this head."
+            if [[ "${CODEX_OUTCOME}" == "failure" ]]; then
+              echo
+              echo "The Codex repair step failed before producing a usable repair."
+            fi
             if [[ "${VALIDATION_PASSED}" == "false" ]]; then
               echo
               echo "The candidate did not pass the local Ruff, pytest, and build gates."
