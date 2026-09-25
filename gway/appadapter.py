@@ -48,10 +48,20 @@ class InMemoryAdapter:
     def request(self, route: str, method: str = "GET", **arguments):
         """Invoke the handler selected by route/method using normal Gway binding."""
         mapping = self.resolve(route, method)
-        handler = self.gateway.ops.resolve(mapping.handler)
-        if handler is None:
+
+        from .dispatch import resolve_operation
+        from .tokens import tokenize
+
+        try:
+            resolution = resolve_operation(self.gateway, tokenize(mapping.handler))
+        except LookupError as exception:
             raise HandlerNotFound(
                 f"Route {mapping.method} {mapping.route} references unavailable "
                 f"handler {mapping.handler!r}"
+            ) from exception
+        if resolution.arguments:
+            raise HandlerNotFound(
+                f"Route {mapping.method} {mapping.route} does not reference a "
+                f"canonical handler operation: {mapping.handler!r}"
             )
         return self.gateway(mapping.handler, **arguments)
