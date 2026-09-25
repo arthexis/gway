@@ -75,10 +75,13 @@ def test_expose_app_repeated_identical_apply_is_idempotent(gateway, monkeypatch)
         "--email admin@example.com"
     )
 
+    app = gateway.results["app"]
     first = gateway(command)
     second = gateway(command)
 
     assert second == first
+    assert gateway.results["app"] is app
+    assert gateway.results["exposure"] == first
     assert len(calls) == 1
 
 
