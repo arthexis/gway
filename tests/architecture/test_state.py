@@ -1,3 +1,4 @@
+import asyncio
 import threading
 
 from gway import Gateway
@@ -67,29 +68,69 @@ def test_results_clear_resets_semantic_and_historical_state():
     assert "charger" not in results
 
 
-def test_same_thread_gateways_share_state():
+def test_gateway_instances_own_independent_root_state():
     first = Gateway()
     first.context.clear()
     first.results.clear()
     first.context["shared"] = "yes"
+
     second = Gateway()
-    assert second.context["shared"] == "yes"
+    second.context.clear()
+    second.results.clear()
+
+    assert "shared" not in second.context
 
 
-def test_new_thread_gets_isolated_state():
+def test_request_scopes_isolate_logical_requests_on_same_event_loop_thread():
     gateway = Gateway()
     gateway.context.clear()
-    gateway.context["main_only"] = True
+
+    async def probe(value):
+        with gateway.request_scope():
+            gateway.context["request"] = value
+            gateway.results.insert("request", value)
+            await asyncio.sleep(0)
+            return gateway.context["request"], gateway.results["request"]
+
+    async def scenario():
+        return await asyncio.gather(probe("alpha"), probe("beta"))
+
+    assert asyncio.run(scenario()) == [
+        ("alpha", "alpha"),
+        ("beta", "beta"),
+    ]
+    assert "request" not in gateway.context
+    assert "request" not in gateway.results
+
+
+def test_request_scopes_isolate_requests_on_different_threads():
+    gateway = Gateway()
+    gateway.context.clear()
+    barrier = threading.Barrier(2)
     observed = {}
 
-    def worker():
-        other = Gateway()
-        observed["has_main"] = "main_only" in other.context
-        other.context["worker_only"] = True
+    def worker(name):
+        with gateway.request_scope():
+            gateway.context["request"] = name
+            gateway.results.insert("request", name)
+            barrier.wait()
+            observed[name] = (
+                gateway.context["request"],
+                gateway.results["request"],
+            )
 
-    thread = threading.Thread(target=worker)
-    thread.start()
-    thread.join()
+    threads = [
+        threading.Thread(target=worker, args=("alpha",)),
+        threading.Thread(target=worker, args=("beta",)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
 
-    assert observed["has_main"] is False
-    assert "worker_only" not in gateway.context
+    assert observed == {
+        "alpha": ("alpha", "alpha"),
+        "beta": ("beta", "beta"),
+    }
+    assert "request" not in gateway.context
+    assert "request" not in gateway.results
