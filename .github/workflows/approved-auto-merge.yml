@@ -31,7 +31,6 @@ jobs:
         id: pr
         env:
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_PATH: ${{ github.event_path }}
           INPUT_PR: ${{ inputs.pr_number }}
         shell: bash
         run: |
@@ -39,13 +38,13 @@ jobs:
 
           case "$EVENT_NAME" in
             workflow_run)
-              pr_number="$(jq -r '.workflow_run.pull_requests[0].number // empty' "$EVENT_PATH")"
+              pr_number="$(jq -r '.workflow_run.pull_requests[0].number // empty' "$GITHUB_EVENT_PATH")"
               ;;
             workflow_dispatch)
               pr_number="$INPUT_PR"
               ;;
             *)
-              pr_number="$(jq -r '.pull_request.number // empty' "$EVENT_PATH")"
+              pr_number="$(jq -r '.pull_request.number // empty' "$GITHUB_EVENT_PATH")"
               ;;
           esac
 
