@@ -27,11 +27,6 @@ jobs:
           set -euo pipefail
 
           if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
-            label="$(jq -r '.label.name // empty' "$GITHUB_EVENT_PATH")"
-            if [[ "${label,,}" != "approved" ]]; then
-              echo "Ignoring non-Approved label event."
-              exit 0
-            fi
             pr_numbers=("$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")")
           else
             mapfile -t pr_numbers < <(
