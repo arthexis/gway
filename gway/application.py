@@ -1,6 +1,6 @@
 """Recipe-facing application composition operations."""
 
-from .appspec import AppSpec, ViewSpec
+from .appspec import AppSpec, BindingSpec, ViewSpec
 
 
 class Controller:
@@ -74,6 +74,10 @@ class Controller:
         methods: tuple[str, ...] = (),
         method=None,
         name=None,
+        query: tuple[str, ...] = (),
+        path: tuple[str, ...] = (),
+        header: tuple[str, ...] = (),
+        body: tuple[str, ...] = (),
         replace: bool = False,
         mutate=False,
     ):
@@ -86,6 +90,10 @@ class Controller:
             methods: HTTP methods as a sequence (CLI: comma-separated).
             method: Singular HTTP method convenience alias.
             name: Optional view name.
+            query: Handler arguments sourced from query parameters.
+            path: Handler arguments sourced from named route segments.
+            header: Handler arguments sourced from HTTP headers.
+            body: Handler arguments sourced from the request body.
             replace: Replace existing mappings for the same route/methods.
         """
         del mutate
@@ -96,11 +104,22 @@ class Controller:
 
         selected_methods = (method,) if method is not None else methods
         canonical = self._canonical_handler(handler, app=app)
+        bindings = tuple(
+            BindingSpec(binding, source)
+            for source, values in (
+                ("query", query),
+                ("path", path),
+                ("header", header),
+                ("body", body),
+            )
+            for binding in values
+        )
         view = ViewSpec(
             canonical,
             route=route,
             methods=selected_methods or ("GET",),
             name=name,
+            bindings=bindings,
         )
         return app.replace(view) if replace else app.add(view)
 
