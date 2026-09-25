@@ -20,6 +20,13 @@ class Parent:
 
     def execute(self, command, mutate=None):
         self.calls.append((command, mutate))
+        if command == "one ; two":
+            return {
+                "results": [
+                    {"subject": "one", "result": 1},
+                    {"subject": "two", "result": 2},
+                ]
+            }
         return f"{command}:{mutate}"
 
 
@@ -34,9 +41,17 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
             query = next(tool for tool in tools if tool.name == "query")
             safe = await client.call_tool("query", {"command": "observe"})
             generic = await client.call_tool("gway", {"command": "restart"})
-            return tools, query, safe, generic
+            query_aggregate = await client.call_tool(
+                "query",
+                {"command": "one ; two"},
+            )
+            gway_aggregate = await client.call_tool(
+                "gway",
+                {"command": "one ; two"},
+            )
+            return tools, query, safe, generic, query_aggregate, gway_aggregate
 
-    tools, query, safe, generic = asyncio.run(run())
+    tools, query, safe, generic, query_aggregate, gway_aggregate = asyncio.run(run())
 
     assert [tool.name for tool in tools] == ["gway", "query"]
     gway = next(tool for tool in tools if tool.name == "gway")
@@ -46,6 +61,13 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
     assert gway.annotations.read_only_hint is False
     assert gway.annotations.destructive_hint is True
     assert gway.annotations.open_world_hint is True
+    assert "observation and diagnosis" in query.description
+    assert "semicolons" in query.description
+    assert "guide <task>" in query.description
+    assert "help <operation>" in query.description
+    assert "mutation is required" in gway.description
+    assert "semicolons" in gway.description
+    assert "investigate through query first" in gway.description
 
     assert query.output_schema is not None
     assert gway.output_schema is not None
@@ -70,9 +92,29 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
         "result_type": "string",
         "output": [],
     }
+    expected_aggregate = {
+        "results": [
+            {"subject": "one", "result": 1},
+            {"subject": "two", "result": 2},
+        ]
+    }
+    assert query_aggregate.structured_content == {
+        "ok": True,
+        "result": expected_aggregate,
+        "result_type": "mapping",
+        "output": [],
+    }
+    assert gway_aggregate.structured_content == {
+        "ok": True,
+        "result": expected_aggregate,
+        "result_type": "mapping",
+        "output": [],
+    }
     assert parent.calls == [
         ("observe", False),
         ("restart", None),
+        ("one ; two", False),
+        ("one ; two", None),
     ]
 
 
