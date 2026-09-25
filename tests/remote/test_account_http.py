@@ -95,7 +95,9 @@ def test_real_http_browser_link_consent_and_revoke_flow(tmp_path):
         assert "log.search" in consent_html
         consent_csrf = _csrf(consent_html)
 
-        form = urlencode({"csrf": consent_csrf, "decision": "approve"})
+        form = urlencode(
+            {"csrf": consent_csrf, "decision": "approve", "scope": "chatgpt-logs"}
+        )
         connection.request(
             "POST",
             "/consent",
@@ -177,6 +179,93 @@ def test_secure_public_origin_marks_browser_cookie_secure(tmp_path):
         assert "HttpOnly" in cookie
         assert "SameSite=Lax" in cookie
         assert "Secure" in cookie
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_real_http_consent_allows_selecting_subset_of_multiple_scopes(tmp_path):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    oauth = OAuthRegistry(path)
+    scopes.replace("read", operations={"log.read"}, environment=())
+    scopes.replace("write", operations={"service.restart"}, environment=())
+    issued = tokens.create("operator", scopes={"read", "write"})
+    account = RemoteAccountApplication(
+        oauth=oauth,
+        tokens=tokens,
+        sessions=RemoteSessionStore(lifetime_seconds=300),
+    )
+    server = build_server(
+        "127.0.0.1",
+        0,
+        public_origin="http://127.0.0.1:9000",
+        allow_insecure_loopback=True,
+        account=account,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    connection = http.client.HTTPConnection(host, port, timeout=2)
+
+    try:
+        connection.request(
+            "GET",
+            "/consent?client_id=client&scope=read%20write",
+        )
+        response = connection.getresponse()
+        first_cookie = _cookie(response.getheader("Set-Cookie"))
+        response.read()
+
+        connection.request("GET", "/connect", headers={"Cookie": first_cookie})
+        response = connection.getresponse()
+        connect_csrf = _csrf(response.read().decode())
+
+        connection.request(
+            "POST",
+            "/connect",
+            body=urlencode({"csrf": connect_csrf, "bearer": issued.bearer}),
+            headers={
+                "Cookie": first_cookie,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+        response = connection.getresponse()
+        second_cookie = _cookie(response.getheader("Set-Cookie"))
+        response.read()
+
+        connection.request("GET", "/consent", headers={"Cookie": second_cookie})
+        response = connection.getresponse()
+        html = response.read().decode()
+        consent_csrf = _csrf(html)
+        assert 'name="scope" value="read"' in html
+        assert 'name="scope" value="write"' in html
+
+        connection.request(
+            "POST",
+            "/consent",
+            body=urlencode(
+                {
+                    "csrf": consent_csrf,
+                    "decision": "approve",
+                    "scope": "read",
+                }
+            ),
+            headers={
+                "Cookie": second_cookie,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+        response = connection.getresponse()
+        assert response.status == 200
+        response.read()
+
+        session = account.sessions.require(second_cookie.split("=", 1)[1])
+        grant = oauth.get_grant(session.approved_grant_id)
+        assert grant.scopes == frozenset({"read"})
     finally:
         connection.close()
         server.shutdown()
