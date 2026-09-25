@@ -84,6 +84,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
             account = RemoteAccountApplication(
                 oauth=oauth,
                 tokens=TokenRegistry(runtime.security_path),
+                operation_resolver=runtime.ops.resolve,
             )
         self.account = RemoteAccountApplication() if account is None else account
         self.oauth = RemoteOAuthProtocol(
