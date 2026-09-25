@@ -162,7 +162,8 @@ def test_remote_runtime_permission_summary_expands_lazy_read_only_operation(tmp_
     from gway.gateway import Gateway
     from gway.security.scopes import ScopeRegistry
 
-    runtime = Gateway(security_path=tmp_path / "security.sqlite")
+    runtime = Gateway()
+    runtime.security_path = tmp_path / "security.sqlite"
     ScopeRegistry(runtime.security_path).replace(
         "logs",
         operations={"log.read"},
