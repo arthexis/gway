@@ -3,7 +3,9 @@
 from pathlib import Path
 
 from .appspec import AppSpec, BindingSpec, ViewSpec
+from .appexposure import ExposureSpec, LocalAppService, apply_exposure
 from .binding import Literal
+from .publication import SKIP_PUBLICATION
 
 
 class Controller:
@@ -11,6 +13,7 @@ class Controller:
 
     def __init__(self, gateway):
         self.gateway = gateway
+        self._exposures = {}
 
     def setup_app(
         self,
@@ -212,6 +215,60 @@ class Controller:
         )
         return app.replace(view) if replace else app.add(view)
 
+    def expose_app(
+        self,
+        domain,
+        *,
+        app: AppSpec,
+        service: LocalAppService = None,
+        host=None,
+        port=None,
+        route="/",
+        site=None,
+        email=None,
+        adapter="nginx-certbot",
+        mutate=True,
+    ):
+        """Expose one known local application service externally."""
+        if not isinstance(app, AppSpec):
+            raise TypeError("expose app requires an AppSpec")
+        if service is not None and (host is not None or port is not None):
+            raise ValueError("use either --service or --host/--port, not both")
+        if service is None:
+            if host is None or port is None:
+                raise ValueError(
+                    "expose app requires a known local service or explicit --host and --port"
+                )
+            service = LocalAppService(app=app.name, host=host, port=port)
+        elif not isinstance(service, LocalAppService):
+            raise TypeError("service must be a LocalAppService")
+
+        exposure = ExposureSpec(
+            service=service,
+            domain=domain,
+            route=route,
+            site=site,
+            email=email,
+            adapter=adapter,
+        )
+        key = (exposure.domain, exposure.route)
+        existing = self._exposures.get(key)
+        if existing is not None and existing != exposure:
+            raise ValueError(
+                f"conflicting exposure for {exposure.domain}{exposure.route}"
+            )
+        if existing is None:
+            self._exposures[key] = exposure
+        if not mutate:
+            result = exposure
+        elif existing is not None:
+            result = existing
+        else:
+            result = apply_exposure(self.gateway, exposure)
+
+        self.gateway.results.insert("exposure", result)
+        return SKIP_PUBLICATION
+
     def start_app(
         self,
         *,
@@ -260,6 +317,12 @@ def register(gateway):
         "start.app",
         controller.start_app,
         op="start",
+        sub="app",
+    )
+    gateway.expose_app = gateway.wrap(
+        "expose.app",
+        controller.expose_app,
+        op="expose",
         sub="app",
     )
     return controller
