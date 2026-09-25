@@ -211,3 +211,21 @@ def test_consent_refreshes_available_scopes_from_current_token_binding(tmp_path)
 
     assert session.available_scopes == frozenset({"read"})
     assert details["available_scopes"] == frozenset({"read"})
+
+
+def test_oauth_request_broader_than_bearer_is_constrained_to_intersection(tmp_path):
+    scopes, tokens, _, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    issued = tokens.create("operator", scopes={"read"})
+    session = account.new_session()
+
+    account.stage_consent(session, "client", {"read", "write"})
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+
+    details = account.consent_details(session)
+
+    assert session.available_scopes == frozenset({"read"})
+    assert session.requested_scopes == frozenset({"read", "write"})
+    assert session.selected_scopes == frozenset({"read"})
+    assert details["scopes"] == frozenset({"read"})
