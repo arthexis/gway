@@ -243,6 +243,8 @@ def test_real_http_consent_allows_selecting_subset_of_multiple_scopes(tmp_path):
         consent_csrf = _csrf(html)
         assert 'name="scope" value="read"' in html
         assert 'name="scope" value="write"' in html
+        assert "1 operations" in html
+        assert "environment names" in html
 
         connection.request(
             "POST",
