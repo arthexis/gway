@@ -1,9 +1,6 @@
 import pytest
 
 from gway.appspec import AppSpec
-from gway.mutation import mutates
-
-
 def _register_handler(gateway, name):
     def handler():
         return name
@@ -93,5 +90,9 @@ def test_view_replace_only_replaces_claimed_route_methods(gateway):
 
 
 def test_app_composition_operations_are_declared_non_mutating(gateway):
-    assert mutates(gateway.setup_app) is False
-    assert mutates(gateway.view_app) is False
+    assert gateway.setup_app.mutates is False
+    assert gateway.view_app.mutates is False
+
+    app = gateway.execute("setup app remote", mutate=False)
+
+    assert app == AppSpec(name="remote")
