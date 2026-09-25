@@ -374,3 +374,118 @@ def test_permission_summary_applies_preview_limit_per_scope(tmp_path):
     assert by_name["beta"]["remaining_operations"] == 1
     assert all(name.startswith("alpha.") for name in by_name["alpha"]["operations_preview"])
     assert all(name.startswith("beta.") for name in by_name["beta"]["operations_preview"])
+
+
+def test_approval_persists_exact_selected_scope_subset(tmp_path):
+    scopes, tokens, oauth, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    scopes.create("admin")
+    issued = tokens.create("operator", scopes={"read", "write", "admin"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read", "write"})
+    grant = account.decide_consent(
+        session,
+        csrf=session.csrf,
+        decision="approve",
+        scopes={"read"},
+    )
+
+    assert grant.scopes == frozenset({"read"})
+    assert oauth.get_grant(grant.id).scopes == frozenset({"read"})
+
+
+def test_approval_persists_exact_multi_scope_selection(tmp_path):
+    scopes, tokens, oauth, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    scopes.create("admin")
+    issued = tokens.create("operator", scopes={"read", "write", "admin"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read", "write", "admin"})
+    grant = account.decide_consent(
+        session,
+        csrf=session.csrf,
+        decision="approve",
+        scopes={"read", "write"},
+    )
+
+    assert grant.scopes == frozenset({"read", "write"})
+    assert oauth.get_grant(grant.id).scopes == frozenset({"read", "write"})
+
+
+def test_refresh_preserves_named_grant_scope_subset(tmp_path):
+    scopes, tokens, oauth, account = _account(tmp_path)
+    scopes.replace("read", operations={"log.read"})
+    scopes.replace("write", operations={"service.restart"})
+    issued = tokens.create("operator", scopes={"read", "write"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read", "write"})
+    grant = account.decide_consent(
+        session,
+        csrf=session.csrf,
+        decision="approve",
+        scopes={"read"},
+    )
+    issued_oauth = oauth.issue_tokens(grant.id)
+    refreshed = oauth.rotate_refresh(issued_oauth.refresh_token)
+
+    assert issued_oauth.grant.scopes == frozenset({"read"})
+    assert refreshed.grant.scopes == frozenset({"read"})
+    assert oauth.authenticate_access(refreshed.access_token).grant.scopes == frozenset(
+        {"read"}
+    )
+
+
+def test_scope_policy_changes_affect_effective_authority_without_broadening_grant(tmp_path):
+    scopes, tokens, oauth, account = _account(tmp_path)
+    scopes.replace("read", operations={"log.read"})
+    scopes.replace("write", operations={"service.restart"})
+    issued = tokens.create("operator", scopes={"read", "write"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read", "write"})
+    grant = account.decide_consent(
+        session,
+        csrf=session.csrf,
+        decision="approve",
+        scopes={"read"},
+    )
+    issued_oauth = oauth.issue_tokens(grant.id)
+
+    scopes.replace("read", operations={"log.read", "log.tail"})
+    refreshed = oauth.rotate_refresh(issued_oauth.refresh_token)
+    authenticated = oauth.authenticate_access(refreshed.access_token)
+
+    assert authenticated.grant.scopes == frozenset({"read"})
+    assert authenticated.authority.operations == frozenset({"log.read", "log.tail"})
+
+
+def test_browser_session_changes_after_approval_do_not_mutate_stored_grant(tmp_path):
+    scopes, tokens, oauth, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    issued = tokens.create("operator", scopes={"read", "write"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read", "write"})
+    grant = account.decide_consent(
+        session,
+        csrf=session.csrf,
+        decision="approve",
+        scopes={"read"},
+    )
+
+    session.selected_scopes = frozenset({"write"})
+    session.requested_scopes = frozenset({"write"})
+    session.available_scopes = frozenset({"write"})
+
+    assert oauth.get_grant(grant.id).scopes == frozenset({"read"})
