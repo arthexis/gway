@@ -1,11 +1,11 @@
 from gway import Gateway
-from gway.sampler import load as load_sampler
-
-AppSpec = load_sampler("web/app").AppSpec
 from gway.remote.account import RemoteAccountApplication
 from gway.remote.metadata import RemoteOAuthMetadata
 from gway.remote.server import RemoteApplication
 from gway.remote.session import RemoteSessionStore
+from gway.sampler import load as load_sampler
+
+AppSpec = load_sampler("web/app").AppSpec
 
 
 def test_remote_browser_topology_is_recipe_composed(tmp_path):
