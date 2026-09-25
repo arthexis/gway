@@ -18,6 +18,7 @@ class RequestState:
     previous_execution: object = None
     execution_depth: int = 0
     execution_suspension: object = None
+    journal: object = None
 
     def __post_init__(self):
         suffix = id(self)
