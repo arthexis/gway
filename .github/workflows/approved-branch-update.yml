@@ -4,12 +4,22 @@ on:
   push:
     branches: [main]
   pull_request_target:
-    types: [opened, reopened]
+    types: [opened, reopened, synchronize, ready_for_review]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Optional PR number; leave blank to scan all open PRs
+        required: false
+        type: number
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
+
+concurrency:
+  group: pr-branch-update-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   update-stale:
@@ -22,75 +32,125 @@ jobs:
           BRANCH_UPDATE_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
-            pr_numbers=("$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")")
-          else
-            mapfile -t pr_numbers < <(
-              gh pr list \
-                --repo "$REPOSITORY" \
-                --state open \
-                --limit 1000 \
-                --json number \
-                --jq '.[].number'
-            )
-          fi
+          update_pr() {
+            local pr_number="$1"
+            local pr_json state head_repo base_ref head_sha base_sha compare_json behind_by
+            local current_json current_head update_output update_status
 
-          if (( ${#pr_numbers[@]} == 0 )); then
-            echo "No open pull requests."
-            exit 0
-          fi
+            pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
+            state="$(jq -r '.state' <<< "$pr_json")"
+            head_repo="$(jq -r '.head.repo.full_name // ""' <<< "$pr_json")"
+            base_ref="$(jq -r '.base.ref' <<< "$pr_json")"
+
+            if [[ "$state" != "open" ]]; then
+              echo "PR #$pr_number: not open; skipping."
+              return
+            fi
+
+            if [[ "$head_repo" != "$REPOSITORY" ]]; then
+              echo "PR #$pr_number: fork PR; automatic branch update is disabled."
+              return
+            fi
+
+            if [[ "$base_ref" != "$DEFAULT_BRANCH" ]]; then
+              echo "PR #$pr_number: targets $base_ref, not $DEFAULT_BRANCH; skipping."
+              return
+            fi
+
+            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$pr_json" >/dev/null; then
+              echo "PR #$pr_number: on hold; skipping."
+              return
+            fi
+
+            if jq -e '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json" >/dev/null; then
+              echo "PR #$pr_number: already in progress; another worker owns it."
+              return
+            fi
+
+            head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
+            base_sha="$(jq -r '.base.sha' <<< "$pr_json")"
+            compare_json="$(gh api "repos/$REPOSITORY/compare/$base_sha...$head_sha")"
+            behind_by="$(jq -r '.behind_by' <<< "$compare_json")"
+
+            if (( behind_by == 0 )); then
+              echo "PR #$pr_number: already up to date."
+              return
+            fi
+
+            current_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
+            current_head="$(jq -r '.head.sha' <<< "$current_json")"
+
+            if [[ "$current_head" != "$head_sha" ]]; then
+              echo "PR #$pr_number: head moved while checking; skipping stale update."
+              return
+            fi
+
+            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on hold" or . == "in-progress")' <<< "$current_json" >/dev/null; then
+              echo "PR #$pr_number: became unavailable before claim; skipping."
+              return
+            fi
+
+            gh api "repos/$REPOSITORY/issues/$pr_number/labels"               --method POST               -f 'labels[]=in-progress' >/dev/null
+
+            echo "PR #$pr_number: claimed; updating branch ($behind_by commit(s) behind)."
+
+            set +e
+            update_output="$(
+              GH_TOKEN="$BRANCH_UPDATE_TOKEN" gh api                 --method PUT                 -H "Accept: application/vnd.github+json"                 "repos/$REPOSITORY/pulls/$pr_number/update-branch"                 -f "expected_head_sha=$head_sha" 2>&1
+            )"
+            update_status=$?
+            set -e
+
+            gh api "repos/$REPOSITORY/issues/$pr_number/labels/in-progress"               --method DELETE >/dev/null 2>&1 || true
+
+            if (( update_status != 0 )); then
+              echo "PR #$pr_number: branch update failed; claim released."
+              echo "$update_output"
+              {
+                echo "### PR #$pr_number branch update failed"
+                echo
+                echo 'GitHub could not automatically update this branch from the default branch.'
+                echo
+                echo 'The work claim was released; manual conflict resolution may be required.'
+              } >> "$GITHUB_STEP_SUMMARY"
+              return
+            fi
+
+            echo "PR #$pr_number: branch update requested successfully; claim released."
+          }
 
           if [[ -z "${BRANCH_UPDATE_TOKEN:-}" ]]; then
             echo "::error::BRANCH_UPDATE_TOKEN is not configured; refusing to update PRs with github.token because bot-authored updates suppress normal PR CI."
             exit 1
           fi
 
-          for pr_number in "${pr_numbers[@]}"; do
-            pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
-
-            if [[ "$(jq -r '.state' <<< "$pr_json")" != "open" ]]; then
-              continue
-            fi
-
-            on_hold="$(
-              jq -r '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$pr_json"
-            )"
-            if [[ "$on_hold" == "true" ]]; then
-              echo "PR #$pr_number is on hold; skipping automatic branch update."
-              continue
-            fi
-
-            head_repo="$(jq -r '.head.repo.full_name // empty' <<< "$pr_json")"
-            if [[ "$head_repo" != "$REPOSITORY" ]]; then
-              echo "PR #$pr_number is from a fork; skipping automatic branch update."
-              continue
-            fi
-
-            base_ref="$(jq -r '.base.ref' <<< "$pr_json")"
-            head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
-
-            compare_json="$(gh api "repos/$REPOSITORY/compare/$base_ref...$head_sha")"
-            behind_by="$(jq -r '.behind_by' <<< "$compare_json")"
-
-            if [[ "$behind_by" == "0" ]]; then
-              echo "PR #$pr_number is already current with $base_ref."
-              continue
-            fi
-
-            echo "Updating PR #$pr_number ($behind_by commit(s) behind $base_ref)."
-
-            if GH_TOKEN="$BRANCH_UPDATE_TOKEN" gh api \
-              --method PUT \
-              -H "Accept: application/vnd.github+json" \
-              "repos/$REPOSITORY/pulls/$pr_number/update-branch" \
-              -f expected_head_sha="$head_sha"
-            then
-              echo "PR #$pr_number updated successfully."
-            else
-              echo "PR #$pr_number could not be updated automatically (likely conflicts or branch restrictions)." >&2
-            fi
-          done
+          case "$EVENT_NAME" in
+            pull_request_target)
+              update_pr "$EVENT_PR_NUMBER"
+              ;;
+            workflow_dispatch)
+              if [[ -n "${INPUT_PR_NUMBER:-}" ]]; then
+                update_pr "$INPUT_PR_NUMBER"
+              else
+                while IFS= read -r pr_number; do
+                  update_pr "$pr_number"
+                done < <(
+                  gh pr list --repo "$REPOSITORY" --state open --limit 1000                     --json number --jq '.[].number'
+                )
+              fi
+              ;;
+            push)
+              while IFS= read -r pr_number; do
+                update_pr "$pr_number"
+              done < <(
+                gh pr list --repo "$REPOSITORY" --state open --limit 1000                   --json number --jq '.[].number'
+              )
+              ;;
+          esac
