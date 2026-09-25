@@ -944,12 +944,19 @@ class Gateway(Resolver):
         """Execute a GWAY command under a trusted mutation policy."""
         from .dispatch import dispatch
 
+        outermost = self.execution_depth == 0
         observational = self.mutation_policy is not False and mutate is False
         with self.mutation_scope(mutate=mutate):
             if observational:
                 with self.observational_state_scope():
-                    return dispatch(self, command, *args, **kwargs)
-            return dispatch(self, command, *args, **kwargs)
+                    result = dispatch(self, command, *args, **kwargs)
+                    execution = self.execution
+            else:
+                result = dispatch(self, command, *args, **kwargs)
+                execution = self.execution
+        if outermost and execution is not None:
+            return execution.present(result)
+        return result
 
     def execute_authenticated(
         self,
@@ -979,8 +986,12 @@ class Gateway(Resolver):
         """Execute a GWAY command while preserving inherited mutation policy."""
         from .dispatch import dispatch
 
+        outermost = self.execution_depth == 0
         with self.mutation_scope():
-            return dispatch(self, command, *args, **kwargs)
+            result = dispatch(self, command, *args, **kwargs)
+        if outermost and self.execution is not None:
+            return self.execution.present(result)
+        return result
 
     def chain(self, command, *args, **kwargs):
         """Create a scoped manual pipeline rooted in an initial command."""
