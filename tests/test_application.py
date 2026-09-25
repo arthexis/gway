@@ -96,3 +96,23 @@ def test_app_composition_operations_are_declared_non_mutating(gateway):
     app = gateway.execute("setup app remote", mutate=False)
 
     assert app == AppSpec(name="remote")
+
+
+def test_recipe_companion_handler_composes_by_short_identity(gateway, tmp_path):
+    recipe = tmp_path / "remote.rx"
+    recipe.write_text(
+        "setup app remote\n"
+        "view health_status --route /health\n",
+        encoding="utf-8",
+    )
+    recipe.with_suffix(".py").write_text(
+        "def health_status():\n"
+        "    return {'status': 'ok'}\n",
+        encoding="utf-8",
+    )
+
+    app = gateway(recipe)
+
+    assert app.name == "remote"
+    assert app.views[0].callable_name == "remote.health_status"
+    assert app.views[0].resolved_route == "/health"
