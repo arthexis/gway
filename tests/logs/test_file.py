@@ -112,6 +112,29 @@ def test_read_file_logs_filters_source_time_and_regex(tmp_path):
     assert [record.message for record in records] == ["new timeout"]
 
 
+def test_read_limit_keeps_newest_window_in_chronological_order(tmp_path):
+    base = tmp_path / "gway.log"
+    base.write_text(
+        "\n".join(
+            [
+                _row("2026-09-22T09:00:00+00:00", "arthexis/web", "oldest"),
+                _row("2026-09-22T10:00:00+00:00", "arthexis/web", "new"),
+                _row("2026-09-22T11:00:00+00:00", "arthexis/web", "newest"),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    records = read_file_logs(
+        [_source("arthexis/web")],
+        paths=[base],
+        limit=2,
+    )
+
+    assert [record.message for record in records] == ["new", "newest"]
+
+
 def test_tail_reverse_and_limit_apply_globally_across_rotations(tmp_path):
     base = tmp_path / "gway.log"
     rotated = tmp_path / "gway.log.2026-09-21"

@@ -4,9 +4,9 @@ GWAY exposes logging as ordinary GWAY operations. The public surface is:
 
 ```text
 gway log sources
-gway log read [sources...]
-gway log tail [sources...]
-gway log search <pattern> [sources...]
+gway log read [sources...] [--all]
+gway log tail [sources...] [--all]
+gway log search <pattern> [sources...] [--all]
 ```
 
 These operations are used consistently by the CLI, recipes, Python callers, and
@@ -41,9 +41,13 @@ is an aggregate over its installed service sources. A concrete service identity
 such as `arthexis/web` resolves through persisted service-install state.
 Direct recipe execution uses `recipe/<stem>`.
 
-With no source argument, `read`, `tail`, and `search` operate on all
-GWAY-managed sources known to the local installation. They never mean the
-entire host journal.
+With no source argument, `read`, `tail`, and `search` return the available
+GWAY-managed source catalog instead of reading logs. Use `--all` to explicitly
+query every readable managed source. Explicit sources and `--all` cannot be
+combined.
+
+This keeps broad queries intentional and prevents an omitted source from
+accidentally expanding into an expensive all-service journal scan.
 
 ## Reading logs
 
@@ -53,6 +57,7 @@ Read a bounded historical range:
 gway log read arthexis --since "10 minutes ago"
 gway log read arthexis/web --limit 200
 gway log read gway arthexis/worker --since 2026-09-22T12:00:00+00:00
+gway log read --all
 ```
 
 Read the newest records:
@@ -61,9 +66,11 @@ Read the newest records:
 gway log tail
 gway log tail arthexis
 gway log tail arthexis/web --limit 50
+gway log tail --all
 ```
 
-`tail` is bounded and returns newest records first. Its default limit is 100.
+`read`, `tail`, and `search` are bounded to 100 records by default.
+`tail` returns newest records first. Use `--limit` to choose another bound.
 Live follow/streaming is not part of the current logging API.
 
 Search message content:
@@ -72,6 +79,7 @@ Search message content:
 gway log search timeout
 gway log search "connection refused" arthexis
 gway log search exception arthexis/web --since "30 minutes ago"
+gway log search timeout --all
 ```
 
 Search patterns are regular expressions. Journal-backed search is delegated to

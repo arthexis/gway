@@ -8,6 +8,9 @@ from .journal import read_journal
 from .source import LogSource
 
 
+_DEFAULT_QUERY_LIMIT = 100
+
+
 class UnsupportedLogBackend(RuntimeError):
     """Raised when a selected source has no structured reader on this host."""
 
@@ -169,50 +172,64 @@ def _read(
 
     records.sort(key=lambda record: record.timestamp, reverse=reverse)
     if limit is not None:
-        records = records[: int(limit)]
+        limit = int(limit)
+        records = records[:limit] if reverse else records[-limit:]
     return [_record_dict(record) for record in records]
 
 
-def read(*source, since=None, until=None, limit=None):
-    """Read bounded records from zero, one, or many managed log sources.
+def _selection(source, *, all=False):
+    requested = tuple(source)
+    if all and requested:
+        raise ValueError("explicit log sources cannot be combined with --all")
+    if not requested and not all:
+        return None
+    return requested
 
-    Args:
-        source: Logical source identities. Omit to read all currently readable
-            GWAY-managed sources.
-        since: Lower journal time bound accepted by the active reader.
-        until: Upper journal time bound accepted by the active reader.
-        limit: Maximum records to return.
+
+def read(*source, since=None, until=None, limit=_DEFAULT_QUERY_LIMIT, all=False):
+    """Read bounded records from one or many managed log sources.
+
+    With no source and without all=True, return the available source catalog
+    instead of reading logs.
     """
-    return _read(source, since=since, until=until, limit=limit)
+    requested = _selection(source, all=all)
+    if requested is None:
+        return sources()
+    return _read(requested, since=since, until=until, limit=limit)
 
 
-def tail(*source, since=None, limit=100):
-    """Return the newest records from managed log sources.
+def tail(*source, since=None, limit=_DEFAULT_QUERY_LIMIT, all=False):
+    """Return the newest records from selected managed log sources.
 
-    Args:
-        source: Logical source identities. Omit for all readable managed
-            sources.
-        since: Optional lower journal time bound.
-        limit: Maximum newest records to return. Defaults to 100.
+    With no source and without all=True, return the available source catalog
+    instead of reading logs.
     """
-    return _read(source, since=since, limit=limit, reverse=True)
+    requested = _selection(source, all=all)
+    if requested is None:
+        return sources()
+    return _read(requested, since=since, limit=limit, reverse=True)
 
 
-def search(pattern, *source, since=None, until=None, limit=None):
-    """Search journal message content using the backend's native regex search.
+def search(
+    pattern,
+    *source,
+    since=None,
+    until=None,
+    limit=_DEFAULT_QUERY_LIMIT,
+    all=False,
+):
+    """Search selected managed log sources using the backend's native regex search.
 
-    Args:
-        pattern: Message regular expression forwarded to the journal backend.
-        source: Logical source identities. Omit for all readable managed
-            sources.
-        since: Optional lower journal time bound.
-        until: Optional upper journal time bound.
-        limit: Maximum matching records to return.
+    With no source and without all=True, return the available source catalog
+    instead of reading logs.
     """
     if not isinstance(pattern, str) or not pattern:
         raise ValueError("log search pattern cannot be empty")
+    requested = _selection(source, all=all)
+    if requested is None:
+        return sources()
     return _read(
-        source,
+        requested,
         since=since,
         until=until,
         limit=limit,

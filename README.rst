@@ -91,6 +91,7 @@ files:
    gway log read arthexis --since "10 minutes ago"
    gway log tail arthexis/web --limit 50
    gway log search "connection refused" arthexis
+   gway log read --all --limit 100
 
 Journald is used automatically when available. Otherwise GWAY uses structured
 rotating files. With no source argument, reads remain limited to GWAY-managed
