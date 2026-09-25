@@ -56,6 +56,14 @@ jobs:
               continue
             fi
 
+            on_hold="$(
+              jq -r '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$pr_json"
+            )"
+            if [[ "$on_hold" == "true" ]]; then
+              echo "PR #$pr_number is on hold; skipping automatic branch update."
+              continue
+            fi
+
             head_repo="$(jq -r '.head.repo.full_name // empty' <<< "$pr_json")"
             if [[ "$head_repo" != "$REPOSITORY" ]]; then
               echo "PR #$pr_number is from a fork; skipping automatic branch update."
