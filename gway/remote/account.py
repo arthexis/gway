@@ -144,10 +144,6 @@ class RemoteAccountApplication:
             "effective": {
                 "scope_count": len(names),
                 "operation_count": len(effective_operations),
-                "operations_preview": effective_operations[:OPERATION_PREVIEW_LIMIT],
-                "remaining_operations": max(
-                    0, len(effective_operations) - OPERATION_PREVIEW_LIMIT
-                ),
                 "environment_count": len(effective_environment),
                 "environment": effective_environment,
                 "mutation_capable": any(
@@ -269,8 +265,26 @@ class RemoteAccountApplication:
             + "</li>"
             for name in sorted(candidates)
         )
-        operation_items = "".join(
-            f"<li>{escape(name)}</li>" for name in sorted(details["operations"])
+        selected_scope_items = "".join(
+            "<li>"
+            f"<strong>{escape(item['name'])}</strong>"
+            + (
+                "<div><code>"
+                + ", ".join(
+                    escape(operation) for operation in item["operations_preview"]
+                )
+                + "</code>"
+                + (
+                    f" …and {item['remaining_operations']} more"
+                    if item["remaining_operations"]
+                    else ""
+                )
+                + "</div>"
+                if item["operations_preview"]
+                else "<div>No operations</div>"
+            )
+            + "</li>"
+            for item in details["permission_summary"]["scopes"]
         )
         environment_items = "".join(
             f"<li>{escape(name)}</li>" for name in sorted(details["environment"])
@@ -291,7 +305,7 @@ class RemoteAccountApplication:
                 else "read-only"
             )
             + f"; {effective['environment_count']} environment names</p>"
-            f"<h2>Operations</h2><ul>{operation_items}</ul>"
+            f"<h3>Selected scope operations</h3><ul>{selected_scope_items}</ul>"
             f"<h2>Environment</h2><ul>{environment_items}</ul>"
             '<form method="post" action="/consent">'
             f'<input type="hidden" name="csrf" value="{escape(session.csrf)}">'
