@@ -11,6 +11,7 @@ on:
 permissions:
   actions: write
   contents: write
+  issues: write
   pull-requests: write
 
 concurrency:
@@ -28,6 +29,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Wait for pull request state to stabilize
+        shell: bash
+        run: sleep 60
+
       - name: Resolve eligible pull request
         id: resolve
         shell: bash
@@ -90,10 +95,12 @@ jobs:
           )
 
           has_workflow=false
+          in_progress=false
           on_hold=false
           for label in "${labels[@]}"; do
             case "${label}" in
               workflow) has_workflow=true ;;
+              "in-progress") in_progress=true ;;
               "on hold") on_hold=true ;;
             esac
           done
@@ -106,6 +113,12 @@ jobs:
 
           if [[ "${has_workflow}" == "true" ]]; then
             echo "PR #${pr_number} is labeled workflow; automatic code repair is disabled."
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${in_progress}" == "true" ]]; then
+            echo "PR #${pr_number} is already in progress; another worker owns it."
             echo "eligible=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
@@ -159,8 +172,44 @@ jobs:
             echo "OPENAI_API_KEY is not configured; CI Autofix cannot run." >> "${GITHUB_STEP_SUMMARY}"
           fi
 
-      - name: Check out pull request head
+      - name: Claim pull request work
+        id: claim
         if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          EXPECTED_HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
+        run: |
+          set -Eeuo pipefail
+
+          current_pr="$(gh pr view "${PR_NUMBER}" --repo "${REPOSITORY}" --json headRefOid,labels)"
+          current_head="$(jq -r '.headRefOid' <<< "${current_pr}")"
+          if [[ "${current_head}" != "${EXPECTED_HEAD_SHA}" ]]; then
+            echo "PR head moved to ${current_head}; refusing stale work claim."
+            echo "claimed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          mapfile -t current_labels < <(
+            jq -r '.labels[].name | ascii_downcase' <<< "${current_pr}"
+          )
+          for label in "${current_labels[@]}"; do
+            case "${label}" in
+              "on hold"|workflow|"in-progress")
+                echo "PR #${PR_NUMBER} became unavailable before claim; skipping."
+                echo "claimed=false" >> "${GITHUB_OUTPUT}"
+                exit 0
+                ;;
+            esac
+          done
+
+          gh api "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels"             --method POST             -f 'labels[]=in-progress' >/dev/null
+          echo "claimed=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out pull request head
+        if: steps.claim.outputs.claimed == 'true'
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.resolve.outputs.head_ref }}
@@ -168,20 +217,20 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python 3.10
-        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        if: steps.claim.outputs.claimed == 'true'
         uses: actions/setup-python@v7
         with:
           python-version: '3.10'
           cache: pip
 
       - name: Install standalone validation tools
-        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        if: steps.claim.outputs.claimed == 'true'
         run: |
           python -m pip install --upgrade pip
           python -m pip install ruff pytest build tomli
 
       - name: Capture failed CI logs
-        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        if: steps.claim.outputs.claimed == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -196,7 +245,7 @@ jobs:
           echo ".ci-autofix-failure.log" >> .git/info/exclude
 
       - name: Mark this head as attempted
-        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        if: steps.claim.outputs.claimed == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -212,8 +261,9 @@ jobs:
           CI Autofix is attempting a minimal repair for **${FAILED_WORKFLOW}** failure on \`${HEAD_SHA:0:12}\` (run \`${FAILED_RUN_ID}\`)."
 
       - name: Run Codex autofix
-        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        if: steps.claim.outputs.claimed == 'true'
         id: codex
+        continue-on-error: true
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -238,7 +288,7 @@ jobs:
             changes and explain why human attention is needed.
 
       - name: Inspect candidate changes
-        if: steps.resolve.outputs.eligible == 'true' && steps.api-key.outputs.configured == 'true'
+        if: steps.claim.outputs.claimed == 'true'
         id: changes
         shell: bash
         run: |
@@ -376,8 +426,7 @@ jobs:
 
       - name: Report when human attention is required
         if: >-
-          steps.resolve.outputs.eligible == 'true' &&
-          steps.api-key.outputs.configured == 'true' &&
+          steps.claim.outputs.claimed == 'true' &&
           steps.push.outputs.pushed != 'true' &&
           (steps.changes.outputs.present != 'true' || steps.validate.outputs.passed == 'false')
         shell: bash
@@ -386,10 +435,15 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
           CODEX_FINAL_MESSAGE: ${{ steps.codex.outputs.final-message }}
+          CODEX_OUTCOME: ${{ steps.codex.outcome }}
           VALIDATION_PASSED: ${{ steps.validate.outputs.passed }}
         run: |
           {
             echo "CI Autofix did not push a repair for this head."
+            if [[ "${CODEX_OUTCOME}" == "failure" ]]; then
+              echo
+              echo "The Codex repair step failed before producing a usable repair."
+            fi
             if [[ "${VALIDATION_PASSED}" == "false" ]]; then
               echo
               echo "The candidate did not pass the local Ruff, pytest, and build gates."
@@ -405,3 +459,25 @@ jobs:
           gh pr comment "${PR_NUMBER}" \
             --repo "${REPOSITORY}" \
             --body-file "${RUNNER_TEMP}/ci-autofix-comment.md"
+
+      - name: Release pull request work claim
+        if: always() && steps.claim.outputs.claimed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.resolve.outputs.pr_number }}
+          EXPECTED_HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
+          PUSHED_HEAD_SHA: ${{ steps.push.outputs.new_sha }}
+        run: |
+          set -Eeuo pipefail
+
+          current_pr="$(gh pr view "${PR_NUMBER}" --repo "${REPOSITORY}" --json headRefOid,labels)"
+          current_head="$(jq -r '.headRefOid' <<< "${current_pr}")"
+          if [[ "${current_head}" != "${EXPECTED_HEAD_SHA}" &&
+                ( -z "${PUSHED_HEAD_SHA}" || "${current_head}" != "${PUSHED_HEAD_SHA}" ) ]]; then
+            echo "PR head moved to ${current_head}; preserving in-progress for the newer worker."
+            exit 0
+          fi
+
+          gh api "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/in-progress"             --method DELETE >/dev/null 2>&1 || true
