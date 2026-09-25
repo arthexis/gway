@@ -222,7 +222,7 @@ class Controller:
         service: LocalAppService = None,
         host=None,
         port=None,
-        path="/",
+        route="/",
         site=None,
         email=None,
         adapter="nginx-certbot",
@@ -245,16 +245,16 @@ class Controller:
         exposure = ExposureSpec(
             service=service,
             domain=domain,
-            path=path,
+            route=route,
             site=site,
             email=email,
             adapter=adapter,
         )
-        key = (exposure.domain, exposure.path)
+        key = (exposure.domain, exposure.route)
         existing = self._exposures.get(key)
         if existing is not None and existing != exposure:
             raise ValueError(
-                f"conflicting exposure for {exposure.domain}{exposure.path}"
+                f"conflicting exposure for {exposure.domain}{exposure.route}"
             )
         if existing is None:
             self._exposures[key] = exposure
