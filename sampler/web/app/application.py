@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from .appspec import AppSpec, BindingSpec, ViewSpec
-from .exposure import ExposureSpec, LocalAppService, apply_exposure
+from gway.appspec import AppSpec, BindingSpec, ViewSpec
+from gway.appexposure import ExposureSpec, LocalAppService, apply_exposure
 from gway.binding import Literal
 from gway.publication import SKIP_PUBLICATION
 
