@@ -137,7 +137,7 @@ def test_in_memory_adapter_dispatches_get_and_preserves_return_value(gateway):
 
     adapter = InMemoryAdapter(gateway, app)
 
-    assert adapter.request("/health", name="Ada") == {"hello": "Ada"}
+    assert adapter.request("/health", arguments={"name": "Ada"}) == {"hello": "Ada"}
 
 
 def test_in_memory_adapter_dispatches_method_specific_handlers(gateway):
@@ -149,8 +149,8 @@ def test_in_memory_adapter_dispatches_method_specific_handlers(gateway):
 
     adapter = InMemoryAdapter(gateway, app)
 
-    assert adapter.request("/resource", "GET", resource_id="42") == "read:42"
-    assert adapter.request("/resource", "post", resource_id="42") == "write:42"
+    assert adapter.request("/resource", "GET", arguments={"resource_id": "42"}) == "read:42"
+    assert adapter.request("/resource", "post", arguments={"resource_id": "42"}) == "write:42"
 
 
 def test_in_memory_adapter_reports_missing_route(gateway):
@@ -197,7 +197,7 @@ def test_in_memory_adapter_uses_gateway_signature_binding_errors(gateway):
     adapter = InMemoryAdapter(gateway, app)
 
     with pytest.raises(TypeError, match="missing required argument: age"):
-        adapter.request("/users", "POST", name="Ada")
+        adapter.request("/users", "POST", arguments={"name": "Ada"})
 
 
 
@@ -235,4 +235,19 @@ def test_in_memory_adapter_resolves_lazy_handler_before_invocation(gateway):
     app = AppSpec().add(ViewSpec("lazy.health", route="/health"))
     adapter = InMemoryAdapter(gateway, app)
 
-    assert adapter.request("/health", name="Ada") == "hello:Ada"
+    assert adapter.request("/health", arguments={"name": "Ada"}) == "hello:Ada"
+
+
+def test_in_memory_adapter_forwards_handler_arguments_named_route_and_method(gateway):
+    def echo(route, method):
+        return route, method
+
+    gateway.wrap("remote.echo", echo)
+    gateway("setup app remote")
+    app = gateway("view echo --route /echo")
+    adapter = InMemoryAdapter(gateway, app)
+
+    assert adapter.request(
+        "/echo",
+        arguments={"route": "handler-route", "method": "handler-method"},
+    ) == ("handler-route", "handler-method")
