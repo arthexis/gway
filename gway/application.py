@@ -23,10 +23,19 @@ class Controller:
         if not raw:
             raise ValueError("view handler must be a non-empty operation identity")
 
+        from .dispatch import resolve_operation
+        from .tokens import tokenize
+
         canonical = raw.replace(" ", ".")
-        direct = self.gateway.ops.resolve(canonical)
-        if direct is not None:
-            return self.gateway.ops.canonical_name(direct, canonical)
+        try:
+            resolution = resolve_operation(self.gateway, tokenize(canonical))
+        except LookupError:
+            resolution = None
+        if resolution is not None and not resolution.arguments:
+            return self.gateway.ops.canonical_name(
+                resolution.callable,
+                resolution.candidate,
+            )
 
         normalized = canonical.replace("-", "_")
         matches = []
