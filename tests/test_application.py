@@ -7,6 +7,8 @@ from gway.appadapter import (
     RouteNotFound,
 )
 from gway.appspec import AppSpec, ViewSpec
+from gway.ingestion.base import remember_object
+from gway.ingestion.python import ingest_python
 def _register_handler(gateway, name):
     def handler():
         return name
@@ -196,3 +198,41 @@ def test_in_memory_adapter_uses_gateway_signature_binding_errors(gateway):
 
     with pytest.raises(TypeError, match="missing required argument: age"):
         adapter.request("/users", "POST", name="Ada")
+
+
+
+def test_view_resolves_lazy_handler_through_normal_jit_ingestion(gateway):
+    class LazyHandlers:
+        def health(self):
+            return "ok"
+
+    source = LazyHandlers()
+    remember_object(
+        gateway,
+        source,
+        ("lazy",),
+        expander=ingest_python,
+    )
+    gateway("setup app remote")
+
+    app = gateway("view lazy.health --route /health")
+
+    assert app.views[0].callable_name == "lazy.health"
+
+
+def test_in_memory_adapter_resolves_lazy_handler_before_invocation(gateway):
+    class LazyHandlers:
+        def health(self, name):
+            return f"hello:{name}"
+
+    source = LazyHandlers()
+    remember_object(
+        gateway,
+        source,
+        ("lazy",),
+        expander=ingest_python,
+    )
+    app = AppSpec().add(ViewSpec("lazy.health", route="/health"))
+    adapter = InMemoryAdapter(gateway, app)
+
+    assert adapter.request("/health", name="Ada") == "hello:Ada"
