@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from .appadapter import InMemoryAdapter, MethodNotAllowed, RouteNotFound
 from .appspec import AppSpec
@@ -21,6 +21,82 @@ class ApplicationRequest:
     @property
     def split(self):
         return urlsplit(self.path)
+
+
+class RequestBindingError(ValueError):
+    """Raised when declared HTTP inputs cannot be bound to a handler."""
+
+
+def _match_path(pattern, path):
+    """Match one route pattern and return named segment values."""
+    if pattern == path:
+        return {}
+    pattern_parts = pattern.strip("/").split("/") if pattern != "/" else []
+    path_parts = path.strip("/").split("/") if path != "/" else []
+    if len(pattern_parts) != len(path_parts):
+        return None
+
+    values = {}
+    for expected, actual in zip(pattern_parts, path_parts):
+        if expected.startswith("{") and expected.endswith("}") and len(expected) > 2:
+            name = expected[1:-1]
+            values[name] = unquote(actual)
+            continue
+        if expected != actual:
+            return None
+    return values
+
+
+def _body_value(request):
+    """Decode the request body according to its declared content type."""
+    if not request.body:
+        return None
+    content_type = request.headers.get("content-type", "").partition(";")[0].strip()
+    if content_type == "application/json":
+        try:
+            return json.loads(request.body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise RequestBindingError("invalid JSON request body") from error
+    if content_type.startswith("text/"):
+        try:
+            return request.body.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise RequestBindingError("invalid UTF-8 request body") from error
+    return request.body
+
+
+def _binding_arguments(mapping, request, path_values):
+    """Extract only recipe-declared HTTP inputs into handler arguments."""
+    arguments = {}
+    query = parse_qs(request.split.query, keep_blank_values=True)
+    body_bindings = tuple(
+        binding for binding in mapping.bindings if binding.source == "body"
+    )
+    decoded_body = _body_value(request) if body_bindings else None
+
+    for binding in mapping.bindings:
+        if binding.source == "query":
+            values = query.get(binding.key)
+            if values:
+                arguments[binding.name] = values[-1]
+        elif binding.source == "path":
+            if binding.key in path_values:
+                arguments[binding.name] = path_values[binding.key]
+        elif binding.source == "header":
+            key = binding.key.casefold()
+            if key in request.headers:
+                arguments[binding.name] = request.headers[key]
+        elif binding.source == "body":
+            if len(body_bindings) == 1:
+                if decoded_body is not None:
+                    arguments[binding.name] = decoded_body
+            elif isinstance(decoded_body, dict) and binding.key in decoded_body:
+                arguments[binding.name] = decoded_body[binding.key]
+            elif decoded_body is not None and not isinstance(decoded_body, dict):
+                raise RequestBindingError(
+                    "multiple body bindings require a JSON object"
+                )
+    return arguments
 
 
 class ApplicationHTTPAdapter:
@@ -52,21 +128,47 @@ class ApplicationHTTPAdapter:
         context = dict(self.context)
         context["request"] = request
 
-        try:
-            with self.gateway.request_scope(context=context):
-                result = self.dispatch.request(
-                    request.split.path,
-                    request.method,
-                )
-        except RouteNotFound:
+        matches = []
+        for mapping in self.app.routes:
+            values = _match_path(mapping.route, request.split.path)
+            if values is not None:
+                matches.append((mapping, values))
+
+        if not matches:
             return 404, {}, {"error": "not_found"}
-        except MethodNotAllowed:
-            allowed = ", ".join(
-                route.method
-                for route in self.app.routes
-                if route.route == request.split.path
-            )
+
+        selected = next(
+            (
+                (mapping, values)
+                for mapping, values in matches
+                if mapping.method == request.method
+            ),
+            None,
+        )
+        if selected is None:
+            allowed = ", ".join(mapping.method for mapping, _ in matches)
             return 405, {"allow": allowed}, {"error": "method_not_allowed"}
+
+        mapping, path_values = selected
+        try:
+            arguments = _binding_arguments(mapping, request, path_values)
+            with self.gateway.request_scope(context=context):
+                result = self.dispatch.invoke(
+                    mapping,
+                    arguments=arguments,
+                )
+        except RequestBindingError as error:
+            return 400, {}, {
+                "error": "invalid_request",
+                "message": str(error),
+            }
+        except TypeError as error:
+            if "missing required argument:" not in str(error):
+                raise
+            return 400, {}, {
+                "error": "invalid_request",
+                "message": str(error),
+            }
 
         return normalize_response(result)
 
