@@ -15,6 +15,9 @@ def _page(title, body):
     )
 
 
+OPERATION_PREVIEW_LIMIT = 6
+
+
 def _scopes(value):
     if value is None:
         return frozenset()
@@ -35,10 +38,12 @@ class RemoteAccountApplication:
         oauth=None,
         tokens=None,
         sessions=None,
+        operation_resolver=None,
     ):
         self.oauth = OAuthRegistry() if oauth is None else oauth
         self.tokens = TokenRegistry(self.oauth.path) if tokens is None else tokens
         self.sessions = RemoteSessionStore() if sessions is None else sessions
+        self.operation_resolver = operation_resolver
 
     def new_session(self):
         return self.sessions.create()
@@ -95,6 +100,63 @@ class RemoteAccountApplication:
         self.sessions.rotate(session)
         return self.oauth.get_link(link_name)
 
+    def _operation_mutates(self, name):
+        if self.operation_resolver is None:
+            return True
+        operation = self.operation_resolver(name)
+        if operation is None:
+            return True
+        return bool(getattr(operation, "mutates", True))
+
+    def permission_summary(self, scope_names):
+        names = frozenset(scope_names)
+        operations = set()
+        environment = set()
+        scope_summaries = []
+
+        for name in sorted(names):
+            scope = self.oauth.scopes.require(name)
+            scope_operations = tuple(sorted(scope.operations))
+            scope_environment = tuple(sorted(scope.environment))
+            mutation_capable = any(
+                self._operation_mutates(operation) for operation in scope_operations
+            )
+            scope_summaries.append(
+                {
+                    "name": name,
+                    "operation_count": len(scope_operations),
+                    "operations_preview": scope_operations[:OPERATION_PREVIEW_LIMIT],
+                    "remaining_operations": max(
+                        0, len(scope_operations) - OPERATION_PREVIEW_LIMIT
+                    ),
+                    "environment_count": len(scope_environment),
+                    "environment": scope_environment,
+                    "mutation_capable": mutation_capable,
+                }
+            )
+            operations.update(scope_operations)
+            environment.update(scope_environment)
+
+        effective_operations = tuple(sorted(operations))
+        effective_environment = tuple(sorted(environment))
+        return {
+            "scopes": tuple(scope_summaries),
+            "effective": {
+                "scope_count": len(names),
+                "operation_count": len(effective_operations),
+                "operations_preview": effective_operations[:OPERATION_PREVIEW_LIMIT],
+                "remaining_operations": max(
+                    0, len(effective_operations) - OPERATION_PREVIEW_LIMIT
+                ),
+                "environment_count": len(effective_environment),
+                "environment": effective_environment,
+                "mutation_capable": any(
+                    self._operation_mutates(operation)
+                    for operation in effective_operations
+                ),
+            },
+        }
+
     def consent_details(self, session):
         if not session.link_name:
             raise PermissionError("G-Way connection required")
@@ -138,6 +200,7 @@ class RemoteAccountApplication:
             "requested_scopes": frozenset(session.requested_scopes),
             "operations": frozenset(operations),
             "environment": frozenset(environment),
+            "permission_summary": self.permission_summary(session.selected_scopes),
         }
 
     def select_scopes(self, session, scopes):
@@ -169,11 +232,41 @@ class RemoteAccountApplication:
         details = self.consent_details(session)
         candidates = details["requested_scopes"] & details["available_scopes"]
         selected = details["scopes"]
+        candidate_summary = self.permission_summary(candidates)
+        scope_by_name = {
+            item["name"]: item for item in candidate_summary["scopes"]
+        }
         scope_items = "".join(
             "<li><label>"
             f'<input type="checkbox" name="scope" value="{escape(name)}"'
             + (" checked" if name in selected else "")
-            + f"> {escape(name)}</label></li>"
+            + f"> <strong>{escape(name)}</strong></label>"
+            + (
+                f"<div>{scope_by_name[name]['operation_count']} operations; "
+                + (
+                    "includes state changes"
+                    if scope_by_name[name]["mutation_capable"]
+                    else "read-only"
+                )
+                + f"; {scope_by_name[name]['environment_count']} environment names</div>"
+            )
+            + (
+                "<div><code>"
+                + ", ".join(
+                    escape(operation)
+                    for operation in scope_by_name[name]["operations_preview"]
+                )
+                + "</code>"
+                + (
+                    f" …and {scope_by_name[name]['remaining_operations']} more"
+                    if scope_by_name[name]["remaining_operations"]
+                    else ""
+                )
+                + "</div>"
+                if scope_by_name[name]["operations_preview"]
+                else ""
+            )
+            + "</li>"
             for name in sorted(candidates)
         )
         operation_items = "".join(
@@ -184,11 +277,20 @@ class RemoteAccountApplication:
         )
         if not environment_items:
             environment_items = "<li>None</li>"
+        effective = details["permission_summary"]["effective"]
         return _page(
             "Remote access consent",
             "<h1>Authorize remote access</h1>"
             f"<p>Client: <code>{escape(details['client_id'])}</code></p>"
             f"<h2>Named scopes</h2><ul>{scope_items}</ul>"
+            "<h2>Effective selected access</h2>"
+            f"<p>{effective['operation_count']} unique operations; "
+            + (
+                "includes state changes"
+                if effective["mutation_capable"]
+                else "read-only"
+            )
+            + f"; {effective['environment_count']} environment names</p>"
             f"<h2>Operations</h2><ul>{operation_items}</ul>"
             f"<h2>Environment</h2><ul>{environment_items}</ul>"
             '<form method="post" action="/consent">'
