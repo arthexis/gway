@@ -56,6 +56,17 @@ jobs:
             exit 0
           fi
 
+          author_association="$(jq -r '.author_association // empty' <<< "$pr_json")"
+          case "$author_association" in
+            OWNER|MEMBER|COLLABORATOR)
+              ;;
+            *)
+              echo "PR #$pr_number has untrusted author association '$author_association'; refusing to expose the Codex API secret."
+              echo "eligible=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
           current_head="$(jq -r '.head.sha' <<< "$pr_json")"
           if [[ "$current_head" != "$HEAD_SHA" ]]; then
             echo "Failed run belongs to stale head $HEAD_SHA; current PR head is $current_head."
