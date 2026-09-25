@@ -21,6 +21,29 @@ def _join_route(base: str | None, route: str) -> str:
 
 
 @dataclass(frozen=True)
+class BindingSpec:
+    """Describe one declared HTTP input bound to a handler argument."""
+
+    name: str
+    source: str
+    key: str | None = None
+
+    def __post_init__(self):
+        name = str(self.name).strip()
+        source = str(self.source).strip().casefold()
+        key = name if self.key is None else str(self.key).strip()
+        if not name:
+            raise ValueError("binding name cannot be empty")
+        if source not in {"query", "path", "header", "body"}:
+            raise ValueError(f"unsupported binding source: {source!r}")
+        if not key:
+            raise ValueError("binding key cannot be empty")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "source", source)
+        object.__setattr__(self, "key", key)
+
+
+@dataclass(frozen=True)
 class RouteSpec:
     """Describe one concrete HTTP route mapping."""
 
@@ -28,6 +51,7 @@ class RouteSpec:
     method: str
     handler: str
     name: str | None = None
+    bindings: tuple[BindingSpec, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -38,12 +62,22 @@ class ViewSpec:
     route: str | None = None
     methods: tuple[str, ...] = ("GET",)
     name: str | None = None
+    bindings: tuple[BindingSpec, ...] = ()
 
     def __post_init__(self):
         methods = tuple(dict.fromkeys(method.upper() for method in self.methods))
         if not methods:
             methods = ("GET",)
+        bindings = tuple(self.bindings)
+        names = set()
+        for binding in bindings:
+            if not isinstance(binding, BindingSpec):
+                raise TypeError("view bindings must be BindingSpec instances")
+            if binding.name in names:
+                raise ValueError(f"duplicate view binding: {binding.name}")
+            names.add(binding.name)
         object.__setattr__(self, "methods", methods)
+        object.__setattr__(self, "bindings", bindings)
 
     @property
     def resolved_route(self) -> str:
@@ -59,6 +93,7 @@ class ViewSpec:
                 method=method,
                 handler=self.callable_name,
                 name=self.name,
+                bindings=self.bindings,
             )
             for method in self.methods
         )
@@ -107,6 +142,7 @@ class AppSpec:
                 method=mapping.method,
                 handler=mapping.handler,
                 name=mapping.name,
+                bindings=mapping.bindings,
             )
             for mapping in view.routes
         )
@@ -154,6 +190,7 @@ class AppSpec:
                     route=existing.route,
                     methods=remaining_methods,
                     name=existing.name,
+                    bindings=existing.bindings,
                 )
             )
         return AppSpec(
