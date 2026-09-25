@@ -156,16 +156,31 @@ def expand(runtime, tokens):
         loaded = set()
         runtime._sampler_routes = loaded
 
+    candidates = []
     for relative in fallback_routes(tokens):
         route = (root() / relative).resolve()
-        if route in loaded:
-            continue
+        if route not in loaded:
+            candidates.append((relative, route))
 
-        module = load(str(relative))
-        register = getattr(module, "register", None)
-        if callable(register):
-            register(runtime)
-        loaded.add(route)
-        return True
+    if not candidates:
+        return False
 
-    return False
+    best_score = _route_score(candidates[0][0], values)
+    equally_relevant = [
+        relative
+        for relative, _ in candidates
+        if _route_score(relative, values) == best_score
+    ]
+    if (best_score[0] or best_score[1]) and len(equally_relevant) > 1:
+        names = ", ".join(str(route) for route in equally_relevant)
+        raise LookupError(
+            f"Ambiguous sampler fallback for {' '.join(values)!r}: {names}"
+        )
+
+    relative, route = candidates[0]
+    module = load(str(relative))
+    register = getattr(module, "register", None)
+    if callable(register):
+        register(runtime)
+    loaded.add(route)
+    return True
