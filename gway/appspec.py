@@ -64,6 +64,8 @@ class RouteSpec:
     handler: str
     name: str | None = None
     bindings: tuple[BindingSpec, ...] = ()
+    body_model: str | None = None
+    response_model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,8 @@ class ViewSpec:
     methods: tuple[str, ...] = ("GET",)
     name: str | None = None
     bindings: tuple[BindingSpec, ...] = ()
+    body_model: str | None = None
+    response_model: str | None = None
 
     def __post_init__(self):
         methods = tuple(dict.fromkeys(method.upper() for method in self.methods))
@@ -88,6 +92,10 @@ class ViewSpec:
             if binding.name in names:
                 raise ValueError(f"duplicate view binding: {binding.name}")
             names.add(binding.name)
+        if self.body_model and not any(
+            binding.source == "body" for binding in bindings
+        ):
+            raise ValueError("body_model requires at least one body binding")
         object.__setattr__(self, "methods", methods)
         object.__setattr__(self, "bindings", bindings)
 
@@ -106,6 +114,8 @@ class ViewSpec:
                 handler=self.callable_name,
                 name=self.name,
                 bindings=self.bindings,
+                body_model=self.body_model,
+                response_model=self.response_model,
             )
             for method in self.methods
         )
@@ -155,6 +165,8 @@ class AppSpec:
                 handler=mapping.handler,
                 name=mapping.name,
                 bindings=mapping.bindings,
+                body_model=mapping.body_model,
+                response_model=mapping.response_model,
             )
             for mapping in view.routes
         )
@@ -206,6 +218,8 @@ class AppSpec:
                     methods=remaining_methods,
                     name=existing.name,
                     bindings=existing.bindings,
+                    body_model=existing.body_model,
+                    response_model=existing.response_model,
                 )
             )
         return AppSpec(
