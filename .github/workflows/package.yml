@@ -32,5 +32,25 @@ jobs:
           /tmp/clean-install/bin/python -m pip install dist/*.whl
           /tmp/clean-install/bin/python -m pip check
           /tmp/clean-install/bin/python -c "import gway; from gway import Gateway; Gateway(); print('gway import OK')"
-          /tmp/clean-install/bin/python -c "from gway.sampler import resolve; assert resolve('web/remote/expose').is_file()"
+          SOURCE_SAMPLER="$PWD/sampler" /tmp/clean-install/bin/python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          from gway.sampler import load, root
+
+          source = Path(os.environ["SOURCE_SAMPLER"])
+          installed = root()
+
+          def snapshot(tree):
+              return {
+                  path.relative_to(tree): hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in tree.rglob("*")
+                  if path.is_file()
+              }
+
+          assert installed != source
+          assert snapshot(installed) == snapshot(source)
+          assert load("web/app").AppSpec is not None
+          PY
           /tmp/clean-install/bin/python -m gway help install >/dev/null
