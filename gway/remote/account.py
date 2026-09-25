@@ -51,7 +51,10 @@ class RemoteAccountApplication:
         if not scopes:
             raise ValueError("At least one named G-Way scope is required")
         session.pending_client_id = client_id
-        session.pending_scopes = scopes
+        session.requested_scopes = scopes
+        # Until S2 adds explicit scope selection, preserve the existing consent
+        # behavior by treating the requested set as the provisional selection.
+        session.selected_scopes = scopes
         session.pending_resource = None if resource is None else str(resource).strip()
         session.approved_grant_id = None
         return session
@@ -81,6 +84,7 @@ class RemoteAccountApplication:
         link_name = f"remote-{secrets.token_hex(12)}"
         self.oauth.link(link_name, identity.token.name)
         session.link_name = link_name
+        session.available_scopes = frozenset(identity.token.scopes)
         session.approved_grant_id = None
         self.sessions.rotate(session)
         return self.oauth.get_link(link_name)
@@ -88,30 +92,51 @@ class RemoteAccountApplication:
     def consent_details(self, session):
         if not session.link_name:
             raise PermissionError("G-Way connection required")
-        if not session.pending_client_id or not session.pending_scopes:
+        if not session.pending_client_id or not session.requested_scopes:
             raise ValueError("No pending consent request")
+        if not session.selected_scopes:
+            raise ValueError("No scopes selected for consent")
 
         link = self.oauth.get_link(session.link_name)
         if link is None or link.revoked_at is not None:
             raise PermissionError("G-Way connection is revoked")
         token = self.tokens.require(link.token_name)
-        missing = session.pending_scopes - token.scopes
-        if missing:
+        current_scopes = frozenset(token.scopes)
+        session.available_scopes = current_scopes
+
+        unavailable_requested = session.requested_scopes - current_scopes
+        if unavailable_requested:
             raise PermissionError(
                 "Requested scopes are no longer available: "
-                + ", ".join(sorted(missing))
+                + ", ".join(sorted(unavailable_requested))
+            )
+
+        invalid_selection = session.selected_scopes - session.requested_scopes
+        if invalid_selection:
+            raise PermissionError(
+                "Selected scopes were not requested: "
+                + ", ".join(sorted(invalid_selection))
+            )
+
+        unavailable_selected = session.selected_scopes - current_scopes
+        if unavailable_selected:
+            raise PermissionError(
+                "Selected scopes are no longer available: "
+                + ", ".join(sorted(unavailable_selected))
             )
 
         operations = set()
         environment = set()
-        for name in sorted(session.pending_scopes):
+        for name in sorted(session.selected_scopes):
             scope = self.oauth.scopes.require(name)
             operations.update(scope.operations)
             environment.update(scope.environment)
         return {
             "client_id": session.pending_client_id,
             "resource": session.pending_resource,
-            "scopes": frozenset(session.pending_scopes),
+            "scopes": frozenset(session.selected_scopes),
+            "available_scopes": frozenset(session.available_scopes),
+            "requested_scopes": frozenset(session.requested_scopes),
             "operations": frozenset(operations),
             "environment": frozenset(environment),
         }
@@ -164,7 +189,8 @@ class RemoteAccountApplication:
             session.approved_grant_id = None
 
         session.pending_client_id = None
-        session.pending_scopes = frozenset()
+        session.requested_scopes = frozenset()
+        session.selected_scopes = frozenset()
         session.pending_resource = None
         self.sessions.rotate_csrf(session)
         return grant
@@ -209,7 +235,9 @@ class RemoteAccountApplication:
         session.link_name = None
         session.approved_grant_id = None
         session.pending_client_id = None
-        session.pending_scopes = frozenset()
+        session.available_scopes = frozenset()
+        session.requested_scopes = frozenset()
+        session.selected_scopes = frozenset()
         session.pending_resource = None
         session.pending_redirect_uri = None
         session.pending_state = None
