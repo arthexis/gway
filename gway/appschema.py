@@ -1,6 +1,7 @@
 """Schema resolution and validation helpers for declarative application views."""
 
 import importlib
+import inspect
 import sys
 
 
@@ -38,7 +39,8 @@ def resolve_schema(gateway, handler, reference):
     if _is_schema(candidate):
         return candidate
 
-    module_name = getattr(handler, "__module__", None)
+    original = inspect.unwrap(handler)
+    module_name = getattr(original, "__module__", None)
     module = sys.modules.get(module_name) if module_name else None
     if module is not None:
         candidate = getattr(module, name, None)
