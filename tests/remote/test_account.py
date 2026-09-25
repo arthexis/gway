@@ -304,11 +304,10 @@ def test_permission_summary_deduplicates_overlapping_effective_access(tmp_path):
     effective = account.permission_summary({"alpha", "beta"})["effective"]
 
     assert effective["operation_count"] == 3
-    assert effective["operations_preview"] == (
-        "log.read",
-        "log.search",
-        "log.tail",
-    )
+    assert [item["operations_preview"] for item in account.permission_summary({"alpha", "beta"})["scopes"]] == [
+        ("log.read", "log.tail"),
+        ("log.search", "log.tail"),
+    ]
     assert effective["environment_count"] == 2
     assert effective["environment"] == ("SITE", "ZONE")
 
@@ -351,3 +350,27 @@ def test_permission_summary_treats_unclassified_operation_as_mutation_capable(tm
     summary = account.permission_summary({"unknown"})
 
     assert summary["effective"]["mutation_capable"] is True
+
+
+def test_permission_summary_applies_preview_limit_per_scope(tmp_path):
+    scopes, _, _, account = _account(tmp_path)
+    scopes.replace(
+        "alpha",
+        operations={f"alpha.{index}" for index in range(8)},
+        environment=(),
+    )
+    scopes.replace(
+        "beta",
+        operations={f"beta.{index}" for index in range(7)},
+        environment=(),
+    )
+
+    summary = account.permission_summary({"alpha", "beta"})
+    by_name = {item["name"]: item for item in summary["scopes"]}
+
+    assert len(by_name["alpha"]["operations_preview"]) == 6
+    assert by_name["alpha"]["remaining_operations"] == 2
+    assert len(by_name["beta"]["operations_preview"]) == 6
+    assert by_name["beta"]["remaining_operations"] == 1
+    assert all(name.startswith("alpha.") for name in by_name["alpha"]["operations_preview"])
+    assert all(name.startswith("beta.") for name in by_name["beta"]["operations_preview"])
