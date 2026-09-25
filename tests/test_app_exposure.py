@@ -154,14 +154,14 @@ def test_apply_exposure_requires_tls_email(gateway):
         )
 
 
-def test_concrete_exposure_adapter_rejects_non_root_path(gateway):
+def test_concrete_exposure_adapter_rejects_non_root_route(gateway):
     gateway("setup app remote")
 
-    with pytest.raises(NotImplementedError, match="only path /"):
+    with pytest.raises(NotImplementedError, match="only route /"):
         gateway(
             "expose app remote.example.com "
             "--host 127.0.0.1 --port 8001 "
-            "--path /remote --email admin@example.com"
+            "--route /remote --email admin@example.com"
         )
 
 
