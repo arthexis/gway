@@ -57,7 +57,7 @@ jobs:
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
-      - name: Disarm when approval is removed or PR is on hold
+      - name: Disarm when approval is removed or PR is on-hold
         if: steps.pr.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,7 +72,7 @@ jobs:
             jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
           )"
           on_hold="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$pr_json"
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold")' <<< "$pr_json"
           )"
 
           if [[ "$approved" != "true" || "$on_hold" == "true" ]]; then
@@ -105,10 +105,10 @@ jobs:
           fi
 
           on_hold="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "on hold")' <<< "$pr_json"
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold")' <<< "$pr_json"
           )"
           if [[ "$on_hold" == "true" ]]; then
-            echo "PR #$PR_NUMBER is on hold; auto-merge is disabled."
+            echo "PR #$PR_NUMBER is on-hold; auto-merge is disabled."
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
