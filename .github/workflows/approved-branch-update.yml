@@ -19,6 +19,7 @@ jobs:
       - name: Find and update stale Approved PRs
         env:
           GH_TOKEN: ${{ github.token }}
+          BRANCH_UPDATE_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
         shell: bash
@@ -26,11 +27,6 @@ jobs:
           set -euo pipefail
 
           if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
-            label="$(jq -r '.label.name // empty' "$GITHUB_EVENT_PATH")"
-            if [[ "${label,,}" != "approved" ]]; then
-              echo "Ignoring non-Approved label event."
-              exit 0
-            fi
             pr_numbers=("$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")")
           else
             mapfile -t pr_numbers < <(
@@ -74,7 +70,16 @@ jobs:
 
             echo "Updating PR #$pr_number ($behind_by commit(s) behind $base_ref)."
 
-            if gh api               --method PUT               -H "Accept: application/vnd.github+json"               "repos/$REPOSITORY/pulls/$pr_number/update-branch"               -f expected_head_sha="$head_sha"
+            if [[ -z "${BRANCH_UPDATE_TOKEN:-}" ]]; then
+              echo "::error::BRANCH_UPDATE_TOKEN is not configured; refusing to update the PR with github.token because bot-authored updates suppress normal PR CI."
+              exit 1
+            fi
+
+            if GH_TOKEN="$BRANCH_UPDATE_TOKEN" gh api \
+              --method PUT \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$REPOSITORY/pulls/$pr_number/update-branch" \
+              -f expected_head_sha="$head_sha"
             then
               echo "PR #$pr_number updated successfully."
             else
