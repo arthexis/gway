@@ -7,6 +7,8 @@ on:
     types: [submitted, edited, dismissed]
   pull_request_review_comment:
     types: [created, edited, deleted]
+  pull_request_review_thread:
+    types: [resolved, unresolved]
   workflow_run:
     workflows:
       - "python / Package"
@@ -62,6 +64,17 @@ jobs:
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+      - name: Disarm when approval is removed
+        if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'Approved'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
+
       - name: Validate approval gate
         if: steps.pr.outputs.skip != 'true'
         id: gate
@@ -79,7 +92,6 @@ jobs:
           draft="$(jq -r '.draft' <<< "$pr_json")"
           head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
           base_ref="$(jq -r '.base.ref' <<< "$pr_json")"
-          head_ref="$(jq -r '.head.ref' <<< "$pr_json")"
 
           if [[ "$state" != "open" || "$draft" == "true" ]]; then
             echo "PR #$PR_NUMBER is not an open, non-draft PR."
@@ -96,7 +108,7 @@ jobs:
             exit 0
           fi
 
-          compare_json="$(gh api "repos/$REPOSITORY/compare/$base_ref...$head_ref")"
+          compare_json="$(gh api "repos/$REPOSITORY/compare/$base_ref...$head_sha")"
           behind_by="$(jq -r '.behind_by' <<< "$compare_json")"
           if [[ "$behind_by" != "0" ]]; then
             echo "PR #$PR_NUMBER is $behind_by commit(s) behind $base_ref."
