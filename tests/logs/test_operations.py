@@ -107,16 +107,35 @@ def test_read_expands_project_to_readable_members(catalog_state, monkeypatch):
     assert "SECRET" not in result[0]
 
 
-def test_zero_source_read_selects_all_managed_sources(catalog_state, monkeypatch):
+def test_zero_source_read_returns_catalog_without_reading(catalog_state, monkeypatch):
+    monkeypatch.setattr(
+        operations,
+        "read_journal",
+        lambda *args, **kwargs: pytest.fail("journal should not be read"),
+    )
+
+    result = operations.read()
+
+    assert [item["identity"] for item in result] == [
+        "gway",
+        "arthexis",
+        "arthexis/portable",
+        "arthexis/web",
+        "arthexis/worker",
+    ]
+
+
+def test_all_explicitly_selects_all_managed_sources(catalog_state, monkeypatch):
     captured = {}
 
     def fake_read(sources, **kwargs):
         captured["sources"] = list(sources)
+        captured["kwargs"] = kwargs
         return []
 
     monkeypatch.setattr(operations, "read_journal", fake_read)
 
-    operations.read()
+    operations.read(all=True)
 
     assert [source.identity for source in captured["sources"]] == [
         "arthexis/portable",
@@ -124,6 +143,12 @@ def test_zero_source_read_selects_all_managed_sources(catalog_state, monkeypatch
         "arthexis/worker",
         "gway",
     ]
+    assert captured["kwargs"]["limit"] == 100
+
+
+def test_explicit_source_cannot_be_combined_with_all(catalog_state):
+    with pytest.raises(ValueError, match="cannot be combined with --all"):
+        operations.read("gway", all=True)
 
 
 def test_process_source_uses_journal_identifier_when_journal_available(
@@ -202,6 +227,42 @@ def test_search_pushes_pattern_to_backend(catalog_state, monkeypatch):
 
     assert captured["grep"] == "timeout.*worker"
     assert captured["limit"] == 5
+
+
+def test_read_and_search_default_to_bounded_queries(catalog_state, monkeypatch):
+    captured = []
+
+    def fake_read(sources, **kwargs):
+        captured.append(kwargs)
+        return []
+
+    monkeypatch.setattr(operations, "read_journal", fake_read)
+
+    operations.read("gway")
+    operations.search("timeout", "gway")
+
+    assert [item["limit"] for item in captured] == [100, 100]
+
+
+def test_zero_source_tail_and_search_return_catalog(catalog_state, monkeypatch):
+    monkeypatch.setattr(
+        operations,
+        "read_journal",
+        lambda *args, **kwargs: pytest.fail("journal should not be read"),
+    )
+
+    tail_result = operations.tail()
+    search_result = operations.search("timeout")
+
+    expected = [
+        "gway",
+        "arthexis",
+        "arthexis/portable",
+        "arthexis/web",
+        "arthexis/worker",
+    ]
+    assert [item["identity"] for item in tail_result] == expected
+    assert [item["identity"] for item in search_result] == expected
 
 
 def test_lazy_recipe_source_works_through_public_operations(

@@ -182,5 +182,5 @@ def read_file_logs(
 
     records.sort(key=lambda item: item.timestamp, reverse=reverse)
     if limit is not None:
-        records = records[:limit]
+        records = records[:limit] if reverse else records[-limit:]
     return records

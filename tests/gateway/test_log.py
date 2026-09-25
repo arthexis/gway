@@ -277,17 +277,36 @@ def test_log_read_returns_structured_serializable_records_through_gateway(
     ]
 
 
-def test_log_empty_selection_never_means_whole_host_journal(gateway, monkeypatch):
+def test_log_empty_selection_is_forwarded_without_implicit_all(gateway, monkeypatch):
     captured = {}
 
     def fake_read(*source, **kwargs):
         captured["source"] = source
+        captured["kwargs"] = kwargs
+        return [{"identity": "gway"}]
+
+    monkeypatch.setattr(log_operations, "read", fake_read)
+
+    assert gateway("log read") == [{"identity": "gway"}]
+    assert captured["source"] == ()
+    assert captured["kwargs"]["all"] is False
+    assert captured["kwargs"]["limit"] == 100
+
+
+def test_log_all_flag_is_explicitly_bound(gateway, monkeypatch):
+    captured = {}
+
+    def fake_read(*source, **kwargs):
+        captured["source"] = source
+        captured["kwargs"] = kwargs
         return []
 
     monkeypatch.setattr(log_operations, "read", fake_read)
 
-    assert gateway("log read") == []
+    assert gateway("log read --all") == []
     assert captured["source"] == ()
+    assert captured["kwargs"]["all"] is True
+    assert captured["kwargs"]["limit"] == 100
 
 
 
