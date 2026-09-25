@@ -191,6 +191,39 @@ def test_mcp_gway_rechecks_each_real_multi_statement_operation(gateway):
     assert calls == []
 
 
+def test_mcp_query_rejects_mutating_later_statement(gateway):
+    server = _server_module()
+    calls = []
+
+    def first(*, mutate=True):
+        calls.append(("first", mutate))
+        return "A"
+
+    def second():
+        calls.append(("second", None))
+        return "B"
+
+    gateway.first = gateway.wrap("read_alpha", first)
+    gateway.second = gateway.wrap("restart_service", second)
+    server._gway_parent = gateway
+
+    async def run():
+        async with Client(server.mcp) as client:
+            await client.call_tool(
+                "query",
+                {"command": "first ; second"},
+            )
+
+    try:
+        asyncio.run(run())
+    except Exception as exception:
+        assert "does not support non-mutating execution" in str(exception)
+    else:
+        raise AssertionError("query unexpectedly allowed a mutating later statement")
+
+    assert calls == [("first", False)]
+
+
 def test_mcp_execution_envelope_classifies_json_result_shapes():
     server = _server_module()
 
