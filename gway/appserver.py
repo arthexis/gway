@@ -8,6 +8,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from .appadapter import InMemoryAdapter
+from .apppresentation import (
+    PolicyContractError,
+    TemplateRenderError,
+    evaluate_policy,
+    render_template,
+)
 from .appschema import (
     SchemaReferenceError,
     SchemaValidationError,
@@ -220,45 +226,121 @@ class ApplicationHTTPAdapter:
             return _static_response(mapping, request.split.path)
 
         try:
-            handler = self.dispatch.resolve_handler(mapping)
-            decoded_body = _UNSET
-            if mapping.body_model:
-                schema = resolve_schema(
-                    self.gateway,
-                    handler,
-                    mapping.body_model,
-                )
-                decoded_body = validate_schema(
-                    schema,
-                    _body_value(request),
-                )
-                body_bindings = tuple(
-                    binding
-                    for binding in mapping.bindings
-                    if binding.source == "body"
-                )
-                if len(body_bindings) > 1:
-                    decoded_body = dump_schema_value(decoded_body)
-
-            arguments = _binding_arguments(
-                mapping,
-                request,
-                path_values,
-                decoded_body=decoded_body,
-            )
             with self.gateway.request_scope(context=context):
+                policy_response = evaluate_policy(
+                    self.gateway,
+                    mapping.auth,
+                )
+                if policy_response is not None:
+                    return normalize_response(policy_response)
+
+                handler = self.dispatch.resolve_handler(mapping)
+                decoded_body = _UNSET
+                if mapping.body_model:
+                    schema = resolve_schema(
+                        self.gateway,
+                        handler,
+                        mapping.body_model,
+                    )
+                    decoded_body = validate_schema(
+                        schema,
+                        _body_value(request),
+                    )
+                    body_bindings = tuple(
+                        binding
+                        for binding in mapping.bindings
+                        if binding.source == "body"
+                    )
+                    if len(body_bindings) > 1:
+                        decoded_body = dump_schema_value(decoded_body)
+
+                arguments = _binding_arguments(
+                    mapping,
+                    request,
+                    path_values,
+                    decoded_body=decoded_body,
+                )
                 result = self.dispatch.invoke(
                     mapping,
                     arguments=arguments,
                 )
+
+                if mapping.response_model:
+                    schema = resolve_schema(
+                        self.gateway,
+                        handler,
+                        mapping.response_model,
+                    )
+                    if (
+                        isinstance(result, tuple)
+                        and len(result) == 3
+                        and isinstance(result[0], int)
+                    ):
+                        status, response_headers, payload = result
+                        payload = dump_schema_value(
+                            validate_schema(schema, payload)
+                        )
+                        result = (status, response_headers, payload)
+                    else:
+                        result = dump_schema_value(
+                            validate_schema(schema, result)
+                        )
+
+                if mapping.template:
+                    if (
+                        isinstance(result, tuple)
+                        and len(result) == 3
+                        and isinstance(result[0], int)
+                    ):
+                        status, response_headers, payload = result
+                        rendered = render_template(
+                            self.gateway,
+                            self.app,
+                            mapping,
+                            request.method,
+                            payload,
+                        )
+                        response_headers = dict(response_headers or {})
+                        response_headers.setdefault(
+                            "content-type",
+                            "text/html; charset=utf-8",
+                        )
+                        result = (status, response_headers, rendered)
+                    else:
+                        result = (
+                            200,
+                            {"content-type": "text/html; charset=utf-8"},
+                            render_template(
+                                self.gateway,
+                                self.app,
+                                mapping,
+                                request.method,
+                                result,
+                            ),
+                        )
         except RequestBindingError as error:
             return 400, {}, {
                 "error": "invalid_request",
                 "message": str(error),
             }
         except (SchemaReferenceError, SchemaValidationError) as error:
+            if mapping.response_model:
+                return 500, {}, {
+                    "error": "invalid_response",
+                    "message": str(error),
+                }
             return 422, {}, {
                 "error": "invalid_body",
+                "message": str(error),
+            }
+        except PolicyContractError as error:
+            return 500, {}, {
+                "error": "invalid_policy",
+                "message": str(error),
+            }
+        except TemplateRenderError as error:
+            return 500, {}, {
+                "error": "template_error",
                 "message": str(error),
             }
         except TypeError as error:
@@ -269,34 +351,7 @@ class ApplicationHTTPAdapter:
                 "message": str(error),
             }
 
-        if mapping.response_model:
-            try:
-                schema = resolve_schema(
-                    self.gateway,
-                    handler,
-                    mapping.response_model,
-                )
-                if (
-                    isinstance(result, tuple)
-                    and len(result) == 3
-                    and isinstance(result[0], int)
-                ):
-                    status, headers, payload = result
-                    payload = dump_schema_value(
-                        validate_schema(schema, payload)
-                    )
-                    result = (status, headers, payload)
-                else:
-                    result = dump_schema_value(
-                        validate_schema(schema, result)
-                    )
-            except (SchemaReferenceError, SchemaValidationError) as error:
-                return 500, {}, {
-                    "error": "invalid_response",
-                    "message": str(error),
-                }
-
-        return normalize_response(result)
+        return normalize_response(result))
 
 
 def normalize_response(result):
