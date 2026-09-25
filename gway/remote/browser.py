@@ -14,6 +14,7 @@ class BrowserRequest:
     method: str
     path: str
     headers: dict[str, str]
+    application: object
     body: bytes = b""
 
     @property
@@ -220,14 +221,13 @@ class BrowserController:
 
 def compose(runtime, application):
     """Compose the maintained remote browser AppSpec and return its adapter."""
-    controller = BrowserController(application)
     operations = {
-        "remote.browser.index": controller.index,
-        "remote.browser.login": controller.login,
-        "remote.browser.privacy": controller.privacy,
-        "remote.browser.connect": controller.connect,
-        "remote.browser.consent": controller.consent,
-        "remote.browser.connections": controller.connections,
+        "remote.browser.index": index,
+        "remote.browser.login": login,
+        "remote.browser.privacy": privacy,
+        "remote.browser.connect": connect,
+        "remote.browser.consent": consent,
+        "remote.browser.connections": connections,
     }
     for name, handler in operations.items():
         runtime.wrap(name, handler)
@@ -236,3 +236,27 @@ def compose(runtime, application):
     with runtime.request_scope():
         app = runtime(recipe)
     return InMemoryAdapter(runtime, app)
+
+
+def index(request: BrowserRequest):
+    return BrowserController(request.application).index(request)
+
+
+def login(request: BrowserRequest):
+    return BrowserController(request.application).login(request)
+
+
+def privacy(request: BrowserRequest):
+    return BrowserController(request.application).privacy(request)
+
+
+def connect(request: BrowserRequest):
+    return BrowserController(request.application).connect(request)
+
+
+def consent(request: BrowserRequest):
+    return BrowserController(request.application).consent(request)
+
+
+def connections(request: BrowserRequest):
+    return BrowserController(request.application).connections(request)
