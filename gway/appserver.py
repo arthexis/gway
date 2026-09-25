@@ -237,15 +237,21 @@ class ApplicationHTTPAdapter:
                 handler = self.dispatch.resolve_handler(mapping)
                 decoded_body = _UNSET
                 if mapping.body_model:
-                    schema = resolve_schema(
-                        self.gateway,
-                        handler,
-                        mapping.body_model,
-                    )
-                    decoded_body = validate_schema(
-                        schema,
-                        _body_value(request),
-                    )
+                    try:
+                        schema = resolve_schema(
+                            self.gateway,
+                            handler,
+                            mapping.body_model,
+                        )
+                        decoded_body = validate_schema(
+                            schema,
+                            _body_value(request),
+                        )
+                    except (SchemaReferenceError, SchemaValidationError) as error:
+                        return 422, {}, {
+                            "error": "invalid_body",
+                            "message": str(error),
+                        }
                     body_bindings = tuple(
                         binding
                         for binding in mapping.bindings
@@ -266,25 +272,31 @@ class ApplicationHTTPAdapter:
                 )
 
                 if mapping.response_model:
-                    schema = resolve_schema(
-                        self.gateway,
-                        handler,
-                        mapping.response_model,
-                    )
-                    if (
-                        isinstance(result, tuple)
-                        and len(result) == 3
-                        and isinstance(result[0], int)
-                    ):
-                        status, response_headers, payload = result
-                        payload = dump_schema_value(
-                            validate_schema(schema, payload)
+                    try:
+                        schema = resolve_schema(
+                            self.gateway,
+                            handler,
+                            mapping.response_model,
                         )
-                        result = (status, response_headers, payload)
-                    else:
-                        result = dump_schema_value(
-                            validate_schema(schema, result)
-                        )
+                        if (
+                            isinstance(result, tuple)
+                            and len(result) == 3
+                            and isinstance(result[0], int)
+                        ):
+                            status, response_headers, payload = result
+                            payload = dump_schema_value(
+                                validate_schema(schema, payload)
+                            )
+                            result = (status, response_headers, payload)
+                        else:
+                            result = dump_schema_value(
+                                validate_schema(schema, result)
+                            )
+                    except (SchemaReferenceError, SchemaValidationError) as error:
+                        return 500, {}, {
+                            "error": "invalid_response",
+                            "message": str(error),
+                        }
 
                 if mapping.template:
                     if (
@@ -323,16 +335,6 @@ class ApplicationHTTPAdapter:
                 "error": "invalid_request",
                 "message": str(error),
             }
-        except (SchemaReferenceError, SchemaValidationError) as error:
-            if mapping.response_model:
-                return 500, {}, {
-                    "error": "invalid_response",
-                    "message": str(error),
-                }
-            return 422, {}, {
-                "error": "invalid_body",
-                "message": str(error),
-            }
         except PolicyContractError as error:
             return 500, {}, {
                 "error": "invalid_policy",
@@ -351,7 +353,7 @@ class ApplicationHTTPAdapter:
                 "message": str(error),
             }
 
-        return normalize_response(result))
+        return normalize_response(result)
 
 
 def normalize_response(result):
