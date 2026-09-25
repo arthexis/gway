@@ -1,6 +1,9 @@
 from pydantic import BaseModel
 
-from gway.appserver import ApplicationHTTPAdapter
+from gway.sampler import load as load_sampler
+
+web_app = load_sampler("web/app")
+ApplicationHTTPAdapter = web_app.ApplicationHTTPAdapter
 
 
 class UserCreate(BaseModel):
@@ -141,7 +144,7 @@ def test_invalid_response_model_returns_500(gateway):
 
 
 def test_body_model_requires_body_binding():
-    from gway.appspec import ViewSpec
+    ViewSpec = web_app.ViewSpec
 
     try:
         ViewSpec("users.create", body_model="UserCreate")
