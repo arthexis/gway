@@ -169,8 +169,9 @@ def test_concrete_exposure_adapter_rejects_non_root_route(gateway):
 
 
 def test_expose_app_is_mutating_but_supports_no_mutate(gateway):
-    assert gateway.expose_app.mutates is True
     app = gateway("setup app remote")
+
+    assert gateway.expose_app.mutates is True
 
     exposure = gateway.execute(
         "expose app remote.example.com --host 127.0.0.1 --port 8001",
