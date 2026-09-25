@@ -64,7 +64,7 @@ jobs:
           fi
 
           attempts="$(
-            gh api --paginate "repos/$REPOSITORY/issues/$pr_number/comments?per_page=100"               --jq '[.[] | select(.body | startswith("<!-- ci-autofix -->"))] | length'               | awk '{s += $1} END {print s+0}'
+            gh api --paginate "repos/$REPOSITORY/issues/$pr_number/comments?per_page=100"               --jq '[.[] | select(.body | (startswith("<!-- ci-autofix -->") or startswith("<!-- approved-ci-autofix -->")))] | length'               | awk '{s += $1} END {print s+0}'
           )"
 
           if (( attempts >= 3 )); then
