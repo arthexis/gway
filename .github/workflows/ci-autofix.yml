@@ -28,6 +28,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Wait for pull request state to stabilize
+        shell: bash
+        run: sleep 60
+
       - name: Resolve eligible pull request
         id: resolve
         shell: bash
