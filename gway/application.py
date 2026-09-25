@@ -9,12 +9,13 @@ class Controller:
     def __init__(self, gateway):
         self.gateway = gateway
 
-    def setup_app(self, name=None):
+    def setup_app(self, name=None, *, mutate=False):
         """Create a new framework-neutral application specification.
 
         Args:
             name: Optional application name.
         """
+        del mutate
         return AppSpec(name=name)
 
     def _canonical_handler(self, handler):
@@ -53,6 +54,7 @@ class Controller:
         method=None,
         name=None,
         replace: bool = False,
+        mutate=False,
     ):
         """Add one handler-backed view to the current application.
 
@@ -65,6 +67,7 @@ class Controller:
             name: Optional view name.
             replace: Replace existing mappings for the same route/methods.
         """
+        del mutate
         if not isinstance(app, AppSpec):
             raise TypeError("view app requires an AppSpec")
         if method is not None and methods:
