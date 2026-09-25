@@ -58,6 +58,10 @@ def render_template(gateway, app, mapping, method, payload):
         return payload
 
     context = _template_context(mapping, method, payload)
+    try:
+        context["request"] = gateway.context["request"]
+    except (KeyError, TypeError):
+        pass
     with gateway.request_scope(context=context):
         resolved_name = gateway.resolve(expression)
 
