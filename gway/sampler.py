@@ -78,9 +78,9 @@ def expand(runtime, tokens):
         return False
     for semantic_root in sorted(item for item in sampler_root.iterdir() if item.is_dir()):
         route = semantic_root / subject
-        companion = route / "__main__.py"
-        if companion.is_file():
-            candidates.append((semantic_root.name, route, companion))
+        package = route / "__init__.py"
+        if package.is_file():
+            candidates.append((semantic_root.name, route, package))
 
     if len(candidates) > 1:
         names = ", ".join(name for name, _, _ in candidates)
@@ -90,19 +90,33 @@ def expand(runtime, tokens):
     if not candidates:
         return False
 
-    _, route, companion = candidates[0]
+    _, route, package = candidates[0]
     key = route.resolve()
     if key in loaded:
         return False
 
     from importlib.util import module_from_spec, spec_from_file_location
+    import sys
 
     module_name = f"_gway_sampler_{route.parent.name}_{route.name}"
-    spec = spec_from_file_location(module_name, companion)
+    spec = spec_from_file_location(
+        module_name,
+        package,
+        submodule_search_locations=[str(route)],
+    )
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load sampler route: {route}")
     module = module_from_spec(spec)
-    spec.loader.exec_module(module)
+    previous = sys.modules.get(module_name)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        if previous is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = previous
+        raise
     register = getattr(module, "register", None)
     if not callable(register):
         raise TypeError(f"Sampler route has no register(runtime): {route}")
