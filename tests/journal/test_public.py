@@ -24,7 +24,12 @@ def test_public_commit_closes_transaction(gateway, tmp_path):
         ]
     )
 
-    assert result == "deploy"
+    assert result == {
+        "results": [
+            {"subject": None, "result": destination},
+            {"subject": None, "result": "deploy"},
+        ]
+    }
     assert destination.read_text(encoding="utf-8") == "source"
     assert gateway.journal.get("deploy") is None
 
@@ -49,7 +54,12 @@ def test_public_rollback_restores_transaction(gateway, tmp_path):
         ]
     )
 
-    assert result == "deploy"
+    assert result == {
+        "results": [
+            {"subject": None, "result": destination},
+            {"subject": None, "result": "deploy"},
+        ]
+    }
     assert destination.read_text(encoding="utf-8") == "before"
     assert gateway.journal.get("deploy") is None
 
