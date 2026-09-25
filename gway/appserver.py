@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from .appadapter import InMemoryAdapter, MethodNotAllowed, RouteNotFound
+from .appadapter import InMemoryAdapter
 from .appspec import AppSpec
 
 
@@ -132,7 +132,13 @@ class ApplicationHTTPAdapter:
         for mapping in self.app.routes:
             values = _match_path(mapping.route, request.split.path)
             if values is not None:
-                matches.append((mapping, values))
+                exact = mapping.route == request.split.path
+                matches.append((not exact, mapping, values))
+        matches.sort(key=lambda item: item[0])
+        matches = [
+            (mapping, values)
+            for _, mapping, values in matches
+        ]
 
         if not matches:
             return 404, {}, {"error": "not_found"}
