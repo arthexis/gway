@@ -78,6 +78,8 @@ class Controller:
         path_params: tuple[str, ...] = (),
         header: tuple[str, ...] = (),
         body: tuple[str, ...] = (),
+        body_model=None,
+        response_model=None,
         replace: bool = False,
         mutate=False,
     ):
@@ -94,6 +96,8 @@ class Controller:
             path_params: Handler arguments sourced from named route segments.
             header: Handler arguments sourced from HTTP headers.
             body: Handler arguments sourced from the request body.
+            body_model: Optional schema reference used to validate the request body.
+            response_model: Optional schema reference used to validate/serialize results.
             replace: Replace existing mappings for the same route/methods.
         """
         del mutate
@@ -120,6 +124,8 @@ class Controller:
             methods=selected_methods or ("GET",),
             name=name,
             bindings=bindings,
+            body_model=None if body_model is None else str(body_model),
+            response_model=None if response_model is None else str(response_model),
         )
         return app.replace(view) if replace else app.add(view)
 
