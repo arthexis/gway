@@ -20,6 +20,14 @@ def test_app_spec_add_is_idempotent_for_same_view():
     assert app.add(view) is app
 
 
+def test_app_spec_constructor_deduplicates_same_view():
+    view = ViewSpec("remote.health", route="/health")
+
+    app = AppSpec(views=(view, view))
+
+    assert app.views == (view,)
+
+
 def test_view_defaults_to_get():
     assert ViewSpec("remote.health").methods == ("GET",)
 
@@ -43,6 +51,16 @@ def test_app_spec_rejects_conflicting_route_method():
 
     with pytest.raises(ValueError, match=r"Conflicting view for GET /health"):
         app.add(ViewSpec("remote.second", route="/health"))
+
+
+def test_app_spec_constructor_rejects_conflicting_route_method():
+    with pytest.raises(ValueError, match=r"Conflicting view for GET /health"):
+        AppSpec(
+            views=(
+                ViewSpec("remote.first", route="/health"),
+                ViewSpec("remote.second", route="/health"),
+            )
+        )
 
 
 def test_app_spec_allows_same_route_with_distinct_methods():
