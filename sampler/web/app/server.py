@@ -7,14 +7,14 @@ import mimetypes
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from .appadapter import InMemoryAdapter
-from .apppresentation import (
+from .adapter import InMemoryAdapter
+from .presentation import (
     PolicyContractError,
     TemplateRenderError,
     evaluate_policy,
     render_template,
 )
-from .appschema import (
+from .schema import (
     SchemaReferenceError,
     SchemaValidationError,
     dump_schema_value,

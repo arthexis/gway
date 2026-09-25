@@ -1,14 +1,16 @@
 import pytest
 
-from gway.appadapter import (
-    HandlerNotFound,
-    InMemoryAdapter,
-    MethodNotAllowed,
-    RouteNotFound,
-)
-from gway.appspec import AppSpec, ViewSpec
 from gway.ingestion.base import remember_object
 from gway.ingestion.python import ingest_python
+from gway.sampler import load as load_sampler
+
+web_app = load_sampler("web/app")
+HandlerNotFound = web_app.HandlerNotFound
+InMemoryAdapter = web_app.InMemoryAdapter
+MethodNotAllowed = web_app.MethodNotAllowed
+RouteNotFound = web_app.RouteNotFound
+AppSpec = web_app.AppSpec
+ViewSpec = web_app.ViewSpec
 def _register_handler(gateway, name):
     def handler():
         return name
@@ -98,6 +100,8 @@ def test_view_replace_only_replaces_claimed_route_methods(gateway):
 
 
 def test_app_composition_operations_are_declared_non_mutating(gateway):
+    gateway("setup app remote")
+
     assert gateway.setup_app.mutates is False
     assert gateway.view_app.mutates is False
 
@@ -284,7 +288,7 @@ def test_explicit_app_name_overrides_topic_inference(gateway):
     assert app.topic == "remote.browser"
 
 
-def test_start_app_consumes_semantic_app_context(gateway, monkeypatch):
+def test_serve_app_consumes_semantic_app_context(gateway, monkeypatch):
     calls = {}
 
     def fake_serve(runtime, app, host="127.0.0.1", port=8000, *, context=None):
@@ -297,10 +301,10 @@ def test_start_app_consumes_semantic_app_context(gateway, monkeypatch):
         )
         return "served"
 
-    monkeypatch.setattr("gway.appserver.serve_app", fake_serve)
+    monkeypatch.setattr(web_app.server, "serve_app", fake_serve)
     app = gateway("setup app --topic demo")
 
-    result = gateway("start app --host 127.0.0.2 --port 8123")
+    result = gateway("serve app --host 127.0.0.2 --port 8123")
 
     assert result == "served"
     assert calls == {
@@ -312,5 +316,7 @@ def test_start_app_consumes_semantic_app_context(gateway, monkeypatch):
     }
 
 
-def test_start_app_is_mutating_lifecycle_operation(gateway):
-    assert gateway.start_app.mutates is True
+def test_serve_app_is_mutating_lifecycle_operation(gateway):
+    gateway("setup app remote")
+
+    assert gateway.serve_app.mutates is True

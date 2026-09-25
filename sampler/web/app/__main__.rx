@@ -1,0 +1,2 @@
+# Optional web application capability.
+# The companion is loaded lazily only after ordinary semantic resolution misses.

@@ -2,7 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from gway.appserver import ApplicationHTTPAdapter
+from gway.sampler import load as load_sampler
+
+web_app = load_sampler("web/app")
+ApplicationHTTPAdapter = web_app.ApplicationHTTPAdapter
 
 
 def test_false_policy_returns_403_before_handler(gateway):

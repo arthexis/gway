@@ -1,7 +1,11 @@
 import pytest
 
-from gway.appexposure import ExposureSpec, LocalAppService
-from gway.appspec import AppSpec
+from gway.sampler import load as load_sampler
+
+web_app = load_sampler("web/app")
+ExposureSpec = web_app.ExposureSpec
+LocalAppService = web_app.LocalAppService
+AppSpec = web_app.AppSpec
 
 
 def test_expose_app_requires_known_local_target(gateway):
@@ -169,8 +173,9 @@ def test_concrete_exposure_adapter_rejects_non_root_route(gateway):
 
 
 def test_expose_app_is_mutating_but_supports_no_mutate(gateway):
-    assert gateway.expose_app.mutates is True
     app = gateway("setup app remote")
+
+    assert gateway.expose_app.mutates is True
 
     exposure = gateway.execute(
         "expose app remote.example.com --host 127.0.0.1 --port 8001",

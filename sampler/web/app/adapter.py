@@ -47,8 +47,8 @@ class InMemoryAdapter:
 
     def resolve_handler(self, mapping: RouteSpec):
         """Resolve one route's late-bound canonical handler operation."""
-        from .dispatch import resolve_operation
-        from .tokens import tokenize
+        from gway.dispatch import resolve_operation
+        from gway.tokens import tokenize
 
         try:
             resolution = resolve_operation(self.gateway, tokenize(mapping.handler))
@@ -68,7 +68,7 @@ class InMemoryAdapter:
         """Invoke one already-resolved mapping with ordinary handler arguments."""
         arguments = {} if arguments is None else dict(arguments)
 
-        from .binding import coerce_native_arguments
+        from gway.binding import coerce_native_arguments
 
         handler = self.resolve_handler(mapping)
         arguments = coerce_native_arguments(

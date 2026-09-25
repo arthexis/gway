@@ -57,7 +57,7 @@ def apply_exposure(gateway, exposure):
     if not exposure.email:
         raise ValueError("applied HTTPS exposure requires --email")
 
-    from .sampler import run
+    from gway.sampler import run
 
     run(
         gateway,

@@ -3,8 +3,13 @@ import threading
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from gway.appserver import ApplicationHTTPAdapter, build_app_server
-from gway.appspec import AppSpec, ViewSpec
+from gway.sampler import load as load_sampler
+
+web_app = load_sampler("web/app")
+ApplicationHTTPAdapter = web_app.ApplicationHTTPAdapter
+build_app_server = web_app.build_app_server
+AppSpec = web_app.AppSpec
+ViewSpec = web_app.ViewSpec
 
 
 def _serve(server):

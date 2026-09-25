@@ -43,3 +43,55 @@ def test_sampler_tree_can_be_ingested_as_one_command_namespace(gateway):
     assert gateway.ops.resolve("sampler.web.expose") is not None
     assert gateway.ops.resolve("sampler.web.expose.http") is not None
     assert gateway.ops.resolve("sampler.arthexis.setup") is not None
+
+
+def _is_under(path, root):
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def test_all_repository_recipes_live_under_sampler():
+    root = repository_root()
+    sampler = root / "sampler"
+
+    recipes = sorted(path for path in root.rglob("*.rx") if path.is_file())
+    misplaced = [path.relative_to(root) for path in recipes if not _is_under(path, sampler)]
+
+    assert misplaced == []
+
+
+def test_all_recipe_companions_live_beside_recipes_under_sampler():
+    root = repository_root()
+    sampler = root / "sampler"
+
+    companions = []
+    for recipe in sampler.rglob("*.rx"):
+        companion = recipe.with_suffix(".py")
+        if companion.is_file():
+            companions.append(companion)
+
+    misplaced = [
+        path.relative_to(root)
+        for path in companions
+        if not _is_under(path, sampler) or path.with_suffix(".rx").parent != path.parent
+    ]
+
+    assert misplaced == []
+
+
+def test_no_recipe_companion_pair_exists_outside_sampler():
+    root = repository_root()
+    sampler = root / "sampler"
+
+    misplaced = []
+    for python_file in root.rglob("*.py"):
+        if _is_under(python_file, sampler):
+            continue
+        recipe = python_file.with_suffix(".rx")
+        if recipe.is_file():
+            misplaced.append(python_file.relative_to(root))
+
+    assert misplaced == []

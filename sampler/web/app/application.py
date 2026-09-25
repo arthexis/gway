@@ -3,9 +3,9 @@
 from pathlib import Path
 
 from .appspec import AppSpec, BindingSpec, ViewSpec
-from .appexposure import ExposureSpec, LocalAppService, apply_exposure
-from .binding import Literal
-from .publication import SKIP_PUBLICATION
+from .exposure import ExposureSpec, LocalAppService, apply_exposure
+from gway.binding import Literal
+from gway.publication import SKIP_PUBLICATION
 
 
 class Controller:
@@ -37,7 +37,7 @@ class Controller:
         del mutate
         template_root = None
         if templates is not None or template is not None:
-            from .recipe import recipe_base
+            from gway.recipe import recipe_base
 
             if templates is None:
                 template_root = str(recipe_base(self.gateway).resolve())
@@ -59,8 +59,8 @@ class Controller:
         if not raw:
             raise ValueError("view handler must be a non-empty operation identity")
 
-        from .dispatch import resolve_operation
-        from .tokens import tokenize
+        from gway.dispatch import resolve_operation
+        from gway.tokens import tokenize
 
         canonical = raw.replace(" ", ".")
         candidates = [canonical]
@@ -154,7 +154,7 @@ class Controller:
         if static is not None and (auth is not None or template is not None):
             raise ValueError("static views do not support auth or templates")
         if template is not None and app.templates is None:
-            from .recipe import recipe_base
+            from gway.recipe import recipe_base
 
             app = AppSpec(
                 name=app.name,
@@ -182,7 +182,7 @@ class Controller:
                     else self._canonical_handler(raw_auth, app=app)
                 )
         else:
-            from .recipe import recipe_base
+            from gway.recipe import recipe_base
 
             resolved = Path(str(self.gateway.resolve(str(static)))).expanduser()
             if not resolved.is_absolute():
@@ -269,7 +269,7 @@ class Controller:
         self.gateway.results.insert("exposure", result)
         return SKIP_PUBLICATION
 
-    def start_app(
+    def serve_app(
         self,
         *,
         app: AppSpec,
@@ -284,9 +284,9 @@ class Controller:
             port: Local TCP port.
         """
         if not isinstance(app, AppSpec):
-            raise TypeError("start app requires an AppSpec")
+            raise TypeError("serve app requires an AppSpec")
 
-        from .appserver import serve_app
+        from .server import serve_app
 
         return serve_app(
             self.gateway,
@@ -313,10 +313,10 @@ def register(gateway):
         sub="app",
     )
     gateway.ops.register_alias("view", gateway.view_app)
-    gateway.start_app = gateway.wrap(
-        "start.app",
-        controller.start_app,
-        op="start",
+    gateway.serve_app = gateway.wrap(
+        "serve.app",
+        controller.serve_app,
+        op="serve",
         sub="app",
     )
     gateway.expose_app = gateway.wrap(

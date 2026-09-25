@@ -3,8 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from gway.appserver import ApplicationHTTPAdapter
-from gway.appspec import AppSpec, ViewSpec
+from gway.sampler import load as load_sampler
+
+web_app = load_sampler("web/app")
+ApplicationHTTPAdapter = web_app.ApplicationHTTPAdapter
+AppSpec = web_app.AppSpec
+ViewSpec = web_app.ViewSpec
 
 
 def test_static_file_view_serves_bytes_and_infers_content_type(gateway, tmp_path):
