@@ -1,5 +1,7 @@
 import pytest
 
+from gway.ingestion.base import remember_object
+from gway.ingestion.python import ingest_python
 from gway.sampler import load as load_sampler
 
 web_app = load_sampler("web/app")
@@ -9,8 +11,6 @@ MethodNotAllowed = web_app.MethodNotAllowed
 RouteNotFound = web_app.RouteNotFound
 AppSpec = web_app.AppSpec
 ViewSpec = web_app.ViewSpec
-from gway.ingestion.base import remember_object
-from gway.ingestion.python import ingest_python
 def _register_handler(gateway, name):
     def handler():
         return name
