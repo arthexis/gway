@@ -45,9 +45,10 @@ class InMemoryAdapter:
             f"{method} is not allowed for {route}; allowed methods: {allowed}"
         )
 
-    def request(self, route: str, method: str = "GET", **arguments):
-        """Invoke the handler selected by route/method using normal Gway binding."""
+    def request(self, route: str, method: str = "GET", arguments=None):
+        """Invoke one route while keeping transport fields separate from handler inputs."""
         mapping = self.resolve(route, method)
+        arguments = {} if arguments is None else dict(arguments)
 
         from .dispatch import resolve_operation
         from .tokens import tokenize
