@@ -25,8 +25,7 @@ def _scopes(value):
         values = value.split()
     else:
         values = value
-    result = frozenset(str(item).strip() for item in values if str(item).strip())
-    return result
+    return frozenset(str(item).strip() for item in values if str(item).strip())
 
 
 class RemoteAccountApplication:
@@ -56,12 +55,7 @@ class RemoteAccountApplication:
         if not scopes:
             raise ValueError("At least one named G-Way scope is required")
         session.pending_client_id = client_id
-        session.requested_scopes = scopes
-        # Until S2 adds explicit scope selection, preserve the existing consent
-        # behavior with a provisional selection constrained by any linked bearer.
-        session.selected_scopes = (
-            scopes & session.available_scopes if session.link_name else scopes
-        )
+        session.pending_scopes = scopes
         session.pending_resource = None if resource is None else str(resource).strip()
         session.approved_grant_id = None
         return session
@@ -91,11 +85,6 @@ class RemoteAccountApplication:
         link_name = f"remote-{secrets.token_hex(12)}"
         self.oauth.link(link_name, identity.token.name)
         session.link_name = link_name
-        session.available_scopes = frozenset(identity.token.scopes)
-        if session.requested_scopes:
-            session.selected_scopes = (
-                session.requested_scopes & session.available_scopes
-            )
         session.approved_grant_id = None
         self.sessions.rotate(session)
         return self.oauth.get_link(link_name)
@@ -125,6 +114,7 @@ class RemoteAccountApplication:
                 {
                     "name": name,
                     "operation_count": len(scope_operations),
+                    "operations": scope_operations,
                     "operations_preview": scope_operations[:OPERATION_PREVIEW_LIMIT],
                     "remaining_operations": max(
                         0, len(scope_operations) - OPERATION_PREVIEW_LIMIT
@@ -144,6 +134,7 @@ class RemoteAccountApplication:
             "effective": {
                 "scope_count": len(names),
                 "operation_count": len(effective_operations),
+                "operations": effective_operations,
                 "environment_count": len(effective_environment),
                 "environment": effective_environment,
                 "mutation_capable": any(
@@ -156,148 +147,99 @@ class RemoteAccountApplication:
     def consent_details(self, session):
         if not session.link_name:
             raise PermissionError("G-Way connection required")
-        if not session.pending_client_id or not session.requested_scopes:
+        if not session.pending_client_id or not session.pending_scopes:
             raise ValueError("No pending consent request")
-        if not session.selected_scopes:
-            raise ValueError("No scopes selected for consent")
 
         link = self.oauth.get_link(session.link_name)
         if link is None or link.revoked_at is not None:
             raise PermissionError("G-Way connection is revoked")
         token = self.tokens.require(link.token_name)
-        current_scopes = frozenset(token.scopes)
-        session.available_scopes = current_scopes
+        bearer_scopes = frozenset(token.scopes)
+        if not bearer_scopes:
+            raise PermissionError("Linked bearer has no scopes")
 
-        invalid_selection = session.selected_scopes - session.requested_scopes
-        if invalid_selection:
+        missing_requested = session.pending_scopes - bearer_scopes
+        if missing_requested:
             raise PermissionError(
-                "Selected scopes were not requested: "
-                + ", ".join(sorted(invalid_selection))
-            )
-
-        unavailable_selected = session.selected_scopes - current_scopes
-        if unavailable_selected:
-            raise PermissionError(
-                "Selected scopes are no longer available: "
-                + ", ".join(sorted(unavailable_selected))
+                "Requested scopes are not available from the linked bearer: "
+                + ", ".join(sorted(missing_requested))
             )
 
         operations = set()
         environment = set()
-        for name in sorted(session.selected_scopes):
+        for name in sorted(bearer_scopes):
             scope = self.oauth.scopes.require(name)
             operations.update(scope.operations)
             environment.update(scope.environment)
+
         return {
             "client_id": session.pending_client_id,
             "resource": session.pending_resource,
-            "scopes": frozenset(session.selected_scopes),
-            "available_scopes": frozenset(session.available_scopes),
-            "requested_scopes": frozenset(session.requested_scopes),
+            "scopes": bearer_scopes,
+            "requested_scopes": frozenset(session.pending_scopes),
             "operations": frozenset(operations),
             "environment": frozenset(environment),
-            "permission_summary": self.permission_summary(session.selected_scopes),
+            "permission_summary": self.permission_summary(bearer_scopes),
         }
 
-    def select_scopes(self, session, scopes):
-        scopes = _scopes(scopes)
-        if not scopes:
-            raise ValueError("At least one scope must be selected")
-        if not session.link_name:
-            raise PermissionError("G-Way connection required")
-        if not session.pending_client_id or not session.requested_scopes:
-            raise ValueError("No pending consent request")
-
-        link = self.oauth.get_link(session.link_name)
-        if link is None or link.revoked_at is not None:
-            raise PermissionError("G-Way connection is revoked")
-        token = self.tokens.require(link.token_name)
-        current_scopes = frozenset(token.scopes)
-        session.available_scopes = current_scopes
-
-        candidates = session.requested_scopes & current_scopes
-        invalid = scopes - candidates
-        if invalid:
-            raise PermissionError(
-                "Selected scopes are not delegable: " + ", ".join(sorted(invalid))
+    @staticmethod
+    def _scope_details(item):
+        preview = ", ".join(escape(operation) for operation in item["operations_preview"])
+        preview_html = (
+            f"<div><code>{preview}</code>"
+            + (
+                f" …and {item['remaining_operations']} more"
+                if item["remaining_operations"]
+                else ""
             )
-        session.selected_scopes = scopes
-        return scopes
+            + "</div>"
+            if preview
+            else "<div>No operations</div>"
+        )
+        all_operations = ", ".join(escape(operation) for operation in item["operations"])
+        expand_html = (
+            "<details>"
+            f"<summary>See all {item['operation_count']} operations</summary>"
+            f"<div><code>{all_operations}</code></div>"
+            "</details>"
+            if item["remaining_operations"]
+            else ""
+        )
+        return (
+            "<li>"
+            f"<strong>{escape(item['name'])}</strong>"
+            f"<div>{item['operation_count']} operations; "
+            + ("includes state changes" if item["mutation_capable"] else "read-only")
+            + f"; {item['environment_count']} environment names</div>"
+            + preview_html
+            + expand_html
+            + "</li>"
+        )
 
     def consent_page(self, session):
         details = self.consent_details(session)
-        candidates = details["requested_scopes"] & details["available_scopes"]
-        selected = details["scopes"]
-        candidate_summary = self.permission_summary(candidates)
-        scope_by_name = {
-            item["name"]: item for item in candidate_summary["scopes"]
-        }
-        scope_items = "".join(
-            "<li><label>"
-            f'<input type="checkbox" name="scope" value="{escape(name)}"'
-            + (" checked" if name in selected else "")
-            + f"> <strong>{escape(name)}</strong></label>"
-            + (
-                f"<div>{scope_by_name[name]['operation_count']} operations; "
-                + (
-                    "includes state changes"
-                    if scope_by_name[name]["mutation_capable"]
-                    else "read-only"
-                )
-                + f"; {scope_by_name[name]['environment_count']} environment names</div>"
-            )
-            + (
-                "<div><code>"
-                + ", ".join(
-                    escape(operation)
-                    for operation in scope_by_name[name]["operations_preview"]
-                )
-                + "</code>"
-                + (
-                    f" …and {scope_by_name[name]['remaining_operations']} more"
-                    if scope_by_name[name]["remaining_operations"]
-                    else ""
-                )
-                + "</div>"
-                if scope_by_name[name]["operations_preview"]
-                else ""
-            )
-            + "</li>"
-            for name in sorted(candidates)
-        )
-        selected_scope_items = "".join(
-            "<li>"
-            f"<strong>{escape(item['name'])}</strong>"
-            + (
-                "<div><code>"
-                + ", ".join(
-                    escape(operation) for operation in item["operations_preview"]
-                )
-                + "</code>"
-                + (
-                    f" …and {item['remaining_operations']} more"
-                    if item["remaining_operations"]
-                    else ""
-                )
-                + "</div>"
-                if item["operations_preview"]
-                else "<div>No operations</div>"
-            )
-            + "</li>"
-            for item in details["permission_summary"]["scopes"]
-        )
+        summary = details["permission_summary"]
+        scope_items = "".join(self._scope_details(item) for item in summary["scopes"])
         environment_items = "".join(
             f"<li>{escape(name)}</li>" for name in sorted(details["environment"])
         )
         if not environment_items:
             environment_items = "<li>None</li>"
-        effective = details["permission_summary"]["effective"]
+        effective = summary["effective"]
+        resource = (
+            f"<p>Resource: <code>{escape(details['resource'])}</code></p>"
+            if details["resource"]
+            else ""
+        )
         return _page(
             "Remote access consent",
             "<h1>Authorize remote access</h1>"
             f"<p>Client: <code>{escape(details['client_id'])}</code></p>"
-            f"<h2>Named scopes</h2><ul>{scope_items}</ul>"
-            "<h2>Effective selected access</h2>"
+            + resource
+            + "<p>The linked bearer defines the maximum G-Way authority for this "
+            "connection. This page is informational; scopes are not edited here.</p>"
+            f"<h2>Bearer scopes</h2><ul>{scope_items}</ul>"
+            "<h2>Effective access</h2>"
             f"<p>{effective['operation_count']} unique operations; "
             + (
                 "includes state changes"
@@ -305,26 +247,22 @@ class RemoteAccountApplication:
                 else "read-only"
             )
             + f"; {effective['environment_count']} environment names</p>"
-            f"<h3>Selected scope operations</h3><ul>{selected_scope_items}</ul>"
             f"<h2>Environment</h2><ul>{environment_items}</ul>"
             '<form method="post" action="/consent">'
             f'<input type="hidden" name="csrf" value="{escape(session.csrf)}">'
-            '<button name="decision" value="approve" type="submit">Approve</button>'
+            '<button name="decision" value="approve" type="submit">Authorize</button>'
             '<button name="decision" value="deny" type="submit">Deny</button>'
             "</form>",
         )
 
-    def decide_consent(self, session, *, csrf, decision, scopes=None):
+    def decide_consent(self, session, *, csrf, decision):
         if not secrets.compare_digest(session.csrf, str(csrf or "")):
             raise PermissionError("Invalid CSRF token")
         decision = str(decision or "").strip().casefold()
         if decision not in {"approve", "deny"}:
             raise ValueError("Consent decision must be approve or deny")
 
-        if decision == "approve":
-            self.select_scopes(session, scopes)
         details = self.consent_details(session)
-
         grant = None
         if decision == "approve":
             grant = self.oauth.create_grant(
@@ -338,8 +276,7 @@ class RemoteAccountApplication:
             session.approved_grant_id = None
 
         session.pending_client_id = None
-        session.requested_scopes = frozenset()
-        session.selected_scopes = frozenset()
+        session.pending_scopes = frozenset()
         session.pending_resource = None
         self.sessions.rotate_csrf(session)
         return grant
@@ -384,9 +321,7 @@ class RemoteAccountApplication:
         session.link_name = None
         session.approved_grant_id = None
         session.pending_client_id = None
-        session.available_scopes = frozenset()
-        session.requested_scopes = frozenset()
-        session.selected_scopes = frozenset()
+        session.pending_scopes = frozenset()
         session.pending_resource = None
         session.pending_redirect_uri = None
         session.pending_state = None
