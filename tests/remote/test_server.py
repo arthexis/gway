@@ -156,3 +156,24 @@ def test_remote_application_keeps_mcp_default_scope_without_metadata_scope():
     app = RemoteApplication(metadata)
 
     assert app.oauth.default_scope == "chatgpt-logs"
+
+
+def test_remote_runtime_permission_summary_expands_lazy_read_only_operation(tmp_path):
+    from gway.gateway import Gateway
+    from gway.security.scopes import ScopeRegistry
+
+    runtime = Gateway(security_path=tmp_path / "security.sqlite")
+    ScopeRegistry(runtime.security_path).replace(
+        "logs",
+        operations={"log.read"},
+        environment=(),
+    )
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+    app = RemoteApplication(metadata, runtime=runtime)
+
+    assert runtime.ops.resolve("log.read") is None
+
+    summary = app.account.permission_summary({"logs"})
+
+    assert summary["effective"]["mutation_capable"] is False
+    assert callable(runtime.ops.resolve("log.read"))
