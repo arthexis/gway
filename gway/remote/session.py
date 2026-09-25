@@ -15,8 +15,9 @@ class RemoteSession:
     expires_at: datetime
     link_name: str | None = None
     pending_client_id: str | None = None
-    pending_scopes: frozenset[str] = field(default_factory=frozenset)
     available_scopes: frozenset[str] = field(default_factory=frozenset)
+    requested_scopes: frozenset[str] = field(default_factory=frozenset)
+    selected_scopes: frozenset[str] = field(default_factory=frozenset)
     pending_resource: str | None = None
     pending_redirect_uri: str | None = None
     pending_state: str | None = None
