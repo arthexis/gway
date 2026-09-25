@@ -39,6 +39,7 @@ def test_connect_authenticates_bearer_once_and_rotates_browser_session(tmp_path)
 
     assert link.token_name == "operator"
     assert session.link_name == link.name
+    assert session.available_scopes == frozenset({"logs"})
     assert session.id != old_id
     assert session.csrf != old_csrf
     assert account.sessions.get(old_id) is None
@@ -91,6 +92,8 @@ def test_consent_displays_live_scope_operations_and_creates_constrained_grant(tm
     details = account.consent_details(session)
 
     assert details["scopes"] == frozenset({"chatgpt-logs"})
+    assert details["available_scopes"] == frozenset({"chatgpt-logs"})
+    assert details["requested_scopes"] == frozenset({"chatgpt-logs"})
     assert details["operations"] == frozenset(
         {"log.sources", "log.read", "log.tail"}
     )
@@ -106,7 +109,8 @@ def test_consent_displays_live_scope_operations_and_creates_constrained_grant(tm
     assert grant.scopes == frozenset({"chatgpt-logs"})
     assert session.approved_grant_id == grant.id
     assert session.pending_client_id is None
-    assert session.pending_scopes == frozenset()
+    assert session.requested_scopes == frozenset()
+    assert session.selected_scopes == frozenset()
 
 
 def test_consent_revalidates_scope_binding_before_approval(tmp_path):
@@ -160,3 +164,50 @@ def test_revoke_connection_invalidates_existing_grant(tmp_path):
 
     with pytest.raises(OAuthAuthenticationError):
         oauth.issue_tokens(grant.id)
+
+
+def test_consent_state_distinguishes_available_requested_and_selected_scopes(tmp_path):
+    scopes, tokens, _, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    issued = tokens.create("operator", scopes={"read", "write"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read"})
+
+    assert session.available_scopes == frozenset({"read", "write"})
+    assert session.requested_scopes == frozenset({"read"})
+    assert session.selected_scopes == frozenset({"read"})
+
+
+def test_consent_rejects_selection_outside_requested_scope_set(tmp_path):
+    scopes, tokens, _, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    issued = tokens.create("operator", scopes={"read", "write"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read"})
+    session.selected_scopes = frozenset({"write"})
+
+    with pytest.raises(PermissionError, match="not requested"):
+        account.consent_details(session)
+
+
+def test_consent_refreshes_available_scopes_from_current_token_binding(tmp_path):
+    scopes, tokens, _, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    issued = tokens.create("operator", scopes={"read", "write"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read"})
+    tokens.unbind("operator", "write")
+
+    details = account.consent_details(session)
+
+    assert session.available_scopes == frozenset({"read"})
+    assert details["available_scopes"] == frozenset({"read"})
