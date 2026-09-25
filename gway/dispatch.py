@@ -161,15 +161,16 @@ def _gate_value(runtime, gate, result):
 
 
 def _repeat_target(runtime, statement, target):
-    """Resolve repeat target semantics without retaining old callables."""
+    """Resolve repeat target semantics and its presentation subject."""
     if target is not None:
         token = target
+        subject = resolve_operation(runtime, [token]).subject
 
         def replay():
             produced, result = dispatch_pipeline(runtime, [token])
             return result
 
-        return replay
+        return replay, subject
 
     if statement is not None:
         if statement.stages:
@@ -178,7 +179,7 @@ def _repeat_target(runtime, statement, target):
             def replay():
                 return prefix.replay(runtime)
 
-            return replay
+            return replay, statement.subject
 
         execution = getattr(runtime, "execution", None)
         if (
@@ -191,7 +192,7 @@ def _repeat_target(runtime, statement, target):
             def replay():
                 return previous_statement.replay(runtime)
 
-            return replay
+            return replay, previous_statement.subject
 
     previous = getattr(runtime, "previous_execution", None)
     if previous is None or previous.last is None:
@@ -201,16 +202,15 @@ def _repeat_target(runtime, statement, target):
     def replay():
         return stage.replay(runtime)
 
-    return replay
+    return replay, stage.subject
 
 
-def _execute_repeat(runtime, tokens, *, statement=None):
-    """Execute repeat control flow against semantic replay targets."""
-    options = _repeat_options(runtime, tokens)
+def _execute_repeat(runtime, options, *, statement=None):
+    """Execute repeat control flow against already-resolved repeat options."""
     rollback = options["rollback"]
 
     try:
-        replay = _repeat_target(runtime, statement, options["target"])
+        replay, subject = _repeat_target(runtime, statement, options["target"])
         times = options["times"]
         interval = options["interval"]
 
@@ -220,7 +220,7 @@ def _execute_repeat(runtime, tokens, *, statement=None):
                 result = replay()
                 if interval and index + 1 < times:
                     time.sleep(interval)
-            return result
+            return result, subject
 
         maximum = options["maximum"] or 100
         gate = options["until_gate"] or options["while_gate"]
@@ -232,7 +232,7 @@ def _execute_repeat(runtime, tokens, *, statement=None):
             state = _gate_value(runtime, gate, result)
             terminal = state if until else not state
             if terminal:
-                return result
+                return result, subject
             if interval and index + 1 < maximum:
                 time.sleep(interval)
 
@@ -757,7 +757,10 @@ def dispatch_pipeline(
             stage, remaining = _repeat_stage(remaining)
             if recipe_frame is not None:
                 recipe_frame.set_pipeline_remaining(remaining)
-            result = _execute_repeat(runtime, stage, statement=statement)
+            options = _repeat_options(runtime, stage)
+            result, subject = _execute_repeat(runtime, options, statement=statement)
+            if statement is not None:
+                statement.present_as(subject, result)
             results.append(result)
             current = result
             first = False
@@ -970,10 +973,13 @@ def dispatch(runtime, command, *args, **kwargs):
     if not tokens:
         raise ValueError("Gateway command cannot be empty")
 
+    execution = Execution()
     _, result = dispatch_program(
         runtime,
         statements(tokens),
         args=args,
         kwargs=kwargs,
+        execution=execution,
     )
+    runtime.execution = execution
     return result

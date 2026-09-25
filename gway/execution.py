@@ -6,6 +6,27 @@ from dataclasses import dataclass, field
 _UNSET = object()
 
 
+@dataclass(frozen=True)
+class PresentationResult:
+    """One observable statement result at an invocation boundary."""
+
+    subject: str | None
+    result: object
+
+    def as_record(self):
+        return {"subject": self.subject, "result": self.result}
+
+
+class PresentationResults(tuple):
+    """Ordered, duplicate-preserving presentation results."""
+
+    def getall(self, subject):
+        return tuple(entry.result for entry in self if entry.subject == subject)
+
+    def as_records(self):
+        return [entry.as_record() for entry in self]
+
+
 @dataclass
 class Stage:
     """One completed semantic dispatch stage."""
@@ -59,10 +80,20 @@ class Statement:
 
     index: int
     stages: list[Stage] = field(default_factory=list)
+    _presentation_subject: object = field(default=_UNSET, repr=False)
+    _presentation_result: object = field(default=_UNSET, repr=False)
 
     def append(self, stage):
         self.stages.append(stage)
+        self._presentation_subject = _UNSET
+        self._presentation_result = _UNSET
         return stage
+
+    def present_as(self, subject, result):
+        """Override this statement's observable result for transparent controls."""
+        self._presentation_subject = subject
+        self._presentation_result = result
+        return result
 
     @property
     def final(self):
@@ -71,7 +102,9 @@ class Statement:
 
     @property
     def subject(self):
-        """Return the resolved subject of the final published stage."""
+        """Return the resolved subject of the observable statement result."""
+        if self._presentation_result is not _UNSET:
+            return None if self._presentation_subject is _UNSET else self._presentation_subject
         final = self.final
         if final is None or not final.published:
             return None
@@ -79,7 +112,9 @@ class Statement:
 
     @property
     def result(self):
-        """Return the final published stage result without semantic reverse lookup."""
+        """Return the observable statement result without semantic reverse lookup."""
+        if self._presentation_result is not _UNSET:
+            return self._presentation_result
         final = self.final
         if final is None or not final.published:
             return None
@@ -87,7 +122,9 @@ class Statement:
 
     @property
     def published(self):
-        """Return whether the final stage contributed a new semantic publication."""
+        """Return whether the statement contributes an observable result."""
+        if self._presentation_result is not _UNSET:
+            return self._presentation_result is not None
         final = self.final
         return final is not None and final.published
 
@@ -131,6 +168,23 @@ class Execution:
     def outputs(self):
         """Return ordered completed statement records for presentation layers."""
         return tuple(statement for statement in self.statements if statement.published)
+
+    @property
+    def presentation_results(self):
+        """Return ordered semantic results without collapsing duplicate subjects."""
+        return PresentationResults(
+            PresentationResult(statement.subject, statement.result)
+            for statement in self.outputs
+        )
+
+    def present(self, fallback=None):
+        """Return scalar compatibility output or a multi-result presentation envelope."""
+        results = self.presentation_results
+        if not results:
+            return fallback
+        if len(results) == 1:
+            return results[0].result
+        return {"results": results.as_records()}
 
     def replay(self, runtime):
         """Replay all statements without pipeline transfer between them."""
