@@ -1,0 +1,195 @@
+name: CI Auto-Fix
+
+on:
+  workflow_run:
+    workflows:
+      - "python / Package"
+      - "python / Python compatibility"
+      - "python / Quality"
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  auto-fix:
+    name: Repair failed CI
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve eligible pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_number="$(
+            gh api "repos/$REPOSITORY/actions/runs/$RUN_ID"               --jq '.pull_requests[0].number // empty'
+          )"
+
+          if [[ -z "$pr_number" ]]; then
+            echo "No pull request is associated with failed run $RUN_ID."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
+          if [[ "$(jq -r '.state' <<< "$pr_json")" != "open" ]]; then
+            echo "PR #$pr_number is not open."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          head_repo="$(jq -r '.head.repo.full_name // empty' <<< "$pr_json")"
+          if [[ "$head_repo" != "$REPOSITORY" ]]; then
+            echo "PR #$pr_number comes from $head_repo; refusing to expose secrets to fork code."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          author_association="$(jq -r '.author_association // empty' <<< "$pr_json")"
+          case "$author_association" in
+            OWNER|MEMBER|COLLABORATOR)
+              ;;
+            *)
+              echo "PR #$pr_number has untrusted author association '$author_association'; refusing to expose the Codex API secret."
+              echo "eligible=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          current_head="$(jq -r '.head.sha' <<< "$pr_json")"
+          if [[ "$current_head" != "$HEAD_SHA" ]]; then
+            echo "Failed run belongs to stale head $HEAD_SHA; current PR head is $current_head."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          attempts="$(
+            gh api --paginate "repos/$REPOSITORY/issues/$pr_number/comments?per_page=100"               --jq '[.[] | select(.body | (startswith("<!-- ci-autofix -->") or startswith("<!-- approved-ci-autofix -->")))] | length'               | awk '{s += $1} END {print s+0}'
+          )"
+
+          if (( attempts >= 3 )); then
+            echo "PR #$pr_number has already used $attempts CI auto-fix attempts."
+            gh api "repos/$REPOSITORY/issues/$pr_number/comments"               --method POST               -f body="CI auto-fix stopped after 3 attempts. Manual attention is required for the current failure."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "branch=$HEAD_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "attempt=$((attempts + 1))" >> "$GITHUB_OUTPUT"
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout failed PR head
+        if: steps.pr.outputs.eligible == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Capture failed CI logs
+        if: steps.pr.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run view "$RUN_ID" --repo "$REPOSITORY" --log-failed > /tmp/failed-ci.log
+          {
+            echo "Failed workflow: ${{ github.event.workflow_run.name }}"
+            echo "Run ID: $RUN_ID"
+            echo "PR: #${{ steps.pr.outputs.number }}"
+          } > /tmp/ci-context.txt
+
+      - name: Install Codex CLI
+        if: steps.pr.outputs.eligible == 'true'
+        shell: bash
+        run: npm install --global @openai/codex
+
+      - name: Ask Codex to repair CI
+        id: codex
+        if: steps.pr.outputs.eligible == 'true'
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          codex exec --full-auto "
+          You are repairing CI for an open pull request in the Gway repository. The PR may be a draft and does not need any label.
+
+          Read AGENTS.md and follow all repository instructions.
+          Read /tmp/ci-context.txt and /tmp/failed-ci.log for the failing workflow and logs.
+          Inspect the current checkout and make the smallest correct change that addresses the CI failure.
+          Preserve the PR's intended behavior and avoid unrelated refactors.
+          Run focused validation locally when practical.
+          Do not commit, push, modify git remotes, change labels, merge anything, or access secrets.
+          If the failure is clearly transient or cannot be safely fixed from the repository, make no changes and explain why.
+          "
+
+      - name: Report Codex failure
+        if: steps.pr.outputs.eligible == 'true' && steps.codex.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          ATTEMPT: ${{ steps.pr.outputs.attempt }}
+        shell: bash
+        run: |
+          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
+            --method POST \
+            -f body="<!-- ci-autofix -->CI auto-fix attempt $ATTEMPT could not run Codex successfully. Check the CI Auto-Fix workflow logs and OPENAI_API_KEY configuration."
+
+      - name: Push repair if Codex changed files
+        if: steps.pr.outputs.eligible == 'true' && steps.codex.outcome == 'success'
+        id: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          EXPECTED_HEAD: ${{ steps.pr.outputs.head_sha }}
+          ATTEMPT: ${{ steps.pr.outputs.attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "Codex produced no repository changes."
+            gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments"               --method POST               -f body="<!-- ci-autofix -->CI auto-fix attempt $ATTEMPT produced no code changes. Manual attention may be required."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          current_head="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          if [[ "$current_head" != "$EXPECTED_HEAD" ]]; then
+            echo "PR head moved from $EXPECTED_HEAD to $current_head; refusing to push a stale repair."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ci: auto-fix failed checks"
+
+          git remote set-url origin "https://x-access-token:$GH_TOKEN@github.com/$REPOSITORY.git"
+          git push origin "HEAD:$BRANCH"
+
+          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments"             --method POST             -f body="<!-- ci-autofix -->CI auto-fix attempt $ATTEMPT pushed a repair for failed workflow \`${{ github.event.workflow_run.name }}\`. Required CI will rerun on the new head."
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"

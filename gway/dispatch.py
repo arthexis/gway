@@ -39,8 +39,16 @@ def _repeat_stage(tokens):
     return stage, remaining
 
 
-def _repeat_options(tokens):
-    """Parse repeat target and control options from raw tokens."""
+def _repeat_control_value(runtime, token):
+    """Resolve one repeat control value before typed coercion."""
+    raw = token_value(token)
+    if is_literal(token):
+        return raw
+    return runtime.resolve(raw)
+
+
+def _repeat_options(runtime, tokens):
+    """Parse repeat target and control options after semantic resolution."""
     target = None
     times = None
     while_gate = None
@@ -71,7 +79,7 @@ def _repeat_options(tokens):
         value = tokens[index + 1]
         raw = token_value(value)
         if option == "--times":
-            times = int(raw)
+            times = int(_repeat_control_value(runtime, value))
             if times < 0:
                 raise ValueError("--times must be non-negative")
         elif option == "--while":
@@ -79,11 +87,11 @@ def _repeat_options(tokens):
         elif option == "--until":
             until_gate = value
         elif option == "--interval":
-            interval = float(raw)
+            interval = float(_repeat_control_value(runtime, value))
             if interval < 0:
                 raise ValueError("--interval must be non-negative")
         elif option == "--max":
-            maximum = int(raw)
+            maximum = int(_repeat_control_value(runtime, value))
             if maximum < 1:
                 raise ValueError("--max must be at least 1")
         elif option == "--rollback":
@@ -218,7 +226,7 @@ def _repeat_presentation_subject(runtime, statement, target):
 
 def _execute_repeat(runtime, tokens, *, statement=None):
     """Execute repeat control flow against semantic replay targets."""
-    options = _repeat_options(tokens)
+    options = _repeat_options(runtime, tokens)
     rollback = options["rollback"]
 
     try:

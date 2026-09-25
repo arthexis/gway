@@ -57,6 +57,118 @@ def test_repeated_unchanged_local_install_is_noop(
     assert len(InstallState(managed_paths.state).all()) == 1
 
 
+def test_repeated_unchanged_git_revision_is_noop_without_staging(
+    make_project,
+    managed_paths,
+    monkeypatch,
+):
+    source = make_project("wire")
+    request = InstallRequest("arthexis/wire", ref="main")
+    identity = "https://github.com/arthexis/wire.git"
+
+    first = transaction.install_materialized(
+        request,
+        source,
+        source_identity=identity,
+        requested_ref="main",
+        resolved_revision="a" * 40,
+        paths=managed_paths,
+    )
+
+    def unexpected_stage(*args, **kwargs):
+        raise AssertionError("unchanged Git revision must not stage a replacement")
+
+    monkeypatch.setattr(transaction, "_stage_project", unexpected_stage)
+
+    second = transaction.install_materialized(
+        request,
+        source,
+        source_identity=identity,
+        requested_ref="main",
+        resolved_revision="a" * 40,
+        paths=managed_paths,
+    )
+
+    assert second == first
+    assert InstallState(managed_paths.state).get("wire") == first
+
+
+def test_changed_git_revision_updates_identity_without_replacing_identical_tree(
+    make_project,
+    managed_paths,
+    monkeypatch,
+):
+    source = make_project("wire")
+    request = InstallRequest("arthexis/wire", ref="main")
+    identity = "https://github.com/arthexis/wire.git"
+
+    first = transaction.install_materialized(
+        request,
+        source,
+        source_identity=identity,
+        requested_ref="main",
+        resolved_revision="a" * 40,
+        paths=managed_paths,
+    )
+
+    def unexpected_stage(*args, **kwargs):
+        raise AssertionError("identical project tree does not need replacement")
+
+    monkeypatch.setattr(transaction, "_stage_project", unexpected_stage)
+
+    second = transaction.install_materialized(
+        request,
+        source,
+        source_identity=identity,
+        requested_ref="main",
+        resolved_revision="b" * 40,
+        paths=managed_paths,
+    )
+
+    assert second.resolved_revision == "b" * 40
+    assert second.fingerprint == first.fingerprint
+    assert second.install_path == first.install_path
+    assert second.installed_at == first.installed_at
+    assert InstallState(managed_paths.state).get("wire") == second
+
+
+def test_changed_git_revision_and_tree_replaces_managed_project(
+    make_project,
+    managed_paths,
+):
+    source = make_project("wire")
+    request = InstallRequest("arthexis/wire", ref="main")
+    identity = "https://github.com/arthexis/wire.git"
+
+    first = transaction.install_materialized(
+        request,
+        source,
+        source_identity=identity,
+        requested_ref="main",
+        resolved_revision="a" * 40,
+        paths=managed_paths,
+    )
+    destination = managed_paths.projects / "wire"
+    assert (destination / "module.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+
+    (source / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    second = transaction.install_materialized(
+        request,
+        source,
+        source_identity=identity,
+        requested_ref="main",
+        resolved_revision="b" * 40,
+        paths=managed_paths,
+    )
+
+    assert second.resolved_revision == "b" * 40
+    assert second.fingerprint != first.fingerprint
+    assert second.install_path == first.install_path
+    assert (destination / "module.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+    assert InstallState(managed_paths.state).get("wire") == second
+
+
 def test_local_install_rejects_ref(make_project, managed_paths):
     source = make_project()
 
