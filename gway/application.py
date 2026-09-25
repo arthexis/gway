@@ -108,8 +108,8 @@ class Controller:
         self,
         *,
         app: AppSpec,
-        host="127.0.0.1",
-        port=8000,
+        host: str = "127.0.0.1",
+        port: int = 8000,
     ):
         """Run the current application locally in the foreground.
 
