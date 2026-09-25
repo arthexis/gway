@@ -782,6 +782,7 @@ def dispatch_pipeline(
             if recipe_frame is not None:
                 recipe_frame.set_pipeline_remaining(remaining)
             context = parse_recipe_context(recipe_arguments)
+            outer_execution = runtime.execution
             if current is _MISSING:
                 _, result = execute_recipe(runtime, path, context=context)
             else:
@@ -791,6 +792,16 @@ def dispatch_pipeline(
                     context=context,
                     pipeline=current,
                 )
+            nested_execution = (
+                runtime.execution if runtime.execution is not outer_execution else None
+            )
+            final_statement = (
+                nested_execution.statements[-1]
+                if nested_execution is not None and nested_execution.statements
+                else None
+            )
+            published = bool(final_statement and final_statement.published)
+            subject = final_statement.subject if published else None
             results.append(result)
             if statement is not None:
                 consumed = len(stage_source) - len(remaining)
@@ -803,8 +814,8 @@ def dispatch_pipeline(
                         incoming=None if current is _MISSING else current,
                         outgoing=result,
                         statement=statement.index,
-                        subject=path.stem,
-                        published=True,
+                        subject=subject,
+                        published=published,
                         has_incoming=current is not _MISSING,
                         kind="recipe",
                     )
