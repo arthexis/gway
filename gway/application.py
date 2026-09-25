@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from .appspec import AppSpec, BindingSpec, ViewSpec
+from .binding import Literal
 
 
 class Controller:
@@ -18,7 +19,7 @@ class Controller:
         topic=None,
         route="/",
         templates=None,
-        template=None,
+        template: Literal = None,
         mutate=False,
     ):
         """Create a framework-neutral application specification.
@@ -114,7 +115,7 @@ class Controller:
         directory: bool = False,
         content_type=None,
         auth=None,
-        template=None,
+        template: Literal = None,
         replace: bool = False,
         mutate=False,
     ):
