@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlsplit
 
-from ..appadapter import InMemoryAdapter
 from ..sampler import resolve as resolve_sampler
 
 
@@ -235,7 +234,11 @@ def compose(runtime, application):
     recipe = resolve_sampler("remote/browser")
     with runtime.request_scope():
         app = runtime(recipe)
-    return InMemoryAdapter(runtime, app)
+
+    from ..sampler import load as load_sampler
+
+    web_app = load_sampler("web/app")
+    return web_app.InMemoryAdapter(runtime, app)
 
 
 def index(request: BrowserRequest):
