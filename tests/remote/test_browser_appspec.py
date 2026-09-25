@@ -1,5 +1,7 @@
 from gway import Gateway
-from gway.appspec import AppSpec
+from gway.sampler import load as load_sampler
+
+AppSpec = load_sampler("web/app").AppSpec
 from gway.remote.account import RemoteAccountApplication
 from gway.remote.metadata import RemoteOAuthMetadata
 from gway.remote.server import RemoteApplication
