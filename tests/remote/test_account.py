@@ -279,3 +279,75 @@ def test_scope_selection_revalidates_live_bearer_before_accepting_post(tmp_path)
 
     with pytest.raises(PermissionError, match="not delegable"):
         account.select_scopes(session, {"write"})
+
+
+def test_permission_summary_limits_preview_and_counts_remaining_operations(tmp_path):
+    scopes, _, _, account = _account(tmp_path)
+    operations = {f"op.{index}" for index in range(8)}
+    scopes.replace("large", operations=operations, environment={"SITE", "ZONE"})
+
+    summary = account.permission_summary({"large"})
+    item = summary["scopes"][0]
+
+    assert item["operation_count"] == 8
+    assert len(item["operations_preview"]) == 6
+    assert item["remaining_operations"] == 2
+    assert item["environment_count"] == 2
+    assert item["environment"] == ("SITE", "ZONE")
+
+
+def test_permission_summary_deduplicates_overlapping_effective_access(tmp_path):
+    scopes, _, _, account = _account(tmp_path)
+    scopes.replace("alpha", operations={"log.read", "log.tail"}, environment={"SITE"})
+    scopes.replace("beta", operations={"log.tail", "log.search"}, environment={"SITE", "ZONE"})
+
+    effective = account.permission_summary({"alpha", "beta"})["effective"]
+
+    assert effective["operation_count"] == 3
+    assert effective["operations_preview"] == (
+        "log.read",
+        "log.search",
+        "log.tail",
+    )
+    assert effective["environment_count"] == 2
+    assert effective["environment"] == ("SITE", "ZONE")
+
+
+def test_permission_summary_uses_operation_metadata_for_mutation_classification(tmp_path):
+    scopes, tokens, oauth, _ = _account(tmp_path)
+    scopes.replace("mixed", operations={"log.read", "service.restart"}, environment=())
+
+    class Operation:
+        def __init__(self, mutates):
+            self.mutates = mutates
+
+    operations = {
+        "log.read": Operation(False),
+        "service.restart": Operation(True),
+    }
+    account = RemoteAccountApplication(
+        oauth=oauth,
+        tokens=tokens,
+        sessions=RemoteSessionStore(lifetime_seconds=300),
+        operation_resolver=operations.get,
+    )
+
+    summary = account.permission_summary({"mixed"})
+
+    assert summary["scopes"][0]["mutation_capable"] is True
+    assert summary["effective"]["mutation_capable"] is True
+
+
+def test_permission_summary_treats_unclassified_operation_as_mutation_capable(tmp_path):
+    scopes, tokens, oauth, _ = _account(tmp_path)
+    scopes.replace("unknown", operations={"plugin.unknown"}, environment=())
+    account = RemoteAccountApplication(
+        oauth=oauth,
+        tokens=tokens,
+        sessions=RemoteSessionStore(lifetime_seconds=300),
+        operation_resolver=lambda name: None,
+    )
+
+    summary = account.permission_summary({"unknown"})
+
+    assert summary["effective"]["mutation_capable"] is True
