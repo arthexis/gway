@@ -1,7 +1,9 @@
 import pytest
 
 from gway import Sigil
-from gway.binding import Literal
+from typing import Annotated
+
+from gway.binding import Explicit, Literal
 from gway.normalization import complete_arguments
 
 
@@ -75,3 +77,21 @@ def test_literal_marker_is_unwrapped_without_type_coercion(gateway):
         args=(Literal("32"),),
     )
     assert call.args == ("32",)
+
+
+def test_explicit_only_parameter_ignores_semantic_context(gateway):
+    gateway.context["all"] = True
+
+    def inspect_logs(*, all: Annotated[bool, Explicit] = False):
+        return all
+
+    omitted = complete_arguments(gateway, "logs", inspect_logs)
+    explicit = complete_arguments(
+        gateway,
+        "logs",
+        inspect_logs,
+        kwargs={"all": True},
+    )
+
+    assert omitted.kwargs == {"all": False}
+    assert explicit.kwargs == {"all": True}
