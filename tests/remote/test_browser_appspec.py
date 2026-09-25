@@ -1,4 +1,5 @@
 from gway import Gateway
+from gway.appspec import AppSpec
 from gway.remote.account import RemoteAccountApplication
 from gway.remote.metadata import RemoteOAuthMetadata
 from gway.remote.server import RemoteApplication
@@ -66,3 +67,43 @@ def test_remote_apps_sharing_gateway_keep_request_state_isolated(tmp_path):
     assert first_account.sessions.get(second_id) is None
     assert second_account.sessions.get(second_id) is not None
     assert second_account.sessions.get(first_id) is None
+
+
+def test_remote_browser_dispatch_does_not_leak_gateway_result_history(tmp_path):
+    runtime = Gateway(cache=tmp_path / "cache")
+    metadata = RemoteOAuthMetadata.from_origin(
+        "http://127.0.0.1:9000",
+        allow_insecure_loopback=True,
+    )
+    application = RemoteApplication(metadata, runtime=runtime)
+    initial_history = list(runtime.results.history)
+
+    assert application.response("GET", "/privacy")[0] == 200
+    assert application.response("GET", "/privacy")[0] == 200
+
+    assert runtime.results.history == initial_history
+
+
+def test_runtime_backed_browser_does_not_fall_back_to_legacy_routes(tmp_path):
+    runtime = Gateway(cache=tmp_path / "cache")
+    metadata = RemoteOAuthMetadata.from_origin(
+        "http://127.0.0.1:9000",
+        allow_insecure_loopback=True,
+    )
+    application = RemoteApplication(metadata, runtime=runtime)
+    application.browser.app = AppSpec(
+        name=application.browser.app.name,
+        topic=application.browser.app.topic,
+        route=application.browser.app.route,
+        views=tuple(
+            view
+            for view in application.browser.app.views
+            if view.resolved_route != "/login"
+        ),
+    )
+
+    status, headers, payload = application.response("GET", "/login")
+
+    assert status == 404
+    assert headers == {}
+    assert payload == {"error": "not_found"}
