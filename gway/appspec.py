@@ -61,29 +61,46 @@ class RouteSpec:
 
     route: str
     method: str
-    handler: str
+    handler: str | None = None
     name: str | None = None
     bindings: tuple[BindingSpec, ...] = ()
     body_model: str | None = None
     response_model: str | None = None
+    static: str | None = None
+    directory: bool = False
+    content_type: str | None = None
 
 
 @dataclass(frozen=True)
 class ViewSpec:
     """Describe one framework-neutral application view."""
 
-    callable_name: str
+    callable_name: str | None = None
     route: str | None = None
     methods: tuple[str, ...] = ("GET",)
     name: str | None = None
     bindings: tuple[BindingSpec, ...] = ()
     body_model: str | None = None
     response_model: str | None = None
+    static: str | None = None
+    directory: bool = False
+    content_type: str | None = None
 
     def __post_init__(self):
+        static = None if self.static is None else str(self.static).strip()
+        if bool(self.callable_name) == bool(static):
+            raise ValueError("view requires exactly one of handler or static source")
+        if static and self.route is None:
+            raise ValueError("static view requires an explicit route")
+        if self.directory and not static:
+            raise ValueError("directory view requires a static source")
         methods = tuple(dict.fromkeys(method.upper() for method in self.methods))
         if not methods:
-            methods = ("GET",)
+            methods = ("GET", "HEAD") if static else ("GET",)
+        if static and methods == ("GET",):
+            methods = ("GET", "HEAD")
+        if static and any(method not in {"GET", "HEAD"} for method in methods):
+            raise ValueError("static views support only GET and HEAD")
         bindings = tuple(self.bindings)
         names = set()
         for binding in bindings:
@@ -98,11 +115,14 @@ class ViewSpec:
             raise ValueError("body_model requires at least one body binding")
         object.__setattr__(self, "methods", methods)
         object.__setattr__(self, "bindings", bindings)
+        object.__setattr__(self, "static", static or None)
 
     @property
     def resolved_route(self) -> str:
         """Return the explicit route or the route inferred from the callable name."""
-        return self.route or _route_from_callable(self.callable_name)
+        if self.route is not None:
+            return self.route
+        return _route_from_callable(self.callable_name)
 
     @property
     def routes(self) -> tuple[RouteSpec, ...]:
@@ -116,6 +136,9 @@ class ViewSpec:
                 bindings=self.bindings,
                 body_model=self.body_model,
                 response_model=self.response_model,
+                static=self.static,
+                directory=self.directory,
+                content_type=self.content_type,
             )
             for method in self.methods
         )
@@ -167,6 +190,9 @@ class AppSpec:
                 bindings=mapping.bindings,
                 body_model=mapping.body_model,
                 response_model=mapping.response_model,
+                static=mapping.static,
+                directory=mapping.directory,
+                content_type=mapping.content_type,
             )
             for mapping in view.routes
         )
@@ -220,6 +246,9 @@ class AppSpec:
                     bindings=existing.bindings,
                     body_model=existing.body_model,
                     response_model=existing.response_model,
+                    static=existing.static,
+                    directory=existing.directory,
+                    content_type=existing.content_type,
                 )
             )
         return AppSpec(
