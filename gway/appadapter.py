@@ -45,11 +45,8 @@ class InMemoryAdapter:
             f"{method} is not allowed for {route}; allowed methods: {allowed}"
         )
 
-    def invoke(self, mapping: RouteSpec, arguments=None):
-        """Invoke one already-resolved mapping with ordinary handler arguments."""
-        arguments = {} if arguments is None else dict(arguments)
-
-        from .binding import coerce_native_arguments
+    def resolve_handler(self, mapping: RouteSpec):
+        """Resolve one route's late-bound canonical handler operation."""
         from .dispatch import resolve_operation
         from .tokens import tokenize
 
@@ -65,8 +62,17 @@ class InMemoryAdapter:
                 f"Route {mapping.method} {mapping.route} does not reference a "
                 f"canonical handler operation: {mapping.handler!r}"
             )
+        return resolution.callable
+
+    def invoke(self, mapping: RouteSpec, arguments=None):
+        """Invoke one already-resolved mapping with ordinary handler arguments."""
+        arguments = {} if arguments is None else dict(arguments)
+
+        from .binding import coerce_native_arguments
+
+        handler = self.resolve_handler(mapping)
         arguments = coerce_native_arguments(
-            resolution.callable,
+            handler,
             arguments,
             runtime=self.gateway,
         )
