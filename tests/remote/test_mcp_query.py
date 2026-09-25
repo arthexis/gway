@@ -61,14 +61,18 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
     assert gway.annotations.read_only_hint is False
     assert gway.annotations.destructive_hint is True
     assert gway.annotations.open_world_hint is True
-    assert "observation and diagnosis" in query.description
-    assert "semicolons" in query.description
-    assert "help <operation>" in query.description
-    assert "including null" in query.description
-    assert "mutation is required" in gway.description
-    assert "semicolons" in gway.description
-    assert "investigate through query first" in " ".join(gway.description.split())
-    assert "including null" in " ".join(gway.description.split())
+
+    query_description = " ".join(query.description.split())
+    gway_description = " ".join(gway.description.split())
+
+    assert "observation and diagnosis" in query_description
+    assert "semicolons" in query_description
+    assert "help <operation>" in query_description
+    assert "including null" in query_description
+    assert "mutation is required" in gway_description
+    assert "semicolons" in gway_description
+    assert "investigate through query first" in gway_description
+    assert "including null" in gway_description
 
     assert query.output_schema is not None
     assert gway.output_schema is not None
