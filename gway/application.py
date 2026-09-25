@@ -147,6 +147,19 @@ class Controller:
             raise ValueError("use either --method or --methods, not both")
 
         selected_methods = (method,) if method is not None else methods
+        if static is not None and (auth is not None or template is not None):
+            raise ValueError("static views do not support auth or templates")
+        if template is not None and app.templates is None:
+            from .recipe import recipe_base
+
+            app = AppSpec(
+                name=app.name,
+                topic=app.topic,
+                route=app.route,
+                views=app.views,
+                templates=str(recipe_base(self.gateway).resolve()),
+                template=app.template,
+            )
         if handler is None and static is None:
             raise ValueError("view requires a handler or --static")
         if handler is not None and static is not None:
