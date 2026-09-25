@@ -229,3 +229,51 @@ def test_oauth_request_broader_than_bearer_is_constrained_to_intersection(tmp_pa
     assert session.requested_scopes == frozenset({"read", "write"})
     assert session.selected_scopes == frozenset({"read"})
     assert details["scopes"] == frozenset({"read"})
+
+
+def test_scope_selection_accepts_subset_of_requested_and_available_scopes(tmp_path):
+    scopes, tokens, _, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    issued = tokens.create("operator", scopes={"read", "write"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read", "write"})
+
+    selected = account.select_scopes(session, {"read"})
+
+    assert selected == frozenset({"read"})
+    assert session.selected_scopes == frozenset({"read"})
+
+
+def test_scope_selection_rejects_empty_and_non_delegable_values(tmp_path):
+    scopes, tokens, _, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    issued = tokens.create("operator", scopes={"read"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read", "write"})
+
+    with pytest.raises(ValueError, match="At least one scope"):
+        account.select_scopes(session, set())
+
+    with pytest.raises(PermissionError, match="not delegable"):
+        account.select_scopes(session, {"write"})
+
+
+def test_scope_selection_revalidates_live_bearer_before_accepting_post(tmp_path):
+    scopes, tokens, _, account = _account(tmp_path)
+    scopes.create("read")
+    scopes.create("write")
+    issued = tokens.create("operator", scopes={"read", "write"})
+    session = account.new_session()
+
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"read", "write"})
+    tokens.unbind("operator", "write")
+
+    with pytest.raises(PermissionError, match="not delegable"):
+        account.select_scopes(session, {"write"})
