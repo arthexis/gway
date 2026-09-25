@@ -32,13 +32,16 @@ class Controller:
         """
         del mutate
         template_root = None
-        if templates is not None:
+        if templates is not None or template is not None:
             from .recipe import recipe_base
 
-            resolved = Path(str(self.gateway.resolve(str(templates)))).expanduser()
-            if not resolved.is_absolute():
-                resolved = recipe_base(self.gateway) / resolved
-            template_root = str(resolved.resolve())
+            if templates is None:
+                template_root = str(recipe_base(self.gateway).resolve())
+            else:
+                resolved = Path(str(self.gateway.resolve(str(templates)))).expanduser()
+                if not resolved.is_absolute():
+                    resolved = recipe_base(self.gateway) / resolved
+                template_root = str(resolved.resolve())
         return AppSpec(
             name=name,
             topic=topic,
