@@ -130,3 +130,23 @@ def test_appspec_can_be_served_over_real_http(gateway):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_http_adapter_preserves_startup_semantic_context(gateway):
+    def site_name(site):
+        return {"site": site}
+
+    gateway.wrap("demo.site_name", site_name)
+    gateway.context["site"] = "MTY"
+    app = AppSpec(name="demo").add(
+        ViewSpec("demo.site_name", route="/site")
+    )
+    application = ApplicationHTTPAdapter(gateway, app)
+
+    gateway.context["site"] = "changed"
+
+    assert application.response("GET", "/site") == (
+        200,
+        {},
+        {"site": "MTY"},
+    )
