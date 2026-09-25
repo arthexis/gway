@@ -9,6 +9,17 @@ def _route_from_callable(callable_name: str) -> str:
     return f"/{subject}"
 
 
+def _join_route(base: str | None, route: str) -> str:
+    """Compose an application base route with one view-local route."""
+    base = "/" if base is None else str(base).strip()
+    route = str(route).strip()
+    if not base or base == "/":
+        return "/" + route.strip("/") if route != "/" else "/"
+    if not route or route == "/":
+        return "/" + base.strip("/")
+    return "/" + "/".join((base.strip("/"), route.strip("/")))
+
+
 @dataclass(frozen=True)
 class RouteSpec:
     """Describe one concrete HTTP route mapping."""
@@ -58,50 +69,79 @@ class AppSpec:
     """Describe an application independently from its serving framework."""
 
     name: str | None = None
+    topic: str | None = None
+    route: str = "/"
     views: tuple[ViewSpec, ...] = ()
 
     def __post_init__(self):
+        topic = None if self.topic is None else str(self.topic).strip().strip(".")
+        name = self.name
+        if name is None and topic:
+            name = topic.rsplit(".", 1)[-1]
+        route = str(self.route or "/").strip()
+        route = "/" if route == "/" else "/" + route.strip("/")
+        object.__setattr__(self, "topic", topic or None)
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "route", route)
+
         unique_views = []
         occupied = set()
-
         for view in self.views:
             if view in unique_views:
                 continue
-
-            for route in view.routes:
-                key = (route.route, route.method)
+            for mapping in self._routes_for(view):
+                key = (mapping.route, mapping.method)
                 if key in occupied:
                     raise ValueError(
-                        f"Conflicting view for {route.method} {route.route}: "
+                        f"Conflicting view for {mapping.method} {mapping.route}: "
                         f"{view.callable_name}"
                     )
                 occupied.add(key)
-
             unique_views.append(view)
-
         object.__setattr__(self, "views", tuple(unique_views))
+
+    def _routes_for(self, view: ViewSpec) -> tuple[RouteSpec, ...]:
+        return tuple(
+            RouteSpec(
+                route=_join_route(self.route, mapping.route),
+                method=mapping.method,
+                handler=mapping.handler,
+                name=mapping.name,
+            )
+            for mapping in view.routes
+        )
 
     @property
     def routes(self) -> tuple[RouteSpec, ...]:
         """Return all concrete route mappings in composition order."""
-        return tuple(route for view in self.views for route in view.routes)
+        return tuple(mapping for view in self.views for mapping in self._routes_for(view))
 
     def add(self, view: ViewSpec):
         """Return a copy containing one additional non-conflicting view."""
         if view in self.views:
             return self
-        return AppSpec(name=self.name, views=(*self.views, view))
+        return AppSpec(
+            name=self.name,
+            topic=self.topic,
+            route=self.route,
+            views=(*self.views, view),
+        )
 
     def replace(self, view: ViewSpec):
         """Replace only route/method mappings claimed by the supplied view."""
-        replacements = {(route.route, route.method) for route in view.routes}
+        replacements = {
+            (mapping.route, mapping.method) for mapping in self._routes_for(view)
+        }
         retained = []
-
         for existing in self.views:
             remaining_methods = tuple(
                 method
                 for method in existing.methods
-                if (existing.resolved_route, method) not in replacements
+                if (
+                    _join_route(self.route, existing.resolved_route),
+                    method,
+                )
+                not in replacements
             )
             if not remaining_methods:
                 continue
@@ -116,5 +156,9 @@ class AppSpec:
                     name=existing.name,
                 )
             )
-
-        return AppSpec(name=self.name, views=(*retained, view))
+        return AppSpec(
+            name=self.name,
+            topic=self.topic,
+            route=self.route,
+            views=(*retained, view),
+        )
