@@ -1,0 +1,139 @@
+name: Approved Auto-Merge
+
+on:
+  pull_request_target:
+    types: [labeled, unlabeled, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows:
+      - "python / Package"
+      - "python / Python compatibility"
+      - "python / Quality"
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to evaluate
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  actions: read
+
+jobs:
+  arm-auto-merge:
+    name: Arm approved PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve pull request
+        id: pr
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PATH: ${{ github.event_path }}
+          INPUT_PR: ${{ inputs.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$EVENT_NAME" in
+            workflow_run)
+              pr_number="$(jq -r '.workflow_run.pull_requests[0].number // empty' "$EVENT_PATH")"
+              ;;
+            workflow_dispatch)
+              pr_number="$INPUT_PR"
+              ;;
+            *)
+              pr_number="$(jq -r '.pull_request.number // empty' "$EVENT_PATH")"
+              ;;
+          esac
+
+          if [[ -z "$pr_number" ]]; then
+            echo "No pull request is associated with this event."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Disarm when approval is removed
+        if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'Approved'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
+
+      - name: Validate approval gate
+        if: steps.pr.outputs.skip != 'true'
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+
+          state="$(jq -r '.state' <<< "$pr_json")"
+          draft="$(jq -r '.draft' <<< "$pr_json")"
+          head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
+          base_ref="$(jq -r '.base.ref' <<< "$pr_json")"
+
+          if [[ "$state" != "open" || "$draft" == "true" ]]; then
+            echo "PR #$PR_NUMBER is not an open, non-draft PR."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          approved="$(
+            jq -r '[.labels[].name] | any(. == "Approved")' <<< "$pr_json"
+          )"
+          if [[ "$approved" != "true" ]]; then
+            echo "PR #$PR_NUMBER does not have the Approved label."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          compare_json="$(gh api "repos/$REPOSITORY/compare/$base_ref...$head_sha")"
+          behind_by="$(jq -r '.behind_by' <<< "$compare_json")"
+          if [[ "$behind_by" != "0" ]]; then
+            echo "PR #$PR_NUMBER is $behind_by commit(s) behind $base_ref."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          required_checks="$(gh pr checks "$PR_NUMBER" --repo "$REPOSITORY" --required --json name,bucket)"
+          incomplete="$(
+            jq '[.[] | select(.bucket != "pass" and .bucket != "skipping")] | length' <<< "$required_checks"
+          )"
+          if [[ "$incomplete" != "0" ]]; then
+            echo "Required CI is not fully successful yet."
+            echo "$required_checks" | jq -r '.[] | "  \(.name): \(.bucket)"'
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Approval, freshness, and CI gates are satisfied for PR #$PR_NUMBER."
+          echo "Review-thread resolution is enforced by the protected branch ruleset."
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER"             --repo "$REPOSITORY"             --auto             --merge             --match-head-commit "$HEAD_SHA"
