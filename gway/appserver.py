@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import mimetypes
+from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from .appadapter import InMemoryAdapter
@@ -110,6 +112,46 @@ def _binding_arguments(mapping, request, path_values, *, decoded_body=_UNSET):
     return arguments
 
 
+def _static_path(mapping, request_path):
+    """Resolve one static mapping to a contained filesystem file."""
+    source = Path(mapping.static)
+    if not mapping.directory:
+        return source if request_path == mapping.route else None
+
+    prefix = mapping.route.rstrip("/")
+    if request_path == mapping.route:
+        suffix = ""
+    elif request_path.startswith(prefix + "/"):
+        suffix = unquote(request_path[len(prefix) + 1 :])
+    else:
+        return None
+
+    if "\\" in suffix:
+        return None
+    root = source.resolve()
+    candidate = (root / suffix).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    return candidate
+
+
+def _static_response(mapping, request_path):
+    """Serve one static file mapping with containment and MIME inference."""
+    candidate = _static_path(mapping, request_path)
+    if candidate is None or not candidate.is_file():
+        return 404, {}, {"error": "not_found"}
+
+    content_type = mapping.content_type
+    if content_type is None:
+        content_type = mimetypes.guess_type(candidate.name)[0]
+    headers = {}
+    if content_type:
+        headers["content-type"] = content_type
+    return 200, headers, candidate.read_bytes()
+
+
 class ApplicationHTTPAdapter:
     """Expose an AppSpec through a small framework-neutral HTTP response surface."""
 
@@ -144,7 +186,14 @@ class ApplicationHTTPAdapter:
             values = _match_path(mapping.route, request.split.path)
             if values is not None:
                 exact = mapping.route == request.split.path
-                matches.append((not exact, mapping, values))
+                matches.append((0 if exact else 1, mapping, values))
+                continue
+            if (
+                mapping.static
+                and mapping.directory
+                and _static_path(mapping, request.split.path) is not None
+            ):
+                matches.append((2, mapping, {}))
         matches.sort(key=lambda item: item[0])
         matches = [
             (mapping, values)
@@ -167,6 +216,9 @@ class ApplicationHTTPAdapter:
             return 405, {"allow": allowed}, {"error": "method_not_allowed"}
 
         mapping, path_values = selected
+        if mapping.static:
+            return _static_response(mapping, request.split.path)
+
         try:
             handler = self.dispatch.resolve_handler(mapping)
             decoded_body = _UNSET
