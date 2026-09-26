@@ -817,7 +817,8 @@ class Gateway(Resolver):
             )
 
         self.authorize_operation(canonical, args=tuple(arguments))
-        return operation(*arguments, mutate=mutate)
+        with self.invocation_authority(operation):
+            return operation(*arguments)
 
     @property
     def last(self):
