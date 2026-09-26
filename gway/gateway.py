@@ -129,6 +129,7 @@ class Gateway(Resolver):
         self.require = self.wrap("require", self._require)
         self.help = self.wrap("help", self._help)
         self.guide = self.wrap("guide", self._guide)
+        self.node = self.wrap("node", self._node)
         self.wrap("ingest", self.ingest)
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
         self.reload = self.wrap("reload", self._reload)
@@ -766,6 +767,57 @@ class Gateway(Resolver):
             documents=self._guide_documents,
             authorization=self.authorization,
         )
+
+    def _node(self, *parts: str, mutate=False):
+        """Inspect or dispatch the active project/node role.
+
+        Bare `node` reports the active role family and available role-owned
+        operations. `node <verb> [args...]` dispatches to the canonical
+        `node.<role>.<verb>` operation registered by the project.
+
+        Args:
+            parts: Role-local operation verb followed by its arguments.
+        """
+        role = self.find_value("role", include_environment=False)
+        if role is None:
+            raise LookupError("node requires an active semantic role")
+
+        role = str(role).strip()
+        if not role:
+            raise LookupError("node requires a non-empty semantic role")
+        family = f"node.{role}"
+
+        authority = self.authorization
+        available = []
+        for record in self.ops.records():
+            prefix = f"{family}."
+            if not record.name.startswith(prefix):
+                continue
+            if authority is not None and record.name not in authority.operations:
+                continue
+            available.append(record.name[len(prefix):].replace(".", " "))
+
+        if not parts:
+            from .publication import ResultOnlyMapping
+
+            return ResultOnlyMapping(
+                {
+                    "role": role,
+                    "family": family.replace(".", "/"),
+                    "operations": sorted(available),
+                }
+            )
+
+        verb, *arguments = parts
+        canonical = f"{family}.{str(verb).replace(' ', '.')}"
+        operation = self.ops.resolve(canonical)
+        if operation is None:
+            raise LookupError(
+                f"Role {role!r} does not expose node operation {verb!r}"
+            )
+
+        self.authorize_operation(canonical, args=tuple(arguments))
+        return operation(*arguments, mutate=mutate)
 
     @property
     def last(self):
