@@ -100,3 +100,69 @@ def test_wire_server_check_is_read_only_and_deploy_mutates():
     assert gateway.ops.resolve("wire.server.deploy").mutates is True
 
 
+
+
+def test_watchtower_deploy_reuses_existing_private_key(tmp_path, monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway, which=lambda name: None)
+    registry = tmp_path / "registry.sqlite3"
+    config = tmp_path / "gway.conf"
+    config.write_text(
+        "[Interface]\nAddress = 10.90.0.1/24\nPrivateKey = EXISTING\n",
+        encoding="utf-8",
+    )
+    captured = {}
+    monkeypatch.setattr(
+        controller,
+        "provision",
+        lambda interface, **kwargs: (
+            captured.update(kwargs) or {"config": str(config)}
+        ),
+    )
+    monkeypatch.setattr(
+        controller,
+        "server_check",
+        lambda **kwargs: {"ready": True},
+    )
+
+    controller.deploy_server(registry=registry, config=config)
+
+    assert captured["private_key"] == "EXISTING"
+
+
+def test_enrollment_service_derives_public_key_from_server_config(tmp_path, monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway, which=lambda name: "/usr/bin/wg")
+    config = tmp_path / "gway.conf"
+    config.write_text(
+        "[Interface]\nPrivateKey = EXISTING\n",
+        encoding="utf-8",
+    )
+    captured = {}
+    fake_server = type(
+        "FakeServer",
+        (),
+        {"serve_forever": lambda self: None, "server_close": lambda self: None},
+    )()
+
+    monkeypatch.setattr(
+        module,
+        "_public_key_from_private",
+        lambda private_key, which: "S" * 43 + "=",
+    )
+    monkeypatch.setattr(
+        module,
+        "build_enrollment_server",
+        lambda controller, **kwargs: (
+            captured.update(kwargs) or fake_server
+        ),
+    )
+
+    controller.serve_enrollment(
+        config=config,
+        registry=tmp_path / "registry.sqlite3",
+    )
+
+    assert captured["server_public_key"] == "S" * 43 + "="

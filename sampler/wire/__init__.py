@@ -341,6 +341,65 @@ def _atomic_reconcile(path, desired):
     atomic_write_text(path, desired)
     return str(path)
 
+def _configured_private_key(path):
+    """Return an existing WireGuard interface private key without exposing it publicly."""
+    path = Path(path)
+    if not path.is_file():
+        return None
+    section = None
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith("[") and line.endswith("]"):
+            section = line
+            continue
+        if section == "[Interface]" and line.startswith("PrivateKey") and "=" in line:
+            value = line.split("=", 1)[1].strip()
+            return value or None
+    return None
+
+
+def _generated_keypair(runner, which):
+    """Generate one WireGuard private/public keypair through the installed wg tool."""
+    wg = which("wg")
+    if wg is None:
+        raise RuntimeError("wg executable not found")
+    private = subprocess.run(
+        [wg, "genkey"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if private.returncode != 0 or not private.stdout.strip():
+        raise RuntimeError(private.stderr.strip() or "wg genkey failed")
+    private_key = private.stdout.strip()
+    public = subprocess.run(
+        [wg, "pubkey"],
+        input=private_key + "\n",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if public.returncode != 0 or not public.stdout.strip():
+        raise RuntimeError(public.stderr.strip() or "wg pubkey failed")
+    return private_key, public.stdout.strip()
+
+
+def _public_key_from_private(private_key, which):
+    wg = which("wg")
+    if wg is None:
+        raise RuntimeError("wg executable not found")
+    public = subprocess.run(
+        [wg, "pubkey"],
+        input=str(private_key).strip() + "\n",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if public.returncode != 0 or not public.stdout.strip():
+        raise RuntimeError(public.stderr.strip() or "wg pubkey failed")
+    return public.stdout.strip()
+
+
 def _run(argv):
     return subprocess.run(argv, check=False, capture_output=True, text=True)
 
@@ -718,7 +777,7 @@ class Controller:
         domain=_DEFAULT_REGISTER_HOST,
         registry=None,
         config="/etc/wireguard/gway.conf",
-        server_public_key,
+        server_public_key=None,
         server_endpoint=None,
         network="10.90.0.0/24",
         gateway_address="10.90.0.1",
@@ -726,6 +785,16 @@ class Controller:
     ):
         """Serve the Watchtower enrollment API until the service stops."""
         del mutate
+        config_path = Path(config)
+        active_public_key = str(server_public_key).strip() if server_public_key is not None else ""
+        if not active_public_key:
+            private_key = _configured_private_key(config_path)
+            if not private_key:
+                raise RuntimeError(
+                    f"Wire server private key is not configured: {config_path}"
+                )
+            active_public_key = _public_key_from_private(private_key, self.which)
+
         server = build_enrollment_server(
             self,
             host=host,
@@ -733,7 +802,7 @@ class Controller:
             domain=domain,
             registry=registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
             config=config,
-            server_public_key=server_public_key,
+            server_public_key=active_public_key,
             server_endpoint=server_endpoint,
             network=network,
             gateway_address=gateway_address,
@@ -801,7 +870,7 @@ class Controller:
         domain=_DEFAULT_REGISTER_HOST,
         interface="gway",
         address="10.90.0.1/24",
-        private_key,
+        private_key=None,
         listen_port=51820,
         registry=None,
         config=None,
@@ -825,10 +894,16 @@ class Controller:
             if config is not None
             else Path("/etc/wireguard") / f"{interface}.conf"
         )
+        active_private_key = str(private_key).strip() if private_key is not None else ""
+        if not active_private_key:
+            active_private_key = _configured_private_key(destination) or ""
+        if not active_private_key:
+            active_private_key, _ = _generated_keypair(self.runner, self.which)
+
         provisioned = self.provision(
             interface,
             address=address,
-            private_key=private_key,
+            private_key=active_private_key,
             listen_port=listen_port,
             to=destination,
             sudo=sudo,

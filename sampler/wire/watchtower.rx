@@ -11,7 +11,6 @@ wire server deploy
 --domain [domain]
 --interface [interface|gway]
 --address [address|10.90.0.1/24]
---private-key [private_key]
 --listen-port [listen_port|51820]
 --config [config]
 --public-address [public_address]
@@ -33,7 +32,6 @@ service install
 --port [port]
 --domain [domain]
 --config [config]
---server-public-key [server_public_key]
 --server-endpoint [server_endpoint]
 
 service start
@@ -44,7 +42,6 @@ service start
 --port [port]
 --domain [domain]
 --config [config]
---server-public-key [server_public_key]
 --server-endpoint [server_endpoint]
 
 ../web/expose/expose
