@@ -63,7 +63,7 @@ def test_oauth_bearer_requires_exact_resource_and_tracks_live_scope(tmp_path):
     assert identity.client_id == "chatgpt-client"
     assert identity.authority.operations == frozenset({"log.read"})
 
-    scopes.replace("reader", operations={"log.read", "log.tail"})
+    scopes.update_grants("reader", add_operations={"log.tail"})
     refreshed = authenticate_bearer(
         issued.access_token,
         resource=RESOURCE,

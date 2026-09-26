@@ -41,6 +41,8 @@ def _public_builtin_commands():
             "security scope list",
             "security scope delete",
             "security scope set",
+            "security scope add",
+            "security scope remove",
             "security scope resolve",
             "security scope apply",
             "security scope export",
