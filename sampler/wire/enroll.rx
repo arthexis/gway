@@ -1,0 +1,17 @@
+# Run the Watchtower Wire enrollment API as a normal GWAY launchable.
+default
+--host 127.0.0.1
+--port 8787
+--domain register.arthexis.com
+--registry [data_dir]/wire/registry.sqlite3
+--config /etc/wireguard/gway.conf
+--server-endpoint vpn.arthexis.com:51820
+
+wire server serve [host] [port]
+--domain [domain]
+--registry [registry]
+--config [config]
+--server-public-key [server_public_key]
+--server-endpoint [server_endpoint]
+--network [network|10.90.0.0/24]
+--gateway-address [gateway_address|10.90.0.1]

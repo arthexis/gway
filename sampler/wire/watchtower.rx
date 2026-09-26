@@ -1,0 +1,61 @@
+# Converge the Watchtower as the central Wire server and public enrollment endpoint.
+default
+--domain register.arthexis.com
+--host 127.0.0.1
+--port 8787
+--site register-arthexis-com
+--config /etc/wireguard/gway.conf
+--registry [data_dir]/wire/registry.sqlite3
+--server-endpoint vpn.arthexis.com:51820
+
+wire server deploy
+--domain [domain]
+--interface [interface|gway]
+--address [address|10.90.0.1/24]
+--private-key [private_key]
+--listen-port [listen_port|51820]
+--registry [registry]
+--config [config]
+--public-address [public_address]
+--dns-zone [dns_zone|arthexis.com]
+--dns-backend [dns_backend|godaddy]
+--sudo
+
+service install
+--name wire-enroll
+--system
+-- ./enroll.rx
+--host [host]
+--port [port]
+--domain [domain]
+--registry [registry]
+--config [config]
+--server-public-key [server_public_key]
+--server-endpoint [server_endpoint]
+
+service start
+--name wire-enroll
+--system
+-- ./enroll.rx
+--host [host]
+--port [port]
+--domain [domain]
+--registry [registry]
+--config [config]
+--server-public-key [server_public_key]
+--server-endpoint [server_endpoint]
+
+../web/expose/expose
+--site [site]
+--domain [domain]
+--host [host]
+--port [port]
+--email [email]
+
+wire server check
+--domain [domain]
+--interface [interface|gway]
+--registry [registry]
+--public-address [public_address]
+--dns-zone [dns_zone|arthexis.com]
+--dns-backend [dns_backend|godaddy]
