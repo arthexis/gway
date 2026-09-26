@@ -142,3 +142,156 @@ def test_wire_provision_validates_port_before_render(monkeypatch):
         )
 
     assert called is False
+
+
+def test_wire_server_token_and_client_enroll_reuse_address(tmp_path, monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    registry = tmp_path / "registry.sqlite3"
+    rendered = []
+
+    monkeypatch.setattr(
+        gateway,
+        "render",
+        lambda template, *, to, sudo=False, rollback=None: (
+            rendered.append((template, to, dict(gateway.context))) or to
+        ),
+    )
+
+    token = controller.token(
+        device="gway-004",
+        ttl=120,
+        registry=registry,
+    )["token"]
+
+    first = controller.enroll(
+        "gway-004",
+        public_key="D" * 43 + "=",
+        private_key="PRIVATE",
+        token=token,
+        server_public_key="S" * 43 + "=",
+        server_endpoint="vpn.example.test:51820",
+        registry=registry,
+        to=tmp_path / "client.conf",
+    )
+
+    second_token = controller.token(
+        device="gway-004",
+        ttl=120,
+        registry=registry,
+    )["token"]
+    second = controller.enroll(
+        "gway-004",
+        public_key="D" * 43 + "=",
+        private_key="PRIVATE",
+        token=second_token,
+        server_public_key="S" * 43 + "=",
+        server_endpoint="vpn.example.test:51820",
+        registry=registry,
+        to=tmp_path / "client.conf",
+    )
+
+    assert first["address"] == "10.90.0.2/32"
+    assert second["address"] == first["address"]
+    assert first["created"] is True
+    assert second["created"] is False
+    assert "PRIVATE" not in repr(first)
+    assert "PRIVATE" not in repr(second)
+    assert rendered[-1][2]["wire_client_private_key"] == "PRIVATE"
+    assert "wire_client_private_key" not in gateway.context
+
+
+def test_wire_enrollment_token_is_one_time(tmp_path, monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    registry = tmp_path / "registry.sqlite3"
+    monkeypatch.setattr(gateway, "render", lambda template, *, to, **kwargs: to)
+
+    token = controller.token(device="gway-004", registry=registry)["token"]
+    kwargs = dict(
+        public_key="D" * 43 + "=",
+        private_key="PRIVATE",
+        token=token,
+        server_public_key="S" * 43 + "=",
+        server_endpoint="vpn.example.test:51820",
+        registry=registry,
+        to=tmp_path / "client.conf",
+    )
+    controller.enroll("gway-004", **kwargs)
+
+    with pytest.raises(PermissionError, match="already-used"):
+        controller.enroll("gway-004", **kwargs)
+
+
+def test_wire_enrollment_rejects_key_conflict(tmp_path, monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    registry = tmp_path / "registry.sqlite3"
+    monkeypatch.setattr(gateway, "render", lambda template, *, to, **kwargs: to)
+
+    token = controller.token(device="gway-004", registry=registry)["token"]
+    controller.enroll(
+        "gway-004",
+        public_key="D" * 43 + "=",
+        private_key="PRIVATE",
+        token=token,
+        server_public_key="S" * 43 + "=",
+        server_endpoint="vpn.example.test:51820",
+        registry=registry,
+        to=tmp_path / "client.conf",
+    )
+    next_token = controller.token(device="gway-004", registry=registry)["token"]
+
+    with pytest.raises(ValueError, match="another key"):
+        controller.enroll(
+            "gway-004",
+            public_key="E" * 43 + "=",
+            private_key="PRIVATE",
+            token=next_token,
+            server_public_key="S" * 43 + "=",
+            server_endpoint="vpn.example.test:51820",
+            registry=registry,
+            to=tmp_path / "client.conf",
+        )
+
+
+def test_wire_enrollment_allocates_distinct_addresses(tmp_path, monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    registry = tmp_path / "registry.sqlite3"
+    monkeypatch.setattr(gateway, "render", lambda template, *, to, **kwargs: to)
+
+    results = []
+    for index, key in [(4, "D"), (5, "E")]:
+        device = f"gway-00{index}"
+        token = controller.token(device=device, registry=registry)["token"]
+        results.append(
+            controller.enroll(
+                device,
+                public_key=key * 43 + "=",
+                private_key="PRIVATE",
+                token=token,
+                server_public_key="S" * 43 + "=",
+                server_endpoint="vpn.example.test:51820",
+                registry=registry,
+                to=tmp_path / f"{device}.conf",
+            )
+        )
+
+    assert [item["address"] for item in results] == [
+        "10.90.0.2/32",
+        "10.90.0.3/32",
+    ]
+
+
+def test_wire_w3_operations_have_mutation_metadata():
+    gateway = Gateway()
+    module = sampler.load("wire")
+    module.register(gateway)
+
+    assert gateway.ops.resolve("wire.server.token").mutates is True
+    assert gateway.ops.resolve("wire.client.enroll").mutates is True

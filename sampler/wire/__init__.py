@@ -2,13 +2,166 @@
 
 from __future__ import annotations
 
+import datetime as dt
+import hashlib
+import ipaddress
+import re
+import secrets
 import shutil
+import sqlite3
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 
 
 _TEMPLATE = Path(__file__).with_name("interface.conf")
+_CLIENT_TEMPLATE = Path(__file__).with_name("client.conf")
+_DEVICE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+_PUBLIC_KEY_RE = re.compile(r"^[A-Za-z0-9+/]{43}=$")
+
+
+def _utcnow():
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def _stamp(value):
+    return value.astimezone(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def _token_hash(value):
+    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+
+
+class Registry:
+    """Small durable Wire enrollment registry owned by the sampler."""
+
+    def __init__(self, path, *, network="10.90.0.0/24", gateway_address="10.90.0.1"):
+        self.path = Path(path)
+        self.network = ipaddress.ip_network(network, strict=True)
+        self.gateway_address = ipaddress.ip_address(gateway_address)
+        if self.network.version != 4:
+            raise ValueError("wire network must be IPv4")
+        if self.gateway_address not in self.network:
+            raise ValueError("wire gateway_address must belong to wire network")
+
+    def connect(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS devices (
+                device TEXT PRIMARY KEY,
+                public_key TEXT NOT NULL UNIQUE,
+                address TEXT NOT NULL UNIQUE,
+                enabled INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE IF NOT EXISTS tokens (
+                digest TEXT PRIMARY KEY,
+                device TEXT,
+                expires_at TEXT NOT NULL,
+                consumed_at TEXT
+            );
+            """
+        )
+        return connection
+
+    def create_token(self, *, device=None, ttl=3600, token=None, now=None):
+        if device is not None:
+            _device(device)
+        ttl = int(ttl)
+        if not 1 <= ttl <= 7 * 24 * 3600:
+            raise ValueError("wire token ttl must be between 1 and 604800 seconds")
+        token = token or secrets.token_urlsafe(32)
+        if len(token) < 20:
+            raise ValueError("wire enrollment token must contain at least 20 characters")
+        now = now or _utcnow()
+        expires = now + dt.timedelta(seconds=ttl)
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO tokens (digest, device, expires_at, consumed_at) VALUES (?, ?, ?, NULL)",
+                (_token_hash(token), device, _stamp(expires)),
+            )
+        return token, expires
+
+    def _allocate(self, conn):
+        reserved = {
+            ipaddress.ip_interface(row["address"]).ip
+            for row in conn.execute("SELECT address FROM devices")
+        }
+        reserved.add(self.gateway_address)
+        for candidate in self.network.hosts():
+            if candidate not in reserved:
+                return f"{candidate}/32"
+        raise RuntimeError(f"no Wire addresses remain in {self.network}")
+
+    def enroll(self, *, device, public_key, token, now=None):
+        device = _device(device)
+        public_key = _public_key(public_key)
+        now = now or _utcnow()
+        digest = _token_hash(token)
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            token_row = conn.execute(
+                "SELECT * FROM tokens WHERE digest = ?", (digest,)
+            ).fetchone()
+            if token_row is None or token_row["consumed_at"] is not None:
+                raise PermissionError("invalid or already-used wire enrollment token")
+            expires = dt.datetime.fromisoformat(token_row["expires_at"])
+            if now >= expires:
+                raise PermissionError("wire enrollment token expired")
+            if token_row["device"] is not None and token_row["device"] != device:
+                raise PermissionError("wire enrollment token is not valid for this device")
+
+            existing = conn.execute(
+                "SELECT * FROM devices WHERE device = ?", (device,)
+            ).fetchone()
+            created = False
+            if existing is not None:
+                if not existing["enabled"]:
+                    raise PermissionError("wire device is revoked")
+                if existing["public_key"] != public_key:
+                    raise ValueError("wire device is already enrolled with another key")
+                record = dict(existing)
+            else:
+                owner = conn.execute(
+                    "SELECT device FROM devices WHERE public_key = ?", (public_key,)
+                ).fetchone()
+                if owner is not None:
+                    raise ValueError("wire public key is already assigned to another device")
+                address = self._allocate(conn)
+                conn.execute(
+                    "INSERT INTO devices (device, public_key, address, enabled) VALUES (?, ?, ?, 1)",
+                    (device, public_key, address),
+                )
+                record = {
+                    "device": device,
+                    "public_key": public_key,
+                    "address": address,
+                    "enabled": 1,
+                }
+                created = True
+
+            conn.execute(
+                "UPDATE tokens SET consumed_at = ? WHERE digest = ?",
+                (_stamp(now), digest),
+            )
+            conn.commit()
+        return record, created
+
+
+def _device(value):
+    value = str(value).strip()
+    if not _DEVICE_RE.fullmatch(value):
+        raise ValueError("invalid wire device id")
+    return value
+
+
+def _public_key(value):
+    value = str(value).strip()
+    if not _PUBLIC_KEY_RE.fullmatch(value):
+        raise ValueError("invalid WireGuard public key")
+    return value
 
 
 def _run(argv):
@@ -103,6 +256,95 @@ class Controller:
             "status": status,
         }
 
+    def token(
+        self,
+        *,
+        device=None,
+        ttl=3600,
+        registry=None,
+        network="10.90.0.0/24",
+        gateway_address="10.90.0.1",
+        mutate=True,
+    ):
+        """Issue one expiring enrollment token from durable Wire state."""
+        del mutate
+        store = Registry(
+            registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
+            network=network,
+            gateway_address=gateway_address,
+        )
+        token, expires = store.create_token(device=device, ttl=ttl)
+        return {
+            "token": token,
+            "device": device,
+            "expires": _stamp(expires),
+        }
+
+    def enroll(
+        self,
+        device,
+        *,
+        public_key,
+        token,
+        private_key,
+        server_public_key,
+        server_endpoint,
+        server_tunnel_ip="10.90.0.1",
+        registry=None,
+        network="10.90.0.0/24",
+        gateway_address="10.90.0.1",
+        to=None,
+        sudo=False,
+        rollback=None,
+        mutate=True,
+    ):
+        """Enroll one client and render its WireGuard configuration."""
+        del mutate
+        store = Registry(
+            registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
+            network=network,
+            gateway_address=gateway_address,
+        )
+        record, created = store.enroll(
+            device=device,
+            public_key=public_key,
+            token=token,
+        )
+        private_key = str(private_key).strip()
+        if not private_key:
+            raise ValueError("wire private key must be non-empty")
+        server_public_key = _public_key(server_public_key)
+        endpoint = str(server_endpoint).strip()
+        if not endpoint:
+            raise ValueError("wire server_endpoint must be non-empty")
+
+        destination = (
+            Path(to)
+            if to is not None
+            else self.gateway.data_root() / "wire" / "clients" / _device(device) / "wireguard.conf"
+        )
+        values = {
+            "wire_client_address": record["address"],
+            "wire_client_private_key": private_key,
+            "wire_server_public_key": server_public_key,
+            "wire_server_endpoint": endpoint,
+            "wire_server_tunnel_ip": str(server_tunnel_ip).strip(),
+        }
+        with _context(self.gateway, values):
+            rendered = self.gateway.render(
+                str(_CLIENT_TEMPLATE),
+                to=str(destination),
+                sudo=sudo,
+                rollback=rollback,
+            )
+        return {
+            "device": record["device"],
+            "address": record["address"],
+            "public_key": record["public_key"],
+            "config": str(rendered),
+            "created": created,
+        }
+
     def provision(
         self,
         interface="gway",
@@ -166,6 +408,18 @@ def register(gateway, *, runner=None, which=None):
         op="provision",
         sub="wire",
     )
+    token = gateway.wrap(
+        "wire.server.token",
+        controller.token,
+        op="token",
+        sub="server",
+    )
+    enroll = gateway.wrap(
+        "wire.client.enroll",
+        controller.enroll,
+        op="enroll",
+        sub="client",
+    )
     client_status = gateway.wrap(
         "wire.client.status",
         controller.status,
@@ -186,6 +440,10 @@ def register(gateway, *, runner=None, which=None):
         "wg.check": check,
         "wireguard.provision": provision,
         "wg.provision": provision,
+        "wireguard.server.token": token,
+        "wg.server.token": token,
+        "wireguard.client.enroll": enroll,
+        "wg.client.enroll": enroll,
         "wireguard.client.status": client_status,
         "wg.client.status": client_status,
         "wireguard.server.status": server_status,
