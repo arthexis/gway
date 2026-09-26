@@ -149,7 +149,7 @@ jobs:
       - name: Enable auto-merge
         if: steps.gate.outputs.ready == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
@@ -157,42 +157,3 @@ jobs:
         run: |
           set -euo pipefail
           gh pr merge "$PR_NUMBER"             --repo "$REPOSITORY"             --auto             --merge             --match-head-commit "$HEAD_SHA"
-
-      - name: Dispatch post-merge Gway handoff
-        if: steps.gate.outputs.ready == 'true'
-        shell: bash
-        env:
-          READ_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        run: |
-          set -euo pipefail
-          merge_sha=""
-          for _ in $(seq 1 30); do
-            pr_json="$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-            if [[ "$(jq -r '.merged' <<< "$pr_json")" == "true" ]]; then
-              merge_sha="$(jq -r '.merge_commit_sha // empty' <<< "$pr_json")"
-              break
-            fi
-            sleep 2
-          done
-
-          if [[ ! "$merge_sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "post_merge_handoff=deferred"
-            exit 0
-          fi
-
-          if GH_TOKEN="$READ_TOKEN" gh workflow run watchtower-candidate.yml \
-            --repo "$REPOSITORY" \
-            --ref main \
-            -f candidate_sha="$merge_sha"; then
-            message="✅ Watchtower candidate handoff accepted for merge \`$merge_sha\` via \`watchtower-candidate.yml\`."
-            GH_TOKEN="$READ_TOKEN" gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "$message"
-            echo "post_merge_handoff=accepted sha=$merge_sha workflow=watchtower-candidate.yml"
-          else
-            status=$?
-            message="❌ Watchtower candidate handoff failed for merge \`$merge_sha\` while dispatching \`watchtower-candidate.yml\` (exit $status)."
-            GH_TOKEN="$READ_TOKEN" gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "$message" || true
-            echo "post_merge_handoff=failed sha=$merge_sha workflow=watchtower-candidate.yml exit=$status" >&2
-            exit "$status"
-          fi

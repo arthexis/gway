@@ -40,20 +40,37 @@ class Controller:
         """Delete one named security scope."""
         return self.registry.remove(name)
 
+    @staticmethod
+    def _environment_values(environment):
+        if environment is None:
+            return ()
+        if isinstance(environment, str):
+            return tuple(item.strip() for item in environment.split(",") if item.strip())
+        return tuple(environment)
+
     def set(self, name, *operations, environment=None):
         """Replace one scope using operation grants and optional environment names."""
-        if environment is None:
-            environment_values = ()
-        elif isinstance(environment, str):
-            environment_values = tuple(
-                item.strip() for item in environment.split(",") if item.strip()
-            )
-        else:
-            environment_values = tuple(environment)
+        environment_values = self._environment_values(environment)
         return self.registry.replace(
             name,
             operations=operations,
             environment=environment_values,
+        )
+
+    def add(self, name, *operations, environment=None):
+        """Add operation and environment grants to an existing scope."""
+        return self.registry.update_grants(
+            name,
+            add_operations=operations,
+            add_environment=self._environment_values(environment),
+        )
+
+    def remove(self, name, *operations, environment=None):
+        """Remove operation and environment grants from an existing scope."""
+        return self.registry.update_grants(
+            name,
+            remove_operations=operations,
+            remove_environment=self._environment_values(environment),
         )
 
     def resolve(self, *names, mutate=True):

@@ -68,6 +68,44 @@ def test_scope_dunder_all_round_trips(tmp_path):
     assert scope.environment == frozenset({"__all__"})
 
 
+def test_scope_update_grants_adds_and_removes_atomically(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    registry.replace(
+        "logs",
+        operations={"log.read"},
+        environment={"LOG_LEVEL"},
+    )
+
+    added = registry.update_grants(
+        "logs",
+        add_operations={"help", "log.tail"},
+        add_environment={"SITE"},
+    )
+    assert added == Scope(
+        "logs",
+        frozenset({"log.read", "log.tail", "help"}),
+        frozenset({"LOG_LEVEL", "SITE"}),
+    )
+
+    removed = registry.update_grants(
+        "logs",
+        remove_operations={"log.tail", "missing"},
+        remove_environment={"SITE", "MISSING"},
+    )
+    assert removed == Scope(
+        "logs",
+        frozenset({"log.read", "help"}),
+        frozenset({"LOG_LEVEL"}),
+    )
+
+
+def test_scope_update_grants_requires_existing_scope(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+
+    with pytest.raises(LookupError, match="Unknown security scope"):
+        registry.update_grants("missing", add_operations={"help"})
+
+
 def test_scope_remove_cascades_grants(tmp_path):
     path = tmp_path / "security.sqlite"
     registry = ScopeRegistry(path)
@@ -190,8 +228,22 @@ def test_security_scope_gway_command_surface(gateway, tmp_path):
         frozenset({"GWAY_LOG_LEVEL"}),
     )
 
-    assert gateway("security scope show logs") == updated
-    assert gateway("security scope list") == [updated]
+    added = gateway("security scope add logs help --environment SITE")
+    assert added == Scope(
+        "logs",
+        frozenset({"log.read", "log.tail", "help"}),
+        frozenset({"GWAY_LOG_LEVEL", "SITE"}),
+    )
+
+    removed = gateway("security scope remove logs log.tail --environment SITE")
+    assert removed == Scope(
+        "logs",
+        frozenset({"log.read", "help"}),
+        frozenset({"GWAY_LOG_LEVEL"}),
+    )
+
+    assert gateway("security scope show logs") == removed
+    assert gateway("security scope list") == [removed]
     assert gateway("security scope delete logs") is True
     assert gateway("security scope list") == []
 
