@@ -147,8 +147,10 @@ class Controller:
     def inspect(self, *target, mutate=False):
         """Inspect service policy inferred for an operation or recipe invocation."""
         definition = self._definition(target)
+        installation = getattr(self.gateway, "_installed", {}).get(definition.project)
         return {
             "project": definition.project,
+            "kind": getattr(installation, "kind", "extension"),
             "service": definition.name,
             "description": definition.description,
             "launchable": {
