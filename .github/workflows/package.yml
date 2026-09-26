@@ -52,7 +52,21 @@ jobs:
               }
 
           assert installed != source
-          assert snapshot(installed) == snapshot(source)
+          source_snapshot = snapshot(source)
+          installed_snapshot = snapshot(installed)
+          if installed_snapshot != source_snapshot:
+              source_files = set(source_snapshot)
+              installed_files = set(installed_snapshot)
+              missing = sorted(source_files - installed_files)
+              extra = sorted(installed_files - source_files)
+              changed = sorted(
+                  path
+                  for path in source_files & installed_files
+                  if source_snapshot[path] != installed_snapshot[path]
+              )
+              raise AssertionError(
+                  f"sampler mismatch: missing={missing}, extra={extra}, changed={changed}"
+              )
           assert load("web/app").AppSpec is not None
           PY
           /tmp/clean-install/bin/python -m gway help install >/dev/null
