@@ -3,6 +3,7 @@
 import ast
 import os
 import time
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 from collections.abc import Mapping
 
@@ -25,6 +26,53 @@ class CheckError(RuntimeError):
 
 class RepeatLimitError(RuntimeError):
     """Raised when a conditional repeat cannot reach its terminal state."""
+
+
+class OperationLookupError(LookupError):
+    """Raised when command resolution fails, with optional recovery suggestions."""
+
+    def __init__(self, query, suggestions=()):
+        self.query = str(query)
+        self.suggestions = tuple(suggestions)
+        message = f"Unable to resolve operation: {self.query}"
+        if self.suggestions:
+            message += "\nDid you mean:\n" + "\n".join(
+                f"  {suggestion}" for suggestion in self.suggestions
+            )
+        super().__init__(message)
+
+
+def _display_operation_name(name):
+    """Render one registry identity using normal space-separated CLI spelling."""
+    return " ".join(
+        part for part in str(name).replace(".", " ").replace("_", " ").split() if part
+    )
+
+
+def _operation_suggestions(runtime, values, *, limit=3, cutoff=0.72):
+    """Return close live operation spellings without changing strict resolution."""
+    query = " ".join(str(value) for value in values).strip()
+    if not query:
+        return ()
+
+    registry = runtime.ops._registry
+    identities = dict.fromkeys((*registry.aliases, *registry.records))
+    candidates = []
+    seen = set()
+    normalized_query = _display_operation_name(query).casefold()
+
+    for identity in identities:
+        display = _display_operation_name(identity)
+        normalized = display.casefold()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        score = SequenceMatcher(None, normalized_query, normalized).ratio()
+        if score >= cutoff:
+            candidates.append((score, display))
+
+    candidates.sort(key=lambda item: (-item[0], len(item[1]), item[1]))
+    return tuple(display for _, display in candidates[:limit])
 
 
 def _repeat_stage(tokens):
@@ -541,7 +589,8 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
     if expand_sampler(runtime, tokens):
         return resolve_operation(runtime, tokens, pipeline=pipeline)
 
-    raise LookupError(f"Unable to resolve operation: {' '.join(values)}")
+    query = " ".join(values)
+    raise OperationLookupError(query, _operation_suggestions(runtime, values))
 
 
 def _enforce_cardinality(resolution, result):
