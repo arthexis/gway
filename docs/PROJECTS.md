@@ -73,6 +73,32 @@ bootstrap.
 
 The table is optional. If present, it must be a TOML table.
 
+### `[[tool.gway.guide]]`
+
+Projects can publish explicit task guidance for the read-only `guide` operation:
+
+```toml
+[[tool.gway.guide]]
+tasks = ["check production logs", "inspect logs"]
+command = "log read --all"
+reason = "Use the maintained log reader for this deployment."
+```
+
+Each declaration requires:
+
+- `tasks`: one or more task phrases;
+- `command`: the preferred GWAY command;
+- `reason`: why that command is preferred.
+
+`guide <task>` ranks only these explicit declarations in this first implementation.
+It returns structured recommendations with the command, reason, project source, and
+the configured task phrase that matched. The command is only a recommendation:
+`guide` does not execute it or grant authorization to use it.
+
+Role-aware guidance, inferred operation/recipe metadata, docstrings, external
+capability recommendations, and documentation fallbacks remain separate later
+layers of the guide design.
+
 ### `[tool.gway.sous-chef.<job>]`
 
 Sous Chef jobs are project-owned recipe jobs:
