@@ -28,6 +28,7 @@ def test_project_guidance_validates_explicit_rules():
             "command": "log read --all",
             "reason": "Use the maintained log reader.",
             "source": "demo",
+            "roles": (),
         },
     )
 
@@ -41,6 +42,19 @@ def test_project_guidance_validates_explicit_rules():
         (
             {"tasks": ["status"], "command": "status", "reason": "x", "extra": True},
             "Unknown guide fields",
+        ),
+        (
+            {"tasks": [1], "command": "status", "reason": "x"},
+            "non-empty strings",
+        ),
+        (
+            {
+                "tasks": ["status"],
+                "command": "status",
+                "reason": "x",
+                "roles": [False],
+            },
+            "guide roles must be non-empty strings",
         ),
     ],
 )
@@ -110,3 +124,93 @@ reason = "Use logs."
         "external": [],
     }
     assert gateway.guide.mutates is False
+
+
+def test_guide_role_specific_rule_outranks_generic_rule(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "watchtower"
+
+[[tool.gway.guide]]
+tasks = ["diagnose node"]
+command = "status"
+reason = "Generic diagnostic."
+
+[[tool.gway.guide]]
+tasks = ["diagnose node"]
+roles = ["watchtower"]
+command = "node diagnose"
+reason = "Use the Watchtower-specific diagnostic."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    result = gateway("guide diagnose node")
+
+    assert result["role"] == "watchtower"
+    assert result["recommendations"][0]["command"] == "node diagnose"
+    assert result["recommendations"][0]["roles"] == ["watchtower"]
+    assert result["recommendations"][1]["command"] == "status"
+
+
+def test_guide_excludes_rules_for_other_roles(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "control"
+
+[[tool.gway.guide]]
+tasks = ["diagnose node"]
+roles = ["watchtower"]
+command = "node diagnose"
+reason = "Watchtower-only diagnostic."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    result = gateway("guide diagnose node")
+
+    assert result["role"] == "control"
+    assert result["recommendations"] == []
+
+
+def test_guide_result_does_not_publish_metadata_into_context(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[[tool.gway.guide]]
+tasks = ["check logs"]
+command = "log read --all"
+reason = "Use logs."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+    gateway.context.update(
+        {
+            "task": "preserve-task",
+            "recommendations": "preserve-recommendations",
+            "external": "preserve-external",
+        }
+    )
+
+    result = gateway("guide check logs")
+
+    assert result["task"] == "check logs"
+    assert gateway.context["task"] == "preserve-task"
+    assert gateway.context["recommendations"] == "preserve-recommendations"
+    assert gateway.context["external"] == "preserve-external"
