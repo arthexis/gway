@@ -160,6 +160,50 @@ class ScopeRegistry:
         return self.require(name)
 
 
+    def update_grants(
+        self,
+        name,
+        *,
+        add_operations=(),
+        remove_operations=(),
+        add_environment=(),
+        remove_environment=(),
+    ):
+        """Atomically add and remove grants from one existing scope."""
+        name = self._name(name)
+        add_operations = self._grants(add_operations, label="operation")
+        remove_operations = self._grants(remove_operations, label="operation")
+        add_environment = self._grants(add_environment, label="environment")
+        remove_environment = self._grants(remove_environment, label="environment")
+
+        with self.state.connect() as connection:
+            row = connection.execute(
+                "SELECT id FROM scopes WHERE name = ?", (name,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"Unknown security scope: {name}")
+            scope_id = row["id"]
+
+            connection.executemany(
+                "INSERT OR IGNORE INTO scope_operations (scope_id, operation) VALUES (?, ?)",
+                ((scope_id, operation) for operation in sorted(add_operations)),
+            )
+            connection.executemany(
+                "DELETE FROM scope_operations WHERE scope_id = ? AND operation = ?",
+                ((scope_id, operation) for operation in sorted(remove_operations)),
+            )
+            connection.executemany(
+                "INSERT OR IGNORE INTO scope_environment (scope_id, variable_name) VALUES (?, ?)",
+                ((scope_id, variable) for variable in sorted(add_environment)),
+            )
+            connection.executemany(
+                "DELETE FROM scope_environment WHERE scope_id = ? AND variable_name = ?",
+                ((scope_id, variable) for variable in sorted(remove_environment)),
+            )
+
+        return self.require(name)
+
+
     def replace_many(self, definitions):
         """Atomically converge multiple named scope definitions."""
         normalized = {}
