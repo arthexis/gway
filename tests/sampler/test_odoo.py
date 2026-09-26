@@ -185,3 +185,27 @@ def test_odoo_client_rejects_failed_authentication():
             password="wrong",
             proxy_factory=proxy_factory,
         )
+
+
+def test_odoo_query_preserves_json_domain_through_binding():
+    from gway.console import process
+
+    module = sampler.load("odoo")
+    gateway = Gateway(context=credentials())
+    module.register(gateway, client_factory=FakeOdooClient)
+
+    _, result = process(
+        [[
+            "query",
+            "odoo",
+            "sale.order",
+            "--domain",
+            '[["state","=","sale"]]',
+        ]],
+        gw_instance=gateway,
+    )
+
+    assert result == [{"id": 7, "name": "SO007"}]
+    assert FakeOdooClient.calls[-1]["args"] == [
+        [["state", "=", "sale"]]
+    ]

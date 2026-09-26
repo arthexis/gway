@@ -6,6 +6,8 @@ import json
 from urllib.parse import urlsplit
 from xmlrpc.client import ServerProxy
 
+from gway.binding import Literal
+
 
 class OdooAuthenticationError(RuntimeError):
     """Raised when Odoo rejects configured credentials."""
@@ -121,7 +123,7 @@ class Controller:
         self,
         model,
         *,
-        domain=(),
+        domain: Literal = (),
         fields=(),
         limit=None,
         offset=0,
