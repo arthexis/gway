@@ -1,7 +1,7 @@
 import pytest
 
 from gway import Gateway
-from gway.config import project_guidance
+from gway.config import project_guide_documents, project_guidance
 
 
 def test_project_guidance_validates_explicit_rules():
@@ -622,3 +622,117 @@ reason = "Review the canonical repository."
         "matched_task": "review deployment source",
         "roles": ["watchtower"],
     }
+
+
+def test_guide_uses_only_explicitly_selected_project_documents(tmp_path, monkeypatch):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "OPERATIONS.md").write_text(
+        """
+# Deployment recovery
+
+To diagnose a failed deployment, inspect the recovery journal and verify the
+deployed source revision before attempting another rollout.
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "PRIVATE.md").write_text(
+        "# Secret recovery\nUse the hidden emergency procedure.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway]
+guide_documents = ["docs/OPERATIONS.md"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    result = gateway("guide diagnose failed deployment")
+
+    docs = [
+        item for item in result["recommendations"]
+        if item.get("kind") == "documentation"
+    ]
+    assert docs
+    assert docs[0]["source"] == "docs/OPERATIONS.md"
+    assert docs[0]["section"] == "Deployment recovery"
+    assert "recovery journal" in docs[0]["reason"]
+    assert all(item["source"] != "docs/PRIVATE.md" for item in docs)
+
+
+def test_document_fallback_is_ranked_after_operational_guidance(tmp_path, monkeypatch):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "OPS.md").write_text(
+        "# Inspect service\nInspect service health with the normal service command.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway]
+guide_documents = ["docs/OPS.md"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    def inspect_service():
+        """Inspect service health."""
+
+    gateway.wrap("inspect.service", inspect_service)
+    result = gateway("guide inspect service health")
+
+    operation_index = next(
+        index for index, item in enumerate(result["recommendations"])
+        if item.get("operation") == "inspect.service"
+    )
+    document_index = next(
+        index for index, item in enumerate(result["recommendations"])
+        if item.get("kind") == "documentation"
+    )
+    assert operation_index < document_index
+
+
+@pytest.mark.parametrize(
+    "selected",
+    [
+        ["../outside.md"],
+        ["/tmp/outside.md"],
+    ],
+)
+def test_project_guide_documents_rejects_paths_outside_project(tmp_path, selected):
+    with pytest.raises(ValueError, match="stay within the project"):
+        project_guide_documents(
+            {"tool": {"gway": {"guide_documents": selected}}},
+            tmp_path,
+        )
+
+
+def test_project_guide_documents_rejects_oversized_file(tmp_path):
+    path = tmp_path / "OPS.md"
+    path.write_text("x" * 65537, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exceeds 65536 bytes"):
+        project_guide_documents(
+            {"tool": {"gway": {"guide_documents": ["OPS.md"]}}},
+            tmp_path,
+        )
+
+
+def test_project_guide_documents_rejects_unselected_format(tmp_path):
+    path = tmp_path / "OPS.py"
+    path.write_text("print('not documentation')\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Markdown or text"):
+        project_guide_documents(
+            {"tool": {"gway": {"guide_documents": ["OPS.py"]}}},
+            tmp_path,
+        )
