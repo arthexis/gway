@@ -150,8 +150,22 @@ The role key implies applicability, so role-owned guide entries must not also de
 `demo:watchtower`). Role-specific entries use the same GWAY/external target schema
 and only participate when the active semantic `role` matches.
 
-The full role-aware `node` execution surface, broader docstring fallbacks, and
-documentation fallbacks remain separate later layers of the guide design.
+Projects may opt selected documentation into the final guide fallback:
+
+```toml
+[tool.gway]
+guide_documents = ["docs/OPERATIONS.md", "docs/RECOVERY.md"]
+```
+
+Only explicitly listed UTF-8 Markdown or text files are considered. Paths must remain
+inside the project root. The loader accepts at most eight files, at most 64 KiB per
+file, and at most 64 heading-oriented sections in total. Matching documentation is
+ranked after explicit guidance, live operations, and recipes and is returned as a
+`kind = "documentation"` recommendation with source, section, and a bounded excerpt.
+GWAY does not recursively search arbitrary project Markdown.
+
+The full role-aware `node` execution surface and broader docstring fallback remain
+separate later layers of the guide design.
 
 ### `[tool.gway.sous-chef.<job>]`
 
