@@ -51,3 +51,13 @@ def test_wire_recipes_do_not_require_data_dir_sigil():
         for command in _commands(name)
     )
     assert "[data_dir]" not in rendered
+
+
+def test_wire_watchtower_recipe_does_not_require_explicit_server_keys():
+    rendered = "\n".join(
+        " ".join(command)
+        for name in ("enroll.rx", "watchtower.rx")
+        for command in _commands(name)
+    )
+    assert "--private-key" not in rendered
+    assert "--server-public-key" not in rendered

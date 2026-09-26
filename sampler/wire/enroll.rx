@@ -9,7 +9,6 @@ default
 wire server serve [host] [port]
 --domain [domain]
 --config [config]
---server-public-key [server_public_key]
 --server-endpoint [server_endpoint]
 --network [network|10.90.0.0/24]
 --gateway-address [gateway_address|10.90.0.1]
