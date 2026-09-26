@@ -169,6 +169,95 @@ def project_guidance(data, *, source=None):
     return tuple(rules)
 
 
+
+_GUIDE_DOCUMENT_LIMIT = 8
+_GUIDE_DOCUMENT_BYTES = 65536
+_GUIDE_SECTION_LIMIT = 64
+
+
+def project_guide_documents(data, root):
+    """Load explicitly selected, bounded project documentation for guide."""
+    if not isinstance(data, dict):
+        return ()
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    if not isinstance(gway, dict):
+        return ()
+
+    selected = gway.get("guide_documents")
+    if selected is None:
+        return ()
+    if not isinstance(selected, list):
+        raise ValueError("[tool.gway].guide_documents must be an array")
+    if len(selected) > _GUIDE_DOCUMENT_LIMIT:
+        raise ValueError(
+            f"guide_documents supports at most {_GUIDE_DOCUMENT_LIMIT} files"
+        )
+
+    root = Path(root).expanduser().resolve()
+    documents = []
+    for value in selected:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("guide document paths must be non-empty strings")
+        relative = Path(value.strip())
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("guide document paths must stay within the project")
+        path = (root / relative).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("guide document paths must stay within the project") from exc
+        if path.suffix.lower() not in {".md", ".txt"}:
+            raise ValueError("guide documents must be Markdown or text files")
+        if not path.is_file():
+            raise ValueError(f"guide document does not exist: {relative}")
+        if path.stat().st_size > _GUIDE_DOCUMENT_BYTES:
+            raise ValueError(
+                f"guide document exceeds {_GUIDE_DOCUMENT_BYTES} bytes: {relative}"
+            )
+        text = path.read_text(encoding="utf-8")
+        documents.extend(
+            _guide_document_sections(
+                text,
+                source=relative.as_posix(),
+                remaining=_GUIDE_SECTION_LIMIT - len(documents),
+            )
+        )
+        if len(documents) >= _GUIDE_SECTION_LIMIT:
+            break
+    return tuple(documents)
+
+
+def _guide_document_sections(text, *, source, remaining):
+    """Split one selected document into bounded heading-oriented sections."""
+    if remaining <= 0:
+        return ()
+    sections = []
+    heading = None
+    lines = []
+    for raw in str(text).splitlines():
+        stripped = raw.strip()
+        if stripped.startswith("#"):
+            title = stripped.lstrip("#").strip()
+            if title:
+                if lines:
+                    body = "\n".join(lines).strip()
+                    if body:
+                        sections.append(
+                            {"source": source, "heading": heading, "text": body}
+                        )
+                        if len(sections) >= remaining:
+                            return tuple(sections)
+                heading = title
+                lines = []
+                continue
+        lines.append(raw)
+    body = "\n".join(lines).strip()
+    if body and len(sections) < remaining:
+        sections.append({"source": source, "heading": heading, "text": body})
+    return tuple(sections)
+
+
 def semantic_binding_key(topics, subject):
     """Return a deterministic exact key for structured semantic identity."""
     if not isinstance(topics, (list, tuple)):
@@ -466,6 +555,7 @@ def bootstrap(runtime, *, start=None):
         else str(project_file.parent)
     )
     runtime._guide_rules = project_guidance(data, source=guide_source)
+    runtime._guide_documents = project_guide_documents(data, project_file.parent)
     if isinstance(project_name, str) and project_name.strip():
         from .project import project_scripts
 
