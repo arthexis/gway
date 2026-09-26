@@ -13,6 +13,8 @@ import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 
+from gway.rendering import atomic_write_text
+
 
 _TEMPLATE = Path(__file__).with_name("interface.conf")
 _CLIENT_TEMPLATE = Path(__file__).with_name("client.conf")
@@ -66,6 +68,41 @@ class Registry:
         )
         return connection
 
+    def list_devices(self, *, enabled=None):
+        """Return enrolled devices in deterministic device order."""
+        query = "SELECT * FROM devices"
+        params = ()
+        if enabled is not None:
+            query += " WHERE enabled = ?"
+            params = (1 if enabled else 0,)
+        query += " ORDER BY device"
+        with self.connect() as conn:
+            return [dict(row) for row in conn.execute(query, params)]
+
+    def get_device(self, device):
+        """Return one enrolled device or None."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM devices WHERE device = ?", (_device(device),)
+            ).fetchone()
+        return None if row is None else dict(row)
+
+    def revoke(self, device):
+        """Disable one enrolled device idempotently."""
+        device = _device(device)
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM devices WHERE device = ?", (device,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"unknown wire device: {device}")
+            already = not bool(row["enabled"])
+            if not already:
+                conn.execute(
+                    "UPDATE devices SET enabled = 0 WHERE device = ?", (device,)
+                )
+        return already
+
     def create_token(self, *, device=None, ttl=3600, token=None, now=None):
         if device is not None:
             _device(device)
@@ -84,18 +121,25 @@ class Registry:
             )
         return token, expires
 
-    def _allocate(self, conn):
+    def _allocate(self, conn, *, externally_reserved=()):
         reserved = {
             ipaddress.ip_interface(row["address"]).ip
             for row in conn.execute("SELECT address FROM devices")
         }
         reserved.add(self.gateway_address)
+        for value in externally_reserved:
+            try:
+                network = ipaddress.ip_network(str(value), strict=False)
+            except ValueError:
+                continue
+            if network.version == 4:
+                reserved.update(network.hosts() if network.prefixlen < 32 else [network.network_address])
         for candidate in self.network.hosts():
             if candidate not in reserved:
                 return f"{candidate}/32"
         raise RuntimeError(f"no Wire addresses remain in {self.network}")
 
-    def enroll(self, *, device, public_key, token, now=None):
+    def enroll(self, *, device, public_key, token, now=None, externally_reserved=()):
         device = _device(device)
         public_key = _public_key(public_key)
         now = now or _utcnow()
@@ -129,7 +173,7 @@ class Registry:
                 ).fetchone()
                 if owner is not None:
                     raise ValueError("wire public key is already assigned to another device")
-                address = self._allocate(conn)
+                address = self._allocate(conn, externally_reserved=externally_reserved)
                 conn.execute(
                     "INSERT INTO devices (device, public_key, address, enabled) VALUES (?, ?, ?, 1)",
                     (device, public_key, address),
@@ -163,6 +207,82 @@ def _public_key(value):
         raise ValueError("invalid WireGuard public key")
     return value
 
+
+
+_MANAGED_BEGIN = "# BEGIN gway wire peer: "
+_MANAGED_END = "# END gway wire peer: "
+
+
+def _peer_allowed_ips(text):
+    """Return AllowedIPs from every peer, including unmanaged peers."""
+    section = None
+    values = []
+    for raw in str(text).splitlines():
+        line = raw.strip()
+        if line.startswith("[") and line.endswith("]"):
+            section = line
+            continue
+        if section == "[Peer]" and line.startswith("AllowedIPs") and "=" in line:
+            for item in line.split("=", 1)[1].split(","):
+                item = item.strip()
+                if item:
+                    values.append(item)
+    return values
+
+
+def _strip_managed_peers(text):
+    """Remove only sampler-owned peer blocks and preserve unrelated content."""
+    output = []
+    inside = False
+    for raw in str(text).splitlines():
+        line = raw.strip()
+        if line.startswith(_MANAGED_BEGIN):
+            if inside:
+                raise ValueError("nested managed Wire peer block")
+            inside = True
+            continue
+        if line.startswith(_MANAGED_END):
+            if not inside:
+                raise ValueError("orphan managed Wire peer block end")
+            inside = False
+            continue
+        if not inside:
+            output.append(raw)
+    if inside:
+        raise ValueError("unterminated managed Wire peer block")
+    base = "\n".join(output).rstrip()
+    return base + ("\n" if base else "")
+
+
+def _managed_peer(device, public_key, address):
+    return (
+        f"{_MANAGED_BEGIN}{device}\n"
+        "[Peer]\n"
+        f"# Device = {device}\n"
+        f"PublicKey = {public_key}\n"
+        f"AllowedIPs = {address}\n"
+        f"{_MANAGED_END}{device}\n"
+    )
+
+
+def _reconciled_config(current, devices):
+    """Build desired server config while preserving all unmanaged content."""
+    base = _strip_managed_peers(current)
+    blocks = [
+        _managed_peer(row["device"], row["public_key"], row["address"])
+        for row in devices
+        if row.get("enabled")
+    ]
+    if not blocks:
+        return base
+    return base.rstrip() + "\n\n" + "\n".join(blocks)
+
+
+def _atomic_reconcile(path, desired):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(path, desired)
+    return str(path)
 
 def _run(argv):
     return subprocess.run(argv, check=False, capture_output=True, text=True)
@@ -291,6 +411,7 @@ class Controller:
         server_endpoint,
         server_tunnel_ip="10.90.0.1",
         registry=None,
+        server_config=None,
         network="10.90.0.0/24",
         gateway_address="10.90.0.1",
         to=None,
@@ -305,10 +426,14 @@ class Controller:
             network=network,
             gateway_address=gateway_address,
         )
+        reserved = ()
+        if server_config is not None and Path(server_config).is_file():
+            reserved = _peer_allowed_ips(Path(server_config).read_text(encoding="utf-8"))
         record, created = store.enroll(
             device=device,
             public_key=public_key,
             token=token,
+            externally_reserved=reserved,
         )
         private_key = str(private_key).strip()
         if not private_key:
@@ -343,6 +468,86 @@ class Controller:
             "public_key": record["public_key"],
             "config": str(rendered),
             "created": created,
+        }
+
+    def devices(
+        self,
+        *,
+        registry=None,
+        network="10.90.0.0/24",
+        gateway_address="10.90.0.1",
+        mutate=False,
+    ):
+        """List enrolled Wire devices without changing state."""
+        del mutate
+        store = Registry(
+            registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
+            network=network,
+            gateway_address=gateway_address,
+        )
+        return store.list_devices()
+
+    def sync(
+        self,
+        *,
+        registry=None,
+        config="/etc/wireguard/gway.conf",
+        network="10.90.0.0/24",
+        gateway_address="10.90.0.1",
+        mutate=True,
+    ):
+        """Reconcile sampler-managed peers while preserving unmanaged peers."""
+        del mutate
+        store = Registry(
+            registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
+            network=network,
+            gateway_address=gateway_address,
+        )
+        path = Path(config)
+        if not path.is_file():
+            raise FileNotFoundError(f"WireGuard config does not exist: {path}")
+        current = path.read_text(encoding="utf-8")
+        desired = _reconciled_config(current, store.list_devices(enabled=True))
+        changed = desired != current
+        if changed:
+            _atomic_reconcile(path, desired)
+        return {
+            "config": str(path),
+            "changed": changed,
+            "devices": [
+                row["device"] for row in store.list_devices(enabled=True)
+            ],
+        }
+
+    def revoke(
+        self,
+        device,
+        *,
+        registry=None,
+        config="/etc/wireguard/gway.conf",
+        network="10.90.0.0/24",
+        gateway_address="10.90.0.1",
+        mutate=True,
+    ):
+        """Revoke one device and remove only its sampler-owned peer state."""
+        del mutate
+        store = Registry(
+            registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
+            network=network,
+            gateway_address=gateway_address,
+        )
+        already = store.revoke(device)
+        sync = self.sync(
+            registry=store.path,
+            config=config,
+            network=network,
+            gateway_address=gateway_address,
+        )
+        return {
+            "device": _device(device),
+            "revoked": True,
+            "already_revoked": already,
+            "config_changed": sync["changed"],
         }
 
     def provision(
@@ -420,6 +625,25 @@ def register(gateway, *, runner=None, which=None):
         op="enroll",
         sub="client",
     )
+    devices = gateway.wrap(
+        "wire.server.devices",
+        controller.devices,
+        op="devices",
+        sub="server",
+    )
+    revoke = gateway.wrap(
+        "wire.server.revoke",
+        controller.revoke,
+        op="revoke",
+        sub="server",
+    )
+    sync = gateway.wrap("wire.sync", controller.sync, op="sync", sub="wire")
+    server_sync = gateway.wrap(
+        "wire.server.sync",
+        controller.sync,
+        op="sync",
+        sub="server",
+    )
     client_status = gateway.wrap(
         "wire.client.status",
         controller.status,
@@ -444,6 +668,14 @@ def register(gateway, *, runner=None, which=None):
         "wg.server.token": token,
         "wireguard.client.enroll": enroll,
         "wg.client.enroll": enroll,
+        "wireguard.server.devices": devices,
+        "wg.server.devices": devices,
+        "wireguard.server.revoke": revoke,
+        "wg.server.revoke": revoke,
+        "wireguard.sync": sync,
+        "wg.sync": sync,
+        "wireguard.server.sync": server_sync,
+        "wg.server.sync": server_sync,
         "wireguard.client.status": client_status,
         "wg.client.status": client_status,
         "wireguard.server.status": server_status,
