@@ -9,10 +9,12 @@ class GuideMatch:
 
     score: float
     task: str
-    command: str
+    command: str | None
     reason: str
     source: str | None
     roles: tuple[str, ...] = ()
+    use: str = "gway"
+    capability: str | None = None
 
 
 def _words(value):
@@ -66,10 +68,12 @@ def explicit_matches(task, rules, *, role=None, limit=5, cutoff=0.5):
                 GuideMatch(
                     score=best[0],
                     task=best[1],
-                    command=rule["command"],
+                    command=rule.get("command"),
                     reason=rule["reason"],
                     source=rule.get("source"),
                     roles=roles,
+                    use=rule.get("use", "gway"),
+                    capability=rule.get("capability"),
                 ),
             )
         )
@@ -161,7 +165,20 @@ def guide(
         raise TypeError("guide requires a task")
 
     recommendations = []
+    external = []
     for match in explicit_matches(task, rules, role=role):
+        if match.use == "external":
+            recommendation = {
+                "capability": match.capability,
+                "reason": match.reason,
+                "source": match.source,
+                "matched_task": match.task,
+            }
+            if match.roles:
+                recommendation["roles"] = list(match.roles)
+            external.append(recommendation)
+            continue
+
         recommendation = {
             "kind": "gway",
             "command": match.command,
@@ -198,7 +215,7 @@ def guide(
     result = {
         "task": task,
         "recommendations": recommendations,
-        "external": [],
+        "external": external,
     }
     if role is not None:
         result["role"] = role
