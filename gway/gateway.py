@@ -398,16 +398,14 @@ class Gateway(Resolver):
 
     def _installed_by_kind(self, kind):
         """Return installed artifacts of one lifecycle kind across both scopes."""
-        from .install import InstallState
+        from .config import discover_installations
 
         records = []
         for system in (False, True):
-            paths = self.install_paths(system=system)
             try:
-                state = InstallState(paths.state)
                 records.extend(
                     record
-                    for record in state.all(scope=paths.scope)
+                    for record in discover_installations(self, system=system)
                     if record.kind == kind
                 )
             except (OSError, PermissionError):
