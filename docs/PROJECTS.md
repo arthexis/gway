@@ -82,22 +82,29 @@ Projects can publish explicit task guidance for the read-only `guide` operation:
 tasks = ["check production logs", "inspect logs"]
 command = "log read --all"
 reason = "Use the maintained log reader for this deployment."
+roles = ["watchtower"]
 ```
 
 Each declaration requires:
 
 - `tasks`: one or more task phrases;
 - `command`: the preferred GWAY command;
-- `reason`: why that command is preferred.
+- `reason`: why that command is preferred;
+- optional `roles`: node/project roles for which the recommendation applies.
 
-`guide <task>` ranks only these explicit declarations in this first implementation.
+`guide <task>` ranks these explicit declarations first. When the project exposes
+a semantic `role` (for example under `[tool.gway.variables]`), declarations with
+matching `roles` are eligible and outrank otherwise equivalent generic rules.
+Role-specific declarations for another role are excluded.
+
 It returns structured recommendations with the command, reason, project source, and
 the configured task phrase that matched. The command is only a recommendation:
-`guide` does not execute it or grant authorization to use it.
+`guide` does not execute it or grant authorization to use it. Guide results are
+result-only mappings and do not promote their metadata into semantic context.
 
-Role-aware guidance, inferred operation/recipe metadata, docstrings, external
-capability recommendations, and documentation fallbacks remain separate later
-layers of the guide design.
+The full role-aware `node` execution surface, inferred operation/recipe metadata,
+docstrings, external capability recommendations, and documentation fallbacks remain
+separate later layers of the guide design.
 
 ### `[tool.gway.sous-chef.<job>]`
 
