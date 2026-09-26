@@ -120,6 +120,58 @@ def operation_matches(task, records, *, authorization=None, limit=5, cutoff=0.34
     return tuple(item[2] for item in matches[:limit])
 
 
+def docstring_matches(
+    task,
+    records,
+    *,
+    authorization=None,
+    exclude_operations=(),
+    limit=3,
+    cutoff=0.2,
+):
+    """Rank richer operation docstrings after operations and recipes."""
+    from .documentation import describe
+
+    excluded = set(exclude_operations or ())
+    allowed = None if authorization is None else authorization.operations
+    matches = []
+    for index, record in enumerate(records or ()):
+        if record.name in excluded:
+            continue
+        if allowed is not None and record.name not in allowed:
+            continue
+
+        documentation = describe(record.callable)
+        docstring = documentation.docstring or ""
+        if not docstring:
+            continue
+        score = _score(task, docstring)
+        if score < cutoff:
+            continue
+
+        excerpt = " ".join(docstring.split())
+        if len(excerpt) > 240:
+            excerpt = excerpt[:237].rstrip() + "..."
+        command = record.name.replace(".", " ").replace("_", " ")
+        matches.append(
+            (
+                -score,
+                index,
+                {
+                    "kind": "gway",
+                    "command": command,
+                    "reason": excerpt,
+                    "source": "docstring",
+                    "operation": record.name,
+                    "mutates": bool(getattr(record.callable, "mutates", True)),
+                },
+            )
+        )
+
+    matches.sort(key=lambda item: (item[0], item[1]))
+    return tuple(item[2] for item in matches[:limit])
+
+
 def recipe_matches(task, recipes, *, authorization=None, limit=5, cutoff=0.34):
     """Rank maintained sampler recipes behind explicit and operation guidance."""
     if authorization is not None and "recipe" not in authorization.operations:
@@ -238,6 +290,19 @@ def guide(
     ):
         if recommendation["command"] in known_commands:
             continue
+        recommendations.append(recommendation)
+
+    seen_operations = {
+        item.get("operation")
+        for item in recommendations
+        if item.get("operation") is not None
+    }
+    for recommendation in docstring_matches(
+        task,
+        operations,
+        authorization=authorization,
+        exclude_operations=seen_operations,
+    ):
         recommendations.append(recommendation)
 
     for recommendation in document_matches(task, documents):
