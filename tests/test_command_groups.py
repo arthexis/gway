@@ -191,3 +191,38 @@ def test_command_help_prefers_callable_prefix_over_argument_namespace(gateway):
     assert output.startswith("foo(value)")
     assert "Foo operation." in output
     assert "foo bar operations:" not in output
+
+
+
+def test_namespace_direct_child_replaces_descendant_placeholder(gateway):
+    def baz():
+        return "baz"
+
+    def bar():
+        """Bar default operation."""
+        return "bar"
+
+    gateway.wrap("foo.bar.baz", baz)
+    gateway.wrap("foo.bar", bar)
+
+    info = gateway.namespace("foo")
+    child = next(item for item in info["operations"] if item["name"] == "bar")
+
+    assert child["group"] is True
+    assert child["summary"] == "Bar default operation."
+
+
+def test_command_group_help_preserves_humanized_name(gateway):
+    def group():
+        return "group"
+
+    def child():
+        return "child"
+
+    gateway.wrap("demo.tools", group)
+    gateway.wrap("demo.tools.child", child)
+
+    output = gateway._command_help("demo", "tools")
+
+    assert output.startswith("demo tools operations:")
+    assert "demo.tools operations:" not in output

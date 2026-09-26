@@ -191,7 +191,10 @@ class Operations(Mapping):
                 continue
             remainder = name[len(dotted) + 1 :]
             child, separator, _ = remainder.partition(".")
-            found.setdefault(child, None if separator else record.callable)
+            if separator:
+                found.setdefault(child, None)
+            else:
+                found[child] = record.callable
         return tuple((name, found[name]) for name in sorted(found))
 
     def is_namespace(self, prefix):

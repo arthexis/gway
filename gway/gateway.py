@@ -784,7 +784,7 @@ class Gateway(Resolver):
         resolution = resolve_operation(self, tokenize(name))
         target, remaining, candidate = resolution
         if not remaining and self.ops.is_namespace(candidate):
-            return self._namespace_help(candidate)
+            return self._namespace_help(candidate.replace(".", " "))
         return render(target, verbose=verbose)
 
     def _help(self, *operation: str, verbose=False, mutate=False):
@@ -809,7 +809,7 @@ class Gateway(Resolver):
         if remaining:
             raise LookupError(f"Unable to resolve operation: {name}")
         if self.ops.is_namespace(candidate):
-            return self._namespace_help(candidate)
+            return self._namespace_help(candidate.replace(".", " "))
         return render(target, verbose=verbose)
 
     @property
