@@ -760,7 +760,7 @@ class Gateway(Resolver):
         return guide(
             " ".join(task),
             self._guide_rules,
-            role=self.get("role"),
+            role=self.find_value("role", include_environment=False),
             operations=self.ops.records(),
             recipes=recipes(),
             documents=self._guide_documents,
