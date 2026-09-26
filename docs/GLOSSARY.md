@@ -26,6 +26,7 @@ Gway code.
 - [Flag](#flag) — a subject trait matched by an operation parameter.
 - [Sigil](#sigil) — a semantic reference whose concrete value is resolved from context.
 - [Product](#product) — independently runnable software that GWAY can install, manage, and compose without becoming part of its runtime.
+- [Extension](#extension) — GWAY-owned installed capability whose lifecycle belongs to the GWAY runtime.
 
 ## Operation
 
@@ -895,7 +896,7 @@ product -X-> require GWAY to run
 
 ### Product versus GWAY extension
 
-A GWAY extension, sampler recipe, adapter, or other GWAY-owned capability exists to extend GWAY itself and may legitimately live under GWAY-owned installation/state paths or execute through the GWAY runtime.
+A GWAY extension or other GWAY-owned capability exists to extend GWAY itself and may legitimately live under GWAY-owned installation/state paths or execute through the GWAY runtime. A recipe is not inherently an extension: recipes are composition/execution mechanisms and may install either a product or an extension.
 
 A product does not.
 
@@ -906,6 +907,24 @@ Installing a product must therefore use product-owned runtime paths rather than 
 A product can deliberately expose metadata, commands, launchables, or other integration points that make it easy for GWAY to operate. GWAY may provide richer composition and presentation around those surfaces.
 
 That compatibility is an adapter relationship, not a runtime dependency. The product must remain directly runnable through its own normal entrypoints and native platform facilities.
+
+
+## Extension
+
+An **extension** is an installed capability whose runtime lifecycle belongs to GWAY itself.
+
+Extensions may legitimately depend on the GWAY executable, GWAY Python modules, GWAY-owned state, sampler data, recipes, adapters, or other GWAY runtime facilities. Removing GWAY may therefore remove or disable an extension.
+
+This is the opposite lifecycle boundary from a [Product](#product):
+
+```text
+product   -> managed by GWAY, runs independently of GWAY
+extension -> extends GWAY, may require GWAY to run
+```
+
+The source mechanism does not determine the kind. A recipe may install either kind. External/local Python project artifacts installed through the ordinary public `install` surface are products by default; GWAY-owned extension installation must identify itself as such.
+
+GWAY core itself is neither a product nor an extension exposed through the product inventory.
 
 
 ## Context
