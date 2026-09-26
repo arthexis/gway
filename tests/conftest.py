@@ -30,7 +30,10 @@ def run_cli(monkeypatch, capsys):
 
     def run(*args):
         monkeypatch.setattr(sys, "argv", ["gway", *args])
-        status = cli_main()
+        try:
+            status = cli_main()
+        except SystemExit as exception:
+            status = exception.code
         captured = capsys.readouterr()
         return status, captured.out, captured.err
 

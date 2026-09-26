@@ -177,6 +177,40 @@ class Operations(Mapping):
                 return name
         return default
 
+    def children(self, prefix):
+        """Return immediate child operations below one namespace, including aliases."""
+        parts = tuple(
+            part for part in str(prefix).replace(" ", ".").split(".") if part
+        )
+        if not parts:
+            return ()
+        dotted = ".".join(parts)
+        found = {}
+
+        def include(name, operation):
+            if not name.startswith(f"{dotted}."):
+                return
+            remainder = name[len(dotted) + 1 :]
+            child, separator, _ = remainder.partition(".")
+            if separator:
+                found.setdefault(child, None)
+            else:
+                found[child] = operation
+
+        for name, record in self._registry.records.items():
+            include(name, record.callable)
+
+        for alias, canonical in self._registry.aliases.items():
+            record = self._registry.records.get(canonical)
+            if record is not None:
+                include(alias, record.callable)
+
+        return tuple((name, found[name]) for name in sorted(found))
+
+    def is_namespace(self, prefix):
+        """Return whether an operation prefix has registered children."""
+        return bool(self.children(prefix))
+
     def records(self):
         """Return the live canonical operation records in registration order."""
         return tuple(self._registry.records.values())

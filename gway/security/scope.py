@@ -19,6 +19,10 @@ class Controller:
     def __init__(self, gateway):
         self.gateway = gateway
 
+    def __main__(self, *, mutate=True):
+        """Return all named security scopes."""
+        return self.list(mutate=mutate)
+
     @property
     def registry(self):
         """Return the scope registry bound to the active Gateway security path."""
