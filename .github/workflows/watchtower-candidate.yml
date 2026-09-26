@@ -3,6 +3,12 @@ name: Watchtower candidate
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: "Exact merged Gway SHA to classify and certify"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -16,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -23,11 +30,16 @@ jobs:
         id: change
         shell: bash
         env:
-          BEFORE_SHA: ${{ github.event.before }}
-          AFTER_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before || '' }}
+          AFTER_SHA: ${{ inputs.candidate_sha || github.sha }}
         run: |
           set -Eeuo pipefail
           deploy=true
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] &&
+             [[ "$AFTER_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            BEFORE_SHA="$(git rev-parse "$AFTER_SHA^1")"
+          fi
           if [[ "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
              [[ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
             BEFORE_SHA="$BEFORE_SHA" AFTER_SHA="$AFTER_SHA" python - <<'PY' > /tmp/deploy
@@ -78,7 +90,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
-          GWAY_SHA: ${{ github.sha }}
+          GWAY_SHA: ${{ inputs.candidate_sha || github.sha }}
         run: |
           set -Eeuo pipefail
           if [[ -z "$GH_TOKEN" ]]; then
