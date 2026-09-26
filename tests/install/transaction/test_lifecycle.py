@@ -291,3 +291,28 @@ def test_install_recovery_restores_previous_project_when_launcher_rollback_fails
         "launcher rollback" in note and "launcher rollback failed" in note
         for note in getattr(raised.value, "__notes__", ())
     )
+
+
+def test_public_install_classifies_external_project_as_product(
+    make_project,
+    managed_paths,
+):
+    from gway.install.ops import install
+
+    source = make_project("arthexis", launcher=True)
+    installed = install(source, paths=managed_paths)
+
+    assert installed.kind == "product"
+    assert installed.install_path == managed_paths.products / "arthexis"
+    assert installed.install_path.is_dir()
+    assert not (managed_paths.bin / "arthexis").exists()
+
+
+def test_gway_project_remains_extension(make_project, managed_paths):
+    from gway.install.ops import install
+
+    source = make_project("gway")
+    installed = install(source, paths=managed_paths)
+
+    assert installed.kind == "extension"
+    assert installed.install_path == managed_paths.projects / "gway"
