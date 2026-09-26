@@ -808,15 +808,32 @@ class Gateway(Resolver):
                 }
             )
 
-        verb, *arguments = parts
-        canonical = f"{family}.{str(verb).replace(' ', '.')}"
-        operation = self.ops.resolve(canonical)
+        values = [str(part).strip() for part in parts]
+        operation = None
+        canonical = None
+        arguments = ()
+        for size in range(len(values), 0, -1):
+            suffix = ".".join(
+                value.replace(" ", ".")
+                for value in values[:size]
+                if value
+            )
+            candidate = f"{family}.{suffix}"
+            resolved = self.ops.resolve(candidate)
+            if resolved is None:
+                continue
+            canonical = candidate
+            operation = resolved
+            arguments = tuple(parts[size:])
+            break
+
         if operation is None:
+            requested = " ".join(values)
             raise LookupError(
-                f"Role {role!r} does not expose node operation {verb!r}"
+                f"Role {role!r} does not expose node operation {requested!r}"
             )
 
-        self.authorize_operation(canonical, args=tuple(arguments))
+        self.authorize_operation(canonical, args=arguments)
         with self.invocation_authority(operation):
             return operation(*arguments)
 
