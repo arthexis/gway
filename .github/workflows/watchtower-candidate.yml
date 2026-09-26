@@ -1,0 +1,94 @@
+name: Watchtower candidate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    name: Classify Gway main change
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.change.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect version-only rollover
+        id: change
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          deploy=true
+          if [[ "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
+             [[ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
+            BEFORE_SHA="$BEFORE_SHA" AFTER_SHA="$AFTER_SHA" python - <<'PY' > /tmp/deploy
+          import os
+          import re
+          import subprocess
+
+          before = os.environ["BEFORE_SHA"]
+          after = os.environ["AFTER_SHA"]
+
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", before, after],
+              text=True,
+          ).splitlines()
+
+          version_only = changed == ["pyproject.toml"]
+          if version_only:
+              old = subprocess.check_output(
+                  ["git", "show", f"{before}:pyproject.toml"], text=True
+              )
+              new = subprocess.check_output(
+                  ["git", "show", f"{after}:pyproject.toml"], text=True
+              )
+              pattern = re.compile(r'(?m)^(version\s*=\s*")[^"]+(".*)$')
+              if not (pattern.search(old) and pattern.search(new)):
+                  version_only = False
+              else:
+                  version_only = (
+                      old != new
+                      and pattern.sub(r'\1<VERSION>\2', old, count=1)
+                      == pattern.sub(r'\1<VERSION>\2', new, count=1)
+                  )
+
+          print("false" if version_only else "true")
+          PY
+            deploy="$(cat /tmp/deploy)"
+          fi
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+          echo "deploy=$deploy"
+
+  notify:
+    name: Request Watchtower certification
+    needs: classify
+    if: needs.classify.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch exact Gway candidate to Arthexis
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          GWAY_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "RELEASE_AUTOMATION_TOKEN is required to request cross-repository Watchtower certification." >&2
+            exit 1
+          fi
+          [[ "$GWAY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/arthexis/arthexis/dispatches \
+            -f event_type='gway-candidate' \
+            -F client_payload[gway_sha]="$GWAY_SHA"
