@@ -242,6 +242,8 @@ def install_materialized(
         raise ValueError("Cannot install a project from its managed destination")
 
     existing = registry.get(name, scope=selected.scope)
+    previous_destination = None
+    kind_changed = False
     drifted = False
     desired_changed = True
     if existing is None:
@@ -250,32 +252,46 @@ def install_materialized(
                 f"Managed destination exists without installation state: {destination}"
             )
     else:
-        if existing.kind != request.kind:
-            raise RuntimeError(
-                f"Installed {name!r} is classified as {existing.kind}; "
-                f"remove it before reinstalling as {request.kind}"
-            )
-        desired_changed = _desired_changed(
+        previous_root = (
+            selected.products if existing.kind == "product" else selected.projects
+        )
+        previous_destination = previous_root / name
+        _expected_destination(existing, previous_destination)
+        kind_changed = existing.kind != request.kind
+        desired_changed = kind_changed or _desired_changed(
             existing,
             source_identity=source_identity,
             requested_ref=requested_ref,
             resolved_revision=resolved_revision,
             fingerprint_value=desired_fingerprint,
         )
-        actual = _managed_fingerprint(existing, destination)
+        actual = _managed_fingerprint(existing, previous_destination)
         drifted = actual is not None and (
             existing.fingerprint is None or actual != existing.fingerprint
         )
         _handle_drift(
             request,
             existing,
-            destination,
+            previous_destination,
             actual,
             desired_changed,
             selected.stashes,
         )
+        if (
+            kind_changed
+            and (destination.exists() or destination.is_symlink())
+            and destination.resolve() != previous_destination.resolve()
+        ):
+            raise RuntimeError(
+                f"New {request.kind} destination already exists: {destination}"
+            )
 
-        same = not drifted and not desired_changed and destination.is_dir()
+        same = (
+            not kind_changed
+            and not drifted
+            and not desired_changed
+            and destination.is_dir()
+        )
         if same:
             if request.kind == "extension":
                 launcher = activate_project(name, destination, selected)
@@ -283,7 +299,8 @@ def install_materialized(
             return existing
 
         if (
-            not drifted
+            not kind_changed
+            and not drifted
             and destination.is_dir()
             and existing.fingerprint == desired_fingerprint
         ):
@@ -351,8 +368,11 @@ def install_materialized(
             resolved_revision=resolved_revision,
         )
         launcher = None
+        previous_launcher = None
         state_written = False
         try:
+            if kind_changed and existing.kind == "extension":
+                previous_launcher = deactivate_project(name, selected)
             launcher = (
                 activate_project(name, destination, selected)
                 if request.kind == "extension"
@@ -377,6 +397,12 @@ def install_materialized(
 
             if launcher is not None:
                 _attempt_recovery(primary, "launcher rollback", launcher.rollback)
+            if previous_launcher is not None:
+                _attempt_recovery(
+                    primary,
+                    "previous launcher restoration",
+                    previous_launcher.rollback,
+                )
 
             if destination.exists() or destination.is_symlink():
                 _attempt_recovery(
@@ -397,6 +423,24 @@ def install_materialized(
 
         if launcher is not None:
             launcher.commit()
+        if previous_launcher is not None:
+            previous_launcher.commit()
+        if (
+            kind_changed
+            and previous_destination is not None
+            and previous_destination != destination
+            and (previous_destination.exists() or previous_destination.is_symlink())
+        ):
+            try:
+                _remove_path(previous_destination)
+            except OSError:
+                gway_log.warning(
+                    "Installed %s as %s but could not remove previous %s path %s",
+                    name,
+                    request.kind,
+                    existing.kind,
+                    previous_destination,
+                )
         if backup is not None and (backup.exists() or backup.is_symlink()):
             try:
                 _remove_path(backup)
