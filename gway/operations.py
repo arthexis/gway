@@ -186,15 +186,29 @@ class Operations(Mapping):
             return ()
         dotted = ".".join(parts)
         found = {}
-        for name, record in self._registry.records.items():
+
+        def include(name, operation):
             if not name.startswith(f"{dotted}."):
-                continue
+                return
             remainder = name[len(dotted) + 1 :]
             child, separator, _ = remainder.partition(".")
             if separator:
                 found.setdefault(child, None)
             else:
-                found[child] = record.callable
+                found[child] = operation
+
+        for name, record in self._registry.records.items():
+            include(name, record.callable)
+
+        # Alternate ingestion roots (AKA paths) should expose the same namespace
+        # shape as their canonical registrations. Alias values point back to
+        # canonical records, so preserve direct-operation metadata while
+        # discovering children through the alternate prefix.
+        for alias, canonical in self._registry.aliases.items():
+            record = self._registry.records.get(canonical)
+            if record is not None:
+                include(alias, record.callable)
+
         return tuple((name, found[name]) for name in sorted(found))
 
     def is_namespace(self, prefix):

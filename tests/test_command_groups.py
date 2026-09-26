@@ -226,3 +226,31 @@ def test_command_group_help_preserves_humanized_name(gateway):
 
     assert output.startswith("demo tools operations:")
     assert "demo.tools operations:" not in output
+
+
+def test_alias_namespace_discovers_children_and_default(gateway):
+    class Demo:
+        def __main__(self, *, mutate=False):
+            """List demo tools."""
+            return ["alpha"]
+
+        def ping(self):
+            """Ping through the demo tool namespace."""
+            return "pong"
+
+    gateway.ingest(Demo(), path=("demo", "tools"), aka="tools")
+
+    assert gateway("tools") == ["alpha"]
+    assert gateway("tools ping") == "pong"
+
+    info = gateway.namespace("tools")
+    assert info["group"] == "tools"
+    assert info["default"] == "tools"
+    assert [item["name"] for item in info["operations"]] == ["ping"]
+    assert info["operations"][0]["summary"] == "Ping through the demo tool namespace."
+
+    output = gateway("help tools")
+    assert output.startswith("tools operations:")
+    assert "ping" in output
+    assert "Ping through the demo tool namespace." in output
+    assert "Bare 'tools' runs its group default." in output
