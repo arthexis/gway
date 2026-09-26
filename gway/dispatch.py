@@ -599,7 +599,21 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
     if expand_sampler(runtime, tokens):
         return resolve_operation(runtime, tokens, pipeline=pipeline)
 
-    query = " ".join(values)
+    namespace = " ".join(values)
+    if runtime.ops.is_namespace(namespace):
+        def inspect_namespace():
+            return runtime.namespace(*values)
+
+        inspect_namespace.__name__ = "namespace"
+        inspect_namespace.__doc__ = f"List operations under {namespace!r}."
+        inspect_namespace.mutates = False
+        inspect_namespace.__gway_mutates__ = False
+        inspect_namespace.__gway_supports_no_mutate__ = True
+        inspect_namespace.__gway_operation__ = namespace
+        inspect_namespace.__gway_subject__ = None
+        return _resolved(inspect_namespace, [], namespace)
+
+    query = namespace
     raise OperationLookupError(query, _operation_suggestions(runtime, values))
 
 

@@ -50,6 +50,61 @@ def _extract_mutation_policy(argv):
     return policy, remaining
 
 
+_COMMAND_HELP_VALUE_OPTIONS = {
+    "-L", "--log-level", "--logfile", "-r", "--recipe",
+    "-e", "--expression", "--resume",
+}
+_COMMAND_HELP_MODE_OPTIONS = {"-r", "--recipe", "-e", "--expression", "--resume"}
+
+
+def _extract_command_help(argv):
+    """Route only trailing operation help through GWAY command help."""
+    if not argv or argv[-1] not in {"--help", "-h"}:
+        return False, argv
+    preceding = argv[:-1]
+    if "--" in preceding:
+        return False, argv
+
+    command_seen = False
+    mode_seen = False
+    consume_value = False
+    for token in preceding:
+        if consume_value:
+            consume_value = False
+            continue
+        if token in _COMMAND_HELP_VALUE_OPTIONS:
+            mode_seen = mode_seen or token in _COMMAND_HELP_MODE_OPTIONS
+            consume_value = True
+            continue
+        matched_long = next(
+            (
+                option for option in _COMMAND_HELP_VALUE_OPTIONS
+                if option.startswith("--") and token.startswith(f"{option}=")
+            ),
+            None,
+        )
+        if matched_long is not None:
+            mode_seen = mode_seen or matched_long in _COMMAND_HELP_MODE_OPTIONS
+            continue
+        matched_short = next(
+            (
+                option for option in {"-L", "-r", "-e"}
+                if token.startswith(option) and token != option
+            ),
+            None,
+        )
+        if matched_short is not None:
+            mode_seen = mode_seen or matched_short in _COMMAND_HELP_MODE_OPTIONS
+            continue
+        if token.startswith("-"):
+            continue
+        command_seen = True
+
+    if mode_seen or not command_seen:
+        return False, argv
+    return True, preceding
+
+
 def cli_main():
     """Run the minimal GWAY command-line interface."""
     parser = argparse.ArgumentParser(
@@ -83,8 +138,10 @@ def cli_main():
         mutation_policy, argv = _extract_mutation_policy(sys.argv[1:])
     except ValueError as exception:
         parser.error(str(exception))
+    command_help, argv = _extract_command_help(argv)
     args, unknown = parser.parse_known_args(argv)
     args.mutation_policy = mutation_policy
+    args.command_help = command_help
 
     runtime = Gateway(
         debug=args.debug,
@@ -143,7 +200,10 @@ def _run_cli(parser, args, unknown, *, runtime=None):
                     runtime.context.update(parse_recipe_context(unknown))
                     output = runtime.resolve(args.expression)
                 elif unknown:
-                    _, output = process([unknown], gw_instance=runtime)
+                    if getattr(args, "command_help", False):
+                        output = runtime._command_help(*unknown, verbose=args.verbose)
+                    else:
+                        _, output = process([unknown], gw_instance=runtime)
                 else:
                     parser.print_help()
                     return 0
