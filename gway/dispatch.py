@@ -50,24 +50,34 @@ def _display_operation_name(name):
 
 
 def _operation_suggestions(runtime, values, *, limit=3, cutoff=0.72):
-    """Return close live operation spellings without changing strict resolution."""
-    query = " ".join(str(value) for value in values).strip()
-    if not query:
+    """Return close authorized operation spellings without changing resolution."""
+    if not values:
         return ()
 
     registry = runtime.ops._registry
-    identities = dict.fromkeys((*registry.aliases, *registry.records))
+    authority = runtime.authorization
+    identities = {
+        **{name: name for name in registry.records},
+        **registry.aliases,
+    }
     candidates = []
     seen = set()
-    normalized_query = _display_operation_name(query).casefold()
 
-    for identity in identities:
+    for identity, canonical in identities.items():
+        if authority is not None and canonical not in authority.operations:
+            continue
+
         display = _display_operation_name(identity)
         normalized = display.casefold()
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
-        score = SequenceMatcher(None, normalized_query, normalized).ratio()
+
+        word_count = len(display.split())
+        query_prefix = _display_operation_name(
+            " ".join(str(value) for value in values[:word_count])
+        ).casefold()
+        score = SequenceMatcher(None, query_prefix, normalized).ratio()
         if score >= cutoff:
             candidates.append((score, display))
 
