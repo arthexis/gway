@@ -143,6 +143,7 @@ def _record_for(
     destination,
     scope,
     *,
+    kind="extension",
     requested_ref=None,
     resolved_revision=None,
     installed_at=None,
@@ -155,6 +156,7 @@ def _record_for(
         fingerprint=fingerprint_value,
         install_path=destination,
         scope=scope,
+        kind=kind,
         installed_at=installed_at,
     )
 
@@ -229,7 +231,8 @@ def install_materialized(
     name = project_name(source)
     validate_name(name)
     desired_fingerprint = fingerprint(source)
-    destination = selected.projects / name
+    destination_root = selected.products if request.kind == "product" else selected.projects
+    destination = destination_root / name
 
     if _is_within(selected.root, source):
         raise ValueError(
@@ -269,8 +272,9 @@ def install_materialized(
 
         same = not drifted and not desired_changed and destination.is_dir()
         if same:
-            launcher = activate_project(name, destination, selected)
-            launcher.commit()
+            if request.kind == "extension":
+                launcher = activate_project(name, destination, selected)
+                launcher.commit()
             return existing
 
         if (
@@ -290,13 +294,19 @@ def install_materialized(
                 resolved_revision=resolved_revision,
                 installed_at=existing.installed_at,
             )
-            launcher = activate_project(name, destination, selected)
+            launcher = (
+                activate_project(name, destination, selected)
+                if request.kind == "extension"
+                else None
+            )
             try:
                 stored = registry.put(record)
             except Exception as primary:
-                _attempt_recovery(primary, "launcher rollback", launcher.rollback)
+                if launcher is not None:
+                    _attempt_recovery(primary, "launcher rollback", launcher.rollback)
                 raise
-            launcher.commit()
+            if launcher is not None:
+                launcher.commit()
             return stored
 
         if not request.upgrade:
@@ -312,13 +322,13 @@ def install_materialized(
         source,
         name,
         desired_fingerprint,
-        selected.projects,
+        destination_root,
     )
     backup = None
     activated = False
     try:
         if destination.exists() or destination.is_symlink():
-            backup = selected.projects / (f".{name}.replace-{uuid.uuid4().hex}")
+            backup = destination_root / (f".{name}.replace-{uuid.uuid4().hex}")
             os.replace(destination, backup)
 
         os.replace(stage, destination)
@@ -336,7 +346,11 @@ def install_materialized(
         launcher = None
         state_written = False
         try:
-            launcher = activate_project(name, destination, selected)
+            launcher = (
+                activate_project(name, destination, selected)
+                if request.kind == "extension"
+                else None
+            )
             stored = registry.put(record)
             state_written = True
         except Exception as primary:
@@ -374,7 +388,8 @@ def install_materialized(
             activated = False
             raise
 
-        launcher.commit()
+        if launcher is not None:
+            launcher.commit()
         if backup is not None and (backup.exists() or backup.is_symlink()):
             try:
                 _remove_path(backup)
@@ -422,21 +437,28 @@ def uninstall_local(request, *, paths=None, state=None):
     if existing is None:
         return None
 
-    destination = selected.projects / request.project
+    destination_root = (
+        selected.products if existing.kind == "product" else selected.projects
+    )
+    destination = destination_root / request.project
 
     _expected_destination(existing, destination)
 
     tombstone = None
     if destination.exists() or destination.is_symlink():
-        selected.projects.mkdir(parents=True, exist_ok=True)
-        tombstone = selected.projects / (
+        destination_root.mkdir(parents=True, exist_ok=True)
+        tombstone = destination_root / (
             f".{request.project}.remove-{uuid.uuid4().hex}"
         )
         os.replace(destination, tombstone)
 
     launcher = None
     try:
-        launcher = deactivate_project(request.project, selected)
+        launcher = (
+            deactivate_project(request.project, selected)
+            if existing.kind == "extension"
+            else None
+        )
         removed = registry.remove(request.project, scope=selected.scope)
         if not removed:
             raise RuntimeError(
@@ -449,7 +471,8 @@ def uninstall_local(request, *, paths=None, state=None):
             os.replace(tombstone, destination)
         raise
 
-    launcher.commit()
+    if launcher is not None:
+        launcher.commit()
     if tombstone is not None and (tombstone.exists() or tombstone.is_symlink()):
         _remove_path(tombstone)
     return existing
