@@ -177,6 +177,10 @@ class Operations(Mapping):
                 return name
         return default
 
+    def records(self):
+        """Return the live canonical operation records in registration order."""
+        return tuple(self._registry.records.values())
+
     def __getitem__(self, op):
         items = {
             record.sub: record.callable
