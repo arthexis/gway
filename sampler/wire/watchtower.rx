@@ -42,7 +42,6 @@ service start
 --port [port]
 --domain [domain]
 --config [config]
---server-public-key [server_public_key]
 --server-endpoint [server_endpoint]
 
 ../web/expose/expose
