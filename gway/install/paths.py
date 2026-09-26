@@ -13,6 +13,7 @@ class InstallPaths:
 
     root: Path
     projects: Path
+    products: Path
     stashes: Path
     launchers: Path
     bin: Path
@@ -89,9 +90,15 @@ def install_paths(
         else Path(root).expanduser()
     ).resolve()
     selected_bin = bin_root(system=system, bin_dir=bin_dir, **kwargs).resolve()
+    if system:
+        products = Path("/opt")
+    else:
+        products = (Path.home() if kwargs.get("home") is None else Path(kwargs["home"])) / ".local" / "opt"
+    products = products.expanduser().resolve()
     return InstallPaths(
         root=selected,
         projects=selected / "projects",
+        products=products,
         stashes=selected / "stashes",
         launchers=selected / "launchers",
         bin=selected_bin,
