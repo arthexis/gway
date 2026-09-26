@@ -78,8 +78,46 @@ def explicit_matches(task, rules, *, role=None, limit=5, cutoff=0.5):
     return tuple(item[3] for item in matches[:limit])
 
 
-def guide(task, rules, *, role=None):
-    """Return structured task guidance for the active project/node role."""
+def operation_matches(task, records, *, authorization=None, limit=5, cutoff=0.34):
+    """Rank live registered operation metadata below explicit project guidance."""
+    from .documentation import describe
+
+    matches = []
+    allowed = None if authorization is None else authorization.operations
+    for index, record in enumerate(records or ()):
+        if allowed is not None and record.name not in allowed:
+            continue
+
+        command = record.name.replace(".", " ").replace("_", " ")
+        documentation = describe(record.callable)
+        summary = documentation.summary or ""
+        score = max(
+            _score(task, command),
+            _score(task, f"{command} {summary}") if summary else 0.0,
+        )
+        if score < cutoff:
+            continue
+        matches.append(
+            (
+                -score,
+                index,
+                {
+                    "kind": "gway",
+                    "command": command,
+                    "reason": summary or "Registered GWAY operation.",
+                    "source": documentation.source_kind or "runtime",
+                    "operation": record.name,
+                    "mutates": bool(getattr(record.callable, "mutates", True)),
+                },
+            )
+        )
+
+    matches.sort(key=lambda item: (item[0], item[1]))
+    return tuple(item[2] for item in matches[:limit])
+
+
+def guide(task, rules, *, role=None, operations=(), authorization=None):
+    """Return structured task guidance for the active Gateway."""
     task = str(task).strip()
     if not task:
         raise TypeError("guide requires a task")
@@ -95,6 +133,16 @@ def guide(task, rules, *, role=None):
         }
         if match.roles:
             recommendation["roles"] = list(match.roles)
+        recommendations.append(recommendation)
+
+    explicit_commands = {item["command"] for item in recommendations}
+    for recommendation in operation_matches(
+        task,
+        operations,
+        authorization=authorization,
+    ):
+        if recommendation["command"] in explicit_commands:
+            continue
         recommendations.append(recommendation)
 
     from .publication import ResultOnlyMapping
