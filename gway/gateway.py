@@ -754,12 +754,14 @@ class Gateway(Resolver):
         if not task:
             raise TypeError("guide requires a task")
         from .guide import guide
+        from .sampler import recipes
 
         return guide(
             " ".join(task),
             self._guide_rules,
             role=self.get("role"),
             operations=self.ops.records(),
+            recipes=recipes(),
             authorization=self.authorization,
         )
 
