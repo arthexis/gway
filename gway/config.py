@@ -47,6 +47,50 @@ def project_bindings(data):
     return tuple(bindings)
 
 
+def project_guidance(data, *, source=None):
+    """Return validated explicit task guidance from [[tool.gway.guide]]."""
+    if not isinstance(data, dict):
+        return ()
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    entries = gway.get("guide") if isinstance(gway, dict) else None
+    if entries is None:
+        return ()
+    if not isinstance(entries, list):
+        raise ValueError("[[tool.gway.guide]] must be an array of tables")
+
+    rules = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("guide declaration must be a table")
+        unknown = set(entry) - {"tasks", "command", "reason"}
+        if unknown:
+            raise ValueError(
+                "Unknown guide fields: " + ", ".join(sorted(unknown))
+            )
+        tasks = entry.get("tasks")
+        command = entry.get("command")
+        reason = entry.get("reason")
+        if not isinstance(tasks, list) or not tasks:
+            raise ValueError("guide declaration requires non-empty tasks")
+        normalized_tasks = tuple(str(task).strip() for task in tasks)
+        if any(not task for task in normalized_tasks):
+            raise ValueError("guide tasks must be non-empty strings")
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError("guide declaration requires a non-empty command")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("guide declaration requires a non-empty reason")
+        rules.append(
+            {
+                "tasks": normalized_tasks,
+                "command": command.strip(),
+                "reason": reason.strip(),
+                "source": source,
+            }
+        )
+    return tuple(rules)
+
+
 def semantic_binding_key(topics, subject):
     """Return a deterministic exact key for structured semantic identity."""
     if not isinstance(topics, (list, tuple)):
@@ -338,6 +382,12 @@ def bootstrap(runtime, *, start=None):
 
     project_data = data.get("project") if isinstance(data, dict) else None
     project_name = project_data.get("name") if isinstance(project_data, dict) else None
+    guide_source = (
+        project_name.strip()
+        if isinstance(project_name, str) and project_name.strip()
+        else str(project_file.parent)
+    )
+    runtime._guide_rules = project_guidance(data, source=guide_source)
     if isinstance(project_name, str) and project_name.strip():
         from .project import project_scripts
 
