@@ -25,6 +25,7 @@ Gway code.
 - [Glyph](#glyph) — a syntactic character or ordered character construction with defined meaning.
 - [Flag](#flag) — a subject trait matched by an operation parameter.
 - [Sigil](#sigil) — a semantic reference whose concrete value is resolved from context.
+- [Product](#product) — independently runnable software that GWAY can install, manage, and compose without becoming part of its runtime.
 
 ## Operation
 
@@ -868,6 +869,44 @@ same set of topics
 different topic ordering or implementation layout
 same semantic meaning
 ```
+
+## Product
+
+A **product** is independently runnable software that is developed for, or made compatible with, GWAY while remaining physically and operationally separate from GWAY itself.
+
+A product may be installed, configured, inspected, upgraded, composed, and operated through GWAY. GWAY may ingest the product's commands or APIs and may use recipes to converge its deployment. Those management relationships do **not** make the product a GWAY extension or runtime component.
+
+Arthexis is a product in this sense.
+
+### Product independence
+
+A successfully installed product must continue its normal function when GWAY is unavailable, broken, unsuccessfully upgraded, or removed.
+
+For a supervised product this includes host restart behavior: after the product has been installed and its native service has been enabled, a machine reboot must be able to start the product without importing, executing, or consulting GWAY.
+
+This means a product owns its runtime dependencies, executable environment, configuration contract, mutable data, durable state, and service entrypoint. GWAY can create and reconcile those resources, but the finished resources must not require GWAY merely to run.
+
+A useful invariant is:
+
+```text
+GWAY -> install/manage/compose product
+product -X-> require GWAY to run
+```
+
+### Product versus GWAY extension
+
+A GWAY extension, sampler recipe, adapter, or other GWAY-owned capability exists to extend GWAY itself and may legitimately live under GWAY-owned installation/state paths or execute through the GWAY runtime.
+
+A product does not.
+
+Installing a product must therefore use product-owned runtime paths rather than treating the product as another GWAY extension beneath GWAY's managed project tree. Removing GWAY-owned recipes, caches, extension state, or the GWAY executable must not remove the product's executable runtime or durable application data.
+
+### Compatibility does not imply dependency
+
+A product can deliberately expose metadata, commands, launchables, or other integration points that make it easy for GWAY to operate. GWAY may provide richer composition and presentation around those surfaces.
+
+That compatibility is an adapter relationship, not a runtime dependency. The product must remain directly runnable through its own normal entrypoints and native platform facilities.
+
 
 ## Context
 
