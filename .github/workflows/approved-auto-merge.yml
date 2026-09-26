@@ -20,7 +20,7 @@ permissions:
   contents: write
   pull-requests: write
   checks: read
-  actions: read
+  actions: write
 
 jobs:
   arm-auto-merge:
@@ -163,16 +163,10 @@ jobs:
         shell: bash
         env:
           READ_TOKEN: ${{ github.token }}
-          RELEASE_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
           set -euo pipefail
-          if [[ -z "$RELEASE_TOKEN" ]]; then
-            echo "RELEASE_AUTOMATION_TOKEN is required for post-merge release handoff." >&2
-            exit 1
-          fi
-
           merge_sha=""
           for _ in $(seq 1 30); do
             pr_json="$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
@@ -188,7 +182,7 @@ jobs:
             exit 0
           fi
 
-          GH_TOKEN="$RELEASE_TOKEN" gh workflow run watchtower-candidate.yml \
+          GH_TOKEN="$READ_TOKEN" gh workflow run watchtower-candidate.yml \
             --repo "$REPOSITORY" \
             --ref main \
             -f candidate_sha="$merge_sha"
