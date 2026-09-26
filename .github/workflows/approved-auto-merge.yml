@@ -157,3 +157,39 @@ jobs:
         run: |
           set -euo pipefail
           gh pr merge "$PR_NUMBER"             --repo "$REPOSITORY"             --auto             --merge             --match-head-commit "$HEAD_SHA"
+
+      - name: Dispatch post-merge Gway handoff
+        if: steps.gate.outputs.ready == 'true'
+        shell: bash
+        env:
+          READ_TOKEN: ${{ github.token }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_TOKEN" ]]; then
+            echo "RELEASE_AUTOMATION_TOKEN is required for post-merge release handoff." >&2
+            exit 1
+          fi
+
+          merge_sha=""
+          for _ in $(seq 1 30); do
+            pr_json="$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+            if [[ "$(jq -r '.merged' <<< "$pr_json")" == "true" ]]; then
+              merge_sha="$(jq -r '.merge_commit_sha // empty' <<< "$pr_json")"
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ ! "$merge_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "post_merge_handoff=deferred"
+            exit 0
+          fi
+
+          GH_TOKEN="$RELEASE_TOKEN" gh workflow run watchtower-candidate.yml \
+            --repo "$REPOSITORY" \
+            --ref main \
+            -f candidate_sha="$merge_sha"
+          echo "post_merge_handoff=dispatched sha=$merge_sha"
