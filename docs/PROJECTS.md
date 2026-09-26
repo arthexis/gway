@@ -102,8 +102,14 @@ the configured task phrase that matched. The command is only a recommendation:
 `guide` does not execute it or grant authorization to use it. Guide results are
 result-only mappings and do not promote their metadata into semantic context.
 
-The full role-aware `node` execution surface, inferred operation/recipe metadata,
-docstrings, external capability recommendations, and documentation fallbacks remain
+After explicit and role-aware declarations, `guide` may fall back to metadata from
+operations currently registered in the live Gateway. This lexical fallback uses the
+canonical command spelling and compact operation summary, remains lower priority than
+project declarations, and is filtered by the caller's active authorization when one
+exists. It does not execute the recommended operation.
+
+The full role-aware `node` execution surface, recipe metadata, broader docstring
+fallbacks, external capability recommendations, and documentation fallbacks remain
 separate later layers of the guide design.
 
 ### `[tool.gway.sous-chef.<job>]`
