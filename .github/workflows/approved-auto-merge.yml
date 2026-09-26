@@ -182,8 +182,17 @@ jobs:
             exit 0
           fi
 
-          GH_TOKEN="$READ_TOKEN" gh workflow run watchtower-candidate.yml \
+          if GH_TOKEN="$READ_TOKEN" gh workflow run watchtower-candidate.yml \
             --repo "$REPOSITORY" \
             --ref main \
-            -f candidate_sha="$merge_sha"
-          echo "post_merge_handoff=dispatched sha=$merge_sha"
+            -f candidate_sha="$merge_sha"; then
+            message="✅ Watchtower candidate handoff accepted for merge \`$merge_sha\` via \`watchtower-candidate.yml\`."
+            GH_TOKEN="$READ_TOKEN" gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "$message"
+            echo "post_merge_handoff=accepted sha=$merge_sha workflow=watchtower-candidate.yml"
+          else
+            status=$?
+            message="❌ Watchtower candidate handoff failed for merge \`$merge_sha\` while dispatching \`watchtower-candidate.yml\` (exit $status)."
+            GH_TOKEN="$READ_TOKEN" gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "$message" || true
+            echo "post_merge_handoff=failed sha=$merge_sha workflow=watchtower-candidate.yml exit=$status" >&2
+            exit "$status"
+          fi
