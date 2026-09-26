@@ -1154,6 +1154,7 @@ class Gateway(Resolver):
         wrapped.__gway_subject__ = subject
         wrapped.__gway_receiver__ = receiver
         self.ops.register(func_name, wrapped, op=op, sub=sub)
+        self._register_local_node_alias(func_name, wrapped)
         self.launchables.operation(
             func_name,
             metadata={
@@ -1174,6 +1175,27 @@ class Gateway(Resolver):
             and getattr(value, "__gway_operation__", None) is not None
         ):
             ops.register_alias(name, value)
+
+    def _register_local_node_alias(self, canonical, operation):
+        """Expose active-role node operations through semantic role spelling."""
+        parts = tuple(
+            part for part in str(canonical).replace(" ", ".").split(".") if part
+        )
+        if len(parts) < 3 or parts[0] != "node":
+            return
+
+        role = self.find_value("role", include_environment=False)
+        if role is None:
+            return
+        role = str(role).strip()
+        if not role or parts[1].casefold() != role.casefold():
+            return
+
+        alias = ".".join((role, *parts[2:]))
+        existing = self.ops.resolve(alias)
+        if existing is not None and existing is not operation:
+            return
+        self.ops.register_alias(alias, operation)
 
     @staticmethod
     def subject(func_name: str):
