@@ -736,3 +736,89 @@ def test_project_guide_documents_rejects_unselected_format(tmp_path):
             {"tool": {"gway": {"guide_documents": ["OPS.py"]}}},
             tmp_path,
         )
+
+
+def test_guide_uses_richer_docstring_after_operation_and_recipe_fallbacks(
+    tmp_path,
+    monkeypatch,
+):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("gway.sampler.recipes", lambda: ())
+    gateway = Gateway()
+
+    def inspect_service():
+        """Inspect service.
+
+        Use this operation to investigate transient worker failures and queue
+        starvation when the ordinary status summary is insufficient.
+        """
+
+    gateway.wrap("inspect.service", inspect_service)
+
+    result = gateway("guide investigate worker queue starvation")
+
+    inferred = next(
+        item for item in result["recommendations"]
+        if item.get("operation") == "inspect.service"
+    )
+    assert inferred["source"] == "docstring"
+    assert "queue starvation" in inferred["reason"]
+
+
+def test_docstring_fallback_is_authorization_aware(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("gway.sampler.recipes", lambda: ())
+    gateway = Gateway()
+
+    def audit_secret():
+        """Investigate secret rotation failures and leaked credential state."""
+
+    gateway.wrap("audit.secret", audit_secret)
+
+    with gateway.authorized(operations={"guide"}):
+        result = gateway("guide investigate secret rotation failures")
+
+    assert all(
+        item.get("operation") != "audit.secret"
+        for item in result["recommendations"]
+    )
+
+
+def test_guide_role_lookup_does_not_require_env_authority(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "watchtower"
+
+[[tool.gway.roles.watchtower.guide]]
+tasks = ["diagnose this node"]
+command = "node watchtower diagnose"
+reason = "Use role-specific diagnostics."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    with gateway.authorized(operations={"guide"}):
+        result = gateway("guide diagnose this node")
+
+    assert result["role"] == "watchtower"
+    assert result["recommendations"][0]["command"] == "node watchtower diagnose"
