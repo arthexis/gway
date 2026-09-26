@@ -130,3 +130,52 @@ def test_node_dispatch_succeeds_with_both_authorities(tmp_path, monkeypatch):
         result = gateway("node status")
 
     assert result == {"ok": True}
+
+
+def test_node_dispatches_longest_matching_multiword_verb(tmp_path, monkeypatch):
+    gateway = _runtime(tmp_path, monkeypatch, "watchtower")
+
+    def security_audit(target="local"):
+        return {"audit": target}
+
+    gateway.wrap("node.watchtower.security.audit", security_audit)
+
+    assert gateway("node security audit charger") == {"audit": "charger"}
+
+
+def test_node_prefers_longest_matching_role_operation(tmp_path, monkeypatch):
+    gateway = _runtime(tmp_path, monkeypatch, "watchtower")
+
+    def security(value):
+        return {"security": value}
+
+    def security_audit(target="local"):
+        return {"audit": target}
+
+    gateway.wrap("node.watchtower.security", security)
+    gateway.wrap("node.watchtower.security.audit", security_audit)
+
+    assert gateway("node security audit charger") == {"audit": "charger"}
+
+
+def test_node_multiword_dispatch_authorizes_canonical_operation(
+    tmp_path,
+    monkeypatch,
+):
+    gateway = _runtime(tmp_path, monkeypatch, "watchtower")
+    gateway.wrap(
+        "node.watchtower.security.audit",
+        lambda: {"secure": True},
+    )
+
+    with gateway.authorized(
+        operations={"node", "node.watchtower.security.audit"},
+    ):
+        assert gateway("node security audit") == {"secure": True}
+
+    with gateway.authorized(operations={"node"}):
+        with pytest.raises(
+            AuthorizationError,
+            match="node.watchtower.security.audit",
+        ):
+            gateway("node security audit")
