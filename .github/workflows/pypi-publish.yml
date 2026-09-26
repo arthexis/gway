@@ -126,37 +126,6 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Ensure version is not already published
-        shell: bash
-        env:
-          PACKAGE: "gway"
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import urllib.error
-          import urllib.request
-
-          package = os.environ["PACKAGE"]
-          version = os.environ["VERSION"]
-          url = f"https://pypi.org/pypi/{package}/json"
-          try:
-              with urllib.request.urlopen(url, timeout=15) as response:
-                  releases = json.load(response).get("releases", {})
-          except urllib.error.HTTPError as exc:
-              if exc.code == 404:
-                  releases = {}
-              else:
-                  raise
-          if version in releases:
-              raise SystemExit(
-                  f"Release blocked: {package} {version} already exists on PyPI. "
-                  "Do not publish a second SHA under the same version."
-              )
-          print(f"{package} {version} is available for publication.")
-          PY
-
       - name: Install release tooling
         run: python -m pip install --upgrade pip build twine
 
@@ -176,15 +145,24 @@ jobs:
           /tmp/gway-pypi-smoke/bin/python -c 'import gway; print("gway import OK")'
           /tmp/gway-pypi-smoke/bin/gway --version
 
+      - name: Generate release checksums
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sha256sum dist/* | sed 's#  dist/#  #' > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Upload exact release artifacts
         uses: actions/upload-artifact@v7
         with:
           name: gway-dists-${{ inputs.deployed_sha }}
-          path: dist/
+          path: |
+            dist/
+            SHA256SUMS
           if-no-files-found: error
 
   publish:
-    name: Publish deployed SHA to PyPI
+    name: Reconcile deployed SHA on PyPI
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -198,53 +176,164 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: gway-dists-${{ inputs.deployed_sha }}
-          path: dist/
+          path: release-artifacts/
 
-      - name: Publish distributions
+      - name: Inspect PyPI release state
+        id: pypi
+        shell: bash
+        env:
+          PACKAGE: "gway"
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import urllib.error
+          import urllib.request
+
+          package = os.environ["PACKAGE"]
+          version = os.environ["VERSION"]
+          root = pathlib.Path("release-artifacts")
+          expected = {}
+          for line in (root / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+              digest, filename = line.split(None, 1)
+              expected[filename.strip()] = digest
+
+          url = f"https://pypi.org/pypi/{package}/{version}/json"
+          try:
+              with urllib.request.urlopen(url, timeout=15) as response:
+                  payload = json.load(response)
+          except urllib.error.HTTPError as exc:
+              if exc.code == 404:
+                  state = "missing"
+              else:
+                  raise
+          else:
+              actual = {
+                  item["filename"]: item["digests"]["sha256"]
+                  for item in payload.get("urls", [])
+              }
+              if actual == expected:
+                  state = "matching"
+              else:
+                  raise SystemExit(
+                      "Release blocked: PyPI already contains this version with "
+                      f"different artifacts. expected={expected!r} actual={actual!r}"
+                  )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"state={state}\n")
+          print(f"pypi_state={state}")
+          PY
+
+      - name: Publish missing distributions
+        if: steps.pypi.outputs.state == 'missing'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          packages-dir: release-artifacts/dist/
           attestations: true
 
+      - name: Verify PyPI release artifacts
+        shell: bash
+        env:
+          PACKAGE: "gway"
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import time
+          import urllib.request
+
+          package = os.environ["PACKAGE"]
+          version = os.environ["VERSION"]
+          root = pathlib.Path("release-artifacts")
+          expected = {}
+          for line in (root / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+              digest, filename = line.split(None, 1)
+              expected[filename.strip()] = digest
+
+          url = f"https://pypi.org/pypi/{package}/{version}/json"
+          actual = None
+          for attempt in range(6):
+              try:
+                  with urllib.request.urlopen(url, timeout=15) as response:
+                      payload = json.load(response)
+              except Exception:
+                  if attempt == 5:
+                      raise
+                  time.sleep(2)
+                  continue
+              actual = {
+                  item["filename"]: item["digests"]["sha256"]
+                  for item in payload.get("urls", [])
+              }
+              if actual == expected:
+                  break
+              if attempt == 5:
+                  raise SystemExit(
+                      "PyPI release does not match certified artifacts after "
+                      f"publication. expected={expected!r} actual={actual!r}"
+                  )
+              time.sleep(2)
+          print("pypi_state=matching")
+          PY
+
   github-release:
-    name: Create GitHub Release
+    name: Reconcile Git tag and GitHub Release
     needs: [build, publish]
     if: ${{ needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.deployed_sha }}
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Verify certified checkout
+        shell: bash
+        env:
+          DEPLOYED_SHA: ${{ inputs.deployed_sha }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$DEPLOYED_SHA"
+
       - name: Download exact release artifacts
         uses: actions/download-artifact@v8
         with:
           name: gway-dists-${{ inputs.deployed_sha }}
-          path: dist/
+          path: release-artifacts/
 
-      - name: Generate SHA256 checksums
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          (
-            cd dist
-            sha256sum * > SHA256SUMS
-          )
-
-      - name: Ensure release tag is unused
+      - name: Reconcile release tag
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
+          DEPLOYED_SHA: ${{ inputs.deployed_sha }}
         run: |
           set -Eeuo pipefail
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Release blocked: tag $TAG already exists." >&2
-            exit 1
-          fi
-          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release blocked: GitHub Release $TAG already exists." >&2
+          direct="$(git ls-remote origin "refs/tags/$TAG" | awk 'NR == 1 {print $1}')"
+          peeled="$(git ls-remote origin "refs/tags/$TAG^{}" | awk 'NR == 1 {print $1}')"
+          target="${peeled:-$direct}"
+
+          if [[ -z "$target" ]]; then
+            git tag "$TAG" "$DEPLOYED_SHA"
+            git push origin "$TAG"
+            echo "tag_state=created"
+          elif [[ "$target" == "$DEPLOYED_SHA" ]]; then
+            echo "tag_state=matching"
+          else
+            echo "Release blocked: tag $TAG points to $target, expected $DEPLOYED_SHA." >&2
             exit 1
           fi
 
-      - name: Create tag and GitHub Release from deployed SHA
+      - name: Reconcile GitHub Release assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -254,13 +343,80 @@ jobs:
           WATCHTOWER_RUN: ${{ inputs.watchtower_run }}
         run: |
           set -Eeuo pipefail
-          git tag "$TAG" "$DEPLOYED_SHA"
-          git push origin "$TAG"
-          gh release create "$TAG" dist/* \
-            --repo "${{ github.repository }}" \
-            --title "gway v$VERSION" \
-            --generate-notes \
-            --notes "Published from Watchtower-certified SHA `$DEPLOYED_SHA`. Certified by: $WATCHTOWER_RUN"
+          shopt -s nullglob
+          expected=(release-artifacts/dist/* release-artifacts/SHA256SUMS)
+          (( ${#expected[@]} > 1 ))
+
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG" "${expected[@]}"               --repo "${{ github.repository }}"               --title "gway v$VERSION"               --generate-notes               --notes "Published from Watchtower-certified SHA `$DEPLOYED_SHA`. Certified by: $WATCHTOWER_RUN"
+            echo "github_release_state=created"
+            exit 0
+          fi
+
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          mapfile -t existing_names < <(
+            gh release view "$TAG"               --repo "${{ github.repository }}"               --json assets               --jq '.assets[].name'
+          )
+
+          declare -A local_by_name=()
+          for path in "${expected[@]}"; do
+            local_by_name["$(basename "$path")"]="$path"
+          done
+
+          for name in "${existing_names[@]}"; do
+            if [[ -z "${local_by_name[$name]+x}" ]]; then
+              echo "Release blocked: unexpected existing asset $name on $TAG." >&2
+              exit 1
+            fi
+            gh release download "$TAG"               --repo "${{ github.repository }}"               --pattern "$name"               --dir "$tmp"
+            if ! cmp --silent "${local_by_name[$name]}" "$tmp/$name"; then
+              echo "Release blocked: existing asset $name differs from certified artifact." >&2
+              exit 1
+            fi
+          done
+
+          for path in "${expected[@]}"; do
+            name="$(basename "$path")"
+            found=false
+            for existing in "${existing_names[@]}"; do
+              if [[ "$existing" == "$name" ]]; then
+                found=true
+                break
+              fi
+            done
+            if [[ "$found" == "false" ]]; then
+              gh release upload "$TAG" "$path" --repo "${{ github.repository }}"
+              echo "uploaded_missing_asset=$name"
+            fi
+          done
+
+          echo "github_release_state=matching"
+
+      - name: Verify final GitHub release state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          DEPLOYED_SHA: ${{ inputs.deployed_sha }}
+        run: |
+          set -Eeuo pipefail
+          direct="$(git ls-remote origin "refs/tags/$TAG" | awk 'NR == 1 {print $1}')"
+          peeled="$(git ls-remote origin "refs/tags/$TAG^{}" | awk 'NR == 1 {print $1}')"
+          target="${peeled:-$direct}"
+          test "$target" = "$DEPLOYED_SHA"
+
+          shopt -s nullglob
+          expected=(release-artifacts/dist/* release-artifacts/SHA256SUMS)
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          for path in "${expected[@]}"; do
+            name="$(basename "$path")"
+            gh release download "$TAG"               --repo "${{ github.repository }}"               --pattern "$name"               --dir "$tmp"
+            cmp --silent "$path" "$tmp/$name"
+          done
+          echo "release_state=matching"
 
   advance-version:
     name: Open next-version PR
