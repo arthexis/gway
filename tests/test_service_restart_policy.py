@@ -31,7 +31,7 @@ def test_systemd_renders_default_retry_policy(tmp_path):
 
     assert "Restart=on-failure" in unit
     assert "RestartSec=5.0" in unit
-    assert "StartLimitBurst=3" in unit
+    assert "StartLimitBurst=4" in unit
     assert "StartLimitIntervalSec=15min" in unit
     assert "gway.service.supervisor" not in unit
 
@@ -48,7 +48,7 @@ def test_systemd_renders_service_install_retry_overrides(tmp_path):
 
     assert "Restart=always" in unit
     assert "RestartSec=2.0" in unit
-    assert "StartLimitBurst=7" in unit
+    assert "StartLimitBurst=8" in unit
     assert "StartLimitIntervalSec=15min" in unit
     assert "gway.service.supervisor" not in unit
 
