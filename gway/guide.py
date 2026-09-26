@@ -116,7 +116,45 @@ def operation_matches(task, records, *, authorization=None, limit=5, cutoff=0.34
     return tuple(item[2] for item in matches[:limit])
 
 
-def guide(task, rules, *, role=None, operations=(), authorization=None):
+def recipe_matches(task, recipes, *, authorization=None, limit=5, cutoff=0.34):
+    """Rank maintained sampler recipes behind explicit and operation guidance."""
+    if authorization is not None and "recipe" not in authorization.operations:
+        return ()
+
+    matches = []
+    for index, name in enumerate(recipes or ()):
+        display = str(name).replace("/", " ").replace("-", " ").replace("_", " ")
+        score = _score(task, display)
+        if score < cutoff:
+            continue
+        matches.append(
+            (
+                -score,
+                index,
+                {
+                    "kind": "recipe",
+                    "command": f"recipe {name}",
+                    "reason": f"Maintained sampler recipe: {name}.",
+                    "source": "sampler",
+                    "recipe": name,
+                    "mutates": True,
+                },
+            )
+        )
+
+    matches.sort(key=lambda item: (item[0], item[1]))
+    return tuple(item[2] for item in matches[:limit])
+
+
+def guide(
+    task,
+    rules,
+    *,
+    role=None,
+    operations=(),
+    recipes=(),
+    authorization=None,
+):
     """Return structured task guidance for the active Gateway."""
     task = str(task).strip()
     if not task:
@@ -142,6 +180,16 @@ def guide(task, rules, *, role=None, operations=(), authorization=None):
         authorization=authorization,
     ):
         if recommendation["command"] in explicit_commands:
+            continue
+        recommendations.append(recommendation)
+
+    known_commands = {item["command"] for item in recommendations}
+    for recommendation in recipe_matches(
+        task,
+        recipes,
+        authorization=authorization,
+    ):
+        if recommendation["command"] in known_commands:
             continue
         recommendations.append(recommendation)
 
