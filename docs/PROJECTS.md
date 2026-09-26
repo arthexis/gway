@@ -164,8 +164,14 @@ ranked after explicit guidance, live operations, and recipes and is returned as 
 `kind = "documentation"` recommendation with source, section, and a bounded excerpt.
 GWAY does not recursively search arbitrary project Markdown.
 
-The full role-aware `node` execution surface and broader docstring fallback remain
-separate later layers of the guide design.
+After operation-name/summary matching and maintained recipes, `guide` may use the
+full structured operation docstring as a lower-priority fallback. This remains
+authorization-aware, suppresses duplicate recommendations for operations already
+matched earlier, and returns only a bounded excerpt.
+
+At this point the remaining role-specific work is the generic `node <verb>`
+execution/discovery surface itself; that is a separate role-dispatch layer rather
+than another guide information source.
 
 ### `[tool.gway.sous-chef.<job>]`
 
