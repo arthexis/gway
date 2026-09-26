@@ -143,7 +143,7 @@ jobs:
           /tmp/gway-pypi-smoke/bin/python -m pip install dist/*.whl
           /tmp/gway-pypi-smoke/bin/python -m pip check
           /tmp/gway-pypi-smoke/bin/python -c 'import gway; print("gway import OK")'
-          /tmp/gway-pypi-smoke/bin/gway --version
+          /tmp/gway-pypi-smoke/bin/gway version
 
       - name: Generate release checksums
         shell: bash
