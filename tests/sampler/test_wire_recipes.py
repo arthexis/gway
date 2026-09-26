@@ -27,11 +27,13 @@ def test_wire_watchtower_recipe_composes_service_and_https_exposure():
     flattened = [" ".join(command) for command in values]
 
     assert any(command.startswith("wire server deploy") for command in flattened)
+    assert any(command.startswith("wire server activate") for command in flattened)
     assert any(command.startswith("service install") for command in flattened)
     assert any("wire-enroll" in command for command in flattened)
     assert any(command.startswith("service start") for command in flattened)
     assert any("../web/expose/expose" in command for command in flattened)
     assert any(command.startswith("wire server check") for command in flattened)
+    assert any(command.startswith("commit wire-watchtower") for command in flattened)
 
 
 def test_wire_watchtower_recipe_uses_existing_register_hostname():
@@ -40,3 +42,12 @@ def test_wire_watchtower_recipe_uses_existing_register_hostname():
 
     assert "register.arthexis.com" in flattened
     assert "register-wire.arthexis.com" not in flattened
+
+
+def test_wire_recipes_do_not_require_data_dir_sigil():
+    rendered = "\n".join(
+        " ".join(command)
+        for name in ("enroll.rx", "watchtower.rx")
+        for command in _commands(name)
+    )
+    assert "[data_dir]" not in rendered
