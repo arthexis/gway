@@ -197,7 +197,7 @@ def _systemctl(*args, system=False, check=True, timeout=SYSTEMCTL_TIMEOUT):
 def render(service, *, system=False):
     """Render one Gway service launchable as a systemd unit."""
     backend = ProcessBackend()
-    command = backend._supervised_command(service)
+    command = backend._command(service)
     cwd = backend._cwd(service)
     lines = [
         "[Unit]",
@@ -212,7 +212,12 @@ def render(service, *, system=False):
         for assignment in service.environment
     )
     lines.append("ExecStart=" + " ".join(shlex.quote(part) for part in command))
-    lines.append("Restart=no")
+    restart = service.restart
+    lines.append(f"Restart={restart}")
+    if restart != "no":
+        lines.append(f"RestartSec={service.restart_sec}")
+        lines.append(f"StartLimitBurst={service.attempts}")
+        lines.append("StartLimitIntervalSec=15min")
 
     lines.extend(
         [
