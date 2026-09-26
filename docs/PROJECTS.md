@@ -85,12 +85,27 @@ reason = "Use the maintained log reader for this deployment."
 roles = ["watchtower"]
 ```
 
-Each declaration requires:
+Each declaration requires `tasks`, `reason`, and one recommendation target.
 
-- `tasks`: one or more task phrases;
+For a GWAY recommendation:
+
 - `command`: the preferred GWAY command;
-- `reason`: why that command is preferred;
 - optional `roles`: node/project roles for which the recommendation applies.
+
+For an external capability recommendation:
+
+```toml
+[[tool.gway.guide]]
+tasks = ["modify source", "review pull request", "check ci"]
+use = "external"
+capability = "source-control"
+reason = "The repository is the canonical development surface."
+```
+
+External rules require `use = "external"` plus a non-empty generic
+`capability` class. They must not also define `command`. Capability names are
+client-independent (for example `source-control`, `web-search`,
+`file-editor`, `browser`, or `database-admin`).
 
 `guide <task>` ranks these explicit declarations first. When the project exposes
 a semantic `role` (for example under `[tool.gway.variables]`), declarations with
@@ -114,9 +129,12 @@ their semantic recipe path. Recipe recommendations use the safe
 Under constrained remote authorization, recipes are only advertised when the
 caller is authorized for the `recipe` operation.
 
-The full role-aware `node` execution surface, broader docstring fallbacks,
-external capability recommendations, and documentation fallbacks remain separate
-later layers of the guide design.
+External capability declarations participate in the same explicit task ranking and
+role filtering as GWAY declarations, but appear in the result's `external` array.
+They are recommendations only and are independent of GWAY execution authorization.
+
+The full role-aware `node` execution surface, broader docstring fallbacks, and
+documentation fallbacks remain separate later layers of the guide design.
 
 ### `[tool.gway.sous-chef.<job>]`
 
