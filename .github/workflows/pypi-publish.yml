@@ -420,8 +420,8 @@ jobs:
 
   record-release:
     name: Record certified release manifest
-    needs: [build, publish, github-release, record-release]
-    if: ${{ needs.publish.result == 'success' && needs.github-release.result == 'success' && needs.record-release.result == 'success' }}
+    needs: [build, publish, github-release]
+    if: ${{ needs.publish.result == 'success' && needs.github-release.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -512,8 +512,8 @@ jobs:
 
   advance-version:
     name: Open next-version PR
-    needs: [build, publish, github-release]
-    if: ${{ needs.publish.result == 'success' && needs.github-release.result == 'success' }}
+    needs: [build, publish, github-release, record-release]
+    if: ${{ needs.publish.result == 'success' && needs.github-release.result == 'success' && needs.record-release.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
