@@ -759,6 +759,8 @@ class Gateway(Resolver):
             " ".join(task),
             self._guide_rules,
             role=self.get("role"),
+            operations=self.ops.records(),
+            authorization=self.authorization,
         )
 
     @property
