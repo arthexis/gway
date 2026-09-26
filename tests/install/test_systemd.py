@@ -765,6 +765,27 @@ def test_mcp_service_systemd_rendering_uses_generic_service_backend():
 
 
 
+
+def test_systemd_restart_policy_does_not_require_gway_supervisor():
+    runtime = Gateway()
+    recipe = sampler_root() / "mcp" / "server.rx"
+    definition = runtime._service_controller._definition(
+        (str(recipe),),
+        name="independent-product",
+        restart="on-failure",
+        attempts=3,
+        restart_sec=5,
+    )
+
+    rendered = systemd.render(definition)
+
+    assert "-m gway.service.supervisor" not in rendered
+    assert "Restart=on-failure" in rendered
+    assert "RestartSec=5" in rendered
+    assert "StartLimitBurst=3" in rendered
+    assert "StartLimitIntervalSec=15min" in rendered
+
+
 def test_service_install_systemd_renders_and_persists_environment(
     tmp_path,
     monkeypatch,
