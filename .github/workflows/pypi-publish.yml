@@ -260,9 +260,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "gway v$VERSION" \
             --generate-notes \
-            --notes "Published from Watchtower-certified SHA `$DEPLOYED_SHA`.
-
-Certified by: $WATCHTOWER_RUN"
+            --notes "Published from Watchtower-certified SHA `$DEPLOYED_SHA`. Certified by: $WATCHTOWER_RUN"
 
   advance-version:
     name: Open next-version PR
