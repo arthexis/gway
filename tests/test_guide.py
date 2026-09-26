@@ -214,3 +214,98 @@ reason = "Use logs."
     assert gateway.context["task"] == "preserve-task"
     assert gateway.context["recommendations"] == "preserve-recommendations"
     assert gateway.context["external"] == "preserve-external"
+
+
+def test_guide_falls_back_to_live_registered_operation_metadata(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    def inspect_service():
+        """Inspect service health."""
+
+    gateway.wrap("inspect.service", inspect_service)
+
+    result = gateway("guide inspect service health")
+
+    inferred = next(
+        item for item in result["recommendations"]
+        if item.get("operation") == "inspect.service"
+    )
+    assert inferred["command"] == "inspect service"
+    assert inferred["reason"] == "Inspect service health."
+    assert inferred["source"] == "runtime"
+    assert inferred["mutates"] is True
+
+
+def test_explicit_guide_precedes_and_deduplicates_live_operation(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[[tool.gway.guide]]
+tasks = ["inspect service health"]
+command = "inspect service"
+reason = "Use the project's preferred service inspection path."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    def inspect_service():
+        """Inspect service health."""
+
+    gateway.wrap("inspect.service", inspect_service)
+
+    result = gateway("guide inspect service health")
+
+    matching = [
+        item for item in result["recommendations"]
+        if item["command"] == "inspect service"
+    ]
+    assert matching == [
+        {
+            "kind": "gway",
+            "command": "inspect service",
+            "reason": "Use the project's preferred service inspection path.",
+            "source": "demo",
+            "matched_task": "inspect service health",
+        }
+    ]
+
+
+def test_guide_hides_unauthorized_live_operations(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    def inspect_service():
+        """Inspect service health."""
+
+    def delete_secret():
+        """Delete secret data."""
+
+    gateway.wrap("inspect.service", inspect_service)
+    gateway.wrap("delete.secret", delete_secret)
+
+    with gateway.authorized(operations={"guide", "inspect.service"}):
+        result = gateway("guide delete secret data")
+
+    assert all(
+        item.get("operation") != "delete.secret"
+        for item in result["recommendations"]
+    )
