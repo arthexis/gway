@@ -1,0 +1,27 @@
+name: Watchtower candidate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Request Watchtower certification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch exact Gway candidate to Arthexis
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          GWAY_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "RELEASE_AUTOMATION_TOKEN is required to request cross-repository Watchtower certification." >&2
+            exit 1
+          fi
+          [[ "$GWAY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh api             --method POST             -H "Accept: application/vnd.github+json"             /repos/arthexis/arthexis/dispatches             -f event_type='gway-candidate'             -F client_payload[gway_sha]="$GWAY_SHA"
