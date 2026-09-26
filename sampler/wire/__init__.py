@@ -20,6 +20,8 @@ _TEMPLATE = Path(__file__).with_name("interface.conf")
 _CLIENT_TEMPLATE = Path(__file__).with_name("client.conf")
 _DEVICE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _PUBLIC_KEY_RE = re.compile(r"^[A-Za-z0-9+/]{43}=$")
+_DEFAULT_REGISTER_HOST = "register.arthexis.com"
+_DEFAULT_ENROLLMENT_PATH = "/v1/enroll"
 
 
 def _utcnow():
@@ -470,6 +472,116 @@ class Controller:
             "created": created,
         }
 
+    @staticmethod
+    def _enrollment_url(domain):
+        domain = str(domain).strip().lower().rstrip(".")
+        if not domain:
+            raise ValueError("wire enrollment domain must be non-empty")
+        return f"https://{domain}{_DEFAULT_ENROLLMENT_PATH}"
+
+    def server_check(
+        self,
+        *,
+        domain=_DEFAULT_REGISTER_HOST,
+        interface="gway",
+        public_address=None,
+        dns_backend="godaddy",
+        dns_zone="arthexis.com",
+        registry=None,
+        mutate=False,
+    ):
+        """Check central Wire server readiness without changing host state."""
+        del mutate
+        local = self.check(interface=interface)
+        store_path = Path(
+            registry or self.gateway.data_root() / "wire" / "registry.sqlite3"
+        )
+        registry_ready = store_path.is_file()
+        dns_ready = None
+        if public_address is not None:
+            dns_ready = self.gateway._dns_controller.ready(
+                domain,
+                type="A",
+                value=public_address,
+                backend=dns_backend,
+                zone=dns_zone,
+            )
+        checks = {
+            "wireguard": local["ok"],
+            "registry": registry_ready,
+            "dns": dns_ready,
+        }
+        required = [checks["wireguard"], checks["registry"]]
+        if dns_ready is not None:
+            required.append(dns_ready)
+        return {
+            "role": "watchtower",
+            "central": True,
+            "domain": str(domain).strip().lower(),
+            "enrollment_url": self._enrollment_url(domain),
+            "interface": interface,
+            "checks": checks,
+            "ready": all(required),
+        }
+
+    def deploy_server(
+        self,
+        *,
+        domain=_DEFAULT_REGISTER_HOST,
+        interface="gway",
+        address="10.90.0.1/24",
+        private_key,
+        listen_port=51820,
+        registry=None,
+        config=None,
+        public_address=None,
+        dns_backend="godaddy",
+        dns_zone="arthexis.com",
+        sudo=False,
+        rollback="wire-watchtower",
+        mutate=True,
+    ):
+        """Converge this host into the central Watchtower Wire server role."""
+        del mutate
+        store_path = Path(
+            registry or self.gateway.data_root() / "wire" / "registry.sqlite3"
+        )
+        # Opening the registry initializes durable central enrollment state.
+        Registry(store_path).connect().close()
+
+        destination = (
+            Path(config)
+            if config is not None
+            else Path("/etc/wireguard") / f"{interface}.conf"
+        )
+        provisioned = self.provision(
+            interface,
+            address=address,
+            private_key=private_key,
+            listen_port=listen_port,
+            to=destination,
+            sudo=sudo,
+            rollback=rollback,
+        )
+        readiness = self.server_check(
+            domain=domain,
+            interface=interface,
+            public_address=public_address,
+            dns_backend=dns_backend,
+            dns_zone=dns_zone,
+            registry=store_path,
+        )
+        return {
+            "role": "watchtower",
+            "central": True,
+            "domain": str(domain).strip().lower(),
+            "enrollment_url": self._enrollment_url(domain),
+            "registry": str(store_path),
+            "config": provisioned["config"],
+            "interface": interface,
+            "readiness": readiness,
+        }
+
     def devices(
         self,
         *,
@@ -625,6 +737,18 @@ def register(gateway, *, runner=None, which=None):
         op="enroll",
         sub="client",
     )
+    server_check = gateway.wrap(
+        "wire.server.check",
+        controller.server_check,
+        op="check",
+        sub="server",
+    )
+    server_deploy = gateway.wrap(
+        "wire.server.deploy",
+        controller.deploy_server,
+        op="deploy",
+        sub="server",
+    )
     devices = gateway.wrap(
         "wire.server.devices",
         controller.devices,
@@ -668,6 +792,10 @@ def register(gateway, *, runner=None, which=None):
         "wg.server.token": token,
         "wireguard.client.enroll": enroll,
         "wg.client.enroll": enroll,
+        "wireguard.server.check": server_check,
+        "wg.server.check": server_check,
+        "wireguard.server.deploy": server_deploy,
+        "wg.server.deploy": server_deploy,
         "wireguard.server.devices": devices,
         "wg.server.devices": devices,
         "wireguard.server.revoke": revoke,
