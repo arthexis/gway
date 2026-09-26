@@ -758,7 +758,7 @@ class Gateway(Resolver):
         return guide(
             " ".join(task),
             self._guide_rules,
-            role=self.context.get("role"),
+            role=self.get("role"),
         )
 
     @property
