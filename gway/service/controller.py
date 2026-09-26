@@ -128,6 +128,11 @@ class Controller:
         return [
             {
                 "project": service.project,
+                "kind": getattr(
+                    getattr(self.gateway, "_installed", {}).get(service.project),
+                    "kind",
+                    "extension",
+                ),
                 "service": service.name,
                 "description": service.description,
                 "launchable": service.launchable.kind,
