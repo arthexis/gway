@@ -5,12 +5,14 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import ipaddress
+import json
 import re
 import secrets
 import shutil
 import sqlite3
 import subprocess
 from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from gway.rendering import atomic_write_text
@@ -322,6 +324,100 @@ def _context(runtime, values):
                 runtime.context[name] = value
 
 
+
+
+def _json_handler(controller, settings):
+    """Build the Watchtower enrollment HTTP handler."""
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, status, payload):
+            data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            self.send_response(status)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(data)
+
+        def do_GET(self):
+            if self.path == "/health":
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "service": "wire-enrollment",
+                        "domain": settings["domain"],
+                    },
+                )
+                return
+            self._send(404, {"error": "not_found"})
+
+        def do_POST(self):
+            if self.path != _DEFAULT_ENROLLMENT_PATH:
+                self._send(404, {"error": "not_found"})
+                return
+            try:
+                length = int(self.headers.get("content-length", "0") or 0)
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                result = controller.accept_enrollment(
+                    payload.get("device"),
+                    public_key=payload.get("public_key"),
+                    token=payload.get("token"),
+                    registry=settings["registry"],
+                    config=settings["config"],
+                    server_public_key=settings["server_public_key"],
+                    server_endpoint=settings["server_endpoint"],
+                    network=settings["network"],
+                    gateway_address=settings["gateway_address"],
+                )
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+                self._send(400, {"error": "invalid_request", "message": str(error)})
+                return
+            except PermissionError as error:
+                self._send(403, {"error": "enrollment_rejected", "message": str(error)})
+                return
+            except Exception as error:
+                self._send(500, {"error": "enrollment_failed", "message": str(error)})
+                return
+            self._send(200, result)
+
+        do_HEAD = do_GET
+
+        def log_message(self, format, *args):
+            return None
+
+    return Handler
+
+
+def build_enrollment_server(
+    controller,
+    *,
+    host="127.0.0.1",
+    port=8787,
+    domain=_DEFAULT_REGISTER_HOST,
+    registry,
+    config,
+    server_public_key,
+    server_endpoint=None,
+    network="10.90.0.0/24",
+    gateway_address="10.90.0.1",
+):
+    """Build the local Watchtower Wire enrollment HTTP server."""
+    endpoint = server_endpoint or f"{domain}:51820"
+    settings = {
+        "domain": str(domain).strip().lower(),
+        "registry": str(registry),
+        "config": str(config),
+        "server_public_key": _public_key(server_public_key),
+        "server_endpoint": str(endpoint).strip(),
+        "network": str(network),
+        "gateway_address": str(gateway_address),
+    }
+    return ThreadingHTTPServer(
+        (str(host), int(port)),
+        _json_handler(controller, settings),
+    )
+
 class Controller:
     """Expose local WireGuard operations through the Wire command family."""
 
@@ -471,6 +567,87 @@ class Controller:
             "config": str(rendered),
             "created": created,
         }
+
+    def accept_enrollment(
+        self,
+        device,
+        *,
+        public_key,
+        token,
+        registry,
+        config,
+        server_public_key,
+        server_endpoint,
+        network="10.90.0.0/24",
+        gateway_address="10.90.0.1",
+        mutate=True,
+    ):
+        """Accept one authenticated client and reconcile its server peer."""
+        del mutate
+        store = Registry(
+            registry,
+            network=network,
+            gateway_address=gateway_address,
+        )
+        reserved = ()
+        config_path = Path(config)
+        if config_path.is_file():
+            reserved = _peer_allowed_ips(config_path.read_text(encoding="utf-8"))
+        record, created = store.enroll(
+            device=device,
+            public_key=public_key,
+            token=token,
+            externally_reserved=reserved,
+        )
+        reconciled = self.sync(
+            registry=store.path,
+            config=config_path,
+            network=network,
+            gateway_address=gateway_address,
+        )
+        return {
+            "device": record["device"],
+            "address": record["address"],
+            "public_key": record["public_key"],
+            "server_public_key": _public_key(server_public_key),
+            "server_endpoint": str(server_endpoint).strip(),
+            "server_tunnel_ip": str(gateway_address),
+            "created": created,
+            "peer_changed": reconciled["changed"],
+        }
+
+    def serve_enrollment(
+        self,
+        host="127.0.0.1",
+        port=8787,
+        *,
+        domain=_DEFAULT_REGISTER_HOST,
+        registry=None,
+        config="/etc/wireguard/gway.conf",
+        server_public_key,
+        server_endpoint=None,
+        network="10.90.0.0/24",
+        gateway_address="10.90.0.1",
+        mutate=True,
+    ):
+        """Serve the Watchtower enrollment API until the service stops."""
+        del mutate
+        server = build_enrollment_server(
+            self,
+            host=host,
+            port=port,
+            domain=domain,
+            registry=registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
+            config=config,
+            server_public_key=server_public_key,
+            server_endpoint=server_endpoint,
+            network=network,
+            gateway_address=gateway_address,
+        )
+        try:
+            return server.serve_forever()
+        finally:
+            server.server_close()
 
     @staticmethod
     def _enrollment_url(domain):
@@ -737,6 +914,12 @@ def register(gateway, *, runner=None, which=None):
         op="enroll",
         sub="client",
     )
+    enrollment_serve = gateway.wrap(
+        "wire.server.serve",
+        controller.serve_enrollment,
+        op="serve",
+        sub="server",
+    )
     server_check = gateway.wrap(
         "wire.server.check",
         controller.server_check,
@@ -792,6 +975,8 @@ def register(gateway, *, runner=None, which=None):
         "wg.server.token": token,
         "wireguard.client.enroll": enroll,
         "wg.client.enroll": enroll,
+        "wireguard.server.serve": enrollment_serve,
+        "wg.server.serve": enrollment_serve,
         "wireguard.server.check": server_check,
         "wg.server.check": server_check,
         "wireguard.server.deploy": server_deploy,
@@ -811,7 +996,21 @@ def register(gateway, *, runner=None, which=None):
     }.items():
         gateway.ops.register_alias(alias, operation)
 
+    from gway.service.model import Service
+
+    launchable = gateway.launchables["wire.server.serve"]
+    service = Service(
+        project="gway",
+        name="wire-enroll",
+        root=Path(__file__).resolve().parents[2],
+        launchable=launchable,
+        description="Watchtower Wire client enrollment service",
+        working_directory="{project}",
+        state_root=gateway.data_root() / "services",
+    )
+    gateway._service_presets[service.identity] = service
+
     return controller
 
 
-__all__ = ["Controller", "register"]
+__all__ = ["Controller", "Registry", "build_enrollment_server", "register"]
