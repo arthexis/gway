@@ -97,7 +97,7 @@ def test_help_preserves_receiver_adjusted_signature(gateway):
 def test_builtin_install_help_explains_reconciliation_policy(gateway):
     output = gateway("help install --verbose")
 
-    assert "Converge one local or Git project installation" in output
+    assert "Converge one local or Git artifact installation" in output
     assert "Replace an existing installation" in output
     assert "Discard drift in a dirty managed installation" in output
     assert "Preserve a dirty managed installation" in output
