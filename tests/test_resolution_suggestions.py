@@ -47,3 +47,23 @@ def test_resolution_error_remains_lookup_error_compatible(gateway):
 
     with pytest.raises(LookupError):
         gateway("statsu service")
+
+
+def test_resolution_error_ignores_command_arguments_when_scoring(gateway):
+    gateway.wrap("install.package", lambda: "ok")
+
+    with pytest.raises(OperationLookupError) as caught:
+        gateway("instal package --upgrade")
+
+    assert caught.value.suggestions[0] == "install package"
+
+
+def test_resolution_error_filters_suggestions_by_active_authorization(gateway):
+    gateway.wrap("delete.secret", lambda: "deleted")
+    gateway.wrap("help", lambda: "help")
+
+    with gateway.authorized(operations={"help"}):
+        with pytest.raises(OperationLookupError) as caught:
+            gateway("delet secret")
+
+    assert "delete secret" not in caught.value.suggestions
