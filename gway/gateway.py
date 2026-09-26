@@ -129,6 +129,7 @@ class Gateway(Resolver):
         self.require = self.wrap("require", self._require)
         self.help = self.wrap("help", self._help)
         self.guide = self.wrap("guide", self._guide)
+        self.node = self.wrap("node", self._node)
         self.wrap("ingest", self.ingest)
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
         self.reload = self.wrap("reload", self._reload)
@@ -767,6 +768,75 @@ class Gateway(Resolver):
             authorization=self.authorization,
         )
 
+    def _node(self, *parts: str, mutate=False):
+        """Inspect or dispatch the active project/node role.
+
+        Bare `node` reports the active role family and available role-owned
+        operations. `node <verb> [args...]` dispatches to the canonical
+        `node.<role>.<verb>` operation registered by the project.
+
+        Args:
+            parts: Role-local operation verb followed by its arguments.
+        """
+        role = self.find_value("role", include_environment=False)
+        if role is None:
+            raise LookupError("node requires an active semantic role")
+
+        role = str(role).strip()
+        if not role:
+            raise LookupError("node requires a non-empty semantic role")
+        family = f"node.{role}"
+
+        authority = self.authorization
+        available = []
+        for record in self.ops.records():
+            prefix = f"{family}."
+            if not record.name.startswith(prefix):
+                continue
+            if authority is not None and record.name not in authority.operations:
+                continue
+            available.append(record.name[len(prefix):].replace(".", " "))
+
+        if not parts:
+            from .publication import ResultOnlyMapping
+
+            return ResultOnlyMapping(
+                {
+                    "role": role,
+                    "family": family.replace(".", "/"),
+                    "operations": sorted(available),
+                }
+            )
+
+        values = [str(part).strip() for part in parts]
+        operation = None
+        canonical = None
+        arguments = ()
+        for size in range(len(values), 0, -1):
+            suffix = ".".join(
+                value.replace(" ", ".")
+                for value in values[:size]
+                if value
+            )
+            candidate = f"{family}.{suffix}"
+            resolved = self.ops.resolve(candidate)
+            if resolved is None:
+                continue
+            canonical = candidate
+            operation = resolved
+            arguments = tuple(parts[size:])
+            break
+
+        if operation is None:
+            requested = " ".join(values)
+            raise LookupError(
+                f"Role {role!r} does not expose node operation {requested!r}"
+            )
+
+        self.authorize_operation(canonical, args=arguments)
+        with self.invocation_authority(operation):
+            return operation(*arguments)
+
     @property
     def last(self):
         """Return the raw result of the most recently completed operation."""
@@ -1084,6 +1154,7 @@ class Gateway(Resolver):
         wrapped.__gway_subject__ = subject
         wrapped.__gway_receiver__ = receiver
         self.ops.register(func_name, wrapped, op=op, sub=sub)
+        self._register_local_node_alias(func_name, wrapped)
         self.launchables.operation(
             func_name,
             metadata={
@@ -1104,6 +1175,27 @@ class Gateway(Resolver):
             and getattr(value, "__gway_operation__", None) is not None
         ):
             ops.register_alias(name, value)
+
+    def _register_local_node_alias(self, canonical, operation):
+        """Expose active-role node operations through semantic role spelling."""
+        parts = tuple(
+            part for part in str(canonical).replace(" ", ".").split(".") if part
+        )
+        if len(parts) < 3 or parts[0] != "node":
+            return
+
+        role = self.find_value("role", include_environment=False)
+        if role is None:
+            return
+        role = str(role).strip()
+        if not role or parts[1].casefold() != role.casefold():
+            return
+
+        alias = ".".join((role, *parts[2:]))
+        existing = self.ops.resolve(alias)
+        if existing is not None and existing is not operation:
+            return
+        self.ops.register_alias(alias, operation)
 
     @staticmethod
     def subject(func_name: str):
