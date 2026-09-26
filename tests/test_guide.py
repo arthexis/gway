@@ -501,3 +501,124 @@ reason = "Inspect CI in source control."
         result = gateway("guide check ci")
 
     assert result["external"][0]["capability"] == "source-control"
+
+
+def test_project_role_specific_guidance_implies_role_and_source(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "watchtower"
+
+[[tool.gway.roles.watchtower.guide]]
+tasks = ["diagnose this node"]
+command = "node watchtower diagnose"
+reason = "Use the Watchtower diagnostic family."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    result = gateway("guide diagnose this node")
+
+    assert result["role"] == "watchtower"
+    assert result["recommendations"][0] == {
+        "kind": "gway",
+        "command": "node watchtower diagnose",
+        "reason": "Use the Watchtower diagnostic family.",
+        "source": "demo:watchtower",
+        "matched_task": "diagnose this node",
+        "roles": ["watchtower"],
+    }
+
+
+def test_role_specific_project_guidance_is_hidden_for_other_roles(
+    tmp_path,
+    monkeypatch,
+):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "control"
+
+[[tool.gway.roles.watchtower.guide]]
+tasks = ["diagnose this node"]
+command = "node watchtower diagnose"
+reason = "Watchtower diagnostic."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    result = gateway("guide diagnose this node")
+
+    assert all(
+        item.get("command") != "node watchtower diagnose"
+        for item in result["recommendations"]
+    )
+
+
+def test_role_specific_project_guidance_rejects_explicit_roles():
+    with pytest.raises(ValueError, match="cannot define roles"):
+        project_guidance(
+            {
+                "tool": {
+                    "gway": {
+                        "roles": {
+                            "watchtower": {
+                                "guide": [
+                                    {
+                                        "tasks": ["diagnose"],
+                                        "command": "node watchtower diagnose",
+                                        "reason": "x",
+                                        "roles": ["terminal"],
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+            source="demo",
+        )
+
+
+def test_role_specific_project_guidance_supports_external_capability(
+    tmp_path,
+    monkeypatch,
+):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "watchtower"
+
+[[tool.gway.roles.watchtower.guide]]
+tasks = ["review deployment source"]
+use = "external"
+capability = "source-control"
+reason = "Review the canonical repository."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    result = gateway("guide review deployment source")
+
+    assert result["external"][0] == {
+        "capability": "source-control",
+        "reason": "Review the canonical repository.",
+        "source": "demo:watchtower",
+        "matched_task": "review deployment source",
+        "roles": ["watchtower"],
+    }
