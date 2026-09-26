@@ -722,11 +722,58 @@ class Gateway(Resolver):
             restart=restart,
         )
 
+    def namespace(self, *parts):
+        """Return structured information about one command-group namespace."""
+        from .documentation import describe
+
+        name = " ".join(str(part) for part in parts).strip()
+        if not name:
+            raise TypeError("namespace requires a command group")
+
+        children = []
+        for child, operation in self.ops.children(name):
+            command = f"{name} {child}"
+            if operation is None:
+                summary = "Command group."
+                group = True
+            else:
+                summary = describe(operation).summary or ""
+                group = self.ops.is_namespace(command)
+            children.append(
+                {
+                    "name": child,
+                    "command": command,
+                    "summary": summary,
+                    "group": group,
+                }
+            )
+        if not children:
+            raise LookupError(f"Unknown command group: {name}")
+        return {
+            "group": name,
+            "default": name if self.ops.resolve(name) is not None else None,
+            "operations": children,
+        }
+
+    def _namespace_help(self, name):
+        info = self.namespace(*str(name).split())
+        lines = [f"{info['group']} operations:", ""]
+        width = max(len(item["name"]) for item in info["operations"])
+        for item in info["operations"]:
+            suffix = " >" if item["group"] else ""
+            summary = item["summary"]
+            lines.append(
+                f"  {item['name']:<{width}}{suffix}  {summary}".rstrip()
+            )
+        if info["default"] is not None:
+            lines.extend(["", f"Bare '{info['group']}' runs its group default."])
+        return "\n".join(lines)
+
     def _help(self, *operation: str, verbose=False, mutate=False):
-        """Return documentation for one Gway operation.
+        """Return documentation for one Gway operation or command group.
 
         Args:
-            operation: Operation name parts, including an optional semantic subject.
+            operation: Operation or command-group name parts.
             verbose: Include the full docstring and merged parameter details.
         """
         del mutate
@@ -737,6 +784,9 @@ class Gateway(Resolver):
         if not operation:
             raise TypeError("help requires an operation name")
         name = " ".join(operation)
+        if self.ops.is_namespace(name):
+            return self._namespace_help(name)
+
         target, remaining, _ = resolve_operation(self, tokenize(name))
         if remaining:
             raise LookupError(f"Unable to resolve operation: {name}")
