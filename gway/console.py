@@ -50,6 +50,19 @@ def _extract_mutation_policy(argv):
     return policy, remaining
 
 
+def _extract_command_help(argv):
+    """Route trailing command help through GWAY instead of global argparse help."""
+    if not argv:
+        return False, argv
+    help_tokens = {"--help", "-h"}
+    if argv[-1] not in help_tokens:
+        return False, argv
+    preceding = argv[:-1]
+    if not any(not token.startswith("-") for token in preceding):
+        return False, argv
+    return True, preceding
+
+
 def cli_main():
     """Run the minimal GWAY command-line interface."""
     parser = argparse.ArgumentParser(
@@ -83,8 +96,10 @@ def cli_main():
         mutation_policy, argv = _extract_mutation_policy(sys.argv[1:])
     except ValueError as exception:
         parser.error(str(exception))
+    command_help, argv = _extract_command_help(argv)
     args, unknown = parser.parse_known_args(argv)
     args.mutation_policy = mutation_policy
+    args.command_help = command_help
 
     runtime = Gateway(
         debug=args.debug,
@@ -143,7 +158,10 @@ def _run_cli(parser, args, unknown, *, runtime=None):
                     runtime.context.update(parse_recipe_context(unknown))
                     output = runtime.resolve(args.expression)
                 elif unknown:
-                    _, output = process([unknown], gw_instance=runtime)
+                    if getattr(args, "command_help", False):
+                        output = runtime._help(*unknown, verbose=args.verbose)
+                    else:
+                        _, output = process([unknown], gw_instance=runtime)
                 else:
                     parser.print_help()
                     return 0
