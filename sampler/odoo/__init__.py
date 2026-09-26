@@ -1,7 +1,5 @@
 """Lazy Odoo sampler for authenticated read-only model access."""
 
-from __future__ import annotations
-
 import json
 from urllib.parse import urlsplit
 from xmlrpc.client import ServerProxy
