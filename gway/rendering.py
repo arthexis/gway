@@ -187,12 +187,19 @@ class Renderer:
         if entry is not None:
             self.runtime.journal.mark_mutated(rollback, entry.sequence)
 
-        result = atomic_write_text(
-            destination,
-            rendered,
-            identity=identity,
-            mode=mode,
-        )
+        if mode is None:
+            result = atomic_write_text(
+                destination,
+                rendered,
+                identity=identity,
+            )
+        else:
+            result = atomic_write_text(
+                destination,
+                rendered,
+                identity=identity,
+                mode=mode,
+            )
 
         if entry is not None:
             self.runtime.journal.mark_applied(rollback, entry.sequence)
