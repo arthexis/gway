@@ -297,12 +297,19 @@ def guide(
         for item in recommendations
         if item.get("operation") is not None
     }
+    seen_commands = {
+        item.get("command")
+        for item in recommendations
+        if item.get("command") is not None
+    }
     for recommendation in docstring_matches(
         task,
         operations,
         authorization=authorization,
         exclude_operations=seen_operations,
     ):
+        if recommendation["command"] in seen_commands:
+            continue
         recommendations.append(recommendation)
 
     for recommendation in document_matches(task, documents):
