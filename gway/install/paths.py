@@ -13,6 +13,7 @@ class InstallPaths:
 
     root: Path
     projects: Path
+    products: Path
     stashes: Path
     launchers: Path
     bin: Path
@@ -74,12 +75,50 @@ def bin_root(*, system=False, bin_dir=None, environ=None, platform=None, home=No
     return home / ".local" / "bin"
 
 
+def product_root(
+    *,
+    system=False,
+    product_dir=None,
+    environ=None,
+    platform=None,
+    home=None,
+):
+    """Return a runtime root owned by installed products rather than GWAY."""
+    environ = process_environment if environ is None else environ
+    platform = sys.platform if platform is None else platform
+    home = Path.home() if home is None else Path(home)
+
+    if product_dir is not None:
+        return Path(product_dir).expanduser()
+
+    environment_override = environ.get(
+        "GWAY_SYSTEM_PRODUCT_DIR" if system else "GWAY_PRODUCT_DIR"
+    )
+    if environment_override:
+        return Path(environment_override).expanduser()
+
+    if platform.startswith("win"):
+        if system:
+            base = environ.get("PROGRAMFILES")
+            return Path(base) if base else Path("C:/Program Files")
+        base = environ.get("LOCALAPPDATA")
+        return Path(base) / "Programs" if base else home / "AppData" / "Local" / "Programs"
+
+    if system:
+        if platform == "darwin":
+            return Path("/usr/local/opt")
+        return Path("/opt")
+
+    return home / ".local" / "opt"
+
+
 def install_paths(
     *,
     system=False,
     root=None,
     data_dir=None,
     bin_dir=None,
+    product_dir=None,
     **kwargs,
 ):
     """Return all durable paths from platform defaults or explicit values."""
@@ -89,9 +128,15 @@ def install_paths(
         else Path(root).expanduser()
     ).resolve()
     selected_bin = bin_root(system=system, bin_dir=bin_dir, **kwargs).resolve()
+    products = product_root(
+        system=system,
+        product_dir=product_dir,
+        **kwargs,
+    ).expanduser().resolve()
     return InstallPaths(
         root=selected,
         projects=selected / "projects",
+        products=products,
         stashes=selected / "stashes",
         launchers=selected / "launchers",
         bin=selected_bin,

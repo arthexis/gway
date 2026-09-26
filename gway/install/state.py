@@ -7,7 +7,7 @@ import sqlite3
 from .model import Installation
 
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 class InstallState:
@@ -37,6 +37,7 @@ class InstallState:
             CREATE TABLE IF NOT EXISTS installations (
                 name TEXT NOT NULL,
                 scope TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'extension',
                 source TEXT NOT NULL,
                 requested_ref TEXT,
                 resolved_revision TEXT,
@@ -47,6 +48,15 @@ class InstallState:
             )
             """
         )
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(installations)").fetchall()
+        }
+        if "kind" not in columns:
+            connection.execute(
+                "ALTER TABLE installations "
+                "ADD COLUMN kind TEXT NOT NULL DEFAULT 'extension'"
+            )
         if version < _SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
 
@@ -57,6 +67,7 @@ class InstallState:
         return Installation(
             name=row["name"],
             scope=row["scope"],
+            kind=row["kind"],
             source=row["source"],
             requested_ref=row["requested_ref"],
             resolved_revision=row["resolved_revision"],
@@ -72,7 +83,7 @@ class InstallState:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT name, scope, source, requested_ref, resolved_revision,
+                SELECT name, scope, kind, source, requested_ref, resolved_revision,
                        fingerprint, install_path, installed_at
                 FROM installations
                 WHERE name = ? AND scope = ?
@@ -86,7 +97,7 @@ class InstallState:
         if not self.path.is_file():
             return []
         query = """
-            SELECT name, scope, source, requested_ref, resolved_revision,
+            SELECT name, scope, kind, source, requested_ref, resolved_revision,
                    fingerprint, install_path, installed_at
             FROM installations
         """
@@ -114,10 +125,11 @@ class InstallState:
             connection.execute(
                 """
                 INSERT INTO installations (
-                    name, scope, source, requested_ref, resolved_revision,
+                    name, scope, kind, source, requested_ref, resolved_revision,
                     fingerprint, install_path, installed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name, scope) DO UPDATE SET
+                    kind = excluded.kind,
                     source = excluded.source,
                     requested_ref = excluded.requested_ref,
                     resolved_revision = excluded.resolved_revision,
@@ -128,6 +140,7 @@ class InstallState:
                 (
                     record.name,
                     record.scope,
+                    record.kind,
                     record.source,
                     record.requested_ref,
                     record.resolved_revision,

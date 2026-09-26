@@ -23,6 +23,7 @@ class Installation:
     source: str
     install_path: Path
     scope: str = "user"
+    kind: str = "extension"
     requested_ref: str | None = None
     resolved_revision: str | None = None
     fingerprint: str | None = None
@@ -34,6 +35,8 @@ class Installation:
             raise ValueError("installation source must be a non-empty string")
         if self.scope not in {"user", "system"}:
             raise ValueError("installation scope must be 'user' or 'system'")
+        if self.kind not in {"product", "extension"}:
+            raise ValueError("installation kind must be 'product' or 'extension'")
         object.__setattr__(self, "install_path", Path(self.install_path))
 
     def with_installed_at(self, value):
@@ -51,12 +54,15 @@ class InstallRequest:
     force: bool = False
     stash: bool = False
     system: bool = False
+    kind: str = "extension"
 
     def __post_init__(self):
         if not isinstance(self.source, str) or not self.source.strip():
             raise ValueError("install source must be a non-empty string")
         if self.force and self.stash:
             raise ValueError("--force and --stash are mutually exclusive")
+        if self.kind not in {"product", "extension"}:
+            raise ValueError("install kind must be 'product' or 'extension'")
 
     @property
     def scope(self):

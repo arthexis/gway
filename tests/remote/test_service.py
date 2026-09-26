@@ -69,8 +69,10 @@ def test_remote_auth_systemd_rendering_uses_generic_backend():
     assert "Description=Gway remote OAuth and account service" in rendered
     assert "ExecStart=" in rendered
     assert " remote serve" in rendered
-    assert "Restart=no" in rendered
-    assert "gway.service.supervisor" in rendered
+    assert "Restart=on-failure" in rendered
+    assert "RestartSec=5.0" in rendered
+    assert "StartLimitBurst=4" in rendered
+    assert "gway.service.supervisor" not in rendered
     assert "systemctl" not in rendered
     assert "daemon-reload" not in rendered
 

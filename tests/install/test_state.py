@@ -41,7 +41,7 @@ def test_state_put_creates_database_and_round_trips_record(tmp_path):
 
     with sqlite3.connect(path) as connection:
         version = connection.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 1
+    assert version == 2
 
 
 def test_state_put_reconciles_record_by_name_and_scope(tmp_path):
@@ -96,3 +96,57 @@ def test_state_rejects_newer_schema_version(tmp_path):
 
     with pytest.raises(RuntimeError, match="newer than this GWAY version"):
         state.all()
+
+
+def test_state_migrates_v1_records_to_extension_kind(tmp_path):
+    path = tmp_path / "state.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE installations (
+                name TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                source TEXT NOT NULL,
+                requested_ref TEXT,
+                resolved_revision TEXT,
+                fingerprint TEXT,
+                install_path TEXT NOT NULL,
+                installed_at TEXT NOT NULL,
+                PRIMARY KEY (name, scope)
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO installations (
+                name, scope, source, requested_ref, resolved_revision,
+                fingerprint, install_path, installed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "wire",
+                "user",
+                "arthexis/gway-wire",
+                "main",
+                "abc123",
+                "sha256:first",
+                str(tmp_path / "projects" / "wire"),
+                "2026-01-01T00:00:00+00:00",
+            ),
+        )
+        connection.execute("PRAGMA user_version = 1")
+
+    loaded = InstallState(path).get("wire")
+
+    assert loaded is not None
+    assert loaded.kind == "extension"
+    with sqlite3.connect(path) as connection:
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(installations)"
+            ).fetchall()
+        }
+    assert version == 2
+    assert "kind" in columns

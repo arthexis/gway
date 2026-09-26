@@ -1,4 +1,6 @@
-from gway.install import bin_root, data_root, install_paths
+from pathlib import Path
+
+from gway.install import bin_root, data_root, install_paths, product_root
 
 
 def test_user_data_root_uses_xdg_data_home(tmp_path):
@@ -54,6 +56,7 @@ def test_install_paths_are_durable_and_lazy(tmp_path):
 
     assert paths.root == root.resolve()
     assert paths.projects == root.resolve() / "projects"
+    assert paths.products == (Path.home() / ".local" / "opt").resolve()
     assert paths.stashes == root.resolve() / "stashes"
     assert paths.launchers == root.resolve() / "launchers"
     assert paths.state == root.resolve() / "state.sqlite"
@@ -122,3 +125,42 @@ def test_gateway_resolves_legacy_path_environment_as_semantic_bindings(
     assert gateway.bin_root() == user_bin
     assert gateway.data_root(system=True) == system_data
     assert gateway.bin_root(system=True) == system_bin
+
+
+def test_system_products_live_outside_gway_data(tmp_path):
+    paths = install_paths(system=True, root=tmp_path / "gway-data")
+
+    assert paths.products == Path("/opt")
+    assert paths.products != paths.projects
+
+
+def test_product_root_is_platform_owned(tmp_path):
+    home = tmp_path / "home"
+
+    assert product_root(platform="linux", home=home) == home / ".local" / "opt"
+    assert product_root(system=True, platform="linux", home=home) == Path("/opt")
+    assert product_root(system=True, platform="darwin", home=home) == Path("/usr/local/opt")
+    assert product_root(
+        system=True,
+        platform="win32",
+        environ={"PROGRAMFILES": "C:/Apps"},
+        home=home,
+    ) == Path("C:/Apps")
+
+
+def test_product_root_accepts_explicit_override(tmp_path):
+    target = tmp_path / "products"
+
+    assert product_root(product_dir=target, platform="linux") == target
+
+
+def test_product_root_honors_environment_override(tmp_path):
+    user = tmp_path / "user-products"
+    system = tmp_path / "system-products"
+    environ = {
+        "GWAY_PRODUCT_DIR": str(user),
+        "GWAY_SYSTEM_PRODUCT_DIR": str(system),
+    }
+
+    assert product_root(environ=environ, platform="linux") == user
+    assert product_root(system=True, environ=environ, platform="linux") == system

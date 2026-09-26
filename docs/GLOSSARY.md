@@ -25,6 +25,9 @@ Gway code.
 - [Glyph](#glyph) — a syntactic character or ordered character construction with defined meaning.
 - [Flag](#flag) — a subject trait matched by an operation parameter.
 - [Sigil](#sigil) — a semantic reference whose concrete value is resolved from context.
+- [Product](#product) — independently runnable software that GWAY can install, manage, and compose without becoming part of its runtime.
+- [Extension](#extension) — GWAY-owned installed capability whose lifecycle belongs to the GWAY runtime.
+- [Recipe](#recipe) — a reusable executable composition of GWAY operations.
 
 ## Operation
 
@@ -868,6 +871,161 @@ same set of topics
 different topic ordering or implementation layout
 same semantic meaning
 ```
+
+## Product
+
+A **product** is independently runnable software that is developed for, or made compatible with, GWAY while remaining physically and operationally separate from GWAY itself.
+
+A product may be installed, configured, inspected, upgraded, composed, and operated through GWAY. GWAY may ingest the product's commands or APIs and may use recipes to converge its deployment. Those management relationships do **not** make the product a GWAY extension or runtime component.
+
+Arthexis is a product in this sense.
+
+### Product independence
+
+A successfully installed product must continue its normal function when GWAY is unavailable, broken, unsuccessfully upgraded, or removed.
+
+For a supervised product this includes host restart behavior: after the product has been installed and its native service has been enabled, a machine reboot must be able to start the product without importing, executing, or consulting GWAY.
+
+This means a product owns its runtime dependencies, executable environment, configuration contract, mutable data, durable state, and service entrypoint. GWAY can create and reconcile those resources, but the finished resources must not require GWAY merely to run.
+
+A useful invariant is:
+
+```text
+GWAY -> install/manage/compose product
+product -X-> require GWAY to run
+```
+
+### Product versus GWAY extension
+
+A GWAY extension or other GWAY-owned capability exists to extend GWAY itself and may legitimately live under GWAY-owned installation/state paths or execute through the GWAY runtime. A recipe is not inherently an extension: recipes are composition/execution mechanisms and may install either a product or an extension.
+
+A product does not.
+
+Installing a product must therefore use product-owned runtime paths rather than treating the product as another GWAY extension beneath GWAY's managed project tree. Removing GWAY-owned recipes, caches, extension state, or the GWAY executable must not remove the product's executable runtime or durable application data.
+
+### Compatibility does not imply dependency
+
+A product can deliberately expose metadata, commands, launchables, or other integration points that make it easy for GWAY to operate. GWAY may provide richer composition and presentation around those surfaces.
+
+That compatibility is an adapter relationship, not a runtime dependency. The product must remain directly runnable through its own normal entrypoints and native platform facilities.
+
+
+## Extension
+
+An **extension** is an installed capability whose runtime lifecycle belongs to GWAY itself.
+
+Extensions may legitimately depend on the GWAY executable, GWAY Python modules, GWAY-owned state, sampler data, recipes, adapters, or other GWAY runtime facilities. Removing GWAY may therefore remove or disable an extension.
+
+This is the opposite lifecycle boundary from a [Product](#product):
+
+```text
+product   -> managed by GWAY, runs independently of GWAY
+extension -> extends GWAY, may require GWAY to run
+```
+
+The source mechanism does not determine the kind. A recipe may install either kind. External/local Python project artifacts installed through the ordinary public `install` surface are products by default; GWAY-owned extension installation must identify itself as such.
+
+GWAY core itself is neither a product nor an extension exposed through the product inventory.
+
+
+## Recipe
+
+A **recipe** is an executable composition of GWAY operations that describes a sequence of work to perform.
+
+A recipe may install, configure, update, inspect, repair, remove, or otherwise operate on subjects available to GWAY. It may also perform useful work directly without installing or managing any persistent software or infrastructure.
+
+The defining property of a recipe is therefore **composition**, not installation.
+
+A recipe expresses how existing operations should be executed together as a reusable operation.
+
+Conceptually:
+
+```text
+operation
+operation
+operation
+    ↓
+recipe
+```
+
+Once defined, a recipe can itself participate in GWAY execution in much the same way as another operation.
+
+### Recipes execute work
+
+A recipe is not merely a declarative description of desired infrastructure.
+
+Its operations are executed, and those operations may produce results, modify context, consume previous results, perform external effects, or otherwise carry out work according to normal GWAY execution semantics.
+
+A recipe may therefore represent anything from a small convenience operation to a complete deployment or maintenance procedure.
+
+For example:
+
+```text
+check service
+read log
+report status
+```
+
+may form a diagnostic recipe even though nothing is installed.
+
+Likewise:
+
+```text
+download data
+transform data
+write result
+```
+
+may be a useful recipe whose purpose has nothing to do with infrastructure.
+
+### Recipe versus Product and Extension
+
+A recipe does not determine the lifecycle category of the things it operates on.
+
+In particular, a recipe may install or manage either a [Product](#product) or an [Extension](#extension).
+
+```text
+recipe
+   ├── may install/manage product
+   ├── may install/manage extension
+   └── may perform work that installs neither
+```
+
+A **Product** is distinguished by its runtime independence from GWAY.
+
+An **Extension** is distinguished by belonging to and potentially depending on the GWAY runtime.
+
+A **Recipe** is distinguished by being a reusable executable composition of operations.
+
+These concepts therefore answer different questions:
+
+```text
+Product / Extension
+    What kind of installed thing is this?
+
+Recipe
+    What sequence of work should GWAY perform?
+```
+
+A recipe itself should not be classified as a product merely because it installs one, nor as an extension merely because it is distributed with GWAY.
+
+### Recipes and operations
+
+A recipe is composed from operations and can itself be invoked as an operation.
+
+This allows larger behavior to be constructed from smaller semantic units without requiring each composition to become a new Python implementation.
+
+The operations within a recipe retain their own meanings, subjects, mutation behavior, results, and other execution semantics.
+
+The recipe supplies their ordering and composition.
+
+A useful invariant is:
+
+```text
+operations provide capabilities
+recipes compose capabilities into reusable work
+```
+
 
 ## Context
 

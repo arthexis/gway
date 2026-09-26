@@ -61,6 +61,7 @@ def test_service_list_contains_named_presets():
     assert listed == [
         {
             "project": "gway",
+            "kind": "extension",
             "service": "remote-auth",
             "description": "Gway remote OAuth and account service",
             "launchable": "operation",
@@ -68,6 +69,7 @@ def test_service_list_contains_named_presets():
         },
         {
             "project": "gway",
+            "kind": "extension",
             "service": "sous-chef",
             "description": "Gway single-worker recipe scheduler",
             "launchable": "operation",
@@ -92,6 +94,7 @@ def test_service_list_can_filter_presets_by_project():
     assert gateway("service list --project demo") == [
         {
             "project": "demo",
+            "kind": "extension",
             "service": "worker",
             "description": "Demo worker",
             "launchable": "operation",

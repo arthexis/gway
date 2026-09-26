@@ -311,7 +311,9 @@ def register_binding_declarations(runtime, declarations):
 
 def _valid_installation(record, paths):
     """Return whether one registry record still names a managed project tree."""
-    expected = (paths.projects / record.name).resolve()
+    kind = getattr(record, "kind", "extension")
+    root = paths.products if kind == "product" else paths.projects
+    expected = (root / record.name).resolve()
     try:
         installed = record.install_path.expanduser().resolve()
     except (OSError, RuntimeError):

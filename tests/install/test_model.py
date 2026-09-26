@@ -17,6 +17,7 @@ def test_installation_normalizes_path_and_preserves_source_identity(tmp_path):
 
     assert record.install_path == Path(tmp_path / "wire")
     assert record.scope == "user"
+    assert record.kind == "extension"
     assert record.requested_ref == "main"
     assert record.resolved_revision == "abc123"
 
@@ -53,3 +54,13 @@ def test_uninstall_request_is_scope_aware():
 
     assert request.project == "gway"
     assert request.scope == "system"
+
+
+def test_installation_rejects_invalid_kind(tmp_path):
+    with pytest.raises(ValueError, match="installation kind"):
+        Installation(
+            name="wire",
+            source="source",
+            install_path=tmp_path / "wire",
+            kind="unknown",
+        )
