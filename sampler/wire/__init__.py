@@ -1006,7 +1006,7 @@ def register(gateway, *, runner=None, which=None):
         launchable=launchable,
         description="Watchtower Wire client enrollment service",
         working_directory="{project}",
-        state_root=gateway.data_root() / "services",
+        state_root=None,
     )
     gateway._service_presets[service.identity] = service
 

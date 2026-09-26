@@ -2,10 +2,15 @@ from pathlib import Path
 
 
 def _commands(name):
-    from gway.recipe import parse_recipe
+    from gway.recipe import load_recipe
+    from gway.tokens import token_value
 
     root = Path(__file__).resolve().parents[2] / "sampler" / "wire"
-    return [list(statement.tokens) for statement in parse_recipe(root / name)]
+    commands, _ = load_recipe(root / name)
+    return [
+        [token_value(token) for token in command["tokens"]]
+        for command in commands
+    ]
 
 
 def test_wire_enroll_recipe_runs_server_with_watchtower_defaults():
