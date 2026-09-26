@@ -108,9 +108,15 @@ canonical command spelling and compact operation summary, remains lower priority
 project declarations, and is filtered by the caller's active authorization when one
 exists. It does not execute the recommended operation.
 
-The full role-aware `node` execution surface, recipe metadata, broader docstring
-fallbacks, external capability recommendations, and documentation fallbacks remain
-separate later layers of the guide design.
+After live operations, `guide` can also recommend maintained sampler recipes by
+their semantic recipe path. Recipe recommendations use the safe
+`recipe <sampler-name>` operation rather than exposing direct filesystem paths.
+Under constrained remote authorization, recipes are only advertised when the
+caller is authorized for the `recipe` operation.
+
+The full role-aware `node` execution surface, broader docstring fallbacks,
+external capability recommendations, and documentation fallbacks remain separate
+later layers of the guide design.
 
 ### `[tool.gway.sous-chef.<job>]`
 
