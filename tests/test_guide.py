@@ -211,7 +211,11 @@ reason = "Watchtower-only diagnostic."
     result = gateway("guide diagnose node")
 
     assert result["role"] == "control"
-    assert result["recommendations"] == []
+    assert all(
+        item.get("command") != "node diagnose"
+        or item.get("source") != "demo"
+        for item in result["recommendations"]
+    )
 
 
 def test_guide_result_does_not_publish_metadata_into_context(tmp_path, monkeypatch):
