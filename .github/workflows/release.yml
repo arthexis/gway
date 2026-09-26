@@ -25,6 +25,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   build:
@@ -88,6 +89,43 @@ jobs:
           print("watchtower_certification=verified")
           PY
 
+      - name: Verify release intent
+        shell: bash
+        env:
+          DEPLOYED_SHA: ${{ inputs.deployed_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          sha = os.environ["DEPLOYED_SHA"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{repository}/commits/{sha}/pulls",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(req) as response:
+              pulls = json.load(response)
+          requested = any(
+              pull.get("merge_commit_sha") == sha
+              and any(label.get("name") == "release" for label in pull.get("labels", []))
+              for pull in pulls
+          )
+          if not requested:
+              raise SystemExit(
+                  "Release blocked: deployed SHA is not the merge commit of a PR "
+                  "labeled 'release'."
+              )
+          print("release_intent=verified")
+          PY
+
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployed_sha }}
@@ -143,7 +181,7 @@ jobs:
           /tmp/gway-pypi-smoke/bin/python -m pip install dist/*.whl
           /tmp/gway-pypi-smoke/bin/python -m pip check
           /tmp/gway-pypi-smoke/bin/python -c 'import gway; print("gway import OK")'
-          /tmp/gway-pypi-smoke/bin/gway --version
+          /tmp/gway-pypi-smoke/bin/gway version
 
       - name: Generate release checksums
         shell: bash
@@ -578,7 +616,7 @@ jobs:
         if: steps.bump.outputs.changed == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           RELEASED_VERSION: ${{ needs.build.outputs.version }}
           NEXT_VERSION: ${{ steps.bump.outputs.next_version }}
           WATCHTOWER_RUN: ${{ inputs.watchtower_run }}

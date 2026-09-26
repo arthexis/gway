@@ -276,3 +276,12 @@ def test_toml_operations_support_non_mutating_execution(gateway, tmp_path):
     for name in (None, "loads", "load"):
         operation = gateway.ops.resolve("toml") if name is None else family[name]
         assert operation.mutates is False
+
+
+def test_builtin_version_reports_installed_distribution(monkeypatch):
+    monkeypatch.setattr("gway.builtin._package_version", lambda name: "9.8.7")
+
+    from gway.gateway import Gateway
+
+    gw = Gateway()
+    assert gw("version") == "9.8.7"
