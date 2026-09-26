@@ -755,7 +755,11 @@ class Gateway(Resolver):
             raise TypeError("guide requires a task")
         from .guide import guide
 
-        return guide(" ".join(task), self._guide_rules)
+        return guide(
+            " ".join(task),
+            self._guide_rules,
+            role=self.context.get("role"),
+        )
 
     @property
     def last(self):
