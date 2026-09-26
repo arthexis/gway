@@ -53,6 +53,7 @@ class Gateway(Resolver):
         self.launchables = Launchables()
         self._service_presets = {}
         self._ingested = {}
+        self._guide_rules = ()
 
         self.gway_identity = None
 
@@ -126,6 +127,7 @@ class Gateway(Resolver):
         self.ops.register_alias("clear-env", self.clear_env)
         self.require = self.wrap("require", self._require)
         self.help = self.wrap("help", self._help)
+        self.guide = self.wrap("guide", self._guide)
         self.wrap("ingest", self.ingest)
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
         self.reload = self.wrap("reload", self._reload)
@@ -741,6 +743,19 @@ class Gateway(Resolver):
         if remaining:
             raise LookupError(f"Unable to resolve operation: {name}")
         return render(target, verbose=verbose)
+
+    def _guide(self, *task: str, mutate=False):
+        """Return preferred explicit project guidance for a task.
+
+        Args:
+            task: Natural-language task description to match against project guidance.
+        """
+        del mutate
+        if not task:
+            raise TypeError("guide requires a task")
+        from .guide import guide
+
+        return guide(" ".join(task), self._guide_rules)
 
     @property
     def last(self):
