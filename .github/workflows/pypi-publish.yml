@@ -418,6 +418,98 @@ jobs:
           done
           echo "release_state=matching"
 
+  record-release:
+    name: Record certified release manifest
+    needs: [build, publish, github-release, record-release]
+    if: ${{ needs.publish.result == 'success' && needs.github-release.result == 'success' && needs.record-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download exact release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: gway-dists-${{ inputs.deployed_sha }}
+          path: release-artifacts/
+
+      - name: Record immutable release evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          PACKAGE: "gway"
+          REPOSITORY: "${{ github.repository }}"
+          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ needs.build.outputs.tag }}
+          DEPLOYED_SHA: ${{ inputs.deployed_sha }}
+          COMPANION_SHA: ${{ inputs.companion_sha }}
+          WATCHTOWER_RUN: ${{ inputs.watchtower_run }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "RELEASE_AUTOMATION_TOKEN is required to persist certified release evidence." >&2
+            exit 1
+          fi
+
+          python - <<'PY' > release-manifest.json
+          import json
+          import os
+          from pathlib import Path
+
+          artifacts = {}
+          for line in Path("release-artifacts/SHA256SUMS").read_text(encoding="utf-8").splitlines():
+              digest, filename = line.split(None, 1)
+              artifacts[filename.strip()] = {"sha256": digest}
+
+          package = os.environ["PACKAGE"]
+          version = os.environ["VERSION"]
+          tag = os.environ["TAG"]
+          repository = os.environ["REPOSITORY"]
+          manifest = {
+              "schema": 1,
+              "package": package,
+              "repository": repository,
+              "version": version,
+              "sha": os.environ["DEPLOYED_SHA"],
+              "companion_sha": os.environ["COMPANION_SHA"],
+              "watchtower_run": os.environ["WATCHTOWER_RUN"],
+              "artifacts": artifacts,
+              "publication": {
+                  "pypi": {
+                      "state": "published",
+                      "url": f"https://pypi.org/project/{package}/{version}/",
+                  },
+                  "git_tag": {
+                      "state": "published",
+                      "name": tag,
+                      "target_sha": os.environ["DEPLOYED_SHA"],
+                  },
+                  "github_release": {
+                      "state": "published",
+                      "url": f"https://github.com/{repository}/releases/tag/{tag}",
+                  },
+              },
+          }
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+
+          target=".watchtower/releases/${PACKAGE}/${VERSION}.json"
+          existing="$(mktemp)"
+          trap 'rm -f "$existing"' EXIT
+
+          if GH_TOKEN="$GH_TOKEN" gh api             -H "Accept: application/vnd.github.raw+json"             "/repos/arthexis/arthexis/contents/$target?ref=watchtower-state"             > "$existing" 2>/dev/null; then
+            if cmp --silent release-manifest.json "$existing"; then
+              echo "release_manifest=matching"
+              exit 0
+            fi
+            echo "Release blocked: durable manifest $target already exists with different evidence." >&2
+            diff -u "$existing" release-manifest.json || true
+            exit 1
+          fi
+
+          encoded="$(base64 -w0 release-manifest.json)"
+          GH_TOKEN="$GH_TOKEN" gh api             --method PUT             -H "Accept: application/vnd.github+json"             "/repos/arthexis/arthexis/contents/$target"             -f message="Record certified ${PACKAGE} ${VERSION} release"             -f content="$encoded"             -f branch="watchtower-state" >/dev/null
+          echo "release_manifest=recorded"
+
   advance-version:
     name: Open next-version PR
     needs: [build, publish, github-release]
