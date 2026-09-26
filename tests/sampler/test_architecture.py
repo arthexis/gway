@@ -95,3 +95,22 @@ def test_no_recipe_companion_pair_exists_outside_sampler():
             misplaced.append(python_file.relative_to(root))
 
     assert misplaced == []
+
+
+def test_sampler_recipe_inventory_collapses_directory_entry_recipes(tmp_path, monkeypatch):
+    from gway import sampler
+
+    root = tmp_path / "sampler"
+    (root / "web" / "expose").mkdir(parents=True)
+    (root / "web" / "expose" / "expose.rx").write_text("clear\n", encoding="utf-8")
+    (root / "remote").mkdir(parents=True)
+    (root / "remote" / "__main__.rx").write_text("clear\n", encoding="utf-8")
+    (root / "logs").mkdir(parents=True)
+    (root / "logs" / "read.rx").write_text("clear\n", encoding="utf-8")
+    monkeypatch.setattr(sampler, "root", lambda: root)
+
+    assert sampler.recipes() == (
+        "logs/read",
+        "remote",
+        "web/expose",
+    )
