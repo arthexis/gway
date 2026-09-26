@@ -578,7 +578,7 @@ jobs:
         if: steps.bump.outputs.changed == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
           RELEASED_VERSION: ${{ needs.build.outputs.version }}
           NEXT_VERSION: ${{ steps.bump.outputs.next_version }}
           WATCHTOWER_RUN: ${{ inputs.watchtower_run }}
