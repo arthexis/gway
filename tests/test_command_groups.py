@@ -112,7 +112,8 @@ def test_ingested_class_main_preserves_receiver_metadata(gateway):
 
     default = gateway.ops.resolve("demo.group")
     assert default.__gway_receiver__ == "group"
-    assert default(Demo()) == "main"
+    gateway.context["group"] = Demo()
+    assert default() == "main"
 
 
 @pytest.mark.parametrize(
@@ -149,3 +150,44 @@ def test_cli_command_help_resolves_operation_prefix(run_cli):
 
     assert status == 0
     assert "security scope show" in output
+
+
+
+def test_help_expands_lazy_namespace_on_first_call(gateway):
+    class Child:
+        def alpha(self):
+            """Alpha operation."""
+            return "alpha"
+
+    class Root:
+        pass
+
+    root = Root()
+    root.child = Child()
+    ingest_python(gateway, root, path=("root",))
+
+    output = gateway("help root child")
+
+    assert output.startswith("root child operations:")
+    assert "alpha" in output
+    assert "Alpha operation." in output
+
+
+def test_command_help_prefers_callable_prefix_over_argument_namespace(gateway):
+    def foo(value):
+        """Foo operation."""
+        return value
+
+    def baz():
+        return "baz"
+
+    gateway.wrap("foo", foo)
+    gateway.wrap("foo.bar.baz", baz)
+
+    assert gateway("foo bar") == "bar"
+
+    output = gateway._command_help("foo", "bar")
+
+    assert output.startswith("foo(value)")
+    assert "Foo operation." in output
+    assert "foo bar operations:" not in output

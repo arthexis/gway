@@ -781,10 +781,10 @@ class Gateway(Resolver):
         if not tokens:
             raise TypeError("command help requires an operation name")
         name = " ".join(tokens)
-        if self.ops.is_namespace(name):
-            return self._namespace_help(name)
-
-        target, _, _ = resolve_operation(self, tokenize(name))
+        resolution = resolve_operation(self, tokenize(name))
+        target, remaining, candidate = resolution
+        if not remaining and self.ops.is_namespace(candidate):
+            return self._namespace_help(candidate)
         return render(target, verbose=verbose)
 
     def _help(self, *operation: str, verbose=False, mutate=False):
@@ -805,9 +805,11 @@ class Gateway(Resolver):
         if self.ops.is_namespace(name):
             return self._namespace_help(name)
 
-        target, remaining, _ = resolve_operation(self, tokenize(name))
+        target, remaining, candidate = resolve_operation(self, tokenize(name))
         if remaining:
             raise LookupError(f"Unable to resolve operation: {name}")
+        if self.ops.is_namespace(candidate):
+            return self._namespace_help(candidate)
         return render(target, verbose=verbose)
 
     @property
