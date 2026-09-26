@@ -27,6 +27,7 @@ Gway code.
 - [Sigil](#sigil) — a semantic reference whose concrete value is resolved from context.
 - [Product](#product) — independently runnable software that GWAY can install, manage, and compose without becoming part of its runtime.
 - [Extension](#extension) — GWAY-owned installed capability whose lifecycle belongs to the GWAY runtime.
+- [Recipe](#recipe) — a reusable executable composition of GWAY operations.
 
 ## Operation
 
@@ -925,6 +926,105 @@ extension -> extends GWAY, may require GWAY to run
 The source mechanism does not determine the kind. A recipe may install either kind. External/local Python project artifacts installed through the ordinary public `install` surface are products by default; GWAY-owned extension installation must identify itself as such.
 
 GWAY core itself is neither a product nor an extension exposed through the product inventory.
+
+
+## Recipe
+
+A **recipe** is an executable composition of GWAY operations that describes a sequence of work to perform.
+
+A recipe may install, configure, update, inspect, repair, remove, or otherwise operate on subjects available to GWAY. It may also perform useful work directly without installing or managing any persistent software or infrastructure.
+
+The defining property of a recipe is therefore **composition**, not installation.
+
+A recipe expresses how existing operations should be executed together as a reusable operation.
+
+Conceptually:
+
+```text
+operation
+operation
+operation
+    ↓
+recipe
+```
+
+Once defined, a recipe can itself participate in GWAY execution in much the same way as another operation.
+
+### Recipes execute work
+
+A recipe is not merely a declarative description of desired infrastructure.
+
+Its operations are executed, and those operations may produce results, modify context, consume previous results, perform external effects, or otherwise carry out work according to normal GWAY execution semantics.
+
+A recipe may therefore represent anything from a small convenience operation to a complete deployment or maintenance procedure.
+
+For example:
+
+```text
+check service
+read log
+report status
+```
+
+may form a diagnostic recipe even though nothing is installed.
+
+Likewise:
+
+```text
+download data
+transform data
+write result
+```
+
+may be a useful recipe whose purpose has nothing to do with infrastructure.
+
+### Recipe versus Product and Extension
+
+A recipe does not determine the lifecycle category of the things it operates on.
+
+In particular, a recipe may install or manage either a [Product](#product) or an [Extension](#extension).
+
+```text
+recipe
+   ├── may install/manage product
+   ├── may install/manage extension
+   └── may perform work that installs neither
+```
+
+A **Product** is distinguished by its runtime independence from GWAY.
+
+An **Extension** is distinguished by belonging to and potentially depending on the GWAY runtime.
+
+A **Recipe** is distinguished by being a reusable executable composition of operations.
+
+These concepts therefore answer different questions:
+
+```text
+Product / Extension
+    What kind of installed thing is this?
+
+Recipe
+    What sequence of work should GWAY perform?
+```
+
+A recipe itself should not be classified as a product merely because it installs one, nor as an extension merely because it is distributed with GWAY.
+
+### Recipes and operations
+
+A recipe is composed from operations and can itself be invoked as an operation.
+
+This allows larger behavior to be constructed from smaller semantic units without requiring each composition to become a new Python implementation.
+
+The operations within a recipe retain their own meanings, subjects, mutation behavior, results, and other execution semantics.
+
+The recipe supplies their ordering and composition.
+
+A useful invariant is:
+
+```text
+operations provide capabilities
+recipes compose capabilities into reusable work
+```
 
 
 ## Context
