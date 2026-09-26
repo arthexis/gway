@@ -63,7 +63,14 @@ def project_guidance(data, *, source=None):
     for entry in entries:
         if not isinstance(entry, dict):
             raise ValueError("guide declaration must be a table")
-        unknown = set(entry) - {"tasks", "command", "reason", "roles"}
+        unknown = set(entry) - {
+            "tasks",
+            "command",
+            "reason",
+            "roles",
+            "use",
+            "capability",
+        }
         if unknown:
             raise ValueError(
                 "Unknown guide fields: " + ", ".join(sorted(unknown))
@@ -72,13 +79,31 @@ def project_guidance(data, *, source=None):
         command = entry.get("command")
         reason = entry.get("reason")
         roles = entry.get("roles", ())
+        use = entry.get("use", "gway")
+        capability = entry.get("capability")
         if not isinstance(tasks, list) or not tasks:
             raise ValueError("guide declaration requires non-empty tasks")
         if any(not isinstance(task, str) or not task.strip() for task in tasks):
             raise ValueError("guide tasks must be non-empty strings")
         normalized_tasks = tuple(task.strip() for task in tasks)
-        if not isinstance(command, str) or not command.strip():
-            raise ValueError("guide declaration requires a non-empty command")
+        if use not in {"gway", "external"}:
+            raise ValueError("guide use must be 'gway' or 'external'")
+        if use == "gway":
+            if not isinstance(command, str) or not command.strip():
+                raise ValueError("gway guide declaration requires a non-empty command")
+            if capability is not None:
+                raise ValueError("gway guide declaration cannot define capability")
+            normalized_command = command.strip()
+            normalized_capability = None
+        else:
+            if command is not None:
+                raise ValueError("external guide declaration cannot define command")
+            if not isinstance(capability, str) or not capability.strip():
+                raise ValueError(
+                    "external guide declaration requires a non-empty capability"
+                )
+            normalized_command = None
+            normalized_capability = capability.strip()
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("guide declaration requires a non-empty reason")
         if not isinstance(roles, list) and roles != ():
@@ -89,7 +114,9 @@ def project_guidance(data, *, source=None):
         rules.append(
             {
                 "tasks": normalized_tasks,
-                "command": command.strip(),
+                "use": use,
+                "command": normalized_command,
+                "capability": normalized_capability,
                 "reason": reason.strip(),
                 "source": source,
                 "roles": normalized_roles,
