@@ -20,6 +20,22 @@ def _local_intent(source):
         return False
 
 
+def _installation_kind(source):
+    """Classify ordinary installs without conflating source mechanism with kind."""
+    text = str(source).strip().rstrip("/")
+    lowered = text.casefold()
+    if lowered in {"gway", "arthexis/gway"} or lowered.endswith("/arthexis/gway.git"):
+        return "extension"
+    if _local_intent(source):
+        try:
+            from .source import project_name
+
+            return "extension" if project_name(source) == "gway" else "product"
+        except (OSError, ValueError):
+            pass
+    return "product"
+
+
 def install(
     source: str | Path,
     *,
@@ -30,6 +46,7 @@ def install(
     system: bool = False,
     cache=None,
     paths=None,
+    kind: str | None = None,
 ):
     """Converge one local or Git project installation toward requested state.
 
@@ -43,6 +60,7 @@ def install(
     """
     request = InstallRequest(
         source=str(source),
+        kind=_installation_kind(source) if kind is None else kind,
         ref=ref,
         upgrade=upgrade,
         force=force,
