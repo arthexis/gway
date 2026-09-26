@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from gway.install import bin_root, data_root, install_paths
 
 
@@ -54,6 +56,7 @@ def test_install_paths_are_durable_and_lazy(tmp_path):
 
     assert paths.root == root.resolve()
     assert paths.projects == root.resolve() / "projects"
+    assert paths.products == (Path.home() / ".local" / "opt").resolve()
     assert paths.stashes == root.resolve() / "stashes"
     assert paths.launchers == root.resolve() / "launchers"
     assert paths.state == root.resolve() / "state.sqlite"
@@ -122,3 +125,10 @@ def test_gateway_resolves_legacy_path_environment_as_semantic_bindings(
     assert gateway.bin_root() == user_bin
     assert gateway.data_root(system=True) == system_data
     assert gateway.bin_root(system=True) == system_bin
+
+
+def test_system_products_live_outside_gway_data(tmp_path):
+    paths = install_paths(system=True, root=tmp_path / "gway-data")
+
+    assert paths.products == Path("/opt")
+    assert paths.products != paths.projects
