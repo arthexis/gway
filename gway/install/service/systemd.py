@@ -208,7 +208,7 @@ def render(service, *, system=False):
         lines.extend(
             [
                 "StartLimitIntervalSec=15min",
-                f"StartLimitBurst={service.attempts}",
+                f"StartLimitBurst={service.attempts + 1}",
             ]
         )
     lines.extend(
