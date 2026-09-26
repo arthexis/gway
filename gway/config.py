@@ -63,7 +63,7 @@ def project_guidance(data, *, source=None):
     for entry in entries:
         if not isinstance(entry, dict):
             raise ValueError("guide declaration must be a table")
-        unknown = set(entry) - {"tasks", "command", "reason"}
+        unknown = set(entry) - {"tasks", "command", "reason", "roles"}
         if unknown:
             raise ValueError(
                 "Unknown guide fields: " + ", ".join(sorted(unknown))
@@ -71,21 +71,28 @@ def project_guidance(data, *, source=None):
         tasks = entry.get("tasks")
         command = entry.get("command")
         reason = entry.get("reason")
+        roles = entry.get("roles", ())
         if not isinstance(tasks, list) or not tasks:
             raise ValueError("guide declaration requires non-empty tasks")
-        normalized_tasks = tuple(str(task).strip() for task in tasks)
-        if any(not task for task in normalized_tasks):
+        if any(not isinstance(task, str) or not task.strip() for task in tasks):
             raise ValueError("guide tasks must be non-empty strings")
+        normalized_tasks = tuple(task.strip() for task in tasks)
         if not isinstance(command, str) or not command.strip():
             raise ValueError("guide declaration requires a non-empty command")
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("guide declaration requires a non-empty reason")
+        if not isinstance(roles, list) and roles != ():
+            raise ValueError("guide roles must be an array")
+        if any(not isinstance(role, str) or not role.strip() for role in roles):
+            raise ValueError("guide roles must be non-empty strings")
+        normalized_roles = tuple(role.strip() for role in roles)
         rules.append(
             {
                 "tasks": normalized_tasks,
                 "command": command.strip(),
                 "reason": reason.strip(),
                 "source": source,
+                "roles": normalized_roles,
             }
         )
     return tuple(rules)
