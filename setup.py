@@ -12,7 +12,8 @@ SAMPLER = ROOT / "sampler"
 def sampler_data_files():
     """Preserve the complete sampler tree under share/gway/sampler."""
     grouped = []
-    for directory in sorted(path for path in SAMPLER.rglob("*") if path.is_dir()):
+    directories = [SAMPLER, *sorted(path for path in SAMPLER.rglob("*") if path.is_dir())]
+    for directory in directories:
         files = sorted(path for path in directory.iterdir() if path.is_file())
         if not files:
             continue
