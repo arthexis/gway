@@ -87,10 +87,10 @@ def guide(task, rules, *, role=None):
     recommendations = []
     for match in explicit_matches(task, rules, role=role):
         recommendation = {
-                "kind": "gway",
-                "command": match.command,
-                "reason": match.reason,
-                "source": match.source,
+            "kind": "gway",
+            "command": match.command,
+            "reason": match.reason,
+            "source": match.source,
             "matched_task": match.task,
         }
         if match.roles:
@@ -99,11 +99,11 @@ def guide(task, rules, *, role=None):
 
     from .publication import ResultOnlyMapping
 
-    return ResultOnlyMapping(
-        {
-            "task": task,
-            "role": role,
-            "recommendations": recommendations,
-            "external": [],
-        }
-    )
+    result = {
+        "task": task,
+        "recommendations": recommendations,
+        "external": [],
+    }
+    if role is not None:
+        result["role"] = role
+    return ResultOnlyMapping(result)
