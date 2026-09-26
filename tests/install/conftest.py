@@ -118,6 +118,8 @@ def install_environment(tmp_path, monkeypatch):
     monkeypatch.setenv("GWAY_DATA_DIR", str(environment.data))
     monkeypatch.setenv("GWAY_CACHE_DIR", str(environment.cache))
     monkeypatch.setenv("GWAY_BIN_DIR", str(environment.bin))
+    monkeypatch.setenv("GWAY_PRODUCT_DIR", str(tmp_path / "products"))
+    monkeypatch.setenv("GWAY_SYSTEM_PRODUCT_DIR", str(tmp_path / "system-products"))
     return environment
 
 
