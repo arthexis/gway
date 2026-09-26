@@ -47,6 +47,217 @@ def project_bindings(data):
     return tuple(bindings)
 
 
+def _guide_rule(entry, *, source=None, implied_roles=()):
+    """Normalize one explicit project/role guide declaration."""
+    if not isinstance(entry, dict):
+        raise ValueError("guide declaration must be a table")
+
+    unknown = set(entry) - {
+        "tasks",
+        "command",
+        "reason",
+        "roles",
+        "use",
+        "capability",
+    }
+    if unknown:
+        raise ValueError("Unknown guide fields: " + ", ".join(sorted(unknown)))
+
+    tasks = entry.get("tasks")
+    command = entry.get("command")
+    reason = entry.get("reason")
+    roles = entry.get("roles", ())
+    use = entry.get("use", "gway")
+    capability = entry.get("capability")
+
+    if not isinstance(tasks, list) or not tasks:
+        raise ValueError("guide declaration requires non-empty tasks")
+    if any(not isinstance(task, str) or not task.strip() for task in tasks):
+        raise ValueError("guide tasks must be non-empty strings")
+    normalized_tasks = tuple(task.strip() for task in tasks)
+
+    if use not in {"gway", "external"}:
+        raise ValueError("guide use must be 'gway' or 'external'")
+    if use == "gway":
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError("gway guide declaration requires a non-empty command")
+        if capability is not None:
+            raise ValueError("gway guide declaration cannot define capability")
+        normalized_command = command.strip()
+        normalized_capability = None
+    else:
+        if command is not None:
+            raise ValueError("external guide declaration cannot define command")
+        if not isinstance(capability, str) or not capability.strip():
+            raise ValueError(
+                "external guide declaration requires a non-empty capability"
+            )
+        normalized_command = None
+        normalized_capability = capability.strip()
+
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("guide declaration requires a non-empty reason")
+
+    if implied_roles and roles not in ((), []):
+        raise ValueError("role-specific guide declarations cannot define roles")
+    if not isinstance(roles, list) and roles != ():
+        raise ValueError("guide roles must be an array")
+    if any(not isinstance(role, str) or not role.strip() for role in roles):
+        raise ValueError("guide roles must be non-empty strings")
+    normalized_roles = tuple(str(role).strip() for role in implied_roles) or tuple(
+        role.strip() for role in roles
+    )
+
+    return {
+        "tasks": normalized_tasks,
+        "use": use,
+        "command": normalized_command,
+        "capability": normalized_capability,
+        "reason": reason.strip(),
+        "source": source,
+        "roles": normalized_roles,
+    }
+
+
+def project_guidance(data, *, source=None):
+    """Return validated project and role-specific guide declarations."""
+    if not isinstance(data, dict):
+        return ()
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    if not isinstance(gway, dict):
+        return ()
+
+    rules = []
+
+    entries = gway.get("guide")
+    if entries is not None:
+        if not isinstance(entries, list):
+            raise ValueError("[[tool.gway.guide]] must be an array of tables")
+        rules.extend(_guide_rule(entry, source=source) for entry in entries)
+
+    roles = gway.get("roles")
+    if roles is not None:
+        if not isinstance(roles, dict):
+            raise ValueError("[tool.gway.roles] must be a table")
+        for role, declaration in roles.items():
+            if not isinstance(role, str) or not role.strip():
+                raise ValueError("guide role names must be non-empty strings")
+            if not isinstance(declaration, dict):
+                raise ValueError(f"[tool.gway.roles.{role}] must be a table")
+            unknown = set(declaration) - {"guide"}
+            if unknown:
+                raise ValueError(
+                    f"Unknown role fields for {role}: "
+                    + ", ".join(sorted(unknown))
+                )
+            role_entries = declaration.get("guide", ())
+            if not isinstance(role_entries, list):
+                raise ValueError(
+                    f"[[tool.gway.roles.{role}.guide]] must be an array of tables"
+                )
+            role_source = f"{source}:{role}" if source else role
+            rules.extend(
+                _guide_rule(
+                    entry,
+                    source=role_source,
+                    implied_roles=(role,),
+                )
+                for entry in role_entries
+            )
+
+    return tuple(rules)
+
+
+
+_GUIDE_DOCUMENT_LIMIT = 8
+_GUIDE_DOCUMENT_BYTES = 65536
+_GUIDE_SECTION_LIMIT = 64
+
+
+def project_guide_documents(data, root):
+    """Load explicitly selected, bounded project documentation for guide."""
+    if not isinstance(data, dict):
+        return ()
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    if not isinstance(gway, dict):
+        return ()
+
+    selected = gway.get("guide_documents")
+    if selected is None:
+        return ()
+    if not isinstance(selected, list):
+        raise ValueError("[tool.gway].guide_documents must be an array")
+    if len(selected) > _GUIDE_DOCUMENT_LIMIT:
+        raise ValueError(
+            f"guide_documents supports at most {_GUIDE_DOCUMENT_LIMIT} files"
+        )
+
+    root = Path(root).expanduser().resolve()
+    documents = []
+    for value in selected:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("guide document paths must be non-empty strings")
+        relative = Path(value.strip())
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("guide document paths must stay within the project")
+        path = (root / relative).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("guide document paths must stay within the project") from exc
+        if path.suffix.lower() not in {".md", ".txt"}:
+            raise ValueError("guide documents must be Markdown or text files")
+        if not path.is_file():
+            raise ValueError(f"guide document does not exist: {relative}")
+        if path.stat().st_size > _GUIDE_DOCUMENT_BYTES:
+            raise ValueError(
+                f"guide document exceeds {_GUIDE_DOCUMENT_BYTES} bytes: {relative}"
+            )
+        text = path.read_text(encoding="utf-8")
+        documents.extend(
+            _guide_document_sections(
+                text,
+                source=relative.as_posix(),
+                remaining=_GUIDE_SECTION_LIMIT - len(documents),
+            )
+        )
+        if len(documents) >= _GUIDE_SECTION_LIMIT:
+            break
+    return tuple(documents)
+
+
+def _guide_document_sections(text, *, source, remaining):
+    """Split one selected document into bounded heading-oriented sections."""
+    if remaining <= 0:
+        return ()
+    sections = []
+    heading = None
+    lines = []
+    for raw in str(text).splitlines():
+        stripped = raw.strip()
+        if stripped.startswith("#"):
+            title = stripped.lstrip("#").strip()
+            if title:
+                if lines:
+                    body = "\n".join(lines).strip()
+                    if body:
+                        sections.append(
+                            {"source": source, "heading": heading, "text": body}
+                        )
+                        if len(sections) >= remaining:
+                            return tuple(sections)
+                heading = title
+                lines = []
+                continue
+        lines.append(raw)
+    body = "\n".join(lines).strip()
+    if body and len(sections) < remaining:
+        sections.append({"source": source, "heading": heading, "text": body})
+    return tuple(sections)
+
+
 def semantic_binding_key(topics, subject):
     """Return a deterministic exact key for structured semantic identity."""
     if not isinstance(topics, (list, tuple)):
@@ -338,6 +549,13 @@ def bootstrap(runtime, *, start=None):
 
     project_data = data.get("project") if isinstance(data, dict) else None
     project_name = project_data.get("name") if isinstance(project_data, dict) else None
+    guide_source = (
+        project_name.strip()
+        if isinstance(project_name, str) and project_name.strip()
+        else str(project_file.parent)
+    )
+    runtime._guide_rules = project_guidance(data, source=guide_source)
+    runtime._guide_documents = project_guide_documents(data, project_file.parent)
     if isinstance(project_name, str) and project_name.strip():
         from .project import project_scripts
 

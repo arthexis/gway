@@ -73,6 +73,106 @@ bootstrap.
 
 The table is optional. If present, it must be a TOML table.
 
+### `[[tool.gway.guide]]`
+
+Projects can publish explicit task guidance for the read-only `guide` operation:
+
+```toml
+[[tool.gway.guide]]
+tasks = ["check production logs", "inspect logs"]
+command = "log read --all"
+reason = "Use the maintained log reader for this deployment."
+roles = ["watchtower"]
+```
+
+Each declaration requires `tasks`, `reason`, and one recommendation target.
+
+For a GWAY recommendation:
+
+- `command`: the preferred GWAY command;
+- optional `roles`: node/project roles for which the recommendation applies.
+
+For an external capability recommendation:
+
+```toml
+[[tool.gway.guide]]
+tasks = ["modify source", "review pull request", "check ci"]
+use = "external"
+capability = "source-control"
+reason = "The repository is the canonical development surface."
+```
+
+External rules require `use = "external"` plus a non-empty generic
+`capability` class. They must not also define `command`. Capability names are
+client-independent (for example `source-control`, `web-search`,
+`file-editor`, `browser`, or `database-admin`).
+
+`guide <task>` ranks these explicit declarations first. When the project exposes
+a semantic `role` (for example under `[tool.gway.variables]`), declarations with
+matching `roles` are eligible and outrank otherwise equivalent generic rules.
+Role-specific declarations for another role are excluded.
+
+It returns structured recommendations with the command, reason, project source, and
+the configured task phrase that matched. The command is only a recommendation:
+`guide` does not execute it or grant authorization to use it. Guide results are
+result-only mappings and do not promote their metadata into semantic context.
+
+After explicit and role-aware declarations, `guide` may fall back to metadata from
+operations currently registered in the live Gateway. This lexical fallback uses the
+canonical command spelling and compact operation summary, remains lower priority than
+project declarations, and is filtered by the caller's active authorization when one
+exists. It does not execute the recommended operation.
+
+After live operations, `guide` can also recommend maintained sampler recipes by
+their semantic recipe path. Recipe recommendations use the safe
+`recipe <sampler-name>` operation rather than exposing direct filesystem paths.
+Under constrained remote authorization, recipes are only advertised when the
+caller is authorized for the `recipe` operation.
+
+External capability declarations participate in the same explicit task ranking and
+role filtering as GWAY declarations, but appear in the result's `external` array.
+They are recommendations only and are independent of GWAY execution authorization.
+
+Projects can also place guidance directly under a role-owned namespace:
+
+```toml
+[tool.gway.variables]
+role = "watchtower"
+
+[[tool.gway.roles.watchtower.guide]]
+tasks = ["diagnose this node"]
+command = "node watchtower diagnose"
+reason = "Use the Watchtower diagnostic family."
+```
+
+The role key implies applicability, so role-owned guide entries must not also define
+`roles`. Their provenance includes both the project and role (for example
+`demo:watchtower`). Role-specific entries use the same GWAY/external target schema
+and only participate when the active semantic `role` matches.
+
+Projects may opt selected documentation into the final guide fallback:
+
+```toml
+[tool.gway]
+guide_documents = ["docs/OPERATIONS.md", "docs/RECOVERY.md"]
+```
+
+Only explicitly listed UTF-8 Markdown or text files are considered. Paths must remain
+inside the project root. The loader accepts at most eight files, at most 64 KiB per
+file, and at most 64 heading-oriented sections in total. Matching documentation is
+ranked after explicit guidance, live operations, and recipes and is returned as a
+`kind = "documentation"` recommendation with source, section, and a bounded excerpt.
+GWAY does not recursively search arbitrary project Markdown.
+
+After operation-name/summary matching and maintained recipes, `guide` may use the
+full structured operation docstring as a lower-priority fallback. This remains
+authorization-aware, suppresses duplicate recommendations for operations already
+matched earlier, and returns only a bounded excerpt.
+
+At this point the remaining role-specific work is the generic `node <verb>`
+execution/discovery surface itself; that is a separate role-dispatch layer rather
+than another guide information source.
+
 ### `[tool.gway.sous-chef.<job>]`
 
 Sous Chef jobs are project-owned recipe jobs:
