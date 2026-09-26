@@ -25,7 +25,9 @@ def test_project_guidance_validates_explicit_rules():
     assert rules == (
         {
             "tasks": ("check logs", "inspect production logs"),
+            "use": "gway",
             "command": "log read --all",
+            "capability": None,
             "reason": "Use the maintained log reader.",
             "source": "demo",
             "roles": (),
@@ -55,6 +57,33 @@ def test_project_guidance_validates_explicit_rules():
                 "roles": [False],
             },
             "guide roles must be non-empty strings",
+        ),
+        (
+            {
+                "tasks": ["review pull request"],
+                "use": "external",
+                "command": "status",
+                "capability": "source-control",
+                "reason": "Use source control.",
+            },
+            "external guide declaration cannot define command",
+        ),
+        (
+            {
+                "tasks": ["review pull request"],
+                "use": "external",
+                "reason": "Use source control.",
+            },
+            "requires a non-empty capability",
+        ),
+        (
+            {
+                "tasks": ["status"],
+                "command": "status",
+                "capability": "source-control",
+                "reason": "x",
+            },
+            "cannot define capability",
         ),
     ],
 )
@@ -385,3 +414,90 @@ name = "demo"
         item.get("recipe") == "web/expose/http"
         for item in result["recommendations"]
     )
+
+
+def test_guide_returns_explicit_external_capability(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[[tool.gway.guide]]
+tasks = ["review pull request", "check ci"]
+use = "external"
+capability = "source-control"
+reason = "The repository is the canonical development surface."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    result = gateway("guide review pull request")
+
+    assert result["external"] == [
+        {
+            "capability": "source-control",
+            "reason": "The repository is the canonical development surface.",
+            "source": "demo",
+            "matched_task": "review pull request",
+        }
+    ]
+
+
+def test_external_guide_honors_role_filtering(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "watchtower"
+
+[[tool.gway.guide]]
+tasks = ["edit deployment source"]
+use = "external"
+capability = "source-control"
+reason = "Modify source in the repository."
+roles = ["watchtower"]
+
+[[tool.gway.guide]]
+tasks = ["edit deployment source"]
+use = "external"
+capability = "file-editor"
+reason = "Terminal-only local edit."
+roles = ["terminal"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    result = gateway("guide edit deployment source")
+
+    assert [item["capability"] for item in result["external"]] == [
+        "source-control"
+    ]
+
+
+def test_external_guidance_is_independent_of_gway_authorization(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[[tool.gway.guide]]
+tasks = ["check ci"]
+use = "external"
+capability = "source-control"
+reason = "Inspect CI in source control."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    with gateway.authorized(operations={"guide"}):
+        result = gateway("guide check ci")
+
+    assert result["external"][0]["capability"] == "source-control"
