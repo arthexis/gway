@@ -782,7 +782,7 @@ def test_systemd_restart_policy_does_not_require_gway_supervisor():
     assert "-m gway.service.supervisor" not in rendered
     assert "Restart=on-failure" in rendered
     assert "RestartSec=5" in rendered
-    assert "StartLimitBurst=3" in rendered
+    assert "StartLimitBurst=4" in rendered
     assert "StartLimitIntervalSec=15min" in rendered
 
 
