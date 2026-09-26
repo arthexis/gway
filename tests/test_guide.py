@@ -309,3 +309,79 @@ name = "demo"
         item.get("operation") != "delete.secret"
         for item in result["recommendations"]
     )
+
+
+def test_guide_falls_back_to_maintained_sampler_recipe(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "gway.sampler.recipes",
+        lambda: ("web/expose/http", "remote/accept"),
+    )
+    gateway = Gateway()
+
+    result = gateway("guide expose web http")
+
+    recipe = next(
+        item for item in result["recommendations"]
+        if item.get("recipe") == "web/expose/http"
+    )
+    assert recipe == {
+        "kind": "recipe",
+        "command": "recipe web/expose/http",
+        "reason": "Maintained sampler recipe: web/expose/http.",
+        "source": "sampler",
+        "recipe": "web/expose/http",
+        "mutates": True,
+    }
+
+
+def test_guide_hides_sampler_recipes_without_recipe_authority(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "gway.sampler.recipes",
+        lambda: ("web/expose/http",),
+    )
+    gateway = Gateway()
+
+    with gateway.authorized(operations={"guide"}):
+        result = gateway("guide expose web http")
+
+    assert all(item.get("kind") != "recipe" for item in result["recommendations"])
+
+
+def test_guide_allows_sampler_recipes_with_recipe_authority(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "gway.sampler.recipes",
+        lambda: ("web/expose/http",),
+    )
+    gateway = Gateway()
+
+    with gateway.authorized(operations={"guide", "recipe"}):
+        result = gateway("guide expose web http")
+
+    assert any(
+        item.get("recipe") == "web/expose/http"
+        for item in result["recommendations"]
+    )
