@@ -71,7 +71,7 @@ def test_remote_auth_systemd_rendering_uses_generic_backend():
     assert " remote serve" in rendered
     assert "Restart=on-failure" in rendered
     assert "RestartSec=5.0" in rendered
-    assert "StartLimitBurst=3" in rendered
+    assert "StartLimitBurst=4" in rendered
     assert "gway.service.supervisor" not in rendered
     assert "systemctl" not in rendered
     assert "daemon-reload" not in rendered
