@@ -133,6 +133,23 @@ External capability declarations participate in the same explicit task ranking a
 role filtering as GWAY declarations, but appear in the result's `external` array.
 They are recommendations only and are independent of GWAY execution authorization.
 
+Projects can also place guidance directly under a role-owned namespace:
+
+```toml
+[tool.gway.variables]
+role = "watchtower"
+
+[[tool.gway.roles.watchtower.guide]]
+tasks = ["diagnose this node"]
+command = "node watchtower diagnose"
+reason = "Use the Watchtower diagnostic family."
+```
+
+The role key implies applicability, so role-owned guide entries must not also define
+`roles`. Their provenance includes both the project and role (for example
+`demo:watchtower`). Role-specific entries use the same GWAY/external target schema
+and only participate when the active semantic `role` matches.
+
 The full role-aware `node` execution surface, broader docstring fallbacks, and
 documentation fallbacks remain separate later layers of the guide design.
 
