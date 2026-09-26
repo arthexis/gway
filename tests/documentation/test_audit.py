@@ -29,6 +29,7 @@ def _public_builtin_commands():
     commands.update(
         {
             "help",
+            "guide",
             "clear",
             "security oauth client create",
             "security oauth client show",
