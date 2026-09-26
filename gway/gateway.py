@@ -749,9 +749,12 @@ class Gateway(Resolver):
             )
         if not children:
             raise LookupError(f"Unknown command group: {name}")
+        canonical = ".".join(
+            part for part in name.replace(".", " ").split() if part
+        )
         return {
             "group": name,
-            "default": name if self.ops.resolve(name) is not None else None,
+            "default": name if self.ops.resolve(canonical) is not None else None,
             "operations": children,
         }
 
@@ -768,6 +771,21 @@ class Gateway(Resolver):
         if info["default"] is not None:
             lines.extend(["", f"Bare '{info['group']}' runs its group default."])
         return "\n".join(lines)
+
+    def _command_help(self, *tokens: str, verbose=False):
+        """Return help for the callable prefix of one CLI command."""
+        from .documentation import render
+        from .dispatch import resolve_operation
+        from .tokens import tokenize
+
+        if not tokens:
+            raise TypeError("command help requires an operation name")
+        name = " ".join(tokens)
+        if self.ops.is_namespace(name):
+            return self._namespace_help(name)
+
+        target, _, _ = resolve_operation(self, tokenize(name))
+        return render(target, verbose=verbose)
 
     def _help(self, *operation: str, verbose=False, mutate=False):
         """Return documentation for one Gway operation or command group.

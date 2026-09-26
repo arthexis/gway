@@ -65,6 +65,7 @@ def test_help_on_group_lists_children_even_when_group_has_default(gateway):
 
     output = gateway("help demo tools")
 
+    assert gateway.namespace("demo", "tools")["default"] == "demo tools"
     assert output.startswith("demo tools operations:")
     assert "alpha" in output
     assert "Alpha operation." in output
@@ -96,3 +97,55 @@ def test_cli_bare_help_remains_global(run_cli):
     assert status == 0
     assert "GWAY command-dispatch and composition core" in output
     assert "security scope operations:" not in output
+
+
+
+def test_ingested_class_main_preserves_receiver_metadata(gateway):
+    class Demo:
+        def __main__(self):
+            return "main"
+
+        def show(self):
+            return "show"
+
+    ingest_python(gateway, Demo, path=("demo", "group"))
+
+    default = gateway.ops.resolve("demo.group")
+    assert default.__gway_receiver__ == "group"
+    assert default(Demo()) == "main"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("-r", "missing.rx", "--help"),
+        ("-e", "missing operation", "--help"),
+    ],
+)
+def test_cli_global_modes_keep_global_help(run_cli, args):
+    status, output, _ = run_cli(*args)
+
+    assert status == 0
+    assert "GWAY command-dispatch and composition core" in output
+    assert "security scope operations:" not in output
+
+
+def test_cli_option_terminator_preserves_literal_trailing_help():
+    from gway.console import _extract_command_help
+
+    argv = ["echo", "--", "--help"]
+
+    assert _extract_command_help(argv) == (False, argv)
+
+
+def test_cli_command_help_resolves_operation_prefix(run_cli):
+    status, output, _ = run_cli(
+        "security",
+        "scope",
+        "show",
+        "missing",
+        "--help",
+    )
+
+    assert status == 0
+    assert "security scope show" in output

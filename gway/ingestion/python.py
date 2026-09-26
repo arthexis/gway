@@ -343,6 +343,10 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
         if name == "__main__" and callable(child):
             child_path = root
             child_record = _remember_child(gateway, child, child_path)
+            metadata = {"object": child, "entrypoint": "callable"}
+            receiver = _receiver_subject(source, root, name, child)
+            if receiver is not None:
+                metadata["receiver"] = receiver
             operation = IngestedOperation(
                 root,
                 child,
@@ -350,7 +354,7 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
                 kind="python",
                 op=root[-1],
                 sub=None,
-                metadata={"object": child, "entrypoint": "callable"},
+                metadata=metadata,
             )
             registered = _register_callable(gateway, child_record, operation)
             if registered is not None:

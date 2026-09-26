@@ -50,15 +50,77 @@ def _extract_mutation_policy(argv):
     return policy, remaining
 
 
+_COMMAND_HELP_VALUE_OPTIONS = {
+    "-L",
+    "--log-level",
+    "--logfile",
+    "-r",
+    "--recipe",
+    "-e",
+    "--expression",
+    "--resume",
+}
+_COMMAND_HELP_MODE_OPTIONS = {
+    "-r",
+    "--recipe",
+    "-e",
+    "--expression",
+    "--resume",
+}
+
+
 def _extract_command_help(argv):
-    """Route trailing command help through GWAY instead of global argparse help."""
-    if not argv:
+    """Route only trailing operation help through GWAY command help."""
+    if not argv or argv[-1] not in {"--help", "-h"}:
         return False, argv
-    help_tokens = {"--help", "-h"}
-    if argv[-1] not in help_tokens:
-        return False, argv
+
     preceding = argv[:-1]
-    if not any(not token.startswith("-") for token in preceding):
+    if "--" in preceding:
+        return False, argv
+
+    command_seen = False
+    mode_seen = False
+    consume_value = False
+
+    for token in preceding:
+        if consume_value:
+            consume_value = False
+            continue
+
+        if token in _COMMAND_HELP_VALUE_OPTIONS:
+            mode_seen = mode_seen or token in _COMMAND_HELP_MODE_OPTIONS
+            consume_value = True
+            continue
+
+        matched_long_value = next(
+            (
+                option
+                for option in _COMMAND_HELP_VALUE_OPTIONS
+                if option.startswith("--") and token.startswith(f"{option}=")
+            ),
+            None,
+        )
+        if matched_long_value is not None:
+            mode_seen = mode_seen or matched_long_value in _COMMAND_HELP_MODE_OPTIONS
+            continue
+
+        matched_short_value = next(
+            (
+                option
+                for option in {"-L", "-r", "-e"}
+                if token.startswith(option) and token != option
+            ),
+            None,
+        )
+        if matched_short_value is not None:
+            mode_seen = mode_seen or matched_short_value in _COMMAND_HELP_MODE_OPTIONS
+            continue
+
+        if token.startswith("-"):
+            continue
+        command_seen = True
+
+    if mode_seen or not command_seen:
         return False, argv
     return True, preceding
 
@@ -159,7 +221,7 @@ def _run_cli(parser, args, unknown, *, runtime=None):
                     output = runtime.resolve(args.expression)
                 elif unknown:
                     if getattr(args, "command_help", False):
-                        output = runtime._help(*unknown, verbose=args.verbose)
+                        output = runtime._command_help(*unknown, verbose=args.verbose)
                     else:
                         _, output = process([unknown], gw_instance=runtime)
                 else:
