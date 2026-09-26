@@ -54,6 +54,7 @@ class Gateway(Resolver):
         self._service_presets = {}
         self._ingested = {}
         self._guide_rules = ()
+        self._guide_documents = ()
 
         self.gway_identity = None
 
@@ -762,6 +763,7 @@ class Gateway(Resolver):
             role=self.get("role"),
             operations=self.ops.records(),
             recipes=recipes(),
+            documents=self._guide_documents,
             authorization=self.authorization,
         )
 
